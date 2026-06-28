@@ -44,6 +44,7 @@ fn tool_names() -> Vec<&'static str> {
         "aether.event.recent",
         "aether.event.by_channel",
         "aether.event.since",
+        "aether.shared_brain.snapshot",
         "aether.ownership.assign",
         "aether.ownership.owner_of",
         "aether.ownership.claims",
@@ -164,6 +165,12 @@ fn arg_optional_string_array(
         })
         .collect::<ApiResult<Vec<String>>>()?;
     Ok(Some(items))
+}
+
+fn ownership_db(state: &ApiState) -> ApiResult<&crate::db::ManagedDb> {
+    state.db.as_deref().ok_or_else(|| {
+        ApiError::Internal("ownership persistence is not attached to this process".to_string())
+    })
 }
 
 fn arg_optional_f64(
@@ -613,6 +620,18 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                     "properties": {
                         "afterSeq": { "type": "integer", "minimum": 0 },
                         "limit": { "type": "integer", "minimum": 1, "maximum": 1000 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aether.shared_brain.snapshot",
+                "description": "Read the unified shared-brain snapshot: live agents, pane/event activity, file and symbol ownership, unresolved durable merge intents, blockers, and project decisions from one backend formatter.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "workspaceId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -1367,126 +1386,27 @@ pub(super) async fn tools_call(
                 }
             };
 
-            // Load the IMMUTABLE intent — every merge parameter comes from HERE.
-            let intent = store
-                .get(&intent_id)
-                .map_err(ApiError::Internal)?
-                .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
-            let now = now_secs() as i64;
-
-            // CAS-claim the merge: the DB row is the arbiter (boundary #5). Only one
-            // winner, only from queued/ready_to_merge — a re-approve of a merged /
-            // in-flight / needs-reconcile intent loses here.
-            if !store
-                .claim_for_merge(&intent_id, now)
-                .map_err(ApiError::Internal)?
-            {
-                return Err(ApiError::BadRequest(format!(
-                    "intent {intent_id} is not claimable (state {}): already merging, terminal, or needs reconcile",
-                    intent.state.as_str()
-                )));
-            }
-            // Durable approval evidence (mutable metadata; does NOT touch the target).
-            // A post-claim failure must not strand the row in `merging` — flip it to
-            // needs_reconcile before surfacing the error (every exit is definite).
-            if let Err(e) = store.record_approval(&intent_id, actor, gates_digest.as_deref(), now) {
-                let _ = store.set_state(
-                    &intent_id,
-                    crate::merge_intent::MergeIntentState::NeedsReconcile,
-                    now,
-                );
-                return Err(ApiError::Internal(e));
-            }
-
-            // IDEMPOTENT already-merged: if the target already contains the REVIEWED
-            // source commit, the merge is done — even if the source branch has since
-            // advanced (so the OID-bound merge below would otherwise see stale tips).
-            // No lock held (boundary #5); the stored repo/branch/oid only (boundary #4).
-            let already_merged = match crate::git::branch_contains_commit(
-                &intent.repo_path,
-                &intent.target_branch,
-                &intent.source_oid,
-            ) {
-                Ok(landed) => landed,
-                Err(e) => {
-                    store
-                        .set_state(
-                            &intent_id,
-                            crate::merge_intent::MergeIntentState::NeedsReconcile,
-                            now,
-                        )
-                        .map_err(ApiError::Internal)?;
-                    return Err(ApiError::BadRequest(format!(
-                        "intent {intent_id}: repo unreadable, marked needs_reconcile: {e}"
-                    )));
+            let execution = crate::control::merge::approve_durable_intent(
+                store,
+                &intent_id,
+                actor,
+                gates_digest.as_deref(),
+                now_secs() as i64,
+            )
+            .map_err(|err| {
+                use crate::control::merge::DurableMergeError;
+                match err {
+                    DurableMergeError::NotFound(_) => ApiError::NotFound(intent_id.clone()),
+                    DurableMergeError::InvalidRequest(message) => ApiError::BadRequest(message),
+                    DurableMergeError::Persistence(message) => ApiError::Internal(message),
                 }
-            };
-            if already_merged {
-                store
-                    .set_state(
-                        &intent_id,
-                        crate::merge_intent::MergeIntentState::Merged,
-                        now,
-                    )
-                    .map_err(ApiError::Internal)?;
-                serde_json::json!({
-                    "intentId": intent_id,
-                    "status": "merged",
-                    "outcome": { "status": "already_merged" },
-                })
-            } else {
-                // The OID-BOUND merge (boundary #4): perform_merge_bound opens the
-                // repo ONCE, re-resolves the tips, and merges ONLY if both still
-                // equal the reviewed OIDs — there is no second name-resolution window
-                // in which a moved tip could merge an unreviewed commit. No lock held.
-                match crate::git::perform_merge_bound(
-                    &intent.repo_path,
-                    &intent.source_branch,
-                    &intent.target_branch,
-                    &intent.source_oid,
-                    &intent.target_oid,
-                ) {
-                    Ok(crate::git::BoundMergeResult::StaleTips) => {
-                        store
-                            .set_state(
-                                &intent_id,
-                                crate::merge_intent::MergeIntentState::NeedsReconcile,
-                                now,
-                            )
-                            .map_err(ApiError::Internal)?;
-                        return Err(ApiError::BadRequest(format!(
-                            "intent {intent_id}: branch tips moved since request; marked needs_reconcile"
-                        )));
-                    }
-                    Ok(crate::git::BoundMergeResult::Merged(outcome)) => {
-                        let final_state = match &outcome {
-                            crate::git::MergeOutcome::Conflict { .. } => {
-                                crate::merge_intent::MergeIntentState::Conflict
-                            }
-                            _ => crate::merge_intent::MergeIntentState::Merged,
-                        };
-                        store
-                            .set_state(&intent_id, final_state, now)
-                            .map_err(ApiError::Internal)?;
-                        serde_json::json!({
-                            "intentId": intent_id,
-                            "status": final_state.as_str(),
-                            "outcome": outcome,
-                        })
-                    }
-                    // Merge could not run; surface for reconciliation, never retry blindly.
-                    Err(err) => {
-                        store
-                            .set_state(
-                                &intent_id,
-                                crate::merge_intent::MergeIntentState::NeedsReconcile,
-                                now,
-                            )
-                            .map_err(ApiError::Internal)?;
-                        return Err(ApiError::BadRequest(err));
-                    }
-                }
-            }
+            })?;
+
+            serde_json::json!({
+                "intentId": execution.intent_id,
+                "status": execution.status,
+                "outcome": execution.outcome,
+            })
         }
         "aether.review.reject" => {
             // Fail closed: rejection is a durable state transition on the stored
@@ -1706,6 +1626,7 @@ pub(super) async fn tools_call(
                 reviewer_id,
                 gates,
                 gate_commands,
+                state.merge_store.clone(),
                 // P4: the autonomous (MCP) face persists give-ups too — the path
                 // that most needs unattended-safe durability.
                 state.db.as_deref(),
@@ -1752,17 +1673,46 @@ pub(super) async fn tools_call(
             let next_seq = events.last().map(|e| e.seq).unwrap_or(after_seq);
             serde_json::json!({ "events": events, "nextSeq": next_seq })
         }
+        "aether.shared_brain.snapshot" => {
+            let workspace_id =
+                arg_optional_string(&args, "workspaceId").unwrap_or_else(|| "mcp".to_string());
+            let agents = state
+                .agent_manager
+                .as_ref()
+                .map(crate::control::agent::list_headless)
+                .unwrap_or_default();
+            let snapshot = crate::shared_brain::snapshot(crate::shared_brain::SharedBrainInputs {
+                workspace_id: &workspace_id,
+                agents,
+                file_ownership: state.file_ownership.as_ref(),
+                symbol_ownership: state.symbol_ownership.as_ref(),
+                event_bus: state.event_bus.as_ref(),
+                context_store: state.context_store.as_ref(),
+                merge_store: state.merge_store.as_ref(),
+                now: now_secs(),
+            })
+            .map_err(ApiError::Internal)?;
+            serde_json::to_value(snapshot)
+                .map_err(|err| ApiError::Internal(format!("serialize shared brain: {err}")))?
+        }
         "aether.ownership.assign" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
             let agent_id = arg_string(&args, "agentId")?;
             let pattern = arg_string(&args, "pattern")?;
+            let claim =
+                crate::file_ownership::OwnershipClaim::new(agent_id.clone(), pattern.clone());
+            ownership_db(&state)?
+                .with(|db| {
+                    crate::persistence::OwnershipRepo::upsert_file_claim(db, &claim, now_secs())
+                })
+                .map_err(ApiError::Internal)?;
             let conflicts = {
                 let mut owner = ownership
                     .lock()
                     .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?;
-                owner.assign(agent_id.clone(), pattern.clone());
+                owner.assign_claim(claim);
                 owner.conflicts()
             };
             serde_json::json!({ "agentId": agent_id, "pattern": pattern, "conflicts": conflicts })
@@ -1783,21 +1733,34 @@ pub(super) async fn tools_call(
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
-            let claims = ownership
-                .lock()
-                .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
-                .claims()
-                .to_vec();
+            let now = now_secs();
+            ownership_db(&state)?
+                .with(|db| crate::persistence::OwnershipRepo::prune_expired(db, now).map(|_| ()))
+                .map_err(ApiError::Internal)?;
+            let claims = {
+                let mut owner = ownership
+                    .lock()
+                    .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?;
+                owner.expire(now);
+                owner.claims().to_vec()
+            };
             serde_json::json!({ "claims": claims })
         }
         "aether.ownership.conflicts" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
-            let conflicts = ownership
-                .lock()
-                .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?
-                .conflicts();
+            let now = now_secs();
+            ownership_db(&state)?
+                .with(|db| crate::persistence::OwnershipRepo::prune_expired(db, now).map(|_| ()))
+                .map_err(ApiError::Internal)?;
+            let conflicts = {
+                let mut owner = ownership
+                    .lock()
+                    .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?;
+                owner.expire(now);
+                owner.conflicts()
+            };
             serde_json::json!({ "conflicts": conflicts })
         }
         "aether.symbol.claim" => {
@@ -1858,7 +1821,20 @@ pub(super) async fn tools_call(
                 let mut owner = ownership.lock().map_err(|_| {
                     ApiError::Internal("symbol ownership lock poisoned".to_string())
                 })?;
-                owner.claim(claim, now)
+                let mut staging = owner.clone();
+                let outcome = staging.claim(claim.clone(), now);
+                if !matches!(
+                    outcome,
+                    crate::symbol_ownership::ClaimOutcome::Blocked { .. }
+                ) {
+                    ownership_db(&state)?
+                        .with(|db| {
+                            crate::persistence::OwnershipRepo::upsert_symbol_claim(db, &claim, now)
+                        })
+                        .map_err(ApiError::Internal)?;
+                    *owner = staging;
+                }
+                outcome
             };
             serde_json::to_value(outcome)
                 .map_err(|err| ApiError::Internal(format!("serialize symbol outcome: {err}")))?
@@ -1872,10 +1848,27 @@ pub(super) async fn tools_call(
                 .get("leaseSecs")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(300);
-            let refreshed = ownership
-                .lock()
-                .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
-                .refresh(&claim_id, now_secs(), lease_secs);
+            let now = now_secs();
+            let refreshed = {
+                let mut owner = ownership.lock().map_err(|_| {
+                    ApiError::Internal("symbol ownership lock poisoned".to_string())
+                })?;
+                let mut staging = owner.clone();
+                if !staging.refresh(&claim_id, now, lease_secs) {
+                    false
+                } else {
+                    let claim = staging.get(&claim_id).cloned().ok_or_else(|| {
+                        ApiError::Internal(format!("refreshed claim vanished: {claim_id}"))
+                    })?;
+                    ownership_db(&state)?
+                        .with(|db| {
+                            crate::persistence::OwnershipRepo::upsert_symbol_claim(db, &claim, now)
+                        })
+                        .map_err(ApiError::Internal)?;
+                    *owner = staging;
+                    true
+                }
+            };
             serde_json::json!({ "refreshed": refreshed })
         }
         "aether.symbol.release" => {
@@ -1883,6 +1876,9 @@ pub(super) async fn tools_call(
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
             let claim_id = arg_string(&args, "claimId")?;
+            ownership_db(&state)?
+                .with(|db| crate::persistence::OwnershipRepo::delete_symbol_claim(db, &claim_id))
+                .map_err(ApiError::Internal)?;
             let released = ownership
                 .lock()
                 .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
@@ -1894,6 +1890,11 @@ pub(super) async fn tools_call(
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
             let task_id = arg_string(&args, "taskId")?;
+            ownership_db(&state)?
+                .with(|db| {
+                    crate::persistence::OwnershipRepo::delete_symbol_claims_for_task(db, &task_id)
+                })
+                .map_err(ApiError::Internal)?;
             let released = ownership
                 .lock()
                 .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
@@ -1905,6 +1906,9 @@ pub(super) async fn tools_call(
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
             let now = now_secs();
+            ownership_db(&state)?
+                .with(|db| crate::persistence::OwnershipRepo::prune_expired(db, now).map(|_| ()))
+                .map_err(ApiError::Internal)?;
             let claims: Vec<crate::symbol_ownership::SymbolClaim> = {
                 let mut owner = ownership.lock().map_err(|_| {
                     ApiError::Internal("symbol ownership lock poisoned".to_string())
@@ -1919,6 +1923,9 @@ pub(super) async fn tools_call(
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
             let now = now_secs();
+            ownership_db(&state)?
+                .with(|db| crate::persistence::OwnershipRepo::prune_expired(db, now).map(|_| ()))
+                .map_err(ApiError::Internal)?;
             let conflicts = {
                 let mut owner = ownership.lock().map_err(|_| {
                     ApiError::Internal("symbol ownership lock poisoned".to_string())
@@ -1961,13 +1968,16 @@ pub(super) async fn tools_call(
             let intents = crate::symbol_ownership::extract::intents_from_diff(&diff, mode);
             let mut claims = Vec::new();
             let mut recorded = 0usize;
+            let mut delete_claim_ids = Vec::new();
+            let mut upsert_claims = Vec::new();
             {
                 let mut owner = ownership.lock().map_err(|_| {
                     ApiError::Internal("symbol ownership lock poisoned".to_string())
                 })?;
+                let mut staging = owner.clone();
                 // Sweep expired leases first (sibling verbs claims/conflicts do the
                 // same) so a crashed agent's stale span can't linger in the map.
-                owner.expire(now);
+                staging.expire(now);
                 for intent in intents {
                     // Deterministic id so re-running on an updated diff is idempotent
                     // per span (release the prior claim for this span, then re-add). The
@@ -1977,7 +1987,8 @@ pub(super) async fn tools_call(
                         "dh:{agent_id}:{}:{}-{}",
                         intent.path, intent.range.start_line, intent.range.end_line
                     );
-                    owner.release(&claim_id);
+                    staging.release(&claim_id);
+                    delete_claim_ids.push(claim_id.clone());
                     let claim = crate::symbol_ownership::SymbolClaim {
                         claim_id: claim_id.clone(),
                         agent_id: agent_id.clone(),
@@ -1989,7 +2000,7 @@ pub(super) async fn tools_call(
                         lease_expires_at: now.saturating_add(lease_secs),
                         confidence: intent.confidence,
                     };
-                    let outcome = owner.claim(claim, now);
+                    let outcome = staging.claim(claim.clone(), now);
                     // `recorded` = claims actually stored. DiffHunk never Blocks, but
                     // count defensively so the field can never overstate ownership.
                     if !matches!(
@@ -1997,9 +2008,22 @@ pub(super) async fn tools_call(
                         crate::symbol_ownership::ClaimOutcome::Blocked { .. }
                     ) {
                         recorded += 1;
+                        upsert_claims.push(claim);
                     }
                     claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
                 }
+                ownership_db(&state)?
+                    .with(|db| {
+                        crate::persistence::OwnershipRepo::reconcile_symbol_claims(
+                            db,
+                            &delete_claim_ids,
+                            &[],
+                            &upsert_claims,
+                            now,
+                        )
+                    })
+                    .map_err(ApiError::Internal)?;
+                *owner = staging;
             }
             serde_json::json!({ "recorded": recorded, "claims": claims })
         }
@@ -2039,17 +2063,20 @@ pub(super) async fn tools_call(
             let fallback = intents.is_empty();
             let mut claims = Vec::new();
             let mut recorded = 0usize;
+            let reconcile_prefix = format!("parse:{agent_id}:{path}:");
+            let mut upsert_claims = Vec::new();
             {
                 let mut owner = ownership.lock().map_err(|_| {
                     ApiError::Internal("symbol ownership lock poisoned".to_string())
                 })?;
-                owner.expire(now);
+                let mut staging = owner.clone();
+                staging.expire(now);
                 // Reconcile: the parser re-derives the WHOLE file, so drop this agent's
                 // prior PARSER-derived claims on the path (the `parse:{agent}:{path}:`
                 // prefix) before recording the fresh set — a renamed/removed symbol's
                 // stale claim is freed. Scoped by prefix so it leaves the agent's
                 // diff-hunk (`dh:`) and hand-made claims on the same file untouched.
-                owner.release_for_prefix(&format!("parse:{agent_id}:{path}:"));
+                staging.release_for_prefix(&reconcile_prefix);
                 for intent in intents {
                     let claim_id = format!(
                         "parse:{agent_id}:{}:{}@{}-{}",
@@ -2066,7 +2093,7 @@ pub(super) async fn tools_call(
                         lease_expires_at: now.saturating_add(lease_secs),
                         confidence: intent.confidence,
                     };
-                    let outcome = owner.claim(claim, now);
+                    let outcome = staging.claim(claim.clone(), now);
                     // `recorded` counts claims actually stored — a Parser claim that
                     // Blocks against another agent's exact range is NOT recorded, so it
                     // must not inflate the count (the caller mustn't think it owns it).
@@ -2075,9 +2102,22 @@ pub(super) async fn tools_call(
                         crate::symbol_ownership::ClaimOutcome::Blocked { .. }
                     ) {
                         recorded += 1;
+                        upsert_claims.push(claim);
                     }
                     claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
                 }
+                ownership_db(&state)?
+                    .with(|db| {
+                        crate::persistence::OwnershipRepo::reconcile_symbol_claims(
+                            db,
+                            &[],
+                            std::slice::from_ref(&reconcile_prefix),
+                            &upsert_claims,
+                            now,
+                        )
+                    })
+                    .map_err(ApiError::Internal)?;
+                *owner = staging;
             }
             serde_json::json!({ "recorded": recorded, "fallback": fallback, "claims": claims })
         }
@@ -2522,6 +2562,13 @@ pub(super) async fn mcp_rpc(
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    fn test_db() -> Arc<crate::db::ManagedDb> {
+        Arc::new(crate::db::ManagedDb::new(
+            crate::db::Database::open_memory().expect("memory db"),
+        ))
+    }
 
     /// The MCP surface has three parallel lists that must never drift: the
     /// catalog (`tool_names`), the schemas (`tools_list`), and the handlers
@@ -2673,8 +2720,10 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let db = test_db();
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_symbol_ownership(owner.clone());
+            .with_symbol_ownership(owner.clone())
+            .with_db(Some(db));
         let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,3 @@\n a\n+b\n+c\n";
         let body = ToolCallBody {
             name: "aether.symbol.claim_from_diff".to_string(),
@@ -2707,8 +2756,10 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let db = test_db();
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_symbol_ownership(owner.clone());
+            .with_symbol_ownership(owner.clone())
+            .with_db(Some(db));
         let source = "fn alpha() {\n    let _ = 1;\n}\n\nfn beta() {\n    let _ = 2;\n}\n";
         let body = ToolCallBody {
             name: "aether.symbol.claim_from_source".to_string(),
@@ -2738,8 +2789,10 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let db = test_db();
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_symbol_ownership(owner.clone());
+            .with_symbol_ownership(owner.clone())
+            .with_db(Some(db));
         let body = ToolCallBody {
             name: "aether.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "notes.md", "source": "# hi" }),
@@ -2762,8 +2815,10 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let db = test_db();
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_symbol_ownership(owner.clone());
+            .with_symbol_ownership(owner.clone())
+            .with_db(Some(db.clone()));
         // Leading blank lines must NOT shift the range (raw, untrimmed source).
         let body = ToolCallBody {
             name: "aether.symbol.claim_from_source".to_string(),
@@ -2782,7 +2837,8 @@ mod tests {
 
         // Empty source -> fallback, no claims, NO error (reconciles f away too).
         let state2 = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_symbol_ownership(owner.clone());
+            .with_symbol_ownership(owner.clone())
+            .with_db(Some(db));
         let body2 = ToolCallBody {
             name: "aether.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": "" }),
@@ -2806,9 +2862,11 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let owner = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let db = test_db();
         let mk_state = || {
             ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
                 .with_symbol_ownership(owner.clone())
+                .with_db(Some(db.clone()))
         };
 
         // 1. A diff-hunk claim on src/x.rs (an import-region edit the parser won't model).

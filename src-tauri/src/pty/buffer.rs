@@ -138,7 +138,7 @@ pub fn extract_command_blocks(lines: &[String]) -> Vec<CommandBlock> {
 /// Try to extract the command from a prompt line.
 /// Returns Some(command) if this looks like a prompt, None otherwise.
 fn detect_prompt_command(line: &str) -> Option<String> {
-    // PowerShell: PS C:\Users\owner> command
+    // PowerShell: PS C:\Users\example> command
     if let Some(idx) = line.find("PS ") {
         if let Some(gt) = line[idx..].find('>') {
             let after = line[idx + gt + 1..].trim();

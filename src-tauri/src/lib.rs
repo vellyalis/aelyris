@@ -32,6 +32,7 @@ pub mod pty;
 pub mod pty_sidecar;
 pub mod review;
 pub mod session;
+pub mod shared_brain;
 pub mod shell_integration;
 pub mod snapshot;
 pub mod suggest;
@@ -233,6 +234,60 @@ pub fn run() {
                 kg.attach_db(db.clone());
             }
 
+            fn now_secs() -> u64 {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            }
+
+            // Shared-brain G3: restore active file/symbol ownership. Context
+            // decisions and events already survive restart; this closes the
+            // remaining "who owns what" restart hole without a raw brain snapshot.
+            fn restore_ownership(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let now = now_secs();
+                match db.with(|d| persistence::OwnershipRepo::load_file_claims(d, now)) {
+                    Ok(claims) => {
+                        let count = claims.len();
+                        if let Ok(owner) = app
+                            .state::<std::sync::Arc<std::sync::Mutex<file_ownership::FileOwnership>>>(
+                            )
+                            .inner()
+                            .lock()
+                        {
+                            let mut owner = owner;
+                            owner.hydrate(claims);
+                            if count > 0 {
+                                log::info!("file ownership: restored {count} claim(s) from disk");
+                            }
+                        } else {
+                            log::warn!("file ownership: restore skipped; lock poisoned");
+                        }
+                    }
+                    Err(err) => log::warn!("file ownership: restore from disk failed: {err}"),
+                }
+                match db.with(|d| persistence::OwnershipRepo::load_symbol_claims(d, now)) {
+                    Ok(claims) => {
+                        let count = claims.len();
+                        if let Ok(owner) = app
+                            .state::<std::sync::Arc<std::sync::Mutex<symbol_ownership::SymbolOwnership>>>(
+                            )
+                            .inner()
+                            .lock()
+                        {
+                            let mut owner = owner;
+                            owner.hydrate(claims, now);
+                            if count > 0 {
+                                log::info!("symbol ownership: restored {count} claim(s) from disk");
+                            }
+                        } else {
+                            log::warn!("symbol ownership: restore skipped; lock poisoned");
+                        }
+                    }
+                    Err(err) => log::warn!("symbol ownership: restore from disk failed: {err}"),
+                }
+            }
+
             let db_path = db::db_path();
             match Database::open(&db_path) {
                 Ok(database) => {
@@ -241,6 +296,7 @@ pub fn run() {
                     restore_context_store(app.handle(), &managed);
                     restore_task_graph(app.handle(), &managed);
                     restore_knowledge_graph(app.handle(), &managed);
+                    restore_ownership(app.handle(), &managed);
                     app.handle().manage(managed);
                 }
                 Err(e) => {
@@ -258,6 +314,7 @@ pub fn run() {
                         restore_context_store(app.handle(), &managed);
                         restore_task_graph(app.handle(), &managed);
                         restore_knowledge_graph(app.handle(), &managed);
+                        restore_ownership(app.handle(), &managed);
                         app.handle().manage(managed);
                     }
                 }
@@ -678,6 +735,28 @@ pub fn run() {
             ));
             app.manage(command_risk_gate.clone());
 
+            // G2: one durable merge-intent store for both local Tauri IPC and the
+            // API/MCP face. Without it, autonomy-loop merges must fail closed
+            // instead of falling back to a restart-losing RAM queue.
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let merge_store = Database::open(&db_path).ok().map(|db| {
+                let store = std::sync::Arc::new(merge_intent::store::MergeIntentStore::new(
+                    std::sync::Arc::new(db::ManagedDb::new(db)),
+                ));
+                match store.reconcile_dangling_on_boot(now_secs) {
+                    Ok(n) if n > 0 => {
+                        log::info!("merge intents: reconciled {n} dangling merge(s) after restart")
+                    }
+                    Ok(_) => {}
+                    Err(e) => log::warn!("merge intent boot reconcile failed: {e}"),
+                }
+                store
+            });
+            app.manage(merge_store.clone());
+
             let sidecar_enabled = app
                 .try_state::<pty_sidecar::PtySidecarState>()
                 .and_then(|state| state.client())
@@ -731,25 +810,6 @@ pub fn run() {
                 let mcp_db = Database::open(&db_path)
                     .ok()
                     .map(|d| std::sync::Arc::new(db::ManagedDb::new(d)));
-                // P0-3: build the durable merge-intent store on that same db and
-                // reconcile any merge left dangling in `merging` by a crash BEFORE
-                // serving, so a restart never resumes from a false in-flight state.
-                let now_secs = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                let merge_store = mcp_db.clone().map(|db| {
-                    let store =
-                        std::sync::Arc::new(merge_intent::store::MergeIntentStore::new(db));
-                    match store.reconcile_dangling_on_boot(now_secs) {
-                        Ok(n) if n > 0 => log::info!(
-                            "merge intents: reconciled {n} dangling merge(s) after restart"
-                        ),
-                        Ok(_) => {}
-                        Err(e) => log::warn!("merge intent boot reconcile failed: {e}"),
-                    }
-                    store
-                });
                 let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
                     .with_mux(mux_manager)
                     .with_agent_manager(agent_manager)
@@ -767,7 +827,7 @@ pub fn run() {
                     // REST/WS/MCP and local IPC surfaces.
                     .with_command_risk_gate(Some(command_risk_gate.clone()))
                     .with_db(mcp_db)
-                    .with_merge_store(merge_store)
+                    .with_merge_store(merge_store.clone())
                     .with_env_mux_store();
                 app.manage(api_state.clone());
                 let serve_state = api_state.clone();
@@ -853,6 +913,7 @@ pub fn run() {
             ipc::symbol_claims,
             ipc::symbol_conflicts,
             ipc::symbol_ownership_prompt_section,
+            ipc::shared_brain_snapshot,
             ipc::discover_projects,
             ipc::default_project_scan_dirs,
             ipc::list_branches,

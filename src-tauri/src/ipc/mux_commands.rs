@@ -93,15 +93,20 @@ pub async fn mux_split_pane(
 
     let pane_id = uuid::Uuid::new_v4().to_string();
     let pty_manager = app.state::<PtyManager>().inner().clone();
+    let spawn_pty_manager = pty_manager.clone();
     let spawn_shell = shell.clone();
     let spawn_cwd = cwd.clone();
     let spawn_id = pane_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        pty_manager.spawn_with_id(&spawn_id, &spawn_shell, cols, rows, spawn_cwd.as_deref())
+        spawn_pty_manager.spawn_with_id(&spawn_id, &spawn_shell, cols, rows, spawn_cwd.as_deref())
     })
     .await
     .map_err(|err| format!("Mux split spawn task failed: {err}"))?
     .map_err(|err| format!("Mux split spawn failed: {err}"))?;
+    let process_id = pty_manager
+        .runtime_identity(&pane_id)
+        .ok()
+        .and_then(|identity| identity.process_id);
 
     let shell_name = format!("{:?}", shell).to_lowercase();
     let cwd_for_graph = cwd.as_deref().unwrap_or(".");
@@ -115,7 +120,7 @@ pub async fn mux_split_pane(
     pane.lifecycle = crate::mux::graph::LifecycleState::Active;
     pane.pty = Some(crate::mux::graph::PtyBinding {
         terminal_id: pane_id.clone(),
-        process_id: None,
+        process_id,
         cols,
         rows,
     });
@@ -131,6 +136,18 @@ pub async fn mux_split_pane(
         });
     if let Err(err) = split_result {
         let _ = app.state::<PtyManager>().close(&pane_id);
+        return Err(err);
+    }
+    if let Err(err) = persist_mux_workspace_snapshot(&app, &workspace_id) {
+        let _ = app.state::<PtyManager>().close(&pane_id);
+        if let Ok(mut mux) = app
+            .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+            .inner()
+            .lock()
+        {
+            let _ = mux.close_active_pane(&workspace_id, &pane_id);
+        }
+        app.state::<crate::pty::PaneRegistry>().remove(&pane_id);
         return Err(err);
     }
 
@@ -181,6 +198,27 @@ fn cleanup_terminal_ui_registries(app: &AppHandle, terminal_id: &str) {
     }
 }
 
+fn persist_mux_workspace_snapshot(app: &AppHandle, workspace_id: &str) -> Result<(), String> {
+    let Some(api_state) = app.try_state::<crate::api::ApiState>() else {
+        return Ok(());
+    };
+    let Some(store) = api_state.mux_store.as_ref() else {
+        return Ok(());
+    };
+    let graph = app
+        .state::<Arc<Mutex<crate::mux::manager::MuxManager>>>()
+        .inner()
+        .lock()
+        .map_err(|_| "MuxManager lock poisoned".to_string())?
+        .graph(workspace_id)
+        .cloned()
+        .ok_or_else(|| format!("mux workspace missing after mutation: {workspace_id}"))?;
+    store
+        .save_graph(&graph)
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 pub async fn mux_close_pane(
     app: AppHandle,
@@ -203,6 +241,7 @@ pub async fn mux_close_pane(
                 mux.close_active_pane(&workspace_id, &pane_id)
                     .map_err(|err| err.to_string())
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
         if let Some(pty) = removed.pty {
             let pty_id = pty.terminal_id;
             app.state::<TerminalGenerationRegistry>()
@@ -281,6 +320,7 @@ pub async fn mux_swap_panes(
                 mux.swap_active_panes(&workspace_id, &first_pane_id, &second_pane_id)
                     .map_err(|err| err.to_string())
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
     }
     record_audit_event(
         &app,
@@ -316,6 +356,7 @@ pub async fn mux_break_pane(
                     .map(|_| ())
                     .map_err(|err| err.to_string())
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
     }
     record_audit_event(
         &app,
@@ -364,6 +405,7 @@ pub async fn mux_join_pane(
                 )
                 .map_err(|err| err.to_string())
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
     }
     record_audit_event(
         &app,
@@ -400,6 +442,7 @@ pub async fn mux_set_panes_synchronized(
                 mux.set_active_tab_synchronized_panes(&workspace_id, enabled)
                     .map_err(|err| err.to_string())
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
     }
     record_audit_event(
         &app,
@@ -490,6 +533,7 @@ pub async fn mux_apply_layout(
                         .map_err(|err| err.to_string())
                 }
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
     }
     record_audit_event(
         &app,
@@ -528,6 +572,7 @@ pub async fn mux_set_pane_zoom(
                 mux.set_active_tab_zoom(&workspace_id, target)
                     .map_err(|err| err.to_string())
             })?;
+        persist_mux_workspace_snapshot(&app, &workspace_id)?;
     }
     record_audit_event(
         &app,

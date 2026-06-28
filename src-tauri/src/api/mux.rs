@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -6,7 +8,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::mux::graph::{LifecycleState, MuxGraph, PaneRecord, PtyBinding, MUX_GRAPH_VERSION};
+use crate::mux::graph::{
+    LifecycleState, MuxClientMode, MuxClientRecord, MuxGraph, PaneRecord, PtyBinding, TabRecord,
+    WindowRecord, MUX_GRAPH_VERSION,
+};
 use crate::mux::layout::SplitAxis;
 use crate::mux::manager::MuxManagerError;
 use crate::mux::store::{graph_for_snapshot_restore, VersionedMuxSnapshot};
@@ -16,17 +21,32 @@ use super::{
     default_cols, default_rows,
     session_common::{normalize_api_cwd, parse_shell},
     validate_session_id, ApiError, ApiResult, ApiState, CreateSessionResponse, InputBody,
-    WS_MAX_INPUT_FRAME_BYTES,
+    StreamMode, WS_MAX_INPUT_FRAME_BYTES,
 };
 
 pub(super) fn router() -> Router<ApiState> {
     Router::new()
         .route("/mux/workspaces", get(list_mux_workspaces))
         .route("/mux/workspaces/import", post(import_mux_workspace))
-        .route("/mux/workspaces/{id}", get(get_mux_workspace))
+        .route(
+            "/mux/workspaces/{id}",
+            get(get_mux_workspace).delete(delete_mux_workspace),
+        )
         .route("/mux/workspaces/{id}/export", get(export_mux_workspace))
         .route("/mux/workspaces/{id}/detach", post(detach_mux_workspace))
         .route("/mux/workspaces/{id}/attach", post(attach_mux_workspace))
+        .route(
+            "/mux/workspaces/{id}/windows",
+            get(list_mux_windows).post(create_mux_window),
+        )
+        .route(
+            "/mux/workspaces/{id}/windows/{window_id}/rename",
+            post(rename_mux_window),
+        )
+        .route(
+            "/mux/workspaces/{id}/windows/{window_id}",
+            delete(close_mux_window),
+        )
         .route(
             "/mux/workspaces/{id}/input",
             post(broadcast_mux_workspace_input),
@@ -86,6 +106,30 @@ struct SplitMuxPaneBody {
     cols: Option<u16>,
     #[serde(default)]
     rows: Option<u16>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateMuxWindowBody {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    pane_id: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    shell: Option<String>,
+    #[serde(default)]
+    cwd: Option<String>,
+    #[serde(default)]
+    cols: Option<u16>,
+    #[serde(default)]
+    rows: Option<u16>,
+}
+
+#[derive(Deserialize)]
+struct RenameMuxWindowBody {
+    title: String,
 }
 
 #[derive(Deserialize)]
@@ -164,6 +208,16 @@ pub(super) struct MuxWorkspaceSummary {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct MuxWindowSummary {
+    id: String,
+    title: String,
+    active: bool,
+    tab_count: usize,
+    pane_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct MuxBroadcastResponse {
     workspace_id: String,
     targets: usize,
@@ -195,8 +249,15 @@ pub(super) fn sync_spawn(
             .mux
             .lock()
             .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
-        mux.upsert_standalone_terminal(id, &shell_name, cwd, cols, rows)
-            .map_err(|err| map_mux_err(id, err))?;
+        mux.upsert_standalone_terminal_with_process_id(
+            id,
+            &shell_name,
+            cwd,
+            cols,
+            rows,
+            live_process_id(state, id),
+        )
+        .map_err(|err| map_mux_err(id, err))?;
         mux.graph(id)
             .cloned()
             .ok_or_else(|| ApiError::Internal(format!("mux graph missing after spawn: {id}")))?
@@ -251,6 +312,20 @@ pub(super) fn collect_pty_ids(graph: &MuxGraph) -> Vec<String> {
     ids
 }
 
+fn collect_window_pty_ids(window: &WindowRecord) -> Vec<String> {
+    let mut ids = Vec::new();
+    for tab in window.tabs.values() {
+        for pane in tab.panes.values() {
+            if let Some(pty) = &pane.pty {
+                ids.push(pty.terminal_id.clone());
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 fn collect_live_pty_ids(graph: &MuxGraph) -> Vec<String> {
     let mut ids = Vec::new();
     for workspace in graph.workspaces.values() {
@@ -287,7 +362,34 @@ fn is_restore_pending_terminal_id(terminal_id: &str) -> bool {
     terminal_id.starts_with("restore-pending:")
 }
 
-fn mark_mux_graph_detached(graph: &mut MuxGraph) -> Result<(), ApiError> {
+fn live_process_id(state: &ApiState, terminal_id: &str) -> Option<u32> {
+    state
+        .pty
+        .runtime_identity(terminal_id)
+        .ok()
+        .and_then(|identity| identity.process_id)
+}
+
+fn refresh_live_process_ids(state: &ApiState, graph: &mut MuxGraph) {
+    for workspace in graph.workspaces.values_mut() {
+        for window in workspace.windows.values_mut() {
+            for tab in window.tabs.values_mut() {
+                for pane in tab.panes.values_mut() {
+                    let Some(pty) = pane.pty.as_mut() else {
+                        continue;
+                    };
+                    if is_restore_pending_terminal_id(&pty.terminal_id) {
+                        pty.process_id = None;
+                    } else {
+                        pty.process_id = live_process_id(state, &pty.terminal_id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn mark_mux_graph_detached(state: &ApiState, graph: &mut MuxGraph) -> Result<(), ApiError> {
     for workspace in graph.workspaces.values_mut() {
         for window in workspace.windows.values_mut() {
             for tab in window.tabs.values_mut() {
@@ -310,6 +412,7 @@ fn mark_mux_graph_detached(graph: &mut MuxGraph) -> Result<(), ApiError> {
             }
         }
     }
+    refresh_live_process_ids(state, graph);
     graph
         .validate()
         .map_err(|err| ApiError::Internal(err.to_string()))?;
@@ -362,7 +465,11 @@ fn collect_mux_attach_plan(
     Ok(plan)
 }
 
-fn mark_mux_graph_attached(graph: &mut MuxGraph, plan: &[AttachPanePlan]) -> Result<(), ApiError> {
+fn mark_mux_graph_attached(
+    state: &ApiState,
+    graph: &mut MuxGraph,
+    plan: &[AttachPanePlan],
+) -> Result<(), ApiError> {
     for workspace in graph.workspaces.values_mut() {
         for window in workspace.windows.values_mut() {
             for tab in window.tabs.values_mut() {
@@ -371,7 +478,7 @@ fn mark_mux_graph_attached(graph: &mut MuxGraph, plan: &[AttachPanePlan]) -> Res
                     if let Some(item) = plan.iter().find(|item| item.pane_id == pane.id) {
                         pane.pty = Some(PtyBinding {
                             terminal_id: pane.id.clone(),
-                            process_id: None,
+                            process_id: live_process_id(state, &pane.id),
                             cols: item.cols,
                             rows: item.rows,
                         });
@@ -380,6 +487,7 @@ fn mark_mux_graph_attached(graph: &mut MuxGraph, plan: &[AttachPanePlan]) -> Res
             }
         }
     }
+    refresh_live_process_ids(state, graph);
     graph
         .validate()
         .map_err(|err| ApiError::Internal(err.to_string()))
@@ -389,6 +497,9 @@ fn map_mux_err(workspace_id: &str, err: MuxManagerError) -> ApiError {
     match err {
         MuxManagerError::GraphNotFound(_) => ApiError::NotFound(workspace_id.to_string()),
         MuxManagerError::PaneNotFound(id) => ApiError::NotFound(id),
+        MuxManagerError::Graph(crate::mux::graph::MuxGraphError::MissingWindow(id)) => {
+            ApiError::NotFound(id)
+        }
         other => ApiError::BadRequest(other.to_string()),
     }
 }
@@ -411,6 +522,74 @@ fn persist_mux_graph(state: &ApiState, graph: &MuxGraph) -> ApiResult<()> {
             .map_err(|err| ApiError::Internal(err.to_string()))?;
     }
     Ok(())
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(1)
+        .max(1)
+}
+
+fn mux_client_mode(mode: StreamMode) -> MuxClientMode {
+    match mode {
+        StreamMode::ReadWrite => MuxClientMode::ReadWrite,
+        StreamMode::ReadOnly => MuxClientMode::ReadOnly,
+    }
+}
+
+pub(super) fn record_stream_client_attached(
+    state: &ApiState,
+    pane_id: &str,
+    client_id: Option<String>,
+    mode: StreamMode,
+) -> ApiResult<(String, String)> {
+    let client_id = client_id.unwrap_or_else(|| format!("stream:{}", uuid::Uuid::new_v4()));
+    let (workspace_id, graph) = {
+        let mut mux = state
+            .mux
+            .lock()
+            .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+        let attachment = mux
+            .pane_attachment(pane_id)
+            .ok_or_else(|| ApiError::NotFound(pane_id.to_string()))?;
+        let record = MuxClientRecord::new(
+            &client_id,
+            &attachment.workspace_id,
+            &attachment.window_id,
+            mux_client_mode(mode),
+            now_ms(),
+        );
+        mux.upsert_client(&attachment.workspace_id, record)
+            .map_err(|err| map_mux_err(&attachment.workspace_id, err))?;
+        let graph = mux
+            .graph(&attachment.workspace_id)
+            .cloned()
+            .ok_or_else(|| ApiError::NotFound(attachment.workspace_id.clone()))?;
+        (attachment.workspace_id, graph)
+    };
+    persist_mux_graph(state, &graph)?;
+    Ok((workspace_id, client_id))
+}
+
+pub(super) fn remove_stream_client(
+    state: &ApiState,
+    workspace_id: &str,
+    client_id: &str,
+) -> ApiResult<()> {
+    let graph = {
+        let mut mux = state
+            .mux
+            .lock()
+            .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+        mux.remove_client(workspace_id, client_id)
+            .map_err(|err| map_mux_err(workspace_id, err))?;
+        mux.graph(workspace_id)
+            .cloned()
+            .ok_or_else(|| ApiError::NotFound(workspace_id.to_string()))?
+    };
+    persist_mux_graph(state, &graph)
 }
 
 pub(super) fn delete_graph_snapshot(state: &ApiState, workspace_id: &str) -> ApiResult<()> {
@@ -449,6 +628,22 @@ pub(super) fn workspace_summary(graph: &MuxGraph) -> MuxWorkspaceSummary {
         id: graph.active_workspace_id.clone(),
         active: true,
         window_count,
+        tab_count,
+        pane_count,
+    }
+}
+
+fn window_summary(window: &WindowRecord, active_window_id: &str) -> MuxWindowSummary {
+    let tab_count = window.tabs.len();
+    let pane_count = window
+        .tabs
+        .values()
+        .map(|tab| tab.panes.len())
+        .sum::<usize>();
+    MuxWindowSummary {
+        id: window.id.clone(),
+        title: window.title.clone(),
+        active: window.id == active_window_id,
         tab_count,
         pane_count,
     }
@@ -623,6 +818,231 @@ async fn import_mux_workspace(
     Ok(Json(graph))
 }
 
+fn non_empty_mux_id(id: &str) -> ApiResult<String> {
+    let id = id.trim();
+    if id.is_empty() {
+        Err(ApiError::BadRequest("mux id must not be empty".into()))
+    } else {
+        Ok(id.to_string())
+    }
+}
+
+fn mux_window_from_pane(
+    window_id: &str,
+    pane_id: &str,
+    title: &str,
+    shell_name: &str,
+    cwd: &str,
+    cols: u16,
+    rows: u16,
+    process_id: Option<u32>,
+) -> WindowRecord {
+    let mut pane = PaneRecord::new(pane_id, title, shell_name, cwd);
+    pane.lifecycle = LifecycleState::Active;
+    pane.pty = Some(PtyBinding {
+        terminal_id: pane_id.to_string(),
+        process_id,
+        cols,
+        rows,
+    });
+    WindowRecord::new(
+        window_id,
+        title,
+        TabRecord::new(format!("{window_id}:tab"), title, pane),
+    )
+}
+
+async fn delete_mux_workspace(
+    State(state): State<ApiState>,
+    Path(workspace_id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let graph = {
+        let mut mux = state
+            .mux
+            .lock()
+            .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+        mux.remove_graph(&workspace_id)
+            .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?
+    };
+    let terminal_ids = collect_pty_ids(&graph);
+    close_mux_pty_ids(&state, terminal_ids.clone())?;
+    for terminal_id in terminal_ids {
+        state.controller_leases.release_session(&terminal_id);
+    }
+    delete_graph_snapshot(&state, &workspace_id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_mux_windows(
+    State(state): State<ApiState>,
+    Path(workspace_id): Path<String>,
+) -> ApiResult<Json<Vec<MuxWindowSummary>>> {
+    let mux = state
+        .mux
+        .lock()
+        .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+    let graph = mux
+        .graph(&workspace_id)
+        .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?;
+    let workspace = graph
+        .workspaces
+        .get(&workspace_id)
+        .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?;
+    let mut windows = workspace
+        .windows
+        .values()
+        .map(|window| window_summary(window, &workspace.active_window_id))
+        .collect::<Vec<_>>();
+    windows.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(Json(windows))
+}
+
+async fn create_mux_window(
+    State(state): State<ApiState>,
+    Path(workspace_id): Path<String>,
+    Json(body): Json<CreateMuxWindowBody>,
+) -> ApiResult<Json<MuxGraph>> {
+    let shell = parse_shell(body.shell.as_deref().unwrap_or("powershell"))?;
+    let cols = body.cols.unwrap_or_else(default_cols);
+    let rows = body.rows.unwrap_or_else(default_rows);
+    if cols == 0 || rows == 0 {
+        return Err(ApiError::BadRequest("cols and rows must be > 0".into()));
+    }
+    let cwd = normalize_api_cwd(body.cwd)?;
+    let pane_id = if let Some(id) = body.pane_id.as_deref() {
+        validate_session_id(id)?;
+        id.to_string()
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    };
+    let window_id = body
+        .id
+        .as_deref()
+        .map(non_empty_mux_id)
+        .transpose()?
+        .unwrap_or_else(|| format!("window:{}", uuid::Uuid::new_v4().simple()));
+
+    let _create_guard = state.create_lock.lock().await;
+    if state.pty.list_info().len() >= state.max_sessions {
+        return Err(ApiError::BadRequest(format!(
+            "session limit reached ({})",
+            state.max_sessions
+        )));
+    }
+
+    state
+        .pty
+        .spawn_with_id(&pane_id, &shell, cols, rows, cwd.as_deref())
+        .map_err(ApiError::Internal)?;
+    if !state.pty.reap_child_on_exit(&pane_id) {
+        log::warn!(
+            "api: mux window PTY {} was created without an exit reaper",
+            pane_id
+        );
+    }
+
+    let shell_name = format!("{:?}", shell).to_lowercase();
+    let title = body
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .unwrap_or(&shell_name)
+        .to_string();
+    let cwd_for_graph = cwd.unwrap_or_else(|| {
+        std::env::current_dir()
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string())
+    });
+    let window = mux_window_from_pane(
+        &window_id,
+        &pane_id,
+        &title,
+        &shell_name,
+        &cwd_for_graph,
+        cols,
+        rows,
+        live_process_id(&state, &pane_id),
+    );
+    let graph = {
+        let mut mux = state
+            .mux
+            .lock()
+            .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+        match mux.create_window(&workspace_id, window) {
+            Ok(()) => mux
+                .graph(&workspace_id)
+                .cloned()
+                .ok_or_else(|| ApiError::NotFound(workspace_id.clone())),
+            Err(err) => Err(map_mux_err(&workspace_id, err)),
+        }
+    };
+
+    match graph {
+        Ok(graph) => {
+            persist_mux_graph(&state, &graph)?;
+            Ok(Json(graph))
+        }
+        Err(err) => {
+            let _ = state.pty.close(&pane_id);
+            Err(err)
+        }
+    }
+}
+
+async fn rename_mux_window(
+    State(state): State<ApiState>,
+    Path((workspace_id, window_id)): Path<(String, String)>,
+    Json(body): Json<RenameMuxWindowBody>,
+) -> ApiResult<Json<MuxGraph>> {
+    let title = body.title.trim();
+    if title.is_empty() {
+        return Err(ApiError::BadRequest(
+            "window title must not be empty".into(),
+        ));
+    }
+    let graph = {
+        let mut mux = state
+            .mux
+            .lock()
+            .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+        mux.rename_window(&workspace_id, &window_id, title)
+            .map_err(|err| map_mux_err(&workspace_id, err))?;
+        mux.graph(&workspace_id)
+            .cloned()
+            .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?
+    };
+    persist_mux_graph(&state, &graph)?;
+    Ok(Json(graph))
+}
+
+async fn close_mux_window(
+    State(state): State<ApiState>,
+    Path((workspace_id, window_id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let (removed, graph) = {
+        let mut mux = state
+            .mux
+            .lock()
+            .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
+        let removed = mux
+            .close_window(&workspace_id, &window_id)
+            .map_err(|err| map_mux_err(&workspace_id, err))?;
+        let graph = mux
+            .graph(&workspace_id)
+            .cloned()
+            .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?;
+        (removed, graph)
+    };
+    persist_mux_graph(&state, &graph)?;
+    let terminal_ids = collect_window_pty_ids(&removed);
+    close_mux_pty_ids(&state, terminal_ids.clone())?;
+    for terminal_id in terminal_ids {
+        state.controller_leases.release_session(&terminal_id);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn detach_mux_workspace(
     State(state): State<ApiState>,
     Path(workspace_id): Path<String>,
@@ -638,7 +1058,7 @@ async fn detach_mux_workspace(
             .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?
     };
 
-    mark_mux_graph_detached(&mut graph)?;
+    mark_mux_graph_detached(&state, &mut graph)?;
 
     {
         let mut mux = state
@@ -698,7 +1118,7 @@ async fn attach_mux_workspace(
         spawned_ids.push(item.pane_id.clone());
     }
 
-    mark_mux_graph_attached(&mut graph, &plan)?;
+    mark_mux_graph_attached(&state, &mut graph, &plan)?;
     {
         let mut mux = state
             .mux
@@ -786,7 +1206,7 @@ async fn split_mux_pane(
     pane.lifecycle = LifecycleState::Active;
     pane.pty = Some(PtyBinding {
         terminal_id: pane_id.clone(),
-        process_id: None,
+        process_id: live_process_id(&state, &pane_id),
         cols,
         rows,
     });

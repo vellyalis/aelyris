@@ -1,13 +1,20 @@
 use std::collections::HashMap;
 
 use super::graph::{
-    graph_from_single_pane, LifecycleState, MuxGraph, MuxGraphError, PaneRecord, PtyBinding,
+    graph_from_single_pane, LifecycleState, MuxClientRecord, MuxGraph, MuxGraphError, PaneRecord,
+    PtyBinding, WindowRecord,
 };
 use super::layout::SplitAxis;
 
 #[derive(Debug, Default)]
 pub struct MuxManager {
     graphs: HashMap<String, MuxGraph>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MuxPaneAttachment {
+    pub workspace_id: String,
+    pub window_id: String,
 }
 
 impl MuxManager {
@@ -59,11 +66,23 @@ impl MuxManager {
         cols: u16,
         rows: u16,
     ) -> Result<(), MuxManagerError> {
+        self.upsert_standalone_terminal_with_process_id(terminal_id, shell, cwd, cols, rows, None)
+    }
+
+    pub fn upsert_standalone_terminal_with_process_id(
+        &mut self,
+        terminal_id: &str,
+        shell: &str,
+        cwd: &str,
+        cols: u16,
+        rows: u16,
+        process_id: Option<u32>,
+    ) -> Result<(), MuxManagerError> {
         let mut pane = PaneRecord::new(terminal_id, shell, shell, cwd);
         pane.lifecycle = LifecycleState::Active;
         pane.pty = Some(PtyBinding {
             terminal_id: terminal_id.to_string(),
-            process_id: None,
+            process_id,
             cols,
             rows,
         });
@@ -99,6 +118,62 @@ impl MuxManager {
     ) -> Result<PaneRecord, MuxManagerError> {
         let graph = self.graph_mut(workspace_id)?;
         let removed = graph.active_tab_mut()?.close_pane(pane_id)?;
+        graph.validate()?;
+        Ok(removed)
+    }
+
+    pub fn create_window(
+        &mut self,
+        workspace_id: &str,
+        window: WindowRecord,
+    ) -> Result<(), MuxManagerError> {
+        let graph = self.graph_mut(workspace_id)?;
+        graph.create_window(window)?;
+        graph.validate()?;
+        Ok(())
+    }
+
+    pub fn rename_window(
+        &mut self,
+        workspace_id: &str,
+        window_id: &str,
+        title: &str,
+    ) -> Result<(), MuxManagerError> {
+        let graph = self.graph_mut(workspace_id)?;
+        graph.rename_window(window_id, title)?;
+        graph.validate()?;
+        Ok(())
+    }
+
+    pub fn close_window(
+        &mut self,
+        workspace_id: &str,
+        window_id: &str,
+    ) -> Result<WindowRecord, MuxManagerError> {
+        let graph = self.graph_mut(workspace_id)?;
+        let removed = graph.remove_window(window_id)?;
+        graph.validate()?;
+        Ok(removed)
+    }
+
+    pub fn upsert_client(
+        &mut self,
+        workspace_id: &str,
+        client: MuxClientRecord,
+    ) -> Result<(), MuxManagerError> {
+        let graph = self.graph_mut(workspace_id)?;
+        graph.upsert_client(client)?;
+        graph.validate()?;
+        Ok(())
+    }
+
+    pub fn remove_client(
+        &mut self,
+        workspace_id: &str,
+        client_id: &str,
+    ) -> Result<Option<MuxClientRecord>, MuxManagerError> {
+        let graph = self.graph_mut(workspace_id)?;
+        let removed = graph.remove_client(client_id)?;
         graph.validate()?;
         Ok(removed)
     }
@@ -241,6 +316,30 @@ impl MuxManager {
         None
     }
 
+    pub fn pane_attachment(&self, pane_id: &str) -> Option<MuxPaneAttachment> {
+        for graph in self.graphs.values() {
+            for workspace in graph.workspaces.values() {
+                for window in workspace.windows.values() {
+                    for tab in window.tabs.values() {
+                        if tab.panes.contains_key(pane_id)
+                            || tab.panes.values().any(|pane| {
+                                pane.pty
+                                    .as_ref()
+                                    .is_some_and(|pty| pty.terminal_id == pane_id)
+                            })
+                        {
+                            return Some(MuxPaneAttachment {
+                                workspace_id: workspace.id.clone(),
+                                window_id: window.id.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn validate_all(&self) -> Result<(), MuxManagerError> {
         for graph in self.graphs.values() {
             graph.validate()?;
@@ -337,7 +436,7 @@ fn normalize_label(value: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mux::graph::{graph_from_single_pane, PaneRecord};
+    use crate::mux::graph::{graph_from_single_pane, PaneRecord, TabRecord};
 
     fn manager() -> MuxManager {
         let graph = graph_from_single_pane(
@@ -445,6 +544,111 @@ mod tests {
         assert_eq!(pane.title, "Build");
         assert_eq!(pane.role.as_deref(), Some("agent"));
         manager.validate_all().unwrap();
+    }
+
+    #[test]
+    fn manager_drives_window_lifecycle() {
+        let mut manager = manager();
+        let window = WindowRecord::new(
+            "window-b",
+            "Review",
+            TabRecord::new(
+                "tab-b",
+                "Review",
+                PaneRecord::new("pane-b", "Review", "powershell", "C:/repo"),
+            ),
+        );
+
+        manager.create_window("workspace-a", window).unwrap();
+        let graph = manager.graph("workspace-a").unwrap();
+        let workspace = graph.workspaces.get("workspace-a").unwrap();
+        assert_eq!(workspace.active_window_id, "window-b");
+        assert_eq!(workspace.windows.len(), 2);
+
+        manager
+            .rename_window("workspace-a", "window-b", "Reviewer")
+            .unwrap();
+        assert_eq!(
+            manager
+                .graph("workspace-a")
+                .unwrap()
+                .workspaces
+                .get("workspace-a")
+                .unwrap()
+                .windows
+                .get("window-b")
+                .unwrap()
+                .title,
+            "Reviewer"
+        );
+
+        let removed = manager.close_window("workspace-a", "window-b").unwrap();
+        assert_eq!(removed.id, "window-b");
+        assert_eq!(
+            manager
+                .graph("workspace-a")
+                .unwrap()
+                .workspaces
+                .get("workspace-a")
+                .unwrap()
+                .active_window_id,
+            "window-a"
+        );
+    }
+
+    #[test]
+    fn manager_drives_client_lifecycle() {
+        let mut manager = manager();
+        manager
+            .upsert_client(
+                "workspace-a",
+                MuxClientRecord::new(
+                    "client-a",
+                    "workspace-a",
+                    "window-a",
+                    crate::mux::graph::MuxClientMode::ReadOnly,
+                    1_000,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            manager
+                .graph("workspace-a")
+                .unwrap()
+                .workspaces
+                .get("workspace-a")
+                .unwrap()
+                .clients
+                .len(),
+            1
+        );
+
+        let removed = manager.remove_client("workspace-a", "client-a").unwrap();
+        assert_eq!(removed.unwrap().id, "client-a");
+        assert!(manager
+            .graph("workspace-a")
+            .unwrap()
+            .workspaces
+            .get("workspace-a")
+            .unwrap()
+            .clients
+            .is_empty());
+    }
+
+    #[test]
+    fn manager_finds_workspace_window_attachment_for_pane() {
+        let mut manager = manager();
+        manager
+            .split_active_pane(
+                "workspace-a",
+                "pane-a",
+                PaneRecord::new("pane-b", "Agent", "powershell", "C:/repo"),
+                SplitAxis::Horizontal,
+            )
+            .unwrap();
+        let attachment = manager.pane_attachment("pane-b").unwrap();
+        assert_eq!(attachment.workspace_id, "workspace-a");
+        assert_eq!(attachment.window_id, "window-a");
     }
 
     #[test]

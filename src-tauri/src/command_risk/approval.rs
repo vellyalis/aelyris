@@ -377,12 +377,13 @@ mod tests {
 
     #[test]
     fn audit_event_redacts_the_secret_and_carries_the_hash() {
-        let cmd = "export API_KEY=sk-abcdefghijklmnop1234";
-        let report = classify_command(cmd, &CommandRiskOptions::default());
+        let fake_key = format!("sk-{}", "REDACTION_TEST_OPENAI_KEY");
+        let cmd = format!("export API_KEY={fake_key}");
+        let report = classify_command(&cmd, &CommandRiskOptions::default());
         let event = command_risk_audit_event(
             "approved",
             &report,
-            &command_hash(cmd),
+            &command_hash(&cmd),
             "rest",
             "s1",
             "t1",
@@ -392,7 +393,7 @@ mod tests {
         assert_eq!(event.source, "command-risk-gate");
         let payload = event.payload_json.to_string();
         assert!(
-            !payload.contains("sk-abcdefghijklmnop1234"),
+            !payload.contains(&fake_key),
             "no raw secret: {payload}"
         );
         assert!(payload.contains("[REDACTED]"));

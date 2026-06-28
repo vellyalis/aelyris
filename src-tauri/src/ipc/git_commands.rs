@@ -278,13 +278,13 @@ mod tests {
     fn git_relative_path_accepts_absolute_or_relative_file_path() {
         assert_eq!(
             git_relative_path(
-                "C:/Users/owner/project",
-                "C:/Users/owner/project/src/main.rs"
+                "C:/repo/project",
+                "C:/repo/project/src/main.rs"
             ),
             "src/main.rs"
         );
         assert_eq!(
-            git_relative_path("C:/Users/owner/project", "src/main.rs"),
+            git_relative_path("C:/repo/project", "src/main.rs"),
             "src/main.rs"
         );
     }

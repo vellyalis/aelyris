@@ -9,6 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::State;
 
+use crate::db::ManagedDb;
+use crate::persistence::OwnershipRepo;
 use crate::symbol_ownership::agent_context::{
     active_ownership_context, render_ownership_header, DEFAULT_CONTEXT_CAP,
 };
@@ -41,6 +43,7 @@ fn lock(state: &Mutex<SymbolOwnership>) -> MutexGuard<'_, SymbolOwnership> {
 #[allow(clippy::too_many_arguments)]
 pub fn symbol_claim(
     state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    db: State<'_, ManagedDb>,
     claim_id: String,
     agent_id: String,
     task_id: Option<String>,
@@ -51,7 +54,7 @@ pub fn symbol_claim(
     mode: ClaimMode,
     confidence: Confidence,
     lease_secs: Option<u64>,
-) -> ClaimOutcome {
+) -> Result<ClaimOutcome, String> {
     let now = now_secs();
     let claim = SymbolClaim {
         claim_id,
@@ -64,7 +67,16 @@ pub fn symbol_claim(
         lease_expires_at: now.saturating_add(lease_secs.unwrap_or(DEFAULT_LEASE_SECS)),
         confidence,
     };
-    lock(&state).claim(claim, now)
+    let mut owner = lock(&state);
+    let mut staging = owner.clone();
+    let outcome = staging.claim(claim.clone(), now);
+    if !matches!(outcome, ClaimOutcome::Blocked { .. }) {
+        if let Err(err) = db.with(|d| OwnershipRepo::upsert_symbol_claim(d, &claim, now)) {
+            return Err(err);
+        }
+        *owner = staging;
+    }
+    Ok(outcome)
 }
 
 /// Extend a live claim's lease (the heartbeat/refresh signal). Returns whether a
@@ -72,46 +84,73 @@ pub fn symbol_claim(
 #[tauri::command]
 pub fn symbol_refresh(
     state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    db: State<'_, ManagedDb>,
     claim_id: String,
     lease_secs: Option<u64>,
-) -> bool {
+) -> Result<bool, String> {
     let now = now_secs();
-    lock(&state).refresh(&claim_id, now, lease_secs.unwrap_or(DEFAULT_LEASE_SECS))
+    let mut owner = lock(&state);
+    let mut staging = owner.clone();
+    if !staging.refresh(&claim_id, now, lease_secs.unwrap_or(DEFAULT_LEASE_SECS)) {
+        return Ok(false);
+    }
+    let claim = staging
+        .get(&claim_id)
+        .cloned()
+        .ok_or_else(|| format!("refreshed claim vanished: {claim_id}"))?;
+    db.with(|d| OwnershipRepo::upsert_symbol_claim(d, &claim, now))?;
+    *owner = staging;
+    Ok(true)
 }
 
 /// Drop a claim by id; returns whether one was removed.
 #[tauri::command]
-pub fn symbol_release(state: State<'_, Arc<Mutex<SymbolOwnership>>>, claim_id: String) -> bool {
-    lock(&state).release(&claim_id)
+pub fn symbol_release(
+    state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    db: State<'_, ManagedDb>,
+    claim_id: String,
+) -> Result<bool, String> {
+    db.with(|d| OwnershipRepo::delete_symbol_claim(d, &claim_id).map(|_| ()))?;
+    Ok(lock(&state).release(&claim_id))
 }
 
 /// Release every claim a task held (call on merge/fail). Returns the count freed.
 #[tauri::command]
 pub fn symbol_release_task(
     state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    db: State<'_, ManagedDb>,
     task_id: String,
-) -> usize {
-    lock(&state).release_for_task(&task_id)
+) -> Result<usize, String> {
+    db.with(|d| OwnershipRepo::delete_symbol_claims_for_task(d, &task_id).map(|_| ()))?;
+    Ok(lock(&state).release_for_task(&task_id))
 }
 
 /// All live claims (lease not lapsed) — the per-agent / per-file view the cockpit
 /// renders. Expired claims are swept first so the snapshot is current.
 #[tauri::command]
-pub fn symbol_claims(state: State<'_, Arc<Mutex<SymbolOwnership>>>) -> Vec<SymbolClaim> {
+pub fn symbol_claims(
+    state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    db: State<'_, ManagedDb>,
+) -> Result<Vec<SymbolClaim>, String> {
     let now = now_secs();
+    db.with(|d| OwnershipRepo::prune_expired(d, now).map(|_| ()))?;
     let mut owner = lock(&state);
     owner.expire(now);
-    owner.live_claims(now).into_iter().cloned().collect()
+    Ok(owner.live_claims(now).into_iter().cloned().collect())
 }
 
 /// All live cross-agent overlaps (Block + Warn) — what the UI conflict badge and
 /// the scheduler's pre-dispatch check read.
 #[tauri::command]
-pub fn symbol_conflicts(state: State<'_, Arc<Mutex<SymbolOwnership>>>) -> Vec<SymbolConflict> {
+pub fn symbol_conflicts(
+    state: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    db: State<'_, ManagedDb>,
+) -> Result<Vec<SymbolConflict>, String> {
     let now = now_secs();
+    db.with(|d| OwnershipRepo::prune_expired(d, now).map(|_| ()))?;
     let mut owner = lock(&state);
     owner.expire(now);
-    owner.conflicts(now)
+    Ok(owner.conflicts(now))
 }
 
 /// The active-ownership prompt section for a set of `files` — the SAME rendered text the

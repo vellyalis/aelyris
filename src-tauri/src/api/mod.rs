@@ -23,8 +23,10 @@
 //! sessions, so they show up in `list_terminals` etc. Reads are fanned out
 //! through `PtyManager::subscribe_output` (v2c) so the UI and the API can
 //! concurrently consume the same byte stream without racing on the physical
-//! master. Input/resize from multiple clients still races — the PTY has a
-//! single write side by design; higher-level arbitration is out of scope.
+//! master. Stream tickets can be read-write or read-only; read-only sockets
+//! keep receiving output but cannot forward bytes into the PTY writer. Clients
+//! that request `control=exclusive` get a session controller lease; REST input
+//! and resize must then carry `x-aether-client-id` for the lease owner.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -35,11 +37,11 @@ use std::time::{Duration, Instant};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        ConnectInfo, Path, Query, Request, State, WebSocketUpgrade,
+        ConnectInfo, Extension, Path, Query, Request, State, WebSocketUpgrade,
     },
     http::{
         header::{self, AUTHORIZATION, CONTENT_TYPE},
-        HeaderValue, Method, StatusCode,
+        HeaderMap, HeaderName, HeaderValue, Method, StatusCode,
     },
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -219,6 +221,9 @@ pub struct ApiState {
     /// `POST /sessions/{id}/stream-ticket`, consumed by the WS upgrade's
     /// `?ticket=<uuid>` query parameter.
     pub tickets: Arc<TicketRegistry>,
+    /// Live controller leases for clients that explicitly request exclusive
+    /// write/resize authority on a session stream.
+    pub controller_leases: Arc<StreamControllerLeases>,
     /// Lightweight process identity used by the Tauri host to reject an
     /// unrelated/stale process that happens to be bound to the sidecar port.
     pub process_kind: &'static str,
@@ -253,6 +258,7 @@ impl ApiState {
             rate_limiter: Arc::new(RateLimiter::new()),
             cors_origins: default_cors_origins(),
             tickets: Arc::new(TicketRegistry::new()),
+            controller_leases: Arc::new(StreamControllerLeases::new()),
             process_kind: PROCESS_KIND_EMBEDDED,
             instance_id: uuid::Uuid::new_v4().to_string(),
             create_lock: Arc::new(AsyncMutex::new(())),
@@ -285,6 +291,11 @@ impl ApiState {
     /// tickets or share a registry across multiple `ApiState` clones.
     pub fn with_tickets(mut self, tickets: Arc<TicketRegistry>) -> Self {
         self.tickets = tickets;
+        self
+    }
+
+    pub fn with_controller_leases(mut self, leases: Arc<StreamControllerLeases>) -> Self {
+        self.controller_leases = leases;
         self
     }
 
@@ -702,6 +713,13 @@ pub const TICKET_TTL_SECS: u64 = 10;
 /// redeeming. Expired entries are pruned lazily on every operation.
 pub const MAX_LIVE_TICKETS: usize = 1024;
 
+pub const CLIENT_ID_HEADER: &str = "x-aether-client-id";
+const MAX_STREAM_CLIENT_ID_LEN: usize = 128;
+
+fn client_id_header_name() -> HeaderName {
+    HeaderName::from_static(CLIENT_ID_HEADER)
+}
+
 /// Opaque ticket identifier. Newtype over `String` rather than a bare
 /// `&str`/`String` so API signatures like `redeem_for_session(ticket,
 /// session_id)` cannot silently swap the two arguments (they would still
@@ -731,6 +749,267 @@ impl std::fmt::Display for TicketId {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StreamMode {
+    ReadWrite,
+    ReadOnly,
+}
+
+impl Default for StreamMode {
+    fn default() -> Self {
+        Self::ReadWrite
+    }
+}
+
+impl StreamMode {
+    fn can_write(self) -> bool {
+        matches!(self, Self::ReadWrite)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StreamControl {
+    Shared,
+    Exclusive,
+}
+
+impl Default for StreamControl {
+    fn default() -> Self {
+        Self::Shared
+    }
+}
+
+impl StreamControl {
+    fn is_exclusive(self) -> bool {
+        matches!(self, Self::Exclusive)
+    }
+}
+
+fn parse_stream_mode(raw: Option<&str>) -> Result<StreamMode, ApiError> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(StreamMode::default());
+    };
+    match raw.to_ascii_lowercase().as_str() {
+        "read-write" | "readwrite" | "rw" | "controller" => Ok(StreamMode::ReadWrite),
+        "read-only" | "readonly" | "ro" | "spectator" => Ok(StreamMode::ReadOnly),
+        other => Err(ApiError::BadRequest(format!(
+            "unsupported stream ticket mode: {other}"
+        ))),
+    }
+}
+
+fn parse_stream_control(raw: Option<&str>) -> Result<StreamControl, ApiError> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(StreamControl::default());
+    };
+    match raw.to_ascii_lowercase().as_str() {
+        "shared" | "default" | "compatible" | "compat" => Ok(StreamControl::Shared),
+        "exclusive" | "lease" | "controller-lease" | "single-writer" => {
+            Ok(StreamControl::Exclusive)
+        }
+        other => Err(ApiError::BadRequest(format!(
+            "unsupported stream control mode: {other}"
+        ))),
+    }
+}
+
+fn normalize_stream_client_id(raw: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if raw.len() > MAX_STREAM_CLIENT_ID_LEN {
+        return Err(ApiError::BadRequest(format!(
+            "stream client id exceeds {MAX_STREAM_CLIENT_ID_LEN} bytes"
+        )));
+    }
+    if !raw
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+    {
+        return Err(ApiError::BadRequest(
+            "stream client id must use ASCII letters, digits, '-', '_', '.', or ':'".into(),
+        ));
+    }
+    Ok(Some(raw.to_string()))
+}
+
+fn client_id_from_headers(headers: &HeaderMap) -> Result<Option<String>, ApiError> {
+    let Some(value) = headers.get(CLIENT_ID_HEADER) else {
+        return Ok(None);
+    };
+    let value = value
+        .to_str()
+        .map_err(|_| ApiError::BadRequest("x-aether-client-id must be valid UTF-8".into()))?;
+    normalize_stream_client_id(Some(value))
+}
+
+fn ticket_client_id(
+    raw: Option<&str>,
+    mode: StreamMode,
+    control: StreamControl,
+) -> Result<Option<String>, ApiError> {
+    let parsed = normalize_stream_client_id(raw)?;
+    if mode.can_write() && control.is_exclusive() {
+        Ok(Some(parsed.unwrap_or_else(|| {
+            format!("client-{}", uuid::Uuid::new_v4())
+        })))
+    } else {
+        Ok(parsed)
+    }
+}
+
+fn websocket_query_client_id(
+    raw: Option<&str>,
+    mode: StreamMode,
+    control: StreamControl,
+) -> Result<Option<String>, ApiError> {
+    let parsed = normalize_stream_client_id(raw)?;
+    if mode.can_write() && control.is_exclusive() && parsed.is_none() {
+        return Err(ApiError::BadRequest(
+            "exclusive stream control requires clientId or client_id".into(),
+        ));
+    }
+    Ok(parsed)
+}
+
+#[derive(Clone, Debug)]
+pub struct StreamTicketClaim {
+    pub session_id: String,
+    pub mode: StreamMode,
+    pub control: StreamControl,
+    pub client_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct ControllerLeaseEntry {
+    client_id: String,
+    acquired_at: Instant,
+}
+
+#[derive(Default)]
+pub struct StreamControllerLeases {
+    leases: Mutex<HashMap<String, ControllerLeaseEntry>>,
+}
+
+impl StreamControllerLeases {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn acquire(&self, session_id: &str, client_id: &str) -> Result<(), String> {
+        let mut leases = self
+            .leases
+            .lock()
+            .map_err(|_| "controller lease lock poisoned".to_string())?;
+        match leases.get(session_id) {
+            Some(existing) if existing.client_id != client_id => Err(existing.client_id.clone()),
+            Some(_) => Ok(()),
+            None => {
+                leases.insert(
+                    session_id.to_string(),
+                    ControllerLeaseEntry {
+                        client_id: client_id.to_string(),
+                        acquired_at: Instant::now(),
+                    },
+                );
+                Ok(())
+            }
+        }
+    }
+
+    pub fn release(&self, session_id: &str, client_id: &str) -> bool {
+        let Ok(mut leases) = self.leases.lock() else {
+            return false;
+        };
+        let should_release = leases
+            .get(session_id)
+            .map(|entry| entry.client_id == client_id)
+            .unwrap_or(false);
+        if should_release {
+            leases.remove(session_id);
+        }
+        should_release
+    }
+
+    pub fn release_session(&self, session_id: &str) {
+        if let Ok(mut leases) = self.leases.lock() {
+            leases.remove(session_id);
+        }
+    }
+
+    pub fn ensure_can_control(
+        &self,
+        session_id: &str,
+        client_id: Option<&str>,
+    ) -> Result<(), ApiError> {
+        let leases = self
+            .leases
+            .lock()
+            .map_err(|_| ApiError::Internal("controller lease lock poisoned".to_string()))?;
+        let Some(entry) = leases.get(session_id) else {
+            return Ok(());
+        };
+        if client_id == Some(entry.client_id.as_str()) {
+            return Ok(());
+        }
+        Err(ApiError::Conflict(format!(
+            "session {session_id} is controlled by another client"
+        )))
+    }
+
+    #[doc(hidden)]
+    pub fn owner(&self, session_id: &str) -> Option<String> {
+        self.leases
+            .lock()
+            .ok()
+            .and_then(|leases| leases.get(session_id).map(|entry| entry.client_id.clone()))
+    }
+
+    #[doc(hidden)]
+    pub fn age_ms(&self, session_id: &str) -> Option<u128> {
+        self.leases.lock().ok().and_then(|leases| {
+            leases
+                .get(session_id)
+                .map(|entry| entry.acquired_at.elapsed().as_millis())
+        })
+    }
+}
+
+struct ActiveStreamLease {
+    leases: Arc<StreamControllerLeases>,
+    session_id: String,
+    client_id: String,
+}
+
+impl Drop for ActiveStreamLease {
+    fn drop(&mut self) {
+        let _ = self.leases.release(&self.session_id, &self.client_id);
+    }
+}
+
+struct ActiveMuxClient {
+    state: ApiState,
+    workspace_id: String,
+    client_id: String,
+}
+
+impl Drop for ActiveMuxClient {
+    fn drop(&mut self) {
+        if let Err(err) =
+            mux::remove_stream_client(&self.state, &self.workspace_id, &self.client_id)
+        {
+            log::warn!(
+                "api: failed to remove mux client {} from workspace {}: {}",
+                self.client_id,
+                self.workspace_id,
+                err
+            );
+        }
+    }
+}
+
 /// One-shot WebSocket upgrade tickets. Clients exchange their long-lived
 /// bearer token for a short-lived ticket via `POST /sessions/{id}/stream-ticket`,
 /// then present the ticket on the WS upgrade URL as `?ticket=<uuid>`. This
@@ -754,6 +1033,9 @@ pub struct TicketRegistry {
 
 struct TicketEntry {
     session_id: String,
+    mode: StreamMode,
+    control: StreamControl,
+    client_id: Option<String>,
     expires_at: Instant,
 }
 
@@ -771,6 +1053,20 @@ impl TicketRegistry {
     /// response. `Duration` is the more idiomatic shape for the internal
     /// API — callers that want milliseconds can call `.as_millis()`.
     pub fn issue(&self, session_id: &str) -> (TicketId, Duration) {
+        self.issue_with_mode(session_id, StreamMode::ReadWrite)
+    }
+
+    pub fn issue_with_mode(&self, session_id: &str, mode: StreamMode) -> (TicketId, Duration) {
+        self.issue_with_attach(session_id, mode, StreamControl::Shared, None)
+    }
+
+    pub fn issue_with_attach(
+        &self,
+        session_id: &str,
+        mode: StreamMode,
+        control: StreamControl,
+        client_id: Option<String>,
+    ) -> (TicketId, Duration) {
         let now = Instant::now();
         let mut map = self.tickets.lock().unwrap();
         Self::prune_expired(&mut map, now);
@@ -792,6 +1088,9 @@ impl TicketRegistry {
             ticket.clone(),
             TicketEntry {
                 session_id: session_id.to_string(),
+                mode,
+                control,
+                client_id,
                 expires_at,
             },
         );
@@ -804,23 +1103,37 @@ impl TicketRegistry {
     /// already redeemed, session mismatch) return `false`. The `TicketId`
     /// newtype ensures the arguments cannot be silently swapped.
     pub fn redeem_for_session(&self, ticket: &TicketId, session_id: &str) -> bool {
+        self.redeem_claim_for_session(ticket, session_id).is_some()
+    }
+
+    pub fn redeem_claim_for_session(
+        &self,
+        ticket: &TicketId,
+        session_id: &str,
+    ) -> Option<StreamTicketClaim> {
         let now = Instant::now();
         let mut map = self.tickets.lock().unwrap();
         Self::prune_expired(&mut map, now);
         let Some(entry) = map.get(ticket) else {
-            return false;
+            return None;
         };
         if entry.session_id != session_id {
-            return false;
+            return None;
         }
         if entry.expires_at <= now {
             // Shouldn't happen after prune, but defensive.
             map.remove(ticket);
-            return false;
+            return None;
         }
+        let claim = StreamTicketClaim {
+            session_id: entry.session_id.clone(),
+            mode: entry.mode,
+            control: entry.control,
+            client_id: entry.client_id.clone(),
+        };
         // One-shot: remove on successful redeem.
         map.remove(ticket);
-        true
+        Some(claim)
     }
 
     fn prune_expired(map: &mut HashMap<TicketId, TicketEntry>, now: Instant) {
@@ -952,6 +1265,7 @@ async fn auth_middleware(
         return Err(ApiError::RateLimited);
     }
 
+    let mut stream_ticket_claim: Option<StreamTicketClaim> = None;
     let authorized = if state.auth.verify(auth_header.as_deref()) {
         true
     } else if is_ws {
@@ -968,7 +1282,10 @@ async fn auth_middleware(
                         let decoded = percent_decode(raw);
                         if let Some(session_id) = extract_stream_session_id(&path) {
                             let ticket = TicketId::from(decoded);
-                            if state.tickets.redeem_for_session(&ticket, session_id) {
+                            if let Some(claim) =
+                                state.tickets.redeem_claim_for_session(&ticket, session_id)
+                            {
+                                stream_ticket_claim = Some(claim);
                                 return true;
                             }
                         }
@@ -983,6 +1300,10 @@ async fn auth_middleware(
 
     if !authorized {
         return Err(ApiError::Unauthorized);
+    }
+
+    if let Some(claim) = stream_ticket_claim {
+        req.extensions_mut().insert(claim);
     }
 
     // E1: resolve the verified credential to a Principal and carry it in request
@@ -1289,7 +1610,7 @@ fn build_cors_layer(origins: &[HeaderValue]) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins.iter().cloned()))
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE, client_id_header_name()])
 }
 
 /// Bind `127.0.0.1:port` and serve until the state's shutdown Notify fires.
@@ -1442,6 +1763,7 @@ pub struct DaemonContractResponse {
     client_detach_policy: &'static str,
     restart_restore_policy: &'static str,
     attach_policy: &'static str,
+    live_process_preservation_policy: &'static str,
     shutdown_policy: &'static str,
     max_sessions: usize,
     active_sessions: usize,
@@ -1733,6 +2055,8 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         restart_restore_policy:
             "snapshot-restores-graph-as-restore-pending-with-durable-scrollback",
         attach_policy: "reattach-respawns-only-missing-or-restore-pending-pty-bindings",
+        live_process_preservation_policy:
+            "daemon-live-detach-reattach-preserves-existing-pty-process-id",
         shutdown_policy: "explicit-workspace-close-terminates-owned-child-ptys",
         max_sessions: state.max_sessions,
         active_sessions: state.pty.list_info().len(),
@@ -1747,6 +2071,10 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
             "session-capture",
             "websocket-stream",
             "stream-ticket",
+            "stream-read-only-attach",
+            "stream-exclusive-controller-lease",
+            "stream-attach-snapshot-replay",
+            "rest-controller-lease-owner",
             "mux-inspect",
             "mux-pane-control",
             "mux-layout-control",
@@ -1758,6 +2086,7 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
             "mux-synchronized-panes",
             "mux-attach-detach",
             "mux-live-attach-detach",
+            "mux-live-process-preservation",
             "mux-snapshot-restore-pending",
             "mux-export-import",
             "durable-scrollback",
@@ -1795,6 +2124,9 @@ async fn close_session(
     if !closed_any && graph.is_none() {
         return Err(ApiError::NotFound(id));
     }
+    for terminal_id in &terminal_ids {
+        state.controller_leases.release_session(terminal_id);
+    }
     mux::delete_graph_snapshot(&state, &id)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1802,11 +2134,16 @@ async fn close_session(
 async fn resize_session(
     State(state): State<ApiState>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<ResizeBody>,
 ) -> ApiResult<StatusCode> {
     if body.cols == 0 || body.rows == 0 {
         return Err(ApiError::BadRequest("cols and rows must be > 0".into()));
     }
+    let client_id = client_id_from_headers(&headers)?;
+    state
+        .controller_leases
+        .ensure_can_control(&id, client_id.as_deref())?;
     state
         .pty
         .resize(&id, body.cols, body.rows)
@@ -1818,6 +2155,7 @@ async fn resize_session(
 async fn send_session_input(
     State(state): State<ApiState>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<InputBody>,
 ) -> ApiResult<StatusCode> {
     let bytes = body.text.as_bytes();
@@ -1831,6 +2169,12 @@ async fn send_session_input(
         return Err(ApiError::NotFound(id));
     }
     let targets = synchronized_input_targets(&state, &id)?.unwrap_or_else(|| vec![id.clone()]);
+    let client_id = client_id_from_headers(&headers)?;
+    for target_id in &targets {
+        state
+            .controller_leases
+            .ensure_can_control(target_id, client_id.as_deref())?;
+    }
     // P0-4: the gate returns the bytes that may reach the PTY (it HOLDS unterminated input
     // and emits only complete, approved lines — boundary #1). Write those, not `bytes`.
     let writable = gate_command_input(
@@ -1920,6 +2264,7 @@ async fn search_session_scrollback(
 async fn issue_stream_ticket(
     State(state): State<ApiState>,
     Path(id): Path<String>,
+    Query(query): Query<StreamTicketQuery>,
 ) -> ApiResult<Json<StreamTicket>> {
     // Session must already exist — avoids minting tickets for nonexistent
     // ids, which would otherwise look like a successful ticket issuance
@@ -1928,11 +2273,28 @@ async fn issue_stream_ticket(
     if !state.pty.contains(&id) {
         return Err(ApiError::NotFound(id));
     }
-    let (ticket, ttl) = state.tickets.issue(&id);
+    let mode = parse_stream_mode(query.mode.as_deref())?;
+    let control = parse_stream_control(query.control.as_deref())?;
+    let client_id = ticket_client_id(query.client_id.as_deref(), mode, control)?;
+    let (ticket, ttl) = state
+        .tickets
+        .issue_with_attach(&id, mode, control, client_id.clone());
     Ok(Json(StreamTicket {
         ticket: ticket.into_string(),
         expires_in_ms: ttl.as_millis() as u64,
+        mode,
+        control,
+        writable: mode.can_write(),
+        client_id,
     }))
+}
+
+#[derive(Deserialize)]
+struct StreamTicketQuery {
+    mode: Option<String>,
+    control: Option<String>,
+    #[serde(default, alias = "client_id", rename = "clientId")]
+    client_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1942,6 +2304,11 @@ struct StreamTicket {
     /// than absolute so clients don't have to reason about server-vs-client
     /// clock skew.
     expires_in_ms: u64,
+    mode: StreamMode,
+    control: StreamControl,
+    writable: bool,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "clientId")]
+    client_id: Option<String>,
 }
 
 /// Extract `<id>` from a WS upgrade path of the shape `/sessions/<id>/stream`.
@@ -1963,14 +2330,95 @@ async fn ws_session(
     ws: WebSocketUpgrade,
     State(state): State<ApiState>,
     Path(id): Path<String>,
+    Query(query): Query<StreamSessionQuery>,
+    ticket_claim: Option<Extension<StreamTicketClaim>>,
 ) -> Response {
     // Subscribe before the upgrade so a missing/closed session surfaces as a
     // normal HTTP error instead of an opaque WS handshake failure.
-    let rx = match state.pty.subscribe_output(&id) {
-        Ok(r) => r,
+    let replay_lines = query.replay_lines.unwrap_or(0);
+    let replay_clean = query.replay_clean.unwrap_or(false);
+    let (rx, initial_replay) = match if replay_lines > 0 {
+        state
+            .pty
+            .capture_and_subscribe(&id, replay_lines, replay_clean)
+            .map(|(text, rx)| {
+                let initial = if text.is_empty() {
+                    None
+                } else {
+                    Some(text.into_bytes())
+                };
+                (rx, initial)
+            })
+    } else {
+        state.pty.subscribe_output(&id).map(|rx| (rx, None))
+    } {
+        Ok(result) => result,
         Err(e) => return map_pty_err(&id, e).into_response(),
     };
-    ws.on_upgrade(move |socket| handle_ws(socket, state, id, rx))
+    let (mode, control, client_id) = match ticket_claim {
+        Some(Extension(claim)) => {
+            debug_assert_eq!(claim.session_id.as_str(), id.as_str());
+            (claim.mode, claim.control, claim.client_id)
+        }
+        None => match parse_stream_mode(query.mode.as_deref()) {
+            Ok(mode) => {
+                let control = match parse_stream_control(query.control.as_deref()) {
+                    Ok(control) => control,
+                    Err(err) => return err.into_response(),
+                };
+                let client_id =
+                    match websocket_query_client_id(query.client_id.as_deref(), mode, control) {
+                        Ok(client_id) => client_id,
+                        Err(err) => return err.into_response(),
+                    };
+                (mode, control, client_id)
+            }
+            Err(err) => return err.into_response(),
+        },
+    };
+    let active_lease = if mode.can_write() && control.is_exclusive() {
+        let Some(client_id) = client_id.clone() else {
+            return ApiError::BadRequest(
+                "exclusive stream control requires clientId or client_id".into(),
+            )
+            .into_response();
+        };
+        if let Err(owner) = state.controller_leases.acquire(&id, &client_id) {
+            return ApiError::Conflict(format!("session {id} is controlled by {owner}"))
+                .into_response();
+        }
+        Some(ActiveStreamLease {
+            leases: state.controller_leases.clone(),
+            session_id: id.clone(),
+            client_id,
+        })
+    } else {
+        None
+    };
+    ws.on_upgrade(move |socket| {
+        handle_ws(
+            socket,
+            state,
+            id,
+            rx,
+            mode,
+            active_lease,
+            initial_replay,
+            client_id,
+        )
+    })
+}
+
+#[derive(Deserialize)]
+struct StreamSessionQuery {
+    mode: Option<String>,
+    control: Option<String>,
+    #[serde(default, alias = "client_id", rename = "clientId")]
+    client_id: Option<String>,
+    #[serde(default, alias = "replay_lines", rename = "replayLines")]
+    replay_lines: Option<usize>,
+    #[serde(default, alias = "replay_clean", rename = "replayClean")]
+    replay_clean: Option<bool>,
 }
 
 async fn handle_ws(
@@ -1978,8 +2426,28 @@ async fn handle_ws(
     state: ApiState,
     id: String,
     mut rx: broadcast::Receiver<Vec<u8>>,
+    mode: StreamMode,
+    _active_lease: Option<ActiveStreamLease>,
+    initial_replay: Option<Vec<u8>>,
+    client_id: Option<String>,
 ) {
-    log::info!("api: WS session {} opened", id);
+    log::info!("api: WS session {} opened mode={:?}", id, mode);
+    let _active_mux_client = match mux::record_stream_client_attached(&state, &id, client_id, mode)
+    {
+        Ok((workspace_id, client_id)) => Some(ActiveMuxClient {
+            state: state.clone(),
+            workspace_id,
+            client_id,
+        }),
+        Err(err) => {
+            log::warn!(
+                "api: refusing WS session {} because mux client attach failed: {}",
+                id,
+                err
+            );
+            return;
+        }
+    };
     let (mut sender, mut receiver) = socket.split();
 
     // Send task: broadcast rx -> WS.
@@ -1995,6 +2463,17 @@ async fn handle_ws(
     // ring drain for everyone else.
     let read_id = id.clone();
     let mut send_task = tokio::spawn(async move {
+        if let Some(initial) = initial_replay.filter(|bytes| !bytes.is_empty()) {
+            match tokio::time::timeout(
+                WS_WRITE_TIMEOUT,
+                sender.send(Message::Binary(initial.into())),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) | Err(_) => return,
+            }
+        }
         loop {
             match rx.recv().await {
                 Ok(chunk) => {
@@ -2037,7 +2516,8 @@ async fn handle_ws(
         }
     });
 
-    // Receive task: WS messages -> PTY write.
+    // Receive task: WS messages -> PTY write. Read-only tickets keep the output
+    // stream live but never forward client bytes into the PTY.
     let write_state = state.clone();
     let write_id = id.clone();
     let mut recv_task = tokio::spawn(async move {
@@ -2048,6 +2528,14 @@ async fn handle_ws(
                 Ok(Message::Close(_)) | Err(_) => break,
                 Ok(_) => continue, // ping/pong handled by axum
             };
+            if !mode.can_write() {
+                log::warn!(
+                    "api: WS {} rejected {} bytes from read-only stream",
+                    write_id,
+                    bytes.len()
+                );
+                break;
+            }
             if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
                 log::warn!(
                     "api: WS {} input frame too large: {} bytes",
@@ -2194,7 +2682,7 @@ mod tests {
     #[test]
     fn validate_api_cwd_blocks_traversal_and_system_dirs() {
         assert!(matches!(
-            validate_api_cwd("C:/Users/owner/../Windows"),
+            validate_api_cwd("C:/Users/example/../Windows"),
             Err(ApiError::BadRequest(_))
         ));
         assert!(matches!(

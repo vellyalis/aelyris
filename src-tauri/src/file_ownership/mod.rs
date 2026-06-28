@@ -14,8 +14,33 @@ use serde::{Deserialize, Serialize};
 /// or recursive glob (`src/auth/**`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnershipClaim {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
     pub agent_id: String,
     pub pattern: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_expires_at: Option<u64>,
+}
+
+impl OwnershipClaim {
+    pub fn new(agent_id: impl Into<String>, pattern: impl Into<String>) -> Self {
+        Self {
+            task_id: None,
+            agent_id: agent_id.into(),
+            pattern: pattern.into(),
+            lease_expires_at: None,
+        }
+    }
+
+    pub fn stable_id(&self) -> String {
+        format!("file:{}:{}", self.agent_id, self.pattern)
+    }
+
+    fn is_live(&self, now: u64) -> bool {
+        self.lease_expires_at
+            .map(|expires| now <= expires)
+            .unwrap_or(true)
+    }
 }
 
 /// Two claims by different agents whose path sets overlap.
@@ -27,7 +52,7 @@ pub struct OwnershipConflict {
     pub pattern_b: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FileOwnership {
     claims: Vec<OwnershipClaim>,
 }
@@ -38,10 +63,17 @@ impl FileOwnership {
     }
 
     pub fn assign(&mut self, agent_id: impl Into<String>, pattern: impl Into<String>) {
-        self.claims.push(OwnershipClaim {
-            agent_id: agent_id.into(),
-            pattern: pattern.into(),
-        });
+        self.assign_claim(OwnershipClaim::new(agent_id, pattern));
+    }
+
+    pub fn assign_claim(&mut self, claim: OwnershipClaim) {
+        if let Some(existing) = self.claims.iter_mut().find(|existing| {
+            existing.agent_id == claim.agent_id && existing.pattern == claim.pattern
+        }) {
+            *existing = claim;
+            return;
+        }
+        self.claims.push(claim);
     }
 
     /// Drop the first claim matching `(agent_id, pattern)`; returns whether one
@@ -62,6 +94,32 @@ impl FileOwnership {
 
     pub fn claims(&self) -> &[OwnershipClaim] {
         &self.claims
+    }
+
+    pub fn snapshot(&self) -> Vec<OwnershipClaim> {
+        self.claims.clone()
+    }
+
+    pub fn hydrate(&mut self, claims: Vec<OwnershipClaim>) {
+        self.claims.clear();
+        for claim in claims {
+            self.assign_claim(claim);
+        }
+    }
+
+    pub fn expire(&mut self, now: u64) -> Vec<String> {
+        let (dead, live): (Vec<_>, Vec<_>) = std::mem::take(&mut self.claims)
+            .into_iter()
+            .partition(|claim| !claim.is_live(now));
+        self.claims = live;
+        dead.into_iter().map(|claim| claim.stable_id()).collect()
+    }
+
+    pub fn release_for_task(&mut self, task_id: &str) -> usize {
+        let before = self.claims.len();
+        self.claims
+            .retain(|claim| claim.task_id.as_deref() != Some(task_id));
+        before - self.claims.len()
     }
 
     /// The agent owning `path` (first matching claim), if any.

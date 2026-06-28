@@ -58,6 +58,7 @@ pub fn orchestrator_step(
     ownership: State<'_, Arc<Mutex<FileOwnership>>>,
     symbol_ownership: State<'_, Arc<Mutex<SymbolOwnership>>>,
     context: State<'_, Arc<ContextStoreManager>>,
+    merge_store: State<'_, Option<Arc<crate::merge_intent::store::MergeIntentStore>>>,
     usage: CostUsage,
     repo_path: String,
     reviewer_id: String,
@@ -78,6 +79,7 @@ pub fn orchestrator_step(
         // The cockpit face supplies reviewer verdicts directly; mechanical gate
         // commands are an MCP-face (autonomous) opt-in.
         None,
+        merge_store.inner().clone(),
         // P4 (Supervisor 実体): the loop driver durably records every give-up (a
         // retry budget exhausted -> Failed) to the audit journal, so a Failed
         // task survives restart instead of living only in the volatile Event Bus

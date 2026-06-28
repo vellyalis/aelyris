@@ -1,6 +1,6 @@
-//! Real `LoopPorts` adapter — wires the autonomy loop's I/O ports to the actual
-//! merge backend (`perform_merge` + the serialized `MergeQueue`) while keeping
-//! the quality-gate runner and the agent dispatcher behind injected traits.
+//! Real `LoopPorts` adapter — wires the autonomy loop's I/O ports to the durable
+//! merge-intent backend while keeping the quality-gate runner and the agent
+//! dispatcher behind injected traits.
 //!
 //! This makes the review -> auto-merge path real and still fully
 //! unit-testable: a green review of a task with bound branches performs a real
@@ -10,6 +10,7 @@
 //! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
 //! end-to-end autonomy).
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::agent::AgentManager;
@@ -17,8 +18,9 @@ use crate::control::agent::{start_headless, HeadlessSpawnSpec};
 use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
 use crate::control::pane_fleet::PaneFleet;
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
-use crate::file_ownership::FileOwnership;
+use crate::file_ownership::{FileOwnership, OwnershipClaim};
 use crate::git::{perform_merge, MergeOutcome};
+use crate::merge_intent::store::MergeIntentStore;
 use crate::orchestrator::autonomy::{Completions, LoopPorts};
 use crate::review::GateResults;
 use crate::symbol_ownership::agent_context::{
@@ -119,6 +121,9 @@ pub struct LoopPortsAdapter<G, D, T> {
     repo_path: String,
     reviewer_id: String,
     queue: MergeQueue,
+    merge_store: Option<Arc<MergeIntentStore>>,
+    require_durable_merge: bool,
+    gate_results: HashMap<String, GateResults>,
     gate_runner: G,
     dispatcher: D,
     task_info: T,
@@ -140,6 +145,9 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
             repo_path: repo_path.into(),
             reviewer_id: reviewer_id.into(),
             queue: MergeQueue::new(),
+            merge_store: None,
+            require_durable_merge: true,
+            gate_results: HashMap::new(),
             gate_runner,
             dispatcher,
             task_info,
@@ -150,6 +158,18 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
     /// The merge queue (intents + their resolved outcomes) after the loop ran.
     pub fn queue(&self) -> &MergeQueue {
         &self.queue
+    }
+
+    pub fn with_durable_merge_store(mut self, store: Option<Arc<MergeIntentStore>>) -> Self {
+        self.merge_store = store;
+        self.require_durable_merge = true;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_legacy_merge_queue_for_tests(mut self) -> Self {
+        self.require_durable_merge = false;
+        self
     }
 }
 
@@ -175,7 +195,9 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             .branches(task_id)
             .map(|(source, _)| source)
             .unwrap_or_default();
-        self.gate_runner.run(task_id, &branch)
+        let results = self.gate_runner.run(task_id, &branch);
+        self.gate_results.insert(task_id.to_string(), results);
+        results
     }
 
     fn reviewer_id(&self) -> String {
@@ -192,60 +214,123 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             .branches(task_id)
             .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
         let worktree = crate::control::worktree::predict_path(&self.repo_path, &source);
-        let intent = self.queue.enqueue(MergeRequest {
-            session_id: task_id.to_string(),
-            source_branch: source.clone(),
-            target_branch: target.clone(),
-        })?;
-        self.queue.begin(&intent.intent_id)?;
-        // Loop-owned worktree (commit-to-merge): commit the green-reviewed worker's
-        // worktree on `source` BEFORE merging, so perform_merge sees the real work
-        // ahead of `target`. Without this the source tip never moved (the agent
-        // writes files but never commits) and every merge was an empty
-        // AlreadyMerged. Only when the isolated worktree exists on disk (a repo-root
-        // task owns nothing to commit). Done AFTER begin so a commit failure resolves
-        // the intent as Rejected (audit evidence) and fails the merge -> the loop
-        // requeues for rework (never strands); Ok(None) (empty diff) is fine.
-        if worktree.is_dir() {
-            if let Err(e) = crate::control::worktree::commit_for_branch(
+        if let Some(store) = self.merge_store.clone() {
+            // Durable merge intents bind exact source/target OIDs. The loop first
+            // commits the worker's isolated worktree so the stored source OID is
+            // the reviewed output, then creates/claims the intent in SQLite.
+            if worktree.is_dir() {
+                crate::control::worktree::commit_for_branch(
+                    &self.repo_path,
+                    &source,
+                    &format!("aether: {task_id}"),
+                )
+                .map_err(|e| format!("commit worktree for {source} failed: {e}"))?;
+            }
+            let now = now_secs() as i64;
+            let intent = crate::control::merge::request_durable_intent(
+                &store,
                 &self.repo_path,
+                task_id,
+                Some(task_id),
                 &source,
-                &format!("aether: {task_id}"),
-            ) {
-                self.queue
-                    .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;
-                return Err(format!("commit worktree for {source} failed: {e}"));
-            }
-        }
-        match perform_merge(&self.repo_path, &source, &target) {
-            Ok(MergeOutcome::Conflict { paths }) => {
-                self.queue
-                    .resolve(&intent.intent_id, MergeIntentStatus::Conflict)?;
-                Err(format!("merge conflict: {}", paths.join(", ")))
-            }
-            Ok(_) => {
-                self.queue
-                    .resolve(&intent.intent_id, MergeIntentStatus::Merged)?;
-                // Loop-owned worktree (cleanup): the branch is merged, so reclaim
-                // its isolated worktree AND delete the merged branch — otherwise
-                // they pile up on disk across a long-running fleet. Best-effort and
-                // guarded on the worktree existing: the merge already succeeded, so
-                // a cleanup failure must not turn a Done task back into an error.
-                if worktree.is_dir() {
-                    if let Err(e) =
-                        crate::control::worktree::remove_for_branch(&self.repo_path, &source, true)
-                    {
-                        log::warn!(
-                            "post-merge worktree cleanup for {source} failed (non-fatal): {e}"
-                        );
-                    }
+                &target,
+                now,
+            )?;
+            let gates_digest = self
+                .gate_results
+                .get(task_id)
+                .and_then(|gates| serde_json::to_string(gates).ok());
+            let execution = crate::control::merge::approve_durable_intent(
+                &store,
+                &intent.intent_id,
+                &self.reviewer_id,
+                gates_digest.as_deref(),
+                now_secs() as i64,
+            )
+            .map_err(|e| e.to_string())?;
+            match execution.outcome {
+                Some(MergeOutcome::Conflict { paths }) => {
+                    Err(format!("merge conflict: {}", paths.join(", ")))
                 }
-                Ok(())
+                Some(_) => {
+                    if worktree.is_dir() {
+                        if let Err(e) = crate::control::worktree::remove_for_branch(
+                            &self.repo_path,
+                            &source,
+                            true,
+                        ) {
+                            log::warn!(
+                                "post-merge worktree cleanup for {source} failed (non-fatal): {e}"
+                            );
+                        }
+                    }
+                    Ok(())
+                }
+                None => Err(format!(
+                    "durable merge intent {} finished without a merge outcome (status {})",
+                    execution.intent_id, execution.status
+                )),
             }
-            Err(err) => {
-                self.queue
-                    .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;
-                Err(err)
+        } else if self.require_durable_merge {
+            Err("durable merge store is required for autonomy-loop merges".to_string())
+        } else {
+            let intent = self.queue.enqueue(MergeRequest {
+                session_id: task_id.to_string(),
+                source_branch: source.clone(),
+                target_branch: target.clone(),
+            })?;
+            self.queue.begin(&intent.intent_id)?;
+            // Loop-owned worktree (commit-to-merge): commit the green-reviewed worker's
+            // worktree on `source` BEFORE merging, so perform_merge sees the real work
+            // ahead of `target`. Without this the source tip never moved (the agent
+            // writes files but never commits) and every merge was an empty
+            // AlreadyMerged. Only when the isolated worktree exists on disk (a repo-root
+            // task owns nothing to commit). Done AFTER begin so a commit failure resolves
+            // the intent as Rejected (audit evidence) and fails the merge -> the loop
+            // requeues for rework (never strands); Ok(None) (empty diff) is fine.
+            if worktree.is_dir() {
+                if let Err(e) = crate::control::worktree::commit_for_branch(
+                    &self.repo_path,
+                    &source,
+                    &format!("aether: {task_id}"),
+                ) {
+                    self.queue
+                        .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;
+                    return Err(format!("commit worktree for {source} failed: {e}"));
+                }
+            }
+            match perform_merge(&self.repo_path, &source, &target) {
+                Ok(MergeOutcome::Conflict { paths }) => {
+                    self.queue
+                        .resolve(&intent.intent_id, MergeIntentStatus::Conflict)?;
+                    Err(format!("merge conflict: {}", paths.join(", ")))
+                }
+                Ok(_) => {
+                    self.queue
+                        .resolve(&intent.intent_id, MergeIntentStatus::Merged)?;
+                    // Loop-owned worktree (cleanup): the branch is merged, so reclaim
+                    // its isolated worktree AND delete the merged branch — otherwise
+                    // they pile up on disk across a long-running fleet. Best-effort and
+                    // guarded on the worktree existing: the merge already succeeded, so
+                    // a cleanup failure must not turn a Done task back into an error.
+                    if worktree.is_dir() {
+                        if let Err(e) = crate::control::worktree::remove_for_branch(
+                            &self.repo_path,
+                            &source,
+                            true,
+                        ) {
+                            log::warn!(
+                                "post-merge worktree cleanup for {source} failed (non-fatal): {e}"
+                            );
+                        }
+                    }
+                    Ok(())
+                }
+                Err(err) => {
+                    self.queue
+                        .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;
+                    Err(err)
+                }
             }
         }
     }
@@ -586,6 +671,7 @@ pub fn run_step(
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
+    merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
@@ -621,10 +707,11 @@ pub fn run_step(
             },
             info,
             symbol_ownership.clone(),
-        );
+        )
+        .with_durable_merge_store(merge_store.clone());
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
-    apply_file_lanes(ownership, events, &lanes, &report);
+    apply_file_lanes(ownership, events, &lanes, &report, db);
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
     // Durable half of the escalation surface: persist each give-up when a db is
@@ -658,6 +745,7 @@ pub fn run_step_visible(
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
+    merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
@@ -680,10 +768,11 @@ pub fn run_step_visible(
             PaneDispatcher { fleet, specs },
             info,
             symbol_ownership.clone(),
-        );
+        )
+        .with_durable_merge_store(merge_store.clone());
         crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
     });
-    apply_file_lanes(ownership, events, &lanes, &report);
+    apply_file_lanes(ownership, events, &lanes, &report, db);
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
     // Durable half of the escalation surface: persist each give-up when a db is
@@ -724,8 +813,11 @@ fn apply_file_lanes(
     events: &EventBus,
     lanes: &std::collections::HashMap<String, (String, Vec<String>)>,
     report: &crate::orchestrator::autonomy::StepReport,
+    db: Option<&crate::db::ManagedDb>,
 ) {
     let mut to_publish = Vec::new();
+    let mut durability_failures = Vec::new();
+    let now = now_secs();
     {
         let Ok(mut owner) = ownership.lock() else {
             return;
@@ -736,7 +828,25 @@ fn apply_file_lanes(
                     continue;
                 }
                 for path in paths {
-                    owner.assign(agent.clone(), path.clone());
+                    let mut claim = OwnershipClaim::new(agent.clone(), path.clone());
+                    claim.task_id = Some(id.clone());
+                    if let Some(db) = db {
+                        if let Err(err) = db.with(|d| {
+                            crate::persistence::OwnershipRepo::upsert_file_claim(d, &claim, now)
+                        }) {
+                            tracing::error!(
+                                task_id = %id,
+                                agent = %agent,
+                                path = %path,
+                                error = %err,
+                                "file ownership lane persist failed"
+                            );
+                            durability_failures.push(format!(
+                                "persist file lane claim failed for task {id} path {path}: {err}"
+                            ));
+                        }
+                    }
+                    owner.assign_claim(claim);
                 }
                 to_publish.push(AgentEvent::new(
                     AgentEventKind::FileLocked,
@@ -749,7 +859,39 @@ fn apply_file_lanes(
                 if paths.is_empty() {
                     continue;
                 }
+                if let Some(db) = db {
+                    if let Err(err) = db.with(|d| {
+                        crate::persistence::OwnershipRepo::delete_file_claims_for_task(d, id)
+                            .map(|_| ())
+                    }) {
+                        tracing::error!(
+                            task_id = %id,
+                            error = %err,
+                            "file ownership task release persist failed"
+                        );
+                        durability_failures.push(format!(
+                            "persist file lane task release failed for task {id}: {err}"
+                        ));
+                    }
+                }
                 for path in paths {
+                    if let Some(db) = db {
+                        if let Err(err) = db.with(|d| {
+                            crate::persistence::OwnershipRepo::delete_file_claim(d, agent, path)
+                                .map(|_| ())
+                        }) {
+                            tracing::error!(
+                                task_id = %id,
+                                agent = %agent,
+                                path = %path,
+                                error = %err,
+                                "file ownership lane release persist failed"
+                            );
+                            durability_failures.push(format!(
+                                "persist file lane release failed for task {id} path {path}: {err}"
+                            ));
+                        }
+                    }
                     owner.release(agent, path);
                 }
                 to_publish.push(AgentEvent::new(
@@ -761,6 +903,16 @@ fn apply_file_lanes(
     }
     for event in to_publish {
         events.publish(event);
+    }
+    for failure in durability_failures {
+        events.publish(AgentEvent::new(
+            AgentEventKind::BlockerRaised,
+            serde_json::json!({
+                "sessionId": "autonomy-loop",
+                "summary": failure,
+                "needs": "repair ownership persistence before relying on restart replay",
+            }),
+        ));
     }
 }
 
@@ -801,6 +953,8 @@ mod tests {
         CommandRunner, GateCommands, ProcessGateRunner, SystemCommandRunner,
     };
     use crate::cost::{CostCaps, CostUsage};
+    use crate::db::{Database, ManagedDb};
+    use crate::merge_intent::MergeIntentState;
     use crate::orchestrator::autonomy::{step, StepReport};
     use crate::orchestrator::LoopState;
     use crate::task::graph::Task;
@@ -809,6 +963,7 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::path::Path;
+    use std::sync::Arc;
 
     const GREEN: GateResults = GateResults {
         tests_pass: true,
@@ -930,6 +1085,7 @@ mod tests {
             },
             None,
         )
+        .with_legacy_merge_queue_for_tests()
     }
 
     #[test]
@@ -1119,6 +1275,33 @@ mod tests {
     }
 
     #[test]
+    fn adapter_without_durable_store_fails_closed_before_ram_queue() {
+        use crate::orchestrator::autonomy::LoopPorts;
+
+        let (_dir, repo, _feature_tip) = repo_with_feature_ahead();
+        let main_before = repo.refname_to_id("refs/heads/main").unwrap();
+        let mut branches = HashMap::new();
+        branches.insert("t".to_string(), ("feature".to_string(), "main".to_string()));
+        let mut ports = LoopPortsAdapter::new(
+            repo.workdir().unwrap().to_str().unwrap().to_string(),
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "implementer".to_string(),
+            },
+            None,
+        );
+
+        let err = LoopPorts::merge(&mut ports, "t").expect_err("missing store must fail closed");
+
+        assert!(err.contains("durable merge store is required"));
+        assert!(ports.queue().intents().is_empty());
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
+    }
+
+    #[test]
     fn red_gate_rejects_without_merging() {
         let (_dir, repo, _feature_tip) = repo_with_feature_ahead();
         let main_before = repo.refname_to_id("refs/heads/main").unwrap();
@@ -1223,7 +1406,8 @@ mod tests {
             RecordingDispatcher::default(),
             snapshot,
             None,
-        );
+        )
+        .with_legacy_merge_queue_for_tests();
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
 
@@ -1256,6 +1440,12 @@ mod tests {
         )
     }
 
+    fn durable_store() -> Arc<MergeIntentStore> {
+        Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
+            Database::open_memory().unwrap(),
+        ))))
+    }
+
     #[test]
     fn failing_mechanical_test_gate_blocks_a_real_merge() {
         // Even with a green reviewer verdict, a failing mechanical test gate
@@ -1276,7 +1466,8 @@ mod tests {
                 implementer: "implementer".to_string(),
             },
             None,
-        );
+        )
+        .with_legacy_merge_queue_for_tests();
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
 
@@ -1305,13 +1496,57 @@ mod tests {
                 implementer: "implementer".to_string(),
             },
             None,
-        );
+        )
+        .with_legacy_merge_queue_for_tests();
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
 
         assert_eq!(report.merged, ["t"]);
         assert_eq!(graph.get("t").unwrap().status, TaskStatus::Done);
         assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+    }
+
+    #[test]
+    fn durable_store_records_loop_merge_intent_and_bypasses_ram_queue() {
+        let (_dir, repo, feature_tip) = repo_with_feature_ahead();
+        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
+        let store = durable_store();
+        let mut graph = review_task_graph();
+        let mut branches = HashMap::new();
+        branches.insert("t".to_string(), ("feature".to_string(), "main".to_string()));
+        let mut ports = LoopPortsAdapter::new(
+            repo_path.clone(),
+            "reviewer",
+            mechanical_gate(&repo_path, true),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches,
+                implementer: "implementer".to_string(),
+            },
+            None,
+        )
+        .with_durable_merge_store(Some(store.clone()));
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert_eq!(report.merged, ["t"]);
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), feature_tip);
+        assert!(
+            ports.queue().intents().is_empty(),
+            "durable mode must not use the legacy RAM MergeQueue as source of truth"
+        );
+        let merged = store.list_in_state(MergeIntentState::Merged).unwrap();
+        assert_eq!(merged.len(), 1);
+        let intent = &merged[0];
+        assert_eq!(intent.task_id, "t");
+        assert_eq!(intent.source_branch, "feature");
+        assert_eq!(intent.target_branch, "main");
+        assert_eq!(intent.reviewer_id.as_deref(), Some("reviewer"));
+        assert!(intent
+            .gates_digest
+            .as_deref()
+            .unwrap_or_default()
+            .contains("tests_pass"));
     }
 
     #[cfg(windows)]
@@ -1488,7 +1723,7 @@ mod tests {
             escalations: vec![],
             state: LoopState::Active,
         };
-        apply_file_lanes(&ownership, &bus, &lanes, &report);
+        apply_file_lanes(&ownership, &bus, &lanes, &report, None);
         assert_eq!(
             ownership.lock().unwrap().owner_of("src/auth/login.ts"),
             Some("agent-a")
@@ -1516,7 +1751,7 @@ mod tests {
             escalations: vec![],
             state: LoopState::Complete,
         };
-        apply_file_lanes(&ownership, &bus, &lanes, &report);
+        apply_file_lanes(&ownership, &bus, &lanes, &report, None);
         assert_eq!(
             ownership.lock().unwrap().owner_of("src/auth/login.ts"),
             None
@@ -1582,7 +1817,8 @@ mod tests {
                 implementer: "impl".to_string(),
             },
             None,
-        );
+        )
+        .with_legacy_merge_queue_for_tests();
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
 
@@ -1631,7 +1867,8 @@ mod tests {
                 implementer: "implementer".to_string(),
             },
             None,
-        );
+        )
+        .with_legacy_merge_queue_for_tests();
 
         let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
 

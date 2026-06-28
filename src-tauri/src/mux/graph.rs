@@ -43,6 +43,41 @@ pub struct AgentContext {
     pub permission_profile: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MuxClientMode {
+    ReadWrite,
+    ReadOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MuxClientRecord {
+    pub id: String,
+    pub attached_workspace_id: String,
+    pub attached_window_id: String,
+    pub mode: MuxClientMode,
+    pub last_seen_at_ms: u64,
+}
+
+impl MuxClientRecord {
+    pub fn new(
+        id: impl Into<String>,
+        attached_workspace_id: impl Into<String>,
+        attached_window_id: impl Into<String>,
+        mode: MuxClientMode,
+        last_seen_at_ms: u64,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            attached_workspace_id: attached_workspace_id.into(),
+            attached_window_id: attached_window_id.into(),
+            mode,
+            last_seen_at_ms,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaneRecord {
@@ -237,6 +272,7 @@ impl WindowRecord {
 
     pub fn validate(&self) -> Result<(), MuxGraphError> {
         validate_id(&self.id, "window")?;
+        validate_title("window", &self.id, &self.title)?;
         validate_active_ref("tab", &self.active_tab_id, self.tabs.keys())?;
         for tab in self.tabs.values() {
             tab.validate()?;
@@ -253,6 +289,8 @@ pub struct WorkspaceRecord {
     pub project_path: Option<String>,
     pub windows: HashMap<String, WindowRecord>,
     pub active_window_id: String,
+    #[serde(default)]
+    pub clients: HashMap<String, MuxClientRecord>,
 }
 
 impl WorkspaceRecord {
@@ -264,14 +302,58 @@ impl WorkspaceRecord {
             project_path: None,
             windows: HashMap::from([(window_id.clone(), window)]),
             active_window_id: window_id,
+            clients: HashMap::new(),
         }
     }
 
     pub fn validate(&self) -> Result<(), MuxGraphError> {
         validate_id(&self.id, "workspace")?;
+        validate_title("workspace", &self.id, &self.name)?;
         validate_active_ref("window", &self.active_window_id, self.windows.keys())?;
         for window in self.windows.values() {
             window.validate()?;
+        }
+        for (client_id, client) in &self.clients {
+            if client_id != &client.id {
+                return Err(MuxGraphError::ClientRecordMismatch {
+                    key: client_id.clone(),
+                    record_id: client.id.clone(),
+                });
+            }
+            client.validate(&self.id, self.windows.keys())?;
+        }
+        Ok(())
+    }
+}
+
+impl MuxClientRecord {
+    fn validate<'a, I>(&self, workspace_id: &str, window_ids: I) -> Result<(), MuxGraphError>
+    where
+        I: IntoIterator<Item = &'a String>,
+    {
+        validate_id(&self.id, "client")?;
+        validate_id(&self.attached_workspace_id, "client workspace")?;
+        validate_id(&self.attached_window_id, "client window")?;
+        if self.attached_workspace_id != workspace_id {
+            return Err(MuxGraphError::ClientWorkspaceMismatch {
+                client_id: self.id.clone(),
+                workspace_id: self.attached_workspace_id.clone(),
+                expected_workspace_id: workspace_id.to_string(),
+            });
+        }
+        if !window_ids
+            .into_iter()
+            .any(|window_id| window_id == &self.attached_window_id)
+        {
+            return Err(MuxGraphError::MissingWindow(
+                self.attached_window_id.clone(),
+            ));
+        }
+        if self.last_seen_at_ms == 0 {
+            return Err(MuxGraphError::InvalidTimestamp {
+                object: "client".to_string(),
+                id: self.id.clone(),
+            });
         }
         Ok(())
     }
@@ -323,6 +405,91 @@ impl MuxGraph {
             .tabs
             .get_mut(&window.active_tab_id)
             .ok_or_else(|| MuxGraphError::MissingActive("tab".to_string()))
+    }
+
+    pub fn create_window(&mut self, window: WindowRecord) -> Result<(), MuxGraphError> {
+        window.validate()?;
+        let workspace = self
+            .workspaces
+            .get_mut(&self.active_workspace_id)
+            .ok_or_else(|| MuxGraphError::MissingActive("workspace".to_string()))?;
+        if workspace.windows.contains_key(&window.id) {
+            return Err(MuxGraphError::DuplicateId(window.id));
+        }
+        let window_id = window.id.clone();
+        workspace.windows.insert(window_id.clone(), window);
+        workspace.active_window_id = window_id;
+        self.validate()
+    }
+
+    pub fn rename_window(
+        &mut self,
+        window_id: &str,
+        title: impl Into<String>,
+    ) -> Result<(), MuxGraphError> {
+        let title = title.into();
+        validate_title("window", window_id, &title)?;
+        let workspace = self
+            .workspaces
+            .get_mut(&self.active_workspace_id)
+            .ok_or_else(|| MuxGraphError::MissingActive("workspace".to_string()))?;
+        let window = workspace
+            .windows
+            .get_mut(window_id)
+            .ok_or_else(|| MuxGraphError::MissingWindow(window_id.to_string()))?;
+        window.title = title;
+        self.validate()
+    }
+
+    pub fn remove_window(&mut self, window_id: &str) -> Result<WindowRecord, MuxGraphError> {
+        let workspace = self
+            .workspaces
+            .get_mut(&self.active_workspace_id)
+            .ok_or_else(|| MuxGraphError::MissingActive("workspace".to_string()))?;
+        if workspace.windows.len() <= 1 {
+            return Err(MuxGraphError::CannotRemoveLastWindow);
+        }
+        let removed = workspace
+            .windows
+            .remove(window_id)
+            .ok_or_else(|| MuxGraphError::MissingWindow(window_id.to_string()))?;
+        workspace
+            .clients
+            .retain(|_, client| client.attached_window_id != window_id);
+        if workspace.active_window_id == window_id {
+            let mut remaining = workspace.windows.keys().cloned().collect::<Vec<_>>();
+            remaining.sort();
+            workspace.active_window_id = remaining
+                .first()
+                .cloned()
+                .ok_or(MuxGraphError::CannotRemoveLastWindow)?;
+        }
+        self.validate()?;
+        Ok(removed)
+    }
+
+    pub fn upsert_client(&mut self, client: MuxClientRecord) -> Result<(), MuxGraphError> {
+        let workspace = self
+            .workspaces
+            .get_mut(&self.active_workspace_id)
+            .ok_or_else(|| MuxGraphError::MissingActive("workspace".to_string()))?;
+        client.validate(&workspace.id, workspace.windows.keys())?;
+        workspace.clients.insert(client.id.clone(), client);
+        self.validate()
+    }
+
+    pub fn remove_client(
+        &mut self,
+        client_id: &str,
+    ) -> Result<Option<MuxClientRecord>, MuxGraphError> {
+        validate_id(client_id, "client")?;
+        let workspace = self
+            .workspaces
+            .get_mut(&self.active_workspace_id)
+            .ok_or_else(|| MuxGraphError::MissingActive("workspace".to_string()))?;
+        let removed = workspace.clients.remove(client_id);
+        self.validate()?;
+        Ok(removed)
     }
 
     pub fn break_active_pane_to_tab(
@@ -421,18 +588,33 @@ impl MuxGraph {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MuxGraphError {
+    ClientRecordMismatch {
+        key: String,
+        record_id: String,
+    },
+    ClientWorkspaceMismatch {
+        client_id: String,
+        workspace_id: String,
+        expected_workspace_id: String,
+    },
     DuplicateId(String),
     InvalidCwd(String),
     InvalidId {
         object: String,
+    },
+    InvalidTimestamp {
+        object: String,
+        id: String,
     },
     InvalidTitle {
         object: String,
         id: String,
     },
     Layout(LayoutError),
+    CannotRemoveLastWindow,
     MissingActive(String),
     MissingPaneRecord(String),
+    MissingWindow(String),
     PaneRecordMismatch {
         tab_id: String,
         layout_only: Vec<String>,
@@ -444,13 +626,30 @@ pub enum MuxGraphError {
 impl std::fmt::Display for MuxGraphError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::ClientRecordMismatch { key, record_id } => write!(
+                f,
+                "client record key does not match record id: key={key}, record_id={record_id}"
+            ),
+            Self::ClientWorkspaceMismatch {
+                client_id,
+                workspace_id,
+                expected_workspace_id,
+            } => write!(
+                f,
+                "client {client_id} is attached to workspace {workspace_id}, expected {expected_workspace_id}"
+            ),
             Self::DuplicateId(id) => write!(f, "duplicate id: {id}"),
             Self::InvalidCwd(id) => write!(f, "pane cwd must not be empty: {id}"),
             Self::InvalidId { object } => write!(f, "{object} id must not be empty"),
+            Self::InvalidTimestamp { object, id } => {
+                write!(f, "{object} timestamp must be positive: {id}")
+            }
             Self::InvalidTitle { object, id } => write!(f, "{object} title must not be empty: {id}"),
             Self::Layout(err) => write!(f, "layout error: {err}"),
+            Self::CannotRemoveLastWindow => write!(f, "cannot remove the last mux window"),
             Self::MissingActive(object) => write!(f, "active {object} is missing"),
             Self::MissingPaneRecord(id) => write!(f, "pane record is missing: {id}"),
+            Self::MissingWindow(id) => write!(f, "mux window is missing: {id}"),
             Self::PaneRecordMismatch {
                 tab_id,
                 layout_only,
@@ -490,6 +689,17 @@ where
         Ok(())
     } else {
         Err(MuxGraphError::MissingActive(object.to_string()))
+    }
+}
+
+fn validate_title(object: &str, id: &str, title: &str) -> Result<(), MuxGraphError> {
+    if title.trim().is_empty() {
+        Err(MuxGraphError::InvalidTitle {
+            object: object.to_string(),
+            id: id.to_string(),
+        })
+    } else {
+        Ok(())
     }
 }
 
@@ -542,6 +752,20 @@ mod tests {
         let legacy_encoded = encoded.replace("\"paneId\"", "\"pane_id\"");
         let legacy_decoded: MuxGraph = serde_json::from_str(&legacy_encoded).unwrap();
         assert_eq!(legacy_decoded, graph);
+    }
+
+    #[test]
+    fn legacy_graph_without_clients_defaults_to_empty_client_map() {
+        let graph = sample_graph();
+        let mut value = serde_json::to_value(&graph).unwrap();
+        value["workspaces"]["workspace-a"]
+            .as_object_mut()
+            .unwrap()
+            .remove("clients");
+        let decoded: MuxGraph = serde_json::from_value(value).unwrap();
+        let workspace = decoded.workspaces.get("workspace-a").unwrap();
+        assert!(workspace.clients.is_empty());
+        decoded.validate().unwrap();
     }
 
     #[test]
@@ -628,6 +852,162 @@ mod tests {
         assert_eq!(window.tabs.len(), 1);
         let tab = window.tabs.get("tab-break").unwrap();
         assert_eq!(tab.layout.pane_ids(), vec!["pane-b", "pane-a"]);
+        graph.validate().unwrap();
+    }
+
+    #[test]
+    fn window_lifecycle_keeps_active_window_valid() {
+        let mut graph = sample_graph();
+        let window = WindowRecord::new(
+            "window-b",
+            "Tests",
+            TabRecord::new(
+                "tab-b",
+                "Tests",
+                PaneRecord::new("pane-b", "Tests", "powershell", "C:/repo"),
+            ),
+        );
+
+        graph.create_window(window).unwrap();
+        let workspace = graph.workspaces.get("workspace-a").unwrap();
+        assert_eq!(workspace.active_window_id, "window-b");
+        assert_eq!(workspace.windows.len(), 2);
+
+        graph.rename_window("window-b", "Review").unwrap();
+        let workspace = graph.workspaces.get("workspace-a").unwrap();
+        assert_eq!(workspace.windows.get("window-b").unwrap().title, "Review");
+
+        let removed = graph.remove_window("window-b").unwrap();
+        assert_eq!(removed.id, "window-b");
+        let workspace = graph.workspaces.get("workspace-a").unwrap();
+        assert_eq!(workspace.active_window_id, "window-a");
+        graph.validate().unwrap();
+    }
+
+    #[test]
+    fn window_lifecycle_rejects_last_window_removal() {
+        let mut graph = sample_graph();
+        let err = graph.remove_window("window-a").unwrap_err();
+        assert_eq!(err, MuxGraphError::CannotRemoveLastWindow);
+    }
+
+    #[test]
+    fn client_lifecycle_is_backend_owned_and_window_scoped() {
+        let mut graph = sample_graph();
+        graph
+            .upsert_client(MuxClientRecord::new(
+                "client-a",
+                "workspace-a",
+                "window-a",
+                MuxClientMode::ReadOnly,
+                1_000,
+            ))
+            .unwrap();
+        let workspace = graph.workspaces.get("workspace-a").unwrap();
+        assert_eq!(workspace.clients.len(), 1);
+        assert_eq!(
+            workspace.clients.get("client-a").unwrap().mode,
+            MuxClientMode::ReadOnly
+        );
+
+        graph
+            .upsert_client(MuxClientRecord::new(
+                "client-a",
+                "workspace-a",
+                "window-a",
+                MuxClientMode::ReadWrite,
+                2_000,
+            ))
+            .unwrap();
+        assert_eq!(
+            graph
+                .workspaces
+                .get("workspace-a")
+                .unwrap()
+                .clients
+                .get("client-a")
+                .unwrap()
+                .last_seen_at_ms,
+            2_000
+        );
+
+        let removed = graph.remove_client("client-a").unwrap();
+        assert_eq!(removed.unwrap().id, "client-a");
+        assert!(graph
+            .workspaces
+            .get("workspace-a")
+            .unwrap()
+            .clients
+            .is_empty());
+    }
+
+    #[test]
+    fn client_record_rejects_missing_window_and_wrong_workspace() {
+        let mut graph = sample_graph();
+        let missing_window = graph
+            .upsert_client(MuxClientRecord::new(
+                "client-a",
+                "workspace-a",
+                "missing-window",
+                MuxClientMode::ReadOnly,
+                1,
+            ))
+            .unwrap_err();
+        assert_eq!(
+            missing_window,
+            MuxGraphError::MissingWindow("missing-window".to_string())
+        );
+
+        let wrong_workspace = graph
+            .upsert_client(MuxClientRecord::new(
+                "client-a",
+                "workspace-b",
+                "window-a",
+                MuxClientMode::ReadOnly,
+                1,
+            ))
+            .unwrap_err();
+        assert_eq!(
+            wrong_workspace,
+            MuxGraphError::ClientWorkspaceMismatch {
+                client_id: "client-a".to_string(),
+                workspace_id: "workspace-b".to_string(),
+                expected_workspace_id: "workspace-a".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn removing_window_detaches_clients_bound_to_that_window() {
+        let mut graph = sample_graph();
+        graph
+            .create_window(WindowRecord::new(
+                "window-b",
+                "Review",
+                TabRecord::new(
+                    "tab-b",
+                    "Review",
+                    PaneRecord::new("pane-b", "Review", "powershell", "C:/repo"),
+                ),
+            ))
+            .unwrap();
+        graph
+            .upsert_client(MuxClientRecord::new(
+                "client-a",
+                "workspace-a",
+                "window-b",
+                MuxClientMode::ReadOnly,
+                1,
+            ))
+            .unwrap();
+
+        graph.remove_window("window-b").unwrap();
+        assert!(graph
+            .workspaces
+            .get("workspace-a")
+            .unwrap()
+            .clients
+            .is_empty());
         graph.validate().unwrap();
     }
 

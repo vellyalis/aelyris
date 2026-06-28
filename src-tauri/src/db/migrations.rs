@@ -374,6 +374,47 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE INDEX IF NOT EXISTS idx_code_graph_edges_order
             ON code_graph_edges(sort_order);
 
+        -- Shared-brain G3: durable active ownership projection. Context decisions
+        -- and the event stream already persist; these rows close the restart-loss
+        -- gap for who-owns-which-lane-right-now without introducing a redundant
+        -- raw brain_snapshots table.
+        CREATE TABLE IF NOT EXISTS file_ownership_claims (
+            claim_id         TEXT PRIMARY KEY,
+            task_id          TEXT,
+            agent_id         TEXT NOT NULL,
+            pattern          TEXT NOT NULL,
+            lease_expires_at INTEGER,
+            updated_at       INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_file_ownership_agent_pattern
+            ON file_ownership_claims(agent_id, pattern);
+        CREATE INDEX IF NOT EXISTS idx_file_ownership_task
+            ON file_ownership_claims(task_id);
+        CREATE INDEX IF NOT EXISTS idx_file_ownership_lease
+            ON file_ownership_claims(lease_expires_at);
+
+        CREATE TABLE IF NOT EXISTS symbol_ownership_claims (
+            claim_id         TEXT PRIMARY KEY,
+            agent_id         TEXT NOT NULL,
+            task_id          TEXT,
+            path             TEXT NOT NULL,
+            symbol           TEXT NOT NULL,
+            start_line       INTEGER NOT NULL,
+            end_line         INTEGER NOT NULL,
+            mode             TEXT NOT NULL,
+            confidence       TEXT NOT NULL,
+            lease_expires_at INTEGER NOT NULL,
+            updated_at       INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_symbol_ownership_agent
+            ON symbol_ownership_claims(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_symbol_ownership_task
+            ON symbol_ownership_claims(task_id);
+        CREATE INDEX IF NOT EXISTS idx_symbol_ownership_path
+            ON symbol_ownership_claims(path);
+        CREATE INDEX IF NOT EXISTS idx_symbol_ownership_lease
+            ON symbol_ownership_claims(lease_expires_at);
+
         -- P0-3 world-release hardening: durable, IMMUTABLE merge intents. The MCP
         -- merge approval path (aether.request_merge -> aether.review.approve) kept
         -- intents in a RAM Vec and let the approver supply repo/source/target, so
@@ -506,6 +547,39 @@ mod tests {
             )
             .unwrap();
         assert_eq!(dep, "a");
+
+        conn.execute(
+            "INSERT INTO file_ownership_claims
+             (claim_id, agent_id, pattern, updated_at)
+             VALUES ('file:a:src/**', 'a', 'src/**', 1)",
+            [],
+        )
+        .unwrap();
+        let file_owner: String = conn
+            .query_row(
+                "SELECT agent_id FROM file_ownership_claims WHERE claim_id = 'file:a:src/**'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(file_owner, "a");
+
+        conn.execute(
+            "INSERT INTO symbol_ownership_claims
+             (claim_id, agent_id, path, symbol, start_line, end_line, mode, confidence,
+              lease_expires_at, updated_at)
+             VALUES ('s1', 'a', 'src/x.rs', 'f', 1, 3, 'write', 'parser', 100, 1)",
+            [],
+        )
+        .unwrap();
+        let symbol: String = conn
+            .query_row(
+                "SELECT symbol FROM symbol_ownership_claims WHERE claim_id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(symbol, "f");
     }
 
     #[test]

@@ -299,6 +299,7 @@ fn sync_mux_terminal_spawn(
     cwd: &str,
     cols: u16,
     rows: u16,
+    process_id: Option<u32>,
 ) {
     let Some(mux) = app.try_state::<Arc<Mutex<crate::mux::manager::MuxManager>>>() else {
         return;
@@ -308,12 +309,25 @@ fn sync_mux_terminal_spawn(
         .lock()
         .map_err(|_| "MuxManager lock poisoned".to_string())
         .and_then(|mut mux| {
-            mux.upsert_standalone_terminal(terminal_id, shell_name, cwd, cols, rows)
-                .map_err(|err| err.to_string())
+            mux.upsert_standalone_terminal_with_process_id(
+                terminal_id,
+                shell_name,
+                cwd,
+                cols,
+                rows,
+                process_id,
+            )
+            .map_err(|err| err.to_string())
         });
     if let Err(err) = result {
         log::warn!("mux sync spawn failed terminal={terminal_id}: {err}");
     }
+}
+
+fn local_pty_process_id(app: &AppHandle, terminal_id: &str) -> Option<u32> {
+    app.try_state::<PtyManager>()
+        .and_then(|pty| pty.runtime_identity(terminal_id).ok())
+        .and_then(|identity| identity.process_id)
 }
 
 fn sync_mux_terminal_remove(app: &AppHandle, terminal_id: &str) {
@@ -771,6 +785,12 @@ pub async fn spawn_terminal(
             &shell_name,
             cwd.as_deref().unwrap_or("."),
         );
+        let process_id = sidecar.list_info().await.ok().and_then(|infos| {
+            infos
+                .into_iter()
+                .find(|info| info.id == id)
+                .and_then(|info| info.process_id)
+        });
         sync_mux_terminal_spawn(
             &app,
             &id,
@@ -778,6 +798,7 @@ pub async fn spawn_terminal(
             cwd.as_deref().unwrap_or("."),
             cols,
             rows,
+            process_id,
         );
         wire_sidecar_terminal_streaming(
             &app,
@@ -871,6 +892,7 @@ pub async fn spawn_terminal(
         cwd.as_deref().unwrap_or("."),
         cols,
         rows,
+        local_pty_process_id(&app, &id),
     );
 
     let stream_wire_started_at = Instant::now();
@@ -1876,6 +1898,7 @@ pub(crate) async fn adopt_sidecar_terminals(
             &cwd,
             SIDECAR_RECONNECT_DEFAULT_COLS,
             SIDECAR_RECONNECT_DEFAULT_ROWS,
+            info.process_id,
         );
         // Restore the pane's persisted identity (user/agent-assigned name and
         // role) so a restart doesn't reduce every adopted pane to its shell
@@ -3990,7 +4013,7 @@ mod tests {
 
     #[test]
     fn validate_path_allows_normal_paths() {
-        assert!(validate_path("C:/Users/owner/project").is_ok());
+        assert!(validate_path("C:/repo/project").is_ok());
         assert!(validate_path("/home/user/project").is_ok());
         assert!(validate_path("D:/work/code").is_ok());
     }
@@ -4036,25 +4059,25 @@ mod tests {
     #[test]
     fn vscode_open_args_plain_path_uses_no_goto_flag() {
         assert_eq!(
-            vscode_open_args("C:/Users/owner/project/src/main.rs", None, None).unwrap(),
-            vec!["C:/Users/owner/project/src/main.rs".to_string()]
+            vscode_open_args("C:/repo/project/src/main.rs", None, None).unwrap(),
+            vec!["C:/repo/project/src/main.rs".to_string()]
         );
     }
 
     #[test]
     fn vscode_open_args_line_and_column_use_goto_syntax() {
         assert_eq!(
-            vscode_open_args("C:/Users/owner/project/src/main.rs", Some(12), Some(4)).unwrap(),
+            vscode_open_args("C:/repo/project/src/main.rs", Some(12), Some(4)).unwrap(),
             vec![
                 "-g".to_string(),
-                "C:/Users/owner/project/src/main.rs:12:4".to_string()
+                "C:/repo/project/src/main.rs:12:4".to_string()
             ]
         );
         assert_eq!(
-            vscode_open_args("C:/Users/owner/project/src/main.rs", Some(12), None).unwrap(),
+            vscode_open_args("C:/repo/project/src/main.rs", Some(12), None).unwrap(),
             vec![
                 "-g".to_string(),
-                "C:/Users/owner/project/src/main.rs:12".to_string()
+                "C:/repo/project/src/main.rs:12".to_string()
             ]
         );
     }
@@ -4062,8 +4085,8 @@ mod tests {
     #[test]
     fn vscode_open_args_ignores_zero_line_and_column() {
         assert_eq!(
-            vscode_open_args("C:/Users/owner/project/src/main.rs", Some(0), Some(0)).unwrap(),
-            vec!["C:/Users/owner/project/src/main.rs".to_string()]
+            vscode_open_args("C:/repo/project/src/main.rs", Some(0), Some(0)).unwrap(),
+            vec!["C:/repo/project/src/main.rs".to_string()]
         );
     }
 
@@ -4071,22 +4094,22 @@ mod tests {
     fn vscode_diff_args_uses_native_diff_flag() {
         assert_eq!(
             vscode_diff_args(
-                "C:/Users/owner/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs",
-                "C:/Users/owner/project/src/main.rs"
+                "C:/Users/example/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs",
+                "C:/repo/project/src/main.rs"
             )
             .unwrap(),
             vec![
                 "--diff".to_string(),
-                "C:/Users/owner/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs".to_string(),
-                "C:/Users/owner/project/src/main.rs".to_string()
+                "C:/Users/example/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs".to_string(),
+                "C:/repo/project/src/main.rs".to_string()
             ]
         );
     }
 
     #[test]
     fn vscode_diff_args_rejects_empty_paths() {
-        assert!(vscode_diff_args("", "C:/Users/owner/project/src/main.rs").is_err());
-        assert!(vscode_diff_args("C:/Users/owner/project/src/main.rs", " ").is_err());
+        assert!(vscode_diff_args("", "C:/repo/project/src/main.rs").is_err());
+        assert!(vscode_diff_args("C:/repo/project/src/main.rs", " ").is_err());
     }
 
     #[test]
@@ -4188,12 +4211,12 @@ mod tests {
     #[test]
     fn command_history_cwd_normalizes_windows_and_url_separators() {
         assert_eq!(
-            normalize_command_history_cwd(r"C:\Users\owner\Aether_Terminal\"),
-            "C:/Users/owner/Aether_Terminal"
+            normalize_command_history_cwd(r"C:\repo\aether-terminal\"),
+            "C:/repo/aether-terminal"
         );
         assert_eq!(
-            normalize_command_history_cwd("C:/Users/owner/Aether_Terminal"),
-            "C:/Users/owner/Aether_Terminal"
+            normalize_command_history_cwd("C:/repo/aether-terminal"),
+            "C:/repo/aether-terminal"
         );
         assert_eq!(normalize_command_history_cwd("C:/"), "C:/");
         assert_eq!(normalize_command_history_cwd("   "), ".");

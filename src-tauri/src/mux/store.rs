@@ -180,6 +180,7 @@ pub fn restored_session_to_mux_graph(
 
 pub fn graph_for_snapshot_restore(mut graph: MuxGraph) -> Result<MuxGraph, MuxStoreError> {
     for workspace in graph.workspaces.values_mut() {
+        workspace.clients.clear();
         for window in workspace.windows.values_mut() {
             for tab in window.tabs.values_mut() {
                 for pane in tab.panes.values_mut() {
@@ -286,6 +287,7 @@ impl From<std::io::Error> for MuxStoreError {
 #[cfg(test)]
 mod tests {
     use crate::db::queries::{RestoredWindow, Session, Window};
+    use crate::mux::graph::{MuxClientMode, MuxClientRecord};
 
     use super::*;
 
@@ -444,5 +446,34 @@ mod tests {
             "restore-pending:pane-a"
         );
         assert_eq!(pane.pty.as_ref().unwrap().process_id, None);
+    }
+
+    #[test]
+    fn snapshot_restore_drops_live_client_records() {
+        let mut graph = restored_session_to_mux_graph(&restored()).unwrap();
+        graph
+            .workspaces
+            .get_mut("session-a")
+            .unwrap()
+            .clients
+            .insert(
+                "client-a".to_string(),
+                MuxClientRecord::new(
+                    "client-a",
+                    "session-a",
+                    "window-a",
+                    MuxClientMode::ReadOnly,
+                    1,
+                ),
+            );
+        graph.validate().unwrap();
+
+        let restored = graph_for_snapshot_restore(graph).unwrap();
+        assert!(restored
+            .workspaces
+            .get("session-a")
+            .unwrap()
+            .clients
+            .is_empty());
     }
 }

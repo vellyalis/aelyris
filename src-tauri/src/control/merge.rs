@@ -1,7 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::control::ControlResult;
-use crate::git::MergeReadiness;
+use crate::git::{BoundMergeResult, MergeOutcome, MergeReadiness};
+use crate::merge_intent::store::MergeIntentStore;
+use crate::merge_intent::{MergeIntent, MergeIntentState};
+
+fn strip_local_verbatim_prefix(path: &str) -> String {
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +28,33 @@ pub struct QueuedMergeIntent {
     /// backward compatibility with the existing MCP/IPC consumers.
     pub status: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableMergeExecution {
+    pub intent_id: String,
+    pub status: String,
+    pub outcome: Option<MergeOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DurableMergeError {
+    NotFound(String),
+    InvalidRequest(String),
+    Persistence(String),
+}
+
+impl std::fmt::Display for DurableMergeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(message)
+            | Self::InvalidRequest(message)
+            | Self::Persistence(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for DurableMergeError {}
 
 /// The lifecycle a queued merge intent moves through. `queued -> merging ->
 /// (merged | rejected | conflict)`. A reject may also short-circuit from
@@ -79,6 +112,146 @@ pub fn inspect(
     target_branch: &str,
 ) -> ControlResult<MergeReadiness> {
     crate::git::inspect_merge_worktree_branch(repo_path, source_branch, target_branch)
+}
+
+pub fn request_durable_intent(
+    store: &MergeIntentStore,
+    repo_path: &str,
+    task_id: &str,
+    session_id: Option<&str>,
+    source_branch: &str,
+    target_branch: &str,
+    now: i64,
+) -> ControlResult<MergeIntent> {
+    if task_id.trim().is_empty() {
+        return Err("task id is required".to_string());
+    }
+    let canonical = std::fs::canonicalize(repo_path)
+        .map_err(|_| "repo path must exist and be accessible".to_string())?;
+    if !canonical.is_dir() {
+        return Err("repo path must be a directory".to_string());
+    }
+    let repo_path = strip_local_verbatim_prefix(&canonical.to_string_lossy());
+    let readiness = inspect(&repo_path, source_branch, target_branch)?;
+    let intent = MergeIntent {
+        intent_id: format!("merge:{task_id}:{}", uuid::Uuid::new_v4()),
+        repo_path,
+        source_branch: source_branch.to_string(),
+        target_branch: target_branch.to_string(),
+        source_oid: readiness.source_oid,
+        target_oid: readiness.target_oid,
+        merge_base_oid: readiness.merge_base_oid,
+        task_id: task_id.to_string(),
+        created_at: now,
+        state: MergeIntentState::Queued,
+        updated_at: now,
+        session_id: session_id.map(str::to_string),
+        reviewer_id: None,
+        gates_digest: None,
+    };
+    store.create_or_get(&intent)
+}
+
+pub fn approve_durable_intent(
+    store: &MergeIntentStore,
+    intent_id: &str,
+    reviewer_id: &str,
+    gates_digest: Option<&str>,
+    now: i64,
+) -> Result<DurableMergeExecution, DurableMergeError> {
+    if reviewer_id.trim().is_empty() {
+        return Err(DurableMergeError::InvalidRequest(
+            "reviewer id is required".to_string(),
+        ));
+    }
+    let intent = store
+        .get(intent_id)
+        .map_err(DurableMergeError::Persistence)?
+        .ok_or_else(|| {
+            DurableMergeError::NotFound(format!("merge intent not found: {intent_id}"))
+        })?;
+    if !store
+        .claim_for_merge(intent_id, now)
+        .map_err(DurableMergeError::Persistence)?
+    {
+        return Err(DurableMergeError::InvalidRequest(format!(
+            "intent {intent_id} is not claimable (state {}): already merging, terminal, or needs reconcile",
+            intent.state.as_str()
+        )));
+    }
+    if let Err(err) = store.record_approval(intent_id, reviewer_id, gates_digest, now) {
+        if let Err(reconcile_err) =
+            store.set_state(intent_id, MergeIntentState::NeedsReconcile, now)
+        {
+            return Err(DurableMergeError::Persistence(format!(
+                "{err}; additionally failed to mark needs_reconcile: {reconcile_err}"
+            )));
+        }
+        return Err(DurableMergeError::Persistence(err));
+    }
+
+    match crate::git::branch_contains_commit(
+        &intent.repo_path,
+        &intent.target_branch,
+        &intent.source_oid,
+    ) {
+        Ok(true) => {
+            store
+                .set_state(intent_id, MergeIntentState::Merged, now)
+                .map_err(DurableMergeError::Persistence)?;
+            return Ok(DurableMergeExecution {
+                intent_id: intent_id.to_string(),
+                status: MergeIntentState::Merged.as_str().to_string(),
+                outcome: Some(MergeOutcome::AlreadyMerged),
+            });
+        }
+        Ok(false) => {}
+        Err(err) => {
+            store
+                .set_state(intent_id, MergeIntentState::NeedsReconcile, now)
+                .map_err(DurableMergeError::Persistence)?;
+            return Err(DurableMergeError::InvalidRequest(format!(
+                "intent {intent_id}: repo unreadable, marked needs_reconcile: {err}"
+            )));
+        }
+    }
+
+    match crate::git::perform_merge_bound(
+        &intent.repo_path,
+        &intent.source_branch,
+        &intent.target_branch,
+        &intent.source_oid,
+        &intent.target_oid,
+    ) {
+        Ok(BoundMergeResult::StaleTips) => {
+            store
+                .set_state(intent_id, MergeIntentState::NeedsReconcile, now)
+                .map_err(DurableMergeError::Persistence)?;
+            Err(DurableMergeError::InvalidRequest(format!(
+                "intent {intent_id}: branch tips moved since request; marked needs_reconcile"
+            )))
+        }
+        Ok(BoundMergeResult::Merged(outcome)) => {
+            let final_state = match &outcome {
+                MergeOutcome::Conflict { .. } => MergeIntentState::Conflict,
+                _ => MergeIntentState::Merged,
+            };
+            store
+                .set_state(intent_id, final_state, now)
+                .map_err(DurableMergeError::Persistence)?;
+            Ok(DurableMergeExecution {
+                intent_id: intent_id.to_string(),
+                status: final_state.as_str().to_string(),
+                outcome: Some(outcome),
+            })
+        }
+        Err(err) => {
+            store
+                .set_state(intent_id, MergeIntentState::NeedsReconcile, now)
+                .map_err(DurableMergeError::Persistence)?;
+            Err(DurableMergeError::InvalidRequest(err))
+        }
+    }
 }
 
 /// Serialized merge queue: per-target-branch FIFO that guarantees at most one

@@ -25,16 +25,16 @@
     { "command": "totallyunknowncmd --flag", "severity": "review", "classes": ["unknown"] },
     { "command": "git status\nls -la", "severity": "review", "classes": ["read-only"] },
     {
-      "command": "export API_KEY=sk-abcdefghijklmnop1234",
+      "command": "export API_KEY=REDACTION_TEST_API_KEY",
       "severity": "review",
       "classes": ["secret-bearing"],
-      "previewExcludes": ["sk-abcdefghijklmnop1234"]
+      "previewExcludes": ["REDACTION_TEST_API_KEY"]
     },
     {
-      "command": "curl -H \"Authorization: Bearer abcdefghijklongtoken123\" https://x.test",
+      "command": "curl --token=REDACTION_TEST_FLAG_SECRET https://x.test",
       "severity": "review",
       "classes": ["network", "secret-bearing"],
-      "previewExcludes": ["abcdefghijklongtoken123"]
+      "previewExcludes": ["REDACTION_TEST_FLAG_SECRET"]
     },
 
     { "command": "rm -rf /tmp/build", "severity": "deny", "classes": ["delete", "destructive"] },

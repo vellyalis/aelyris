@@ -23,6 +23,7 @@ const CAPTURE_BUFFER_MAX_LINES: usize = 20_000;
 /// A single PTY instance with its reader/writer and metadata
 struct PtyInstance {
     spawn_token: Uuid,
+    process_id: Option<u32>,
     pair: PtyPair,
     writer: Box<dyn Write + Send>,
     shell_type: ShellType,
@@ -110,6 +111,21 @@ pub struct TerminalInfo {
     pub shell_type: ShellType,
     pub cwd: String,
     pub uptime_secs: u64,
+    pub process_id: Option<u32>,
+    pub spawn_token: String,
+}
+
+/// Stable runtime identity for a live PTY instance.
+///
+/// `process_id` is the user-visible OS process identity. `spawn_token` is an
+/// in-daemon generation guard: it changes on respawn even when the terminal id
+/// is intentionally reused.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyRuntimeIdentity {
+    pub id: String,
+    pub process_id: Option<u32>,
+    pub spawn_token: String,
 }
 
 /// Manages multiple PTY sessions.
@@ -279,7 +295,8 @@ impl PtyManager {
         // + ResumeThread, so the guard is best-effort against crashes and exact for
         // normal teardown. The required PROCESS_SET_QUOTA|PROCESS_TERMINATE rights
         // bound which PIDs can be opened, so PID recycling is not a concern.
-        if let Some(pid) = child.process_id() {
+        let process_id = child.process_id();
+        if let Some(pid) = process_id {
             crate::process::guard_child_against_orphan(pid);
         }
         let child_killer = child.clone_killer();
@@ -311,6 +328,7 @@ impl PtyManager {
 
         let instance = PtyInstance {
             spawn_token: Uuid::new_v4(),
+            process_id,
             pair,
             writer,
             shell_type: ShellType::PowerShell, // placeholder for non-shell commands
@@ -362,6 +380,22 @@ impl PtyManager {
             .lock()
             .map(|i| i.contains_key(id))
             .unwrap_or(false)
+    }
+
+    /// Return the current runtime identity without taking ownership of any
+    /// child handle. This remains available after the API reaper has moved the
+    /// child into a waiter thread, so mux attach/detach can prove it preserved
+    /// the same live PTY process instead of silently respawning it.
+    pub fn runtime_identity(&self, id: &str) -> Result<PtyRuntimeIdentity, PtyError> {
+        let instances = self.lock_instances()?;
+        let instance = instances
+            .get(id)
+            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+        Ok(PtyRuntimeIdentity {
+            id: id.to_string(),
+            process_id: instance.process_id,
+            spawn_token: instance.spawn_token.to_string(),
+        })
     }
 
     /// Take ownership of the child-process handle for `id`. Returns the
@@ -470,6 +504,38 @@ impl PtyManager {
         }
 
         Ok(instance.output_tx.subscribe())
+    }
+
+    /// Atomically capture recent output and subscribe to future output.
+    ///
+    /// This is the attach-safe variant for external multi-client streams:
+    /// it locks the output buffer, creates a fresh broadcast receiver, captures
+    /// the buffer, then releases the lock. The reader thread feeds the buffer
+    /// before broadcasting each chunk, so holding this lock prevents an output
+    /// chunk from landing between capture and subscribe. The returned receiver
+    /// therefore starts after the captured snapshot without a gap or duplicate
+    /// chunk from this critical section.
+    pub fn capture_and_subscribe(
+        &self,
+        id: &str,
+        lines: usize,
+        clean: bool,
+    ) -> Result<(String, broadcast::Receiver<Vec<u8>>), PtyError> {
+        let instances = self.lock_instances()?;
+
+        let instance = instances
+            .get(id)
+            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+
+        let buffer = instance
+            .output_buffer
+            .lock()
+            .map_err(|_| PtyError::LockPoisoned)?;
+        let rx = instance.output_tx.subscribe();
+        let line_count = lines.clamp(1, CAPTURE_BUFFER_MAX_LINES);
+        let output = buffer.tail_including_partial(line_count).join("\n");
+        let text = if clean { strip_ansi(&output) } else { output };
+        Ok((text, rx))
     }
 
     /// Capture the recent PTY output from the daemon-side ring buffer.
@@ -617,6 +683,8 @@ impl PtyManager {
                         shell_type: inst.shell_type.clone(),
                         cwd: inst.cwd.clone(),
                         uptime_secs: inst.spawned_at.elapsed().as_secs(),
+                        process_id: inst.process_id,
+                        spawn_token: inst.spawn_token.to_string(),
                     })
                     .collect()
             })

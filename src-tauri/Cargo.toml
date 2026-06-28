@@ -58,6 +58,7 @@ wgpu = { version = "28.0.0", default-features = false, features = ["std", "dx12"
 pollster = "0.4"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 fontdue = "0.9"
+png = "0.17"
 
 # Git operations
 git2 = "0.20"
@@ -137,6 +138,7 @@ features = [
     "Win32_UI_Controls",
     "Win32_UI_Accessibility",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_DirectWrite",
     "Win32_Graphics_Dwm",
     "Win32_System_Com",
     "Win32_System_DataExchange",
@@ -149,6 +151,9 @@ features = [
     "Win32_System_JobObjects",
     "Win32_System_Threading",
 ]
+
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.62"
 
 [dev-dependencies]
 tempfile = "3"

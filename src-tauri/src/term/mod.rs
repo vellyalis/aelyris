@@ -14,6 +14,7 @@ pub mod prompt_marks;
 pub mod render_frame;
 pub mod render_pipeline;
 pub mod snapshot;
+pub mod text_shaping;
 
 pub use command_blocks::{CommandBlockJournal, CommandBlockRecord};
 pub use diff::{diff_snapshots, DiffTracker, GridDiff, RowDiff};
@@ -31,4 +32,10 @@ pub use render_frame::{
 pub use render_pipeline::{NativeRenderCommit, NativeRenderPipeline};
 pub use snapshot::{
     attr, CellSnapshot, CursorShapeSnapshot, CursorSnapshot, GridSnapshot, HistorySearchMatch,
+};
+pub use text_shaping::{
+    classify_char, system_text_shaping_capability, terminal_text_shaping_policy, CellStyle,
+    DirectWriteTextShaper, FontFallbackClass, GlyphCluster, LigaturePolicy, PolicyTextShaper,
+    ShapeInput, ShapedRun, SystemTextShapingCapability, TerminalTextShapingPolicy, TextShapeError,
+    TextShaper, TextShapingBackend,
 };

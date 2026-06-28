@@ -14,11 +14,12 @@ use aether_terminal_lib::db::{
     WorkspaceItemRecord,
 };
 use aether_terminal_lib::term::{
+    system_text_shaping_capability, terminal_text_shaping_policy, CellStyle, DirectWriteTextShaper,
     NativeCellMetrics, NativeInputSurfaceRect, NativeRenderFrame, NativeRenderPipeline,
-    NativeTerminalInputHost, TermEngine,
+    NativeTerminalInputHost, ShapeInput, TermEngine, TextShaper,
 };
 use reqwest::Method;
-use serde_json::{json, Value};
+use serde_json::{json, to_value, Value};
 use sha2::{Digest, Sha256};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9333";
@@ -52,6 +53,7 @@ async fn run() -> Result<(), String> {
         "present-loop-proof" => present_loop_proof(&args[1..]).await,
         "gpu-render-proof" => gpu_render_proof(&args[1..]).await,
         "winit-wgpu-proof" => winit_wgpu_proof(&args[1..]).await,
+        "text-shaping-fixture-proof" => text_shaping_fixture_proof(&args[1..]).await,
         "ime-proof" => ime_proof(&args[1..]).await,
         "ime-dogfood-proof" => ime_dogfood_proof(&args[1..]).await,
         "ime-os-dogfood-proof" => ime_os_dogfood_proof(&args[1..]).await,
@@ -202,10 +204,21 @@ async fn contract() -> Result<(), String> {
 }
 
 fn full_native_readiness_contract() -> Value {
+    let text_shaping_policy = terminal_text_shaping_policy();
+    let system_text_shaping = system_text_shaping_capability();
     json!({
         "schema": "aether.full-native-readiness.v1",
         "currentStage": "native-client-spike",
         "finalGoal": "daily-driver no-WebView Rust client",
+        "textShapingPolicy": to_value(&text_shaping_policy).unwrap_or_else(|_| json!({
+            "readyForGhosttyClaim": false,
+            "releaseBlockers": ["native text-shaping policy serialization failed"]
+        })),
+        "systemTextShapingCapability": to_value(&system_text_shaping).unwrap_or_else(|_| json!({
+            "available": false,
+            "readyForGhosttyClaim": false,
+            "blockers": ["native system text-shaping capability serialization failed"]
+        })),
         "definitionOfDone": [
             "The primary terminal window runs in the aether-native process without React or WebView.",
             "The terminal present loop is native Rust and GPU-backed.",
@@ -242,9 +255,14 @@ fn full_native_readiness_contract() -> Value {
             "nativeAccessibilityTreeProof": true,
             "nativeUiaProviderDogfoodProof": true,
             "nativeVisualQaHarnessProof": true,
-            "nativePrimaryShellPromotionProof": true
+            "nativePrimaryShellPromotionProof": true,
+            "nativeTextShapingPolicyContract": true,
+            "nativeSystemTextShapingBoundary": system_text_shaping.available
         },
         "missing": {
+            "nativeSystemTextShapingAndFallback": !(system_text_shaping.available && system_text_shaping.system_font_fallback),
+            "nativeRendererConsumesSystemShapedRuns": !system_text_shaping.renderer_integration_ready,
+            "nativeTextShapingVisualFixtures": !system_text_shaping.visual_fixture_ready,
             "nativePresentLoopDogfood": true,
             "nativeImeLiveDogfood": null,
             "nativeClipboardAndSelectionDogfood": true,
@@ -262,6 +280,7 @@ fn full_native_readiness_contract() -> Value {
         "doNotClaimFullNativeUntil": [
             "native present-loop is dogfooded by a visible interactive terminal window",
             "winit-wgpu font-atlas renderer is dogfooded as the primary visible terminal renderer",
+            "Windows system-backed text shaping and real font fallback are wired into the native renderer without '?' substitution",
             "Japanese IME candidate selection is dogfooded with a real user-driven IME session inside aether-native",
             "Command Center/right rail runs as part of the primary daily-driver native shell",
             "native accessibility tree is exposed through UIA/accesskit to assistive technologies",
@@ -520,6 +539,114 @@ async fn winit_wgpu_proof(args: &[String]) -> Result<(), String> {
         "renderFrame": frame_value,
         "winitWgpu": winit_wgpu,
     }))
+}
+
+async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
+    let cols = parse_usize_option(args, "--cols", 80)?;
+    let rows = parse_usize_option(args, "--rows", 8)?;
+    let text = option_value(args, "--text").unwrap_or_else(|| {
+        [
+            "Aether native text shaping fixture",
+            "CJK fallback: 日本語表示",
+            "Box drawing: ┌─┐ └─┘",
+            "No ligature policy: == => fi ffi",
+        ]
+        .join("\n")
+    });
+    let png_path = option_value(args, "--png")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_text_shaping_fixture_png_path);
+    let out_path = option_value(args, "--out")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_text_shaping_fixture_json_path);
+
+    let mut engine =
+        TermEngine::new(cols, rows).map_err(|err| format!("TermEngine failed: {err}"))?;
+    let metrics = NativeCellMetrics::new(9, 18).map_err(|err| err.to_string())?;
+    engine.advance(text.as_bytes());
+    let snapshot = engine.snapshot();
+    let frame = NativeRenderFrame::from_snapshot(&snapshot, metrics);
+    let frame_summary = frame.summary();
+    let surface_width = u32::from(frame.cell_width_px) * u32::from(frame.cols).max(1);
+    let surface_height = u32::from(frame.cell_height_px) * u32::from(frame.rows).max(1);
+    let plan = build_winit_wgpu_terminal_draw_plan(&frame, surface_width, surface_height)?;
+
+    write_font_atlas_png(&png_path, &plan.font_atlas)?;
+    let png_bytes =
+        std::fs::read(&png_path).map_err(|err| format!("read fixture png failed: {err}"))?;
+    let png_len = png_bytes.len();
+    let png_sha256 = sha256_bytes_hex(&png_bytes);
+    let png_relative = workspace_relative_path(&png_path);
+    let ready = plan.renderer_consumes_system_shaped_runs
+        && plan.directwrite_shape_errors.is_empty()
+        && plan.directwrite_fallback_clusters > 0
+        && plan.font_atlas.fallback_glyphs > 0
+        && plan.font_atlas.fallback_font_load_failures == 0
+        && plan.font_atlas.missing_fallback_glyphs == 0
+        && plan.question_mark_substitution_disabled
+        && plan.font_atlas.question_mark_substitutions == 0
+        && plan.fallback_glyph_quads >= plan.directwrite_fallback_clusters;
+
+    let artifact = json!({
+        "schema": "aether.native.text-shaping-visual-fixture.v1",
+        "client": native_client_identity(),
+        "operation": "text-shaping-fixture-proof",
+        "sourceOfTruth": "aether-native-directwrite-shaped-run-font-atlas",
+        "webviewUsed": false,
+        "reactUsed": false,
+        "fixtureTextSha256": sha256_hex(&text),
+        "fixtureTextPreview": text,
+        "renderFrame": serde_json::to_value(&frame_summary).map_err(|err| err.to_string())?,
+        "png": {
+            "path": png_relative,
+            "bytes": png_len,
+            "sha256": png_sha256,
+            "width": plan.font_atlas.width,
+            "height": plan.font_atlas.height,
+            "colorType": "grayscale8"
+        },
+        "textShaping": {
+            "rendererConsumesSystemShapedRuns": plan.renderer_consumes_system_shaped_runs,
+            "directWriteShapeRuns": plan.directwrite_shape_runs,
+            "directWriteShapedClusters": plan.directwrite_shaped_clusters,
+            "directWriteFallbackClusters": plan.directwrite_fallback_clusters,
+            "directWriteFallbackFontFamilies": plan.directwrite_fallback_font_families,
+            "directWriteShapeErrors": plan.directwrite_shape_errors,
+            "questionMarkSubstitutionDisabled": plan.question_mark_substitution_disabled,
+            "fontAtlasGlyphs": plan.font_atlas.glyph_count,
+            "fontAtlasFallbackGlyphs": plan.font_atlas.fallback_glyphs,
+            "fontAtlasFallbackFontLoadFailures": plan.font_atlas.fallback_font_load_failures,
+            "fontAtlasMissingGlyphs": plan.font_atlas.missing_glyphs,
+            "fontAtlasMissingFallbackGlyphs": plan.font_atlas.missing_fallback_glyphs,
+            "fontAtlasQuestionMarkSubstitutions": plan.font_atlas.question_mark_substitutions,
+            "fallbackGlyphQuads": plan.fallback_glyph_quads,
+            "skippedGlyphQuads": plan.skipped_glyph_quads,
+            "ligaturePolicy": {
+                "allowLigatures": false,
+                "fixtureContainsLigatureCandidates": text.contains("=>") && text.contains("fi"),
+                "proofBoundary": "native text shaping fixture keeps no-ligature terminal policy explicit; glyph-run ligature inspection remains a separate future proof"
+            }
+        },
+        "visualFallbackGlyphFixturesReady": ready,
+        "readyForGhosttyTextShapingClaim": ready,
+        "readyForFullGhosttyClaim": false,
+        "remainingFullGhosttyBlockers": [
+            "native visual regression full surface proof",
+            "native daily-driver terminal proof",
+            "native boundary contract"
+        ]
+    });
+
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("create text shaping fixture artifact dir failed: {err}"))?;
+    }
+    std::fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&artifact).map_err(|err| err.to_string())? + "\n",
+    )
+    .map_err(|err| format!("write text shaping fixture artifact failed: {err}"))?;
+    print_json(&artifact)
 }
 
 async fn ime_proof(args: &[String]) -> Result<(), String> {
@@ -4208,6 +4335,51 @@ fn print_json(value: &Value) -> Result<(), String> {
     Ok(())
 }
 
+fn default_text_shaping_fixture_png_path() -> PathBuf {
+    env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".codex-auto")
+        .join("production-smoke")
+        .join("native-text-shaping")
+        .join("fallback-glyph-atlas.png")
+}
+
+fn default_text_shaping_fixture_json_path() -> PathBuf {
+    env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".codex-auto")
+        .join("quality")
+        .join("native-text-shaping-visual-fixture.json")
+}
+
+fn workspace_relative_path(path: &std::path::Path) -> String {
+    let root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    path.strip_prefix(&root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn write_font_atlas_png(path: &std::path::Path, atlas: &FontAtlas) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("create text shaping fixture png dir failed: {err}"))?;
+    }
+    let file = std::fs::File::create(path)
+        .map_err(|err| format!("create text shaping fixture png failed: {err}"))?;
+    let writer = std::io::BufWriter::new(file);
+    let mut encoder = png::Encoder::new(writer, atlas.width, atlas.height);
+    encoder.set_color(png::ColorType::Grayscale);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut png_writer = encoder
+        .write_header()
+        .map_err(|err| format!("write png header failed: {err}"))?;
+    png_writer
+        .write_image_data(&atlas.pixels)
+        .map_err(|err| format!("write png image data failed: {err}"))?;
+    Ok(())
+}
+
 fn sha256_hex(text: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
@@ -4218,9 +4390,19 @@ fn sha256_hex(text: &str) -> String {
         .collect()
 }
 
+fn sha256_bytes_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn print_help() {
     println!(
-        "aether-native commands:\n  contract\n  window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  render-proof [--session id] [--text text] [--expect text] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  present-loop-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  gpu-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n]\n  winit-wgpu-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--show]\n  ime-proof [--prompt text] [--preedit text] [--commit text] [--cols n] [--rows n]\n  ime-dogfood-proof [--commit text]\n  ime-os-dogfood-proof [--preedit text] [--commit text]\n  settings-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n]\n  settings-window-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n] [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-proof\n  command-center-window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-input-scroll-proof\n  mode-shell-proof [--mode id]\n  mode-rail-window-proof [--mode id] [--duration-ms n] [--alpha 1..255] [--show]\n  inspector-window-proof [--mode id] [--alpha 1..255] [--duration-ms n] [--show]\n  right-rail-demotion-proof\n  accessibility-proof\n  uia-provider-proof\n  visual-qa-proof\n  primary-shell-proof [--duration-ms n] [--alpha 1..255] [--show]\n  power-events-proof --start-epoch n --end-epoch n\n  db-smoke-proof\n  sleep-now [--i-understand-this-sleeps-windows]\n  list\n  graph <workspace>\n  attach <workspace>\n  detach <workspace>\n  send <session> <text...> [--enter]\n  capture <session> [--lines n] [--raw]\n\nEnvironment:\n  AETHER_API_URL    daemon URL; defaults to sidecar token location or http://127.0.0.1:9333\n  AETHER_API_TOKEN  bearer token; otherwise reads the Aether sidecar token file"
+        "aether-native commands:\n  contract\n  window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  render-proof [--session id] [--text text] [--expect text] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  present-loop-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  gpu-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n]\n  winit-wgpu-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--show]\n  text-shaping-fixture-proof [--text text] [--cols n] [--rows n] [--png path] [--out path]\n  ime-proof [--prompt text] [--preedit text] [--commit text] [--cols n] [--rows n]\n  ime-dogfood-proof [--commit text]\n  ime-os-dogfood-proof [--preedit text] [--commit text]\n  settings-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n]\n  settings-window-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n] [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-proof\n  command-center-window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-input-scroll-proof\n  mode-shell-proof [--mode id]\n  mode-rail-window-proof [--mode id] [--duration-ms n] [--alpha 1..255] [--show]\n  inspector-window-proof [--mode id] [--alpha 1..255] [--duration-ms n] [--show]\n  right-rail-demotion-proof\n  accessibility-proof\n  uia-provider-proof\n  visual-qa-proof\n  primary-shell-proof [--duration-ms n] [--alpha 1..255] [--show]\n  power-events-proof --start-epoch n --end-epoch n\n  db-smoke-proof\n  sleep-now [--i-understand-this-sleeps-windows]\n  list\n  graph <workspace>\n  attach <workspace>\n  detach <workspace>\n  send <session> <text...> [--enter]\n  capture <session> [--lines n] [--raw]\n\nEnvironment:\n  AETHER_API_URL    daemon URL; defaults to sidecar token location or http://127.0.0.1:9333\n  AETHER_API_TOKEN  bearer token; otherwise reads the Aether sidecar token file"
     );
 }
 
@@ -7049,8 +7231,43 @@ struct FontAtlas {
     height: u32,
     glyph_count: usize,
     fallback_glyphs: usize,
+    fallback_font_load_failures: usize,
+    missing_glyphs: usize,
+    missing_fallback_glyphs: usize,
+    question_mark_substitutions: usize,
     font_path: String,
     font_px: f32,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone)]
+struct NativeRendererFallbackFontRef {
+    family: String,
+    path: String,
+    collection_index: u32,
+}
+
+#[cfg(target_os = "windows")]
+struct NativeRendererGlyphPlan {
+    ch: char,
+    rect_px: [f32; 4],
+    fg: u32,
+    fallback_required: bool,
+}
+
+#[cfg(target_os = "windows")]
+struct NativeRendererTextShapePlan {
+    atlas_chars: std::collections::BTreeSet<char>,
+    render_glyphs: Vec<NativeRendererGlyphPlan>,
+    fallback_required_chars: std::collections::BTreeSet<char>,
+    fallback_font_refs: std::collections::BTreeMap<char, NativeRendererFallbackFontRef>,
+    renderer_consumes_system_shaped_runs: bool,
+    directwrite_shape_runs: usize,
+    directwrite_shaped_clusters: usize,
+    directwrite_fallback_clusters: usize,
+    directwrite_fallback_font_families: Vec<String>,
+    directwrite_shape_errors: Vec<String>,
+    question_mark_substitution_disabled: bool,
 }
 
 #[cfg(target_os = "windows")]
@@ -7058,6 +7275,15 @@ struct TerminalDrawPlan {
     rect_instances: Vec<RectInstance>,
     glyph_instances: Vec<GlyphInstance>,
     font_atlas: FontAtlas,
+    renderer_consumes_system_shaped_runs: bool,
+    directwrite_shape_runs: usize,
+    directwrite_shaped_clusters: usize,
+    directwrite_fallback_clusters: usize,
+    directwrite_fallback_font_families: Vec<String>,
+    directwrite_shape_errors: Vec<String>,
+    question_mark_substitution_disabled: bool,
+    skipped_glyph_quads: usize,
+    fallback_glyph_quads: usize,
     dirty_rects_rendered: usize,
     terminal_glyph_quads: usize,
     cursor_quads: usize,
@@ -7186,8 +7412,21 @@ fn native_winit_wgpu_surface_proof(
         terminal_glyph_quads: usize,
         font_atlas_glyphs: usize,
         font_atlas_fallback_glyphs: usize,
+        font_atlas_fallback_font_load_failures: usize,
+        font_atlas_missing_glyphs: usize,
+        font_atlas_missing_fallback_glyphs: usize,
+        font_atlas_question_mark_substitutions: usize,
         font_atlas_font_path: String,
         font_atlas_font_px: f32,
+        renderer_consumes_system_shaped_runs: bool,
+        directwrite_shape_runs: usize,
+        directwrite_shaped_clusters: usize,
+        directwrite_fallback_clusters: usize,
+        directwrite_fallback_font_families: Vec<String>,
+        directwrite_shape_errors: Vec<String>,
+        question_mark_substitution_disabled: bool,
+        skipped_glyph_quads: usize,
+        fallback_glyph_quads: usize,
         dirty_rects_rendered: usize,
         cursor_quads: usize,
         dirty_cells: usize,
@@ -7649,8 +7888,27 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                     self.terminal_glyph_quads = plan.terminal_glyph_quads;
                     self.font_atlas_glyphs = plan.font_atlas.glyph_count;
                     self.font_atlas_fallback_glyphs = plan.font_atlas.fallback_glyphs;
+                    self.font_atlas_fallback_font_load_failures =
+                        plan.font_atlas.fallback_font_load_failures;
+                    self.font_atlas_missing_glyphs = plan.font_atlas.missing_glyphs;
+                    self.font_atlas_missing_fallback_glyphs =
+                        plan.font_atlas.missing_fallback_glyphs;
+                    self.font_atlas_question_mark_substitutions =
+                        plan.font_atlas.question_mark_substitutions;
                     self.font_atlas_font_path = plan.font_atlas.font_path.clone();
                     self.font_atlas_font_px = plan.font_atlas.font_px;
+                    self.renderer_consumes_system_shaped_runs =
+                        plan.renderer_consumes_system_shaped_runs;
+                    self.directwrite_shape_runs = plan.directwrite_shape_runs;
+                    self.directwrite_shaped_clusters = plan.directwrite_shaped_clusters;
+                    self.directwrite_fallback_clusters = plan.directwrite_fallback_clusters;
+                    self.directwrite_fallback_font_families =
+                        plan.directwrite_fallback_font_families.clone();
+                    self.directwrite_shape_errors = plan.directwrite_shape_errors.clone();
+                    self.question_mark_substitution_disabled =
+                        plan.question_mark_substitution_disabled;
+                    self.skipped_glyph_quads = plan.skipped_glyph_quads;
+                    self.fallback_glyph_quads = plan.fallback_glyph_quads;
                     self.dirty_rects_rendered = plan.dirty_rects_rendered;
                     self.cursor_quads = plan.cursor_quads;
                     self.dirty_cells = plan.dirty_cells;
@@ -7750,8 +8008,21 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         terminal_glyph_quads: 0,
         font_atlas_glyphs: 0,
         font_atlas_fallback_glyphs: 0,
+        font_atlas_fallback_font_load_failures: 0,
+        font_atlas_missing_glyphs: 0,
+        font_atlas_missing_fallback_glyphs: 0,
+        font_atlas_question_mark_substitutions: 0,
         font_atlas_font_path: String::new(),
         font_atlas_font_px: 0.0,
+        renderer_consumes_system_shaped_runs: false,
+        directwrite_shape_runs: 0,
+        directwrite_shaped_clusters: 0,
+        directwrite_fallback_clusters: 0,
+        directwrite_fallback_font_families: Vec::new(),
+        directwrite_shape_errors: Vec::new(),
+        question_mark_substitution_disabled: false,
+        skipped_glyph_quads: 0,
+        fallback_glyph_quads: 0,
         dirty_rects_rendered: 0,
         cursor_quads: 0,
         dirty_cells: 0,
@@ -7791,6 +8062,19 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         .started
         .map(|started| started.elapsed().as_secs_f64() * 1000.0)
         .unwrap_or_default();
+    let renderer_text_shaping_integrated = app.renderer_consumes_system_shaped_runs
+        && app.directwrite_shape_errors.is_empty()
+        && app.question_mark_substitution_disabled;
+    let renderer_fallback_glyph_rasterization_ready = app.directwrite_fallback_clusters > 0
+        && app.font_atlas_fallback_glyphs > 0
+        && app.font_atlas_fallback_font_load_failures == 0
+        && app.font_atlas_missing_fallback_glyphs == 0
+        && app.fallback_glyph_quads >= app.directwrite_fallback_clusters;
+    let text_shaping_backend = if renderer_fallback_glyph_rasterization_ready {
+        "directwrite-shaped-run-consumed-fontdue-directwrite-fallback-atlas"
+    } else {
+        "directwrite-shaped-run-consumed-fontdue-primary-atlas-fallback-raster-pending"
+    };
     Ok(json!({
         "terminalRenderer": "native-winit-wgpu-terminal",
         "renderer": "winit-wgpu-surface-present-loop",
@@ -7826,8 +8110,38 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         "fontAtlas": true,
         "fontAtlasGlyphs": app.font_atlas_glyphs,
         "fontAtlasFallbackGlyphs": app.font_atlas_fallback_glyphs,
+        "fontAtlasFallbackFontLoadFailures": app.font_atlas_fallback_font_load_failures,
+        "fontAtlasMissingGlyphs": app.font_atlas_missing_glyphs,
+        "fontAtlasMissingFallbackGlyphs": app.font_atlas_missing_fallback_glyphs,
+        "fontAtlasQuestionMarkSubstitutions": app.font_atlas_question_mark_substitutions,
         "fontAtlasFontPath": app.font_atlas_font_path,
         "fontAtlasFontPx": app.font_atlas_font_px,
+        "rendererConsumesSystemShapedRuns": app.renderer_consumes_system_shaped_runs,
+        "directWriteShapeRuns": app.directwrite_shape_runs,
+        "directWriteShapedClusters": app.directwrite_shaped_clusters,
+        "directWriteFallbackClusters": app.directwrite_fallback_clusters,
+        "directWriteFallbackFontFamilies": app.directwrite_fallback_font_families,
+        "directWriteShapeErrors": app.directwrite_shape_errors,
+        "questionMarkSubstitutionDisabled": app.question_mark_substitution_disabled,
+        "skippedGlyphQuads": app.skipped_glyph_quads,
+        "fallbackGlyphQuads": app.fallback_glyph_quads,
+        "textShapingPolicy": to_value(&terminal_text_shaping_policy()).unwrap_or_else(|_| json!({
+            "readyForGhosttyClaim": false,
+            "releaseBlockers": ["native text-shaping policy serialization failed"]
+        })),
+        "systemTextShapingCapability": to_value(&system_text_shaping_capability()).unwrap_or_else(|_| json!({
+            "available": false,
+            "readyForGhosttyClaim": false,
+            "blockers": ["native system text-shaping capability serialization failed"]
+        })),
+        "textShapingBackend": text_shaping_backend,
+        "textShapingRendererIntegrationReady": renderer_text_shaping_integrated,
+        "textShapingFallbackGlyphRasterizationReady": renderer_fallback_glyph_rasterization_ready,
+        "textShapingReadyForGhosttyClaim": false,
+        "textShapingBlockedUntil": [
+            "winit/wgpu glyph atlas rasterizes fallback glyphs from DirectWrite-resolved fonts",
+            "visual ligature/no-ligature regression artifacts"
+        ],
         "terminalGlyphQuads": app.terminal_glyph_quads,
         "cursorQuads": app.cursor_quads,
         "dirtyRectDogfood": app.dirty_rects_rendered > 0,
@@ -7876,19 +8190,190 @@ fn load_native_terminal_font() -> Result<(fontdue::Font, String), String> {
 }
 
 #[cfg(target_os = "windows")]
+fn load_fontdue_font_from_path(path: &str, collection_index: u32) -> Result<fontdue::Font, String> {
+    let bytes = std::fs::read(path).map_err(|err| format!("read {path}: {err}"))?;
+    fontdue::Font::from_bytes(
+        bytes,
+        fontdue::FontSettings {
+            collection_index,
+            ..fontdue::FontSettings::default()
+        },
+    )
+    .map_err(|err| format!("parse {path}#{collection_index}: {err}"))
+}
+
+#[cfg(target_os = "windows")]
+fn build_native_text_shape_plan(frame: &NativeRenderFrame) -> NativeRendererTextShapePlan {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut atlas_chars = BTreeSet::new();
+    let mut render_glyphs = Vec::new();
+    let mut fallback_required_chars = BTreeSet::new();
+    let mut fallback_font_refs = BTreeMap::new();
+    let mut fallback_font_families = BTreeSet::new();
+    let mut shape_errors = Vec::new();
+    let mut shape_runs = 0usize;
+    let mut shaped_clusters = 0usize;
+    let mut fallback_clusters = 0usize;
+
+    let shaper = match DirectWriteTextShaper::new() {
+        Ok(shaper) => shaper,
+        Err(err) => {
+            for cell in frame.cells.iter().filter(|cell| cell.ch != ' ') {
+                atlas_chars.insert(cell.ch);
+            }
+            return NativeRendererTextShapePlan {
+                atlas_chars,
+                render_glyphs: frame
+                    .cells
+                    .iter()
+                    .filter(|cell| cell.ch != ' ')
+                    .map(|cell| NativeRendererGlyphPlan {
+                        ch: cell.ch,
+                        rect_px: [
+                            cell.rect.x_px as f32,
+                            cell.rect.y_px as f32,
+                            f32::from(cell.rect.width_px),
+                            f32::from(cell.rect.height_px),
+                        ],
+                        fg: cell.fg,
+                        fallback_required: false,
+                    })
+                    .collect(),
+                fallback_required_chars,
+                fallback_font_refs,
+                renderer_consumes_system_shaped_runs: false,
+                directwrite_shape_runs: 0,
+                directwrite_shaped_clusters: 0,
+                directwrite_fallback_clusters: 0,
+                directwrite_fallback_font_families: Vec::new(),
+                directwrite_shape_errors: vec![format!("{err:?}")],
+                question_mark_substitution_disabled: true,
+            };
+        }
+    };
+
+    for row in 0..frame.rows {
+        let mut row_cells = frame
+            .cells
+            .iter()
+            .filter(|cell| cell.row == row && cell.ch != ' ')
+            .collect::<Vec<_>>();
+        if row_cells.is_empty() {
+            continue;
+        }
+        row_cells.sort_by_key(|cell| cell.col);
+        let text = row_cells.iter().map(|cell| cell.ch).collect::<String>();
+        let mut cell_start_bytes = Vec::with_capacity(row_cells.len());
+        let mut byte_offset = 0usize;
+        for cell in &row_cells {
+            cell_start_bytes.push(byte_offset);
+            byte_offset += cell.ch.len_utf8();
+        }
+        let attrs = row_cells.first().map(|cell| cell.attrs).unwrap_or_default();
+        let input = ShapeInput {
+            text,
+            style: CellStyle {
+                attrs,
+                bold: attrs & 0x01 != 0,
+                italic: attrs & 0x02 != 0,
+            },
+            cell_width_px: frame.cell_width_px,
+            cell_height_px: frame.cell_height_px,
+            allow_ligatures: false,
+        };
+
+        match shaper.shape_run(&input) {
+            Ok(run) => {
+                shape_runs += 1;
+                for cluster in run.clusters {
+                    shaped_clusters += 1;
+                    let start_cell_index = cell_start_bytes
+                        .iter()
+                        .position(|offset| *offset >= cluster.start_byte)
+                        .unwrap_or(0)
+                        .min(row_cells.len().saturating_sub(1));
+                    let cell = row_cells[start_cell_index];
+                    if cluster.fallback_required {
+                        fallback_clusters += 1;
+                        fallback_font_families.insert(cluster.font.family.clone());
+                    }
+                    let Some(ch) = cluster.text.chars().find(|ch| *ch != ' ') else {
+                        continue;
+                    };
+                    atlas_chars.insert(ch);
+                    if cluster.fallback_required {
+                        fallback_required_chars.insert(ch);
+                        if let Some(path) = cluster.font.font_file_path.as_ref() {
+                            fallback_font_refs.entry(ch).or_insert_with(|| {
+                                NativeRendererFallbackFontRef {
+                                    family: cluster.font.family.clone(),
+                                    path: path.clone(),
+                                    collection_index: cluster
+                                        .font
+                                        .font_collection_index
+                                        .unwrap_or(0),
+                                }
+                            });
+                        }
+                    }
+                    render_glyphs.push(NativeRendererGlyphPlan {
+                        ch,
+                        rect_px: [
+                            cell.rect.x_px as f32,
+                            cell.rect.y_px as f32,
+                            f32::from(frame.cell_width_px) * f32::from(cluster.cell_advance),
+                            f32::from(cell.rect.height_px),
+                        ],
+                        fg: cell.fg,
+                        fallback_required: cluster.fallback_required,
+                    });
+                }
+            }
+            Err(err) => {
+                shape_errors.push(format!("row {row}: {err:?}"));
+                for cell in row_cells {
+                    atlas_chars.insert(cell.ch);
+                    render_glyphs.push(NativeRendererGlyphPlan {
+                        ch: cell.ch,
+                        rect_px: [
+                            cell.rect.x_px as f32,
+                            cell.rect.y_px as f32,
+                            f32::from(cell.rect.width_px),
+                            f32::from(cell.rect.height_px),
+                        ],
+                        fg: cell.fg,
+                        fallback_required: false,
+                    });
+                }
+            }
+        }
+    }
+
+    NativeRendererTextShapePlan {
+        atlas_chars,
+        render_glyphs,
+        fallback_required_chars,
+        fallback_font_refs,
+        renderer_consumes_system_shaped_runs: shape_runs > 0 && shape_errors.is_empty(),
+        directwrite_shape_runs: shape_runs,
+        directwrite_shaped_clusters: shaped_clusters,
+        directwrite_fallback_clusters: fallback_clusters,
+        directwrite_fallback_font_families: fallback_font_families.into_iter().collect(),
+        directwrite_shape_errors: shape_errors,
+        question_mark_substitution_disabled: true,
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn build_native_font_atlas(
     frame: &NativeRenderFrame,
+    shape_plan: &NativeRendererTextShapePlan,
 ) -> Result<(FontAtlas, std::collections::HashMap<char, AtlasGlyph>), String> {
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::HashMap;
 
     let (font, font_path) = load_native_terminal_font()?;
-    let mut chars = frame
-        .cells
-        .iter()
-        .filter_map(|cell| (cell.ch != ' ').then_some(cell.ch))
-        .collect::<BTreeSet<_>>();
-    chars.insert('?');
-    let chars = chars.into_iter().collect::<Vec<_>>();
+    let chars = shape_plan.atlas_chars.iter().copied().collect::<Vec<_>>();
     let slot_w = (u32::from(frame.cell_width_px).max(8) * 2).min(64);
     let slot_h = u32::from(frame.cell_height_px).clamp(12, 64);
     let columns = 16u32;
@@ -7897,16 +8382,48 @@ fn build_native_font_atlas(
     let height = slot_h * rows;
     let mut pixels = vec![0u8; width as usize * height as usize];
     let mut glyphs = HashMap::new();
+    let mut fallback_fonts = HashMap::new();
     let mut fallback_glyphs = 0usize;
+    let mut fallback_font_load_failures = 0usize;
+    let mut missing_glyphs = 0usize;
+    let mut missing_fallback_glyphs = 0usize;
     let font_px = (f32::from(frame.cell_height_px) * 0.86).max(10.0);
 
-    let fallback = font.rasterize('?', font_px);
     for (index, ch) in chars.iter().copied().enumerate() {
-        let (mut metrics, mut bitmap) = font.rasterize(ch, font_px);
+        let fallback_ref = shape_plan.fallback_font_refs.get(&ch);
+        let fallback_key = fallback_ref.map(|fallback| {
+            format!(
+                "{}#{}",
+                fallback.path.to_ascii_lowercase(),
+                fallback.collection_index
+            )
+        });
+        if let (Some(fallback), Some(key)) = (fallback_ref, fallback_key.as_ref()) {
+            let _ = &fallback.family;
+            if !fallback_fonts.contains_key(key) {
+                match load_fontdue_font_from_path(&fallback.path, fallback.collection_index) {
+                    Ok(font) => {
+                        fallback_fonts.insert(key.clone(), font);
+                    }
+                    Err(_) => {
+                        fallback_font_load_failures += 1;
+                    }
+                }
+            }
+        }
+        let fallback_font = fallback_key
+            .as_ref()
+            .and_then(|key| fallback_fonts.get(key));
+        let used_fallback_font = fallback_font.is_some();
+        let (metrics, bitmap) = fallback_font.unwrap_or(&font).rasterize(ch, font_px);
         if metrics.width == 0 || metrics.height == 0 || bitmap.iter().all(|value| *value == 0) {
-            let (fallback_metrics, fallback_bitmap) = fallback.clone();
-            metrics = fallback_metrics;
-            bitmap = fallback_bitmap;
+            missing_glyphs += 1;
+            if shape_plan.fallback_required_chars.contains(&ch) {
+                missing_fallback_glyphs += 1;
+            }
+            continue;
+        }
+        if used_fallback_font {
             fallback_glyphs += 1;
         }
 
@@ -7947,6 +8464,10 @@ fn build_native_font_atlas(
             height,
             glyph_count: glyphs.len(),
             fallback_glyphs,
+            fallback_font_load_failures,
+            missing_glyphs,
+            missing_fallback_glyphs,
+            question_mark_substitutions: 0,
             font_path,
             font_px,
         },
@@ -8013,9 +8534,10 @@ fn build_winit_wgpu_terminal_draw_plan(
     let surface_width_f = surface_width.max(1) as f32;
     let surface_height_f = surface_height.max(1) as f32;
     let diff = frame.diff_against(None);
-    let (font_atlas, atlas_glyphs) = build_native_font_atlas(frame)?;
+    let shape_plan = build_native_text_shape_plan(frame);
+    let (font_atlas, atlas_glyphs) = build_native_font_atlas(frame, &shape_plan)?;
     let mut rect_instances = Vec::with_capacity(diff.dirty_rects.len().saturating_add(1));
-    let mut glyph_instances = Vec::with_capacity(frame.cells.len());
+    let mut glyph_instances = Vec::with_capacity(shape_plan.render_glyphs.len());
 
     for rect in &diff.dirty_rects {
         push_rect(
@@ -8033,20 +8555,23 @@ fn build_winit_wgpu_terminal_draw_plan(
     }
 
     let mut terminal_glyph_quads = 0usize;
-    for cell in frame.cells.iter().filter(|cell| cell.ch != ' ') {
-        let Some(atlas_glyph) = atlas_glyphs
-            .get(&cell.ch)
-            .or_else(|| atlas_glyphs.get(&'?'))
-        else {
+    let mut skipped_glyph_quads = 0usize;
+    let mut fallback_glyph_quads = 0usize;
+    for glyph in &shape_plan.render_glyphs {
+        let Some(atlas_glyph) = atlas_glyphs.get(&glyph.ch) else {
+            skipped_glyph_quads += 1;
             continue;
         };
-        let color = color_from_u32(cell.fg, [0.96, 0.86, 0.94, 0.96]);
+        if glyph.fallback_required {
+            fallback_glyph_quads += 1;
+        }
+        let color = color_from_u32(glyph.fg, [0.96, 0.86, 0.94, 0.96]);
         glyph_instances.push(GlyphInstance {
             rect: clip_rect(
-                cell.rect.x_px as f32,
-                cell.rect.y_px as f32,
-                f32::from(cell.rect.width_px),
-                f32::from(cell.rect.height_px),
+                glyph.rect_px[0],
+                glyph.rect_px[1],
+                glyph.rect_px[2],
+                glyph.rect_px[3],
                 surface_width_f,
                 surface_height_f,
             ),
@@ -8087,6 +8612,15 @@ fn build_winit_wgpu_terminal_draw_plan(
         rect_instances,
         glyph_instances,
         font_atlas,
+        renderer_consumes_system_shaped_runs: shape_plan.renderer_consumes_system_shaped_runs,
+        directwrite_shape_runs: shape_plan.directwrite_shape_runs,
+        directwrite_shaped_clusters: shape_plan.directwrite_shaped_clusters,
+        directwrite_fallback_clusters: shape_plan.directwrite_fallback_clusters,
+        directwrite_fallback_font_families: shape_plan.directwrite_fallback_font_families,
+        directwrite_shape_errors: shape_plan.directwrite_shape_errors,
+        question_mark_substitution_disabled: shape_plan.question_mark_substitution_disabled,
+        skipped_glyph_quads,
+        fallback_glyph_quads,
         dirty_rects_rendered: diff.dirty_rects.len(),
         terminal_glyph_quads,
         cursor_quads,

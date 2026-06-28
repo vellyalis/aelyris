@@ -153,7 +153,7 @@ pub enum ClaimOutcome {
 
 /// The shared symbol-ownership map. Pure: callers inject `now` and hold their own
 /// lock.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SymbolOwnership {
     claims: Vec<SymbolClaim>,
 }
@@ -209,6 +209,8 @@ impl SymbolOwnership {
         {
             return ClaimOutcome::Blocked { conflicts };
         }
+        self.claims
+            .retain(|existing| existing.claim_id != claim.claim_id);
         self.claims.push(claim);
         if conflicts.is_empty() {
             ClaimOutcome::Granted
@@ -291,6 +293,31 @@ impl SymbolOwnership {
     /// All live claims (lease not lapsed).
     pub fn live_claims(&self, now: u64) -> Vec<&SymbolClaim> {
         self.claims.iter().filter(|c| c.is_live(now)).collect()
+    }
+
+    pub fn snapshot(&self) -> Vec<SymbolClaim> {
+        self.claims.clone()
+    }
+
+    pub fn get(&self, claim_id: &str) -> Option<&SymbolClaim> {
+        self.claims.iter().find(|claim| claim.claim_id == claim_id)
+    }
+
+    pub fn hydrate(&mut self, claims: Vec<SymbolClaim>, now: u64) {
+        self.claims.clear();
+        for claim in claims.into_iter().filter(|claim| claim.is_live(now)) {
+            if let Some(existing) = self
+                .claims
+                .iter_mut()
+                .find(|existing| existing.claim_id == claim.claim_id)
+            {
+                *existing = claim;
+            } else {
+                self.claims.push(claim);
+            }
+        }
+        self.claims
+            .sort_by(|a, b| a.claim_id.cmp(&b.claim_id).then(a.path.cmp(&b.path)));
     }
 
     /// Live claims touching `path` — the per-file view a pane header renders.

@@ -202,6 +202,10 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         "reattach-respawns-only-missing-or-restore-pending-pty-bindings"
     );
     assert_eq!(
+        body["liveProcessPreservationPolicy"],
+        "daemon-live-detach-reattach-preserves-existing-pty-process-id"
+    );
+    assert_eq!(
         body["shutdownPolicy"],
         "explicit-workspace-close-terminates-owned-child-ptys"
     );
@@ -281,6 +285,11 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         .unwrap()
         .iter()
         .any(|value| value == "native-render-pipeline-contract"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "mux-live-process-preservation"));
 
     let health: serde_json::Value = client()
         .get(format!("{}/health", base))
@@ -302,7 +311,7 @@ async fn command_session_rejects_path_like_programs() {
 
     let res = client()
         .post(format!("{}/commands", base))
-        .header(AUTHORIZATION, "Bearer command-secret")
+        .header(AUTHORIZATION, format!("Bearer {}", "command-secret"))
         .json(&json!({
             "program": "C:\\\\Windows\\\\System32\\\\cmd.exe",
             "args": ["/C", "echo should-not-run"],
@@ -923,10 +932,15 @@ async fn create_list_resize_delete_roundtrip() {
     let active_tab_id = window["activeTabId"].as_str().unwrap();
     let tab = window["tabs"].get(active_tab_id).unwrap();
     let panes = tab["panes"].as_object().unwrap();
+    let mut detached_process_ids = Vec::new();
     for pane_id in [&id, &child_id] {
         let pane = panes.get(pane_id).unwrap();
         assert_eq!(pane["lifecycle"], "detached");
         assert_eq!(pane["pty"]["terminalId"], pane_id.as_str());
+        let process_id = pane["pty"]["processId"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("detached pane {pane_id} should expose a live process id"));
+        detached_process_ids.push((pane_id.clone(), process_id));
     }
 
     let detached_sessions: serde_json::Value = c
@@ -997,6 +1011,17 @@ async fn create_list_resize_delete_roundtrip() {
         let pane = panes.get(pane_id).unwrap();
         assert_eq!(pane["lifecycle"], "active");
         assert_eq!(pane["pty"]["terminalId"], pane_id.as_str());
+        let attached_process_id = pane["pty"]["processId"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("attached pane {pane_id} should expose a live process id"));
+        let detached_process_id = detached_process_ids
+            .iter()
+            .find_map(|(id, process_id)| (id == pane_id).then_some(*process_id))
+            .expect("detached process id should be recorded");
+        assert_eq!(
+            attached_process_id, detached_process_id,
+            "mux attach must preserve the existing OS process for pane {pane_id}"
+        );
     }
     let attached_sessions: serde_json::Value = c
         .get(format!("{}/sessions", base))

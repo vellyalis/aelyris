@@ -40,12 +40,12 @@ fn test_create_pane() {
     let s = db.create_session("proj").unwrap();
     let w = db.create_window(&s.id, "Tab 1").unwrap();
     let pane = db
-        .create_pane(&w.id, "cmd", "C:/Users/owner", 120, 30)
+        .create_pane(&w.id, "cmd", "C:/Users/example", 120, 30)
         .unwrap();
 
     assert_eq!(pane.window_id, w.id);
     assert_eq!(pane.shell_type, "cmd");
-    assert_eq!(pane.cwd, "C:/Users/owner");
+    assert_eq!(pane.cwd, "C:/Users/example");
     assert_eq!(pane.cols, 120);
     assert_eq!(pane.rows, 30);
 }

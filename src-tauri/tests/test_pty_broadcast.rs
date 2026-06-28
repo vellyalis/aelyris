@@ -238,3 +238,54 @@ fn late_subscriber_sees_future_bytes() {
 
     mgr.close_all();
 }
+
+#[test]
+fn capture_and_subscribe_replays_snapshot_then_future_bytes() {
+    let mgr = PtyManager::new();
+    let id = mgr.spawn(&ShellType::Cmd, 80, 24, None).expect("spawn");
+
+    std::thread::sleep(Duration::from_millis(300));
+    mgr.write(&id, b"echo SNAPSHOT_MARKER\r\n")
+        .expect("write snapshot marker");
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("rt");
+
+    let mut setup_rx = mgr.subscribe_output(&id).expect("setup subscribe");
+    let setup_seen = rt.block_on(drain_until(
+        &mut setup_rx,
+        "SNAPSHOT_MARKER",
+        Duration::from_secs(5),
+    ));
+    assert!(
+        setup_seen.contains("SNAPSHOT_MARKER"),
+        "setup did not produce snapshot marker: {:?}",
+        &setup_seen[..setup_seen.len().min(200)],
+    );
+
+    let (snapshot, mut rx) = mgr
+        .capture_and_subscribe(&id, 200, true)
+        .expect("capture and subscribe");
+    assert!(
+        snapshot.contains("SNAPSHOT_MARKER"),
+        "snapshot did not include prior marker: {:?}",
+        &snapshot[..snapshot.len().min(200)],
+    );
+
+    mgr.write(&id, b"echo FUTURE_MARKER\r\n")
+        .expect("write future marker");
+    let future_seen = rt.block_on(drain_until(
+        &mut rx,
+        "FUTURE_MARKER",
+        Duration::from_secs(5),
+    ));
+    assert!(
+        future_seen.contains("FUTURE_MARKER"),
+        "receiver did not include future marker: {:?}",
+        &future_seen[..future_seen.len().min(200)],
+    );
+
+    mgr.close_all();
+}

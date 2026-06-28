@@ -16,7 +16,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aether_terminal_lib::api::{
-    self, ApiState, AuthConfig, RateLimiter, TicketRegistry, TICKET_TTL_SECS,
+    self, ApiState, AuthConfig, RateLimiter, StreamControl, StreamControllerLeases, StreamMode,
+    TicketRegistry, TICKET_TTL_SECS,
 };
 use aether_terminal_lib::pty::PtyManager;
 use reqwest::header::AUTHORIZATION;
@@ -73,6 +74,60 @@ fn registry_redeem_is_single_use() {
         "ticket must not be redeemable twice"
     );
     assert_eq!(reg.live_count(), 0);
+}
+
+#[test]
+fn registry_redeem_claim_preserves_stream_mode() {
+    let reg = TicketRegistry::new();
+    let (ticket, _) = reg.issue_with_mode("sess-a", StreamMode::ReadOnly);
+    let claim = reg
+        .redeem_claim_for_session(&ticket, "sess-a")
+        .expect("read-only ticket should redeem once");
+    assert_eq!(claim.session_id, "sess-a");
+    assert_eq!(claim.mode, StreamMode::ReadOnly);
+    assert!(
+        reg.redeem_claim_for_session(&ticket, "sess-a").is_none(),
+        "claim redemption must remain single-use"
+    );
+}
+
+#[test]
+fn registry_redeem_claim_preserves_exclusive_control() {
+    let reg = TicketRegistry::new();
+    let (ticket, _) = reg.issue_with_attach(
+        "sess-a",
+        StreamMode::ReadWrite,
+        StreamControl::Exclusive,
+        Some("client-a".to_string()),
+    );
+    let claim = reg
+        .redeem_claim_for_session(&ticket, "sess-a")
+        .expect("exclusive ticket should redeem once");
+    assert_eq!(claim.session_id, "sess-a");
+    assert_eq!(claim.mode, StreamMode::ReadWrite);
+    assert_eq!(claim.control, StreamControl::Exclusive);
+    assert_eq!(claim.client_id.as_deref(), Some("client-a"));
+}
+
+#[test]
+fn controller_lease_rejects_competing_client_until_release() {
+    let leases = StreamControllerLeases::new();
+    leases.acquire("sess-a", "client-a").unwrap();
+    assert_eq!(leases.owner("sess-a").as_deref(), Some("client-a"));
+    assert!(leases
+        .ensure_can_control("sess-a", Some("client-a"))
+        .is_ok());
+    assert!(leases.ensure_can_control("sess-a", None).is_err());
+    assert!(leases
+        .ensure_can_control("sess-a", Some("client-b"))
+        .is_err());
+    assert_eq!(
+        leases.acquire("sess-a", "client-b").unwrap_err(),
+        "client-a"
+    );
+    assert!(leases.release("sess-a", "client-a"));
+    leases.acquire("sess-a", "client-b").unwrap();
+    assert_eq!(leases.owner("sess-a").as_deref(), Some("client-b"));
 }
 
 #[test]
@@ -169,9 +224,115 @@ async fn stream_ticket_for_existing_session_returns_uuid_and_ttl() {
         .and_then(|v| v.as_u64())
         .expect("expires_in_ms number");
     assert_eq!(expires_in_ms, TICKET_TTL_SECS * 1000);
+    assert_eq!(
+        body.get("mode").and_then(|v| v.as_str()),
+        Some("read-write")
+    );
+    assert_eq!(body.get("control").and_then(|v| v.as_str()), Some("shared"));
+    assert_eq!(body.get("writable").and_then(|v| v.as_bool()), Some(true));
 
     // Cleanup — close the session so the PtyManager Drop path doesn't have
     // to leak on shutdown.
+    let _ = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await;
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn read_only_stream_ticket_reports_non_writable_mode() {
+    let (base, state, join) = spawn(base_state()).await;
+    let c = client();
+
+    let id: String = c
+        .post(format!("{}/sessions", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("id")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap();
+
+    let ticket_res = c
+        .post(format!(
+            "{}/sessions/{}/stream-ticket?mode=read-only",
+            base, id
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ticket_res.status(), StatusCode::OK);
+    let body: serde_json::Value = ticket_res.json().await.unwrap();
+    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("read-only"));
+    assert_eq!(body.get("control").and_then(|v| v.as_str()), Some("shared"));
+    assert_eq!(body.get("writable").and_then(|v| v.as_bool()), Some(false));
+
+    let _ = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await;
+
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn exclusive_stream_ticket_returns_controller_client_id() {
+    let (base, state, join) = spawn(base_state()).await;
+    let c = client();
+
+    let id: String = c
+        .post(format!("{}/sessions", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("id")
+        .and_then(|v| v.as_str().map(ToString::to_string))
+        .unwrap();
+
+    let ticket_res = c
+        .post(format!(
+            "{}/sessions/{}/stream-ticket?control=exclusive",
+            base, id
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ticket_res.status(), StatusCode::OK);
+    let body: serde_json::Value = ticket_res.json().await.unwrap();
+    assert_eq!(
+        body.get("mode").and_then(|v| v.as_str()),
+        Some("read-write")
+    );
+    assert_eq!(
+        body.get("control").and_then(|v| v.as_str()),
+        Some("exclusive")
+    );
+    let client_id = body
+        .get("clientId")
+        .and_then(|v| v.as_str())
+        .expect("exclusive ticket response includes controller clientId");
+    assert!(client_id.starts_with("client-"));
+
     let _ = c
         .delete(format!("{}/sessions/{}", base, id))
         .header(AUTHORIZATION, format!("Bearer {}", TOKEN))

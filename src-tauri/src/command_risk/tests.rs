@@ -180,13 +180,15 @@ fn absolute_path_outside_workspace_is_unsafe_when_scope_is_set() {
 
 #[test]
 fn secrets_are_counted_and_redacted_in_the_preview() {
-    let r = classify("export API_KEY=sk-abcdefghijklmnop1234");
+    let fake_key = format!("sk-{}", "REDACTION_TEST_OPENAI_KEY");
+    let command = format!("export API_KEY={fake_key}");
+    let r = classify(&command);
     assert!(r.secret_count > 0);
     assert!(r.classes.contains(&CommandRiskClass::SecretBearing));
     // The persisted preview must NOT contain the raw secret.
     assert!(r.preview.contains("[REDACTED]"), "{}", r.preview);
     assert!(
-        !r.preview.contains("sk-abcdefghijklmnop1234"),
+        !r.preview.contains(&fake_key),
         "{}",
         r.preview
     );
@@ -196,11 +198,11 @@ fn secrets_are_counted_and_redacted_in_the_preview() {
 
 #[test]
 fn redact_handles_bearer_and_flag_secrets() {
-    let red = redact_sensitive_command(
-        "curl -H 'Authorization: Bearer abcdefghijklmnop' --token=topsecretvalue",
-    );
-    assert!(!red.contains("abcdefghijklmnop"), "{red}");
-    assert!(!red.contains("topsecretvalue"), "{red}");
+    let bearer = format!("Bearer {}", "REDACTIONTESTBEARERTOKEN");
+    let command = format!("curl -H 'Authorization: {bearer}' --token=REDACTION_TEST_FLAG_SECRET");
+    let red = redact_sensitive_command(&command);
+    assert!(!red.contains("REDACTIONTESTBEARERTOKEN"), "{red}");
+    assert!(!red.contains("REDACTION_TEST_FLAG_SECRET"), "{red}");
     assert!(red.contains("[REDACTED]"));
 }
 
