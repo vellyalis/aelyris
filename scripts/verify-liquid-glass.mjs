@@ -51,7 +51,7 @@ async function main() {
       localStorage.setItem("aether:lastProject", project);
       localStorage.setItem("aether:onboarding-done", "1");
     },
-    ["C:/Users/owner/Aether_Terminal"],
+    [process.env.AETHER_TAURI_PROJECT ?? process.cwd().replaceAll("\\", "/")],
   );
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);

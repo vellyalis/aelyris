@@ -79,6 +79,22 @@ function scoreEntryPassed(score, id) {
   return entry != null && entry.max > 0 && entry.points === entry.max;
 }
 
+function projectedExternalGateScoreShape(score, audit) {
+  const projected = audit?.score?.projectedAfterEvidenceMap ?? {};
+  return (
+    score?.releaseCandidateReady === false &&
+    audit?.ok === true &&
+    audit?.status === "blocked-by-external-gates" &&
+    audit?.evidenceComplete === true &&
+    audit?.implementationFixableCount === 0 &&
+    (audit?.externalBlockedCount ?? 0) >= 1 &&
+    projected.total === score?.total &&
+    projected.max === score?.max &&
+    projected.percent === score?.score &&
+    projected.grade === score?.grade
+  );
+}
+
 function isAuthenticatedPromptBlocker(item) {
   return /authenticated[-\s]?ai[-\s]?cli[-\s]?prompt|token-spend consent/i.test(
     String(item?.area ?? "") + " " + String(item?.blocker ?? item),
@@ -399,11 +415,7 @@ const completionMatrixCompleteShape =
   completionMatrix?.policyBlockedCount === 0 &&
   completionMatrix?.externalBlockedCount === 0;
 const releaseScoreExternalGateShape =
-  (releaseScore?.score >= 93 || projectedScoreAfterEvidenceMap >= 96) &&
-  releaseScore?.max === 335 &&
-  ["A", "S"].includes(releaseScore?.grade) &&
-  releaseScore?.releaseCandidateReady === false &&
-  implementationBlockers.length === 0 &&
+  projectedExternalGateScoreShape(releaseScore, finalAudit) &&
   ((tokenBlockers.length === 1 && !tokenGateComplete) || (tokenBlockers.length === 0 && tokenGateComplete)) &&
   sleepBlockers.length >= 1;
 const releaseScoreCompleteShape =

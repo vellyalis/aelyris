@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const CDP_URL = "http://127.0.0.1:9222";
-const SHOT = "C:/Users/owner/Aether_Terminal/.codex-auto/production-smoke/fleet-demo.png";
+const SHOT = process.env.FLEET_SHOT ?? join(process.cwd(), ".codex-auto", "production-smoke", "fleet-demo.png");
 const N = Number.parseInt(process.env.FLEET_N ?? "8", 10);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

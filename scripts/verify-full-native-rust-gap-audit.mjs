@@ -82,10 +82,10 @@ const rightRailSources = [
   source("src/shared/lib/rightRailAdvisor.ts"),
 ].join("\n");
 const docs = [
-  source("docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md"),
-  source("docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md"),
-  source("docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md"),
-  source("docs/FULL_NATIVE_RUST_FINAL_GOAL.md"),
+  source("docs/history/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md"),
+  source("docs/history/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md"),
+  source("docs/history/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md"),
+  source("docs/history/FULL_NATIVE_RUST_FINAL_GOAL.md"),
 ].join("\n");
 
 const nativeClientPath = ".codex-auto/quality/native-client-spike.json";

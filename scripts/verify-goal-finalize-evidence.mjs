@@ -37,11 +37,12 @@ const productSourceFiles = [
   "scripts/verify-final-goal-audit.mjs",
   "scripts/score-release-quality.mjs",
   "scripts/verify-release-hygiene-contract.mjs",
-  "docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md",
-  "docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
-  "docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md",
-  "docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md",
-  "docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md",
+  "README.md",
+  "docs/README.md",
+  "docs/PUBLICATION_READINESS.md",
+  "docs/requirements.md",
+  "docs/specs/README.md",
+  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
   "docs/release-build-playbook.md",
 ];
 const optionalGitSourceFiles = [
@@ -158,11 +159,12 @@ function cutoffMsFor(paths) {
 
 function sourceCutoffMsForStep(id) {
   const goalDocs = [
-    "docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md",
-    "docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
-    "docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md",
-    "docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md",
-    "docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md",
+    "README.md",
+    "docs/README.md",
+    "docs/PUBLICATION_READINESS.md",
+    "docs/requirements.md",
+    "docs/specs/README.md",
+    "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
   ];
   const stepSources = {
     "goal-documentation-freshness": [

@@ -5,7 +5,7 @@
 //
 // Optional env:
 //   AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/right-rail-command-evidence.json
 
 import { mkdirSync, writeFileSync } from "node:fs";

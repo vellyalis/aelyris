@@ -1,18 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 
 const ROOT = resolve(process.cwd());
 const STRICT_SCRIPT = join(ROOT, "scripts", "verify-chunked-osc-live.mjs");
 const PRIMARY_ARTIFACT = join(ROOT, ".codex-auto", "production-smoke", "chunked-osc-live.json");
-const ENV_BLOCKED_ARTIFACT = join(
-  ROOT,
-  ".codex-auto",
-  "production-smoke",
-  "chunked-osc-live.environment-blocked.json",
-);
+const ENV_BLOCKED_ARTIFACT = join(ROOT, ".codex-auto", "production-smoke", "chunked-osc-live.environment-blocked.json");
 const DEFAULT_TIMEOUT_MS = Number(process.env.AETHER_CHUNKED_OSC_SAFE_TIMEOUT_MS ?? 45_000);
+const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
 
 const sourceFiles = [
   "scripts/verify-chunked-osc-live.mjs",
@@ -54,6 +51,47 @@ function isEnvironmentBlocked(text, errorCode) {
   );
 }
 
+function cdpEndpoint() {
+  try {
+    const url = new URL(CDP);
+    return {
+      ok: true,
+      host: url.hostname,
+      port: Number(url.port || (url.protocol === "https:" ? 443 : 80)),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function checkCdpReachable(timeoutMs = 1500) {
+  const endpoint = cdpEndpoint();
+  if (!endpoint.ok) {
+    return Promise.resolve({ ok: false, code: "INVALID_CDP_URL", message: endpoint.error });
+  }
+  return new Promise((resolveCheck) => {
+    const socket = net.createConnection({ host: endpoint.host, port: endpoint.port });
+    const done = (result) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolveCheck(result);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done({ ok: true }));
+    socket.once("timeout", () => done({ ok: false, code: "ETIMEDOUT", message: `TCP timeout connecting to ${CDP}` }));
+    socket.once("error", (error) =>
+      done({
+        ok: false,
+        code: error?.code ?? "CDP_CONNECT_ERROR",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
+}
+
 function writeEnvironmentBlockedReport(child, combinedOutput) {
   const primary = readJson(PRIMARY_ARTIFACT);
   const primaryExists = existsSync(PRIMARY_ARTIFACT);
@@ -76,7 +114,7 @@ function writeEnvironmentBlockedReport(child, combinedOutput) {
     status: environmentBlocked ? "environment-blocked" : "failed",
     preservesPrimaryArtifact: true,
     strictCommand: "node scripts/verify-chunked-osc-live.mjs",
-    cdp: process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222",
+    cdp: CDP,
     exitCode: child.status ?? null,
     errorCode: child.error?.code ?? null,
     timedOut: child.error?.code === "ETIMEDOUT",
@@ -105,6 +143,21 @@ function writeEnvironmentBlockedReport(child, combinedOutput) {
   mkdirSync(dirname(ENV_BLOCKED_ARTIFACT), { recursive: true });
   writeFileSync(ENV_BLOCKED_ARTIFACT, `${JSON.stringify(report, null, 2)}\n`);
   return report;
+}
+
+if (process.env.AETHER_CHUNKED_OSC_SKIP_CDP_PREFLIGHT !== "1") {
+  const cdpPreflight = await checkCdpReachable();
+  if (cdpPreflight.ok !== true) {
+    const child = {
+      status: null,
+      stdout: "",
+      stderr: `CDP preflight failed for ${CDP}: ${cdpPreflight.message}`,
+      error: { code: cdpPreflight.code ?? "CDP_UNREACHABLE" },
+    };
+    const report = writeEnvironmentBlockedReport(child, child.stderr);
+    console.error(JSON.stringify({ artifact: ENV_BLOCKED_ARTIFACT, ...report }, null, 2));
+    process.exit(1);
+  }
 }
 
 const child = spawnSync(process.execPath, [STRICT_SCRIPT], {

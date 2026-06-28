@@ -4,7 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 const railModes = ["command", "review", "observe"] as const;
 const matrixWidths = [584, 960, 1440, 1920] as const;
 const densityModes = ["focus", "balanced", "dense"] as const;
-const projectPath = "C:/Users/owner/Aether_Terminal";
+const projectPath = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 const workspaceProfileStorageKey = "aether:workspaceProfiles";
 const visualQaArtifactDir = ".codex-auto/visual-qa/p2-05";
 

@@ -12,7 +12,7 @@ import { test, expect } from "@playwright/test";
  */
 
 const setupProject = async (page: import("@playwright/test").Page) => {
-  const projectPath = "C:/Users/owner/Aether_Terminal";
+  const projectPath = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
   await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
     waitUntil: "domcontentloaded",
   });

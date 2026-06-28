@@ -9,14 +9,53 @@ const extension = process.platform === "win32" ? ".exe" : "";
 const sidecar =
   process.env.AETHER_MUX_LIVE_SIDECAR ??
   join(root, "src-tauri", "pty-server", "target", "release", `aether-pty-server${extension}`);
-const out =
-  process.env.AETHER_MUX_LIVE_OUT ??
-  join(root, ".codex-auto", "performance", "mux-live-restore-smoke.json");
+const out = process.env.AETHER_MUX_LIVE_OUT ?? join(root, ".codex-auto", "performance", "mux-live-restore-smoke.json");
 const token = process.env.AETHER_MUX_LIVE_TOKEN ?? "mux-live-restore-smoke-token";
 const cargoManifest = join(root, "src-tauri", "Cargo.toml");
 
-if (!existsSync(sidecar)) {
-  throw new Error(`PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
+class HostCapabilityBlockedError extends Error {
+  constructor(capability, message, details = {}) {
+    super(message);
+    this.name = "HostCapabilityBlockedError";
+    this.capability = capability;
+    this.details = details;
+  }
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function classifySpawnBlock(error) {
+  const text = `${error?.code ?? ""}\n${errorMessage(error)}`;
+  if (/EPERM|operation not permitted/i.test(text)) return "spawn-eperm";
+  if (/EACCES|permission denied/i.test(text)) return "spawn-permission-denied";
+  return null;
+}
+
+function assertNodeChildProcessAvailable() {
+  const command = process.platform === "win32" ? "cmd.exe" : "true";
+  const args = process.platform === "win32" ? ["/c", "exit", "0"] : [];
+  const result = spawnSync(command, args, {
+    cwd: root,
+    stdio: "ignore",
+    shell: false,
+    windowsHide: true,
+  });
+  if (result.error) {
+    const reason = classifySpawnBlock(result.error);
+    if (reason) {
+      throw new HostCapabilityBlockedError(
+        "node-child-process",
+        `Node child_process is blocked before the PTY daemon can be launched: ${result.error.message}`,
+        { phase: "host-preflight", command, code: result.error.code ?? null, reason },
+      );
+    }
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`Node child_process preflight failed with status ${result.status}`);
+  }
 }
 
 async function freePort() {
@@ -78,20 +117,33 @@ async function waitForReady(base) {
   throw new Error(`sidecar did not become ready: ${lastError?.message ?? "unknown"}`);
 }
 
-function startSidecar(port, muxDir, scrollbackDir) {
-  const child = spawn(sidecar, [], {
-    cwd: root,
-    env: {
-      ...process.env,
-      AETHER_API_TOKEN: token,
-      AETHER_PTY_SERVER_PORT: String(port),
-      AETHER_MUX_SNAPSHOT_DIR: muxDir,
-      AETHER_PTY_SCROLLBACK_DIR: scrollbackDir,
-    },
-    shell: false,
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
+function startSidecar(port, muxDir, scrollbackDir, phase) {
+  let child;
+  try {
+    child = spawn(sidecar, [], {
+      cwd: root,
+      env: {
+        ...process.env,
+        AETHER_API_TOKEN: token,
+        AETHER_PTY_SERVER_PORT: String(port),
+        AETHER_MUX_SNAPSHOT_DIR: muxDir,
+        AETHER_PTY_SCROLLBACK_DIR: scrollbackDir,
+      },
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  } catch (error) {
+    const reason = classifySpawnBlock(error);
+    if (reason) {
+      throw new HostCapabilityBlockedError(
+        "pty-sidecar-spawn",
+        `PTY sidecar process launch is blocked: ${errorMessage(error)}`,
+        { phase, command: sidecar, code: error?.code ?? null, reason },
+      );
+    }
+    throw error;
+  }
   const output = { stdout: "", stderr: "" };
   child.stdout?.on("data", (chunk) => {
     output.stdout += chunk.toString();
@@ -114,6 +166,7 @@ function killProcess(child) {
 }
 
 function runAetherctl(base, args) {
+  const phase = `aetherctl-${args[0] ?? "command"}`;
   const result = spawnSync(
     "cargo",
     ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aetherctl", "--", ...args],
@@ -131,6 +184,20 @@ function runAetherctl(base, args) {
     },
   );
   if (result.error) {
+    const reason = classifySpawnBlock(result.error);
+    if (reason) {
+      throw new HostCapabilityBlockedError(
+        "aetherctl-spawn",
+        `aetherctl child process launch is blocked: ${result.error.message}`,
+        {
+          phase,
+          command: "cargo",
+          args: ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aetherctl", "--", ...args],
+          code: result.error.code ?? null,
+          reason,
+        },
+      );
+    }
     throw result.error;
   }
   if (result.status !== 0) {
@@ -251,10 +318,7 @@ function assertDaemonContract(contract, phase) {
     terminalCorePolicy.renderFrameSchema === "aether.native.render-frame.v1",
     `${phase} render frame schema missing`,
   );
-  assert(
-    terminalCorePolicy.renderDiffSchema === "aether.native.render-diff.v1",
-    `${phase} render diff schema missing`,
-  );
+  assert(terminalCorePolicy.renderDiffSchema === "aether.native.render-diff.v1", `${phase} render diff schema missing`);
   assert(
     terminalCorePolicy.renderCommitSchema === "aether.native.render-commit.v1",
     `${phase} render commit schema missing`,
@@ -317,8 +381,18 @@ async function main() {
 
   const report = {
     status: "running",
+    strictPass: false,
+    generatedAt: new Date().toISOString(),
+    verificationMode: "node-managed-sidecar-restart",
     sidecar,
     base,
+    hostRequirements: [
+      "Node child_process must be allowed to spawn the PTY daemon.",
+      "Node child_process must be allowed to run cargo aetherctl parity checks.",
+      "The verifier must be allowed to terminate its own short-lived sidecar process.",
+    ],
+    hostBlocked: false,
+    blockers: [],
     checks: [],
     errors: [],
     firstRunOutput: null,
@@ -334,7 +408,17 @@ async function main() {
   let second = null;
 
   try {
-    first = startSidecar(port, muxDir, scrollbackDir);
+    if (!existsSync(sidecar)) {
+      throw new HostCapabilityBlockedError(
+        "pty-sidecar-binary",
+        `PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`,
+        { phase: "host-preflight", command: sidecar, reason: "missing-sidecar-binary" },
+      );
+    }
+    assertNodeChildProcessAvailable();
+    report.checks.push("host-node-child-process-preflight");
+
+    first = startSidecar(port, muxDir, scrollbackDir, "first-sidecar-launch");
     const firstContract = await waitForReady(base);
     assertDaemonContract(firstContract, "first-run");
     report.firstContract = firstContract;
@@ -399,7 +483,10 @@ async function main() {
     report.checks.push("rotate-layout-preserves-pane-set-and-changes-order");
 
     graph = await request(base, `/mux/workspaces/${workspaceId}/panes/${childId}/break`, { method: "POST" });
-    assert(allPaneIds(graph).join("|") === [childId, workspaceId].sort().join("|"), "break should preserve pane records");
+    assert(
+      allPaneIds(graph).join("|") === [childId, workspaceId].sort().join("|"),
+      "break should preserve pane records",
+    );
     assert(layoutPaneIds(activeTab(graph)?.layout?.root).length === 1, "break should leave one pane in the active tab");
     report.checks.push("break-pane-preserves-live-pane-records");
 
@@ -442,7 +529,15 @@ async function main() {
     await waitForCapture(base, workspaceId, broadcastMarker);
     await waitForCapture(base, childId, broadcastMarker);
     report.checks.push("broadcast-input-reaches-all-live-panes");
-    const aetherctlSearch = runAetherctl(base, ["search", workspaceId, broadcastMarker, "--lines", "200", "--limit", "5"]);
+    const aetherctlSearch = runAetherctl(base, [
+      "search",
+      workspaceId,
+      broadcastMarker,
+      "--lines",
+      "200",
+      "--limit",
+      "5",
+    ]);
     assert(aetherctlSearch.query === broadcastMarker, "aetherctl search should echo the searched marker");
     assert(
       Array.isArray(aetherctlSearch.matches) &&
@@ -497,7 +592,7 @@ async function main() {
     first = null;
     report.checks.push("daemon-stopped-for-restore");
 
-    second = startSidecar(port, muxDir, scrollbackDir);
+    second = startSidecar(port, muxDir, scrollbackDir, "second-sidecar-launch");
     const secondContract = await waitForReady(base);
     assertDaemonContract(secondContract, "second-run");
     report.secondContract = secondContract;
@@ -521,7 +616,10 @@ async function main() {
     graph = await request(base, `/mux/workspaces/${workspaceId}/attach`, { method: "POST" });
     const attachedPtyIds = ptyIds(graph);
     assert(attachedPtyIds.length === 2, "attach should create two live PTY bindings");
-    assert(attachedPtyIds.every((id) => !id.startsWith("restore-pending:")), "attach should replace restore-pending ids");
+    assert(
+      attachedPtyIds.every((id) => !id.startsWith("restore-pending:")),
+      "attach should replace restore-pending ids",
+    );
     assert(new Set(attachedPtyIds).size === 2, "attach should not duplicate PTY ids");
     report.checks.push("attach-respawns-live-pty-without-duplicates");
 
@@ -552,7 +650,10 @@ async function main() {
     );
 
     const importedGraph = runAetherctl(base, ["mux-import", exportPath, "--replace"]);
-    assert(importedGraph.activeWorkspaceId === workspaceId, "aetherctl mux-import should restore the same workspace id");
+    assert(
+      importedGraph.activeWorkspaceId === workspaceId,
+      "aetherctl mux-import should restore the same workspace id",
+    );
     const importedPanes = allPaneRecords(importedGraph);
     assert(importedPanes.length === 1, "aetherctl mux-import should restore the exported one-pane graph");
     assert(
@@ -582,9 +683,23 @@ async function main() {
     report.checks.push("workspace-close-removes-mux-graph");
 
     report.status = "passed";
+    report.strictPass = true;
   } catch (error) {
-    report.status = "failed";
-    report.errors.push(error instanceof Error ? error.message : String(error));
+    if (error instanceof HostCapabilityBlockedError) {
+      report.status = "environment-blocked";
+      report.hostBlocked = true;
+      report.blockers.push({
+        capability: error.capability,
+        message: error.message,
+        phase: error.details?.phase ?? null,
+        command: error.details?.command ?? null,
+        code: error.details?.code ?? null,
+        details: error.details,
+      });
+    } else {
+      report.status = "failed";
+    }
+    report.errors.push(errorMessage(error));
   } finally {
     if (first) {
       report.firstRunOutput = {
@@ -605,9 +720,22 @@ async function main() {
     rmSync(tempRoot, { recursive: true, force: true });
   }
 
-  console.log(JSON.stringify({ status: report.status, checks: report.checks }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        status: report.status,
+        hostBlocked: report.hostBlocked,
+        checks: report.checks,
+        blockers: report.blockers,
+      },
+      null,
+      2,
+    ),
+  );
   if (report.errors.length > 0) {
     console.error(`Errors:\n- ${report.errors.join("\n- ")}`);
+  }
+  if (report.status !== "passed") {
     process.exitCode = 1;
   }
   console.log(`Report: ${out}`);

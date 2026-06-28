@@ -1,6 +1,6 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 import process from "node:process";
 
 const ROOT = resolve(process.cwd());
@@ -75,16 +75,19 @@ if (run.error || run.status === null) {
   // `run.stderr.split(...)` below — a blocked host must be reported, not masked.
   const blocked = {
     schema: "aether.upper-compat-gates.verification.v1",
-    status: "blocked",
+    status: "environment-blocked",
+    strictPass: false,
+    generatedAt: new Date().toISOString(),
     score: 0,
     passed: 0,
     total: 0,
     blocker: {
+      capability: "cargo-child-process",
       reason: "cargo-spawn-failed",
+      phase: "upper-compat-proof-cargo-run",
+      command: "cargo",
       code: run.error?.code ?? null,
-      message:
-        run.error?.message ??
-        `cargo did not run (status=${run.status}, signal=${run.signal})`,
+      message: run.error?.message ?? `cargo did not run (status=${run.status}, signal=${run.signal})`,
     },
     cargo: { status: run.status, signal: run.signal },
   };

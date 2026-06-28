@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const CODEX_HOME = "C:/Users/owner/.codex";
+const CODEX_HOME = (process.env.CODEX_HOME ?? join(homedir(), ".codex")).replaceAll("\\", "/");
 const WATCHDOG = `${CODEX_HOME}/codex-longrun-watchdog.mjs`;
 const PROGRESS_SERVER = `${CODEX_HOME}/codex-progress-server.mjs`;
 
@@ -204,7 +204,7 @@ function writeBaseArtifacts({ workspace, auto }) {
     priority: "P2",
     title: "P2-07 sleep resume and DB lock chaos",
     goal: "Validate watchdog sleep/resume gap and DB write-failure incident recovery.",
-    scope: ["C:/Users/owner/.codex/codex-longrun-watchdog.mjs", "src-tauri/src/audit.rs", "src-tauri/src/db"],
+    scope: [`${CODEX_HOME}/codex-longrun-watchdog.mjs`, "src-tauri/src/audit.rs", "src-tauri/src/db"],
     parentRoadmapId: "P2-07",
     reason: "blocker-decomposition",
     failureKind: "oversized_task",

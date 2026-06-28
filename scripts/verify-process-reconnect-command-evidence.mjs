@@ -11,7 +11,7 @@
 // Optional env:
 //   AETHER_PROCESS_RECONNECT_CDP=http://127.0.0.1:9222
 //   AETHER_PROCESS_RECONNECT_URL=http://localhost:1420/
-//   AETHER_PROCESS_RECONNECT_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_PROCESS_RECONNECT_PROJECT=C:/repo/aether-terminal
 //   AETHER_PROCESS_RECONNECT_TOKEN=dev
 //   AETHER_PROCESS_RECONNECT_OUT=.codex-auto/production-smoke/process-reconnect-command-evidence.json
 
@@ -48,6 +48,33 @@ function writeArtifact() {
   const outPath = resolve(OUT);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify({ ...report, finishedAt: new Date().toISOString() }, null, 2)}\n`);
+  return outPath;
+}
+
+function isEnvironmentUnavailable() {
+  return report.errors.some((error) =>
+    /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aether\.exe process found|Debug app executable missing|Vite dev server/i.test(
+      String(error),
+    ),
+  );
+}
+
+function writeDiagnosticArtifact() {
+  const outPath = resolve(`${OUT}.environment-blocked.json`);
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(
+    outPath,
+    `${JSON.stringify(
+      {
+        ...report,
+        status: "environment-blocked",
+        preservesPrimaryArtifact: true,
+        finishedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
   return outPath;
 }
 
@@ -150,7 +177,10 @@ function powershell(command) {
     windowsHide: true,
   });
   if (result.status !== 0) {
-    throw new Error(`PowerShell failed (${result.status}): ${result.stderr || result.stdout || command}`);
+    const errorMessage = result.error?.message ? `${result.error.message} ` : "";
+    throw new Error(
+      `PowerShell failed (${result.status ?? "null"}): ${errorMessage}${result.stderr || result.stdout || command}`,
+    );
   }
   return result.stdout.trim();
 }
@@ -521,9 +551,13 @@ async function main() {
     if (devServer?.pid) {
       devServer.kill();
     }
-    const artifact = writeArtifact();
+    const artifact = !report.ok && isEnvironmentUnavailable() ? writeDiagnosticArtifact() : writeArtifact();
     if (report.ok) {
       console.log(`process reconnect command evidence smoke passed: ${artifact}`);
+    } else if (isEnvironmentUnavailable()) {
+      console.error(
+        `process reconnect command evidence smoke environment-blocked; primary artifact preserved: ${artifact}`,
+      );
     } else {
       console.error(`process reconnect command evidence smoke failed: ${artifact}`);
     }

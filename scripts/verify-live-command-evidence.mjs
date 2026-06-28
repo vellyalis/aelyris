@@ -6,7 +6,7 @@
 // Optional env:
 //   AETHER_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
 //   AETHER_COMMAND_EVIDENCE_URL=http://localhost:1420/
-//   AETHER_COMMAND_EVIDENCE_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_COMMAND_EVIDENCE_PROJECT=C:/repo/aether-terminal
 //   AETHER_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/live-command-evidence.json
 
 import { mkdirSync, writeFileSync } from "node:fs";

@@ -1,7 +1,7 @@
 import { chromium } from "@playwright/test";
 
 const CDP = "http://localhost:9222";
-const REPO = String.raw`C:\Users\owner\Aether_Terminal`;
+const REPO = process.env.AETHER_REPO_PATH ?? process.cwd();
 
 async function main() {
   console.log(`[cdp-probe] connecting to ${CDP}`);

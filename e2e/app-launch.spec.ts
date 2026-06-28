@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  * the frontend renders correctly in both states.
  */
 
-const PROJECT_PATH = "C:/Users/owner/Aether_Terminal";
+const PROJECT_PATH = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 
 async function openProjectFixture(page: import("@playwright/test").Page) {
   await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {

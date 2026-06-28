@@ -197,7 +197,7 @@ const checks = [
       nativeInput.includes("normalize_native_terminal_paste_input") &&
       nativeInput.includes("multi-line paste requires explicit UI confirmation") &&
       nativeInput.includes("destructive command paste blocked by native input guard") &&
-    nativeInput.includes("native_paste_guard_event_count"),
+      nativeInput.includes("native_paste_guard_event_count"),
     "native HWND paste is intercepted before window text insertion can bypass paste guard, then blocked or normalized in Rust",
   ),
   check(
@@ -236,6 +236,7 @@ const checks = [
 const failed = checks.filter((item) => item.status !== "passed");
 const report = {
   version: 1,
+  ok: failed.length === 0,
   generatedAt: new Date().toISOString(),
   status: failed.length === 0 ? "pass" : "blocked",
   evidence: {

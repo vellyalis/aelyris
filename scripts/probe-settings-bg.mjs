@@ -6,7 +6,7 @@ async function main() {
   const browser = await chromium.connectOverCDP(CDP);
   const page = browser.contexts()[0].pages().find((p) => p.url().includes("localhost:1420"));
   await page.evaluate(() => {
-    localStorage.setItem("aether:lastProject", "C:/Users/owner/Aether_Terminal");
+    localStorage.setItem("aether:lastProject", "C:/repo/aether-terminal");
     localStorage.setItem("aether:onboarding-done", "1");
   });
   await page.reload({ waitUntil: "domcontentloaded" });

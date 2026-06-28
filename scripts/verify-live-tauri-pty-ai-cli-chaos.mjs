@@ -6,7 +6,7 @@
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
 //   AETHER_LIVE_CHAOS_APP_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
 //   AETHER_LIVE_CHAOS_OUT=.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json
 

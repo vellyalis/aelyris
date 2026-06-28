@@ -6,7 +6,7 @@
 // Optional env:
 //   AETHER_MULTIPANE_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
 //   AETHER_MULTIPANE_COMMAND_EVIDENCE_URL=http://localhost:1420/
-//   AETHER_MULTIPANE_COMMAND_EVIDENCE_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_MULTIPANE_COMMAND_EVIDENCE_PROJECT=C:/repo/aether-terminal
 //   AETHER_MULTIPANE_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/multipane-command-evidence.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -37,6 +37,33 @@ function writeArtifact() {
   const outPath = resolve(OUT);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify({ ...report, finishedAt: new Date().toISOString() }, null, 2)}\n`);
+  return outPath;
+}
+
+function isEnvironmentUnavailable() {
+  return report.errors.some((error) =>
+    /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch/i.test(
+      String(error),
+    ),
+  );
+}
+
+function writeDiagnosticArtifact() {
+  const outPath = resolve(`${OUT}.environment-blocked.json`);
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(
+    outPath,
+    `${JSON.stringify(
+      {
+        ...report,
+        status: "environment-blocked",
+        preservesPrimaryArtifact: true,
+        finishedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
   return outPath;
 }
 
@@ -297,9 +324,11 @@ async function main() {
       if (typeof browser.disconnect === "function") browser.disconnect();
       else await browser.close().catch(() => {});
     }
-    const artifact = writeArtifact();
+    const artifact = !report.ok && isEnvironmentUnavailable() ? writeDiagnosticArtifact() : writeArtifact();
     if (report.ok) {
       console.log(`multipane command evidence smoke passed: ${artifact}`);
+    } else if (isEnvironmentUnavailable()) {
+      console.error(`multipane command evidence smoke environment-blocked; primary artifact preserved: ${artifact}`);
     } else {
       console.error(`multipane command evidence smoke failed: ${artifact}`);
     }

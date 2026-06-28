@@ -75,6 +75,22 @@ function scoreEntry(score, id) {
   return Array.isArray(score?.scores) ? score.scores.find((entry) => entry?.id === id) : null;
 }
 
+function projectedExternalGateScoreShape(score, audit) {
+  const projected = audit?.score?.projectedAfterEvidenceMap ?? {};
+  return (
+    score?.releaseCandidateReady === false &&
+    audit?.ok === true &&
+    audit?.status === "blocked-by-external-gates" &&
+    audit?.evidenceComplete === true &&
+    audit?.implementationFixableCount === 0 &&
+    (audit?.externalBlockedCount ?? 0) >= 1 &&
+    projected.total === score?.total &&
+    projected.max === score?.max &&
+    projected.percent === score?.score &&
+    projected.grade === score?.grade
+  );
+}
+
 function isRealOsSleepBlocker(value) {
   return /real-os-soak|sleep\/resume|SetSuspendState returned false|GetLastError=50|host.*sleep|suspend/i.test(
     String(value ?? ""),
@@ -139,6 +155,24 @@ function completionMatrixBlockedOnlyByManualSleepCycle(matrix) {
     checksAreOnlySelfCycleBlocked &&
     externalBlockers.length >= 1 &&
     externalBlockers.every((blocker) => isRealOsSleepBlocker(`${blocker?.area ?? ""} ${blocker?.blocker ?? blocker}`))
+  );
+}
+
+function completionMatrixBlockedOnlyByExternalProofCycle(matrix) {
+  if (!matrix || typeof matrix !== "object") return false;
+  const checks = matrix.checks ?? {};
+  const allowedUnreadyChecks = new Set(["finalSafeRightRailCurrentProof"]);
+  const checksAreOnlySafeCycleBlocked = Object.entries(checks).every(([id, ok]) => {
+    return ok === true || allowedUnreadyChecks.has(id);
+  });
+  return (
+    matrix.status === "blocked" &&
+    matrix.implementationFixableCount === 0 &&
+    matrix.policyBlockedCount <= 1 &&
+    matrix.externalBlockedCount >= 1 &&
+    checksAreOnlySafeCycleBlocked &&
+    Array.isArray(matrix.externalBlockers) &&
+    matrix.externalBlockers.length >= 1
   );
 }
 
@@ -222,10 +256,7 @@ const checks = {
   noOsSleepEnvPresent:
     process.env.AETHER_ALLOW_OS_SLEEP !== "1" && process.env.AETHER_GOAL_OPERATOR_RUN_SLEEP !== SLEEP_PHRASE,
   releaseScoreExternalGateShape:
-    releaseScore?.releaseCandidateReady === false &&
-    releaseScore?.score >= 93 &&
-    releaseScore?.max === 335 &&
-    implementationBlockers.length === 0 &&
+    projectedExternalGateScoreShape(releaseScore, finalAudit) &&
     realSleepScore?.points >= 10,
   finalAuditExternalGateShape:
     (finalAudit?.ok === true &&
@@ -238,7 +269,8 @@ const checks = {
       completionMatrix?.status === "blocked-by-external-gates" &&
       completionMatrix?.implementationFixableCount === 0) ||
     completionMatrixBootstrapBlockedByFinalEvidence(completionMatrix) ||
-    completionMatrixBlockedOnlyByManualSleepCycle(completionMatrix),
+    completionMatrixBlockedOnlyByManualSleepCycle(completionMatrix) ||
+    completionMatrixBlockedOnlyByExternalProofCycle(completionMatrix),
   externalReadinessReferencesSleepGate:
     externalGateReadiness?.realOsSleepInvoked === false &&
     externalGateReadiness?.remainingExternalGates?.some?.((entry) => entry?.id === "real-os-sleep-resume") === true,

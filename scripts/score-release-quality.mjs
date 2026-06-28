@@ -126,10 +126,16 @@ const nativeInputHostPath = join(ROOT, ".codex-auto", "production-smoke", "nativ
 const nativeInputHost = readJson(nativeInputHostPath);
 const liveCommandEvidencePath = join(ROOT, ".codex-auto", "production-smoke", "live-command-evidence.json");
 const liveCommandEvidence = readJson(liveCommandEvidencePath);
+const liveCommandEvidenceEnvironmentBlockedPath = `${liveCommandEvidencePath}.environment-blocked.json`;
+const liveCommandEvidenceEnvironmentBlocked = readJson(liveCommandEvidenceEnvironmentBlockedPath);
 const multipaneCommandEvidencePath = join(ROOT, ".codex-auto", "production-smoke", "multipane-command-evidence.json");
 const multipaneCommandEvidence = readJson(multipaneCommandEvidencePath);
+const multipaneCommandEvidenceEnvironmentBlockedPath = `${multipaneCommandEvidencePath}.environment-blocked.json`;
+const multipaneCommandEvidenceEnvironmentBlocked = readJson(multipaneCommandEvidenceEnvironmentBlockedPath);
 const recoveredCommandEvidencePath = join(ROOT, ".codex-auto", "production-smoke", "recovered-command-evidence.json");
 const recoveredCommandEvidence = readJson(recoveredCommandEvidencePath);
+const recoveredCommandEvidenceEnvironmentBlockedPath = `${recoveredCommandEvidencePath}.environment-blocked.json`;
+const recoveredCommandEvidenceEnvironmentBlocked = readJson(recoveredCommandEvidenceEnvironmentBlockedPath);
 const processReconnectCommandEvidencePath = join(
   ROOT,
   ".codex-auto",
@@ -137,6 +143,12 @@ const processReconnectCommandEvidencePath = join(
   "process-reconnect-command-evidence.json",
 );
 const processReconnectCommandEvidence = readJson(processReconnectCommandEvidencePath);
+const processReconnectCommandEvidenceEnvironmentBlockedPath = `${processReconnectCommandEvidencePath}.environment-blocked.json`;
+const processReconnectCommandEvidenceEnvironmentBlocked = readJson(
+  processReconnectCommandEvidenceEnvironmentBlockedPath,
+);
+const muxLiveProcessPreservationPath = join(ROOT, ".codex-auto", "quality", "mux-live-process-preservation.json");
+const _muxLiveProcessPreservation = readJson(muxLiveProcessPreservationPath);
 const interactiveAiCliBoundaryPath = join(ROOT, ".codex-auto", "production-smoke", "interactive-ai-cli-boundary.json");
 const interactiveAiCliBoundary = readJson(interactiveAiCliBoundaryPath);
 const realAiCliBinaryProbePath = join(ROOT, ".codex-auto", "production-smoke", "real-ai-cli-binary-probe.json");
@@ -209,11 +221,20 @@ const nativeBoundaryContractPath = join(ROOT, ".codex-auto", "quality", "native-
 const nativeBoundaryContract = readJson(nativeBoundaryContractPath);
 const nativeClientSpikePath = join(ROOT, ".codex-auto", "quality", "native-client-spike.json");
 const nativeClientSpike = readJson(nativeClientSpikePath);
+const worldClassTerminalAiOsPath = join(ROOT, ".codex-auto", "quality", "world-class-terminal-ai-os.json");
+const worldClassTerminalAiOs = readJson(worldClassTerminalAiOsPath);
 const tauriRuntimeHygienePath = join(ROOT, ".codex-auto", "quality", "tauri-runtime-hygiene.json");
 const tauriRuntimeHygiene = readJson(tauriRuntimeHygienePath);
 const releaseHygieneContractPath = join(ROOT, ".codex-auto", "quality", "release-hygiene-contract.json");
 const chunkedOscLivePath = join(ROOT, ".codex-auto", "production-smoke", "chunked-osc-live.json");
 const chunkedOscLive = readJson(chunkedOscLivePath);
+const chunkedOscLiveEnvironmentBlockedPath = join(
+  ROOT,
+  ".codex-auto",
+  "production-smoke",
+  "chunked-osc-live.environment-blocked.json",
+);
+const chunkedOscLiveEnvironmentBlocked = readJson(chunkedOscLiveEnvironmentBlockedPath);
 const nativeHwndPasteLivePath = join(ROOT, ".codex-auto", "production-smoke", "native-hwnd-paste-live.json");
 const nativeHwndPasteLive = readJson(nativeHwndPasteLivePath);
 const terminalFontRenderContractPath = join(ROOT, ".codex-auto", "quality", "terminal-font-render-contract.json");
@@ -291,6 +312,10 @@ const nativeBoundaryContractScriptSource = readFileSync(
   "utf8",
 );
 const nativeClientSpikeScriptSource = readFileSync(join(ROOT, "scripts", "verify-native-client-spike.mjs"), "utf8");
+const worldClassTerminalAiOsScriptSource = readFileSync(
+  join(ROOT, "scripts", "verify-world-class-terminal-ai-os.mjs"),
+  "utf8",
+);
 const finalGoalAuditScriptSource = readFileSync(join(ROOT, "scripts", "verify-final-goal-audit.mjs"), "utf8");
 const finalGoalSafeVerifierSource = readFileSync(join(ROOT, "scripts", "verify-final-goal-safe.mjs"), "utf8");
 const goalCompletionMatrixSource = readFileSync(join(ROOT, "scripts", "verify-goal-completion-matrix.mjs"), "utf8");
@@ -331,6 +356,13 @@ const vitestConfigSource = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
 const testSetupSource = readFileSync(join(ROOT, "src", "__tests__", "setup.ts"), "utf8");
 const cargoTomlSource = readFileSync(join(ROOT, "src-tauri", "Cargo.toml"), "utf8");
 const terminalCanvasSource = readFileSync(join(ROOT, "src", "features", "terminal", "TerminalCanvas.tsx"), "utf8");
+const terminalCanvasGeometrySource = readFileSync(
+  join(ROOT, "src", "features", "terminal", "terminalCanvasGeometry.ts"),
+  "utf8",
+);
+const terminalPaintSource = readFileSync(join(ROOT, "src", "features", "terminal", "terminalPaint.ts"), "utf8");
+const terminalColorsSource = readFileSync(join(ROOT, "src", "features", "terminal", "terminalColors.ts"), "utf8");
+const repaintDecisionSource = readFileSync(join(ROOT, "src", "features", "terminal", "repaintDecision.ts"), "utf8");
 const terminalAreaStylesSource = readFileSync(
   join(ROOT, "src", "features", "terminal", "TerminalArea.module.css"),
   "utf8",
@@ -467,19 +499,13 @@ const newestDistArtifactMs = Math.max(
   mtimeMs(`${msi}.sig`),
 );
 const releaseDoctorCurrent = isoMs(releaseDoctor?.generatedAt) + 5_000 >= newestDistArtifactMs;
-const releaseDoctorFresh =
-  releaseDoctor?.overallStatus === "pass" && releaseDoctorCurrent;
-const releaseDoctorWarnCurrent =
-  releaseDoctor?.overallStatus === "pass_with_warnings" && releaseDoctorCurrent;
+const releaseDoctorFresh = releaseDoctor?.overallStatus === "pass" && releaseDoctorCurrent;
+const releaseDoctorWarnCurrent = releaseDoctor?.overallStatus === "pass_with_warnings" && releaseDoctorCurrent;
 add(
   scores,
   "release-doctor",
   "Release doctor",
-  releaseDoctorFresh
-    ? 18
-    : releaseDoctor?.overallStatus === "pass" || releaseDoctorWarnCurrent
-      ? 14
-      : 0,
+  releaseDoctorFresh ? 18 : releaseDoctor?.overallStatus === "pass" || releaseDoctorWarnCurrent ? 14 : 0,
   18,
   releaseDoctorFresh
     ? "pass"
@@ -511,6 +537,12 @@ const supplyChainPass =
   supplyChainAudit?.cargo?.knownVulnerabilities === 0 &&
   (supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
   supplyChainFresh;
+const supplyChainEnvironmentBlocked =
+  supplyChainAudit?.status === "environment-blocked" &&
+  supplyChainAudit?.npm?.ok !== true &&
+  supplyChainAudit?.cargo?.knownVulnerabilities === 0 &&
+  (supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
+  supplyChainFresh;
 add(
   scores,
   "supply-chain-audit",
@@ -523,14 +555,22 @@ add(
       } runtime critical Rust warnings; ${
         supplyChainAudit?.cargo?.reachability?.runtimeMaintenanceWarningCount ?? 0
       } runtime maintenance warnings tracked`
-    : supplyChainAudit?.status
-      ? `${supplyChainAudit.status} (stale or incomplete)`
-      : "missing",
+    : supplyChainEnvironmentBlocked
+      ? `environment-blocked; npm audit unavailable (${supplyChainAudit?.npm?.unavailableReason ?? "unknown"}); cargo 0 vulnerabilities, 0 runtime critical Rust warnings`
+      : supplyChainAudit?.status
+        ? `${supplyChainAudit.status} (stale or incomplete)`
+        : "missing",
   supplyChainPass
     ? []
-    : [
-        "supply-chain audit is missing, stale, failing, reports known vulnerabilities, or has runtime critical Rust warnings",
-      ],
+    : supplyChainEnvironmentBlocked
+      ? [
+          `npm supply-chain audit is environment-blocked: ${
+            supplyChainAudit?.npm?.unavailableReason ?? "npm audit unavailable"
+          }`,
+        ]
+      : [
+          "supply-chain audit is missing, stale, failing, reports known vulnerabilities, or has runtime critical Rust warnings",
+        ],
 );
 
 const artifactsReady =
@@ -555,14 +595,35 @@ const muxPass =
   muxPerf?.status === "passed" &&
   muxSummary?.split?.p95 <= 250 &&
   muxSummary?.create?.p95 <= 250;
+const muxLiveHostBlocked = muxLive?.status === "environment-blocked" && muxLive?.hostBlocked === true;
+const muxLiveHostBlockedMessage =
+  muxLive?.blockers?.[0]?.message ?? muxLive?.errors?.[0] ?? "mux live restore host process launch is blocked";
+const muxPerformanceOverBudget =
+  muxPerf?.status === "passed" && (muxSummary?.split?.p95 > 250 || muxSummary?.create?.p95 > 250);
 add(
   scores,
   "mux-performance",
   "Mux restore and performance",
   muxPass ? 14 : 8,
   14,
-  muxPass ? `split p95 ${muxSummary?.split?.p95}ms, create p95 ${muxSummary?.create?.p95}ms` : "missing or slow",
-  muxPass ? [] : ["mux performance evidence is missing or over budget"],
+  muxPass
+    ? `split p95 ${muxSummary?.split?.p95}ms, create p95 ${muxSummary?.create?.p95}ms`
+    : muxLiveHostBlocked
+      ? `performance passed; live restore environment-blocked (${muxLiveHostBlockedMessage})`
+      : muxPerf?.status === "passed"
+        ? "live restore missing or failing"
+        : "missing or slow",
+  muxPass
+    ? []
+    : [
+        ...(muxPerf?.status === "passed" ? [] : ["mux performance evidence is missing"]),
+        ...(muxPerformanceOverBudget ? ["mux performance p95 is over budget"] : []),
+        ...(muxLiveHostBlocked
+          ? [`mux live restore is environment-blocked by host process policy: ${muxLiveHostBlockedMessage}`]
+          : muxLive?.status === "passed"
+            ? []
+            : ["mux live restore evidence is missing or failing"]),
+      ],
 );
 
 add(
@@ -641,6 +702,25 @@ const chunkedOscLiveFresh =
       mtimeMs(join(ROOT, "e2e", "fixtures", "inline-image-1x1.png")),
       mtimeMs(join(ROOT, "e2e", "fixtures", "inline-image-32x32.png")),
     );
+const chunkedOscLiveEnvironmentBlockedFresh =
+  chunkedOscLiveEnvironmentBlocked?.ok === false &&
+  chunkedOscLiveEnvironmentBlocked?.status === "environment-blocked" &&
+  chunkedOscLiveEnvironmentBlocked?.preservesPrimaryArtifact === true &&
+  Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) &&
+  chunkedOscLiveEnvironmentBlocked.errors.some((error) =>
+    /CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM|No running debug\/release Aether\.exe/i.test(
+      String(error),
+    ),
+  ) &&
+  mtimeMs(chunkedOscLiveEnvironmentBlockedPath) + 5_000 >=
+    Math.max(
+      mtimeMs(join(ROOT, "scripts", "verify-chunked-osc-live-safe.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-chunked-osc-live.mjs")),
+    );
+const chunkedOscLiveEnvironmentBlockedReason =
+  Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) && chunkedOscLiveEnvironmentBlocked.errors.length > 0
+    ? chunkedOscLiveEnvironmentBlocked.errors.map((error) => String(error)).join("; ")
+    : "WebView2/CDP live proof environment is unavailable";
 const nativeHwndPasteLiveFresh =
   nativeHwndPasteLive?.ok === true &&
   nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
@@ -720,7 +800,13 @@ const terminalCoreBoundaryBlockers = [
   ...(imeInputBarSource.includes("navigator.clipboard")
     ? ["image clipboard ingestion still depends on WebView navigator.clipboard"]
     : []),
-  ...(!chunkedOscLiveFresh ? ["chunked OSC inline image live proof is missing or stale"] : []),
+  ...(!chunkedOscLiveFresh
+    ? [
+        chunkedOscLiveEnvironmentBlockedFresh
+          ? `chunked OSC inline image live proof is environment-blocked: ${chunkedOscLiveEnvironmentBlockedReason}`
+          : "chunked OSC inline image live proof is missing or stale",
+      ]
+    : []),
   ...(!nativeHwndPasteLiveFresh ? ["native HWND paste live proof is missing or stale"] : []),
   ...(Array.isArray(rightRailSuite?.checks) && rightRailSuite.checks.some((check) => check.status === "skipped")
     ? ["native WebView2 terminal/rail CDP evidence is incomplete"]
@@ -747,9 +833,9 @@ add(
 
 const terminalCanvasDprBacked =
   terminalCanvasSource.includes("currentCanvasDevicePixelRatio") &&
-  terminalCanvasSource.includes("MAX_CANVAS_DEVICE_PIXEL_RATIO") &&
-  terminalCanvasSource.includes("function canvasBitmapSize") &&
-  terminalCanvasSource.includes("function canvasCssSize") &&
+  terminalCanvasGeometrySource.includes("MAX_CANVAS_DEVICE_PIXEL_RATIO") &&
+  terminalCanvasGeometrySource.includes("function canvasBitmapSize") &&
+  terminalCanvasGeometrySource.includes("function canvasCssSize") &&
   terminalCanvasSource.includes("canvasBitmapWidth = canvasBitmapSize(canvasWidth, canvasDevicePixelRatio)") &&
   terminalCanvasSource.includes("canvasBitmapHeight = canvasBitmapSize(canvasHeight, canvasDevicePixelRatio)") &&
   terminalCanvasSource.includes("canvasCssWidth = canvasCssSize(canvasBitmapWidth, canvasDevicePixelRatio)") &&
@@ -759,7 +845,9 @@ const terminalCanvasGeometryRepaint =
   terminalCanvasSource.includes("prevCanvasGeometryRef") &&
   terminalCanvasSource.includes("canvasGeometryChanged") &&
   terminalCanvasSource.includes("devicePixelRatio: canvasDevicePixelRatio") &&
-  terminalCanvasSource.includes("!canvasGeometryChanged");
+  terminalCanvasSource.includes("shouldRepaintRow") &&
+  repaintDecisionSource.includes("flags.canvasGeometryChanged") &&
+  repaintDecisionSource.includes("flags.rowContentChanged");
 const terminalCanvasTextLayerAboveDecor =
   terminalCanvasSource.includes("styles.terminalCanvasSurface") &&
   terminalAreaStylesSource.includes(".terminalCanvasSurface") &&
@@ -767,16 +855,19 @@ const terminalCanvasTextLayerAboveDecor =
   terminalAreaStylesSource.includes("text-rendering: auto") &&
   (terminalAreaStylesSource.includes("-webkit-font-smoothing: antialiased") ||
     terminalAreaStylesSource.includes("-webkit-font-smoothing: subpixel-antialiased"));
-const terminalCanvasNoPixelatedText = !terminalCanvasSource.includes('imageRendering: "pixelated"');
+const terminalCanvasNoPixelatedText =
+  !terminalCanvasSource.includes('imageRendering: "pixelated"') &&
+  !terminalPaintSource.includes('imageRendering: "pixelated"');
 const terminalCanvasCrispText =
-  terminalCanvasSource.includes("snapCanvasTextCoord") &&
+  terminalCanvasGeometrySource.includes("snapCanvasTextCoord") &&
   terminalCanvasSource.includes("configureTerminalCanvasText(ctx)") &&
   terminalCanvasSource.includes('textCtx.fontKerning = "none"') &&
   terminalCanvasSource.includes('textCtx.textRendering = "auto"') &&
-  terminalCanvasSource.includes("shouldClampGlyphToCell") &&
-  terminalCanvasSource.includes("enhanceTerminalTextColor") &&
-  terminalCanvasSource.includes("minimumTerminalContrastRatio") &&
-  terminalCanvasSource.includes("dimAlphaForTextClarity") &&
+  terminalPaintSource.includes("snapCanvasTextCoord") &&
+  terminalPaintSource.includes("shouldClampGlyphToCell") &&
+  terminalPaintSource.includes("enhanceTerminalTextColor") &&
+  terminalColorsSource.includes("minimumTerminalContrastRatio") &&
+  terminalColorsSource.includes("dimAlphaForTextClarity") &&
   terminalMetricsSource.includes("snapTerminalCssPixel") &&
   terminalMetricsSource.includes("currentTerminalDevicePixelRatio");
 const terminalCanvasFidelityTests =
@@ -808,18 +899,13 @@ const terminalFontRenderContractSourcePass =
   terminalFontRenderContractSource.includes("Cascadia Next JP") &&
   terminalFontRenderContractSource.includes("src/features/agent-terminal/AgentTerminal.tsx") &&
   terminalFontRenderContractSource.includes("src/features/terminal/pane-tree/PaneTreeRenderer.tsx") &&
+  terminalFontRenderContractSource.includes("src/features/terminal/terminalCanvasGeometry.ts") &&
+  terminalFontRenderContractSource.includes("src/features/terminal/terminalPaint.ts") &&
+  terminalFontRenderContractSource.includes("src/features/terminal/terminalColors.ts") &&
+  terminalFontRenderContractSource.includes("src/features/terminal/repaintDecision.ts") &&
   terminalFontRenderContractSource.includes("pane-mount-pixel-grid") &&
   terminalFontSettingsContractTestSource.includes("terminal font settings contract") &&
   terminalFontSettingsContractTestSource.includes("terminal_font_family: terminalFontFamily") &&
-  terminalFontSettingsContractTestSource.includes("terminal_text_clarity: terminalTextClarity") &&
-  terminalFontSettingsContractTestSource.includes("terminal_surface_opacity: terminalSurfaceOpacity") &&
-  appStoreSource.includes("terminalFontFamily: loadTerminalFontFamily()") &&
-  appStoreSource.includes("terminalTextClarity: loadTerminalTextClarity()") &&
-  appStoreSource.includes("terminalSurfaceOpacity: loadTerminalSurfaceOpacity()") &&
-  appStoreSource.includes('export type TerminalTextClarity = "glass" | "balanced" | "solid"') &&
-  appStoreSource.includes('const DEFAULT_TERMINAL_TEXT_CLARITY: TerminalTextClarity = "solid"') &&
-  appStoreSource.includes("setTerminalAppearance") &&
-  settingsSource.includes("function terminalFontStack(primaryFont: string)") &&
   settingsSource.includes("terminal_font_family: terminalFontFamily") &&
   settingsSource.includes("terminal_text_clarity: terminalTextClarity") &&
   settingsSource.includes("terminal_surface_opacity: terminalSurfaceOpacity") &&
@@ -831,9 +917,9 @@ const terminalFontRenderContractSourcePass =
   agentTerminalSource.includes("textClarity={terminalTextClarity}") &&
   agentTerminalSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily)") &&
   terminalCanvasSource.includes("forceOpaqueCssColor") &&
-  terminalCanvasSource.includes("enhanceTerminalTextColor") &&
-  terminalCanvasSource.includes("minimumTerminalContrastRatio") &&
-  terminalCanvasSource.includes("dimAlphaForTextClarity") &&
+  terminalPaintSource.includes("enhanceTerminalTextColor") &&
+  terminalColorsSource.includes("minimumTerminalContrastRatio") &&
+  terminalColorsSource.includes("dimAlphaForTextClarity") &&
   terminalCanvasSource.includes('textClarity = "solid"') &&
   terminalCanvasSource.includes('textClarity === "solid"') &&
   terminalCanvasSource.includes("data-terminal-text-clarity={textClarity}");
@@ -842,6 +928,10 @@ const terminalFontRenderContractFresh =
   terminalFontRenderContract?.status === "pass" &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/settings/Settings.tsx") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/agent-terminal/AgentTerminal.tsx") &&
+  terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/terminalCanvasGeometry.ts") &&
+  terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/terminalPaint.ts") &&
+  terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/terminalColors.ts") &&
+  terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/repaintDecision.ts") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/pane-tree/PaneTreeRenderer.tsx") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/__tests__/TerminalFontSettingsContract.test.ts") &&
   mtimeMs(terminalFontRenderContractPath) + 5_000 >=
@@ -853,6 +943,10 @@ const terminalFontRenderContractFresh =
       mtimeMs(join(ROOT, "src", "features", "terminal", "NativeTerminalArea.tsx")),
       mtimeMs(join(ROOT, "src", "features", "agent-terminal", "AgentTerminal.tsx")),
       mtimeMs(join(ROOT, "src", "features", "terminal", "TerminalCanvas.tsx")),
+      mtimeMs(join(ROOT, "src", "features", "terminal", "terminalCanvasGeometry.ts")),
+      mtimeMs(join(ROOT, "src", "features", "terminal", "terminalPaint.ts")),
+      mtimeMs(join(ROOT, "src", "features", "terminal", "terminalColors.ts")),
+      mtimeMs(join(ROOT, "src", "features", "terminal", "repaintDecision.ts")),
       mtimeMs(join(ROOT, "src", "features", "terminal", "pane-tree", "PaneTreeRenderer.tsx")),
       mtimeMs(join(ROOT, "src", "features", "terminal", "terminalMetrics.ts")),
       mtimeMs(join(ROOT, "src", "shared", "store", "appStore.ts")),
@@ -916,6 +1010,8 @@ const nativeBoundaryFresh =
       mtimeMs(join(ROOT, "src-tauri", "src", "pty_sidecar.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "ipc", "interactive_commands.rs")),
       mtimeMs(join(ROOT, "scripts", "verify-mux-live-restore.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-mux-live-process-preservation.mjs")),
+      mtimeMs(muxLiveProcessPreservationPath),
       mtimeMs(join(ROOT, "scripts", "verify-native-client-spike.mjs")),
       mtimeMs(nativeClientSpikePath),
     );
@@ -956,8 +1052,12 @@ const nativeBoundarySourcePass =
   ) &&
   nativeBoundaryContractScriptSource.includes("daemon-contract-policy") &&
   nativeBoundaryContractScriptSource.includes(
-    "daemon contract exposes machine-readable detach, attach, restart-restore, shutdown, graph-version, transport, auth, honest terminal-core render/input/fallback policies, and aetherctl parity policies",
+    "daemon contract exposes machine-readable detach, attach, restart-restore, shutdown, graph-version, transport, auth, honest terminal-core render/input/fallback policies",
   ) &&
+  nativeBoundaryContractScriptSource.includes("daemonRestartRestoreProofReady") &&
+  nativeBoundaryContractScriptSource.includes("daemonLiveProcessPreservationReady") &&
+  nativeBoundaryContractScriptSource.includes("muxLiveProcessPreservationArtifactPath") &&
+  nativeBoundaryContractScriptSource.includes("processPreservationReady") &&
   nativeBoundaryContractScriptSource.includes("terminal-core-policy-machine-readable") &&
   nativeBoundaryContractScriptSource.includes("terminal-core-policy-stable-after-restart") &&
   nativeBoundaryContractScriptSource.includes("terminalCorePolicy") &&
@@ -1207,6 +1307,62 @@ add(
         ...nativeBoundaryRequiredIds
           .filter((id) => !nativeBoundaryPassedIds.has(id))
           .map((id) => `native boundary check failed: ${id}`),
+      ],
+);
+
+const worldClassClaimIds = ["tmux", "bridgespace", "ghostty", "release"];
+const worldClassArtifactCurrent =
+  worldClassTerminalAiOs != null &&
+  ["pass", "block", "review", "external-blocked"].includes(worldClassTerminalAiOs?.status) &&
+  mtimeMs(worldClassTerminalAiOsPath) + 5_000 >=
+    Math.max(
+      mtimeMs(join(ROOT, "scripts", "verify-world-class-terminal-ai-os.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-current-readiness-source.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-native-daily-driver-terminal.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-native-text-shaping-fallback.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-native-visual-regression.mjs")),
+      mtimeMs(join(ROOT, "docs", "specs", "AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md")),
+    );
+const worldClassFresh =
+  worldClassArtifactCurrent && worldClassTerminalAiOs?.ok === true && worldClassTerminalAiOs?.status === "pass";
+const worldClassClaims = worldClassTerminalAiOs?.claims ?? {};
+const worldClassSourcePass =
+  packageJsonSource.includes('"verify:world-class-terminal-ai-os"') &&
+  worldClassTerminalAiOsScriptSource.includes('schema: "aether.world-class-terminal-ai-os/v1"') &&
+  worldClassTerminalAiOsScriptSource.includes("noGhosttyClaimWithoutSystemShaping") &&
+  worldClassTerminalAiOsScriptSource.includes("noWorldClassClaimWhileReleaseBlocked") &&
+  worldClassTerminalAiOsScriptSource.includes("nativeTextShaping") &&
+  worldClassTerminalAiOsScriptSource.includes("muxLiveRestore") &&
+  worldClassTerminalAiOsScriptSource.includes("sharedBrainRestart");
+const worldClassPass =
+  worldClassFresh && worldClassSourcePass && worldClassClaimIds.every((id) => worldClassClaims[id] === "pass");
+add(
+  scores,
+  "world-class-terminal-ai-os",
+  "World-class terminal AI OS aggregate gate",
+  worldClassPass ? 16 : 0,
+  16,
+  worldClassPass
+    ? "tmux, BridgeSpace, Ghostty/native terminal, and release claims are all pass"
+    : worldClassTerminalAiOs
+      ? `${worldClassTerminalAiOs.status ?? "unknown"}: ${worldClassClaimIds
+          .map((id) => `${id}=${worldClassClaims[id] ?? "missing"}`)
+          .join(", ")}`
+      : "missing",
+  worldClassPass
+    ? []
+    : [
+        ...(worldClassArtifactCurrent ? [] : ["world-class terminal AI OS artifact is missing or stale"]),
+        ...(worldClassArtifactCurrent && worldClassTerminalAiOs?.status === "block"
+          ? ["world-class terminal AI OS aggregate gate is currently blocked"]
+          : []),
+        ...(worldClassArtifactCurrent && worldClassTerminalAiOs?.status === "external-blocked"
+          ? ["world-class terminal AI OS aggregate gate is externally blocked"]
+          : []),
+        ...(worldClassSourcePass ? [] : ["world-class terminal AI OS verifier or package wiring is incomplete"]),
+        ...worldClassClaimIds
+          .filter((id) => worldClassClaims[id] !== "pass")
+          .map((id) => `world-class claim blocked: ${id}=${worldClassClaims[id] ?? "missing"}`),
       ],
 );
 
@@ -1674,6 +1830,14 @@ const rightRailPass =
   rightRailInformationDensityPass &&
   rightRailVisualEvidenceFresh &&
   rightRailStaleUrlTruthPass;
+const rightRailCoreContractPass =
+  rightRailSourceHasExplanations &&
+  rightRailTestsCoverExplanations &&
+  rightRailTestsCoverFallbackTelemetry &&
+  rightRailTestsCoverRunLoopSummary &&
+  rightRailTestsCoverRunLoopTrace &&
+  rightRailTestsCoverActionOwnership &&
+  rightRailInformationDensityPass;
 add(
   scores,
   "right-rail-edge",
@@ -1686,7 +1850,11 @@ add(
   rightRailPass
     ? []
     : [
-        "right rail action explanations, run-loop summary, trace spine, owner chips, fallback telemetry routing, test coverage, or fresh visual QA evidence are missing",
+        ...(rightRailCoreContractPass
+          ? []
+          : [
+              "right rail action explanations, run-loop summary, trace spine, owner chips, fallback telemetry routing, or test coverage are missing",
+            ]),
         ...(rightRailSourceHasExplanations ? [] : ["right rail action explanations are missing"]),
         ...(rightRailTestsCoverExplanations && rightRailTestsCoverFallbackTelemetry
           ? []
@@ -1892,6 +2060,26 @@ add(
       ],
 );
 
+function environmentBlockedReason(artifact) {
+  const error = Array.isArray(artifact?.errors) ? artifact.errors.find(Boolean) : null;
+  return String(error ?? "host proof environment unavailable")
+    .replace(/\s+/g, " ")
+    .slice(0, 220);
+}
+
+function commandProofEnvironmentBlockedFresh(artifact, artifactPath, verifierPath) {
+  return (
+    artifact?.status === "environment-blocked" &&
+    artifact?.preservesPrimaryArtifact === true &&
+    Array.isArray(artifact?.errors) &&
+    artifact.errors.some((error) =>
+      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aether\.exe process found|Debug app executable missing|Vite dev server/i.test(
+        String(error),
+      ),
+    ) &&
+    mtimeMs(artifactPath) + 5_000 >= mtimeMs(verifierPath)
+  );
+}
 const liveCommandEvidenceFresh =
   liveCommandEvidence?.ok === true &&
   mtimeMs(liveCommandEvidencePath) + 5_000 >=
@@ -1927,6 +2115,12 @@ const multipaneCommandEvidenceSupersetPass =
   typeof multipaneSplitBlockForLive?.endSequence === "number" &&
   typeof multipaneSplitBlockForLive?.endHistorySize === "number" &&
   multipaneCommandEvidence?.checks?.split?.history?.found === true;
+const liveCommandEvidenceEnvironmentBlockedPass = commandProofEnvironmentBlockedFresh(
+  liveCommandEvidenceEnvironmentBlocked,
+  liveCommandEvidenceEnvironmentBlockedPath,
+  join(ROOT, "scripts", "verify-live-command-evidence.mjs"),
+);
+const liveCommandEvidenceEnvironmentBlockedReason = environmentBlockedReason(liveCommandEvidenceEnvironmentBlocked);
 const liveCommandEvidencePass =
   (liveCommandEvidenceFresh &&
     liveCommandBlock?.status === "passed" &&
@@ -1947,17 +2141,21 @@ add(
     ? multipaneCommandEvidenceSupersetPass
       ? "fresh multipane live proof covers passed native command blocks with scrollback anchors"
       : "live shell command produced passed native block with scrollback anchor"
-    : "missing or stale",
+    : liveCommandEvidenceEnvironmentBlockedPass
+      ? `environment-blocked (${liveCommandEvidenceEnvironmentBlockedReason})`
+      : "missing or stale",
   liveCommandEvidencePass
     ? []
-    : [
-        ...(liveCommandEvidenceFresh ? [] : ["live command evidence artifact is missing, stale, or failing"]),
-        ...(liveCommandBlock?.status === "passed" ? [] : ["live command block did not finish as passed"]),
-        ...(liveCommandBlock?.exitCode === 0 ? [] : ["live command block exit code is not 0"]),
-        ...(typeof liveCommandBlock?.endSequence === "number" && typeof liveCommandBlock?.endHistorySize === "number"
-          ? []
-          : ["live command block is missing prompt-mark/scrollback anchors"]),
-      ],
+    : liveCommandEvidenceEnvironmentBlockedPass
+      ? [`live command evidence is environment-blocked: ${liveCommandEvidenceEnvironmentBlockedReason}`]
+      : [
+          ...(liveCommandEvidenceFresh ? [] : ["live command evidence artifact is missing, stale, or failing"]),
+          ...(liveCommandBlock?.status === "passed" ? [] : ["live command block did not finish as passed"]),
+          ...(liveCommandBlock?.exitCode === 0 ? [] : ["live command block exit code is not 0"]),
+          ...(typeof liveCommandBlock?.endSequence === "number" && typeof liveCommandBlock?.endHistorySize === "number"
+            ? []
+            : ["live command block is missing prompt-mark/scrollback anchors"]),
+        ],
 );
 
 const multipaneEvidenceFresh =
@@ -1974,6 +2172,12 @@ const multipaneBase = multipaneCommandEvidence?.checks?.base;
 const multipaneSplit = multipaneCommandEvidence?.checks?.split;
 const multipaneBaseAfterClose = multipaneCommandEvidence?.checks?.baseAfterClose;
 const multipaneTerminalIdsAfterClose = multipaneCommandEvidence?.checks?.terminalIdsAfterClose;
+const multipaneEvidenceEnvironmentBlockedPass = commandProofEnvironmentBlockedFresh(
+  multipaneCommandEvidenceEnvironmentBlocked,
+  multipaneCommandEvidenceEnvironmentBlockedPath,
+  join(ROOT, "scripts", "verify-multipane-command-evidence.mjs"),
+);
+const multipaneEvidenceEnvironmentBlockedReason = environmentBlockedReason(multipaneCommandEvidenceEnvironmentBlocked);
 const multipaneEvidencePass =
   multipaneEvidenceFresh &&
   multipaneBase?.block?.status === "passed" &&
@@ -1997,20 +2201,24 @@ add(
   8,
   multipaneEvidencePass
     ? "base and split panes produced passed anchored command blocks through long scrollback and split close"
-    : "missing or stale",
+    : multipaneEvidenceEnvironmentBlockedPass
+      ? `environment-blocked (${multipaneEvidenceEnvironmentBlockedReason})`
+      : "missing or stale",
   multipaneEvidencePass
     ? []
-    : [
-        ...(multipaneEvidenceFresh ? [] : ["multi-pane command evidence artifact is missing, stale, or failing"]),
-        ...(multipaneBase?.block?.status === "passed" ? [] : ["base pane command block did not pass"]),
-        ...(multipaneSplit?.block?.status === "passed" ? [] : ["split pane command block did not pass"]),
-        ...(multipaneBase?.history?.found === true && multipaneSplit?.history?.found === true
-          ? []
-          : ["long scrollback markers were not retained in both panes"]),
-        ...(multipaneBaseAfterClose?.status === "passed"
-          ? []
-          : ["base pane command evidence did not survive split close"]),
-      ],
+    : multipaneEvidenceEnvironmentBlockedPass
+      ? [`multi-pane command evidence is environment-blocked: ${multipaneEvidenceEnvironmentBlockedReason}`]
+      : [
+          ...(multipaneEvidenceFresh ? [] : ["multi-pane command evidence artifact is missing, stale, or failing"]),
+          ...(multipaneBase?.block?.status === "passed" ? [] : ["base pane command block did not pass"]),
+          ...(multipaneSplit?.block?.status === "passed" ? [] : ["split pane command block did not pass"]),
+          ...(multipaneBase?.history?.found === true && multipaneSplit?.history?.found === true
+            ? []
+            : ["long scrollback markers were not retained in both panes"]),
+          ...(multipaneBaseAfterClose?.status === "passed"
+            ? []
+            : ["base pane command evidence did not survive split close"]),
+        ],
 );
 
 const recoveredEvidenceFresh =
@@ -2026,6 +2234,12 @@ const recoveredEvidenceFresh =
 const recoveredLiveBlock = recoveredCommandEvidence?.checks?.liveBlock;
 const recoveredPersistedBlock = recoveredCommandEvidence?.checks?.persistedBlock;
 const recoveredAfterReloadBlock = recoveredCommandEvidence?.checks?.afterReloadBlock;
+const recoveredEvidenceEnvironmentBlockedPass = commandProofEnvironmentBlockedFresh(
+  recoveredCommandEvidenceEnvironmentBlocked,
+  recoveredCommandEvidenceEnvironmentBlockedPath,
+  join(ROOT, "scripts", "verify-recovered-command-evidence.mjs"),
+);
+const recoveredEvidenceEnvironmentBlockedReason = environmentBlockedReason(recoveredCommandEvidenceEnvironmentBlocked);
 const recoveredEvidencePass =
   recoveredEvidenceFresh &&
   recoveredLiveBlock?.status === "passed" &&
@@ -2042,22 +2256,28 @@ add(
   "Recovered terminal command evidence",
   recoveredEvidencePass ? 8 : 0,
   8,
-  recoveredEvidencePass ? "command blocks are persisted and still visible after WebView reconnect" : "missing or stale",
+  recoveredEvidencePass
+    ? "command blocks are persisted and still visible after WebView reconnect"
+    : recoveredEvidenceEnvironmentBlockedPass
+      ? `environment-blocked (${recoveredEvidenceEnvironmentBlockedReason})`
+      : "missing or stale",
   recoveredEvidencePass
     ? []
-    : [
-        ...(recoveredEvidenceFresh ? [] : ["recovered command evidence artifact is missing, stale, or failing"]),
-        ...(recoveredPersistedBlock?.status === "passed"
-          ? []
-          : ["command block was not persisted for reconnect recovery"]),
-        ...(typeof recoveredPersistedBlock?.endSequence === "number" &&
-        typeof recoveredPersistedBlock?.endHistorySize === "number"
-          ? []
-          : ["persisted command block is missing prompt-mark/scrollback anchors"]),
-        ...(recoveredCommandEvidence?.checks?.terminalListedAfterReload === true
-          ? []
-          : ["terminal was not listed after WebView reconnect"]),
-      ],
+    : recoveredEvidenceEnvironmentBlockedPass
+      ? [`recovered command evidence is environment-blocked: ${recoveredEvidenceEnvironmentBlockedReason}`]
+      : [
+          ...(recoveredEvidenceFresh ? [] : ["recovered command evidence artifact is missing, stale, or failing"]),
+          ...(recoveredPersistedBlock?.status === "passed"
+            ? []
+            : ["command block was not persisted for reconnect recovery"]),
+          ...(typeof recoveredPersistedBlock?.endSequence === "number" &&
+          typeof recoveredPersistedBlock?.endHistorySize === "number"
+            ? []
+            : ["persisted command block is missing prompt-mark/scrollback anchors"]),
+          ...(recoveredCommandEvidence?.checks?.terminalListedAfterReload === true
+            ? []
+            : ["terminal was not listed after WebView reconnect"]),
+        ],
 );
 
 const processReconnectEvidenceFresh =
@@ -2076,6 +2296,14 @@ const processAfterRestartBlock = processReconnectCommandEvidence?.checks?.afterR
 const processAfterRestartPersistedBlock = processReconnectCommandEvidence?.checks?.afterRestartPersistedBlock;
 const processSplitAfterRestartBlock = processReconnectCommandEvidence?.checks?.splitAfterRestartBlock;
 const processSplitAfterRestartPersistedBlock = processReconnectCommandEvidence?.checks?.splitAfterRestartPersistedBlock;
+const processReconnectEvidenceEnvironmentBlockedPass = commandProofEnvironmentBlockedFresh(
+  processReconnectCommandEvidenceEnvironmentBlocked,
+  processReconnectCommandEvidenceEnvironmentBlockedPath,
+  join(ROOT, "scripts", "verify-process-reconnect-command-evidence.mjs"),
+);
+const processReconnectEvidenceEnvironmentBlockedReason = environmentBlockedReason(
+  processReconnectCommandEvidenceEnvironmentBlocked,
+);
 const processReconnectEvidencePass =
   processReconnectEvidenceFresh &&
   processReconnectCommandEvidence?.checks?.sidecarRetainedTerminal === true &&
@@ -2106,38 +2334,44 @@ add(
   8,
   processReconnectEvidencePass
     ? "base and split sidecar terminals survived Aether restart, were adopted, and accepted new anchored input"
-    : "missing or stale",
+    : processReconnectEvidenceEnvironmentBlockedPass
+      ? `environment-blocked (${processReconnectEvidenceEnvironmentBlockedReason})`
+      : "missing or stale",
   processReconnectEvidencePass
     ? []
-    : [
-        ...(processReconnectEvidenceFresh
-          ? []
-          : ["process reconnect command evidence artifact is missing, stale, or failing"]),
-        ...(processReconnectCommandEvidence?.checks?.sidecarRetainedTerminal === true
-          ? []
-          : ["sidecar did not retain the terminal after Aether stopped"]),
-        ...(processReconnectCommandEvidence?.checks?.sidecarRetainedSplitTerminal === true
-          ? []
-          : ["sidecar did not retain the split terminal after Aether stopped"]),
-        ...(processReconnectCommandEvidence?.checks?.terminalAdoptedAfterRestart === true
-          ? []
-          : ["restarted Aether did not adopt the sidecar terminal"]),
-        ...(processReconnectCommandEvidence?.checks?.splitTerminalAdoptedAfterRestart === true
-          ? []
-          : ["restarted Aether did not adopt the split sidecar terminal"]),
-        ...(processRecoveredBlock?.status === "passed"
-          ? []
-          : ["pre-restart command evidence did not recover after process restart"]),
-        ...(processSplitRecoveredBlock?.status === "passed"
-          ? []
-          : ["split pre-restart command evidence did not recover after process restart"]),
-        ...(processAfterRestartBlock?.status === "passed" &&
-        processAfterRestartPersistedBlock?.status === "passed" &&
-        processSplitAfterRestartBlock?.status === "passed" &&
-        processSplitAfterRestartPersistedBlock?.status === "passed"
-          ? []
-          : ["post-restart input did not produce live and persisted command evidence for all panes"]),
-      ],
+    : processReconnectEvidenceEnvironmentBlockedPass
+      ? [
+          `process reconnect command evidence is environment-blocked: ${processReconnectEvidenceEnvironmentBlockedReason}`,
+        ]
+      : [
+          ...(processReconnectEvidenceFresh
+            ? []
+            : ["process reconnect command evidence artifact is missing, stale, or failing"]),
+          ...(processReconnectCommandEvidence?.checks?.sidecarRetainedTerminal === true
+            ? []
+            : ["sidecar did not retain the terminal after Aether stopped"]),
+          ...(processReconnectCommandEvidence?.checks?.sidecarRetainedSplitTerminal === true
+            ? []
+            : ["sidecar did not retain the split terminal after Aether stopped"]),
+          ...(processReconnectCommandEvidence?.checks?.terminalAdoptedAfterRestart === true
+            ? []
+            : ["restarted Aether did not adopt the sidecar terminal"]),
+          ...(processReconnectCommandEvidence?.checks?.splitTerminalAdoptedAfterRestart === true
+            ? []
+            : ["restarted Aether did not adopt the split sidecar terminal"]),
+          ...(processRecoveredBlock?.status === "passed"
+            ? []
+            : ["pre-restart command evidence did not recover after process restart"]),
+          ...(processSplitRecoveredBlock?.status === "passed"
+            ? []
+            : ["split pre-restart command evidence did not recover after process restart"]),
+          ...(processAfterRestartBlock?.status === "passed" &&
+          processAfterRestartPersistedBlock?.status === "passed" &&
+          processSplitAfterRestartBlock?.status === "passed" &&
+          processSplitAfterRestartPersistedBlock?.status === "passed"
+            ? []
+            : ["post-restart input did not produce live and persisted command evidence for all panes"]),
+        ],
 );
 
 const interactiveSidecarBoundarySignals = [
@@ -2590,10 +2824,17 @@ const authenticatedAiCliPromptNativeChaosCoversLiveChaos =
   authenticatedAiCliPromptSmoke?.nonTokenPreflight?.nativePostLaunchChaosPass === true &&
   authenticatedAiCliPromptPreflightArtifacts.nativePostLaunchChaos?.fresh === true &&
   !authenticatedAiCliPromptPreflightArtifacts.nativePostLaunchChaos?.parseError;
+const authenticatedAiCliPromptNativeImeCoversCdpIme =
+  authenticatedAiCliPromptSmoke?.nonTokenPreflight?.imeReadiness === "native-input-host-passed" &&
+  authenticatedAiCliPromptPreflightArtifacts.nativeInputHost?.fresh === true &&
+  !authenticatedAiCliPromptPreflightArtifacts.nativeInputHost?.parseError;
 const authenticatedAiCliPromptPreflightArtifactsFresh =
   authenticatedAiCliPromptPreflightArtifactEntries.length >= 5 &&
   Object.entries(authenticatedAiCliPromptPreflightArtifacts).every(([name, artifact]) => {
     if (name === "postLaunchChaos" && authenticatedAiCliPromptNativeChaosCoversLiveChaos) {
+      return !artifact?.parseError;
+    }
+    if (name === "ime" && authenticatedAiCliPromptNativeImeCoversCdpIme) {
       return !artifact?.parseError;
     }
     return artifact?.fresh === true && !artifact?.parseError;
@@ -3006,6 +3247,7 @@ const aiCliLaunchPlannerSourcePass =
   aiCliLaunchPlannerSource.includes("contextPack: buildContextPackTrace(promptContract)") &&
   aiCliLaunchPlannerSource.includes("hasContextPackContract") &&
   aiCliLaunchPlannerSource.includes("native IME, clipboard, reconnect, and AI CLI input-boundary preflight") &&
+  aiCliLaunchPlannerSource.includes("muxLiveProcessPreservation") &&
   aiCliLaunchPlannerSource.includes(
     "machine-readable context pack trace with inclusion, exclusion, redaction, and changed-file counts",
   ) &&
@@ -3049,6 +3291,7 @@ const aiCliLaunchPlannerSmokeFresh =
       mtimeMs(join(ROOT, ".codex-auto", "production-smoke", "native-terminal-input-host.json")),
       mtimeMs(join(ROOT, ".codex-auto", "production-smoke", "verify-ime.json")),
       mtimeMs(processReconnectCommandEvidencePath),
+      mtimeMs(muxLiveProcessPreservationPath),
       mtimeMs(interactiveAiCliBoundaryPath),
     );
 const aiCliLaunchPlannerPreflightTrace = Array.isArray(aiCliLaunchPlannerSmoke?.plan?.trace?.preflightChecks)
@@ -3066,6 +3309,7 @@ const aiCliLaunchPlannerPreflightPass =
     join(ROOT, ".codex-auto", "production-smoke", "native-terminal-input-host.json") &&
   aiCliLaunchPlannerPreflightArtifacts.ime === join(ROOT, ".codex-auto", "production-smoke", "verify-ime.json") &&
   aiCliLaunchPlannerPreflightArtifacts.processReconnect === processReconnectCommandEvidencePath &&
+  aiCliLaunchPlannerPreflightArtifacts.muxLiveProcessPreservation === muxLiveProcessPreservationPath &&
   aiCliLaunchPlannerPreflightArtifacts.interactiveBoundary === interactiveAiCliBoundaryPath;
 const aiCliLaunchPlannerPromptContractTrace = Array.isArray(aiCliLaunchPlannerSmoke?.plan?.trace?.promptContractChecks)
   ? aiCliLaunchPlannerSmoke.plan.trace.promptContractChecks
@@ -4273,8 +4517,8 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("nativeHwndPasteLiveChecks") &&
   finalGoalAuditScriptSource.includes("pass-current-native-hwnd-paste-contract") &&
   finalGoalAuditScriptSource.includes("scripts/verify-native-hwnd-paste-live.mjs") &&
-  finalGoalAuditScriptSource.includes("docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md") &&
-  finalGoalAuditScriptSource.includes("docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md") &&
+  finalGoalAuditScriptSource.includes("docs/specs/README.md") &&
+  finalGoalAuditScriptSource.includes("docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
   finalGoalAuditScriptSource.includes("src/features/terminal/keymap.ts") &&
   finalGoalAuditScriptSource.includes("src/features/terminal/hooks/useAICliDetection.ts") &&
   finalGoalAuditScriptSource.includes("src/shared/hooks/useKeyboardShortcuts.ts") &&
@@ -4497,9 +4741,9 @@ const finalGoalAuditSourcePass =
   goalDocumentationFreshnessSource.includes("localDate") &&
   goalDocumentationFreshnessSource.includes("checkedDocCount") &&
   goalDocumentationFreshnessSource.includes("requiredDocPaths") &&
-  goalDocumentationFreshnessSource.includes("docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md") &&
-  goalDocumentationFreshnessSource.includes("docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md") &&
-  goalDocumentationFreshnessSource.includes("docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md") &&
+  goalDocumentationFreshnessSource.includes("README.md") &&
+  goalDocumentationFreshnessSource.includes("docs/README.md") &&
+  goalDocumentationFreshnessSource.includes("docs/PUBLICATION_READINESS.md") &&
   goalDocumentationFreshnessSource.includes("scoreIsCurrentShape") &&
   goalDocumentationFreshnessSource.includes("pass-current-goal-docs-contract") &&
   goalDocumentationFreshnessSource.includes("noStaleReleaseReadyClaim") &&

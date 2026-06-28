@@ -5,7 +5,7 @@
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
 //   AETHER_PERF_SMOKE_OUT=.codex-auto/performance-observatory/p2-06-webview2-flood-smoke.json
 

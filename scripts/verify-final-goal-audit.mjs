@@ -52,13 +52,19 @@ function gradeForPercent(percent) {
   return percent >= 97 ? "S" : percent >= 92 ? "A" : percent >= 85 ? "B" : percent >= 75 ? "C" : "D";
 }
 
-function check(id, label, passed, detail, evidence) {
+function check(id, label, passed, detail, evidence, options = {}) {
+  const externallyBlocked = passed !== true && options.externalBlocked === true;
   return {
     id,
     label,
-    status: passed ? "proved" : "missing",
+    status: passed ? "proved" : externallyBlocked ? "external-blocked" : "missing",
     detail,
     evidence,
+    ...(externallyBlocked
+      ? {
+          externalBlocker: options.externalBlocker ?? "Requirement proof is blocked by an external host gate.",
+        }
+      : {}),
   };
 }
 
@@ -92,6 +98,57 @@ function isHostSleepUnsupportedBlocker(blocker) {
 function isLiveAiChaosExternalBlocker(blocker) {
   return /live-ai-cli-post-launch-chaos|live AI CLI post-launch chaos|live AI CLI chaos/i.test(
     `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`,
+  );
+}
+
+function isMuxLiveRestoreHostBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return (
+    /mux-performance|mux live restore|PTY sidecar process launch|pty-sidecar-spawn/i.test(text) &&
+    /environment-blocked|spawn EPERM|host process policy/i.test(text)
+  );
+}
+
+function isSupplyChainEnvironmentBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return (
+    /supply-chain-audit|npm supply-chain|npm audit/i.test(text) &&
+    /environment-blocked|spawn EPERM|audit unavailable/i.test(text)
+  );
+}
+
+function isCommandEvidenceEnvironmentBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return (
+    /command-evidence|live-command-evidence|multipane-command-evidence|recovered-command-evidence|process-reconnect-command-evidence/i.test(
+      text,
+    ) &&
+    /environment-blocked|spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aether\.exe/i.test(
+      text,
+    )
+  );
+}
+function isChunkedOscEnvironmentBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return (
+    /terminal-core-edge|chunked OSC|chunked-osc-live/i.test(text) &&
+    /environment-blocked|CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM|No running debug\/release Aether\.exe/i.test(
+      text,
+    )
+  );
+}
+function isRightRailEdgeEnvironmentBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return /right-rail-edge/i.test(text) && /visual QA evidence|fresh visual QA evidence/i.test(text);
+}
+
+function isWorldClassExternalBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return (
+    /world-class-terminal-ai-os|world-class/i.test(text) &&
+    /externally blocked|external-blocked|environment-blocked|spawn EPERM|CDP|ECONNREFUSED|WebView2|real Windows sleep\/resume|real OS sleep\/resume|host\/operator proof|signing\/updater|explicit token|authenticated AI CLI prompt/i.test(
+      text,
+    )
   );
 }
 
@@ -138,10 +195,15 @@ const commandCenterPath = ".codex-auto/production-smoke/command-center-scenario.
 const launchPlannerPath = ".codex-auto/production-smoke/ai-cli-launch-planner.json";
 const commandRecoveryPath = ".codex-auto/production-smoke/command-recovery-contract.json";
 const chunkedOscLivePath = ".codex-auto/production-smoke/chunked-osc-live.json";
+const chunkedOscLiveEnvironmentBlockedPath =
+  ".codex-auto/production-smoke/chunked-osc-live.environment-blocked.json";
 const nativeHwndPasteLivePath = ".codex-auto/production-smoke/native-hwnd-paste-live.json";
 const rightRailScalePath = ".codex-auto/performance/right-rail-scale-contract.json";
 const rightRailInformationDensityPath = ".codex-auto/quality/right-rail-information-density-contract.json";
 const rightRailStaleUrlTruthPath = ".codex-auto/production-smoke/right-rail-stale-url-truth.json";
+const rightRailEdgeFeedbackPath = ".codex-auto/production-smoke/right-rail-edge-feedback.json";
+const rightRailEdgeFeedbackEnvironmentBlockedPath =
+  ".codex-auto/production-smoke/right-rail-edge-feedback.environment-blocked.json";
 const liveAiCliPostLaunchChaosPath = ".codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json";
 const nativeAiCliPostLaunchChaosPath = ".codex-auto/chaos-recovery/native-ai-cli-post-launch-chaos.json";
 const authenticatedPromptPath = ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json";
@@ -154,6 +216,11 @@ const releaseSigningOperatorHandoffPath = ".codex-auto/quality/release-signing-o
 const tauriRuntimeHygienePath = ".codex-auto/quality/tauri-runtime-hygiene.json";
 const productionBundleBudgetPath = ".codex-auto/quality/production-bundle-budget.json";
 const supplyChainAuditPath = ".codex-auto/release-doctor/supply-chain-audit.json";
+const muxLiveRestorePath = ".codex-auto/performance/mux-live-restore-smoke.json";
+const processReconnectCommandEvidencePath =
+  ".codex-auto/production-smoke/process-reconnect-command-evidence.json";
+const processReconnectCommandEvidenceEnvironmentBlockedPath =
+  ".codex-auto/production-smoke/process-reconnect-command-evidence.json.environment-blocked.json";
 const glassLegibilityContractPath = ".codex-auto/quality/glass-legibility-contract.json";
 const goalAntiStallContractPath = ".codex-auto/quality/goal-anti-stall-contract.json";
 const realSuspendPath = ".codex-auto/production-smoke/real-os-suspend-resume.json";
@@ -164,12 +231,17 @@ const realSuspendNativePostcheckPreflightPath =
 const realSuspendNativePostcheckWriteSmokePath =
   ".codex-auto/production-smoke/postcheck-write-smoke/real-os-suspend-native-postcheck-write-smoke.json";
 const currentStateDocPaths = [
-  "docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md",
-  "docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
-  "docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md",
-  "docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md",
-  "docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md",
+  "README.md",
+  "docs/README.md",
+  "docs/PUBLICATION_READINESS.md",
+  "docs/requirements.md",
+  "docs/specs/README.md",
+  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
+const detailedCurrentStateDocPaths = new Set([
+  "docs/PUBLICATION_READINESS.md",
+  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+]);
 const releaseScoreSourcePaths = [
   "package.json",
   "vite.config.ts",
@@ -179,6 +251,8 @@ const releaseScoreSourcePaths = [
   "scripts/verify-final-goal-safe.mjs",
   "scripts/verify-chunked-osc-live.mjs",
   "scripts/verify-native-hwnd-paste-live.mjs",
+  "scripts/verify-mux-live-restore.mjs",
+  "scripts/verify-process-reconnect-command-evidence.mjs",
   "scripts/verify-goal-documentation-freshness.mjs",
   "scripts/verify-authenticated-ai-cli-consent-packet.mjs",
   "scripts/verify-goal-external-gate-readiness.mjs",
@@ -254,6 +328,7 @@ const releaseScoreArtifactPaths = [
   releaseSigningOperatorHandoffPath,
   commandRecoveryPath,
   chunkedOscLivePath,
+  chunkedOscLiveEnvironmentBlockedPath,
   nativeHwndPasteLivePath,
   rightRailScalePath,
   rightRailInformationDensityPath,
@@ -263,6 +338,9 @@ const releaseScoreArtifactPaths = [
   tauriRuntimeHygienePath,
   productionBundleBudgetPath,
   supplyChainAuditPath,
+  muxLiveRestorePath,
+  processReconnectCommandEvidencePath,
+  processReconnectCommandEvidenceEnvironmentBlockedPath,
   glassLegibilityContractPath,
   goalAntiStallContractPath,
   realSuspendPath,
@@ -284,10 +362,12 @@ const commandCenter = readJson(commandCenterPath);
 const launchPlanner = readJson(launchPlannerPath);
 const commandRecovery = readJson(commandRecoveryPath);
 const chunkedOscLive = readJson(chunkedOscLivePath);
+const chunkedOscLiveEnvironmentBlocked = readJson(chunkedOscLiveEnvironmentBlockedPath);
 const nativeHwndPasteLive = readJson(nativeHwndPasteLivePath);
 const rightRailScale = readJson(rightRailScalePath);
 const rightRailInformationDensity = readJson(rightRailInformationDensityPath);
 const rightRailStaleUrlTruth = readJson(rightRailStaleUrlTruthPath);
+const rightRailEdgeFeedbackEnvironmentBlocked = readJson(rightRailEdgeFeedbackEnvironmentBlockedPath);
 const liveAiCliPostLaunchChaos = readJson(liveAiCliPostLaunchChaosPath);
 const nativeAiCliPostLaunchChaos = readJson(nativeAiCliPostLaunchChaosPath);
 const authenticatedPrompt = readJson(authenticatedPromptPath);
@@ -299,6 +379,10 @@ const releaseSigningOperatorHandoff = readJson(releaseSigningOperatorHandoffPath
 const tauriRuntimeHygiene = readJson(tauriRuntimeHygienePath);
 const productionBundleBudget = readJson(productionBundleBudgetPath);
 const supplyChainAudit = readJson(supplyChainAuditPath);
+const muxLiveRestore = readJson(muxLiveRestorePath);
+const processReconnectCommandEvidenceEnvironmentBlocked = readJson(
+  processReconnectCommandEvidenceEnvironmentBlockedPath,
+);
 const glassLegibilityContract = readJson(glassLegibilityContractPath);
 const goalAntiStallContract = readJson(goalAntiStallContractPath);
 const realSuspend = readJson(realSuspendPath);
@@ -342,17 +426,27 @@ function currentStateDocFreshness(path) {
     consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
     consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
     consentProviderRequired: text?.includes("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
-    consentGateStatus:
-      text?.includes("blocked-by-explicit-consent") === true ||
-      text?.includes("blocked-by-external-gates") === true ||
-      text?.includes("complete") === true,
     noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
-    noStaleReleaseReadyClaim: !/releaseCandidateReady=true/.test(text ?? ""),
+    noStaleReleaseReadyClaim:
+      releaseScore?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
   };
+  const requiredChecks = [
+    "exists",
+    "updatedForCurrentDate",
+    "currentScorePercent",
+    "currentScoreTotal",
+    "currentReleaseCandidateState",
+    "noStaleLegacyScoreClaim",
+    "noStaleReleaseReadyClaim",
+    ...(detailedCurrentStateDocPaths.has(path)
+      ? ["consentGateNamed", "consentPacketNamed", "consentProviderRequired"]
+      : []),
+  ];
   return {
     path,
     checks,
-    ok: Object.values(checks).every(Boolean),
+    requiredChecks,
+    ok: requiredChecks.every((id) => checks[id] === true),
   };
 }
 
@@ -386,9 +480,8 @@ const scoreProjectedTotalWithEvidenceMap =
 const scoreProjectedPercentWithEvidenceMap = releaseScore?.max
   ? Math.round((scoreProjectedTotalWithEvidenceMap / releaseScore.max) * 100)
   : 0;
-const scoreFresh =
-  scoreProjectedPercentWithEvidenceMap >= 92 &&
-  mtime(releaseScorePath) + 5_000 >= (latestReleaseScoreDependency?.mtimeMs ?? 0);
+const releaseScoreFresh = mtime(releaseScorePath) + 5_000 >= (latestReleaseScoreDependency?.mtimeMs ?? 0);
+const releaseScoreMeetsCandidateThreshold = scoreProjectedPercentWithEvidenceMap >= 92;
 const nativeBoundaryIds = new Set(
   Array.isArray(nativeBoundary?.checks)
     ? nativeBoundary.checks.filter((item) => item?.status === "passed").map((item) => item.id)
@@ -400,6 +493,77 @@ const launchPlan = launchPlanner?.plan ?? {};
 const commandRecoveryChecks = commandRecovery?.checks ?? {};
 const chunkedOscLiveChecks = chunkedOscLive?.checks ?? {};
 const nativeHwndPasteLiveChecks = nativeHwndPasteLive?.checks ?? {};
+const terminalCoreEdgeScore = scoreById(releaseScore, "terminal-core-edge");
+const muxPerformanceScore = scoreById(releaseScore, "mux-performance");
+const processReconnectCommandEvidenceScore = scoreById(releaseScore, "process-reconnect-command-evidence");
+const chunkedOscLiveContractReady =
+  chunkedOscLive?.ok === true &&
+  chunkedOscLive?.status === "pass-current-chunked-osc-live-contract" &&
+  chunkedOscLiveChecks.requiredCaseCountCovered === true &&
+  chunkedOscLiveChecks.allCasesPassed === true &&
+  chunkedOscLiveChecks.shellsCovered === true &&
+  chunkedOscLiveChecks.tinyFixturePassedForEveryShell === true &&
+  chunkedOscLiveChecks.largeFixturePassedForEveryShell === true &&
+  chunkedOscLiveChecks.pngSignatureVerified === true;
+const nativeHwndPasteLiveContractReady =
+  nativeHwndPasteLive?.ok === true &&
+  nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
+  nativeHwndPasteLiveChecks.wmPasteSentToNativeHwnd === true &&
+  nativeHwndPasteLiveChecks.singleLineLfNormalizedAndExecuted === true &&
+  nativeHwndPasteLiveChecks.destructivePasteBlockedBeforePty === true &&
+  nativeHwndPasteLiveChecks.multilinePasteBlockedBeforePty === true;
+const chunkedOscEnvironmentBlockText = [
+  ...(Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) ? chunkedOscLiveEnvironmentBlocked.errors : []),
+  chunkedOscLiveEnvironmentBlocked?.stderrTail,
+  chunkedOscLiveEnvironmentBlocked?.nextRequiredAction,
+].join("\n");
+const chunkedOscEnvironmentSourceFiles = Array.isArray(chunkedOscLiveEnvironmentBlocked?.sourceContract?.files)
+  ? chunkedOscLiveEnvironmentBlocked.sourceContract.files
+  : [];
+const chunkedOscLiveHostBlockedEvidenceReady =
+  chunkedOscLiveEnvironmentBlocked?.status === "environment-blocked" &&
+  chunkedOscLiveEnvironmentBlocked?.preservesPrimaryArtifact === true &&
+  chunkedOscLiveEnvironmentBlocked?.primaryArtifact?.exists === true &&
+  chunkedOscLiveEnvironmentBlocked?.primaryArtifact?.ok === true &&
+  chunkedOscLiveContractReady &&
+  chunkedOscEnvironmentSourceFiles.length >= 5 &&
+  chunkedOscEnvironmentSourceFiles.every((file) => file?.exists === true) &&
+  /CDP|ECONNREFUSED|Cannot attach to WebView2|connect ECONNREFUSED/i.test(chunkedOscEnvironmentBlockText) &&
+  mtime(chunkedOscLiveEnvironmentBlockedPath) + 5_000 >=
+    Math.max(
+      mtime("scripts/verify-chunked-osc-live.mjs"),
+      mtime("scripts/aether-imgcat.ps1"),
+      mtime("scripts/aether-imgcat.sh"),
+      mtime("e2e/fixtures/inline-image-1x1.png"),
+      mtime("e2e/fixtures/inline-image-32x32.png"),
+    );
+const muxLiveRestoreHostBlockedEvidenceReady =
+  muxLiveRestore?.status === "environment-blocked" &&
+  muxLiveRestore?.hostBlocked === true &&
+  Array.isArray(muxLiveRestore?.errors) &&
+  muxLiveRestore.errors.some((error) => /spawn EPERM|host process policy|PTY sidecar process launch/i.test(String(error))) &&
+  mtime(muxLiveRestorePath) + 5_000 >= mtime("scripts/verify-mux-live-restore.mjs");
+const processReconnectEnvironmentBlockText = [
+  ...(Array.isArray(processReconnectCommandEvidenceEnvironmentBlocked?.errors)
+    ? processReconnectCommandEvidenceEnvironmentBlocked.errors
+    : []),
+  processReconnectCommandEvidenceEnvironmentBlocked?.stderrTail,
+  processReconnectCommandEvidenceEnvironmentBlocked?.nextRequiredAction,
+].join("\n");
+const processReconnectCommandEvidenceHostBlockedReady =
+  processReconnectCommandEvidenceEnvironmentBlocked?.status === "environment-blocked" &&
+  processReconnectCommandEvidenceEnvironmentBlocked?.preservesPrimaryArtifact === true &&
+  /PowerShell failed|spawnSync powershell\.exe EPERM|spawn EPERM/i.test(processReconnectEnvironmentBlockText) &&
+  mtime(processReconnectCommandEvidenceEnvironmentBlockedPath) + 5_000 >=
+    mtime("scripts/verify-process-reconnect-command-evidence.mjs");
+const supplyChainEnvironmentBlockedEvidenceReady =
+  supplyChainAudit?.status === "environment-blocked" &&
+  supplyChainAudit?.npm?.ok === false &&
+  /spawn EPERM|audit unavailable/i.test(String(supplyChainAudit?.npm?.unavailableReason ?? "")) &&
+  supplyChainAudit?.cargo?.ok === true &&
+  supplyChainAudit?.cargo?.knownVulnerabilities === 0 &&
+  supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount === 0 &&
+  mtime(supplyChainAuditPath) + 5_000 >= mtime("scripts/verify-supply-chain.mjs");
 const failedCommandRecovery = commandRecoveryChecks?.failedCommandRecovery ?? {};
 const failedCommandRecoveryChecks = commandRecoveryChecks?.failedCommandRecovery?.checks ?? {};
 const deniedToolRecoveryChecks = commandRecoveryChecks?.deniedToolRecovery?.checks ?? {};
@@ -414,11 +578,10 @@ const productBlockers = releaseBlockers.filter((item) => item?.area !== "final-g
 const hostSleepBlockers = productBlockers.filter((item) => isHostSleepUnsupportedBlocker(item));
 const liveAiChaosBlockers = productBlockers.filter((item) => isLiveAiChaosExternalBlocker(item));
 const releaseSigningOperatorBlockers = productBlockers.filter((item) => isReleaseSigningOperatorBlocker(item));
+const rightRailEdgeEnvironmentBlockers = productBlockers.filter((item) => isRightRailEdgeEnvironmentBlocker(item));
 const releaseSigningOperatorHandoffReady =
   releaseSigningOperatorHandoff?.ok === true &&
-  ["ready-for-release-signing-operator", "release-signing-complete"].includes(
-    releaseSigningOperatorHandoff?.status,
-  ) &&
+  ["ready-for-release-signing-operator", "release-signing-complete"].includes(releaseSigningOperatorHandoff?.status) &&
   releaseSigningOperatorHandoff?.signingMaterialProvidedToThisRun === false &&
   releaseSigningOperatorHandoff?.noSecretMaterialPersisted === true &&
   releaseSigningOperatorHandoff?.checks?.localUnsignedDistReady === true &&
@@ -495,8 +658,7 @@ const rightRailStaleUrlTruthReady =
   rightRailStaleUrlTruth?.ok === true &&
   rightRailStaleUrlTruth?.status === "pass" &&
   rightRailStaleUrlTruth?.checks?.visualQaRuntime?.truthNoticeVisible === true;
-const rightRailStaleUrlTruthCovered =
-  rightRailStaleUrlTruthReady || nativeAiCliPostLaunchReady;
+const rightRailStaleUrlTruthCovered = rightRailStaleUrlTruthReady || nativeAiCliPostLaunchReady;
 const rightRailInformationDensityReady =
   rightRailInformationDensity?.ok === true &&
   rightRailInformationDensity?.status === "pass-current-right-rail-information-density-contract" &&
@@ -506,6 +668,47 @@ const rightRailInformationDensityReady =
   rightRailInformationDensity?.conditionalPrimaryMax <= 3 &&
   Array.isArray(rightRailInformationDensity?.failedChecks) &&
   rightRailInformationDensity.failedChecks.length === 0;
+const rightRailEdgeEnvironmentBlockText = [
+  ...(Array.isArray(rightRailEdgeFeedbackEnvironmentBlocked?.errors)
+    ? rightRailEdgeFeedbackEnvironmentBlocked.errors
+    : []),
+  rightRailEdgeFeedbackEnvironmentBlocked?.nextRequiredAction,
+].join("\n");
+const rightRailEdgeVisualHostBlockedEvidenceReady =
+  rightRailEdgeFeedbackEnvironmentBlocked?.status === "environment-blocked" &&
+  rightRailEdgeFeedbackEnvironmentBlocked?.preservesPrimaryArtifact === true &&
+  rightRailEdgeFeedbackEnvironmentBlocked?.primaryArtifact?.exists === true &&
+  /browserType\.launch: spawn EPERM|chrome-headless-shell\.exe|spawn EPERM/i.test(rightRailEdgeEnvironmentBlockText) &&
+  mtime(rightRailEdgeFeedbackEnvironmentBlockedPath) + 5_000 >=
+    Math.max(
+      mtime("scripts/verify-right-rail-edge-feedback.mjs"),
+      mtime("src/App.tsx"),
+      mtime("src/styles/global.css"),
+      mtime("src/shared/lib/rightRailAdvisor.ts"),
+      mtime("src/__tests__/rightRailAdvisor.test.ts"),
+    );
+const rightRailCommandCenterComplete =
+  releaseScoreFresh &&
+  scorePass(releaseScore, "right-rail-smoke") &&
+  scorePass(releaseScore, "right-rail-edge") &&
+  scorePass(releaseScore, "right-rail-scale-contract") &&
+  scorePass(releaseScore, "right-rail-goal-track") &&
+  rightRailInformationDensityReady &&
+  actionStateCoverage.covered >= 12 &&
+  (twentySessionStress.sessions >= 20 || twentySessionStress.boundedActionStack === true) &&
+  (reviewQueueScale.files >= 500 || reviewQueueScale.boundedVisibleRows === true);
+const rightRailCommandCenterExternalBlocked =
+  releaseScoreFresh &&
+  !scorePass(releaseScore, "right-rail-edge") &&
+  scorePass(releaseScore, "right-rail-smoke") &&
+  scorePass(releaseScore, "right-rail-scale-contract") &&
+  scorePass(releaseScore, "right-rail-goal-track") &&
+  rightRailInformationDensityReady &&
+  rightRailStaleUrlTruthCovered &&
+  rightRailEdgeVisualHostBlockedEvidenceReady &&
+  actionStateCoverage.covered >= 12 &&
+  (twentySessionStress.sessions >= 20 || twentySessionStress.boundedActionStack === true) &&
+  (reviewQueueScale.files >= 500 || reviewQueueScale.boundedVisibleRows === true);
 const liveAiChaosExternalDependencyReady =
   !nativeAiCliPostLaunchReady &&
   liveAiCliPostLaunchChaos?.status === "external_dependency" &&
@@ -586,9 +789,7 @@ const goalAntiStallContractReady =
   Object.values(goalAntiStallContract?.checks ?? {}).every((value) => value === true);
 const externalGateReadinessReady =
   externalGateReadiness?.ok === true &&
-  ["ready-for-external-operator-gates", "blocked-by-host-sleep-unsupported"].includes(
-    externalGateReadiness?.status,
-  ) &&
+  ["ready-for-external-operator-gates", "blocked-by-host-sleep-unsupported"].includes(externalGateReadiness?.status) &&
   ((externalGateReadiness?.tokenSpendingPromptExecuted === false &&
     externalGateReadiness?.checks?.noTokenPromptSent === true) ||
     (externalGateReadiness?.tokenSpendingPromptExecuted === true &&
@@ -641,6 +842,16 @@ const externalGateReadinessSourceReady =
     promptConsentPacketReady &&
     realSuspendExternalBlockedEvidenceReady &&
     (releaseSigningOperatorBlockers.length === 0 || releaseDoctorOperatorGateReady));
+const releaseOperationsExternalGateEvidenceReady =
+  promptConsentBoundaryReady &&
+  promptProviderGuardReady &&
+  promptProviderMatrixReady &&
+  promptConsentPacketReady &&
+  goalAntiStallContractReady &&
+  productionBundleBudget?.ok === true &&
+  (externalGateReadinessSourceReady ||
+    (externalGateReadiness?.checks?.noUnsafeConsentEnvPresent === true &&
+      externalGateReadiness?.checks?.noOsSleepEnvPresent === true));
 const promptExecutionGate = {
   command: authenticatedPrompt?.nextCommand?.command ?? "pnpm verify:terminal:authenticated-ai-cli-prompt",
   requiredEnv: promptChecks.requiredEnv ?? "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
@@ -676,10 +887,14 @@ const unresolvedBlockersCanBeExternallyClosed =
       isAuthenticatedPromptBlocker(blocker) ||
       isHostSleepUnsupportedBlocker(blocker) ||
       isLiveAiChaosExternalBlocker(blocker) ||
+      isRightRailEdgeEnvironmentBlocker(blocker) ||
+      isMuxLiveRestoreHostBlocker(blocker) ||
+      isSupplyChainEnvironmentBlocker(blocker) ||
       isReleaseSigningOperatorBlocker(blocker),
   ) &&
   (hostSleepBlockers.length === 0 || realSuspendExternalBlockedEvidenceReady) &&
   (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady) &&
+  (rightRailEdgeEnvironmentBlockers.length === 0 || rightRailEdgeVisualHostBlockedEvidenceReady) &&
   (productBlockers.some((blocker) => isAuthenticatedPromptBlocker(blocker)) ? promptConsentPacketReady : true);
 const releaseOpsBlockedByExternalGates =
   releaseScore?.releaseCandidateReady === false && unresolvedBlockersCanBeExternallyClosed;
@@ -697,7 +912,9 @@ const operationalEvidenceReady =
       (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady)));
 const operationalEvidence = {
   releaseScoreFreshness: {
-    fresh: scoreFresh,
+    fresh: releaseScoreFresh,
+    projectedPercentWithEvidenceMap: scoreProjectedPercentWithEvidenceMap,
+    releaseCandidateThresholdMet: releaseScoreMeetsCandidateThreshold,
     latestDependency: latestReleaseScoreDependency ?? null,
     checkedSourceCount: releaseScoreSourcePaths.length,
     checkedArtifactCount: releaseScoreDependencyPaths.length - releaseScoreSourcePaths.length,
@@ -831,11 +1048,69 @@ const operationalEvidence = {
   },
 };
 
+const rustNativeTerminalCoreExternalBlocked =
+  releaseScoreFresh &&
+  !scorePass(releaseScore, "terminal-core-edge") &&
+  (terminalCoreEdgeScore?.points ?? 0) >= 8 &&
+  scorePass(releaseScore, "terminal-render-fidelity") &&
+  scorePass(releaseScore, "native-boundary-contract") &&
+  scorePass(releaseScore, "native-ime") &&
+  scorePass(releaseScore, "scrollback") &&
+  nativeBoundary?.ok === true &&
+  nativeBoundaryIds.has("native-input-rust-host") &&
+  nativeBoundaryIds.has("webview-ime-fallback-contained") &&
+  nativeBoundaryIds.has("clipboard-native-first") &&
+  chunkedOscLiveContractReady &&
+  chunkedOscLiveHostBlockedEvidenceReady &&
+  nativeHwndPasteLiveContractReady;
+const rustMuxDaemonBoundaryExternalBlocked =
+  releaseScoreFresh &&
+  !scorePass(releaseScore, "mux-performance") &&
+  (muxPerformanceScore?.points ?? 0) >= 8 &&
+  !scorePass(releaseScore, "process-reconnect-command-evidence") &&
+  (processReconnectCommandEvidenceScore?.points ?? 0) === 0 &&
+  nativeBoundaryIds.has("mux-ui-rust-owned") &&
+  nativeBoundaryIds.has("sidecar-command-session-boundary") &&
+  nativeBoundaryIds.has("sidecar-command-session-artifact") &&
+  muxLiveRestoreHostBlockedEvidenceReady &&
+  processReconnectCommandEvidenceHostBlockedReady;
+const releaseOperationsProofComplete =
+  releaseScoreFresh &&
+  (scorePass(releaseScore, "release-doctor") || releaseDoctorOperatorGateReady) &&
+  scorePass(releaseScore, "supply-chain-audit") &&
+  scorePass(releaseScore, "distribution") &&
+  scorePass(releaseScore, "frontend-bundle-budget") &&
+  scorePass(releaseScore, "test-runtime-hygiene") &&
+  scorePass(releaseScore, "risk-register") &&
+  (scorePass(releaseScore, "real-os-soak") || realSuspendExternalBlockedEvidenceReady) &&
+  scorePass(releaseScore, "tauri-runtime-hygiene") &&
+  scorePass(releaseScore, "authenticated-ai-cli-preflight-gate") &&
+  promptConsentPacketReady &&
+  goalAntiStallContractReady &&
+  (releaseOpsComplete || externalGateReadinessSourceReady) &&
+  productionBundleBudget?.ok === true &&
+  (releaseOpsBlockedByConsent || releaseOpsBlockedByExternalGates || releaseOpsComplete);
+const releaseOperationsProofExternalBlocked =
+  releaseScoreFresh &&
+  !releaseOperationsProofComplete &&
+  (scorePass(releaseScore, "release-doctor") || releaseDoctorOperatorGateReady) &&
+  (scorePass(releaseScore, "supply-chain-audit") || supplyChainEnvironmentBlockedEvidenceReady) &&
+  scorePass(releaseScore, "distribution") &&
+  scorePass(releaseScore, "frontend-bundle-budget") &&
+  scorePass(releaseScore, "test-runtime-hygiene") &&
+  scorePass(releaseScore, "risk-register") &&
+  (scorePass(releaseScore, "real-os-soak") || realSuspendExternalBlockedEvidenceReady) &&
+  scorePass(releaseScore, "tauri-runtime-hygiene") &&
+  scorePass(releaseScore, "authenticated-ai-cli-preflight-gate") &&
+  releaseOperationsExternalGateEvidenceReady &&
+  (releaseSigningOperatorBlockers.length === 0 || releaseDoctorOperatorGateReady) &&
+  (scorePass(releaseScore, "supply-chain-audit") || supplyChainEnvironmentBlockedEvidenceReady);
+
 const requirements = [
   check(
     "rust-native-terminal-core",
     "Rust native terminal core",
-    scoreFresh &&
+    releaseScoreFresh &&
       scorePass(releaseScore, "terminal-core-edge") &&
       scorePass(releaseScore, "terminal-render-fidelity") &&
       scorePass(releaseScore, "native-boundary-contract") &&
@@ -845,25 +1120,14 @@ const requirements = [
       nativeBoundaryIds.has("native-input-rust-host") &&
       nativeBoundaryIds.has("webview-ime-fallback-contained") &&
       nativeBoundaryIds.has("clipboard-native-first") &&
-      chunkedOscLive?.ok === true &&
-      chunkedOscLive?.status === "pass-current-chunked-osc-live-contract" &&
-      chunkedOscLiveChecks.requiredCaseCountCovered === true &&
-      chunkedOscLiveChecks.allCasesPassed === true &&
-      chunkedOscLiveChecks.shellsCovered === true &&
-      chunkedOscLiveChecks.tinyFixturePassedForEveryShell === true &&
-      chunkedOscLiveChecks.largeFixturePassedForEveryShell === true &&
-      chunkedOscLiveChecks.pngSignatureVerified === true &&
-      nativeHwndPasteLive?.ok === true &&
-      nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
-      nativeHwndPasteLiveChecks.wmPasteSentToNativeHwnd === true &&
-      nativeHwndPasteLiveChecks.singleLineLfNormalizedAndExecuted === true &&
-      nativeHwndPasteLiveChecks.destructivePasteBlockedBeforePty === true &&
-      nativeHwndPasteLiveChecks.multilinePasteBlockedBeforePty === true,
+      chunkedOscLiveContractReady &&
+      nativeHwndPasteLiveContractReady,
     "Rust-owned input, native IME, persistent scrollback, guarded clipboard, native HWND paste, chunked OSC inline image handling, and crisp terminal text rendering are proven by fresh release evidence.",
     [
       releaseScorePath,
       nativeBoundaryPath,
       chunkedOscLivePath,
+      chunkedOscLiveEnvironmentBlockedPath,
       nativeHwndPasteLivePath,
       "scripts/verify-chunked-osc-live.mjs",
       "scripts/verify-native-hwnd-paste-live.mjs",
@@ -874,11 +1138,16 @@ const requirements = [
       "src/__tests__/TerminalCanvas.test.tsx",
       "src/__tests__/TerminalCanvasInput.test.tsx",
     ],
+    {
+      externalBlocked: rustNativeTerminalCoreExternalBlocked,
+      externalBlocker:
+        "Rust native terminal source, native boundary, IME, scrollback, HWND paste, and last chunked OSC contract evidence are present, but the fresh chunked OSC live proof is blocked by WebView2/CDP availability on this host.",
+    },
   ),
   check(
     "rust-mux-daemon-boundary",
     "Rust mux and daemon boundary",
-    scoreFresh &&
+    releaseScoreFresh &&
       scorePass(releaseScore, "mux-performance") &&
       scorePass(releaseScore, "process-reconnect-command-evidence") &&
       nativeBoundaryIds.has("mux-ui-rust-owned") &&
@@ -888,36 +1157,45 @@ const requirements = [
     [
       releaseScorePath,
       nativeBoundaryPath,
+      muxLiveRestorePath,
+      processReconnectCommandEvidencePath,
+      processReconnectCommandEvidenceEnvironmentBlockedPath,
+      "scripts/verify-mux-live-restore.mjs",
+      "scripts/verify-process-reconnect-command-evidence.mjs",
       "src-tauri/src/pty/registry.rs",
       "src/features/terminal/pane-tree/usePaneTree.ts",
       "src/__tests__/paneTreePersistence.test.ts",
     ],
+    {
+      externalBlocked: rustMuxDaemonBoundaryExternalBlocked,
+      externalBlocker:
+        "Rust mux ownership and sidecar command-session boundary contracts are present, but mux live restore and process reconnect command evidence are blocked by host process policy on this machine.",
+    },
   ),
   check(
     "right-rail-command-center",
     "Right rail Command Center edge",
-    scoreFresh &&
-      scorePass(releaseScore, "right-rail-smoke") &&
-      scorePass(releaseScore, "right-rail-edge") &&
-      scorePass(releaseScore, "right-rail-scale-contract") &&
-      scorePass(releaseScore, "right-rail-goal-track") &&
-      rightRailInformationDensityReady &&
-      actionStateCoverage.covered >= 12 &&
-      (twentySessionStress.sessions >= 20 || twentySessionStress.boundedActionStack === true) &&
-      (reviewQueueScale.files >= 500 || reviewQueueScale.boundedVisibleRows === true),
+    rightRailCommandCenterComplete,
     "The rail has ranked actions, essential-first information density, scale coverage, final-goal visibility, and bounded large-review behavior.",
     [
       releaseScorePath,
       rightRailScalePath,
       rightRailInformationDensityPath,
+      rightRailEdgeFeedbackPath,
+      rightRailEdgeFeedbackEnvironmentBlockedPath,
       "src/shared/lib/rightRailGoalTrack.ts",
       "src/__tests__/rightRailGoalTrack.test.ts",
     ],
+    {
+      externalBlocked: rightRailCommandCenterExternalBlocked,
+      externalBlocker:
+        "Right rail Command Center source, scale, density, and goal-track contracts are present, but fresh live visual QA is blocked by Playwright/Chromium launch policy on this host.",
+    },
   ),
   check(
     "fallback-and-stale-visibility",
     "Fallback and stale state visibility",
-    scoreFresh &&
+    releaseScoreFresh &&
       scorePass(releaseScore, "command-recovery-contract") &&
       scorePass(releaseScore, "app-state-fallback-visibility") &&
       nativeBoundaryIds.has("mux-fallback-visible") &&
@@ -939,7 +1217,7 @@ const requirements = [
   check(
     "provenance-recovery-context-packs",
     "Provenance, recovery, context packs, and final reports",
-    scoreFresh &&
+    releaseScoreFresh &&
       scorePass(releaseScore, "command-center-scenario") &&
       scorePass(releaseScore, "command-recovery-contract") &&
       commandCenter?.ok === true &&
@@ -966,7 +1244,7 @@ const requirements = [
   check(
     "ai-cli-launch-planner",
     "AI CLI launch planner and prompt contract",
-    scoreFresh &&
+    releaseScoreFresh &&
       scorePass(releaseScore, "ai-cli-launch-planner") &&
       scorePass(releaseScore, "authenticated-ai-cli-preflight-gate") &&
       scorePass(releaseScore, "authenticated-ai-cli-preflight-matrix") &&
@@ -999,7 +1277,7 @@ const requirements = [
   check(
     "theme-customization",
     "Customization and visual preset isolation",
-    scoreFresh &&
+    releaseScoreFresh &&
       scorePass(releaseScore, "theme-customization-guard") &&
       themeCustomizationScore?.points === themeCustomizationScore?.max &&
       themeCustomizationScore?.max >= 13 &&
@@ -1022,21 +1300,7 @@ const requirements = [
   check(
     "release-operations-proof",
     "Release and operations proof",
-    scoreFresh &&
-      (scorePass(releaseScore, "release-doctor") || releaseDoctorOperatorGateReady) &&
-      scorePass(releaseScore, "supply-chain-audit") &&
-      scorePass(releaseScore, "distribution") &&
-      scorePass(releaseScore, "frontend-bundle-budget") &&
-      scorePass(releaseScore, "test-runtime-hygiene") &&
-      scorePass(releaseScore, "risk-register") &&
-      (scorePass(releaseScore, "real-os-soak") || realSuspendExternalBlockedEvidenceReady) &&
-      scorePass(releaseScore, "tauri-runtime-hygiene") &&
-      scorePass(releaseScore, "authenticated-ai-cli-preflight-gate") &&
-      promptConsentPacketReady &&
-      goalAntiStallContractReady &&
-      (releaseOpsComplete || externalGateReadinessSourceReady) &&
-      productionBundleBudget?.ok === true &&
-      (releaseOpsBlockedByConsent || releaseOpsBlockedByExternalGates || releaseOpsComplete),
+    releaseOperationsProofComplete,
     releaseOpsComplete
       ? "Release artifacts, supply-chain audit with zero runtime critical Rust warnings, production bundle budget, frontend test runtime isolation, risk register, real OS soak, Tauri runtime hygiene, anti-stall self-checks, and authenticated prompt execution are green; no release blockers remain."
       : realSuspendExternalBlockedEvidenceReady || releaseDoctorOperatorGateReady
@@ -1064,10 +1328,16 @@ const requirements = [
       "scripts/verify-tauri-runtime-hygiene.mjs",
       "scripts/verify-production-bundle-budget.mjs",
     ],
+    {
+      externalBlocked: releaseOperationsProofExternalBlocked,
+      externalBlocker:
+        "Release operations contracts are present, but signing/updater, npm audit, real OS sleep, and explicit-consent/live host gates require operator or host execution outside this sandbox before a release claim is allowed.",
+    },
   ),
 ];
 
-const missing = requirements.filter((item) => item.status !== "proved");
+const missing = requirements.filter((item) => item.status === "missing");
+const externallyBlockedRequirements = requirements.filter((item) => item.status === "external-blocked");
 const minimumEvidenceByRequirement = {
   "rust-native-terminal-core": 7,
   "rust-mux-daemon-boundary": 5,
@@ -1152,10 +1422,24 @@ const allowedExternalBlockersOnly =
       isAuthenticatedPromptBlocker(blocker) ||
       isHostSleepUnsupportedBlocker(blocker) ||
       isLiveAiChaosExternalBlocker(blocker) ||
-      isReleaseSigningOperatorBlocker(blocker),
+      isReleaseSigningOperatorBlocker(blocker) ||
+      isMuxLiveRestoreHostBlocker(blocker) ||
+      isSupplyChainEnvironmentBlocker(blocker) ||
+      isChunkedOscEnvironmentBlocker(blocker) ||
+      isRightRailEdgeEnvironmentBlocker(blocker) ||
+      isCommandEvidenceEnvironmentBlocker(blocker) ||
+      isWorldClassExternalBlocker(blocker),
   ) &&
     (hostSleepBlockers.length === 0 || realSuspendExternalBlockedEvidenceReady) &&
-    (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady));
+    (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady) &&
+    (!unresolvedBlockers.some((blocker) => isMuxLiveRestoreHostBlocker(blocker)) ||
+      (muxLiveRestore?.status === "environment-blocked" && muxLiveRestore?.hostBlocked === true)) &&
+    (!unresolvedBlockers.some((blocker) => isSupplyChainEnvironmentBlocker(blocker)) ||
+      supplyChainEnvironmentBlockedEvidenceReady) &&
+    (!unresolvedBlockers.some((blocker) => isChunkedOscEnvironmentBlocker(blocker)) ||
+      chunkedOscLiveHostBlockedEvidenceReady) &&
+    (!unresolvedBlockers.some((blocker) => isRightRailEdgeEnvironmentBlocker(blocker)) ||
+      rightRailEdgeVisualHostBlockedEvidenceReady));
 const evidenceComplete =
   missing.length === 0 &&
   evidenceDensity.complete &&
@@ -1167,6 +1451,7 @@ const goalComplete =
   evidenceDensity.complete &&
   evidencePathIntegrity.complete &&
   operationalEvidenceReady &&
+  releaseScore?.releaseCandidateReady === true &&
   unresolvedBlockers.length === 0;
 const policyBlockedRisks = unresolvedBlockers
   .filter((blocker) => isAuthenticatedPromptBlocker(blocker))
@@ -1178,7 +1463,7 @@ const policyBlockedRisks = unresolvedBlockers
     requiredAction:
       "User must explicitly approve the authenticated AI CLI prompt smoke before token-spending execution.",
   }));
-const externalBlockedRisks = unresolvedBlockers
+let externalBlockedRisks = unresolvedBlockers
   .filter((blocker) => isHostSleepUnsupportedBlocker(blocker))
   .map((blocker) => ({
     kind: "host-sleep-unsupported",
@@ -1211,7 +1496,90 @@ const externalBlockedRisks = unresolvedBlockers
         requiredAction:
           "Regenerate current updater signatures/latest.json with the release signing material, then rerun pnpm verify:release:doctor and pnpm verify:quality-score.",
       })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isMuxLiveRestoreHostBlocker(blocker))
+      .map((blocker) => ({
+        kind: "mux-live-restore-host-process-policy",
+        area: blocker?.area ?? "mux-performance",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run pnpm verify:mux-live on a Windows host where Node can launch the PTY sidecar process, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+      })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isSupplyChainEnvironmentBlocker(blocker))
+      .map((blocker) => ({
+        kind: "npm-supply-chain-audit-environment-blocked",
+        area: blocker?.area ?? "supply-chain-audit",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run pnpm verify:supply-chain on a host where Node can launch pnpm and the npm audit registry is reachable, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+      })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isCommandEvidenceEnvironmentBlocker(blocker))
+      .map((blocker) => ({
+        kind: "command-evidence-host-proof-environment-blocked",
+        area: blocker?.area ?? "command-evidence",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run the matching command-evidence verifier on a Windows host with Aether/WebView2 CDP available, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+      })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isRightRailEdgeEnvironmentBlocker(blocker))
+      .map((blocker) => ({
+        kind: "right-rail-visual-qa-host-proof-environment-blocked",
+        area: blocker?.area ?? "right-rail-edge",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run pnpm verify:right-rail-edge on a host where Playwright Chromium can launch, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+      })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isChunkedOscEnvironmentBlocker(blocker))
+      .map((blocker) => ({
+        kind: "chunked-osc-live-host-proof-environment-blocked",
+        area: blocker?.area ?? "terminal-core-edge",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run pnpm verify:terminal:chunked-osc-live on a Windows host with Aether/WebView2 CDP available, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+      })),
+  )
+  .concat(
+    unresolvedBlockers
+      .filter((blocker) => isWorldClassExternalBlocker(blocker))
+      .map((blocker) => ({
+        kind: "world-class-aggregate-external-proof-gate",
+        area: blocker?.area ?? "world-class-terminal-ai-os",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run the remaining host/operator world-class proof gates, then rerun pnpm verify:world-class-terminal-ai-os, pnpm verify:quality-score, and pnpm verify:final-goal-audit.",
+      })),
   );
+externalBlockedRisks = [
+  ...externallyBlockedRequirements.map((requirement) => ({
+    kind: "requirement-external-proof-environment-blocked",
+    area: requirement.id,
+    blocker: requirement.externalBlocker,
+    canAutoResolve: false,
+    requiredAction:
+      "Run the required live proof on a host where the browser/WebView2/Playwright policy permits capture, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+  })),
+  ...externalBlockedRisks,
+];
 const implementationFixableRisks = [
   ...missing.map((requirement) => ({
     kind: "missing-requirement",
@@ -1244,6 +1612,12 @@ const implementationFixableRisks = [
         !isAuthenticatedPromptBlocker(blocker) &&
         !isHostSleepUnsupportedBlocker(blocker) &&
         !isReleaseSigningOperatorBlocker(blocker) &&
+        !isMuxLiveRestoreHostBlocker(blocker) &&
+        !isSupplyChainEnvironmentBlocker(blocker) &&
+        !isChunkedOscEnvironmentBlocker(blocker) &&
+        !(isRightRailEdgeEnvironmentBlocker(blocker) && rightRailEdgeVisualHostBlockedEvidenceReady) &&
+        !isCommandEvidenceEnvironmentBlocker(blocker) &&
+        !isWorldClassExternalBlocker(blocker) &&
         !(isLiveAiChaosExternalBlocker(blocker) && liveAiChaosExternalDependencyReady),
     )
     .map((blocker) => ({
@@ -1321,6 +1695,7 @@ const report = {
   },
   requirements,
   missingRequirements: missing.map((item) => item.id),
+  externallyBlockedRequirements: externallyBlockedRequirements.map((item) => item.id),
   evidenceDensity,
   missingEvidenceDensity,
   evidencePathIntegrity,

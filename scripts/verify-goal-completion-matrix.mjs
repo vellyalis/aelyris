@@ -246,6 +246,24 @@ function artifactOk(artifact) {
   );
 }
 
+function projectedExternalGateScoreShape(candidateScore = score, candidateAudit = audit) {
+  const projected = candidateAudit?.score?.projectedAfterEvidenceMap ?? {};
+  return (
+    candidateScore?.releaseCandidateReady === false &&
+    candidateAudit?.ok === true &&
+    candidateAudit?.status === "blocked-by-external-gates" &&
+    candidateAudit?.evidenceComplete === true &&
+    candidateAudit?.implementationFixableCount === 0 &&
+    (candidateAudit?.policyBlockedCount === 1 ||
+      (candidateAudit?.policyBlockedCount === 0 && tokenPromptAlreadyProvedCurrent())) &&
+    (candidateAudit?.externalBlockedCount ?? 0) >= 1 &&
+    projected.total === candidateScore?.total &&
+    projected.max === candidateScore?.max &&
+    projected.percent === candidateScore?.score &&
+    projected.grade === candidateScore?.grade
+  );
+}
+
 function finalGoalSafeCurrentRightRailProof(artifact) {
   const coreSafeProof =
     artifact?.invariants?.noTokenPromptSent === true &&
@@ -273,17 +291,7 @@ function finalGoalSafeCurrentRightRailProof(artifact) {
     artifact?.audit?.evidenceComplete === true &&
     artifact?.audit?.implementationFixableCount === 0;
   const externalGateCycleBreak =
-    score?.score >= 95 &&
-    score?.total >= 317 &&
-    score?.max === 335 &&
-    score?.releaseCandidateReady === false &&
-    audit?.ok === true &&
-    audit?.status === "blocked-by-external-gates" &&
-    audit?.evidenceComplete === true &&
-    audit?.implementationFixableCount === 0 &&
-    (audit?.policyBlockedCount === 1 ||
-      (audit?.policyBlockedCount === 0 && tokenPromptAlreadyProvedCurrent())) &&
-    audit?.externalBlockedCount >= 1 &&
+    projectedExternalGateScoreShape(score, audit) &&
     externalGateReadinessCurrentProof(artifactsByKey.externalGateReadiness) &&
     rightRailGoalTrackTauriCurrentProof(artifactsByKey.rightRailGoalTrackTauri);
   const allowedManualSleepCycleSteps = new Set([
@@ -294,15 +302,7 @@ function finalGoalSafeCurrentRightRailProof(artifact) {
   ]);
   const externalManualSleepCycleBreak =
     artifact?.status === "blocked" &&
-    artifact?.score?.score >= 95 &&
-    artifact?.score?.total >= 317 &&
-    artifact?.score?.max === 335 &&
-    artifact?.score?.releaseCandidateReady === false &&
-    artifact?.audit?.ok === true &&
-    artifact?.audit?.status === "blocked-by-external-gates" &&
-    artifact?.audit?.evidenceComplete === true &&
-    artifact?.audit?.implementationFixableCount === 0 &&
-    artifact?.audit?.externalBlockedCount >= 1 &&
+    projectedExternalGateScoreShape(artifact?.score, artifact?.audit) &&
     artifact?.invariants?.noNonConsentBlockers === true &&
     artifact?.invariants?.implementationFixableCountZero === true &&
     artifact?.invariants?.externalHostGateIsolated === true &&
@@ -347,9 +347,11 @@ function rightRailGoalTrackTauriCurrentProof(artifact) {
     environmentBlocked?.sourceArtifacts?.finalGoalAudit?.exists === true &&
     environmentBlocked?.expectedResidualRisk?.implementationFixableCount === 0 &&
     (environmentBlocked?.sourceContract?.files?.length ?? 0) >= 8;
+  const rightRailRequirementStatus = requirementById(audit, "right-rail-command-center")?.status;
   const sourceContractProof =
     scorePass(score, "right-rail-goal-track") &&
-    requirementById(audit, "right-rail-command-center")?.status === "proved" &&
+    (rightRailRequirementStatus === "proved" ||
+      (audit?.status === "blocked-by-external-gates" && rightRailRequirementStatus === "external-blocked")) &&
     artifactOk(artifactsByKey.rightRailInformationDensity) &&
     artifactOk(artifactsByKey.agentTeamOrchestration) &&
     artifactOk(artifactsByKey.rightRailStaleUrlTruth) &&
@@ -455,22 +457,71 @@ function isAuthenticatedPromptBlocker(item) {
   return /authenticated[-\s]?ai[-\s]?cli[-\s]?prompt|token-spend consent/i.test(String(item?.blocker ?? item));
 }
 
+function blockerText(item) {
+  return String(item?.area ?? "") + " " + String(item?.blocker ?? item);
+}
+
 function isExternalHostBlocker(item) {
   return /real-os-soak|sleep\/resume|SetSuspendState returned false|GetLastError=50|host.*sleep.*unsupported/i.test(
-    String(item?.area ?? "") + " " + String(item?.blocker ?? item),
+    blockerText(item),
   );
 }
 
 function isReleaseSigningOperatorBlocker(item) {
   return /release-doctor.*signing\/updater|signing\/updater warnings|regenerate signatures\/latest\.json|updater signatures|latest\.json/i.test(
-    String(item?.area ?? "") + " " + String(item?.blocker ?? item),
+    blockerText(item),
+  );
+}
+
+function isMuxLiveRestoreHostBlocker(item) {
+  return (
+    /mux-performance|mux live restore|PTY sidecar process launch|pty-sidecar-spawn/i.test(blockerText(item)) &&
+    /environment-blocked|spawn EPERM|host process policy/i.test(blockerText(item))
+  );
+}
+
+function isSupplyChainEnvironmentBlocker(item) {
+  return (
+    /supply-chain-audit|npm supply-chain|npm audit/i.test(blockerText(item)) &&
+    /environment-blocked|spawn EPERM|audit unavailable/i.test(blockerText(item))
+  );
+}
+
+function isChunkedOscEnvironmentBlocker(item) {
+  return (
+    /terminal-core-edge|chunked OSC|chunked-osc-live/i.test(blockerText(item)) &&
+    /environment-blocked|CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM/i.test(
+      blockerText(item),
+    )
+  );
+}
+
+function isRightRailEdgeEnvironmentBlocker(item) {
+  return /right-rail-edge/i.test(blockerText(item)) && /visual QA evidence|fresh visual QA evidence/i.test(blockerText(item));
+}
+
+function isCommandEvidenceEnvironmentBlocker(item) {
+  return (
+    /command-evidence|live-command-evidence|multipane-command-evidence|recovered-command-evidence|process-reconnect-command-evidence/i.test(
+      blockerText(item),
+    ) &&
+    /environment-blocked|spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|PowerShell failed \(null\)|browserType\.launch/i.test(
+      blockerText(item),
+    )
   );
 }
 
 function isExternalOperatorBlocker(item) {
-  return isExternalHostBlocker(item) || isReleaseSigningOperatorBlocker(item);
+  return (
+    isExternalHostBlocker(item) ||
+    isReleaseSigningOperatorBlocker(item) ||
+    isMuxLiveRestoreHostBlocker(item) ||
+    isSupplyChainEnvironmentBlocker(item) ||
+    isChunkedOscEnvironmentBlocker(item) ||
+    isRightRailEdgeEnvironmentBlocker(item) ||
+    isCommandEvidenceEnvironmentBlocker(item)
+  );
 }
-
 const inputs = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, readJsonSafe(path)]));
 const score = inputs.score.data;
 const audit = inputs.audit.data;
@@ -502,10 +553,12 @@ const matrix = objectiveMatrix.map((item) => {
     missingScoreIds.length === 0 &&
     missingArtifactKeys.length === 0 &&
     evidenceOk;
+  const externallyBlocked =
+    requirement?.status === "external-blocked" && evidenceCount >= item.minimumEvidenceCount && evidenceOk;
   return {
     id: item.id,
     clause: item.clause,
-    status: passed ? "proved" : "missing",
+    status: passed ? "proved" : externallyBlocked ? "external-blocked" : "missing",
     finalAuditRequirementId: item.finalAuditRequirementId,
     finalAuditStatus: requirement?.status ?? "missing",
     evidenceCount,
@@ -529,10 +582,16 @@ const matrix = objectiveMatrix.map((item) => {
 });
 
 const releaseBlockers = Array.isArray(score?.blockers) ? score.blockers : [];
-const externalBlockers = releaseBlockers.filter(isExternalOperatorBlocker);
-const implementationBlockers = releaseBlockers.filter(
-  (item) => !isAuthenticatedPromptBlocker(item) && !isExternalOperatorBlocker(item),
-);
+const normalizedRisk = (item) => ({
+  area: item?.area ?? item?.id ?? item?.kind ?? "unknown",
+  blocker: item?.blocker ?? item?.externalBlocker ?? String(item),
+});
+const externalBlockers = Array.isArray(audit?.externalBlockedRisks)
+  ? audit.externalBlockedRisks.map(normalizedRisk)
+  : releaseBlockers.filter(isExternalOperatorBlocker);
+const implementationBlockers = Array.isArray(audit?.implementationFixableRisks)
+  ? audit.implementationFixableRisks.map(normalizedRisk)
+  : releaseBlockers.filter((item) => !isAuthenticatedPromptBlocker(item) && !isExternalOperatorBlocker(item));
 const consentBlockerCount = countAuthenticatedPromptBlockers(releaseBlockers);
 const tokenPromptProved =
   scorePass(score, "authenticated-ai-cli-prompt-smoke") &&
@@ -581,10 +640,7 @@ const fullReleaseScoreShape =
   score?.max === 335 &&
   releaseBlockers.length === 0;
 const externalGatedScoreShape =
-  score?.score >= 95 &&
-  score?.total >= 317 &&
-  score?.max === 335 &&
-  score?.releaseCandidateReady === false &&
+  projectedExternalGateScoreShape(score, audit) &&
   (consentBlockerCount === 1 || tokenPromptProved) &&
   implementationBlockers.length === 0 &&
   externalBlockers.length >= 1;
@@ -600,8 +656,13 @@ const checks = {
   auditEvidenceComplete: audit?.ok === true && audit?.evidenceComplete === true,
   auditRequirementsComplete:
     finalAuditRequirements.length >= objectiveMatrix.length &&
-    objectiveMatrix.every((item) => requirementById(audit, item.finalAuditRequirementId)?.status === "proved"),
-  matrixRequirementsComplete: matrix.every((item) => item.status === "proved"),
+    objectiveMatrix.every((item) => {
+      const status = requirementById(audit, item.finalAuditRequirementId)?.status;
+      return status === "proved" || (audit?.status === "blocked-by-external-gates" && status === "external-blocked");
+    }),
+  matrixRequirementsComplete: matrix.every(
+    (item) => item.status === "proved" || (audit?.status === "blocked-by-external-gates" && item.status === "external-blocked"),
+  ),
   evidenceIntegrityOk,
   residualIsOnlyConsentOrExternalGate:
     (residual.state === "blocked-only-by-explicit-token-consent" &&

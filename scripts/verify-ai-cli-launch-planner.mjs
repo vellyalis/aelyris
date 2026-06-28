@@ -22,6 +22,9 @@ const IME_PROOF =
 const PROCESS_RECONNECT =
   process.env.AETHER_AI_CLI_LAUNCH_PLANNER_PROCESS_RECONNECT ??
   join(ROOT, ".codex-auto", "production-smoke", "process-reconnect-command-evidence.json");
+const MUX_LIVE_PROCESS_PRESERVATION =
+  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_MUX_LIVE_PROCESS_PRESERVATION ??
+  join(ROOT, ".codex-auto", "quality", "mux-live-process-preservation.json");
 const INTERACTIVE_BOUNDARY =
   process.env.AETHER_AI_CLI_LAUNCH_PLANNER_INTERACTIVE_BOUNDARY ??
   join(ROOT, ".codex-auto", "production-smoke", "interactive-ai-cli-boundary.json");
@@ -164,6 +167,7 @@ async function main() {
       nativeInputHost: readJson(NATIVE_INPUT_HOST),
       ime: readJson(IME_PROOF),
       processReconnect: readJson(PROCESS_RECONNECT),
+      muxLiveProcessPreservation: readJson(MUX_LIVE_PROCESS_PRESERVATION),
       interactiveBoundary: readJson(INTERACTIVE_BOUNDARY),
     };
     const { deriveAiCliLaunchPlan } = await loadPlanner();
@@ -213,6 +217,7 @@ async function main() {
       nativeInputHost: NATIVE_INPUT_HOST,
       ime: IME_PROOF,
       processReconnect: PROCESS_RECONNECT,
+      muxLiveProcessPreservation: MUX_LIVE_PROCESS_PRESERVATION,
       interactiveBoundary: INTERACTIVE_BOUNDARY,
     };
 

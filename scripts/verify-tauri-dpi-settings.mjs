@@ -9,7 +9,7 @@
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_TAURI_SMOKE_OUT=.codex-auto/visual-qa/p2-05/tauri-dpi-settings-smoke.json
 //   AETHER_TAURI_SMOKE_WAIT_MS=60000
 

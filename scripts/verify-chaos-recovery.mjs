@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const CODEX_HOME = "C:/Users/owner/.codex";
+const CODEX_HOME = (process.env.CODEX_HOME ?? join(homedir(), ".codex")).replaceAll("\\", "/");
 const WATCHDOG = `${CODEX_HOME}/codex-longrun-watchdog.mjs`;
 const PROGRESS_SERVER = `${CODEX_HOME}/codex-progress-server.mjs`;
 
@@ -324,7 +324,7 @@ await scenario("timeout-splits-with-lineage", "Retry-cap timeout decomposes to a
       priority: "P2",
       title: "Chaos and recovery test pack",
       goal: "Broad chaos pack exceeded its window.",
-      scope: ["scripts", "e2e", "C:/Users/owner/.codex"],
+      scope: ["scripts", "e2e", CODEX_HOME],
       parentRoadmapId: "P2-07",
       reason: "blocker-decomposition",
       requiredValidation: ["chaos smoke pack"],

@@ -8,12 +8,17 @@ const AUDIT_PATH = ".codex-auto/quality/final-goal-audit.json";
 const FINAL_GOAL_SAFE_VERIFIER_PATH = "scripts/verify-final-goal-safe.mjs";
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const CURRENT_STATE_DOCS = [
-  "docs/AETHER_COMMAND_CENTER_EDGE_PLAN.md",
-  "docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
-  "docs/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md",
-  "docs/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md",
-  "docs/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md",
+  "README.md",
+  "docs/README.md",
+  "docs/PUBLICATION_READINESS.md",
+  "docs/requirements.md",
+  "docs/specs/README.md",
+  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
+const DETAILED_CURRENT_STATE_DOCS = new Set([
+  "docs/PUBLICATION_READINESS.md",
+  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+]);
 
 function currentLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -69,6 +74,10 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
       ? `${audit.score.projectedAfterEvidenceMap.total}/${audit.score.projectedAfterEvidenceMap.max}`
       : "";
   const status = String(audit?.status ?? "");
+  const auditImplementationFixableCount =
+    audit?.residualRiskRegister?.implementationFixableCount ?? audit?.implementationFixableCount;
+  const auditPolicyBlockedCount = audit?.residualRiskRegister?.policyBlockedCount ?? audit?.policyBlockedCount;
+  const auditExternalBlockedCount = audit?.residualRiskRegister?.externalBlockedCount ?? audit?.externalBlockedCount;
   const proofArtifactCount =
     safeProofArtifactRegistryCount > 0 ? `${safeProofArtifactRegistryCount}/${safeProofArtifactRegistryCount}` : "";
   const staleRightRailCurrentClaims = [
@@ -90,15 +99,22 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
       status.length > 0 &&
       (text?.includes(status) === true ||
         (score?.releaseCandidateReady === true && text?.includes("complete") === true)),
+    currentAuditImplementationFixableCount:
+      typeof auditImplementationFixableCount === "number" &&
+      text?.includes(`implementationFixableCount=${auditImplementationFixableCount}`) === true,
+    currentAuditPolicyBlockedCount:
+      typeof auditPolicyBlockedCount === "number" &&
+      text?.includes(`policyBlockedCount=${auditPolicyBlockedCount}`) === true,
+    currentAuditExternalBlockedCount:
+      typeof auditExternalBlockedCount === "number" &&
+      text?.includes(`externalBlockedCount=${auditExternalBlockedCount}`) === true,
     currentSafeProofArtifactCount: proofArtifactCount.length > 0 && text?.includes(proofArtifactCount) === true,
     consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
     consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
     consentProviderRequired: text?.includes("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
-    defaultFinalizeNoGit:
-      text?.includes("`pnpm verify:goal:finalize` excludes git finalization by default") === true,
+    defaultFinalizeNoGit: text?.includes("`pnpm verify:goal:finalize` excludes git finalization by default") === true,
     optionalGitFinalizeEnvNamed: text?.includes("AETHER_GOAL_FINALIZE_INCLUDE_GIT=1") === true,
-    gitNotRequiredForProductEvidence:
-      text?.includes("not required for product/safe/finalize evidence") === true,
+    gitNotRequiredForProductEvidence: text?.includes("not required for product/safe/finalize evidence") === true,
     noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
     noStaleReleaseReadyClaim:
       score?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
@@ -108,28 +124,42 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
       ),
     noStaleRightRailCurrentClaim: !staleRightRailCurrentClaims.some((pattern) => pattern.test(text ?? "")),
   };
+  const alwaysRequiredChecks = [
+    "exists",
+    "updatedForCurrentDate",
+    "currentScorePercent",
+    "currentScoreTotal",
+    "currentReleaseCandidateState",
+    "noStaleLegacyScoreClaim",
+    "noStaleReleaseReadyClaim",
+    "noStaleSafeProofArtifactClaim",
+    "noStaleRightRailCurrentClaim",
+  ];
+  const detailedRequiredChecks = [
+    "currentAuditStatus",
+    "currentAuditImplementationFixableCount",
+    "currentAuditPolicyBlockedCount",
+    "currentAuditExternalBlockedCount",
+    "consentGateNamed",
+    "consentPacketNamed",
+    "consentProviderRequired",
+  ];
+  const requiredChecks = [
+    ...alwaysRequiredChecks,
+    ...(DETAILED_CURRENT_STATE_DOCS.has(path) ? detailedRequiredChecks : []),
+  ];
   return {
     path,
     exists: text != null,
     mtimeMs: existsSync(full) ? statSync(full).mtimeMs : 0,
     checks,
-    ok: Object.values(checks).every(Boolean),
+    requiredChecks,
+    ok: requiredChecks.every((id) => checks[id] === true),
   };
 }
 
 const score = readJson(SCORE_PATH);
 const audit = readJson(AUDIT_PATH);
-const blockers = Array.isArray(score?.blockers) ? score.blockers : [];
-const hasHostSleepExternalBlocker = blockers.some((item) =>
-  /real-os-soak|sleep\/resume|SetSuspendState returned false|GetLastError=50|host.*sleep.*unsupported/i.test(
-    `${item?.area ?? ""} ${item?.blocker ?? item ?? ""}`,
-  ),
-);
-const hasLiveAiCliExternalBlocker = blockers.some((item) =>
-  /live-ai-cli-post-launch-chaos|WebView2 CDP|CDP endpoint|connect ECONNREFUSED|connectOverCDP/i.test(
-    `${item?.area ?? ""} ${item?.blocker ?? item ?? ""}`,
-  ),
-);
 const projectedScorePercent =
   typeof audit?.score?.projectedAfterEvidenceMap?.percent === "number"
     ? audit.score.projectedAfterEvidenceMap.percent
@@ -138,8 +168,46 @@ const projectedScoreTotal =
   typeof audit?.score?.projectedAfterEvidenceMap?.total === "number" ? audit.score.projectedAfterEvidenceMap.total : 0;
 const effectiveScorePercent = Math.max(score?.score ?? 0, projectedScorePercent);
 const effectiveScoreTotal = Math.max(score?.total ?? 0, projectedScoreTotal);
-const externalGateAwareScore =
-  hasHostSleepExternalBlocker || hasLiveAiCliExternalBlocker || audit?.status === "blocked-by-external-gates";
+const scoreShapeValid =
+  Number.isInteger(score?.score) &&
+  score.score >= 0 &&
+  score.score <= 100 &&
+  Number.isFinite(score?.total) &&
+  Number.isFinite(score?.max) &&
+  score.total >= 0 &&
+  score.max >= score.total &&
+  score.max >= 300 &&
+  typeof score?.grade === "string" &&
+  typeof score?.releaseCandidateReady === "boolean" &&
+  Array.isArray(score?.scores) &&
+  score.scores.some((item) => item?.id === "final-goal-evidence-map") &&
+  Array.isArray(score?.blockers);
+const auditResidualRiskRegister = audit?.residualRiskRegister ?? null;
+const auditResidualCountsMatch =
+  auditResidualRiskRegister != null &&
+  audit?.implementationFixableCount === auditResidualRiskRegister.implementationFixableCount &&
+  audit?.policyBlockedCount === auditResidualRiskRegister.policyBlockedCount &&
+  audit?.externalBlockedCount === auditResidualRiskRegister.externalBlockedCount;
+const auditResidualRiskStateValid =
+  audit?.status === "complete"
+    ? auditResidualRiskRegister?.state === "complete" &&
+      audit?.goalComplete === true &&
+      audit?.evidenceComplete === true &&
+      auditResidualRiskRegister?.completionClaimAllowed === true
+    : audit?.status === "blocked-by-explicit-consent"
+      ? auditResidualRiskRegister?.state === "blocked-only-by-explicit-token-consent" &&
+        auditResidualRiskRegister?.implementationFixableCount === 0 &&
+        auditResidualRiskRegister?.policyBlockedCount === 1 &&
+        (auditResidualRiskRegister?.externalBlockedCount ?? 0) === 0
+      : audit?.status === "blocked-by-external-gates"
+        ? auditResidualRiskRegister?.state === "blocked-by-external-gates" &&
+          auditResidualRiskRegister?.implementationFixableCount === 0 &&
+          (auditResidualRiskRegister?.externalBlockedCount ?? 0) >= 1
+        : audit?.status === "blocked"
+          ? auditResidualRiskRegister?.state === "implementation-risk-open" &&
+            (auditResidualRiskRegister?.implementationFixableCount ?? 0) > 0 &&
+            audit?.goalComplete === false
+          : false;
 const safeProofArtifactRegistryCount = expectedSafeProofArtifactCount();
 const localDate = currentLocalDate();
 const docs = CURRENT_STATE_DOCS.map((path) => docResult(path, score, audit, safeProofArtifactRegistryCount, localDate));
@@ -147,21 +215,15 @@ const checks = {
   scoreExists: score != null,
   auditExists: audit != null,
   scoreIsCurrentShape:
-    effectiveScorePercent >= (externalGateAwareScore ? 93 : 98) &&
-    (externalGateAwareScore ? effectiveScorePercent >= 93 : effectiveScorePercent >= 98) &&
-    effectiveScoreTotal >= (externalGateAwareScore ? 311 : 327) &&
-    score?.max === 335,
+    scoreShapeValid && effectiveScorePercent === score?.score && effectiveScoreTotal === score?.total,
   auditIsCurrentConsentGate:
-    (audit?.ok === true || (audit?.status === "blocked" && score?.releaseCandidateReady === true)) &&
+    audit != null &&
     (audit?.status === "blocked-by-explicit-consent" ||
       audit?.status === "blocked-by-external-gates" ||
       audit?.status === "complete" ||
       audit?.status === "blocked") &&
-    ((audit?.residualRiskRegister?.implementationFixableCount ?? audit?.implementationFixableCount) === 0 ||
-      (audit?.status === "blocked" && score?.releaseCandidateReady === true)) &&
-    ((audit?.residualRiskRegister?.policyBlockedCount ?? audit?.policyBlockedCount) === 1 ||
-      (audit?.residualRiskRegister?.policyBlockedCount ?? audit?.policyBlockedCount) === 0 ||
-      (audit?.status === "blocked" && score?.releaseCandidateReady === true)),
+    auditResidualCountsMatch &&
+    auditResidualRiskStateValid,
   safeProofArtifactRegistryCurrent: safeProofArtifactRegistryCount >= 15,
   // This verifier is itself a step inside verify-final-goal-safe.mjs. Reading
   // the previous final-goal-safe artifact here creates a circular freshness

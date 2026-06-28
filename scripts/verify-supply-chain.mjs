@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -20,11 +20,11 @@ const directEvidencePaths = {
 // Vulnerability evidence is keyed to dependency graph inputs, not package
 // scripts. In this Windows sandbox Node child_process can be blocked by
 // `spawn EPERM`, so direct evidence collected out-of-band must remain usable
-// after scripts-only package.json changes. pnpm audit is lockfile-driven here;
-// dependency edits still need pnpm-lock.yaml changes to be release-valid.
-const supplyChainInputs = ["pnpm-lock.yaml", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock"].map(
-  (file) => path.join(repoRoot, file),
-);
+// after scripts-only package.json changes. npm audit is lockfile-driven here;
+// cargo audit is keyed to the Rust manifest and lockfile. Keep those freshness
+// domains separate so a Rust dependency edit does not invalidate npm evidence.
+const npmAuditInputs = ["pnpm-lock.yaml"].map((file) => path.join(repoRoot, file));
+const cargoAuditInputs = ["src-tauri/Cargo.toml", "src-tauri/Cargo.lock"].map((file) => path.join(repoRoot, file));
 
 async function run(command, args) {
   const spawnCommand = process.platform === "win32" && command.endsWith(".cmd") ? "cmd.exe" : command;
@@ -55,6 +55,24 @@ function parseJson(text) {
   }
 }
 
+function hasNpmAuditVulnerabilityMetadata(value) {
+  const vulnerabilities = value?.metadata?.vulnerabilities;
+  return (
+    vulnerabilities &&
+    typeof vulnerabilities === "object" &&
+    (typeof vulnerabilities.total === "number" ||
+      Object.values(vulnerabilities).some((item) => typeof item === "number"))
+  );
+}
+
+function hasCargoAuditVulnerabilityCount(value) {
+  return typeof value?.vulnerabilities?.count === "number";
+}
+
+function hasCargoMetadataResolveRoot(value) {
+  return typeof value?.resolve?.root === "string" && Array.isArray(value?.resolve?.nodes);
+}
+
 async function mtimeMs(file) {
   try {
     return (await stat(file)).mtimeMs;
@@ -68,35 +86,82 @@ async function readJsonFile(file) {
 }
 
 async function readDirectEvidence() {
-  const inputCutoffMs = Math.max(...(await Promise.all(supplyChainInputs.map(mtimeMs))));
-  const files = Object.values(directEvidencePaths);
-  const mtimes = await Promise.all(files.map(mtimeMs));
-  const complete = mtimes.every((value) => value > 0);
-  const freshForDependencyInputs = complete && mtimes.every((value) => value + 5_000 >= inputCutoffMs);
-  if (!freshForDependencyInputs) {
-    return {
-      ok: false,
-      reason: complete ? "direct evidence is older than dependency inputs" : "direct evidence is incomplete",
-      inputCutoffMs,
-      mtimes,
-    };
-  }
+  const [npmInputCutoffMs, cargoInputCutoffMs] = await Promise.all([
+    Promise.all(npmAuditInputs.map(mtimeMs)).then((values) => Math.max(...values)),
+    Promise.all(cargoAuditInputs.map(mtimeMs)).then((values) => Math.max(...values)),
+  ]);
+  const mtimes = {
+    npmAudit: await mtimeMs(directEvidencePaths.npmAudit),
+    cargoAudit: await mtimeMs(directEvidencePaths.cargoAudit),
+    cargoMetadata: await mtimeMs(directEvidencePaths.cargoMetadata),
+    provenance: await mtimeMs(directEvidencePaths.provenance),
+  };
+  const npmFresh = mtimes.npmAudit > 0 && mtimes.npmAudit + 5_000 >= npmInputCutoffMs;
+  const cargoFresh =
+    mtimes.cargoAudit > 0 &&
+    mtimes.cargoMetadata > 0 &&
+    mtimes.cargoAudit + 5_000 >= cargoInputCutoffMs &&
+    mtimes.cargoMetadata + 5_000 >= cargoInputCutoffMs;
+  const evidence = {
+    ok: npmFresh && cargoFresh,
+    npm: {
+      ok: npmFresh,
+      reason: npmFresh
+        ? null
+        : mtimes.npmAudit > 0
+          ? "npm direct evidence is older than pnpm-lock.yaml"
+          : "npm direct evidence is missing",
+      inputCutoffMs: npmInputCutoffMs,
+      evidenceMtimeMs: mtimes.npmAudit,
+      json: null,
+    },
+    cargo: {
+      ok: cargoFresh,
+      reason: cargoFresh
+        ? null
+        : mtimes.cargoAudit > 0 && mtimes.cargoMetadata > 0
+          ? "cargo direct evidence is older than Rust dependency inputs"
+          : "cargo direct evidence is incomplete",
+      inputCutoffMs: cargoInputCutoffMs,
+      auditMtimeMs: mtimes.cargoAudit,
+      metadataMtimeMs: mtimes.cargoMetadata,
+      auditJson: null,
+      metadataJson: null,
+    },
+    provenance: null,
+    mtimes,
+  };
   try {
-    return {
-      ok: true,
-      inputCutoffMs,
-      mtimes,
-      npmJson: await readJsonFile(directEvidencePaths.npmAudit),
-      cargoJson: await readJsonFile(directEvidencePaths.cargoAudit),
-      cargoMetadataJson: await readJsonFile(directEvidencePaths.cargoMetadata),
-      provenance: await readJsonFile(directEvidencePaths.provenance),
-    };
+    if (npmFresh) {
+      evidence.npm.json = await readJsonFile(directEvidencePaths.npmAudit);
+      if (!hasNpmAuditVulnerabilityMetadata(evidence.npm.json)) {
+        evidence.npm.ok = false;
+        evidence.npm.reason = "npm direct evidence does not contain audit vulnerability metadata";
+      }
+    }
+    if (cargoFresh) {
+      evidence.cargo.auditJson = await readJsonFile(directEvidencePaths.cargoAudit);
+      evidence.cargo.metadataJson = await readJsonFile(directEvidencePaths.cargoMetadata);
+      const auditValid = hasCargoAuditVulnerabilityCount(evidence.cargo.auditJson);
+      const metadataValid = hasCargoMetadataResolveRoot(evidence.cargo.metadataJson);
+      if (!auditValid || !metadataValid) {
+        evidence.cargo.ok = false;
+        evidence.cargo.reason = [
+          auditValid ? null : "cargo direct audit evidence does not contain a vulnerability count",
+          metadataValid ? null : "cargo direct metadata evidence does not contain a resolve graph",
+        ]
+          .filter(Boolean)
+          .join("; ");
+      }
+    }
+    if (mtimes.provenance > 0) evidence.provenance = await readJsonFile(directEvidencePaths.provenance);
+    evidence.ok = evidence.npm.ok && evidence.cargo.ok;
+    return evidence;
   } catch (error) {
     return {
+      ...evidence,
       ok: false,
-      reason: `direct evidence could not be parsed: ${error.message ?? error}`,
-      inputCutoffMs,
-      mtimes,
+      parseError: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -138,6 +203,58 @@ function flattenCargoWarnings(warnings) {
         }))
       : [],
   );
+}
+
+async function readRustSourceCorpus() {
+  const root = path.join(repoRoot, "src-tauri", "src");
+  const files = [];
+  async function walk(dir) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile() && entry.name.endsWith(".rs")) {
+        files.push(full);
+      }
+    }
+  }
+  await walk(root);
+  const parts = await Promise.all(
+    files.sort().map(async (sourceFile) => {
+      const relative = path.relative(repoRoot, sourceFile).replaceAll("\\", "/");
+      return `\n// ${relative}\n${await readFile(sourceFile, "utf8")}`;
+    }),
+  );
+  return parts.join("\n");
+}
+
+function git2AdvisoryApiScope(warning, rustSourceCorpus) {
+  if (warning.package !== "git2") return null;
+  if (warning.advisoryId === "RUSTSEC-2026-0183") {
+    const remoteLines = rustSourceCorpus
+      .split("\n")
+      .filter((line) => /remote/i.test(line))
+      .join("\n");
+    const remoteListReachable = /Remote::list|\.list\s*\(/.test(remoteLines);
+    return remoteListReachable
+      ? null
+      : {
+          scope: "api-unreachable-in-source",
+          reason: "git2 Remote::list is not referenced by active Rust source",
+        };
+  }
+  if (warning.advisoryId === "RUSTSEC-2026-0184") {
+    const blameReachable = /BlameHunk|git2::Blame|\.blame_file\s*\(|\.blame_buffer\s*\(|\.blame\s*\(/.test(
+      rustSourceCorpus,
+    );
+    return blameReachable
+      ? null
+      : {
+          scope: "api-unreachable-in-source",
+          reason: "git2 BlameHunk/blame APIs are not referenced by active Rust source",
+        };
+  }
+  return null;
 }
 
 function isProcMacroPackage(pkg) {
@@ -213,17 +330,20 @@ function buildCargoReachability(metadata) {
   };
 }
 
-function classifyCargoWarningReachability(warnings, metadata) {
+function classifyCargoWarningReachability(warnings, metadata, rustSourceCorpus = "") {
   const reachability = buildCargoReachability(metadata);
   const runtime = new Set(reachability.runtimePackageKeys);
   const buildOnly = new Set(reachability.buildOnlyPackageKeys);
   const items = flattenCargoWarnings(warnings).map((warning) => {
-    const scope = runtime.has(warning.key)
-      ? "windows-runtime"
-      : buildOnly.has(warning.key)
-        ? "build-time-or-proc-macro"
-        : "target-unreachable-on-windows";
-    return { ...warning, scope };
+    const apiScope = git2AdvisoryApiScope(warning, rustSourceCorpus);
+    const scope =
+      apiScope?.scope ??
+      (runtime.has(warning.key)
+        ? "windows-runtime"
+        : buildOnly.has(warning.key)
+          ? "build-time-or-proc-macro"
+          : "target-unreachable-on-windows");
+    return { ...warning, scope, apiReachability: apiScope };
   });
   return {
     ok: reachability.ok,
@@ -237,6 +357,7 @@ function classifyCargoWarningReachability(warnings, metadata) {
     ).length,
     buildOnlyWarningCount: items.filter((item) => item.scope === "build-time-or-proc-macro").length,
     targetUnreachableWarningCount: items.filter((item) => item.scope === "target-unreachable-on-windows").length,
+    apiUnreachableWarningCount: items.filter((item) => item.scope === "api-unreachable-in-source").length,
     warnings: items,
   };
 }
@@ -263,42 +384,58 @@ async function main() {
     "json",
   ]);
   const directEvidence = spawnBlocked(npmAudit, cargoMetadata, cargoAudit) ? await readDirectEvidence() : null;
-  const usingDirectEvidence = directEvidence?.ok === true;
-  const npmJson = usingDirectEvidence ? directEvidence.npmJson : parseJson(npmAudit.stdout);
-  const cargoMetadataJson = usingDirectEvidence ? directEvidence.cargoMetadataJson : parseJson(cargoMetadata.stdout);
-  const cargoJson = usingDirectEvidence ? directEvidence.cargoJson : parseJson(cargoAudit.stdout);
-  const npmKnownVulnerabilities =
-    npmJson?.metadata?.vulnerabilities?.total ??
-    Object.values(npmJson?.metadata?.vulnerabilities ?? {}).reduce(
-      (sum, value) => sum + (typeof value === "number" ? value : 0),
-      0,
-    );
-  const cargoKnownVulnerabilities = cargoJson?.vulnerabilities?.count ?? null;
+  const usingDirectNpmEvidence = npmAudit.ok !== true && directEvidence?.npm?.ok === true;
+  const usingDirectCargoEvidence =
+    (cargoMetadata.ok !== true || cargoAudit.ok !== true) && directEvidence?.cargo?.ok === true;
+  const npmJson = usingDirectNpmEvidence ? directEvidence.npm.json : parseJson(npmAudit.stdout);
+  const cargoMetadataJson = usingDirectCargoEvidence
+    ? directEvidence.cargo.metadataJson
+    : parseJson(cargoMetadata.stdout);
+  const cargoJson = usingDirectCargoEvidence ? directEvidence.cargo.auditJson : parseJson(cargoAudit.stdout);
+  const npmKnownVulnerabilities = hasNpmAuditVulnerabilityMetadata(npmJson)
+    ? (npmJson?.metadata?.vulnerabilities?.total ??
+      Object.values(npmJson?.metadata?.vulnerabilities ?? {}).reduce(
+        (sum, value) => sum + (typeof value === "number" ? value : 0),
+        0,
+      ))
+    : null;
+  const cargoKnownVulnerabilities = hasCargoAuditVulnerabilityCount(cargoJson) ? cargoJson.vulnerabilities.count : null;
   const cargoWarningCount = countCargoWarnings(cargoJson);
   const cargoWarnings = summarizeCargoWarnings(cargoJson);
-  const cargoWarningReachability = classifyCargoWarningReachability(cargoWarnings, cargoMetadataJson);
-  const status =
-    (npmAudit.ok || usingDirectEvidence) &&
-    (cargoMetadata.ok || usingDirectEvidence) &&
+  const rustSourceCorpus = await readRustSourceCorpus();
+  const cargoWarningReachability = classifyCargoWarningReachability(cargoWarnings, cargoMetadataJson, rustSourceCorpus);
+  const npmAuditUnavailable = !(npmAudit.ok || usingDirectNpmEvidence) && npmKnownVulnerabilities == null;
+  const cargoAuditCleanEnough =
+    (cargoMetadata.ok || usingDirectCargoEvidence) &&
     cargoWarningReachability.ok &&
-    (cargoAudit.ok || usingDirectEvidence) &&
-    (npmKnownVulnerabilities ?? 0) === 0 &&
-    (cargoKnownVulnerabilities ?? 0) === 0 &&
+    (cargoAudit.ok || usingDirectCargoEvidence) &&
+    cargoKnownVulnerabilities === 0 &&
+    cargoWarningReachability.runtimeCriticalWarningCount === 0;
+  const status =
+    (npmAudit.ok || usingDirectNpmEvidence) &&
+    (cargoMetadata.ok || usingDirectCargoEvidence) &&
+    cargoWarningReachability.ok &&
+    (cargoAudit.ok || usingDirectCargoEvidence) &&
+    npmKnownVulnerabilities === 0 &&
+    cargoKnownVulnerabilities === 0 &&
     cargoWarningReachability.runtimeCriticalWarningCount === 0
       ? "pass"
-      : "fail";
+      : npmAuditUnavailable && cargoAuditCleanEnough
+        ? "environment-blocked"
+        : "fail";
   const report = {
     version: 1,
     generatedAt,
     status,
     npm: {
-      ok: npmAudit.ok || usingDirectEvidence,
+      ok: npmAudit.ok || usingDirectNpmEvidence,
       exitCode: npmAudit.exitCode,
       knownVulnerabilities: npmKnownVulnerabilities ?? null,
+      unavailableReason: npmAuditUnavailable ? npmAudit.stderr.slice(-2000) || directEvidence?.npm?.reason : null,
       stderrTail: npmAudit.stderr.slice(-2000),
     },
     cargo: {
-      ok: cargoAudit.ok || usingDirectEvidence,
+      ok: cargoAudit.ok || usingDirectCargoEvidence,
       exitCode: cargoAudit.exitCode,
       knownVulnerabilities: cargoKnownVulnerabilities,
       warningCount: cargoWarningCount,
@@ -308,21 +445,40 @@ async function main() {
       stderrTail: cargoAudit.stderr.slice(-2000),
     },
     cargoMetadata: {
-      ok: cargoMetadata.ok || usingDirectEvidence,
+      ok: cargoMetadata.ok || usingDirectCargoEvidence,
       exitCode: cargoMetadata.exitCode,
       stderrTail: cargoMetadata.stderr.slice(-2000),
     },
     directEvidence: {
-      used: usingDirectEvidence,
+      used: usingDirectNpmEvidence || usingDirectCargoEvidence,
       ok: directEvidence?.ok ?? null,
-      reason: directEvidence?.ok === false ? directEvidence.reason : null,
+      npm: directEvidence?.npm
+        ? {
+            used: usingDirectNpmEvidence,
+            ok: directEvidence.npm.ok,
+            reason: directEvidence.npm.reason,
+            inputCutoffMs: directEvidence.npm.inputCutoffMs,
+            evidenceMtimeMs: directEvidence.npm.evidenceMtimeMs,
+          }
+        : null,
+      cargo: directEvidence?.cargo
+        ? {
+            used: usingDirectCargoEvidence,
+            ok: directEvidence.cargo.ok,
+            reason: directEvidence.cargo.reason,
+            inputCutoffMs: directEvidence.cargo.inputCutoffMs,
+            auditMtimeMs: directEvidence.cargo.auditMtimeMs,
+            metadataMtimeMs: directEvidence.cargo.metadataMtimeMs,
+          }
+        : null,
+      parseError: directEvidence?.parseError ?? null,
       paths: Object.fromEntries(
         Object.entries(directEvidencePaths).map(([key, value]) => [
           key,
           path.relative(repoRoot, value).replaceAll("\\", "/"),
         ]),
       ),
-      provenance: usingDirectEvidence ? directEvidence.provenance : null,
+      provenance: directEvidence?.provenance ?? null,
     },
     policy: {
       failOnKnownVulnerabilities: true,
@@ -350,6 +506,7 @@ async function main() {
   console.log(
     `[supply-chain] cargoTargetUnreachableWarningCount=${report.cargo.reachability.targetUnreachableWarningCount}`,
   );
+  console.log(`[supply-chain] cargoApiUnreachableWarningCount=${report.cargo.reachability.apiUnreachableWarningCount}`);
   console.log(`[supply-chain] wrote ${path.relative(repoRoot, outJson).replaceAll("\\", "/")}`);
   if (status !== "pass") process.exit(1);
 }

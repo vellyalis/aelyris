@@ -5,8 +5,12 @@ import { test, expect } from "@playwright/test";
  * Runs against Vite dev server with project path set in localStorage.
  */
 
+function visualQaProjectPath() {
+  return process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+}
+
 const setupProject = async (page: import("@playwright/test").Page) => {
-  const projectPath = "C:/Users/owner/Aether_Terminal";
+  const projectPath = visualQaProjectPath();
   await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
     waitUntil: "domcontentloaded",
   });
@@ -51,12 +55,13 @@ test.describe("Panel visibility", () => {
 
 test.describe("Theme persistence", () => {
   test("theme value persists in localStorage", async ({ page }) => {
+    const projectPath = visualQaProjectPath();
     await page.goto("/");
-    await page.evaluate(() => {
+    await page.evaluate((path) => {
       localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", "C:/Users/owner/Aether_Terminal");
+      localStorage.setItem("aether:visualQaProject", path);
       localStorage.setItem("aether:theme", "catppuccin-latte");
-    });
+    }, projectPath);
     await page.reload();
     await page.waitForTimeout(1000);
 

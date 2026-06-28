@@ -20,24 +20,19 @@ const repo = read("src-tauri/src/persistence/merge_repo.rs");
 const migrations = read("src-tauri/src/db/migrations.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
 const domain = read("src-tauri/src/merge_intent/mod.rs");
+const controlMerge = read("src-tauri/src/control/merge.rs");
 
 // Isolate the approve handler body so "must NOT contain" checks are scoped to it.
 const approveStart = mcp.indexOf('"aether.review.approve" => {');
 const approveEnd = mcp.indexOf('"aether.review.reject" => {', approveStart);
-const approveBody =
-  approveStart >= 0 && approveEnd > approveStart
-    ? mcp.slice(approveStart, approveEnd)
-    : "";
+const approveBody = approveStart >= 0 && approveEnd > approveStart ? mcp.slice(approveStart, approveEnd) : "";
 
 // The approve INPUT SCHEMA block (declared shape) — from its "name" up to the
 // next tool's "name", so the whole schema (incl. "required") is captured.
 const approveSchemaStart = mcp.indexOf('"name": "aether.review.approve"');
-const nextNameStart =
-  approveSchemaStart >= 0 ? mcp.indexOf('"name":', approveSchemaStart + 10) : -1;
+const nextNameStart = approveSchemaStart >= 0 ? mcp.indexOf('"name":', approveSchemaStart + 10) : -1;
 const approveSchema =
-  approveSchemaStart >= 0 && nextNameStart > approveSchemaStart
-    ? mcp.slice(approveSchemaStart, nextNameStart)
-    : "";
+  approveSchemaStart >= 0 && nextNameStart > approveSchemaStart ? mcp.slice(approveSchemaStart, nextNameStart) : "";
 
 // Whitespace-insensitive match so a harmless `cargo fmt` reflow never breaks a
 // security assertion (and a real regression still can't hide behind formatting).
@@ -55,12 +50,9 @@ const sliceBetween = (src, from, toMarkers) => {
   }
   return src.slice(start, end);
 };
-const mergeResolvedN = norm(
-  sliceBetween(gitMerge, "fn merge_resolved(", ["#[cfg(test)]"]),
-);
-const performBoundN = norm(
-  sliceBetween(gitMerge, "pub fn perform_merge_bound(", ["fn merge_resolved("]),
-);
+const approveHelper = sliceBetween(controlMerge, "pub fn approve_durable_intent(", ["/// Serialized merge queue"]);
+const mergeResolvedN = norm(sliceBetween(gitMerge, "fn merge_resolved(", ["#[cfg(test)]"]));
+const performBoundN = norm(sliceBetween(gitMerge, "pub fn perform_merge_bound(", ["fn merge_resolved("]));
 
 const checks = [
   {
@@ -101,25 +93,24 @@ const checks = [
       approveBodyN.includes("serde_json::Value::String(s)") &&
       // the rejection runs BEFORE the claim and the merge (no field reaches git).
       approveBodyN.indexOf("!APPROVE_ALLOWED.contains") >= 0 &&
-      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") <
-        approveBodyN.indexOf(".claim_for_merge(") &&
-      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") <
-        approveBodyN.indexOf("perform_merge_bound("),
+      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") < approveBodyN.indexOf("approve_durable_intent(") &&
+      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") < approveBodyN.indexOf("approve_durable_intent("),
     detail:
       "approve rejects unknown/extra fields server-side via an EXACT allowlist BEFORE any claim/merge, and strictly types verdict/gatesDigest (boundary #2)",
   },
   {
     id: "boundary-4-approve-merges-stored-intent-oid-bound",
     ok:
-      approveBody.includes("crate::git::perform_merge_bound(") &&
-      approveBody.includes("&intent.repo_path") &&
-      approveBody.includes("&intent.source_branch") &&
-      approveBody.includes("&intent.target_branch") &&
-      approveBody.includes("&intent.source_oid") &&
-      approveBody.includes("&intent.target_oid") &&
+      approveBody.includes("crate::control::merge::approve_durable_intent(") &&
+      approveHelper.includes("crate::git::perform_merge_bound(") &&
+      approveHelper.includes("&intent.repo_path") &&
+      approveHelper.includes("&intent.source_branch") &&
+      approveHelper.includes("&intent.target_branch") &&
+      approveHelper.includes("&intent.source_oid") &&
+      approveHelper.includes("&intent.target_oid") &&
       gitMerge.includes("pub fn perform_merge_bound"),
     detail:
-      "approve merges using ONLY the stored immutable intent's repo/branches/OIDs, via the OID-bound merge (boundary #4)",
+      "approve delegates execution to the shared durable helper, which merges using ONLY the stored immutable intent's repo/branches/OIDs via the OID-bound merge (boundary #4)",
   },
   {
     id: "boundary-4-oid-bound-merge-uses-atomic-ref-cas",
@@ -142,10 +133,10 @@ const checks = [
   {
     id: "boundary-5-merge-claim-is-db-cas-no-lock-across-git",
     ok:
-      approveBody.includes(".claim_for_merge(&intent_id, now)") &&
+      approveHelper.includes(".claim_for_merge(intent_id, now)") &&
       repo.includes("WHERE intent_id = ?1 AND state IN ('queued','ready_to_merge')") &&
       // the store is a thin facade; git calls are not inside a held lock
-      approveBody.includes("perform_merge_bound"),
+      approveHelper.includes("perform_merge_bound"),
     detail:
       "the merge claim is a DB compare-and-swap (the row is the arbiter), and the git merge runs with no merge-state lock held (boundary #5)",
   },
@@ -179,23 +170,21 @@ const checks = [
       mcp.includes("store.create_or_get(&intent)") &&
       repo.includes("ON CONFLICT(task_id, source_oid, target_oid) DO NOTHING") &&
       mcp.includes("crate::control::merge::inspect(&repo_path, &source_branch, &target_branch)"),
-    detail:
-      "request_merge resolves+stores the branch OIDs and is idempotent per (taskId, source_oid, target_oid)",
+    detail: "request_merge resolves+stores the branch OIDs and is idempotent per (taskId, source_oid, target_oid)",
   },
   {
     id: "merge-states-cover-the-audit-lifecycle",
-    ok:
-      [
-        "Queued",
-        "Reviewing",
-        "ReadyToMerge",
-        "Merging",
-        "Merged",
-        "Conflict",
-        "Rejected",
-        "CleanupFailed",
-        "NeedsReconcile",
-      ].every((s) => domain.includes(s)),
+    ok: [
+      "Queued",
+      "Reviewing",
+      "ReadyToMerge",
+      "Merging",
+      "Merged",
+      "Conflict",
+      "Rejected",
+      "CleanupFailed",
+      "NeedsReconcile",
+    ].every((s) => domain.includes(s)),
     detail: "the 9 audit lifecycle states are modeled",
   },
 ];
@@ -209,10 +198,7 @@ const report = {
   passed: checks.length - failed.length,
   checks,
 };
-fs.writeFileSync(
-  path.join(qualityDir, "security-merge-intent-binding.json"),
-  JSON.stringify(report, null, 2),
-);
+fs.writeFileSync(path.join(qualityDir, "security-merge-intent-binding.json"), JSON.stringify(report, null, 2));
 
 for (const c of checks) {
   console.log(`${c.ok ? "PASS" : "FAIL"}  ${c.id}\n      ${c.detail}`);

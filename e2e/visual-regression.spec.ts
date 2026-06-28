@@ -23,7 +23,7 @@ import { test, expect } from "@playwright/test";
  * tolerance.
  */
 
-const PROJECT_PATH = "C:/Users/owner/Aether_Terminal";
+const PROJECT_PATH = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 
 test.describe("Phase 1 visual regression — chrome cluster", () => {
   test.beforeEach(async ({ page }) => {

@@ -9,7 +9,7 @@ const OUT =
   join(ROOT, ".codex-auto", "production-smoke", "command-center-scenario.json");
 const TEST = "src/__tests__/commandCenterScenario.test.ts";
 const NOW = Date.parse("2026-05-19T15:00:00.000Z");
-const WORKSPACE = "C:/Users/owner/Aether_Terminal";
+const WORKSPACE = process.env.AETHER_COMMAND_CENTER_WORKSPACE ?? process.cwd().replaceAll("\\", "/");
 const TARGET_FILE = "src/features/terminal/NativeTerminalArea.tsx";
 
 const ACTION_PHASE = {

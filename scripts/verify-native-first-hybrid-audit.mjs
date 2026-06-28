@@ -62,10 +62,10 @@ function grade(percent) {
 }
 
 const packageJson = read("package.json");
-const nativeFirstDoc = read("docs/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md");
-const fullNativeDoc = read("docs/FULL_NATIVE_RUST_FINAL_GOAL.md");
-const claugeDoc = read("docs/CLAUGE_INSPIRED_NATIVE_MODE_SHELL_PLAN_2026-05-25.md");
-const claugeSourceAuditDoc = read("docs/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md");
+const nativeFirstDoc = read("docs/history/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md");
+const fullNativeDoc = read("docs/history/FULL_NATIVE_RUST_FINAL_GOAL.md");
+const claugeDoc = read("docs/history/CLAUGE_INSPIRED_NATIVE_MODE_SHELL_PLAN_2026-05-25.md");
+const claugeSourceAuditDoc = read("docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md");
 
 const nativeClientPath = ".codex-auto/quality/native-client-spike.json";
 const nativeBoundaryPath = ".codex-auto/quality/native-boundary-contract.json";
@@ -177,8 +177,8 @@ addItem(
     packageJson.includes("verify:native-first:audit"),
   "Release goal is explicitly native-first hybrid; strict full-native remains a stretch audit.",
   {
-    goalDoc: "docs/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md",
-    strictStretchDoc: "docs/FULL_NATIVE_RUST_FINAL_GOAL.md",
+    goalDoc: "docs/history/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md",
+    strictStretchDoc: "docs/history/FULL_NATIVE_RUST_FINAL_GOAL.md",
   },
   ["retarget docs and package script to native-first hybrid"],
 );
@@ -310,7 +310,7 @@ addItem(
   "Aether adopts source-audited Clauge information architecture: mode rail, dominant work surface, contextual inspector, per-mode AI, mode state preservation, and purpose-focused agents without copying REST/SQL/NoSQL/S3 scope.",
   {
     artifact: nativeClientPath,
-    sourceAuditDoc: "docs/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md",
+    sourceAuditDoc: "docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md",
   },
   ["refresh native-client mode shell proofs", "write/update Clauge source audit good-parts doc"],
 );

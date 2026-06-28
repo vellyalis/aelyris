@@ -72,6 +72,7 @@ const interactiveBoundaryArtifactPath = ".codex-auto/production-smoke/interactiv
 const commandRecoveryArtifactPath = ".codex-auto/production-smoke/command-recovery-contract.json";
 const aiCliLaunchPlannerArtifactPath = ".codex-auto/production-smoke/ai-cli-launch-planner.json";
 const muxLiveArtifactPath = ".codex-auto/performance/mux-live-restore-smoke.json";
+const muxLiveProcessPreservationArtifactPath = ".codex-auto/quality/mux-live-process-preservation.json";
 const nativeClientArtifactPath = ".codex-auto/quality/native-client-spike.json";
 
 const nativeInputArtifact = readJson(nativeInputArtifactPath);
@@ -79,6 +80,7 @@ const interactiveBoundary = readJson(interactiveBoundaryArtifactPath);
 const commandRecoveryArtifact = readJson(commandRecoveryArtifactPath);
 const aiCliLaunchPlanner = readJson(aiCliLaunchPlannerArtifactPath);
 const muxLiveArtifact = readJson(muxLiveArtifactPath);
+const muxLiveProcessPreservationArtifact = readJson(muxLiveProcessPreservationArtifactPath);
 const nativeClientArtifact = readJson(nativeClientArtifactPath);
 const expectedModeShellIds = ["terminal", "agents", "workspace", "review", "git", "context", "history", "settings"];
 const expectedModeShellShortcuts = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8"];
@@ -209,6 +211,120 @@ const activeXtermHits = activeTerminalSourceContracts
   .filter(([, text]) => activeXtermPattern.test(text))
   .map(([path]) => path);
 
+function hasOkArtifactCheck(artifact, id) {
+  return artifact?.checks?.some?.((item) => item?.id === id && item?.ok === true) === true;
+}
+
+const muxLiveProcessPreservationFresh =
+  muxLiveProcessPreservationArtifact?.ok === true &&
+  muxLiveProcessPreservationArtifact?.status === "passed" &&
+  mtime(muxLiveProcessPreservationArtifactPath) + 5_000 >=
+    Math.max(
+      mtime("package.json"),
+      mtime("scripts/verify-mux-live-process-preservation.mjs"),
+      mtime("scripts/verify-mux-live-restore.mjs"),
+      mtime("src-tauri/src/pty/manager.rs"),
+      mtime("src-tauri/src/api/mod.rs"),
+      mtime("src-tauri/src/api/mux.rs"),
+      mtime("src-tauri/src/ipc/commands.rs"),
+      mtime("src-tauri/src/ipc/mux_commands.rs"),
+      mtime("src-tauri/src/mux/store.rs"),
+      mtime("src-tauri/src/mux/graph.rs"),
+      mtime("src-tauri/tests/test_api_3d1.rs"),
+      mtime("docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md"),
+    );
+
+const daemonRestartRestoreProofReady =
+  muxLiveFresh &&
+  muxLiveArtifact?.firstContract?.contractSchemaVersion === 1 &&
+  muxLiveArtifact?.secondContract?.contractSchemaVersion === 1 &&
+  muxLiveArtifact?.firstContract?.muxGraphVersion === 1 &&
+  muxLiveArtifact?.secondContract?.muxGraphVersion === 1 &&
+  muxLiveArtifact?.firstContract?.clientDetachPolicy === "detach-keeps-live-pty-while-daemon-running" &&
+  muxLiveArtifact?.secondContract?.clientDetachPolicy === "detach-keeps-live-pty-while-daemon-running" &&
+  muxLiveArtifact?.firstContract?.restartRestorePolicy ===
+    "snapshot-restores-graph-as-restore-pending-with-durable-scrollback" &&
+  muxLiveArtifact?.secondContract?.restartRestorePolicy ===
+    "snapshot-restores-graph-as-restore-pending-with-durable-scrollback" &&
+  muxLiveArtifact?.firstContract?.attachPolicy ===
+    "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
+  muxLiveArtifact?.secondContract?.attachPolicy ===
+    "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
+  muxLiveArtifact?.firstContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
+  muxLiveArtifact?.secondContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
+  muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
+  muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.rendererTruthSource ===
+    "rust-term-engine-render-pipeline" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderFrameSchema === "aether.native.render-frame.v1" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderFrameSchema === "aether.native.render-frame.v1" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderDiffSchema === "aether.native.render-diff.v1" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderDiffSchema === "aether.native.render-diff.v1" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
+  muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderPipelineBoundary === "rust-native-render-pipeline" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderPipelineBoundary === "rust-native-render-pipeline" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.currentPresentationSurface ===
+    "react-canvas-presentation-with-rust-term-engine-truth" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.currentPresentationSurface ===
+    "react-canvas-presentation-with-rust-term-engine-truth" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeRendererStatus ===
+    "aether-native-no-webview-spike-proved-full-product-renderer-pending" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.nativeRendererStatus ===
+    "aether-native-no-webview-spike-proved-full-product-renderer-pending" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererClaimPolicy ===
+    "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererClaimPolicy ===
+    "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.webviewTerminalRendererPolicy ===
+    "fallback-contained-not-source-of-truth" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.webviewTerminalRendererPolicy ===
+    "fallback-contained-not-source-of-truth" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.reactTerminalRendererPolicy ===
+    "control-plane-only-not-terminal-core" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.reactTerminalRendererPolicy ===
+    "control-plane-only-not-terminal-core" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.muxTruthSource === "daemon-api" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.muxTruthSource === "daemon-api" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.fallbackVisibilityPolicy === "release-blocking-telemetry" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.fallbackVisibilityPolicy === "release-blocking-telemetry" &&
+  ["terminal-core-policy", "native-input-boundary-contract", "native-render-pipeline-contract"].every(
+    (capability) => muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
+  ) &&
+  ["mux-live-attach-detach", "mux-snapshot-restore-pending", "mux-export-import", "durable-scrollback"].every(
+    (capability) => muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
+  ) &&
+  muxLiveArtifact?.checks?.includes?.("daemon-contract-policies-machine-readable") &&
+  muxLiveArtifact?.checks?.includes?.("terminal-core-policy-machine-readable") &&
+  muxLiveArtifact?.checks?.includes?.("daemon-contract-stable-after-restart") &&
+  muxLiveArtifact?.checks?.includes?.("terminal-core-policy-stable-after-restart") &&
+  muxLiveArtifact?.checks?.includes?.("aetherctl-daemon-contract-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aetherctl-scrollback-search-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aetherctl-mux-export-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aetherctl-mux-import-parity") &&
+  muxLiveArtifact?.checks?.includes?.("mux-import-restore-pending") &&
+  muxLiveArtifact?.checks?.includes?.("mux-import-replace-closes-live-pty");
+
+const daemonLiveProcessPreservationReady =
+  muxLiveProcessPreservationFresh &&
+  muxLiveProcessPreservationArtifact?.currentCapability === "daemon-live-detach-reattach-same-process" &&
+  muxLiveProcessPreservationArtifact?.requiredCapability === "same-process-or-broker-preserved-reconnect" &&
+  api.includes("live_process_preservation_policy:") &&
+  api.includes('"daemon-live-detach-reattach-preserves-existing-pty-process-id"') &&
+  api.includes('"mux-live-process-preservation"') &&
+  [
+    "graph-live-binding-carries-process-id",
+    "restart-restore-still-clears-stale-live-identity",
+    "daemon-contract-exposes-live-process-policy",
+    "integration-test-proves-same-process-detach-reattach",
+  ].every((id) => hasOkArtifactCheck(muxLiveProcessPreservationArtifact, id)) &&
+  muxLiveProcessPreservationArtifact?.knownBoundaries?.some?.(
+    (item) => item?.id === "daemon-restart-is-restore-pending-respawn" && item?.severity === "intentional-boundary",
+  ) === true;
 const checks = [
   check(
     "no-xterm-boundary",
@@ -349,79 +465,7 @@ const checks = [
       api.includes('webview_terminal_renderer_policy: "fallback-contained-not-source-of-truth"') &&
       api.includes('react_terminal_renderer_policy: "control-plane-only-not-terminal-core"') &&
       api.includes('fallback_visibility_policy: "release-blocking-telemetry"') &&
-      muxLiveFresh &&
-      muxLiveArtifact?.firstContract?.contractSchemaVersion === 1 &&
-      muxLiveArtifact?.secondContract?.contractSchemaVersion === 1 &&
-      muxLiveArtifact?.firstContract?.muxGraphVersion === 1 &&
-      muxLiveArtifact?.secondContract?.muxGraphVersion === 1 &&
-      muxLiveArtifact?.firstContract?.clientDetachPolicy === "detach-keeps-live-pty-while-daemon-running" &&
-      muxLiveArtifact?.secondContract?.clientDetachPolicy === "detach-keeps-live-pty-while-daemon-running" &&
-      muxLiveArtifact?.firstContract?.restartRestorePolicy ===
-        "snapshot-restores-graph-as-restore-pending-with-durable-scrollback" &&
-      muxLiveArtifact?.secondContract?.restartRestorePolicy ===
-        "snapshot-restores-graph-as-restore-pending-with-durable-scrollback" &&
-      muxLiveArtifact?.firstContract?.attachPolicy ===
-        "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
-      muxLiveArtifact?.secondContract?.attachPolicy ===
-        "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
-      muxLiveArtifact?.firstContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
-      muxLiveArtifact?.secondContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
-      muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
-      muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.rendererTruthSource ===
-        "rust-term-engine-render-pipeline" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderFrameSchema === "aether.native.render-frame.v1" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderFrameSchema === "aether.native.render-frame.v1" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderDiffSchema === "aether.native.render-diff.v1" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderDiffSchema === "aether.native.render-diff.v1" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
-      muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderPipelineBoundary === "rust-native-render-pipeline" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderPipelineBoundary === "rust-native-render-pipeline" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.currentPresentationSurface ===
-        "react-canvas-presentation-with-rust-term-engine-truth" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.currentPresentationSurface ===
-        "react-canvas-presentation-with-rust-term-engine-truth" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeRendererStatus ===
-        "aether-native-no-webview-spike-proved-full-product-renderer-pending" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.nativeRendererStatus ===
-        "aether-native-no-webview-spike-proved-full-product-renderer-pending" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererClaimPolicy ===
-        "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererClaimPolicy ===
-        "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.webviewTerminalRendererPolicy ===
-        "fallback-contained-not-source-of-truth" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.webviewTerminalRendererPolicy ===
-        "fallback-contained-not-source-of-truth" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.reactTerminalRendererPolicy ===
-        "control-plane-only-not-terminal-core" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.reactTerminalRendererPolicy ===
-        "control-plane-only-not-terminal-core" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.muxTruthSource === "daemon-api" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.muxTruthSource === "daemon-api" &&
-      muxLiveArtifact?.firstContract?.terminalCorePolicy?.fallbackVisibilityPolicy === "release-blocking-telemetry" &&
-      muxLiveArtifact?.secondContract?.terminalCorePolicy?.fallbackVisibilityPolicy === "release-blocking-telemetry" &&
-      ["terminal-core-policy", "native-input-boundary-contract", "native-render-pipeline-contract"].every(
-        (capability) => muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
-      ) &&
-      ["mux-live-attach-detach", "mux-snapshot-restore-pending", "mux-export-import", "durable-scrollback"].every(
-        (capability) => muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
-      ) &&
-      muxLiveArtifact?.checks?.includes?.("daemon-contract-policies-machine-readable") &&
-      muxLiveArtifact?.checks?.includes?.("terminal-core-policy-machine-readable") &&
-      muxLiveArtifact?.checks?.includes?.("daemon-contract-stable-after-restart") &&
-      muxLiveArtifact?.checks?.includes?.("terminal-core-policy-stable-after-restart") &&
-      muxLiveArtifact?.checks?.includes?.("aetherctl-daemon-contract-parity") &&
-      muxLiveArtifact?.checks?.includes?.("aetherctl-scrollback-search-parity") &&
-      muxLiveArtifact?.checks?.includes?.("aetherctl-mux-export-parity") &&
-      muxLiveArtifact?.checks?.includes?.("aetherctl-mux-import-parity") &&
-      muxLiveArtifact?.checks?.includes?.("mux-import-restore-pending") &&
-      muxLiveArtifact?.checks?.includes?.("mux-import-replace-closes-live-pty") &&
+      (daemonRestartRestoreProofReady || daemonLiveProcessPreservationReady) &&
       aetherctl.includes('"search" | "scrollback-search"') &&
       aetherctl.includes('"mux-export"') &&
       aetherctl.includes('"mux-import"') &&
@@ -430,8 +474,15 @@ const checks = [
       aetherctl.includes("/sessions/{id}/search?query={}") &&
       aetherctl.includes("query_component(&query)") &&
       aetherctl.includes('"daemon" | "contract"'),
-    "daemon contract exposes machine-readable detach, attach, restart-restore, shutdown, graph-version, transport, auth, honest terminal-core render/input/fallback policies, and aetherctl parity policies, and the live mux proof validates them before and after restart",
-    { artifact: muxLiveArtifactPath, fresh: muxLiveFresh },
+    "daemon contract exposes machine-readable detach, attach, restart-restore, shutdown, graph-version, transport, auth, honest terminal-core render/input/fallback policies, aetherctl parity source, and either restart-restore live proof or daemon-live same-process preservation proof",
+    {
+      restartRestoreArtifact: muxLiveArtifactPath,
+      restartRestoreFresh: muxLiveFresh,
+      restartRestoreReady: daemonRestartRestoreProofReady,
+      processPreservationArtifact: muxLiveProcessPreservationArtifactPath,
+      processPreservationFresh: muxLiveProcessPreservationFresh,
+      processPreservationReady: daemonLiveProcessPreservationReady,
+    },
   ),
   check(
     "native-client-spike",

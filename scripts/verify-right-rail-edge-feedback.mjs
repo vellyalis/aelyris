@@ -5,20 +5,30 @@
 //
 // Optional env:
 //   AETHER_RIGHT_RAIL_EDGE_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_RIGHT_RAIL_EDGE_OUT=.codex-auto/production-smoke/right-rail-edge-feedback.json
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import http from "node:http";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const APP_URL = process.env.AETHER_RIGHT_RAIL_EDGE_URL ?? "http://localhost:1420/";
+const STATIC_DIST = process.env.AETHER_RIGHT_RAIL_EDGE_STATIC_DIST === "1";
+const STATIC_PORT = Number.parseInt(process.env.AETHER_RIGHT_RAIL_EDGE_STATIC_PORT ?? "1420", 10);
+let APP_URL =
+  process.env.AETHER_RIGHT_RAIL_EDGE_URL ??
+  (STATIC_DIST ? `http://127.0.0.1:${STATIC_PORT}/` : "http://localhost:1420/");
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT = process.env.AETHER_RIGHT_RAIL_EDGE_OUT ?? ".codex-auto/production-smoke/right-rail-edge-feedback.json";
+const ENV_BLOCKED_OUT =
+  process.env.AETHER_RIGHT_RAIL_EDGE_ENV_BLOCKED_OUT ??
+  ".codex-auto/production-smoke/right-rail-edge-feedback.environment-blocked.json";
 const SCREENSHOT = process.env.AETHER_RIGHT_RAIL_EDGE_SCREENSHOT ?? ".codex-auto/visual/right-rail-next-action-qa.png";
 const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_EDGE_WAIT_MS ?? "30000", 10);
 const EDGE_STORAGE_PREFIX = "aether:right-rail-edge-feedback:";
+
+let artifactPathOverride = null;
 
 const report = {
   ok: false,
@@ -29,8 +39,23 @@ const report = {
   errors: [],
 };
 
+function outputArtifactMeta(path) {
+  const fullPath = resolve(path);
+  return {
+    path,
+    exists: existsSync(fullPath),
+    mtimeMs: existsSync(fullPath) ? statSync(fullPath).mtimeMs : 0,
+  };
+}
+
+function isEnvironmentBlockedError(message) {
+  return /browserType\.launch: spawn EPERM|chrome-headless-shell\.exe|spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|ETIMEDOUT/i.test(
+    message,
+  );
+}
+
 function writeArtifact() {
-  const outPath = resolve(OUT);
+  const outPath = resolve(artifactPathOverride ?? OUT);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify({ ...report, finishedAt: new Date().toISOString() }, null, 2)}\n`);
   return outPath;
@@ -48,6 +73,55 @@ function workspaceStorageHash(value) {
 function edgeFeedbackStorageKey(projectPath) {
   const normalized = projectPath.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
   return `${EDGE_STORAGE_PREFIX}${workspaceStorageHash(normalized)}`;
+}
+
+function contentTypeFor(filePath) {
+  const extension = filePath.slice(filePath.lastIndexOf("."));
+  return (
+    {
+      ".css": "text/css; charset=utf-8",
+      ".html": "text/html; charset=utf-8",
+      ".ico": "image/x-icon",
+      ".js": "text/javascript; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".png": "image/png",
+      ".svg": "image/svg+xml",
+      ".woff2": "font/woff2",
+    }[extension] ?? "application/octet-stream"
+  );
+}
+
+async function startStaticDistServer() {
+  if (!STATIC_DIST) return null;
+  const distRoot = resolve("dist");
+  const indexPath = join(distRoot, "index.html");
+  if (!existsSync(indexPath)) {
+    throw new Error(`Static dist smoke requested but ${indexPath} is missing. Run pnpm build first.`);
+  }
+  const server = http.createServer((request, response) => {
+    try {
+      const url = new URL(request.url ?? "/", APP_URL);
+      const requested = decodeURIComponent(url.pathname);
+      let filePath = resolve(distRoot, requested.replace(/^\/+/, ""));
+      if (!filePath.startsWith(distRoot)) {
+        response.writeHead(403);
+        response.end("forbidden");
+        return;
+      }
+      if (!existsSync(filePath) || statSync(filePath).isDirectory()) filePath = indexPath;
+      response.writeHead(200, { "content-type": contentTypeFor(filePath) });
+      createReadStream(filePath).pipe(response);
+    } catch (error) {
+      response.writeHead(500);
+      response.end(error instanceof Error ? error.message : String(error));
+    }
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(STATIC_PORT, "127.0.0.1", resolveListen);
+  });
+  APP_URL = `http://127.0.0.1:${STATIC_PORT}/`;
+  return server;
 }
 
 function edgeLoopPayload() {
@@ -249,7 +323,9 @@ async function readFeedbackState(page) {
 
 async function main() {
   let browser = null;
+  let staticServer = null;
   try {
+    staticServer = await startStaticDistServer();
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     const quality = attachQualityCollectors(page);
@@ -389,12 +465,25 @@ async function main() {
     report.ok = true;
     report.checks.noRuntimeErrors = true;
   } catch (error) {
-    report.errors.push(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    report.errors.push(message);
+    if (isEnvironmentBlockedError(message)) {
+      artifactPathOverride = ENV_BLOCKED_OUT;
+      report.status = "environment-blocked";
+      report.preservesPrimaryArtifact = true;
+      report.primaryArtifact = outputArtifactMeta(OUT);
+      report.nextRequiredAction = STATIC_DIST
+        ? "Run this smoke on a host where Playwright Chromium can launch, or attach the in-app/browser tool to the static dist URL."
+        : "Start the dev server on a host where browser launch is allowed, then rerun pnpm verify:right-rail-edge.";
+    }
     process.exitCode = 1;
   } finally {
     if (browser) {
       if (typeof browser.disconnect === "function") browser.disconnect();
       else await browser.close().catch(() => {});
+    }
+    if (staticServer) {
+      await new Promise((resolveClose) => staticServer.close(resolveClose));
     }
     const artifact = writeArtifact();
     if (report.ok) {

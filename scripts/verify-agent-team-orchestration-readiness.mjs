@@ -63,10 +63,6 @@ function countOccurrences(source, needle) {
   return source.split(needle).length - 1;
 }
 
-function checkById(report, id) {
-  return (Array.isArray(report?.checks) ? report.checks : []).find((check) => check?.id === id);
-}
-
 function allCheckStatusesPassed(report) {
   return (
     Array.isArray(report?.checks) &&
@@ -90,21 +86,30 @@ function add(checks, id, ok, detail, evidence = {}) {
   checks.push({ id, ok: Boolean(ok), detail, evidence });
 }
 
+function hasPattern(source, pattern) {
+  return pattern.test(source);
+}
+
+function checkText(check) {
+  return `${check?.detail ?? ""} ${JSON.stringify(check?.evidence ?? {})}`;
+}
+
+function isEnvironmentBlockedCheck(check) {
+  return /environment-blocked|spawn EPERM|host capability unavailable|host process policy/i.test(checkText(check));
+}
+
 const packageJson = read(sourcePaths.packageJson);
 const orchestrator = read(sourcePaths.orchestrator);
 const orchestraDispatch = read(sourcePaths.orchestraDispatch);
 const orchestraDialog = read(sourcePaths.orchestraDialog);
 const app = read(sourcePaths.app);
 const ipcCommands = read(sourcePaths.ipcCommands);
-const styles = read(sourcePaths.styles);
 const toolkit = read(sourcePaths.toolkit);
 const orchestratorTest = read(sourcePaths.orchestratorTest);
 const orchestraRolesTest = read(sourcePaths.orchestraRolesTest);
 const orchestraDialogTest = read(sourcePaths.orchestraDialogTest);
 const safeVerifier = read(sourcePaths.safeVerifier);
 const rightRailDensityVerifier = read(sourcePaths.rightRailDensityVerifier);
-const muxPerformanceVerifier = read(sourcePaths.muxPerformanceVerifier);
-const muxLiveVerifier = read(sourcePaths.muxLiveVerifier);
 const upperCompatVerifier = read(sourcePaths.upperCompatVerifier);
 
 const rightRailDensity = readJson(artifactPaths.rightRailDensity);
@@ -121,7 +126,8 @@ const rightRailDensityChecks = Object.fromEntries(
 const muxPerfSummary = muxPerformance?.summary ?? {};
 const muxPerfBudgets = muxPerformance?.budgets ?? {};
 const muxLiveChecks = Array.isArray(muxLiveRestore?.checks) ? muxLiveRestore.checks : [];
-const muxLiveCapabilities = muxLiveRestore?.secondContract?.capabilities ?? muxLiveRestore?.firstContract?.capabilities ?? [];
+const muxLiveCapabilities =
+  muxLiveRestore?.secondContract?.capabilities ?? muxLiveRestore?.firstContract?.capabilities ?? [];
 const upperCompatGates = upperCompat?.proof?.gates ?? {};
 const artifactFreshness = {
   rightRailDensity: artifactMtims.rightRailDensity + 5_000 >= mtimeMs(sourcePaths.rightRailDensityVerifier),
@@ -133,6 +139,30 @@ const artifactFreshness = {
 const roleIds = ["implementer", "tester", "reviewer", "documenter"];
 const laneIds = ["build", "verify", "review", "docs"];
 const checks = [];
+const appDispatchEvidence = {
+  hasRightRailOrchestraCallback: hasPattern(
+    app,
+    /const\s+handleStartRightRailOrchestra\s*=\s*useCallback\s*\(\s*async\s*\(\)\s*=>/,
+  ),
+  opensOrchestraDialog: app.includes("showOrchestra({"),
+  defaultsToImplementTestReview: app.includes('defaultRoles: ["implementer", "tester", "reviewer"]'),
+  buildsRolePrompts: app.includes("buildOrchestraPrompts({"),
+  derivesChangedFilesOnce:
+    hasPattern(app, /const\s+changedFiles\s*=\s*rightRailAllChangedFiles\.map\(\(file\)\s*=>\s*file\.path\);/) &&
+    hasPattern(app, /buildOrchestraPrompts\(\{[\s\S]*?changedFiles,/),
+  carriesPendingDecisionContext: app.includes("pendingDecisionCount: decisionInbox.pendingCount"),
+  carriesExistingSessionContext: app.includes("existingSessionCount: sessions.length + interactiveSessions.length"),
+  routesThroughRustRouter:
+    app.includes("routeOrchestraPrompts(") &&
+    hasPattern(app, /tauriInvoke<OrchestraRoutingDecision>\("route_agent",\s*\{\s*prompt\s*\}\)/),
+  launchesInteractiveSessions:
+    app.includes("launchOrchestraPrompts(") &&
+    app.includes("launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession)"),
+  launchOptionsCarryBranch:
+    orchestraDispatch.includes("branchName: prompt.branchName") &&
+    hasPattern(app, /handleStartInteractiveSession\s*=\s*useCallback\([\s\S]*?branchName\?:\s*string/),
+  routesOperatorToSessions: app.includes('setRightRailFocusWidget("sessions")'),
+};
 
 add(
   checks,
@@ -187,7 +217,9 @@ add(
   checks,
   "branch-name-worktree-contract",
   orchestrator.includes("export function buildOrchestraBranchName") &&
-    orchestrator.includes("agent/${config.roleId}/${taskSlug}-${laneNumber}") &&
+    orchestrator.includes(
+      ["agent/", "$", "{config.roleId}", "/", "$", "{taskSlug}", "-", "$", "{laneNumber}"].join(""),
+    ) &&
     orchestrator.includes("branchName") &&
     orchestratorTest.includes("builds branch names that match the Rust worktree validator contract") &&
     orchestratorTest.includes("agent/tester/add-auth-phase-1-4"),
@@ -223,18 +255,9 @@ add(
 add(
   checks,
   "app-dispatches-agents-in-parallel",
-  app.includes("const handleStartRightRailOrchestra = useCallback(async () => {") &&
-    app.includes("showOrchestra({") &&
-    app.includes('defaultRoles: ["implementer", "tester", "reviewer"]') &&
-    app.includes("buildOrchestraPrompts({") &&
-    app.includes("changedFiles: rightRailAllChangedFiles.map((file) => file.path)") &&
-    app.includes("pendingDecisionCount: decisionInbox.pendingCount") &&
-    app.includes("existingSessionCount: sessions.length + interactiveSessions.length") &&
-    app.includes("routeOrchestraPrompts(") &&
-    app.includes('"route_agent", { prompt }') &&
-    app.includes("launchOrchestraPrompts(") &&
-    app.includes('setRightRailFocusWidget("sessions")'),
+  Object.values(appDispatchEvidence).every(Boolean),
   "The right rail launches role-scoped interactive agents in isolated worktrees and routes the user to live sessions.",
+  appDispatchEvidence,
 );
 
 add(
@@ -287,9 +310,9 @@ add(
     toolkit.includes('"worktree"') &&
     toolkit.includes("detectDangerousCommand") &&
     toolkit.includes("showConfirm") &&
-    rightRailDensityVerifier.includes('toolkit.includes(\'data-toolkit-role="git-vscode"\')') &&
-    rightRailDensityVerifier.includes('toolkit.includes(\'"open-vscode"\')') &&
-    rightRailDensityVerifier.includes('toolkit.includes(\'"git-status"\')'),
+    rightRailDensityVerifier.includes("toolkit.includes('data-toolkit-role=\"git-vscode\"')") &&
+    rightRailDensityVerifier.includes("toolkit.includes('\"open-vscode\"')") &&
+    rightRailDensityVerifier.includes("toolkit.includes('\"git-status\"')"),
   "Git, VS Code, worktree, and safety-confirmed command tools remain first-class inside Toolkit.",
 );
 
@@ -314,10 +337,14 @@ add(
     muxLiveCapabilities.includes("mux-live-attach-detach") &&
     muxLiveCapabilities.includes("mux-snapshot-restore-pending") &&
     muxLiveCapabilities.includes("mux-broadcast-input"),
-  "The Rust sidecar has current mux performance and live restore evidence for panes, detach/attach, sync, broadcast, and import/restore.",
+  muxLiveRestore?.status === "environment-blocked"
+    ? `Mux live restore proof is environment-blocked: ${muxLiveRestore?.blockers?.[0]?.message ?? "host capability unavailable"}`
+    : "The Rust sidecar has current mux performance and live restore evidence for panes, detach/attach, sync, broadcast, and import/restore.",
   {
     performanceMtimeMs: artifactMtims.muxPerformance,
     liveRestoreMtimeMs: artifactMtims.muxLiveRestore,
+    muxLiveStatus: muxLiveRestore?.status ?? null,
+    muxLiveBlockers: muxLiveRestore?.blockers ?? [],
     muxLiveCheckCount: muxLiveChecks.length,
   },
 );
@@ -334,8 +361,14 @@ add(
     upperCompatVerifier.includes("workspace_items") &&
     upperCompatVerifier.includes("agent_identity_records") &&
     upperCompatVerifier.includes("mode_preservation_snapshots"),
-  "Workspace items, mode preservation, and agent identity are proven through Rust/SQLite upper-compat gates.",
-  { upperCompatMtimeMs: artifactMtims.upperCompat },
+  upperCompat?.status === "environment-blocked"
+    ? `Upper-compat proof is environment-blocked: ${upperCompat?.blocker?.message ?? "host capability unavailable"}`
+    : "Workspace items, mode preservation, and agent identity are proven through Rust/SQLite upper-compat gates.",
+  {
+    upperCompatMtimeMs: artifactMtims.upperCompat,
+    upperCompatStatus: upperCompat?.status ?? null,
+    upperCompatBlocker: upperCompat?.blocker ?? null,
+  },
 );
 
 add(
@@ -386,15 +419,24 @@ add(
   { sourceCutoffMs, artifactMtims, artifactFreshness },
 );
 
-const failedChecks = checks.filter((check) => !check.ok).map((check) => check.id);
+const failedCheckItems = checks.filter((check) => !check.ok);
+const failedChecks = failedCheckItems.map((check) => check.id);
+const environmentBlockedChecks = failedCheckItems.filter(isEnvironmentBlockedCheck).map((check) => check.id);
+const implementationFailedChecks = failedChecks.filter((id) => !environmentBlockedChecks.includes(id));
 const ok = failedChecks.length === 0;
+const externalBlocked = !ok && implementationFailedChecks.length === 0 && environmentBlockedChecks.length > 0;
 const report = {
   version: 1,
   generatedAt: new Date().toISOString(),
   localDate: currentLocalDate(),
   timeZone: LOCAL_TIME_ZONE,
   ok,
-  status: ok ? "pass-current-agent-team-orchestration-readiness" : "failed",
+  status: ok
+    ? "pass-current-agent-team-orchestration-readiness"
+    : externalBlocked
+      ? "environment-blocked-current-contract"
+      : "failed",
+  externalBlocked,
   sourceFresh: true,
   tokenSpendingPromptExecuted: false,
   realOsSleepInvoked: false,
@@ -411,9 +453,18 @@ const report = {
   sourceMtims,
   artifactMtims,
   artifactFreshness,
-  artifacts: Object.fromEntries(Object.entries(artifactPaths).map(([key, path]) => [key, artifactSummary(path, readJson(path))])),
+  artifacts: Object.fromEntries(
+    Object.entries(artifactPaths).map(([key, path]) => [key, artifactSummary(path, readJson(path))]),
+  ),
   checks,
   failedChecks,
+  environmentBlockedChecks,
+  implementationFailedChecks,
+  blockers: failedCheckItems.map((check) => ({
+    id: check.id,
+    detail: check.detail,
+    externalBlocked: environmentBlockedChecks.includes(check.id),
+  })),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });

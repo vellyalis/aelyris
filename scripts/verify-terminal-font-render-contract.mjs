@@ -12,6 +12,10 @@ const SOURCE_PATHS = [
   "src/features/terminal/NativeTerminalArea.tsx",
   "src/features/agent-terminal/AgentTerminal.tsx",
   "src/features/terminal/TerminalCanvas.tsx",
+  "src/features/terminal/terminalCanvasGeometry.ts",
+  "src/features/terminal/terminalPaint.ts",
+  "src/features/terminal/terminalColors.ts",
+  "src/features/terminal/repaintDecision.ts",
   "src/features/terminal/pane-tree/PaneTreeRenderer.tsx",
   "src/features/terminal/pane-tree/PaneTreeRenderer.module.css",
   "src/features/terminal/TerminalArea.module.css",
@@ -56,6 +60,10 @@ const settings = source("src/features/settings/Settings.tsx");
 const nativeTerminalArea = source("src/features/terminal/NativeTerminalArea.tsx");
 const agentTerminal = source("src/features/agent-terminal/AgentTerminal.tsx");
 const terminalCanvas = source("src/features/terminal/TerminalCanvas.tsx");
+const terminalCanvasGeometry = source("src/features/terminal/terminalCanvasGeometry.ts");
+const terminalPaint = source("src/features/terminal/terminalPaint.ts");
+const terminalColors = source("src/features/terminal/terminalColors.ts");
+const repaintDecision = source("src/features/terminal/repaintDecision.ts");
 const paneTreeRenderer = source("src/features/terminal/pane-tree/PaneTreeRenderer.tsx");
 const paneTreeRendererStyles = source("src/features/terminal/pane-tree/PaneTreeRenderer.module.css");
 const terminalAreaStyles = source("src/features/terminal/TerminalArea.module.css");
@@ -175,21 +183,26 @@ const checks = [
       "canvasBitmapSize",
       "canvasCssSize",
       "setTransform",
-      "snapCanvasTextCoord",
       "useTerminalRasterBackground",
       "TERMINAL_RASTER_BG_FALLBACK",
       "--terminal-raster-bg",
       "forceOpaqueCssColor",
-      "enhanceTerminalTextColor",
-      "minimumTerminalContrastRatio",
-      "dimAlphaForTextClarity",
+      "prevCanvasGeometryRef",
+      "canvasGeometryChanged",
+      "devicePixelRatio: canvasDevicePixelRatio",
       'textClarity = "solid"',
       'textClarity === "solid"',
       'textClarity === "glass"',
       "data-terminal-text-clarity={textClarity}",
       'textCtx.fontKerning = "none"',
       'textCtx.textRendering = "auto"',
-    ]) && !terminalCanvas.includes('imageRendering: "pixelated"'),
+    ]) &&
+      hasAll(terminalCanvasGeometry, ["snapCanvasTextCoord", "canvasBitmapSize", "canvasCssSize"]) &&
+      hasAll(terminalPaint, ["snapCanvasTextCoord", "enhanceTerminalTextColor", "dimAlphaForTextClarity"]) &&
+      hasAll(terminalColors, ["forceOpaqueCssColor", "minimumTerminalContrastRatio", "dimAlphaForTextClarity"]) &&
+      hasAll(repaintDecision, ["flags.canvasGeometryChanged", "flags.rowContentChanged"]) &&
+      !terminalCanvas.includes('imageRendering: "pixelated"') &&
+      !terminalPaint.includes('imageRendering: "pixelated"'),
     "canvas text is DPR-backed, pixel snapped, painted over a clarity-selectable in-canvas raster backing, and leaves Windows/WebView text hinting on the engine-selected path",
   ),
   check(

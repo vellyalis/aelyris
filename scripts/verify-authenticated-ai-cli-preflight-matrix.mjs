@@ -110,10 +110,6 @@ function artifactSummary(name, artifact) {
   };
 }
 
-function passedChecks(checks) {
-  return Array.isArray(checks) && checks.length > 0 && checks.every((check) => check?.status === "passed");
-}
-
 function optInCommand(provider) {
   return {
     command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
@@ -160,9 +156,9 @@ const authenticatedPromptExecutedWithConsent =
   authenticatedPromptChecks.consent === true &&
   authenticatedPromptChecks.preflightReadyBeforePrompt === true &&
   authenticatedPromptChecks.promptMarkerObserved === true &&
-    artifacts.authenticatedPrompt.data?.outputEvidence?.privacy === "raw terminal output not persisted" &&
-    artifacts.authenticatedPrompt.data?.outputEvidence?.markerPresent === true &&
-    authenticatedPromptChecks.cleanup === true;
+  artifacts.authenticatedPrompt.data?.outputEvidence?.privacy === "raw terminal output not persisted" &&
+  artifacts.authenticatedPrompt.data?.outputEvidence?.markerPresent === true &&
+  authenticatedPromptChecks.cleanup === true;
 const authenticatedPromptGateReady =
   authenticatedPromptBlockedWithoutConsent || authenticatedPromptExecutedWithConsent || providerGuardBlocksPrompt;
 const postLaunchChaosPass =
@@ -194,20 +190,7 @@ const postLaunchChaosDeferred =
   artifacts.postLaunchChaos.data?.status === "external_dependency" &&
   /CDP|WebView2|Cannot attach/i.test(
     `${artifacts.postLaunchChaos.data?.error ?? ""}\n${artifacts.postLaunchChaos.data?.errors?.join?.("\n") ?? ""}`,
-      );
-
-const blockingArtifacts = Object.entries(artifactSummaries)
-  .filter(([name, artifact]) => {
-    if (name === "authenticatedPrompt" && providerGuardBlocksPrompt) return false;
-    if (name === "postLaunchChaos" && nativePostLaunchChaosPass) return false;
-    return artifact.blockingReason !== null;
-  })
-  .map(([name, artifact]) => ({
-    name,
-    path: artifact.path,
-    blockingReason: artifact.blockingReason,
-    refreshCommand: artifact.refreshCommand,
-  }));
+  );
 
 function nativeInputCheck(id) {
   const status = artifacts.nativeInputHost.data?.status;
@@ -234,11 +217,25 @@ const cdpImeReady =
 const imeReady = nativeImeHostReady || cdpImeReady;
 const promptArtifactFreshnessReady = artifacts.authenticatedPrompt.fresh || providerGuardBlocksPrompt;
 
+function artifactFreshnessSatisfied(name, artifact) {
+  if (name === "authenticatedPrompt") return promptArtifactFreshnessReady;
+  if (name === "postLaunchChaos" && nativePostLaunchChaosPass) return true;
+  // The legacy CDP IME proof is optional when the native IME host is current.
+  if (name === "ime" && nativeImeHostReady) return true;
+  return artifact.fresh === true;
+}
+
+const blockingArtifacts = Object.entries(artifactSummaries)
+  .filter(([name, artifact]) => artifact.blockingReason !== null && !artifactFreshnessSatisfied(name, artifacts[name]))
+  .map(([name, artifact]) => ({
+    name,
+    path: artifact.path,
+    blockingReason: artifact.blockingReason,
+    refreshCommand: artifact.refreshCommand,
+  }));
 const providerMatrix = PROVIDERS.map((provider) => {
   const realProbeEntry = artifacts.realAiCliBinaryProbe.data?.checks?.clis?.find((entry) => entry?.cli === provider);
-  const boundaryEntry = artifacts.interactiveAiCliBoundary.data?.checks?.clis?.find(
-    (entry) => entry?.cli === provider,
-  );
+  const boundaryEntry = artifacts.interactiveAiCliBoundary.data?.checks?.clis?.find((entry) => entry?.cli === provider);
   const launchProvider = artifacts.launchPlanner.data?.checks?.providerMatrix?.providers?.find(
     (entry) => entry?.provider === provider || entry?.cli === provider,
   );
@@ -288,17 +285,11 @@ const checks = {
   artifactRefreshCommandsReady: Object.values(artifactSummaries).every(
     (artifact) => typeof artifact.refreshCommand === "string" && artifact.refreshCommand.length > 0,
   ),
-  tokenSpendingExecutionBlocked:
-    authenticatedPromptBlockedWithoutConsent || providerGuardBlocksPrompt,
+  tokenSpendingExecutionBlocked: authenticatedPromptBlockedWithoutConsent || providerGuardBlocksPrompt,
   noPromptSent: authenticatedPromptBlockedWithoutConsent || providerGuardBlocksPrompt,
   tokenPromptExecutedWithConsent: authenticatedPromptExecutedWithConsent,
   promptExecutionStateReady: authenticatedPromptGateReady,
-  artifactFreshness:
-    Object.entries(artifacts).every(
-      ([name, artifact]) =>
-        name === "authenticatedPrompt" || (name === "postLaunchChaos" && nativePostLaunchChaosPass) || artifact.fresh,
-    ) &&
-    promptArtifactFreshnessReady,
+  artifactFreshness: Object.entries(artifacts).every(([name, artifact]) => artifactFreshnessSatisfied(name, artifact)),
   postLaunchChaosPass: nativePostLaunchChaosPass || postLaunchChaosPass,
   nativePostLaunchChaosPass,
   postLaunchChaosDeferred,

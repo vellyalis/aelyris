@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const projectPath = "C:/Users/owner/Aether_Terminal";
+const projectPath = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 
 async function setupProject(page: import("@playwright/test").Page) {
   await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {

@@ -5,7 +5,7 @@
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
 //   AETHER_PRODUCTION_SMOKE_OUT=.codex-auto/production-smoke/live-tauri-workstation-surfaces.json
 //   AETHER_PRODUCTION_SMOKE_SCREENSHOT_DIR=.codex-auto/production-smoke/screenshots

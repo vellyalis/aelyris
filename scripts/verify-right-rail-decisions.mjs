@@ -5,7 +5,7 @@
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
 //   AETHER_RIGHT_RAIL_DECISIONS_OUT=.codex-auto/production-smoke/right-rail-decisions.json
 
 import { mkdirSync, writeFileSync } from "node:fs";

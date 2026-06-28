@@ -297,7 +297,7 @@ const checks = {
       "git-finalization-readiness",
       "goal-safe",
       "AETHER_GOAL_FINALIZE_SKIP_OPERATOR",
-      "docs/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
+      "docs/history/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
       "scripts/verify-goal-external-gate-readiness.mjs",
       "delete env.AETHER_AUTH_PROMPT_CONSENT",
       "delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP",

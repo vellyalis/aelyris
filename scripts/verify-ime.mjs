@@ -24,7 +24,7 @@
 // Optional env:
 //   AETHER_IME_CDP=http://127.0.0.1:9222
 //   AETHER_IME_URL=http://localhost:1420/
-//   AETHER_IME_PROJECT=C:/Users/owner/Aether_Terminal
+//   AETHER_IME_PROJECT=C:/repo/aether-terminal
 //   AETHER_IME_OUT=.codex-auto/production-smoke/verify-ime.json
 
 import { mkdirSync, writeFileSync } from "node:fs";

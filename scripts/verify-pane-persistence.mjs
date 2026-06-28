@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const PROJECT = "C:/Users/owner/Aether_Terminal";
+const PROJECT = process.env.AETHER_FLEET_PROJECT ?? process.cwd().replaceAll("\\", "/");
 function repo() {
   const d = mkdtempSync(join(tmpdir(), "flt-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: d });
