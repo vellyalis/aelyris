@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 
@@ -20,7 +20,7 @@ const SOURCE_PATHS = [
   "src/features/terminal/pane-tree/PaneTreeRenderer.module.css",
   "src/features/terminal/TerminalArea.module.css",
   "src/features/terminal/terminalMetrics.ts",
-  "src/shared/themes/moods.ts",
+  "src/shared/themes/moods",
   "src/shared/store/appStore.ts",
   "src/styles/global.css",
   "src-tauri/src/config/settings.rs",
@@ -31,7 +31,17 @@ const SOURCE_PATHS = [
 
 function source(path) {
   const full = join(ROOT, path);
-  return existsSync(full) ? readFileSync(full, "utf8") : "";
+  if (!existsSync(full)) return "";
+  if (statSync(full).isDirectory()) {
+    // Module split across files (e.g. themes/moods/): concatenate its .ts
+    // sources so content assertions still see the full surface.
+    return readdirSync(full)
+      .filter((entry) => entry.endsWith(".ts"))
+      .sort()
+      .map((entry) => readFileSync(join(full, entry), "utf8"))
+      .join("\n");
+  }
+  return readFileSync(full, "utf8");
 }
 
 function mtime(path) {
@@ -68,7 +78,7 @@ const paneTreeRenderer = source("src/features/terminal/pane-tree/PaneTreeRendere
 const paneTreeRendererStyles = source("src/features/terminal/pane-tree/PaneTreeRenderer.module.css");
 const terminalAreaStyles = source("src/features/terminal/TerminalArea.module.css");
 const terminalMetrics = source("src/features/terminal/terminalMetrics.ts");
-const moodTheme = source("src/shared/themes/moods.ts");
+const moodTheme = source("src/shared/themes/moods");
 const appStore = source("src/shared/store/appStore.ts");
 const globalCss = source("src/styles/global.css");
 const rustSettings = source("src-tauri/src/config/settings.rs");
@@ -240,7 +250,7 @@ const checks = [
       "pub terminal_surface_opacity: f32",
       "default_terminal_text_clarity",
       "default_terminal_surface_opacity",
-      '\"solid\".to_string()',
+      '"solid".to_string()',
       'terminal_text_clarity = "solid"',
       'cfg.appearance.terminal_text_clarity = "solid".to_string()',
       "cfg.appearance.terminal_surface_opacity = 0.74",
@@ -303,7 +313,7 @@ const checks = [
       hasAll(terminalCanvasTest, [
         'getAttribute("data-terminal-text-clarity")).toBe("solid")',
         "clears rows then paints an in-canvas raster backing before glyphs",
-        'rgba(3, 10, 22, 1)',
+        "rgba(3, 10, 22, 1)",
         "boosts low-contrast text in solid clarity mode",
       ]),
     "source-level regression coverage records the settings-to-rendering contract and default sharp raster paint path",

@@ -195,8 +195,7 @@ const commandCenterPath = ".codex-auto/production-smoke/command-center-scenario.
 const launchPlannerPath = ".codex-auto/production-smoke/ai-cli-launch-planner.json";
 const commandRecoveryPath = ".codex-auto/production-smoke/command-recovery-contract.json";
 const chunkedOscLivePath = ".codex-auto/production-smoke/chunked-osc-live.json";
-const chunkedOscLiveEnvironmentBlockedPath =
-  ".codex-auto/production-smoke/chunked-osc-live.environment-blocked.json";
+const chunkedOscLiveEnvironmentBlockedPath = ".codex-auto/production-smoke/chunked-osc-live.environment-blocked.json";
 const nativeHwndPasteLivePath = ".codex-auto/production-smoke/native-hwnd-paste-live.json";
 const rightRailScalePath = ".codex-auto/performance/right-rail-scale-contract.json";
 const rightRailInformationDensityPath = ".codex-auto/quality/right-rail-information-density-contract.json";
@@ -217,8 +216,7 @@ const tauriRuntimeHygienePath = ".codex-auto/quality/tauri-runtime-hygiene.json"
 const productionBundleBudgetPath = ".codex-auto/quality/production-bundle-budget.json";
 const supplyChainAuditPath = ".codex-auto/release-doctor/supply-chain-audit.json";
 const muxLiveRestorePath = ".codex-auto/performance/mux-live-restore-smoke.json";
-const processReconnectCommandEvidencePath =
-  ".codex-auto/production-smoke/process-reconnect-command-evidence.json";
+const processReconnectCommandEvidencePath = ".codex-auto/production-smoke/process-reconnect-command-evidence.json";
 const processReconnectCommandEvidenceEnvironmentBlockedPath =
   ".codex-auto/production-smoke/process-reconnect-command-evidence.json.environment-blocked.json";
 const glassLegibilityContractPath = ".codex-auto/quality/glass-legibility-contract.json";
@@ -303,7 +301,9 @@ const releaseScoreSourcePaths = [
   "src/__tests__/useImageMetrics.test.tsx",
   "src/shared/lib/bootMetrics.ts",
   "src/shared/hooks/useTheme.ts",
-  "src/shared/themes/moods.ts",
+  "src/shared/themes/moods/material.ts",
+  "src/shared/themes/moods/tokens.ts",
+  "src/shared/themes/moods/surfaces.ts",
   "src/features/settings/Settings.tsx",
   "src/styles/global.css",
   "src-tauri/Cargo.toml",
@@ -541,7 +541,9 @@ const muxLiveRestoreHostBlockedEvidenceReady =
   muxLiveRestore?.status === "environment-blocked" &&
   muxLiveRestore?.hostBlocked === true &&
   Array.isArray(muxLiveRestore?.errors) &&
-  muxLiveRestore.errors.some((error) => /spawn EPERM|host process policy|PTY sidecar process launch/i.test(String(error))) &&
+  muxLiveRestore.errors.some((error) =>
+    /spawn EPERM|host process policy|PTY sidecar process launch/i.test(String(error)),
+  ) &&
   mtime(muxLiveRestorePath) + 5_000 >= mtime("scripts/verify-mux-live-restore.mjs");
 const processReconnectEnvironmentBlockText = [
   ...(Array.isArray(processReconnectCommandEvidenceEnvironmentBlocked?.errors)
@@ -1289,7 +1291,7 @@ const requirements = [
       glassLegibilityContractPath,
       "scripts/verify-glass-legibility-contract.mjs",
       "src/styles/global.css",
-      "src/shared/themes/moods.ts",
+      "src/shared/themes/moods/material.ts",
       "src/shared/hooks/useTheme.ts",
       "src/features/settings/Settings.tsx",
       "src-tauri/src/config/settings.rs",

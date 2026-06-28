@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(process.cwd());
@@ -36,14 +36,24 @@ const sourcePaths = {
   livePanesCss: "src/features/context/LivePanesPanel.module.css",
   inlineResultCss: "src/features/agent-inspector/InlineResultPanel.module.css",
   agentInspectorCss: "src/features/agent-inspector/AgentInspector.module.css",
-  moods: "src/shared/themes/moods.ts",
+  moods: "src/shared/themes/moods",
   themeApplier: "src/shared/hooks/useTheme.ts",
   themePaletteTest: "src/__tests__/themePalette.test.ts",
   themeApplierTest: "src/__tests__/useThemeApplier.test.tsx",
 };
 
 function readSource(path) {
-  return readFileSync(join(ROOT, path), "utf8");
+  const full = join(ROOT, path);
+  if (existsSync(full) && statSync(full).isDirectory()) {
+    // Module split across files (e.g. themes/moods/): concatenate its .ts
+    // sources so content assertions still see the full surface.
+    return readdirSync(full)
+      .filter((entry) => entry.endsWith(".ts"))
+      .sort()
+      .map((entry) => readFileSync(join(full, entry), "utf8"))
+      .join("\n");
+  }
+  return readFileSync(full, "utf8");
 }
 
 function mtimeMs(path) {
@@ -280,8 +290,7 @@ add(
 add(
   checks,
   "tauri-root-backplane-transparent",
-  /background\s*:\s*transparent\s*;/.test(tauriRootRule) &&
-    !/rgba\(0,\s*8,\s*18,\s*0\.(?:2|3|4)/.test(tauriRootRule),
+  /background\s*:\s*transparent\s*;/.test(tauriRootRule) && !/rgba\(0,\s*8,\s*18,\s*0\.(?:2|3|4)/.test(tauriRootRule),
   "Tauri root backplane remains transparent so native WebView glass can reveal windows behind it",
   { rule: tauriRootRule.trim() },
 );

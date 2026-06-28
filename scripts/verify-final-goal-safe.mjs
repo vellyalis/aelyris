@@ -121,13 +121,14 @@ function releaseQualityScoreVerdict(data) {
     (data?.releaseCandidateReady === true || consentGated || externalGated);
   return {
     ok,
-    status: data?.releaseCandidateReady === true
-      ? "pass"
-      : externalGated
-        ? "blocked-by-external-gates"
-        : consentGated
-          ? "blocked-by-explicit-consent"
-          : "blocked",
+    status:
+      data?.releaseCandidateReady === true
+        ? "pass"
+        : externalGated
+          ? "blocked-by-external-gates"
+          : consentGated
+            ? "blocked-by-explicit-consent"
+            : "blocked",
     expectation:
       "S score when all gates are runnable; current external-gated score may match the final-audit projection while host/operator gates remain",
     reason: ok
@@ -295,7 +296,8 @@ function authenticatedPreflightMatrixVerdict(data) {
   return {
     ok,
     status: ok ? "pass-current-preflight-matrix-contract" : (data?.status ?? "stale-or-incomplete"),
-    expectation: "Codex, Claude, and Gemini no-token preflight is ready with token execution blocked and fresh dependencies",
+    expectation:
+      "Codex, Claude, and Gemini no-token preflight is ready with token execution blocked and fresh dependencies",
     reason: ok
       ? "authenticated prompt provider matrix is current and ready without token execution"
       : "authenticated prompt provider matrix is stale, incomplete, or unsafe",
@@ -362,8 +364,7 @@ function externalGateReadinessVerdict(data) {
   const tokenStateReady =
     (data?.tokenSpendingPromptExecuted === false && checks.noTokenPromptSent === true) ||
     (data?.tokenSpendingPromptExecuted === true && checks.tokenPromptExecutedWithConsent === true);
-  const sleepGateReady =
-    sleepGate?.status === "ready-for-user-sleep-cycle" || sleepGate?.status === "host-unsupported";
+  const sleepGateReady = sleepGate?.status === "ready-for-user-sleep-cycle" || sleepGate?.status === "host-unsupported";
   const ready =
     data?.ok === true &&
     ["ready-for-external-operator-gates", "blocked-by-host-sleep-unsupported"].includes(data?.status) &&
@@ -429,7 +430,7 @@ function externalGateReadinessVerdict(data) {
       ? "external gate readiness proves the operator-controlled token and sleep gates are already closed"
       : ready
         ? "external gate readiness proves the only remaining gates are explicit token consent and user-driven Windows sleep"
-      : "external gate readiness is missing, stale, unsafe, or does not match the current final goal blockers",
+        : "external gate readiness is missing, stale, unsafe, or does not match the current final goal blockers",
     semanticFreshness: ok ? "current-external-gate-readiness-contract" : "stale-or-incomplete",
     cycleBoundary: "operator-gate-no-token-no-sleep-proof",
   };
@@ -489,8 +490,7 @@ function realOsSleepOperatorHandoffVerdict(data) {
   return {
     ok: ready,
     status: ready ? "pass-current-real-os-sleep-operator-handoff" : (data?.status ?? "stale-or-incomplete"),
-    expectation:
-      "real OS sleep handoff classifies host sleep support and exposes only the safe manual user-cycle path",
+    expectation: "real OS sleep handoff classifies host sleep support and exposes only the safe manual user-cycle path",
     reason: ready
       ? "real OS sleep handoff is current, no-sleep by default, and points to the manual user-cycle verifier"
       : "real OS sleep handoff is missing, stale, unsafe, or not tied to the current external sleep gate",
@@ -790,7 +790,9 @@ function glassLegibilityContractVerdict(data) {
     Math.max(
       mtimeMs("scripts/verify-glass-legibility-contract.mjs"),
       mtimeMs("src/styles/global.css"),
-      mtimeMs("src/shared/themes/moods.ts"),
+      mtimeMs("src/shared/themes/moods/material.ts"),
+      mtimeMs("src/shared/themes/moods/tokens.ts"),
+      mtimeMs("src/shared/themes/moods/surfaces.ts"),
       mtimeMs("src/shared/hooks/useTheme.ts"),
       mtimeMs("src/__tests__/themePalette.test.ts"),
       mtimeMs("src/__tests__/useThemeApplier.test.tsx"),
@@ -878,9 +880,7 @@ function agentTeamOrchestrationVerdict(data) {
   );
   const checkIds = new Set(
     Array.isArray(checks)
-      ? checks
-          .filter((check) => check?.ok === true || externalBlockedCheckIds.has(check?.id))
-          .map((check) => check.id)
+      ? checks.filter((check) => check?.ok === true || externalBlockedCheckIds.has(check?.id)).map((check) => check.id)
       : [],
   );
   const requiredCheckIds = [
@@ -1202,7 +1202,9 @@ function supplyChainAuditVerdict(data) {
     );
   const npmEnvironmentBlocked =
     data?.status === "environment-blocked" &&
-    /spawn EPERM|environment-blocked/i.test(String(data?.npm?.unavailableReason ?? data?.npm?.stderrTail ?? data?.error ?? ""));
+    /spawn EPERM|environment-blocked/i.test(
+      String(data?.npm?.unavailableReason ?? data?.npm?.stderrTail ?? data?.error ?? ""),
+    );
   const ok =
     (data?.status === "pass" || npmEnvironmentBlocked) &&
     (data?.npm?.ok === true || npmEnvironmentBlocked) &&
@@ -1213,8 +1215,13 @@ function supplyChainAuditVerdict(data) {
     sourceFresh === true;
   return {
     ok,
-    status: ok ? (npmEnvironmentBlocked ? "environment-blocked-current-contract" : "pass-current-supply-chain-contract") : (data?.status ?? "stale-or-incomplete"),
-    expectation: "npm and Rust dependency audit is current with zero known vulnerabilities and zero runtime critical Rust warnings, or the npm child process is explicitly host-blocked",
+    status: ok
+      ? npmEnvironmentBlocked
+        ? "environment-blocked-current-contract"
+        : "pass-current-supply-chain-contract"
+      : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "npm and Rust dependency audit is current with zero known vulnerabilities and zero runtime critical Rust warnings, or the npm child process is explicitly host-blocked",
     reason: ok
       ? npmEnvironmentBlocked
         ? "supply-chain audit is current; npm audit child process is host-blocked while Rust audit reports zero known vulnerabilities and zero runtime critical warnings"
@@ -1245,7 +1252,9 @@ function terminalChunkedOscLiveVerdict(data) {
     Array.isArray(environmentBlocked?.errors) &&
     environmentBlocked.errors.some((error) => /CDP|ECONNREFUSED|WebView2|connectOverCDP/i.test(String(error))) &&
     environmentBlockedFiles.length >= 5 &&
-    environmentBlockedFiles.every((file) => file?.exists === true && typeof file?.mtimeMs === "number" && file.mtimeMs > 0) &&
+    environmentBlockedFiles.every(
+      (file) => file?.exists === true && typeof file?.mtimeMs === "number" && file.mtimeMs > 0,
+    ) &&
     mtimeMs(".codex-auto/production-smoke/chunked-osc-live.environment-blocked.json") + 5_000 >=
       Math.max(...environmentBlockedFiles.map((file) => file.mtimeMs));
   const strictOk =
@@ -1271,7 +1280,11 @@ function terminalChunkedOscLiveVerdict(data) {
   const ok = strictOk || environmentBlockedFresh;
   return {
     ok,
-    status: strictOk ? "pass-current-chunked-osc-live-contract" : environmentBlockedFresh ? "environment-blocked-current-contract" : (data?.status ?? "stale-or-incomplete"),
+    status: strictOk
+      ? "pass-current-chunked-osc-live-contract"
+      : environmentBlockedFresh
+        ? "environment-blocked-current-contract"
+        : (data?.status ?? "stale-or-incomplete"),
     expectation:
       "PowerShell and Git Bash both round-trip PNG inline images through the chunked OSC terminal path, or the live CDP proof is explicitly host-blocked with current source contract",
     reason: strictOk
@@ -1518,7 +1531,8 @@ function runPnpmStep(id, label, scriptName) {
     return scriptName === "build"
       ? {
           ...fallback,
-          buildWarningPolicy: "Production build stderr is classified; sandbox EPERM uses fresh bundle-budget artifact replay.",
+          buildWarningPolicy:
+            "Production build stderr is classified; sandbox EPERM uses fresh bundle-budget artifact replay.",
           knownBuildWarnings: [],
           unexpectedBuildWarnings: [],
         }
@@ -1573,29 +1587,28 @@ function cachedStepFallback(id, label, script, child) {
   const blockedBySandbox = child?.error?.code === "EPERM" || child?.status == null;
   if (!blockedBySandbox) return null;
   const paths = STEP_FALLBACK_ARTIFACTS[id] ?? [];
-  const artifacts = paths
-    .map((path) => {
-      const full = join(ROOT, path);
-      if (!existsSync(full)) return { path, exists: false, fresh: false, ok: false };
-      const mtimeMs = statSync(full).mtimeMs;
-      const ageMs = Date.now() - mtimeMs;
-      let data = null;
-      let parseError = null;
-      try {
-        data = JSON.parse(readFileSync(full, "utf8"));
-      } catch (error) {
-        parseError = error instanceof Error ? error.message : String(error);
-      }
-      return {
-        path,
-        exists: true,
-        fresh: ageMs <= SAFE_STEP_CACHE_MAX_AGE_MS,
-        ageMs,
-        ok: parseError == null && artifactPassesForCachedStep(data),
-        status: data?.status ?? null,
-        parseError,
-      };
-    });
+  const artifacts = paths.map((path) => {
+    const full = join(ROOT, path);
+    if (!existsSync(full)) return { path, exists: false, fresh: false, ok: false };
+    const mtimeMs = statSync(full).mtimeMs;
+    const ageMs = Date.now() - mtimeMs;
+    let data = null;
+    let parseError = null;
+    try {
+      data = JSON.parse(readFileSync(full, "utf8"));
+    } catch (error) {
+      parseError = error instanceof Error ? error.message : String(error);
+    }
+    return {
+      path,
+      exists: true,
+      fresh: ageMs <= SAFE_STEP_CACHE_MAX_AGE_MS,
+      ageMs,
+      ok: parseError == null && artifactPassesForCachedStep(data),
+      status: data?.status ?? null,
+      parseError,
+    };
+  });
   const ok = artifacts.length > 0 && artifacts.every((artifact) => artifact.exists && artifact.fresh && artifact.ok);
   return {
     id,
@@ -1725,12 +1738,10 @@ const totalRequirementCount = auditedRequirements.length;
 const consentBlockerCount = releaseBlockers.filter((item) =>
   isAuthenticatedPromptBlocker(item?.blocker ?? item),
 ).length;
-const auditAuthenticatedPrompt =
-  audit?.operationalEvidence?.authenticatedPromptConsent ?? {};
+const auditAuthenticatedPrompt = audit?.operationalEvidence?.authenticatedPromptConsent ?? {};
 const tokenSpendingPromptExecuted =
   auditAuthenticatedPrompt?.consentPacketArtifact?.tokenSpendingPromptExecuted === true;
-const noTokenPromptSent =
-  auditAuthenticatedPrompt?.safeNoPromptSent === true && tokenSpendingPromptExecuted === false;
+const noTokenPromptSent = auditAuthenticatedPrompt?.safeNoPromptSent === true && tokenSpendingPromptExecuted === false;
 
 function scoreDetail(data) {
   if (!data || typeof data.score !== "number" || typeof data.grade !== "string") return null;
@@ -1974,9 +1985,9 @@ function rightRailGoalTrackVerdict(data) {
       ? "pass-current-contract"
       : environmentBlockedOk
         ? "environment-blocked-current-contract"
-      : bootstrapOk
-        ? "bootstrap-current-contract"
-        : (data?.status ?? "stale-or-incomplete"),
+        : bootstrapOk
+          ? "bootstrap-current-contract"
+          : (data?.status ?? "stale-or-incomplete"),
     expectation:
       "current score, final audit, safe gate, consent packet, and remaining blocker match Tauri Goal Track DOM proof",
     reason: strictOk
@@ -1985,7 +1996,7 @@ function rightRailGoalTrackVerdict(data) {
         ? "right rail Goal Track artifact is bootstrap-only and must be refreshed by the Tauri Goal Track smoke before it can count as a strict proof"
         : environmentBlockedOk
           ? "right rail Goal Track strict DOM proof is blocked by the current WebView2/CDP host, but source contract, score, audit, safe gate, and no-token consent boundaries are current"
-        : "right rail Goal Track artifact is stale in source/capture time, incomplete, or does not match current safe-gate semantics",
+          : "right rail Goal Track artifact is stale in source/capture time, incomplete, or does not match current safe-gate semantics",
     strictProof: strictOk,
     environmentBlockedProof: environmentBlockedOk,
     bootstrapOnly: bootstrapOk && !strictOk,
@@ -2046,10 +2057,7 @@ const proofArtifacts = {
     ".codex-auto/quality/agent-team-orchestration-readiness.json",
     agentTeamOrchestrationVerdict,
   ),
-  goalAntiStallContract: artifactMeta(
-    ".codex-auto/quality/goal-anti-stall-contract.json",
-    antiStallContractVerdict,
-  ),
+  goalAntiStallContract: artifactMeta(".codex-auto/quality/goal-anti-stall-contract.json", antiStallContractVerdict),
   releaseSigningOperatorHandoff: artifactMeta(
     ".codex-auto/quality/release-signing-operator-handoff.json",
     releaseSigningOperatorHandoffVerdict,
@@ -2161,7 +2169,8 @@ const report = {
     operatorFinishHandoffPassed: proofArtifacts.goalOperatorFinish?.ok === true,
     gitFinalizationReadinessPassed: proofArtifacts.gitFinalizationReadiness?.ok === true,
     gitFinalizationShellDiagnosticsPassed:
-      proofArtifacts.gitFinalizationShellDiagnostics?.ok === true || proofArtifacts.gitFinalizationReadiness?.ok === true,
+      proofArtifacts.gitFinalizationShellDiagnostics?.ok === true ||
+      proofArtifacts.gitFinalizationReadiness?.ok === true,
     rightRailGoalTrackSemanticFreshness:
       proofArtifacts.rightRailGoalTrackTauri?.semanticFreshness === "current-contract",
     rightRailGoalTrackCycleBoundaryExplained:
