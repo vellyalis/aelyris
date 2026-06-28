@@ -274,13 +274,13 @@ describe("IMEInputBar", () => {
   });
 
   it("adds selected file paths into the composer where the user can edit before submit", async () => {
-    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\owner\\Pictures\\shot one.png"]);
+    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\user\\Pictures\\shot one.png"]);
     const { textarea, getByLabelText, getByText } = renderBar({ pickAttachmentFiles });
 
     fireEvent.click(getByLabelText("写真とファイルを追加"));
 
     await waitFor(() => {
-      expect(textarea.value).toBe('"C:\\Users\\owner\\Pictures\\shot one.png"');
+      expect(textarea.value).toBe('"C:\\Users\\user\\Pictures\\shot one.png"');
     });
     expect(getByText("shot one.png")).toBeTruthy();
   });
@@ -298,7 +298,7 @@ describe("IMEInputBar", () => {
   });
 
   it("removes attachment chips from both the visible list and the composer text", async () => {
-    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\owner\\Pictures\\shot one.png"]);
+    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\user\\Pictures\\shot one.png"]);
     const { textarea, getByLabelText, queryByText } = renderBar({ pickAttachmentFiles });
 
     fireEvent.click(getByLabelText("写真とファイルを追加"));
@@ -311,7 +311,7 @@ describe("IMEInputBar", () => {
   });
 
   it("clears attachment chips after submit", async () => {
-    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\owner\\Pictures\\shot one.png"]);
+    const pickAttachmentFiles = vi.fn().mockResolvedValue(["C:\\Users\\user\\Pictures\\shot one.png"]);
     const { textarea, getByLabelText, queryByText } = renderBar({ pickAttachmentFiles });
 
     fireEvent.click(getByLabelText("写真とファイルを追加"));

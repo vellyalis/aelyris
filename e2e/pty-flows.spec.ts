@@ -127,9 +127,9 @@ test.describe("PTY round-trip via Tauri CDP", () => {
       shell: "powershell",
       cols: 120,
       rows: 30,
-      // Repo root is a known-good cwd that exists on the dev machine and
+      // Repo root is a known-good cwd that exists wherever the suite runs and
       // does not require a fresh tmp dir to function.
-      cwd: "C:\\Users\\owner\\Aether_Terminal",
+      cwd: process.cwd(),
     });
   };
 

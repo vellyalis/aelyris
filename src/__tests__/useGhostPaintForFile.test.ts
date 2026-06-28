@@ -19,7 +19,7 @@ describe("computeRelativePath", () => {
 
   it("strips the project prefix and normalizes slashes", () => {
     expect(
-      computeRelativePath("C:\\Users\\owner\\Aether_Terminal\\src\\App.tsx", "C:\\Users\\owner\\Aether_Terminal"),
+      computeRelativePath("C:\\dev\\Aether_Terminal\\src\\App.tsx", "C:\\dev\\Aether_Terminal"),
     ).toBe("src/App.tsx");
   });
 
@@ -36,7 +36,7 @@ describe("computeRelativePath", () => {
   });
 
   it("matches case-insensitively (Windows)", () => {
-    expect(computeRelativePath("C:\\Users\\OWNER\\project\\src\\a.ts", "C:\\Users\\owner\\project")).toBe("src/a.ts");
+    expect(computeRelativePath("C:\\Users\\ALICE\\project\\src\\a.ts", "C:\\Users\\alice\\project")).toBe("src/a.ts");
   });
 
   it("returns the file as-is when no projectPath is provided", () => {

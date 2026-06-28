@@ -62,7 +62,7 @@ describe("LivePanesPanel", () => {
             name: "Build",
             role: "build",
             shell_type: "powershell",
-            cwd: "C:\\Users\\owner\\Aether_Terminal",
+            cwd: "C:\\dev\\Aether_Terminal",
           },
         ];
       }
@@ -73,7 +73,7 @@ describe("LivePanesPanel", () => {
 
     expect(await screen.findByText("Build")).toBeTruthy();
     expect(screen.getByText("@build")).toBeTruthy();
-    expect(screen.getByText("owner/Aether_Terminal")).toBeTruthy();
+    expect(screen.getByText("dev/Aether_Terminal")).toBeTruthy();
   });
 
   it("merges frontend panes with backend-only orphan terminal truth", async () => {

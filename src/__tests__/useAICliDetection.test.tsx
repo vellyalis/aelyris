@@ -111,11 +111,11 @@ describe("useAICliDetection", () => {
     // holds many stacked snapshots — only the substring after the last `\r`
     // is what's actually on screen.
     const snapshot =
-      "\rPS C:\\Users\\owner> \r" +
-      "PS C:\\Users\\owner> c\r" +
-      "PS C:\\Users\\owner> cl\r" +
-      "PS C:\\Users\\owner> cla\r" +
-      "PS C:\\Users\\owner> claude\r\n";
+      "\rPS C:\\Users\\user> \r" +
+      "PS C:\\Users\\user> c\r" +
+      "PS C:\\Users\\user> cl\r" +
+      "PS C:\\Users\\user> cla\r" +
+      "PS C:\\Users\\user> claude\r\n";
     act(() => result.current.feed(snapshot));
     expect(result.current.active).toBe(true);
   });

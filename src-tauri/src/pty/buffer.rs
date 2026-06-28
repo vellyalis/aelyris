@@ -293,10 +293,10 @@ mod tests {
     #[test]
     fn test_command_blocks_powershell() {
         let lines = vec![
-            "PS C:\\Users\\owner> git status".to_string(),
+            "PS C:\\Users\\user> git status".to_string(),
             "On branch main".to_string(),
             "nothing to commit".to_string(),
-            "PS C:\\Users\\owner> ls".to_string(),
+            "PS C:\\Users\\user> ls".to_string(),
             "file1.txt".to_string(),
             "file2.txt".to_string(),
         ];
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_command_blocks_empty_prompt() {
-        let lines = vec!["PS C:\\Users\\owner>".to_string()];
+        let lines = vec!["PS C:\\Users\\user>".to_string()];
         let blocks = extract_command_blocks(&lines);
         // Empty command should be excluded
         assert_eq!(blocks.len(), 0);

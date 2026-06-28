@@ -157,7 +157,7 @@ test.describe("Inline image round-trip via Tauri CDP", () => {
       shell: "powershell",
       cols: 120,
       rows: 30,
-      cwd: "C:\\Users\\owner\\Aether_Terminal",
+      cwd: process.cwd(),
     });
   };
 

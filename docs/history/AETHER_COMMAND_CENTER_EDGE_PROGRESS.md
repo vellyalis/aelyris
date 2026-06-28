@@ -819,7 +819,7 @@ Validation:
 - `pnpm exec biome check src\App.tsx src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\designTokenUsage.test.ts --reporter=dot`
 - `pnpm exec tsc --noEmit --pretty false`
-- Live WebView2 QA at `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2FUsers%2Fowner%2FAether_Terminal&rail=command&state=blocked&v=decision-load-pass` confirmed the Decision focus renders above telemetry/action sections and does not overflow at right-rail width.
+- Live WebView2 QA at `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=command&state=blocked&v=decision-load-pass` confirmed the Decision focus renders above telemetry/action sections and does not overflow at right-rail width.
 
 Residual:
 
@@ -1465,7 +1465,7 @@ Validation:
 
 - `pnpm exec biome check --write src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
-- Browser verification on `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2FUsers%2Fowner%2FAether_Terminal&rail=command&v=right-rail-scroll-fix`
+- Browser verification on `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=command&v=right-rail-scroll-fix`
 - Browser metrics: `.right-panel-content` computed `overflowY=auto`, `scrollHeight > clientHeight`, wheel scroll moved `scrollTop` from `0` to `420`.
 
 Residual:
@@ -2303,7 +2303,7 @@ Validation:
 
 - `pnpm exec biome check --write src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\TerminalCanvasInput.test.tsx --reporter=dot`
-- In-app browser/Vite visual check on `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2FUsers%2Fowner%2FAether_Terminal&rail=observe&state=blocked&v=rail-scroll-contract`
+- In-app browser/Vite visual check on `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=observe&state=blocked&v=rail-scroll-contract`
 
 Browser metrics:
 
@@ -2714,7 +2714,7 @@ Validation:
 
 Result:
 
-- `pnpm verify:ime` now attaches to `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2FUsers%2Fowner%2FAether_Terminal&rail=command&v=verify-ime-clean`.
+- `pnpm verify:ime` now attaches to `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=command&v=verify-ime-clean`.
 - `pnpm verify:quality-score` reports `100/124`, grade `S`, `legacy release-ready state`.
 
 Residual:
