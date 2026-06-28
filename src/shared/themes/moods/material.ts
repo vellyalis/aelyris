@@ -292,16 +292,30 @@ export function materialOverridesToCSS(
   const panelTextScrim = usesLightChrome
     ? "linear-gradient(180deg, rgba(255, 252, 254, 0.4), rgba(255, 250, 253, 0.32) 70%, rgba(255, 252, 254, 0.4))"
     : "linear-gradient(180deg, rgba(3, 9, 16, 0.42), rgba(3, 9, 16, 0.34) 70%, rgba(3, 9, 16, 0.42))";
+  // Thin top/bottom chrome (header / tabs / status / mode-rail) needs the same
+  // legibility wash as the panels — and it must follow the custom material's
+  // brightness so a light material is lifted (white wash) and a dark material is
+  // anchored (dark wash), never the reverse. Composed INTO chrome-frame-bg and
+  // statusbar-bg below; the chromeAlpha-bearing rgba is kept underneath so the
+  // user's chosen chrome density still reads through.
+  const chromeScrim = usesLightChrome
+    ? "linear-gradient(180deg, rgba(255, 252, 254, 0.46), rgba(255, 250, 253, 0.4) 60%, rgba(255, 252, 254, 0.5))"
+    : "linear-gradient(180deg, rgba(3, 9, 16, 0.46), rgba(3, 9, 16, 0.4) 60%, rgba(3, 9, 16, 0.5))";
+  const statusbarScrim = usesLightChrome
+    ? "linear-gradient(180deg, rgba(255, 252, 254, 0.5), rgba(255, 250, 253, 0.56))"
+    : "linear-gradient(180deg, rgba(3, 9, 16, 0.5), rgba(3, 9, 16, 0.56))";
 
   return {
+    "--chrome-legibility-scrim": chromeScrim,
+    "--statusbar-legibility-scrim": statusbarScrim,
     "--sakura-root-rgb": backdropRgb,
     "--sakura-root-alpha": String(backdropAlpha),
     "--text-primary": textPrimary,
     "--text-secondary": textSecondary,
     "--text-muted": textMuted,
     "--panel-text-scrim": panelTextScrim,
-    "--chrome-frame-bg": `linear-gradient(180deg, ${softLight}, transparent 72%), linear-gradient(90deg, ${softAccent}, transparent 34%, transparent 66%, rgba(${panelRgb}, 0.06)), ${rgba(chrome, chromeAlpha)}`,
-    "--statusbar-bg": rgba(chrome, chromeAlpha),
+    "--chrome-frame-bg": `linear-gradient(180deg, ${softLight}, transparent 72%), linear-gradient(90deg, ${softAccent}, transparent 34%, transparent 66%, rgba(${panelRgb}, 0.06)), ${chromeScrim}, ${rgba(chrome, chromeAlpha)}`,
+    "--statusbar-bg": `${statusbarScrim}, ${rgba(chrome, chromeAlpha)}`,
     "--dialog-surface": `linear-gradient(180deg, ${softLight}, transparent 32%), linear-gradient(145deg, rgba(${panelRgb}, 0.1), transparent 50%), ${rgba(backdrop, clampAlpha(panelAlpha, 0.08, 0.96))}`,
     "--settings-control-bg": rgba(backdrop, clampAlpha(panelAlpha - 0.04, 0.06, 0.96)),
     "--settings-card-bg": rgba(panel, panelSoftAlpha),

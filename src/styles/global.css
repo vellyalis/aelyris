@@ -54,11 +54,20 @@
   --aether-window-veil-opacity: 0.006;
 
   --terminal-canvas-bg: rgba(3, 10, 22, 0.5);
-  --terminal-raster-bg: rgba(3, 10, 22, 0.7);
+  /* Terminal backing slab. Lowered 0.7 -> 0.5 so the center pane is not a heavy
+   * opaque slab that reads much darker than the now-translucent side panels —
+   * the wallpaper frosts through the terminal like it does the panels. Glyph
+   * contrast is unaffected: the bright mono glyphs paint on their own per-cell
+   * --terminal-canvas-bg (DEFAULT_BG), which is a separate layer from this
+   * raster surface. */
+  --terminal-raster-bg: rgba(3, 10, 22, 0.5);
   --terminal-surface-opacity: 0.82;
+  /* Well backing lightened (0.34/0.56 -> 0.2/0.36) to match the panel
+   * translucency so the terminal balances with the chrome instead of reading
+   * as a dark hole in the center. */
   --terminal-well-bg:
     radial-gradient(ellipse at 48% -18%, rgba(72, 185, 220, 0.034), transparent 44%),
-    linear-gradient(180deg, rgba(4, 11, 20, 0.34), rgba(1, 5, 12, 0.56)),
+    linear-gradient(180deg, rgba(4, 11, 20, 0.2), rgba(1, 5, 12, 0.36)),
     linear-gradient(90deg, rgba(74, 174, 212, 0.012), transparent 26%, transparent 74%, rgba(137, 214, 231, 0.01));
   --terminal-chrome-bg: rgba(3, 8, 14, 0.34);
   --terminal-chrome-bg-focus: rgba(4, 10, 18, 0.46);
@@ -82,11 +91,31 @@
   --terminal-watermark-opacity: 0.052;
   --terminal-watermark-filter: drop-shadow(0 18px 54px rgba(101, 205, 234, 0.055));
 
+  /* ── Top/bottom chrome legibility (header bar, workspace/editor tabs,
+   *    status bar, mode-rail) over a busy / bright wallpaper ──
+   * These surfaces are thin (24–48px) and previously sat on a low-alpha glass
+   * with only a mild brightness(<1) frost, so bright wallpaper regions leaked
+   * through and collapsed chrome text/icon contrast (measured live over the
+   * sakura wallpaper: status branch ~2.2:1, header status ~1.5:1, status-bar
+   * icons ~2:1 — all below WCAG AA). Same design-system fix already proven on
+   * the text-dense panels: a low-alpha legibility scrim painted between the
+   * frosted wallpaper and the glyphs (Apple sidebar / macOS menu-bar scrim,
+   * Google Material legibility-overlay, Vercel clean-contrast). The chrome
+   * keeps its glass identity — the wallpaper still frosts through — but no
+   * single bright petal dominates behind the text. Dark moods use a dark wash;
+   * sakura (light) uses a WHITE wash so the light theme is lifted, never
+   * darkened. Per-mood values live in moods/surfaces.ts; these :root defaults
+   * back aether-dark / browser preview. */
+  --chrome-legibility-scrim:
+    linear-gradient(180deg, rgba(3, 9, 16, 0.46), rgba(3, 9, 16, 0.4) 60%, rgba(3, 9, 16, 0.5));
+  --statusbar-legibility-scrim: linear-gradient(180deg, rgba(3, 9, 16, 0.5), rgba(3, 9, 16, 0.56));
+
   --chrome-frame-bg:
     linear-gradient(180deg, rgba(119, 211, 236, 0.014), transparent 72%),
     linear-gradient(90deg, rgba(80, 184, 220, 0.018), transparent 34%, transparent 66%, rgba(150, 221, 235, 0.008)),
+    var(--chrome-legibility-scrim),
     var(--glass-frame);
-  --chrome-frame-filter: blur(14px) saturate(1.14) brightness(0.84) contrast(1.08);
+  --chrome-frame-filter: blur(16px) saturate(1.14) brightness(0.66) contrast(1.12);
   --chrome-frame-shadow: inset 0 1px 0 rgba(140, 220, 238, 0.032), inset 0 -1px 0 rgba(69, 152, 190, 0.026);
   --chrome-control-hover-bg: rgba(76, 184, 220, 0.04);
   --chrome-control-hover-border: rgba(104, 214, 238, 0.07);
@@ -100,8 +129,8 @@
   --rail-chip-bg: rgba(142, 226, 241, 0.08);
   --rail-focus-ring: rgba(142, 226, 241, 0.34);
   --chrome-separator-bg: linear-gradient(180deg, transparent, rgba(104, 214, 238, 0.055), transparent);
-  --statusbar-bg: rgba(2, 8, 16, 0.44);
-  --statusbar-filter: blur(14px) saturate(1.12) brightness(0.82) contrast(1.08);
+  --statusbar-bg: linear-gradient(180deg, rgba(2, 8, 16, 0.44), rgba(2, 8, 16, 0.5)), var(--statusbar-legibility-scrim);
+  --statusbar-filter: blur(16px) saturate(1.12) brightness(0.62) contrast(1.12);
   --statusbar-shadow: inset 0 1px 0 rgba(160, 228, 242, 0.016), inset 0 -1px 0 rgba(0, 4, 10, 0.22);
   --toolkit-grid-bg:
     linear-gradient(135deg, rgba(109, 215, 242, 0.075), transparent 36%, rgba(216, 183, 102, 0.024)),
@@ -953,11 +982,19 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   gap: 8px;
   padding: 8px 6px;
   border-radius: var(--radius);
+  /* The mode-rail is a text-bearing chrome surface (icon + 9px label). It used
+   * to sit on the bare mood panel glass with only a blur(8px) frost and no
+   * scrim, so the bright wallpaper leaked through and the muted labels
+   * (Agents / Works / Review / Git / Context) measured ~4.1:1 with hot spots
+   * far worse. Composite the same legibility scrim used by the file-tree panel
+   * and adopt the harder panel frost so the rail labels clear AA regardless of
+   * the wallpaper region behind them. */
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 58%),
+    var(--panel-text-scrim),
     var(--mood-left-panel-bg);
-  backdrop-filter: var(--material-panel-filter);
-  -webkit-backdrop-filter: var(--material-panel-filter);
+  backdrop-filter: var(--panel-legibility-filter);
+  -webkit-backdrop-filter: var(--panel-legibility-filter);
   box-shadow:
     var(--rim-top),
     inset 0 0 0 1px color-mix(in srgb, var(--rail-control-border) 55%, transparent);

@@ -1,6 +1,8 @@
 import type { MoodPresetId } from "./registry";
 
 export const MOOD_SURFACE_CSS_KEYS = [
+  "--chrome-legibility-scrim",
+  "--statusbar-legibility-scrim",
   "--chrome-frame-bg",
   "--chrome-frame-filter",
   "--chrome-frame-shadow",
@@ -73,6 +75,37 @@ const PANEL_TEXT_SCRIM_CRYSTAL =
 const PANEL_TEXT_SCRIM_LIGHT =
   "linear-gradient(180deg, rgba(255, 252, 254, 0.4), rgba(255, 250, 253, 0.32) 70%, rgba(255, 252, 254, 0.4))";
 
+/**
+ * Chrome legibility scrim — the thin top/bottom chrome (header bar, workspace +
+ * editor tabs, status bar, mode-rail) is only 24–48px tall, so a busy/bright
+ * wallpaper leaking through collapses its text/icon contrast (measured live:
+ * status branch ~2.2:1, header status ~1.5:1, status-bar icons ~2:1, all below
+ * AA). A low-alpha legibility wash composited between the frosted wallpaper and
+ * the glyphs lifts them without turning the glass into an opaque slab (Apple
+ * menu-bar vibrancy + scrim, Material legibility-overlay, Vercel clean
+ * contrast). The status bar gets a slightly denser wash because it is the
+ * thinnest surface and sits at the very bottom where the wallpaper is brightest.
+ * Dark moods use a dark wash; crystal a cooler/lighter dark wash so its clearer
+ * glass identity survives; sakura (light) a WHITE wash so the light theme is
+ * lifted, never darkened.
+ */
+const CHROME_SCRIM_DARK = "linear-gradient(180deg, rgba(3, 9, 16, 0.46), rgba(3, 9, 16, 0.4) 60%, rgba(3, 9, 16, 0.5))";
+const STATUSBAR_SCRIM_DARK = "linear-gradient(180deg, rgba(3, 9, 16, 0.5), rgba(3, 9, 16, 0.56))";
+const CHROME_SCRIM_CRYSTAL =
+  "linear-gradient(180deg, rgba(2, 10, 20, 0.4), rgba(2, 10, 20, 0.34) 60%, rgba(2, 10, 20, 0.44))";
+const STATUSBAR_SCRIM_CRYSTAL = "linear-gradient(180deg, rgba(2, 10, 20, 0.44), rgba(2, 10, 20, 0.5))";
+const CHROME_SCRIM_LIGHT =
+  "linear-gradient(180deg, rgba(255, 252, 254, 0.46), rgba(255, 250, 253, 0.4) 60%, rgba(255, 252, 254, 0.5))";
+const STATUSBAR_SCRIM_LIGHT = "linear-gradient(180deg, rgba(255, 252, 254, 0.5), rgba(255, 250, 253, 0.56))";
+
+/**
+ * Chrome frost — stronger blur + brightness(<1) than the prior mild frost so the
+ * frosted wallpaper is darkened enough that the scrim above can clear AA. Kept
+ * as a shared constant so header / tabs / status all frost identically.
+ */
+const CHROME_FRAME_FILTER_DARK = "blur(16px) saturate(1.12) brightness(0.66) contrast(1.12)";
+const STATUSBAR_FILTER_DARK = "blur(16px) saturate(1.12) brightness(0.62) contrast(1.12)";
+
 function darkMoodSurfaces(tone: {
   shell: string;
   panel: string;
@@ -82,14 +115,16 @@ function darkMoodSurfaces(tone: {
   text: string;
 }): MoodSurfaceCSS {
   return {
-    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), rgba(${tone.shell}, 0.28)`,
-    "--chrome-frame-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.1)",
+    "--chrome-legibility-scrim": CHROME_SCRIM_DARK,
+    "--statusbar-legibility-scrim": STATUSBAR_SCRIM_DARK,
+    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), ${CHROME_SCRIM_DARK}, rgba(${tone.shell}, 0.28)`,
+    "--chrome-frame-filter": CHROME_FRAME_FILTER_DARK,
     "--chrome-frame-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.08), inset 0 -1px 0 rgba(${tone.accent}, 0.08)`,
     "--chrome-control-hover-bg": `rgba(${tone.accent}, 0.095)`,
     "--chrome-control-hover-border": `rgba(${tone.accent}, 0.16)`,
     "--chrome-separator-bg": `linear-gradient(180deg, transparent, rgba(${tone.accent}, 0.18), transparent)`,
-    "--statusbar-bg": `rgba(${tone.shell}, 0.26)`,
-    "--statusbar-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.08)",
+    "--statusbar-bg": `linear-gradient(180deg, rgba(${tone.shell}, 0.26), rgba(${tone.shell}, 0.34)), ${STATUSBAR_SCRIM_DARK}`,
+    "--statusbar-filter": STATUSBAR_FILTER_DARK,
     "--statusbar-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.07)`,
     "--material-panel-filter": PANEL_BLUR,
     "--panel-legibility-filter": PANEL_LEGIBILITY_FILTER_DARK,
@@ -122,15 +157,16 @@ function darkMoodSurfaces(tone: {
 
 function crystalMoodSurfaces(): MoodSurfaceCSS {
   return {
-    "--chrome-frame-bg":
-      "linear-gradient(180deg, rgba(225, 247, 255, 0.052), transparent 70%), linear-gradient(90deg, rgba(139, 233, 255, 0.04), transparent 34%, transparent 66%, rgba(216, 247, 255, 0.025)), rgba(2, 10, 20, 0.24)",
-    "--chrome-frame-filter": "blur(22px) saturate(1.28) brightness(0.9) contrast(1.08)",
+    "--chrome-legibility-scrim": CHROME_SCRIM_CRYSTAL,
+    "--statusbar-legibility-scrim": STATUSBAR_SCRIM_CRYSTAL,
+    "--chrome-frame-bg": `linear-gradient(180deg, rgba(225, 247, 255, 0.052), transparent 70%), linear-gradient(90deg, rgba(139, 233, 255, 0.04), transparent 34%, transparent 66%, rgba(216, 247, 255, 0.025)), ${CHROME_SCRIM_CRYSTAL}, rgba(2, 10, 20, 0.24)`,
+    "--chrome-frame-filter": "blur(24px) saturate(1.28) brightness(0.72) contrast(1.1)",
     "--chrome-frame-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.11), inset 0 -1px 0 rgba(139, 233, 255, 0.08)",
     "--chrome-control-hover-bg": "rgba(139, 233, 255, 0.1)",
     "--chrome-control-hover-border": "rgba(139, 233, 255, 0.16)",
     "--chrome-separator-bg": "linear-gradient(180deg, transparent, rgba(139, 233, 255, 0.18), transparent)",
-    "--statusbar-bg": "rgba(2, 10, 20, 0.24)",
-    "--statusbar-filter": "blur(22px) saturate(1.24) brightness(0.9) contrast(1.08)",
+    "--statusbar-bg": `linear-gradient(180deg, rgba(2, 10, 20, 0.24), rgba(2, 10, 20, 0.32)), ${STATUSBAR_SCRIM_CRYSTAL}`,
+    "--statusbar-filter": "blur(24px) saturate(1.24) brightness(0.68) contrast(1.1)",
     "--statusbar-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.075), inset 0 -1px 0 rgba(139, 233, 255, 0.06)",
     "--material-panel-filter": PANEL_BLUR,
     "--panel-legibility-filter": PANEL_LEGIBILITY_FILTER_CRYSTAL,
@@ -206,15 +242,20 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     text: "246, 255, 253",
   }),
   "aether-sakura": {
-    "--chrome-frame-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.46), transparent 72%), linear-gradient(90deg, rgba(189, 63, 104, 0.045), transparent 34%, transparent 66%, rgba(252, 201, 185, 0.06)), rgba(255, 238, 247, 0.72)",
-    "--chrome-frame-filter": "blur(12px) saturate(1.14) brightness(1.02) contrast(1.02)",
+    // Light theme: keep a WHITE scrim and brightness >= 1 so the chrome is
+    // lifted (never darkened). The base white-peach fill is already near-opaque
+    // and legible; the scrim only guarantees AA if a bright wallpaper still
+    // grazes the edges of these thin bars.
+    "--chrome-legibility-scrim": CHROME_SCRIM_LIGHT,
+    "--statusbar-legibility-scrim": STATUSBAR_SCRIM_LIGHT,
+    "--chrome-frame-bg": `linear-gradient(180deg, rgba(255, 255, 255, 0.46), transparent 72%), linear-gradient(90deg, rgba(189, 63, 104, 0.045), transparent 34%, transparent 66%, rgba(252, 201, 185, 0.06)), ${CHROME_SCRIM_LIGHT}, rgba(255, 238, 247, 0.72)`,
+    "--chrome-frame-filter": "blur(13px) saturate(1.14) brightness(1.04) contrast(1.02)",
     "--chrome-frame-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.56), inset 0 -1px 0 rgba(130, 49, 73, 0.09)",
     "--chrome-control-hover-bg": "rgba(189, 63, 104, 0.1)",
     "--chrome-control-hover-border": "rgba(130, 49, 73, 0.18)",
     "--chrome-separator-bg": "linear-gradient(180deg, transparent, rgba(130, 49, 73, 0.22), transparent)",
-    "--statusbar-bg": "rgba(255, 238, 247, 0.82)",
-    "--statusbar-filter": "blur(12px) saturate(1.12) brightness(1.02) contrast(1.02)",
+    "--statusbar-bg": `linear-gradient(180deg, rgba(255, 238, 247, 0.82), rgba(255, 236, 246, 0.86)), ${STATUSBAR_SCRIM_LIGHT}`,
+    "--statusbar-filter": "blur(13px) saturate(1.12) brightness(1.04) contrast(1.02)",
     "--statusbar-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(159, 75, 97, 0.07)",
     "--material-panel-filter": PANEL_BLUR,
     "--panel-legibility-filter": PANEL_LEGIBILITY_FILTER_LIGHT,

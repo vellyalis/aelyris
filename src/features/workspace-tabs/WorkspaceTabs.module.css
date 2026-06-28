@@ -1,5 +1,11 @@
 .bar {
-  --workspace-tabbar-bg: rgba(2, 8, 16, 0.44);
+  /* The workspace tab bar is a text-bearing chrome surface. It previously had
+   * NO backdrop-filter and a thin 0.44-alpha fill, so the bright wallpaper
+   * leaked straight through behind the tab labels on the right side. Composite
+   * the shared chrome legibility scrim and adopt the chrome frost so the tab
+   * labels clear AA over any wallpaper region while the glass still frosts
+   * through (Apple menu-bar vibrancy + scrim). */
+  --workspace-tabbar-bg: linear-gradient(180deg, rgba(2, 8, 16, 0.4), rgba(2, 8, 16, 0.46)), var(--chrome-legibility-scrim);
   --workspace-tabbar-top-rim: rgba(160, 228, 242, 0.016);
   --workspace-tabbar-bottom-rim: rgba(0, 4, 10, 0.22);
   --workspace-tab-hover-bg: rgba(76, 184, 220, 0.018);
@@ -12,8 +18,8 @@
   height: 30px;
   padding: 2px var(--space-4) 3px;
   background: var(--workspace-tabbar-bg);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  backdrop-filter: var(--chrome-frame-filter);
+  -webkit-backdrop-filter: var(--chrome-frame-filter);
   border-top: 0;
   box-shadow:
     inset 0 1px 0 var(--workspace-tabbar-top-rim),

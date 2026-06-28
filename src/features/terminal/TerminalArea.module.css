@@ -97,7 +97,11 @@
 }
 
 .terminalViewport[data-terminal-text-clarity="solid"]::before {
-  opacity: 0.36;
+  /* Lowered 0.36 -> 0.22 so the occlusion vignette no longer over-darkens the
+   * terminal well versus the translucent side panels (terminal-balance pass).
+   * Glyphs sit above this pseudo-layer (z-index 4 vs 2) so readability is
+   * unaffected. */
+  opacity: 0.22;
 }
 
 .terminalViewport::after {

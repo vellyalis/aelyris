@@ -38,7 +38,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "rgba(150, 222, 250, 0.1)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 48% -18%, rgba(76, 188, 224, 0.036), transparent 44%), linear-gradient(180deg, rgba(4, 15, 29, 0.38), rgba(1, 6, 15, 0.62))",
+      "radial-gradient(ellipse at 48% -18%, rgba(76, 188, 224, 0.036), transparent 44%), linear-gradient(180deg, rgba(4, 15, 29, 0.22), rgba(1, 6, 15, 0.4))",
     "--terminal-chrome-bg": "rgba(5, 17, 30, 0.34)",
     "--terminal-chrome-bg-focus": "rgba(7, 22, 38, 0.48)",
     "--terminal-rim-warm": "rgba(98, 207, 236, 0.074)",
@@ -111,7 +111,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "rgba(154, 226, 255, 0.12)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 42% -16%, rgba(90, 218, 255, 0.048), transparent 46%), radial-gradient(ellipse at 72% 18%, rgba(245, 199, 227, 0.018), transparent 36%), linear-gradient(180deg, rgba(1, 18, 39, 0.42), rgba(0, 6, 18, 0.66))",
+      "radial-gradient(ellipse at 42% -16%, rgba(90, 218, 255, 0.048), transparent 46%), radial-gradient(ellipse at 72% 18%, rgba(245, 199, 227, 0.018), transparent 36%), linear-gradient(180deg, rgba(1, 18, 39, 0.24), rgba(0, 6, 18, 0.42))",
     "--terminal-chrome-bg": "rgba(1, 20, 38, 0.34)",
     "--terminal-chrome-bg-focus": "rgba(2, 30, 56, 0.5)",
     "--terminal-rim-warm": "rgba(156, 236, 255, 0.08)",
@@ -184,7 +184,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "rgba(205, 247, 255, 0.11)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 44% -18%, rgba(139, 233, 255, 0.052), transparent 46%), radial-gradient(ellipse at 78% 14%, rgba(216, 247, 255, 0.024), transparent 38%), linear-gradient(180deg, rgba(3, 14, 28, 0.28), rgba(0, 5, 15, 0.5))",
+      "radial-gradient(ellipse at 44% -18%, rgba(139, 233, 255, 0.052), transparent 46%), radial-gradient(ellipse at 78% 14%, rgba(216, 247, 255, 0.024), transparent 38%), linear-gradient(180deg, rgba(3, 14, 28, 0.18), rgba(0, 5, 15, 0.34))",
     "--terminal-chrome-bg": "rgba(3, 14, 27, 0.22)",
     "--terminal-chrome-bg-focus": "rgba(5, 24, 40, 0.36)",
     "--terminal-rim-warm": "rgba(190, 244, 255, 0.088)",
@@ -257,7 +257,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "rgba(231, 217, 255, 0.13)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 50% 0%, rgba(203, 182, 255, 0.055), transparent 45%), linear-gradient(180deg, rgba(18, 14, 29, 0.32), rgba(6, 4, 13, 0.52))",
+      "radial-gradient(ellipse at 50% 0%, rgba(203, 182, 255, 0.055), transparent 45%), linear-gradient(180deg, rgba(18, 14, 29, 0.2), rgba(6, 4, 13, 0.36))",
     "--terminal-chrome-bg": "rgba(31, 25, 47, 0.34)",
     "--terminal-chrome-bg-focus": "rgba(48, 39, 68, 0.48)",
     "--terminal-rim-warm": "rgba(255, 217, 150, 0.17)",
@@ -330,7 +330,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "rgba(188, 255, 244, 0.13)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 50% 0%, rgba(114, 240, 220, 0.055), transparent 45%), linear-gradient(180deg, rgba(10, 26, 25, 0.32), rgba(3, 12, 12, 0.52))",
+      "radial-gradient(ellipse at 50% 0%, rgba(114, 240, 220, 0.055), transparent 45%), linear-gradient(180deg, rgba(10, 26, 25, 0.2), rgba(3, 12, 12, 0.36))",
     "--terminal-chrome-bg": "rgba(18, 43, 41, 0.34)",
     "--terminal-chrome-bg-focus": "rgba(30, 70, 66, 0.48)",
     "--terminal-rim-warm": "rgba(255, 209, 220, 0.17)",
@@ -404,7 +404,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--terminal-canvas-bg": "rgba(83, 33, 56, 0.54)",
     "--terminal-raster-bg": "rgba(83, 33, 56, 0.88)",
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 44% -18%, rgba(255, 198, 219, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(252, 201, 185, 0.1), transparent 38%), linear-gradient(180deg, rgba(111, 43, 73, 0.4), rgba(54, 22, 42, 0.56))",
+      "radial-gradient(ellipse at 44% -18%, rgba(255, 198, 219, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(252, 201, 185, 0.1), transparent 38%), linear-gradient(180deg, rgba(111, 43, 73, 0.28), rgba(54, 22, 42, 0.42))",
     "--terminal-chrome-bg": "rgba(78, 31, 54, 0.42)",
     "--terminal-chrome-bg-focus": "rgba(91, 35, 62, 0.58)",
     "--terminal-rim-warm": "rgba(255, 205, 220, 0.22)",
@@ -479,7 +479,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "var(--white-10)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.045), transparent 45%), linear-gradient(180deg, rgba(12, 13, 20, 0.34), rgba(4, 5, 9, 0.52))",
+      "radial-gradient(ellipse at 50% 0%, rgba(216, 183, 102, 0.045), transparent 45%), linear-gradient(180deg, rgba(12, 13, 20, 0.22), rgba(4, 5, 9, 0.36))",
     "--terminal-chrome-bg": "rgba(16, 17, 24, 0.34)",
     "--terminal-chrome-bg-focus": "rgba(24, 24, 31, 0.48)",
     "--terminal-rim-warm": "rgba(216, 183, 102, 0.16)",
@@ -552,7 +552,7 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--row-hover-strong": "rgba(188, 220, 238, 0.11)",
     "--terminal-canvas-bg": DEFAULT_BG,
     "--terminal-well-bg":
-      "radial-gradient(ellipse at 50% 0%, rgba(155, 199, 223, 0.036), transparent 45%), linear-gradient(180deg, rgba(12, 17, 22, 0.32), rgba(4, 7, 10, 0.52))",
+      "radial-gradient(ellipse at 50% 0%, rgba(155, 199, 223, 0.036), transparent 45%), linear-gradient(180deg, rgba(12, 17, 22, 0.2), rgba(4, 7, 10, 0.36))",
     "--terminal-chrome-bg": "rgba(21, 28, 34, 0.34)",
     "--terminal-chrome-bg-focus": "rgba(32, 42, 49, 0.48)",
     "--terminal-rim-warm": "rgba(199, 179, 122, 0.14)",
