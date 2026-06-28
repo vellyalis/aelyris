@@ -43,6 +43,13 @@ const TERMINAL_FONT_FAMILY_KEY = "aether:terminalFontFamily";
 const TERMINAL_FONT_SIZE_KEY = "aether:terminalFontSize";
 const TERMINAL_TEXT_CLARITY_KEY = "aether:terminalTextClarity";
 const TERMINAL_SURFACE_OPACITY_KEY = "aether:terminalSurfaceOpacity";
+const TERMINAL_LINE_HEIGHT_KEY = "aether:terminalLineHeight";
+const TERMINAL_LIGATURES_KEY = "aether:terminalLigatures";
+const TERMINAL_CURSOR_STYLE_KEY = "aether:terminalCursorStyle";
+const TERMINAL_CURSOR_BLINK_KEY = "aether:terminalCursorBlink";
+const DEFAULT_SHELL_KEY = "aether:defaultShell";
+const UI_FONT_FAMILY_KEY = "aether:uiFontFamily";
+const WINDOW_EFFECT_KEY = "aether:windowEffect";
 const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
 const MAX_FALLBACK_TELEMETRY_EVENTS = 30;
 const DEFAULT_TERMINAL_FONT_FAMILY =
@@ -51,6 +58,16 @@ const DEFAULT_TERMINAL_FONT_SIZE = 14;
 export type TerminalTextClarity = "glass" | "balanced" | "solid";
 const DEFAULT_TERMINAL_TEXT_CLARITY: TerminalTextClarity = "solid";
 const DEFAULT_TERMINAL_SURFACE_OPACITY = 0.82;
+const DEFAULT_TERMINAL_LINE_HEIGHT = 1.25;
+const DEFAULT_TERMINAL_LIGATURES = true;
+export type TerminalCursorStyle = "bar" | "block" | "underline";
+const DEFAULT_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = "bar";
+const DEFAULT_TERMINAL_CURSOR_BLINK = true;
+export type DefaultShellId = "powershell" | "cmd" | "gitbash" | "wsl";
+const DEFAULT_SHELL: DefaultShellId = "powershell";
+const DEFAULT_UI_FONT_FAMILY = '"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif';
+export type WindowEffect = "mica" | "acrylic";
+const DEFAULT_WINDOW_EFFECT: WindowEffect = "mica";
 
 export interface WallpaperSettings {
   imagePath: string | null;
@@ -84,7 +101,7 @@ function reportStorageFailure(operation: string, err: unknown, severity: "info" 
 function sanitizeAppWindowOpacity(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return 0.95;
-  return Number(Math.min(1, Math.max(0.35, numeric)).toFixed(2));
+  return Number(Math.min(1, Math.max(0.2, numeric)).toFixed(2));
 }
 
 function loadAppWindowOpacity(): number {
@@ -115,7 +132,7 @@ export function sanitizeTerminalTextClarity(value: unknown): TerminalTextClarity
 export function sanitizeTerminalSurfaceOpacity(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_TERMINAL_SURFACE_OPACITY;
-  return Number(Math.min(1, Math.max(0.42, numeric)).toFixed(2));
+  return Number(Math.min(1, Math.max(0.24, numeric)).toFixed(2));
 }
 
 function loadTerminalFontFamily(): string {
@@ -152,6 +169,120 @@ function loadTerminalSurfaceOpacity(): number {
   } catch (err) {
     reportStorageFailure("load_terminal_surface_opacity", err, "info");
     return DEFAULT_TERMINAL_SURFACE_OPACITY;
+  }
+}
+
+export function sanitizeTerminalLineHeight(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_TERMINAL_LINE_HEIGHT;
+  return Number(Math.min(2, Math.max(1, numeric)).toFixed(2));
+}
+
+function loadTerminalLineHeight(): number {
+  try {
+    const raw = localStorage.getItem(TERMINAL_LINE_HEIGHT_KEY);
+    return raw == null ? DEFAULT_TERMINAL_LINE_HEIGHT : sanitizeTerminalLineHeight(raw);
+  } catch (err) {
+    reportStorageFailure("load_terminal_line_height", err, "info");
+    return DEFAULT_TERMINAL_LINE_HEIGHT;
+  }
+}
+
+function loadTerminalLigatures(): boolean {
+  try {
+    const raw = localStorage.getItem(TERMINAL_LIGATURES_KEY);
+    return raw == null ? DEFAULT_TERMINAL_LIGATURES : raw === "1";
+  } catch (err) {
+    reportStorageFailure("load_terminal_ligatures", err, "info");
+    return DEFAULT_TERMINAL_LIGATURES;
+  }
+}
+
+export function sanitizeTerminalCursorStyle(value: unknown): TerminalCursorStyle {
+  return value === "bar" || value === "block" || value === "underline" ? value : DEFAULT_TERMINAL_CURSOR_STYLE;
+}
+
+function loadTerminalCursorStyle(): TerminalCursorStyle {
+  try {
+    return sanitizeTerminalCursorStyle(localStorage.getItem(TERMINAL_CURSOR_STYLE_KEY));
+  } catch (err) {
+    reportStorageFailure("load_terminal_cursor_style", err, "info");
+    return DEFAULT_TERMINAL_CURSOR_STYLE;
+  }
+}
+
+function loadTerminalCursorBlink(): boolean {
+  try {
+    const raw = localStorage.getItem(TERMINAL_CURSOR_BLINK_KEY);
+    return raw == null ? DEFAULT_TERMINAL_CURSOR_BLINK : raw === "1";
+  } catch (err) {
+    reportStorageFailure("load_terminal_cursor_blink", err, "info");
+    return DEFAULT_TERMINAL_CURSOR_BLINK;
+  }
+}
+
+/**
+ * Map a persisted `default_shell` string (config.toml or localStorage) to a
+ * valid shell id. The Rust default is `pwsh.exe`; the Settings picker stores
+ * `powershell`/`cmd`/`gitbash`/`wsl`. Anything unrecognized falls back to
+ * PowerShell so a stale/odd config value never breaks tab creation.
+ */
+export function sanitizeDefaultShell(value: unknown): DefaultShellId {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (raw) {
+    case "powershell":
+    case "pwsh":
+    case "pwsh.exe":
+    case "powershell.exe":
+    case "ps":
+      return "powershell";
+    case "cmd":
+    case "cmd.exe":
+      return "cmd";
+    case "gitbash":
+    case "bash":
+      return "gitbash";
+    case "wsl":
+      return "wsl";
+    default:
+      return DEFAULT_SHELL;
+  }
+}
+
+function loadDefaultShell(): DefaultShellId {
+  try {
+    const raw = localStorage.getItem(DEFAULT_SHELL_KEY);
+    return raw == null ? DEFAULT_SHELL : sanitizeDefaultShell(raw);
+  } catch (err) {
+    reportStorageFailure("load_default_shell", err, "info");
+    return DEFAULT_SHELL;
+  }
+}
+
+export function sanitizeUiFontFamily(value: unknown): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed.length > 0 ? trimmed : DEFAULT_UI_FONT_FAMILY;
+}
+
+function loadUiFontFamily(): string {
+  try {
+    return sanitizeUiFontFamily(localStorage.getItem(UI_FONT_FAMILY_KEY));
+  } catch (err) {
+    reportStorageFailure("load_ui_font_family", err, "info");
+    return DEFAULT_UI_FONT_FAMILY;
+  }
+}
+
+export function sanitizeWindowEffect(value: unknown): WindowEffect {
+  return value === "mica" || value === "acrylic" ? value : DEFAULT_WINDOW_EFFECT;
+}
+
+function loadWindowEffect(): WindowEffect {
+  try {
+    return sanitizeWindowEffect(localStorage.getItem(WINDOW_EFFECT_KEY));
+  } catch (err) {
+    reportStorageFailure("load_window_effect", err, "info");
+    return DEFAULT_WINDOW_EFFECT;
   }
 }
 
@@ -263,7 +394,7 @@ function sanitizeWallpaperSettings(value: unknown): Partial<WallpaperSettings> {
   if (typeof record.imagePath === "string" && record.imagePath.trim()) next.imagePath = record.imagePath.trim();
   if (record.imagePath === null) next.imagePath = null;
   if (typeof record.opacity === "number" && Number.isFinite(record.opacity)) {
-    next.opacity = Math.min(0.85, Math.max(0, record.opacity));
+    next.opacity = Math.min(1, Math.max(0, record.opacity));
   }
   if (typeof record.positionX === "number" && Number.isFinite(record.positionX)) {
     next.positionX = Math.min(100, Math.max(0, record.positionX));
@@ -375,12 +506,34 @@ interface AppState {
   terminalFontSize: number;
   terminalTextClarity: TerminalTextClarity;
   terminalSurfaceOpacity: number;
+  /** Terminal cell line-height multiplier (height = round(fontSize × lineHeight)). Clamped 1.0..2.0. */
+  terminalLineHeight: number;
+  /** Whether the native shaper is allowed to form font ligatures. */
+  terminalLigatures: boolean;
   setTerminalAppearance: (appearance: {
     fontFamily?: string;
     fontSize?: number;
     textClarity?: TerminalTextClarity;
     surfaceOpacity?: number;
+    lineHeight?: number;
+    ligatures?: boolean;
   }) => void;
+  /** User-preferred cursor style; seeds the rendered cursor when the program hasn't set one. */
+  cursorStyle: TerminalCursorStyle;
+  setCursorStyle: (style: TerminalCursorStyle) => void;
+  /** Whether the terminal cursor blinks. */
+  cursorBlink: boolean;
+  setCursorBlink: (blink: boolean) => void;
+  /** Shell used to seed the first tab and new terminals on startup. */
+  defaultShell: DefaultShellId;
+  /** Accepts any persisted shell string (config.toml or picker id); sanitized to a valid id. */
+  setDefaultShell: (shell: string) => void;
+  /** Application (UI chrome) font family, applied to the `--font-ui` CSS variable. */
+  uiFontFamily: string;
+  setUiFontFamily: (family: string) => void;
+  /** Windows DWM backdrop type. Persisted to config and applied at window setup. */
+  windowEffect: WindowEffect;
+  setWindowEffect: (effect: WindowEffect) => void;
 
   // Project
   rootProjectPath: string | null;
@@ -850,14 +1003,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   terminalFontSize: loadTerminalFontSize(),
   terminalTextClarity: loadTerminalTextClarity(),
   terminalSurfaceOpacity: loadTerminalSurfaceOpacity(),
-  setTerminalAppearance: ({ fontFamily, fontSize, textClarity, surfaceOpacity }) => {
+  terminalLineHeight: loadTerminalLineHeight(),
+  terminalLigatures: loadTerminalLigatures(),
+  setTerminalAppearance: ({ fontFamily, fontSize, textClarity, surfaceOpacity, lineHeight, ligatures }) => {
     const patch: Partial<
-      Pick<AppState, "terminalFontFamily" | "terminalFontSize" | "terminalTextClarity" | "terminalSurfaceOpacity">
+      Pick<
+        AppState,
+        | "terminalFontFamily"
+        | "terminalFontSize"
+        | "terminalTextClarity"
+        | "terminalSurfaceOpacity"
+        | "terminalLineHeight"
+        | "terminalLigatures"
+      >
     > = {};
     if (fontFamily !== undefined) patch.terminalFontFamily = sanitizeTerminalFontFamily(fontFamily);
     if (fontSize !== undefined) patch.terminalFontSize = sanitizeTerminalFontSize(fontSize);
     if (textClarity !== undefined) patch.terminalTextClarity = sanitizeTerminalTextClarity(textClarity);
     if (surfaceOpacity !== undefined) patch.terminalSurfaceOpacity = sanitizeTerminalSurfaceOpacity(surfaceOpacity);
+    if (lineHeight !== undefined) patch.terminalLineHeight = sanitizeTerminalLineHeight(lineHeight);
+    if (ligatures !== undefined) patch.terminalLigatures = ligatures;
     if (Object.keys(patch).length === 0) return;
     set(patch);
     try {
@@ -873,8 +1038,64 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (patch.terminalSurfaceOpacity !== undefined) {
         localStorage.setItem(TERMINAL_SURFACE_OPACITY_KEY, String(patch.terminalSurfaceOpacity));
       }
+      if (patch.terminalLineHeight !== undefined) {
+        localStorage.setItem(TERMINAL_LINE_HEIGHT_KEY, String(patch.terminalLineHeight));
+      }
+      if (patch.terminalLigatures !== undefined) {
+        localStorage.setItem(TERMINAL_LIGATURES_KEY, patch.terminalLigatures ? "1" : "0");
+      }
     } catch (err) {
       reportStorageFailure("persist_terminal_appearance", err);
+    }
+  },
+  cursorStyle: loadTerminalCursorStyle(),
+  setCursorStyle: (style) => {
+    const next = sanitizeTerminalCursorStyle(style);
+    set({ cursorStyle: next });
+    try {
+      localStorage.setItem(TERMINAL_CURSOR_STYLE_KEY, next);
+    } catch (err) {
+      reportStorageFailure("persist_terminal_cursor_style", err);
+    }
+  },
+  cursorBlink: loadTerminalCursorBlink(),
+  setCursorBlink: (blink) => {
+    const next = Boolean(blink);
+    set({ cursorBlink: next });
+    try {
+      localStorage.setItem(TERMINAL_CURSOR_BLINK_KEY, next ? "1" : "0");
+    } catch (err) {
+      reportStorageFailure("persist_terminal_cursor_blink", err);
+    }
+  },
+  defaultShell: loadDefaultShell(),
+  setDefaultShell: (shell) => {
+    const next = sanitizeDefaultShell(shell);
+    set({ defaultShell: next });
+    try {
+      localStorage.setItem(DEFAULT_SHELL_KEY, next);
+    } catch (err) {
+      reportStorageFailure("persist_default_shell", err);
+    }
+  },
+  uiFontFamily: loadUiFontFamily(),
+  setUiFontFamily: (family) => {
+    const next = sanitizeUiFontFamily(family);
+    set({ uiFontFamily: next });
+    try {
+      localStorage.setItem(UI_FONT_FAMILY_KEY, next);
+    } catch (err) {
+      reportStorageFailure("persist_ui_font_family", err);
+    }
+  },
+  windowEffect: loadWindowEffect(),
+  setWindowEffect: (effect) => {
+    const next = sanitizeWindowEffect(effect);
+    set({ windowEffect: next });
+    try {
+      localStorage.setItem(WINDOW_EFFECT_KEY, next);
+    } catch (err) {
+      reportStorageFailure("persist_window_effect", err);
     }
   },
 

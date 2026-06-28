@@ -8,8 +8,8 @@ import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { formatFallbackError, reportFallback } from "../../shared/lib/fallbackTelemetry";
 import { TERMINAL_COMMAND_EVIDENCE_EVENT, type TerminalCommandEvidenceDetail } from "../../shared/lib/terminalEvidence";
-import type { TerminalTextClarity } from "../../shared/store/appStore";
-import type { GridSnapshot } from "../../shared/types/terminal";
+import type { TerminalCursorStyle, TerminalTextClarity } from "../../shared/store/appStore";
+import type { CursorShape, GridSnapshot } from "../../shared/types/terminal";
 import { estimateScrollbackMemoryBytes, publishTerminalPerformanceSample } from "../analytics/performanceObservatory";
 import {
   clampTerminalCursor,
@@ -55,7 +55,6 @@ import { buildMatchesKey, buildRowMask, hasPrintableAfterCursor, rowsCoveredByLi
 import type { AnyMatch } from "./search";
 import { rowSelection, type SelectionRange } from "./selection";
 import styles from "./TerminalArea.module.css";
-import { forceOpaqueCssColor } from "./terminalColors";
 import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics } from "./terminalMetrics";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
@@ -86,7 +85,20 @@ export interface TerminalCanvasProps {
   rows: number;
   fontSize?: number;
   fontFamily?: string;
+  /** Cell line-height multiplier; threads through cell metrics. Defaults to 1.25. */
+  lineHeight?: number;
   textClarity?: TerminalTextClarity;
+  /**
+   * User-preferred cursor style. Seeds the rendered cursor shape when the PTY
+   * program has not explicitly chosen one (the snapshot still wins when the
+   * program sets a shape). Omitted: the snapshot shape is used as-is.
+   */
+  cursorStyle?: TerminalCursorStyle;
+  /**
+   * Whether the cursor blinks. When true, the cursor toggles on a timer; when
+   * false it stays solid. Defaults to false (solid) to preserve prior behavior.
+   */
+  cursorBlink?: boolean;
   className?: string;
   /** Overrides the live snapshot hook — used by tests to inject fixtures. */
   snapshotOverride?: GridSnapshot | null;
@@ -149,6 +161,31 @@ export interface TerminalNav {
 
 const IME_COMPOSITION_OVERLAY_MAX_CELLS = 34;
 const TERMINAL_RASTER_BG_CSS_VAR = "--terminal-raster-bg";
+
+/**
+ * The terminal emulator reports `block` as its default cursor shape until a
+ * program issues a DECSCUSR escape to choose another. We treat `block` as
+ * "program has not set a specific shape" and seed it with the user's preferred
+ * cursor style; any non-default shape (the program explicitly chose underline /
+ * beam / hollow-block) is left untouched so program-set styles keep working.
+ */
+function cursorStyleToShape(style: TerminalCursorStyle): CursorShape {
+  switch (style) {
+    case "bar":
+      return "beam";
+    case "underline":
+      return "underline";
+    default:
+      return "block";
+  }
+}
+
+function applyPreferredCursorShape(cursor: CursorShape, preferred: TerminalCursorStyle | undefined): CursorShape {
+  if (!preferred) return cursor;
+  // Only seed when the program left the cursor at the emulator default (block).
+  if (cursor !== "block") return cursor;
+  return cursorStyleToShape(preferred);
+}
 const TERMINAL_CANVAS_BG_CSS_VAR = "--terminal-canvas-bg";
 const TERMINAL_RASTER_BG_FALLBACK = "rgba(3, 10, 22, 0.92)";
 
@@ -177,8 +214,9 @@ function readTerminalRasterBackground(element: Element | null, textClarity: Term
   const rasterBg = style.getPropertyValue(TERMINAL_RASTER_BG_CSS_VAR).trim();
   const canvasBg = style.getPropertyValue(TERMINAL_CANVAS_BG_CSS_VAR).trim();
   if (textClarity === "glass") return canvasBg || rasterBg || TERMINAL_RASTER_BG_FALLBACK;
-  const base = rasterBg || canvasBg || TERMINAL_RASTER_BG_FALLBACK;
-  return textClarity === "solid" ? forceOpaqueCssColor(base) : base;
+  // Solid clarity now means solid glyph paint and contrast correction only.
+  // The raster backing must remain translucent so native glass can show through.
+  return rasterBg || canvasBg || TERMINAL_RASTER_BG_FALLBACK;
 }
 
 function useTerminalRasterBackground(element: Element | null, textClarity: TerminalTextClarity): string {
@@ -248,6 +286,9 @@ export function TerminalCanvas({
    * / Yu Gothic UI / Meiryo (monospace at common sizes), then Linux
    * Noto Sans Mono CJK, finally generic monospace. */
   fontFamily = TERMINAL_FONT_FAMILY,
+  lineHeight,
+  cursorStyle,
+  cursorBlink = false,
   className,
   snapshotOverride,
   liveSnapshot: liveSnapshotOverride,
@@ -462,7 +503,7 @@ export function TerminalCanvas({
 
   const [cursorOn, setCursorOn] = useState(true);
 
-  const cellMetrics = useTerminalCellMetrics(fontSize, fontFamily);
+  const cellMetrics = useTerminalCellMetrics(fontSize, fontFamily, lineHeight);
   const rasterBackground = useTerminalRasterBackground(canvasEl, textClarity);
 
   const canvasWidth = cols * cellMetrics.width;
@@ -800,7 +841,12 @@ export function TerminalCanvas({
     // scrolled up so users don't mistake scrollback content for the
     // active prompt line.
     if (!scrolledUp && snapshot.cursor.visible && cursorOn) {
-      paintCursor(ctx, snapshot, cellMetrics, canvasDevicePixelRatio);
+      const preferredShape = applyPreferredCursorShape(snapshot.cursor.shape, cursorStyle);
+      const cursorSnapshot =
+        preferredShape === snapshot.cursor.shape
+          ? snapshot
+          : { ...snapshot, cursor: { ...snapshot.cursor, shape: preferredShape } };
+      paintCursor(ctx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
     }
 
     // Inline image overlays last so they sit on top of cell glyphs
@@ -873,14 +919,28 @@ export function TerminalCanvas({
     canvasWidth,
     canvasHeight,
     textClarity,
+    cursorStyle,
   ]);
 
   useEffect(() => {
-    // Keep the cursor solid. In dogfood the previous blink read as a
-    // bright pink strobe on AI CLI prompt rows, and it also forced a
-    // repaint loop while the terminal was otherwise idle.
+    // Blink is opt-in (Settings → Cursor Blink). When disabled, keep the
+    // cursor solid: in dogfood the previous always-on blink read as a bright
+    // strobe on AI CLI prompt rows and forced a repaint loop while idle.
+    if (!cursorBlink) {
+      setCursorOn(true);
+      return;
+    }
     setCursorOn(true);
-  }, []);
+    // 530ms is the de-facto terminal blink period (xterm / VTE / Windows
+    // Terminal all sit near it). Toggling cursorOn flips the cursor row dirty
+    // through the paint effect's `cursorBlinkToggled` branch.
+    const interval = window.setInterval(() => {
+      setCursorOn((on) => !on);
+    }, 530);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [cursorBlink]);
 
   const focusInputSurface = useCallback(() => {
     if (useNativeInputSurface) {

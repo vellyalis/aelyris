@@ -93,17 +93,25 @@ export function useThemeApplier(
     const imagePath = wallpaper?.imagePath?.trim();
     if (imagePath) {
       root.style.setProperty("--aether-wallpaper-image", `url("${resolveWallpaperImageUrl(imagePath)}")`);
+      // Opaque mood-appropriate backstop so a scaled/letterboxed/alpha wallpaper still
+      // fully covers the desktop. Transparent when no image keeps the window see-through.
+      root.style.setProperty("--aether-wallpaper-backstop", light ? "#fbf2f7" : "#05070e");
     } else {
       root.style.setProperty("--aether-wallpaper-image", "none");
+      root.style.setProperty("--aether-wallpaper-backstop", "transparent");
     }
     const opacity =
       typeof wallpaper?.opacity === "number" && Number.isFinite(wallpaper.opacity) ? wallpaper.opacity : 0;
-    root.style.setProperty("--aether-wallpaper-opacity", String(Math.min(0.85, Math.max(0, opacity))));
-    const appOpacity = Number.isFinite(windowOpacity) ? Math.min(1, Math.max(0.35, windowOpacity)) : 0.95;
+    // Ceiling is 1 (not 0.85): a set wallpaper is meant to be an opaque in-app backdrop
+    // that covers the desktop, not a faint tint over the transparent window.
+    root.style.setProperty("--aether-wallpaper-opacity", String(Math.min(1, Math.max(0, opacity))));
+    const appOpacity = Number.isFinite(windowOpacity) ? Math.min(1, Math.max(0.2, windowOpacity)) : 0.95;
     root.style.setProperty("--aether-window-opacity", String(Number(appOpacity.toFixed(2))));
-    root.style.setProperty("--aether-window-veil-opacity", String(Number(((1 - appOpacity) * 0.72).toFixed(3))));
+    // Low window opacity should reveal the native backdrop, not add a dark scrim over solid text.
+    const veilOpacity = Math.min(0.08, Math.max(0, (1 - appOpacity) * 0.12));
+    root.style.setProperty("--aether-window-veil-opacity", String(Number(veilOpacity.toFixed(3))));
     const terminalOpacity = Number.isFinite(terminalSurfaceOpacity)
-      ? Math.min(1, Math.max(0.42, terminalSurfaceOpacity))
+      ? Math.min(1, Math.max(0.24, terminalSurfaceOpacity))
       : 0.82;
     root.style.setProperty("--terminal-surface-opacity", String(Number(terminalOpacity.toFixed(2))));
     const positionX =

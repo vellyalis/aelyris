@@ -4,7 +4,7 @@
   "version": "0.2.3",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "set NODE_OPTIONS=--require ./scripts/vite-windows-net-use-shim.cjs&& vite --configLoader native",
     "build": "set AETHER_VITE_NO_ESBUILD_SPAWN=1&& set NODE_OPTIONS=--require ./scripts/vite-windows-net-use-shim.cjs&& tsc && vite build --configLoader native && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/minify-dist-assets.ps1",
     "preview": "vite preview",
     "tauri": "tauri",

@@ -235,13 +235,17 @@ describe("TerminalCanvas", () => {
         (c.args[2] as number) === 16 &&
         (c.args[3] as number) === Math.round(10 * 1.25),
     );
-    const rasterBackgroundFills = repaintCalls.filter(
-      (c) => c.op === "fillStyle" && (c.args[0] as string) === "rgba(3, 10, 22, 1)",
-    );
+    const rasterBackgroundFills = repaintCalls.filter((c) => {
+      if (c.op !== "fillStyle") return false;
+      const color = c.args[0] as string;
+      const match = color.match(/^rgba\(3, 10, 22, (0(?:\.\d+)?)\)$/);
+      return Boolean(match);
+    });
 
     expect(rowClearIndex).toBeGreaterThanOrEqual(0);
     expect(rowRasterFillIndex).toBeGreaterThan(rowClearIndex);
     expect(rasterBackgroundFills.length).toBeGreaterThan(0);
+    expect(calls.map((c) => c.args[0] as string)).not.toContain("rgba(3, 10, 22, 1)");
   });
 
   it("paints cell characters via fillText when a snapshot is provided", () => {

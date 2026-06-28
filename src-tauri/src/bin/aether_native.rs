@@ -569,7 +569,9 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
     let frame_summary = frame.summary();
     let surface_width = u32::from(frame.cell_width_px) * u32::from(frame.cols).max(1);
     let surface_height = u32::from(frame.cell_height_px) * u32::from(frame.rows).max(1);
-    let plan = build_winit_wgpu_terminal_draw_plan(&frame, surface_width, surface_height)?;
+    let allow_ligatures = load_config().appearance.ligatures;
+    let plan =
+        build_winit_wgpu_terminal_draw_plan(&frame, surface_width, surface_height, allow_ligatures)?;
 
     write_font_atlas_png(&png_path, &plan.font_atlas)?;
     let png_bytes =
@@ -1267,7 +1269,7 @@ fn native_settings_payload(args: &[String]) -> Result<Value, String> {
         let mut config = load_config();
         config.appearance.theme = theme.clone();
         config.appearance.mood_preset = mood.clone();
-        config.appearance.opacity = opacity.clamp(0.35, 1.0);
+        config.appearance.opacity = opacity.clamp(0.2, 1.0);
         config.appearance.theme_overrides.insert(
             theme.clone(),
             BTreeMap::from([
@@ -3583,7 +3585,7 @@ fn native_primary_shell_window_proof(
         )? {
             draw_calls += 1;
         }
-        if draw_native_text_line(dc, 260, 100, "PS C:\\Users\\owner\\Aether_Terminal> _")? {
+        if draw_native_text_line(dc, 260, 100, "PS C:\\Users\\user\\Aether_Terminal> _")? {
             draw_calls += 1;
         }
         if draw_native_text_line(
@@ -7873,10 +7875,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                 Ok(window) => {
                     let window = Arc::new(window);
                     self.started = Some(Instant::now());
+                    let allow_ligatures = load_config().appearance.ligatures;
                     let plan = match build_winit_wgpu_terminal_draw_plan(
                         &self.frame,
                         self.width,
                         self.height,
+                        allow_ligatures,
                     ) {
                         Ok(plan) => plan,
                         Err(err) => {
@@ -8203,7 +8207,10 @@ fn load_fontdue_font_from_path(path: &str, collection_index: u32) -> Result<font
 }
 
 #[cfg(target_os = "windows")]
-fn build_native_text_shape_plan(frame: &NativeRenderFrame) -> NativeRendererTextShapePlan {
+fn build_native_text_shape_plan(
+    frame: &NativeRenderFrame,
+    allow_ligatures: bool,
+) -> NativeRendererTextShapePlan {
     use std::collections::{BTreeMap, BTreeSet};
 
     let mut atlas_chars = BTreeSet::new();
@@ -8280,7 +8287,7 @@ fn build_native_text_shape_plan(frame: &NativeRenderFrame) -> NativeRendererText
             },
             cell_width_px: frame.cell_width_px,
             cell_height_px: frame.cell_height_px,
-            allow_ligatures: false,
+            allow_ligatures,
         };
 
         match shaper.shape_run(&input) {
@@ -8480,6 +8487,7 @@ fn build_winit_wgpu_terminal_draw_plan(
     frame: &NativeRenderFrame,
     surface_width: u32,
     surface_height: u32,
+    allow_ligatures: bool,
 ) -> Result<TerminalDrawPlan, String> {
     fn clip_rect(
         x_px: f32,
@@ -8534,7 +8542,7 @@ fn build_winit_wgpu_terminal_draw_plan(
     let surface_width_f = surface_width.max(1) as f32;
     let surface_height_f = surface_height.max(1) as f32;
     let diff = frame.diff_against(None);
-    let shape_plan = build_native_text_shape_plan(frame);
+    let shape_plan = build_native_text_shape_plan(frame, allow_ligatures);
     let (font_atlas, atlas_glyphs) = build_native_font_atlas(frame, &shape_plan)?;
     let mut rect_instances = Vec::with_capacity(diff.dirty_rects.len().saturating_add(1));
     let mut glyph_instances = Vec::with_capacity(shape_plan.render_glyphs.len());

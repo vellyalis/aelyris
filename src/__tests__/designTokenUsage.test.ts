@@ -161,14 +161,16 @@ describe("design token usage", () => {
     expect(source).not.toContain('html[data-aether-host="tauri"] body');
   });
 
-  it("keeps inactive-window glass in the same deep-water family", () => {
+  it("keeps inactive-window glass translucent instead of turning into a slab", () => {
     const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
     const inactiveRule = source.match(/body\[data-window-focused="false"\]\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(inactiveRule).toContain("--glass-thick: rgba(5, 15, 26, 0.54)");
-    expect(inactiveRule).toContain("--glass-ground: rgba(2, 7, 13, 0.38)");
+    expect(inactiveRule).toContain("--glass-thick: rgba(5, 15, 26, 0.36)");
+    expect(inactiveRule).toContain("--glass-ground: rgba(2, 7, 13, 0.22)");
+    expect(inactiveRule).not.toContain("0.54");
+    expect(inactiveRule).not.toContain("0.48");
     expect(inactiveRule).not.toContain("0.8");
     expect(inactiveRule).not.toContain("0.9");
   });
@@ -481,7 +483,10 @@ describe("design token usage", () => {
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
 
-    expect(source).toContain("--material-panel-filter: blur(16px) saturate(1.14) brightness(0.78) contrast(1.08)");
+    // Panel filter must be a plain blur: brightness/contrast/saturate in a backdrop-filter
+    // force OPACITY on a transparent (see-through) window, defeating the glass effect.
+    expect(source).toContain("--material-panel-filter: blur(8px)");
+    expect(source).not.toMatch(/--material-panel-filter:[^;]*\b(brightness|contrast)\(/);
     expect(source).toContain("linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%)");
     expect(source).toContain("backdrop-filter: var(--material-panel-filter)");
     expect(source).not.toContain("--material-panel-filter: blur(20px)");
@@ -876,8 +881,9 @@ describe("design token usage", () => {
     const rightPanelBg = global.match(/--mood-right-panel-bg:\s*[\s\S]*?;/)?.[0] ?? "";
     const bentoCardRule = global.match(/\.bento-card\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.42)");
-    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.28)");
+    expect(tauriRootRule).toContain("background: transparent");
+    expect(tauriRootRule).toContain("rgba(0, 8, 18, 0.035)");
+    expect(tauriRootRule).not.toContain("rgba(0, 8, 18, 0.28)");
     expect(leftPanelBg).toContain("rgba(4, 13, 23, 0.4)");
     expect(rightPanelBg).toContain("rgba(4, 13, 23, 0.46)");
     expect(global).toContain("--row-hover: rgba(6, 18, 30, 0.24)");

@@ -227,7 +227,7 @@ describe("appStore — appearance customization", () => {
     expect(localStorage.getItem("aether:windowOpacity")).toBe("0.42");
 
     setAppWindowOpacity(0.1);
-    expect(useAppStore.getState().appWindowOpacity).toBe(0.35);
+    expect(useAppStore.getState().appWindowOpacity).toBe(0.2);
 
     setAppWindowOpacity(2);
     expect(useAppStore.getState().appWindowOpacity).toBe(1);

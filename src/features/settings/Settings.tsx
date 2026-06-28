@@ -3,7 +3,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { type EditorOpenMode, loadEditorOpenMode, saveEditorOpenMode } from "../../shared/lib/externalEditor";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
-import { type TerminalTextClarity, useAppStore, type WallpaperSettings } from "../../shared/store/appStore";
+import {
+  sanitizeDefaultShell,
+  type TerminalCursorStyle,
+  type TerminalTextClarity,
+  useAppStore,
+  type WallpaperSettings,
+  type WindowEffect,
+} from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
 import type { AccentOverrides } from "../../shared/themes/catppuccin";
 import {
@@ -55,6 +62,38 @@ const TERMINAL_TEXT_CLARITY_OPTIONS: { value: TerminalTextClarity; label: string
   { value: "solid", label: "Sharp" },
   { value: "glass", label: "Glass" },
 ];
+// UI (app-chrome) font choices. Each value is a full font stack so the chosen
+// primary always has sensible cross-platform fallbacks. The persisted
+// `ui_font_family` is matched back to one of these by primary family name.
+const UI_FONTS: { value: string; label: string }[] = [
+  { value: '"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif', label: "IBM Plex Sans" },
+  { value: '"Inter", -apple-system, "Segoe UI", sans-serif', label: "Inter" },
+  { value: '"Geist", "Inter", "Source Han Sans JP", sans-serif', label: "Geist" },
+  { value: '"Segoe UI", -apple-system, sans-serif', label: "Segoe UI" },
+  { value: 'system-ui, -apple-system, "Segoe UI", sans-serif', label: "System UI" },
+];
+const WINDOW_EFFECT_OPTIONS: { value: WindowEffect; label: string }[] = [
+  { value: "mica", label: "Mica (wallpaper tint)" },
+  { value: "acrylic", label: "Acrylic (translucent)" },
+];
+
+function uiFontPrimary(stack: string): string {
+  return (
+    stack
+      .split(",")[0]
+      ?.trim()
+      .replace(/^['"]|['"]$/g, "") || "IBM Plex Sans"
+  );
+}
+
+// Match a persisted ui_font_family stack to a known UI_FONTS option by primary
+// family name, falling back to the IBM Plex Sans stack so the Select always
+// has a valid value even if config carries an unknown / custom stack.
+function matchUiFontValue(stack: string): string {
+  const primary = uiFontPrimary(stack).toLowerCase();
+  const hit = UI_FONTS.find((font) => uiFontPrimary(font.value).toLowerCase() === primary);
+  return hit?.value ?? UI_FONTS[0].value;
+}
 const TERMINAL_FONT_FALLBACKS = [
   "Cascadia Mono",
   "Cascadia Next JP",
@@ -207,6 +246,13 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const setTerminalAppearance = useAppStore((s) => s.setTerminalAppearance);
   const storeTerminalTextClarity = useAppStore((s) => s.terminalTextClarity);
   const storeTerminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
+  const setStoreCursorStyle = useAppStore((s) => s.setCursorStyle);
+  const setStoreCursorBlink = useAppStore((s) => s.setCursorBlink);
+  const setStoreDefaultShell = useAppStore((s) => s.setDefaultShell);
+  const setStoreUiFontFamily = useAppStore((s) => s.setUiFontFamily);
+  const setStoreWindowEffect = useAppStore((s) => s.setWindowEffect);
+  const storeUiFontFamily = useAppStore((s) => s.uiFontFamily);
+  const storeWindowEffect = useAppStore((s) => s.windowEffect);
   const [theme, setTheme] = useState(storeTheme);
   const [mood, setMood] = useState(storeMood);
   const [font, setFont] = useState("Cascadia Code");
@@ -218,6 +264,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [defaultShell, setDefaultShell] = useState("powershell");
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
+  const [uiFont, setUiFont] = useState(storeUiFontFamily);
+  const [windowEffect, setWindowEffect] = useState<WindowEffect>(storeWindowEffect);
   const [shutdownSidecarOnExit, setShutdownSidecarOnExit] = useState(false);
   const [liveMode, setLiveMode] = useState(ghostDiffLiveMode);
   const [windowOpacity, setWindowOpacity] = useState(storeWindowOpacity);
@@ -267,6 +315,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setTerminalSurfaceOpacity(cfg.appearance.terminal_surface_opacity ?? storeTerminalSurfaceOpacity);
       setLineHeight(cfg.appearance.line_height);
       setLigatures(cfg.appearance.ligatures);
+      setUiFont(matchUiFontValue(cfg.appearance.ui_font_family));
+      setWindowEffect(cfg.appearance.window_effect === "acrylic" ? "acrylic" : "mica");
       replaceThemeOverrides(cfg.appearance.theme_overrides ?? {});
       setDefaultShell(cfg.terminal.default_shell);
       setCursorStyle(cfg.terminal.cursor_style);
@@ -280,6 +330,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
         fontSize: cfg.appearance.font_size,
         textClarity: cfg.appearance.terminal_text_clarity ?? "solid",
         surfaceOpacity: cfg.appearance.terminal_surface_opacity,
+        lineHeight: cfg.appearance.line_height,
+        ligatures: cfg.appearance.ligatures,
       });
       return;
     }
@@ -302,6 +354,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setTerminalSurfaceOpacity(cfg.appearance.terminal_surface_opacity ?? storeTerminalSurfaceOpacity);
         setLineHeight(cfg.appearance.line_height);
         setLigatures(cfg.appearance.ligatures);
+        setUiFont(matchUiFontValue(cfg.appearance.ui_font_family));
+        setWindowEffect(cfg.appearance.window_effect === "acrylic" ? "acrylic" : "mica");
         setDefaultShell(cfg.terminal.default_shell);
         setCursorStyle(cfg.terminal.cursor_style);
         setCursorBlink(cfg.terminal.cursor_blink);
@@ -313,6 +367,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
           fontSize: cfg.appearance.font_size,
           textClarity: cfg.appearance.terminal_text_clarity ?? "solid",
           surfaceOpacity: cfg.appearance.terminal_surface_opacity,
+          lineHeight: cfg.appearance.line_height,
+          ligatures: cfg.appearance.ligatures,
         });
         // Rehydrate from disk so config.toml is the source of truth — this
         // corrects the localStorage bootstrap value if the user edited the
@@ -373,7 +429,28 @@ export function Settings({ visible, onClose }: SettingsProps) {
           },
         ],
       });
-      if (typeof selected === "string") setWallpaperSettingsForMood(mood, { imagePath: selected });
+      if (typeof selected === "string") {
+        // The picker can return a path on any drive, but the Tauri
+        // assetProtocol.scope only allows `$HOME/**`. Copy the image into the
+        // app-data wallpapers dir (under $HOME) so the stored imagePath always
+        // resolves via the asset protocol. Fall back to the raw path if the
+        // copy fails (e.g. the image is already inside $HOME).
+        let imagePath = selected;
+        try {
+          imagePath = await invoke<string>("persist_wallpaper_image", { src: selected });
+        } catch (copyErr) {
+          toast.warning(
+            "Background image not copied into app data",
+            `Using the original path; it may not display if it is outside your home folder. ${String(copyErr)}`,
+          );
+        }
+        // Seed a visible opacity when none was set yet, otherwise a freshly-chosen
+        // wallpaper stays invisible at the default opacity 0 over the transparent window.
+        setWallpaperSettingsForMood(mood, {
+          imagePath,
+          ...(wallpaper.opacity <= 0 ? { opacity: 1 } : {}),
+        });
+      }
     } catch (err) {
       toast.error("Failed to choose background image", String(err));
     }
@@ -388,7 +465,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
     }
     const objectUrl = URL.createObjectURL(file);
     browserWallpaperUrlRef.current = objectUrl;
-    setWallpaperSettingsForMood(mood, { imagePath: objectUrl });
+    setWallpaperSettingsForMood(mood, {
+      imagePath: objectUrl,
+      ...(wallpaper.opacity <= 0 ? { opacity: 1 } : {}),
+    });
   };
 
   useEffect(() => {
@@ -428,7 +508,14 @@ export function Settings({ visible, onClose }: SettingsProps) {
         fontSize,
         textClarity: terminalTextClarity,
         surfaceOpacity: terminalSurfaceOpacity,
+        lineHeight,
+        ligatures,
       });
+      setStoreCursorStyle(cursorStyle as TerminalCursorStyle);
+      setStoreCursorBlink(cursorBlink);
+      setStoreDefaultShell(defaultShell);
+      setStoreUiFontFamily(uiFont);
+      setStoreWindowEffect(windowEffect);
       saveEditorOpenMode(editorOpenMode);
       onClose();
       return;
@@ -441,12 +528,14 @@ export function Settings({ visible, onClose }: SettingsProps) {
         ...loadedConfig.appearance,
         theme,
         mood_preset: mood,
+        ui_font_family: uiFont,
         terminal_font_family: terminalFontFamily,
         font_size: fontSize,
         terminal_text_clarity: terminalTextClarity,
         terminal_surface_opacity: terminalSurfaceOpacity,
         line_height: lineHeight,
         ligatures,
+        window_effect: windowEffect,
         opacity: windowOpacity,
         theme_overrides: latestStore.themeOverrides,
         mood_material_overrides: latestStore.moodMaterialOverrides,
@@ -475,7 +564,14 @@ export function Settings({ visible, onClose }: SettingsProps) {
           fontSize,
           textClarity: terminalTextClarity,
           surfaceOpacity: terminalSurfaceOpacity,
+          lineHeight,
+          ligatures,
         });
+        setStoreCursorStyle(cursorStyle as TerminalCursorStyle);
+        setStoreCursorBlink(cursorBlink);
+        setStoreDefaultShell(defaultShell);
+        setStoreUiFontFamily(uiFont);
+        setStoreWindowEffect(windowEffect);
         saveEditorOpenMode(editorOpenMode);
         onClose();
       })
@@ -583,7 +679,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     className={styles.materialSlider}
                     type="range"
                     aria-label="Window opacity"
-                    min={0.35}
+                    min={0.2}
                     max={1}
                     step={0.01}
                     value={windowOpacity}
@@ -602,7 +698,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   Terminal surface opacity
                 </label>
                 <p className={styles.materialHint}>
-                  Controls only the terminal glass/backing layers; glyphs stay solid.
+                  Lower values make only the backing clearer; glyphs stay solid.
                 </p>
                 <div className={styles.materialRow}>
                   <span className={styles.materialColorPreview} aria-hidden="true" />
@@ -611,7 +707,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     className={styles.materialSlider}
                     type="range"
                     aria-label="Terminal surface opacity"
-                    min={0.42}
+                    min={0.24}
                     max={1}
                     step={0.01}
                     value={terminalSurfaceOpacity}
@@ -729,7 +825,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     onChange={(event) => {
                       markEdited();
                       const next = event.currentTarget.value.trim();
-                      setWallpaperSettingsForMood(mood, { imagePath: next.length > 0 ? next : null });
+                      setWallpaperSettingsForMood(mood, {
+                        imagePath: next.length > 0 ? next : null,
+                        ...(next.length > 0 && wallpaper.opacity <= 0 ? { opacity: 1 } : {}),
+                      });
                     }}
                     placeholder="C:/Users/example/Pictures/background.jpg"
                   />
@@ -747,7 +846,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       type="range"
                       aria-label="Background image opacity"
                       min={0}
-                      max={0.85}
+                      max={1}
                       step={0.01}
                       value={wallpaper.opacity}
                       onChange={(e) => {
@@ -889,7 +988,13 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     step={0.1}
                     onChange={(e) => {
                       markEdited();
-                      setLineHeight(Number(e.target.value));
+                      const raw = Number(e.target.value);
+                      setLineHeight(raw);
+                      // Live-apply (clamped 1.0..2.0) so the running terminals
+                      // re-measure cell height immediately; Save persists it.
+                      if (Number.isFinite(raw)) {
+                        setTerminalAppearance({ lineHeight: Math.min(2, Math.max(1, raw)) });
+                      }
                     }}
                   />
                 </div>
@@ -902,8 +1007,48 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   onCheckedChange={(next) => {
                     markEdited();
                     setLigatures(next);
+                    setTerminalAppearance({ ligatures: next });
                   }}
                 />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-ui-font">
+                  UI Font
+                </label>
+                <Select
+                  id="settings-ui-font"
+                  value={matchUiFontValue(uiFont)}
+                  onValueChange={(next) => {
+                    markEdited();
+                    setUiFont(next);
+                    // Live-apply to the app chrome font variable; Save persists it.
+                    setStoreUiFontFamily(next);
+                  }}
+                  options={UI_FONTS}
+                  ariaLabel="UI font"
+                />
+                <p className={styles.hint}>Font for the app chrome (menus, panels, labels) — not the terminal.</p>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-window-effect">
+                  Window Backdrop
+                </label>
+                <Select
+                  id="settings-window-effect"
+                  value={windowEffect}
+                  onValueChange={(next) => {
+                    markEdited();
+                    const effect: WindowEffect = next === "acrylic" ? "acrylic" : "mica";
+                    setWindowEffect(effect);
+                    setStoreWindowEffect(effect);
+                  }}
+                  options={WINDOW_EFFECT_OPTIONS}
+                  ariaLabel="Window backdrop"
+                />
+                <p className={styles.hint}>
+                  Windows backdrop type. Acrylic is fully translucent; Mica is a subtle wallpaper tint. Takes effect on
+                  next launch.
+                </p>
               </div>
             </section>
 
@@ -915,10 +1060,15 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 </label>
                 <Select
                   id="settings-default-shell"
-                  value={defaultShell}
+                  // Normalize so a raw config value (`pwsh.exe`) maps onto a
+                  // real picker option instead of leaving the Select blank.
+                  value={sanitizeDefaultShell(defaultShell)}
                   onValueChange={(next) => {
                     markEdited();
                     setDefaultShell(next);
+                    // Live-apply so newly opened tabs use the chosen shell
+                    // without an app restart; Save persists it to config.toml.
+                    setStoreDefaultShell(next);
                   }}
                   options={SHELLS.map((s) => ({ value: s.id, label: s.label }))}
                   ariaLabel="Default shell"
@@ -953,6 +1103,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   onValueChange={(next) => {
                     markEdited();
                     setCursorStyle(next);
+                    // Live-apply so the rendered cursor updates immediately.
+                    setStoreCursorStyle(next as TerminalCursorStyle);
                   }}
                   options={[
                     { value: "bar", label: "Bar" },
@@ -970,6 +1122,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   onCheckedChange={(next) => {
                     markEdited();
                     setCursorBlink(next);
+                    setStoreCursorBlink(next);
                   }}
                 />
               </div>

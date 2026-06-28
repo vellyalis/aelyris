@@ -454,52 +454,79 @@ pub fn run() {
                     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
                 };
 
-                let direct_dwm_enabled =
-                    std::env::var("AETHER_EXPERIMENTAL_DWM_CHROME").as_deref() == Ok("1");
-                if !direct_dwm_enabled {
+                // Direct DWM backdrop is the DEFAULT on Windows: Tauri's
+                // `windowEffects` acrylic silently fails to apply a real backdrop on Win11 25H2,
+                // so without this the transparent WebView2 client area has nothing to show through
+                // to and renders opaque. Opt out with AETHER_DISABLE_DWM_CHROME=1 (falls back to
+                // Tauri windowEffects).
+                //
+                // The backdrop type follows config.appearance.window_effect:
+                //   acrylic -> DWMSBT_TRANSIENTWINDOW (real desktop translucency)
+                //   mica    -> DWMSBT_MAINWINDOW (wallpaper tint)
+                // The other type is used as the fallback if the OS refuses the
+                // primary. Unknown/missing config defaults to acrylic.
+                let direct_dwm_disabled =
+                    std::env::var("AETHER_DISABLE_DWM_CHROME").as_deref() == Ok("1");
+                if direct_dwm_disabled {
                     log::info!(
-                        "window chrome: using Tauri windowEffects; direct DWM chrome disabled"
+                        "window chrome: direct DWM chrome disabled by env; using Tauri windowEffects"
                     );
                 } else if let Some(window) = app.get_webview_window("main") {
+                    let window_effect = config::load_config().appearance.window_effect;
+                    let prefer_mica = window_effect.eq_ignore_ascii_case("mica");
+                    // (label, backdrop type) pairs in apply order: primary first.
+                    let (primary_label, primary_value, fallback_label, fallback_value) = if prefer_mica
+                    {
+                        (
+                            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
+                            DWMSBT_MAINWINDOW.0,
+                            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
+                            DWMSBT_TRANSIENTWINDOW.0,
+                        )
+                    } else {
+                        (
+                            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
+                            DWMSBT_TRANSIENTWINDOW.0,
+                            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
+                            DWMSBT_MAINWINDOW.0,
+                        )
+                    };
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
                             let hwnd = HWND(hwnd_raw.0 as *mut _);
 
-                            // 1. Acrylic via DWMWA_SYSTEMBACKDROP_TYPE.
-                            //    DWMSBT_TRANSIENTWINDOW = real translucency.
-                            let acrylic_value: i32 = DWMSBT_TRANSIENTWINDOW.0;
-                            let acrylic_result = unsafe {
+                            // 1. Backdrop via DWMWA_SYSTEMBACKDROP_TYPE.
+                            let primary_result = unsafe {
                                 DwmSetWindowAttribute(
                                     hwnd,
                                     DWMWA_SYSTEMBACKDROP_TYPE,
-                                    &acrylic_value as *const i32 as *const _,
+                                    &primary_value as *const i32 as *const _,
                                     std::mem::size_of::<i32>() as u32,
                                 )
                             };
-                            match acrylic_result {
+                            match primary_result {
                                 Ok(()) => log::info!(
-                                    "window chrome: Acrylic applied via DWMSBT_TRANSIENTWINDOW (real desktop translucency)"
+                                    "window chrome: {primary_label} applied (window_effect={window_effect})"
                                 ),
-                                Err(acrylic_err) => {
+                                Err(primary_err) => {
                                     log::warn!(
-                                        "window chrome: Acrylic refused ({acrylic_err}); falling back to Mica wallpaper tint"
+                                        "window chrome: {primary_label} refused ({primary_err}); falling back to {fallback_label}"
                                     );
-                                    let mica_value: i32 = DWMSBT_MAINWINDOW.0;
-                                    let mica_result = unsafe {
+                                    let fallback_result = unsafe {
                                         DwmSetWindowAttribute(
                                             hwnd,
                                             DWMWA_SYSTEMBACKDROP_TYPE,
-                                            &mica_value as *const i32 as *const _,
+                                            &fallback_value as *const i32 as *const _,
                                             std::mem::size_of::<i32>() as u32,
                                         )
                                     };
-                                    if let Err(mica_err) = mica_result {
+                                    if let Err(fallback_err) = fallback_result {
                                         log::warn!(
-                                            "window chrome: Mica also refused ({mica_err}); window will render with CSS-only glass"
+                                            "window chrome: {fallback_label} also refused ({fallback_err}); window will render with CSS-only glass"
                                         );
                                     } else {
                                         log::info!(
-                                            "window chrome: Mica applied as fallback (wallpaper tint, not real translucency)"
+                                            "window chrome: {fallback_label} applied as fallback"
                                         );
                                     }
                                 }
@@ -543,6 +570,56 @@ pub fn run() {
             // that attribute to lower each glass token's alpha when
             // blurred.
             if let Some(window) = app.get_webview_window("main") {
+                // Assert a fully transparent WebView2 controller background. Win11 WebView2
+                // runtimes (149.x+) default the controller's `DefaultBackgroundColor` to
+                // OPAQUE, so with `transparent: true` alone the client area composites an
+                // opaque gray over the DWM Acrylic backdrop — only the 1px native rim stays
+                // glassy (the desktop no longer shows through). Tauri's set_background_color
+                // forwards to the WebView2 controller; a 0-alpha color restores see-through
+                // translucency regardless of the runtime's default.
+                if let Err(e) = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)))
+                {
+                    log::warn!("failed to assert transparent webview background: {e}");
+                }
+                // Authoritative path: set the WebView2 controller's DefaultBackgroundColor to
+                // fully transparent directly via COM. Tauri's set_background_color above forwards
+                // through wry, which is a no-op for an already-created controller on Win11
+                // WebView2 runtime 149.x+ — leaving the client area opaque over the DWM Acrylic
+                // backdrop. Calling ICoreWebView2Controller2::SetDefaultBackgroundColor is
+                // authoritative regardless of the runtime default.
+                #[cfg(windows)]
+                {
+                    let bg_result = window.with_webview(|webview| {
+                        use webview2_com::Microsoft::Web::WebView2::Win32::{
+                            COREWEBVIEW2_COLOR, ICoreWebView2Controller2,
+                        };
+                        use windows_core_061::Interface;
+                        match webview.controller().cast::<ICoreWebView2Controller2>() {
+                            Ok(controller2) => unsafe {
+                                if let Err(e) =
+                                    controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                                        A: 0,
+                                        R: 0,
+                                        G: 0,
+                                        B: 0,
+                                    })
+                                {
+                                    log::warn!("SetDefaultBackgroundColor failed: {e}");
+                                } else {
+                                    log::info!(
+                                        "WebView2 controller DefaultBackgroundColor set transparent"
+                                    );
+                                }
+                            },
+                            Err(e) => log::warn!(
+                                "ICoreWebView2Controller2 cast failed (transparency not asserted): {e}"
+                            ),
+                        }
+                    });
+                    if let Err(e) = bg_result {
+                        log::warn!("with_webview for transparent background failed: {e}");
+                    }
+                }
                 let win_for_handler = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(focused) = event {
@@ -937,6 +1014,7 @@ pub fn run() {
             ipc::get_pr_diff,
             ipc::load_app_config,
             ipc::save_app_config,
+            ipc::persist_wallpaper_image,
             ipc::read_file,
             ipc::open_in_vscode,
             ipc::open_in_vscode_diff,

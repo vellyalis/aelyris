@@ -16,15 +16,15 @@
   /* Level 0: Terminal center, clear dark water passthrough */
   --glass-clear: rgba(5, 9, 15, 0.026);
   /* Level 1: Ground, sidebar rail, darkest anchor */
-  --glass-ground: rgba(2, 7, 13, 0.34);
+  --glass-ground: rgba(2, 7, 13, 0.24);
   /* Level 2: Frame, header, statusbar */
-  --glass-frame: rgba(4, 12, 21, 0.28);
+  --glass-frame: rgba(4, 12, 21, 0.18);
   /* Level 3: Standard, left panel */
-  --glass-standard: rgba(3, 12, 22, 0.36);
+  --glass-standard: rgba(3, 12, 22, 0.24);
   /* Level 3.5: Dense, right panel, higher information density */
-  --glass-dense: rgba(4, 13, 23, 0.44);
+  --glass-dense: rgba(4, 13, 23, 0.3);
   /* Level 4: Thick, cards and elevated surfaces */
-  --glass-thick: rgba(4, 14, 25, 0.5);
+  --glass-thick: rgba(4, 14, 25, 0.36);
   /* Level 5: Solid — modals, dialogs (still opaque-ish so dialog
      chrome reads against any wallpaper, not just dark ones). */
   --glass-solid: rgba(26, 26, 26, 0.72);
@@ -38,8 +38,23 @@
   --aether-border: rgba(121, 202, 226, 0.1);
   --aether-border-strong: rgba(146, 221, 239, 0.16);
 
+  /* Wallpaper + window defaults. These MUST live only on :root (i.e. <html>)
+   * — the same element useTheme.ts writes its inline override to. Declaring
+   * them again on `body`/`#root` would re-set the property on those closer
+   * ancestors of `.app-container::before`, shadowing the inherited inline URL
+   * and forcing the wallpaper back to `none`/`0` (the cause of the wallpaper
+   * not rendering). Keep them here so the inline override on <html> wins and
+   * descendants simply inherit the resolved value. */
+  --aether-wallpaper-image: none;
+  --aether-wallpaper-opacity: 0;
+  --aether-wallpaper-position-x: 50%;
+  --aether-wallpaper-position-y: 50%;
+  --aether-wallpaper-size: cover;
+  --aether-window-opacity: 0.95;
+  --aether-window-veil-opacity: 0.006;
+
   --terminal-canvas-bg: rgba(3, 10, 22, 0.5);
-  --terminal-raster-bg: rgba(3, 10, 22, 0.88);
+  --terminal-raster-bg: rgba(3, 10, 22, 0.7);
   --terminal-surface-opacity: 0.82;
   --terminal-well-bg:
     radial-gradient(ellipse at 48% -18%, rgba(72, 185, 220, 0.034), transparent 44%),
@@ -117,14 +132,14 @@
   --material-stage-shadow:
     inset 0 1px 0 rgba(160, 228, 242, 0.03), inset 0 0 0 1px rgba(131, 215, 236, 0.014),
     inset 0 -28px 80px rgba(0, 0, 0, 0.11);
-  --material-panel-filter: blur(16px) saturate(1.14) brightness(0.78) contrast(1.08);
+  --material-panel-filter: blur(8px);
   --material-panel-shadow: var(--rim-top), inset 0 0 0 1px rgba(112, 202, 229, 0.022), 0 8px 24px rgba(0, 0, 0, 0.18);
   --material-card-shadow:
     var(--rim-top), 0 0 0 1px rgba(112, 202, 229, 0.026), 0 1px 2px rgba(0, 0, 0, 0.1), 0 6px 16px rgba(0, 0, 0, 0.08);
   --popup-glass-bg: linear-gradient(180deg, rgba(136, 222, 240, 0.012), transparent 30%), rgba(4, 11, 19, 0.46);
   --popup-glass-border: rgba(124, 214, 235, 0.06);
   --popup-glass-shadow: var(--rim-top), inset 0 0 0 1px rgba(112, 202, 229, 0.018), 0 12px 34px rgba(0, 0, 0, 0.28);
-  --terminal-shell-filter: blur(16px) saturate(1.14) brightness(0.8) contrast(1.08);
+  --terminal-shell-filter: blur(8px);
   --terminal-shell-depth:
     var(--terminal-shadow-inset), inset 0 0 0 1px color-mix(in srgb, var(--terminal-border) 70%, transparent),
     inset 0 1px 0 rgba(174, 231, 242, 0.04), inset 0 -1px 0 rgba(98, 188, 216, 0.022);
@@ -645,13 +660,6 @@ body,
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   position: relative;
-  --aether-wallpaper-image: none;
-  --aether-wallpaper-opacity: 0;
-  --aether-wallpaper-position-x: 50%;
-  --aether-wallpaper-position-y: 50%;
-  --aether-wallpaper-size: cover;
-  --aether-window-opacity: 0.95;
-  --aether-window-veil-opacity: 0.036;
 }
 
 /* Browser-only preview backplane. Tauri gets real Acrylic from DWM, but
@@ -681,19 +689,15 @@ html[data-aether-host="browser"][data-mood="aether-sakura"] #root {
     rgba(var(--sakura-root-rgb, 255, 248, 252), var(--sakura-root-alpha, 0.08));
 }
 
-/* Native Tauri runs on real Acrylic/Mica, so bright wallpapers can leak
- * through ultra-low-alpha glass as cloudy white. This transparent water
- * veil darkens only the root backplane: panels and the app stage stay
- * translucent, but the backdrop now reads as clear depth instead of milk. */
+/* Native Tauri runs on real Acrylic/Mica. Keep the root plane transparent so
+ * Windows can show the windows behind Aether; only the pseudo-element below
+ * adds a very thin lens tint. */
 html[data-aether-host="tauri"] #root {
   --native-backdrop-veil:
-    radial-gradient(ellipse at 38% -8%, rgba(75, 181, 220, 0.09), transparent 46%),
-    radial-gradient(ellipse at 86% 12%, rgba(154, 224, 238, 0.032), transparent 36%),
-    linear-gradient(180deg, rgba(0, 8, 18, 0.42), rgba(1, 7, 14, 0.5));
-  background:
-    radial-gradient(ellipse at 42% 0%, rgba(87, 190, 224, 0.07), transparent 42%),
-    radial-gradient(ellipse at 82% 16%, rgba(180, 232, 242, 0.032), transparent 34%),
-    linear-gradient(180deg, rgba(0, 8, 18, 0.28), rgba(1, 7, 14, 0.36));
+    radial-gradient(ellipse at 38% -8%, rgba(75, 181, 220, 0.035), transparent 46%),
+    radial-gradient(ellipse at 86% 12%, rgba(154, 224, 238, 0.018), transparent 36%),
+    linear-gradient(180deg, rgba(0, 8, 18, 0.035), rgba(1, 7, 14, 0.05));
+  background: transparent;
 }
 
 html[data-aether-host="tauri"][data-mood="aether-sakura"] #root {
@@ -733,21 +737,20 @@ html[data-aether-host="tauri"][data-mood="aether-sakura"] #root {
  * event listener). The override below applies only when the
  * dataset attribute explicitly says the window is blurred. */
 body[data-window-focused="false"] {
-  --glass-frame: rgba(5, 12, 20, 0.3);
-  --glass-standard: rgba(4, 12, 21, 0.4);
-  --glass-dense: rgba(4, 13, 23, 0.48);
-  --glass-thick: rgba(5, 15, 26, 0.54);
-  /* Ground anchor stays readable on inactive, but must not turn
-   * the window into an opaque slab when Acrylic is muted by DWM. */
-  --glass-ground: rgba(2, 7, 13, 0.38);
+  --glass-frame: rgba(5, 12, 20, 0.18);
+  --glass-standard: rgba(4, 12, 21, 0.24);
+  --glass-dense: rgba(4, 13, 23, 0.3);
+  --glass-thick: rgba(5, 15, 26, 0.36);
+  /* Keep inactive windows translucent; DWM already mutes Acrylic on blur. */
+  --glass-ground: rgba(2, 7, 13, 0.22);
 }
 
 html[data-mood="aether-sakura"] body[data-window-focused="false"] {
-  --glass-frame: rgba(255, 241, 248, 0.58);
-  --glass-standard: rgba(255, 240, 248, 0.7);
-  --glass-dense: rgba(255, 237, 246, 0.78);
-  --glass-thick: rgba(255, 234, 244, 0.86);
-  --glass-ground: rgba(255, 243, 249, 0.6);
+  --glass-frame: rgba(255, 241, 248, 0.38);
+  --glass-standard: rgba(255, 240, 248, 0.46);
+  --glass-dense: rgba(255, 237, 246, 0.54);
+  --glass-thick: rgba(255, 234, 244, 0.62);
+  --glass-ground: rgba(255, 243, 249, 0.4);
 }
 
 /* Broad light leak, not a decorative orb: warm console glow + cool moon edge. */
@@ -816,6 +819,12 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  /* Opaque backstop UNDER the wallpaper image: when a wallpaper is set this makes it
+   * the app's solid backdrop (covering the desktop even if the image is scaled /
+   * letterboxed / has alpha). useTheme sets the backstop to an opaque mood colour when
+   * an image is present and to `transparent` when none, so a wallpaper-less window stays
+   * see-through to the desktop. */
+  background-color: var(--aether-wallpaper-backstop, transparent);
   background-image: var(--aether-wallpaper-image);
   background-position: var(--aether-wallpaper-position-x) var(--aether-wallpaper-position-y);
   background-size: var(--aether-wallpaper-size);

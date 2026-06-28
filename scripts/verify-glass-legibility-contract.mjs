@@ -7,6 +7,7 @@ const OUT = join(ROOT, ".codex-auto", "quality", "glass-legibility-contract.json
 const sourcePaths = {
   globalCss: "src/styles/global.css",
   terminalAreaCss: "src/features/terminal/TerminalArea.module.css",
+  terminalCanvas: "src/features/terminal/TerminalCanvas.tsx",
   paneTreeCss: "src/features/terminal/pane-tree/PaneTreeRenderer.module.css",
   buttonCss: "src/shared/ui/Button.module.css",
   selectCss: "src/shared/ui/Select.module.css",
@@ -108,6 +109,7 @@ function add(checks, id, ok, detail, evidence = {}) {
 
 const globalCss = readSource(sourcePaths.globalCss);
 const terminalAreaCss = readSource(sourcePaths.terminalAreaCss);
+const terminalCanvas = readSource(sourcePaths.terminalCanvas);
 const paneTreeCss = readSource(sourcePaths.paneTreeCss);
 const buttonCss = readSource(sourcePaths.buttonCss);
 const selectCss = readSource(sourcePaths.selectCss);
@@ -149,11 +151,11 @@ const themeApplierTest = readSource(sourcePaths.themeApplierTest);
 const checks = [];
 const defaultGlass = {
   "--glass-clear": { min: 0, max: 0.04 },
-  "--glass-ground": { min: 0.3, max: 0.42 },
-  "--glass-frame": { min: 0.24, max: 0.34 },
-  "--glass-standard": { min: 0.32, max: 0.42 },
-  "--glass-dense": { min: 0.4, max: 0.5 },
-  "--glass-thick": { min: 0.46, max: 0.58 },
+  "--glass-ground": { min: 0.2, max: 0.32 },
+  "--glass-frame": { min: 0.16, max: 0.28 },
+  "--glass-standard": { min: 0.22, max: 0.34 },
+  "--glass-dense": { min: 0.28, max: 0.4 },
+  "--glass-thick": { min: 0.34, max: 0.46 },
   "--glass-solid": { min: 0.68, max: 0.78 },
 };
 
@@ -179,6 +181,7 @@ for (const token of rootTextTokens) {
 
 const appContainerRule = ruleBody(globalCss, ".app-container");
 const rootRule = ruleBody(globalCss, "html,\\s*body,\\s*#root");
+const tauriRootRule = ruleBody(globalCss, 'html[data-aether-host="tauri"] #root');
 const exitBannerDisabledRule = ruleBody(terminalAreaCss, ".exitBannerBtn:disabled");
 const terminalOpacitySelectors = opacitySelectors(terminalAreaCss);
 const paneTreeOpacitySelectors = opacitySelectors(paneTreeCss);
@@ -273,6 +276,24 @@ add(
   !/\bopacity\s*:/.test(appContainerRule) && !/\bopacity\s*:/.test(rootRule),
   "app/root containers do not dim their descendants; transparency lives in material layers and pseudo backdrops",
   { appContainerHasOpacity: /\bopacity\s*:/.test(appContainerRule), rootHasOpacity: /\bopacity\s*:/.test(rootRule) },
+);
+add(
+  checks,
+  "tauri-root-backplane-transparent",
+  /background\s*:\s*transparent\s*;/.test(tauriRootRule) &&
+    !/rgba\(0,\s*8,\s*18,\s*0\.(?:2|3|4)/.test(tauriRootRule),
+  "Tauri root backplane remains transparent so native WebView glass can reveal windows behind it",
+  { rule: tauriRootRule.trim() },
+);
+add(
+  checks,
+  "terminal-solid-clarity-keeps-raster-translucent",
+  terminalCanvas.includes("Solid clarity now means solid glyph paint") &&
+    !terminalCanvas.includes("forceOpaqueCssColor(base)") &&
+    terminalAreaCss.includes("* 58%") &&
+    terminalAreaCss.includes("* 56%") &&
+    paneTreeCss.includes("* 58%"),
+  "solid terminal clarity preserves glyph contrast without forcing the backing raster opaque",
 );
 add(
   checks,

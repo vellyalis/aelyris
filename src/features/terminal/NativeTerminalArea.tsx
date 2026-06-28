@@ -360,7 +360,10 @@ export function NativeTerminalArea({
   const terminalFontFamily = useAppStore((s) => s.terminalFontFamily);
   const terminalFontSize = useAppStore((s) => s.terminalFontSize);
   const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
-  const cellMetrics = useTerminalCellMetrics(terminalFontSize, terminalFontFamily);
+  const terminalLineHeight = useAppStore((s) => s.terminalLineHeight);
+  const cursorStyle = useAppStore((s) => s.cursorStyle);
+  const cursorBlink = useAppStore((s) => s.cursorBlink);
+  const cellMetrics = useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   // Phase B: the hidden IME textarea on the canvas is the real keyboard-
@@ -1380,7 +1383,10 @@ export function NativeTerminalArea({
               rows={dims.rows}
               fontSize={terminalFontSize}
               fontFamily={terminalFontFamily}
+              lineHeight={terminalLineHeight}
               textClarity={terminalTextClarity}
+              cursorStyle={cursorStyle}
+              cursorBlink={cursorBlink}
               snapshotOverride={previewSnapshot}
               writeBytes={writePreviewBytes}
               showInputDiagnosticsOverlay={false}
@@ -1471,7 +1477,10 @@ export function NativeTerminalArea({
               rows={dims.rows}
               fontSize={terminalFontSize}
               fontFamily={terminalFontFamily}
+              lineHeight={terminalLineHeight}
               textClarity={terminalTextClarity}
+              cursorStyle={cursorStyle}
+              cursorBlink={cursorBlink}
               searchMatches={searchMatches}
               activeSearchMatch={activeSearchMatch}
               ghostSuggestion={snapshotOverlay ? null : mirrorEnabled ? suggestion : null}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatFallbackError, reportFallback } from "../../shared/lib/fallbackTelemetry";
 
 export const TERMINAL_FONT_SIZE = 14;
+export const TERMINAL_LINE_HEIGHT = 1.25;
 export const TERMINAL_FONT_FAMILY =
   "'Cascadia Code', 'Cascadia Mono', 'Cascadia Next JP', 'BIZ UDGothic', 'Yu Gothic UI', 'Meiryo', 'Noto Sans Mono CJK JP', 'IBM Plex Mono', monospace";
 
@@ -36,23 +37,29 @@ export function measureTerminalCellWidth(
   return snapTerminalCssPixel(measured > 0 ? measured : fallback);
 }
 
-export function terminalCellHeight(fontSize: number = TERMINAL_FONT_SIZE): number {
-  return Math.round(fontSize * 1.25);
+export function terminalCellHeight(
+  fontSize: number = TERMINAL_FONT_SIZE,
+  lineHeight: number = TERMINAL_LINE_HEIGHT,
+): number {
+  const multiplier = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : TERMINAL_LINE_HEIGHT;
+  return Math.round(fontSize * multiplier);
 }
 
 export function measureTerminalCellMetrics(
   fontSize: number = TERMINAL_FONT_SIZE,
   fontFamily: string = TERMINAL_FONT_FAMILY,
+  lineHeight: number = TERMINAL_LINE_HEIGHT,
 ): TerminalCellMetrics {
   return {
     width: measureTerminalCellWidth(fontSize, fontFamily),
-    height: terminalCellHeight(fontSize),
+    height: terminalCellHeight(fontSize, lineHeight),
   };
 }
 
 export function useTerminalCellMetrics(
   fontSize: number = TERMINAL_FONT_SIZE,
   fontFamily: string = TERMINAL_FONT_FAMILY,
+  lineHeight: number = TERMINAL_LINE_HEIGHT,
 ): TerminalCellMetrics {
   const [fontEpoch, setFontEpoch] = useState(0);
 
@@ -86,5 +93,8 @@ export function useTerminalCellMetrics(
   }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: fontEpoch retriggers measurement once async font loads change glyph widths.
-  return useMemo(() => measureTerminalCellMetrics(fontSize, fontFamily), [fontSize, fontFamily, fontEpoch]);
+  return useMemo(
+    () => measureTerminalCellMetrics(fontSize, fontFamily, lineHeight),
+    [fontSize, fontFamily, lineHeight, fontEpoch],
+  );
 }

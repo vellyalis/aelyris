@@ -343,7 +343,7 @@ export function materialOverridesToCSS(
     "--mood-toolkit-widget-bg": `linear-gradient(150deg, ${softLight}, rgba(${backdropRgb}, 0.14)), rgba(${panelRgb}, ${panelSoftAlpha})`,
     "--mood-logs-widget-bg": `linear-gradient(180deg, ${softLight}, rgba(${backdropRgb}, 0.12)), rgba(${panelRgb}, ${clampAlpha(panelSoftAlpha - 0.04, 0.12, 0.95)})`,
     "--terminal-canvas-bg": `rgba(${terminalRgb}, ${terminalAlpha})`,
-    "--terminal-raster-bg": `rgba(${terminalRgb}, ${clampAlpha(terminalAlpha + 0.34, 0.82, 0.96)})`,
+    "--terminal-raster-bg": `rgba(${terminalRgb}, ${clampAlpha(terminalAlpha + 0.22, 0.28, 0.9)})`,
     "--terminal-well-bg": `radial-gradient(ellipse at 44% -18%, rgba(${panelRgb}, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(${chromeRgb}, 0.1), transparent 38%), linear-gradient(180deg, rgba(${terminalRgb}, ${Math.min(0.68, terminalAlpha + 0.06)}), rgba(${terminalRgb}, ${Math.min(0.72, terminalAlpha + 0.08)}))`,
     "--terminal-chrome-bg": `rgba(${terminalRgb}, ${Math.min(0.7, terminalAlpha + 0.04)})`,
     "--terminal-chrome-bg-focus": `rgba(${terminalRgb}, ${Math.min(0.78, terminalAlpha + 0.12)})`,
@@ -366,11 +366,11 @@ function applyReadableDarkGlassFloor(mood: MoodPresetId, vars: Record<string, st
   if (mood === "aether-sakura" || mood === "aether-crystal") return vars;
   return {
     ...vars,
-    "--glass-ground": withMinimumAlpha(vars["--glass-ground"], 0.32) ?? vars["--glass-ground"],
-    "--glass-frame": withMinimumAlpha(vars["--glass-frame"], 0.26) ?? vars["--glass-frame"],
-    "--glass-standard": withMinimumAlpha(vars["--glass-standard"], 0.34) ?? vars["--glass-standard"],
-    "--glass-dense": withMinimumAlpha(vars["--glass-dense"], 0.42) ?? vars["--glass-dense"],
-    "--glass-thick": withMinimumAlpha(vars["--glass-thick"], 0.48) ?? vars["--glass-thick"],
+    "--glass-ground": withMinimumAlpha(vars["--glass-ground"], 0.09) ?? vars["--glass-ground"],
+    "--glass-frame": withMinimumAlpha(vars["--glass-frame"], 0.08) ?? vars["--glass-frame"],
+    "--glass-standard": withMinimumAlpha(vars["--glass-standard"], 0.12) ?? vars["--glass-standard"],
+    "--glass-dense": withMinimumAlpha(vars["--glass-dense"], 0.15) ?? vars["--glass-dense"],
+    "--glass-thick": withMinimumAlpha(vars["--glass-thick"], 0.18) ?? vars["--glass-thick"],
   };
 }
 
@@ -430,39 +430,39 @@ function darkMoodSurfaces(tone: {
   text: string;
 }): MoodSurfaceCSS {
   return {
-    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), rgba(${tone.shell}, 0.42)`,
+    "--chrome-frame-bg": `linear-gradient(180deg, rgba(${tone.accent}, 0.026), transparent 72%), linear-gradient(90deg, rgba(${tone.accent}, 0.022), transparent 36%, transparent 66%, rgba(${tone.gold}, 0.012)), rgba(${tone.shell}, 0.28)`,
     "--chrome-frame-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.1)",
     "--chrome-frame-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.08), inset 0 -1px 0 rgba(${tone.accent}, 0.08)`,
     "--chrome-control-hover-bg": `rgba(${tone.accent}, 0.095)`,
     "--chrome-control-hover-border": `rgba(${tone.accent}, 0.16)`,
     "--chrome-separator-bg": `linear-gradient(180deg, transparent, rgba(${tone.accent}, 0.18), transparent)`,
-    "--statusbar-bg": `rgba(${tone.shell}, 0.4)`,
+    "--statusbar-bg": `rgba(${tone.shell}, 0.26)`,
     "--statusbar-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.08)",
     "--statusbar-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.07)`,
-    "--material-panel-filter": "blur(16px) saturate(1.14) brightness(0.8) contrast(1.08)",
-    "--terminal-shell-filter": "blur(16px) saturate(1.14) brightness(0.82) contrast(1.08)",
+    "--material-panel-filter": "blur(8px)",
+    "--terminal-shell-filter": "blur(8px)",
     "--material-panel-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 12px 30px rgba(0, 0, 0, 0.2)`,
     "--material-card-shadow": `var(--rim-top), 0 0 0 1px rgba(${tone.accent}, 0.05), 0 8px 20px rgba(0, 0, 0, 0.18)`,
-    "--popup-glass-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 40%), linear-gradient(145deg, rgba(${tone.accent}, 0.04), transparent 52%), rgba(${tone.panelStrong}, 0.7)`,
+    "--popup-glass-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 40%), linear-gradient(145deg, rgba(${tone.accent}, 0.04), transparent 52%), rgba(${tone.panelStrong}, 0.52)`,
     "--popup-glass-border": `rgba(${tone.accent}, 0.14)`,
     "--popup-glass-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 16px 38px rgba(0, 0, 0, 0.26)`,
     "--scrim-standard-bg": `linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(${tone.shell}, 0.46)), rgba(${tone.shell}, 0.2)`,
     "--scrim-heavy-bg": `linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(${tone.shell}, 0.58)), rgba(${tone.shell}, 0.28)`,
-    "--dialog-surface": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 32%), linear-gradient(145deg, rgba(${tone.accent}, 0.045), transparent 50%), rgba(${tone.panelStrong}, 0.78)`,
+    "--dialog-surface": `linear-gradient(180deg, rgba(${tone.text}, 0.045), transparent 32%), linear-gradient(145deg, rgba(${tone.accent}, 0.045), transparent 50%), rgba(${tone.panelStrong}, 0.58)`,
     "--dialog-surface-blur": "blur(20px)",
-    "--settings-control-bg": `rgba(${tone.panel}, 0.54)`,
-    "--settings-card-bg": `rgba(${tone.panel}, 0.44)`,
-    "--settings-card-bg-hover": `rgba(${tone.panelStrong}, 0.54)`,
-    "--settings-card-bg-active": `rgba(${tone.panelStrong}, 0.62)`,
-    "--toolkit-grid-bg": `linear-gradient(135deg, rgba(${tone.accent}, 0.075), transparent 38%, rgba(${tone.gold}, 0.04)), rgba(${tone.panel}, 0.32)`,
+    "--settings-control-bg": `rgba(${tone.panel}, 0.24)`,
+    "--settings-card-bg": `rgba(${tone.panel}, 0.28)`,
+    "--settings-card-bg-hover": `rgba(${tone.panelStrong}, 0.38)`,
+    "--settings-card-bg-active": `rgba(${tone.panelStrong}, 0.46)`,
+    "--toolkit-grid-bg": `linear-gradient(135deg, rgba(${tone.accent}, 0.075), transparent 38%, rgba(${tone.gold}, 0.04)), rgba(${tone.panel}, 0.22)`,
     "--toolkit-grid-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.06)`,
-    "--toolkit-tile-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.035), rgba(${tone.accent}, 0.022)), rgba(${tone.panel}, 0.42)`,
-    "--toolkit-tile-primary-bg": `linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(${tone.panelStrong}, 0.48)`,
-    "--toolkit-tile-hover-bg": `linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent), transparent 58%), rgba(${tone.panelStrong}, 0.56)`,
+    "--toolkit-tile-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.035), rgba(${tone.accent}, 0.022)), rgba(${tone.panel}, 0.28)`,
+    "--toolkit-tile-primary-bg": `linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent), transparent 46%), rgba(${tone.panelStrong}, 0.34)`,
+    "--toolkit-tile-hover-bg": `linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 12%, transparent), transparent 58%), rgba(${tone.panelStrong}, 0.42)`,
     "--toolkit-tile-text": "var(--text-primary)",
-    "--toolkit-icon-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.055), rgba(${tone.accent}, 0.035)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(${tone.panelStrong}, 0.52))`,
-    "--toolkit-bottom-bg": `linear-gradient(90deg, rgba(${tone.accent}, 0.07), transparent 52%, rgba(${tone.gold}, 0.045)), rgba(${tone.panel}, 0.34)`,
-    "--toolkit-bottom-btn-bg": `rgba(${tone.panelStrong}, 0.46)`,
+    "--toolkit-icon-bg": `linear-gradient(180deg, rgba(${tone.text}, 0.055), rgba(${tone.accent}, 0.035)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(${tone.panelStrong}, 0.38))`,
+    "--toolkit-bottom-bg": `linear-gradient(90deg, rgba(${tone.accent}, 0.07), transparent 52%, rgba(${tone.gold}, 0.045)), rgba(${tone.panel}, 0.24)`,
+    "--toolkit-bottom-btn-bg": `rgba(${tone.panelStrong}, 0.32)`,
   };
 }
 
@@ -478,8 +478,8 @@ function crystalMoodSurfaces(): MoodSurfaceCSS {
     "--statusbar-bg": "rgba(2, 10, 20, 0.24)",
     "--statusbar-filter": "blur(22px) saturate(1.24) brightness(0.9) contrast(1.08)",
     "--statusbar-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.075), inset 0 -1px 0 rgba(139, 233, 255, 0.06)",
-    "--material-panel-filter": "blur(24px) saturate(1.3) brightness(0.88) contrast(1.08)",
-    "--terminal-shell-filter": "blur(22px) saturate(1.24) brightness(0.86) contrast(1.08)",
+    "--material-panel-filter": "blur(8px)",
+    "--terminal-shell-filter": "blur(8px)",
     "--material-panel-shadow":
       "var(--rim-top), inset 0 0 0 1px rgba(139, 233, 255, 0.052), 0 16px 38px rgba(0, 0, 0, 0.16)",
     "--material-card-shadow": "var(--rim-top), 0 0 0 1px rgba(139, 233, 255, 0.055), 0 10px 26px rgba(0, 0, 0, 0.14)",
@@ -560,8 +560,8 @@ const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     "--statusbar-bg": "rgba(255, 238, 247, 0.82)",
     "--statusbar-filter": "blur(12px) saturate(1.12) brightness(1.02) contrast(1.02)",
     "--statusbar-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(159, 75, 97, 0.07)",
-    "--material-panel-filter": "blur(14px) saturate(1.14) brightness(1.02) contrast(1.02)",
-    "--terminal-shell-filter": "blur(12px) saturate(1.12) brightness(0.96) contrast(1.06)",
+    "--material-panel-filter": "blur(8px)",
+    "--terminal-shell-filter": "blur(8px)",
     "--material-panel-shadow":
       "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.06), 0 10px 28px rgba(80, 32, 52, 0.12)",
     "--material-card-shadow": "var(--rim-top), 0 0 0 1px rgba(159, 75, 97, 0.07), 0 8px 18px rgba(80, 32, 52, 0.1)",
@@ -1184,11 +1184,11 @@ const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--mood-window-rim":
       "inset 0 1px 0 rgba(238, 246, 250, 0.08), inset 0 0 0 1px rgba(203, 220, 232, 0.045), inset 0 -1px 0 rgba(199, 179, 122, 0.026)",
     "--mood-left-panel-bg":
-      "linear-gradient(180deg, rgba(124, 214, 235, 0.016), transparent 26%), linear-gradient(145deg, rgba(0, 126, 190, 0.034), transparent 48%), rgba(4, 13, 23, 0.42)",
+      "linear-gradient(180deg, rgba(124, 214, 235, 0.016), transparent 26%), linear-gradient(145deg, rgba(0, 126, 190, 0.034), transparent 48%), rgba(4, 13, 23, 0.26)",
     "--mood-center-panel-bg":
       "radial-gradient(ellipse at 50% 0%, rgba(72, 185, 220, 0.024), transparent 42%), linear-gradient(180deg, rgba(4, 13, 23, 0.14), rgba(1, 6, 12, 0.12)), var(--aether-bg)",
     "--mood-right-panel-bg":
-      "linear-gradient(180deg, rgba(124, 214, 235, 0.018), transparent 24%), linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%), rgba(4, 13, 23, 0.48)",
+      "linear-gradient(180deg, rgba(124, 214, 235, 0.018), transparent 24%), linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%), rgba(4, 13, 23, 0.3)",
     "--mood-widget-bg": "linear-gradient(160deg, rgba(5, 18, 31, 0.22), rgba(2, 9, 17, 0.28)), rgba(4, 13, 23, 0.26)",
     "--mood-widget-veil":
       "linear-gradient(180deg, rgba(238, 246, 250, 0.028), transparent 22%), linear-gradient(135deg, rgba(155, 199, 223, 0.022), transparent 42%), linear-gradient(315deg, rgba(199, 179, 122, 0.016), transparent 48%)",

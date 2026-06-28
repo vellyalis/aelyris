@@ -223,7 +223,13 @@ import {
 } from "./shared/lib/rightRailWorkforce";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { isTauriRuntime } from "./shared/lib/tauriRuntime";
-import { useAppStore, type WallpaperSettings } from "./shared/store/appStore";
+import {
+  sanitizeDefaultShell,
+  sanitizeTerminalCursorStyle,
+  sanitizeWindowEffect,
+  useAppStore,
+  type WallpaperSettings,
+} from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
 import type { AccentOverrides } from "./shared/themes/catppuccin";
 import { type MoodMaterialOverrides, type MoodPresetId, normalizeMoodPreset } from "./shared/themes/moods";
@@ -285,13 +291,22 @@ type BootstrapAppConfig = {
     theme: string;
     mood_preset?: string;
     opacity?: number;
+    ui_font_family?: string;
     terminal_font_family?: string;
     font_size?: number;
     terminal_text_clarity?: "glass" | "balanced" | "solid";
     terminal_surface_opacity?: number;
+    line_height?: number;
+    ligatures?: boolean;
+    window_effect?: string;
     theme_overrides?: Record<string, AccentOverrides>;
     mood_material_overrides?: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
     wallpaper_settings_by_mood?: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>;
+  };
+  terminal?: {
+    default_shell?: string;
+    cursor_style?: string;
+    cursor_blink?: boolean;
   };
   ghost_diff?: {
     live_mode?: boolean;
@@ -2331,8 +2346,16 @@ export function App() {
   const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);
   const appWindowOpacity = useAppStore((s) => s.appWindowOpacity);
   const terminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
+  const uiFontFamily = useAppStore((s) => s.uiFontFamily);
   const fallbackTelemetryEvents = useAppStore((s) => s.fallbackTelemetryEvents);
   const recordFallbackTelemetry = useAppStore((s) => s.recordFallbackTelemetry);
+  // Apply the UI font choice to the app-chrome font variable. global.css reads
+  // `--font-ui` for body text and every non-mono surface, so this is the live
+  // consumer for config.appearance.ui_font_family.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty("--font-ui", uiFontFamily);
+  }, [uiFontFamily]);
   useThemeApplier(
     themeId,
     themeOverridesForActive,
@@ -2375,7 +2398,24 @@ export function App() {
           fontSize: cfg.appearance.font_size,
           textClarity: cfg.appearance.terminal_text_clarity,
           surfaceOpacity: cfg.appearance.terminal_surface_opacity,
+          lineHeight: cfg.appearance.line_height,
+          ligatures: cfg.appearance.ligatures,
         });
+        if (cfg.appearance.ui_font_family !== undefined) {
+          store.setUiFontFamily(cfg.appearance.ui_font_family);
+        }
+        if (cfg.appearance.window_effect !== undefined) {
+          store.setWindowEffect(sanitizeWindowEffect(cfg.appearance.window_effect));
+        }
+        if (cfg.terminal?.default_shell !== undefined) {
+          store.setDefaultShell(sanitizeDefaultShell(cfg.terminal.default_shell));
+        }
+        if (cfg.terminal?.cursor_style !== undefined) {
+          store.setCursorStyle(sanitizeTerminalCursorStyle(cfg.terminal.cursor_style));
+        }
+        if (cfg.terminal?.cursor_blink !== undefined) {
+          store.setCursorBlink(cfg.terminal.cursor_blink);
+        }
         store.setGhostDiffLiveMode(cfg.ghost_diff?.live_mode ?? false);
         hydrateRightRailGuardrailSelectionFromConfig(
           cfg.workspace_profile?.global_defaults?.pane_layout?.right_rail_guardrail_profile,
@@ -2649,7 +2689,11 @@ export function App() {
     activityTabs,
     markTabActivity,
     reorderTab,
-  } = useTabManager("powershell");
+    // Seed the first/new tabs from the persisted default shell (config.toml
+    // terminal.default_shell, mirrored into the store/localStorage). Read once
+    // via getState so the initializer is stable — useTabManager only consults
+    // the value when creating the initial tab and via addTab's shell argument.
+  } = useTabManager(useAppStore.getState().defaultShell);
   const activePtyId = tabActivePtyIds[activeTabId] ?? null;
 
   // Loop-dispatched agents → real split panes in the active terminal tab. We

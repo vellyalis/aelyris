@@ -201,13 +201,16 @@ describe("themes/moods — preset metadata", () => {
   });
 
   it("keeps mood glass presets translucent while preserving pane hierarchy", () => {
+    // Lower bound = the readable-dark glass-tier floor (applyReadableDarkGlassFloor); upper
+    // bound = the densest raw mood value. The floor was lowered for the see-through window,
+    // so the lower bounds track it (the transparency slider tunes this same floor).
     const darkRanges = {
       "--glass-clear": 0.02,
-      "--glass-ground": [0.32, 0.42],
-      "--glass-frame": [0.26, 0.36],
-      "--glass-standard": [0.34, 0.44],
-      "--glass-dense": [0.42, 0.52],
-      "--glass-thick": [0.48, 0.58],
+      "--glass-ground": [0.09, 0.32],
+      "--glass-frame": [0.08, 0.28],
+      "--glass-standard": [0.12, 0.34],
+      "--glass-dense": [0.15, 0.4],
+      "--glass-thick": [0.18, 0.46],
     } as const;
     const lightCeilings = {
       "--glass-clear": 0.4,
@@ -300,9 +303,9 @@ describe("themes/moods — preset metadata", () => {
   it("keeps Aether Pro graphite deep instead of cloudy grey", () => {
     const vars = moodPresetToCSS("aether-pro");
 
-    expect(vars["--chrome-frame-bg"]).toContain("rgba(2, 8, 16, 0.42)");
-    expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.42)");
-    expect(vars["--mood-right-panel-bg"]).toContain("rgba(4, 13, 23, 0.48)");
+    expect(vars["--chrome-frame-bg"]).toContain("rgba(2, 8, 16, 0.28)");
+    expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.26)");
+    expect(vars["--mood-right-panel-bg"]).toContain("rgba(4, 13, 23, 0.3)");
     expect(vars["--mood-left-panel-bg"]).not.toContain("238, 246, 250");
     expect(vars["--mood-right-panel-bg"]).not.toContain("var(--glass-dense)");
   });
@@ -353,6 +356,7 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-left-panel-bg"]).toContain("255, 250, 252");
     expect(vars["--mood-left-panel-bg"]).toContain("0.94");
     expect(vars["--terminal-canvas-bg"]).toContain("0.48");
+    expect(vars["--terminal-raster-bg"]).toContain("0.7");
   });
 
   it("switches custom material text to dark ink when a dark preset is tuned to pale surfaces", () => {

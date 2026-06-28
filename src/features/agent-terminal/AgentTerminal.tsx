@@ -54,7 +54,10 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
   const terminalFontFamily = useAppStore((s) => s.terminalFontFamily);
   const terminalFontSize = useAppStore((s) => s.terminalFontSize);
   const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
-  const cellMetrics = useTerminalCellMetrics(terminalFontSize, terminalFontFamily);
+  const terminalLineHeight = useAppStore((s) => s.terminalLineHeight);
+  const cursorStyle = useAppStore((s) => s.cursorStyle);
+  const cursorBlink = useAppStore((s) => s.cursorBlink);
+  const cellMetrics = useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight);
 
   // Measure container → cols/rows, trailing-edge debounced so a continuous
   // resize drag doesn't thrash the backend with resize_terminal calls.
@@ -210,7 +213,10 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
             rows={dims.rows}
             fontSize={terminalFontSize}
             fontFamily={terminalFontFamily}
+            lineHeight={terminalLineHeight}
             textClarity={terminalTextClarity}
+            cursorStyle={cursorStyle}
+            cursorBlink={cursorBlink}
             preferAiInputAnchor
             onCanvasRef={(el) => (canvasElRef.current = el)}
             onInputRef={(el) => (canvasInputElRef.current = el)}

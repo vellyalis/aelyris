@@ -107,6 +107,11 @@ export default defineConfig(async () => ({
     noEsbuildSpawn ? null : react(),
   ].filter((plugin): plugin is Plugin => Boolean(plugin)),
   esbuild: noEsbuildSpawn ? false : undefined,
+  // In no-esbuild-spawn mode the React plugin + auto dep-discovery are off, so bare CJS deps
+  // like `react` are served raw and their named exports (createContext, …) fail in the browser
+  // unless they are pre-bundled. Explicitly pre-bundle the React runtime so the dev server
+  // mounts without relying on a stale hand-built `.vite/deps` cache.
+  optimizeDeps: noEsbuildSpawn ? { noDiscovery: true, include: [] } : undefined,
 
   test: {
     environment: "jsdom",

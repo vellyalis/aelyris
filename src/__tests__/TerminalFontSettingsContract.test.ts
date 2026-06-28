@@ -45,7 +45,10 @@ describe("terminal font settings contract", () => {
       expect(source).toContain("terminalFontFamily = useAppStore((s) => s.terminalFontFamily)");
       expect(source).toContain("terminalFontSize = useAppStore((s) => s.terminalFontSize)");
       expect(source).toContain("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)");
-      expect(source).toContain("useTerminalCellMetrics(terminalFontSize, terminalFontFamily)");
+      expect(source).toContain("terminalLineHeight = useAppStore((s) => s.terminalLineHeight)");
+      // Line height now threads through cell metrics so the configured
+      // multiplier drives row spacing in both normal and agent panes.
+      expect(source).toContain("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)");
       expect(source).toContain("fontSize={terminalFontSize}");
       expect(source).toContain("fontFamily={terminalFontFamily}");
       expect(source).toContain("textClarity={terminalTextClarity}");
@@ -56,6 +59,7 @@ describe("terminal font settings contract", () => {
     const store = read("src/shared/store/appStore.ts");
     const canvas = read("src/features/terminal/TerminalCanvas.tsx");
     const terminalColors = read("src/features/terminal/terminalColors.ts");
+    const terminalPaint = read("src/features/terminal/terminalPaint.ts");
     const paneTreeRenderer = read("src/features/terminal/pane-tree/PaneTreeRenderer.tsx");
     const paneTreeRendererStyles = read("src/features/terminal/pane-tree/PaneTreeRenderer.module.css");
     const terminalAreaStyles = read("src/features/terminal/TerminalArea.module.css");
@@ -74,14 +78,15 @@ describe("terminal font settings contract", () => {
     expect(canvas).toContain("data-terminal-text-clarity={textClarity}");
     expect(canvas).toContain("--terminal-surface-opacity");
     // The colour/contrast maths moved into the testable terminalColors module;
-    // the canvas wires to it and still owns the clarity render contract.
-    expect(canvas).toContain('from "./terminalColors"');
+    // terminalPaint wires to it while the canvas keeps the backing translucent.
+    expect(terminalPaint).toContain('from "./terminalColors"');
+    expect(canvas).not.toContain("forceOpaqueCssColor");
     expect(terminalColors).toContain("export function forceOpaqueCssColor");
     expect(terminalColors).toContain("export function enhanceTerminalTextColor");
     expect(terminalColors).toContain("export function minimumTerminalContrastRatio");
     expect(terminalColors).toContain("export function dimAlphaForTextClarity");
     expect(canvas).toContain('textClarity = "solid"');
-    expect(canvas).toContain('textClarity === "solid"');
+    expect(canvas).toContain("Solid clarity now means solid glyph paint");
     expect(paneTreeRenderer).toContain("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)");
     expect(paneTreeRenderer).toContain("data-terminal-text-clarity={terminalTextClarity}");
     expect(paneTreeRenderer).toContain("snapPaneRectToDevicePixels");

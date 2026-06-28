@@ -2745,8 +2745,8 @@ const tauriRuntimeHygieneSourcePass =
   ptySidecarSource.includes("stdout(std::process::Stdio::null())") &&
   ptySidecarSource.includes("stderr(std::process::Stdio::null())") &&
   tauriLibSource.includes("apply_windows_app_identity();") &&
-  tauriLibSource.includes("AETHER_EXPERIMENTAL_DWM_CHROME") &&
-  tauriLibSource.includes("using Tauri windowEffects; direct DWM chrome disabled") &&
+  tauriLibSource.includes("AETHER_DISABLE_DWM_CHROME") &&
+  tauriLibSource.includes("direct DWM chrome disabled by env; using Tauri windowEffects") &&
   tauriGoalTrackScriptSource.includes("browser.disconnect") &&
   tauriGoalTrackScriptSource.includes("AETHER_TAURI_GOAL_TRACK_CLOSE_BROWSER") &&
   liveAiCliPostLaunchChaosSource.includes("browser.disconnect") &&
@@ -2781,7 +2781,7 @@ add(
         ...(tauriRuntimeHygieneSourcePass
           ? []
           : [
-              "Tauri CDP verifier shutdown paths are not all detach-first, helper output is not silenced, direct DWM chrome is not opt-in, or hygiene script is incomplete",
+              "Tauri CDP verifier shutdown paths are not all detach-first, helper output is not silenced, direct DWM chrome is not env-gated, or hygiene script is incomplete",
             ]),
         ...(tauriRuntimeHygieneChecks.noCrashMarkers === true
           ? []

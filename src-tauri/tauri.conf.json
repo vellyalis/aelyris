@@ -20,6 +20,7 @@
         "minHeight": 560,
         "decorations": false,
         "transparent": true,
+        "backgroundColor": [0, 0, 0, 0],
         "visible": true,
         "windowEffects": {
           "effects": ["acrylic"],

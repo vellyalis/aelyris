@@ -10,12 +10,12 @@
         "minHeight": 560,
         "decorations": false,
         "transparent": true,
+        "backgroundColor": [0, 0, 0, 0],
         "visible": true,
         "windowEffects": {
           "effects": ["acrylic"],
           "state": "active"
-        },
-        "additionalBrowserArgs": "--remote-debugging-port=9222 --remote-allow-origins=*"
+        }
       }
     ]
   }

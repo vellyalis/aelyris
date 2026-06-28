@@ -807,8 +807,8 @@ describe("Release evidence gates", () => {
     expect(ptySidecar).toContain("stdout(std::process::Stdio::null())");
     expect(ptySidecar).toContain("stderr(std::process::Stdio::null())");
     expect(lib).toContain("apply_windows_app_identity();");
-    expect(lib).toContain("AETHER_EXPERIMENTAL_DWM_CHROME");
-    expect(lib).toContain("using Tauri windowEffects; direct DWM chrome disabled");
+    expect(lib).toContain("AETHER_DISABLE_DWM_CHROME");
+    expect(lib).toContain("direct DWM chrome disabled by env; using Tauri windowEffects");
     expect(score).toContain("p2-07-live-tauri-pty-ai-cli-chaos.json");
     expect(score).toContain('"live-ai-cli-post-launch-chaos"');
     expect(score).toContain("Live AI CLI post-launch chaos");
@@ -826,7 +826,7 @@ describe("Release evidence gates", () => {
     expect(score).toContain("latest Tauri dev logs contain helper command output leaks");
     expect(score).toContain("historical Tauri runtime incidents do not have a newer clean verification run");
     expect(score).toContain("helper output is not silenced");
-    expect(score).toContain("direct DWM chrome is not opt-in");
+    expect(score).toContain("direct DWM chrome is not env-gated");
     expect(score).toContain("authenticated-ai-cli-prompt-smoke.json");
     expect(score).toContain('"authenticated-ai-cli-prompt-smoke"');
     expect(score).toContain("Authenticated AI CLI prompt smoke");

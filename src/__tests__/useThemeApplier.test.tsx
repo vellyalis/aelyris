@@ -200,6 +200,7 @@ describe("useThemeApplier", () => {
     expect(style.getPropertyValue("--mood-left-panel-bg")).toContain("0.18");
     expect(style.getPropertyValue("--statusbar-bg")).toContain("0.16");
     expect(style.getPropertyValue("--terminal-canvas-bg")).toContain("0.08");
+    expect(style.getPropertyValue("--terminal-raster-bg")).toContain("0.3");
     expect(style.getPropertyValue("--glass-dense")).not.toContain("0.72");
   });
 
@@ -235,15 +236,15 @@ describe("useThemeApplier", () => {
       expect(document.documentElement.style.getPropertyValue("--aether-window-opacity").trim()).toBe("0.62");
     });
 
-    expect(document.documentElement.style.getPropertyValue("--aether-window-veil-opacity").trim()).toBe("0.274");
+    expect(document.documentElement.style.getPropertyValue("--aether-window-veil-opacity").trim()).toBe("0.046");
     expect(document.documentElement.style.opacity).toBe("");
   });
 
   it("applies terminal surface opacity as material strength without dimming text nodes", async () => {
-    render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" terminalSurfaceOpacity={0.58} />);
+    render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" terminalSurfaceOpacity={0.26} />);
 
     await waitFor(() => {
-      expect(document.documentElement.style.getPropertyValue("--terminal-surface-opacity").trim()).toBe("0.58");
+      expect(document.documentElement.style.getPropertyValue("--terminal-surface-opacity").trim()).toBe("0.26");
     });
 
     expect(document.documentElement.style.opacity).toBe("");
@@ -260,8 +261,15 @@ describe("useThemeApplier", () => {
     expect(style.getPropertyValue("--text-primary").trim()).toBe("#f6fbff");
     expect(style.getPropertyValue("--text-secondary").trim()).toBe("#cfe4f3");
     expect(style.getPropertyValue("--text-muted").trim()).toBe("#9fb8cb");
-    expect(style.getPropertyValue("--glass-standard").trim()).toContain("0.34");
-    expect(style.getPropertyValue("--glass-dense").trim()).toContain("0.42");
+    // Pane material must stay translucent (not an opaque slab). Assert the intent
+    // robustly via the resolved alpha rather than pinning a floor-dependent literal,
+    // since the glass-tier floor is user-tunable (transparency slider).
+    const glassAlpha = (token: string): number =>
+      Number(style.getPropertyValue(token).trim().match(/([\d.]+)\)\s*$/)?.[1] ?? "1");
+    expect(glassAlpha("--glass-standard")).toBeGreaterThan(0);
+    expect(glassAlpha("--glass-standard")).toBeLessThan(0.5);
+    expect(glassAlpha("--glass-dense")).toBeGreaterThan(0);
+    expect(glassAlpha("--glass-dense")).toBeLessThan(0.5);
   });
 
   it("reports theme preference persistence failures instead of silently losing customization", async () => {
