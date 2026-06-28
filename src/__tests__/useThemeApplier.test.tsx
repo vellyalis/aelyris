@@ -260,7 +260,11 @@ describe("useThemeApplier", () => {
     const style = document.documentElement.style;
     expect(style.getPropertyValue("--text-primary").trim()).toBe("#f6fbff");
     expect(style.getPropertyValue("--text-secondary").trim()).toBe("#cfe4f3");
-    expect(style.getPropertyValue("--text-muted").trim()).toBe("#9fb8cb");
+    // Muted glyph brightened from #9fb8cb to #b2c8d9 for wallpaper contrast
+    // (muted text was the weakest link over a busy/bright wallpaper). Still a
+    // solid 6-digit hex — the assertion's intent (glyphs are opaque colors, not
+    // opacity-dimmed) is preserved.
+    expect(style.getPropertyValue("--text-muted").trim()).toBe("#b2c8d9");
     // Pane material must stay translucent (not an opaque slab). Assert the intent
     // robustly via the resolved alpha rather than pinning a floor-dependent literal,
     // since the glass-tier floor is user-tunable (transparency slider).

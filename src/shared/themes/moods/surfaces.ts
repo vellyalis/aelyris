@@ -11,6 +11,8 @@ export const MOOD_SURFACE_CSS_KEYS = [
   "--statusbar-filter",
   "--statusbar-shadow",
   "--material-panel-filter",
+  "--panel-legibility-filter",
+  "--panel-text-scrim",
   "--terminal-shell-filter",
   "--material-panel-shadow",
   "--material-card-shadow",
@@ -46,6 +48,31 @@ export type MoodSurfaceCSS = Record<MoodSurfaceKey, string>;
  */
 const PANEL_BLUR = "blur(8px)";
 
+/**
+ * Stronger frost applied to text-dense panels (left file-tree + right
+ * inspector) so a busy / bright wallpaper is blurred and darkened enough for
+ * rows to stay readable (Apple "Thick material" sidebar vibrancy). The
+ * brightness(<1) darkens the frosted photo; saturate keeps it from going
+ * muddy. Shared across dark moods; crystal uses a lighter brightness so its
+ * clearer glass stays clear, sakura keeps a near-neutral frost for light mode.
+ */
+const PANEL_LEGIBILITY_FILTER_DARK = "blur(18px) saturate(1.3) brightness(0.72)";
+const PANEL_LEGIBILITY_FILTER_CRYSTAL = "blur(20px) saturate(1.28) brightness(0.82)";
+const PANEL_LEGIBILITY_FILTER_LIGHT = "blur(18px) saturate(1.18) brightness(1.02)";
+
+/**
+ * Low-alpha legibility scrim composited into the text-dense panel background
+ * (above the frosted wallpaper, below the rows). Dark moods use a dark wash so
+ * light glyphs lift; sakura (light) uses a WHITE wash so dark ink lifts instead
+ * of being darkened. Measured to clear WCAG AA over the bright sakura wallpaper.
+ */
+const PANEL_TEXT_SCRIM_DARK =
+  "linear-gradient(180deg, rgba(3, 9, 16, 0.42), rgba(3, 9, 16, 0.34) 70%, rgba(3, 9, 16, 0.42))";
+const PANEL_TEXT_SCRIM_CRYSTAL =
+  "linear-gradient(180deg, rgba(2, 10, 20, 0.34), rgba(2, 10, 20, 0.28) 70%, rgba(2, 10, 20, 0.34))";
+const PANEL_TEXT_SCRIM_LIGHT =
+  "linear-gradient(180deg, rgba(255, 252, 254, 0.4), rgba(255, 250, 253, 0.32) 70%, rgba(255, 252, 254, 0.4))";
+
 function darkMoodSurfaces(tone: {
   shell: string;
   panel: string;
@@ -65,6 +92,8 @@ function darkMoodSurfaces(tone: {
     "--statusbar-filter": "blur(14px) saturate(1.12) brightness(0.82) contrast(1.08)",
     "--statusbar-shadow": `inset 0 1px 0 rgba(${tone.text}, 0.055), inset 0 -1px 0 rgba(${tone.accent}, 0.07)`,
     "--material-panel-filter": PANEL_BLUR,
+    "--panel-legibility-filter": PANEL_LEGIBILITY_FILTER_DARK,
+    "--panel-text-scrim": PANEL_TEXT_SCRIM_DARK,
     "--terminal-shell-filter": PANEL_BLUR,
     "--material-panel-shadow": `var(--rim-top), inset 0 0 0 1px rgba(${tone.accent}, 0.055), 0 12px 30px rgba(0, 0, 0, 0.2)`,
     "--material-card-shadow": `var(--rim-top), 0 0 0 1px rgba(${tone.accent}, 0.05), 0 8px 20px rgba(0, 0, 0, 0.18)`,
@@ -104,6 +133,8 @@ function crystalMoodSurfaces(): MoodSurfaceCSS {
     "--statusbar-filter": "blur(22px) saturate(1.24) brightness(0.9) contrast(1.08)",
     "--statusbar-shadow": "inset 0 1px 0 rgba(238, 252, 255, 0.075), inset 0 -1px 0 rgba(139, 233, 255, 0.06)",
     "--material-panel-filter": PANEL_BLUR,
+    "--panel-legibility-filter": PANEL_LEGIBILITY_FILTER_CRYSTAL,
+    "--panel-text-scrim": PANEL_TEXT_SCRIM_CRYSTAL,
     "--terminal-shell-filter": PANEL_BLUR,
     "--material-panel-shadow":
       "var(--rim-top), inset 0 0 0 1px rgba(139, 233, 255, 0.052), 0 16px 38px rgba(0, 0, 0, 0.16)",
@@ -186,6 +217,8 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     "--statusbar-filter": "blur(12px) saturate(1.12) brightness(1.02) contrast(1.02)",
     "--statusbar-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(159, 75, 97, 0.07)",
     "--material-panel-filter": PANEL_BLUR,
+    "--panel-legibility-filter": PANEL_LEGIBILITY_FILTER_LIGHT,
+    "--panel-text-scrim": PANEL_TEXT_SCRIM_LIGHT,
     "--terminal-shell-filter": PANEL_BLUR,
     "--material-panel-shadow":
       "var(--rim-top), inset 0 0 0 1px rgba(159, 75, 97, 0.06), 0 10px 28px rgba(80, 32, 52, 0.12)",

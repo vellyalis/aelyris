@@ -131,6 +131,7 @@ const SAKURA_ALPHA_RANGES: Record<SakuraMaterialAlphaKey, { min: number; max: nu
 export const SAKURA_MATERIAL_CSS_KEYS = [
   "--sakura-root-rgb",
   "--sakura-root-alpha",
+  "--panel-text-scrim",
   "--chrome-frame-bg",
   "--statusbar-bg",
   "--dialog-surface",
@@ -283,6 +284,14 @@ export function materialOverridesToCSS(
   const textPrimary = usesLightChrome ? "#24121b" : "#f6fbff";
   const textSecondary = usesLightChrome ? "#3f2430" : "#cfe6f6";
   const textMuted = usesLightChrome ? "#674353" : "#a7c0d3";
+  // Text-dense panel legibility scrim must follow the custom material's
+  // brightness: a pale (light-chrome) panel needs a WHITE wash to lift its
+  // dark ink, while a custom dark panel keeps the dark wash. Otherwise a dark
+  // scrim from the base preset would darken a user's light material and
+  // regress the very contrast it is meant to protect.
+  const panelTextScrim = usesLightChrome
+    ? "linear-gradient(180deg, rgba(255, 252, 254, 0.4), rgba(255, 250, 253, 0.32) 70%, rgba(255, 252, 254, 0.4))"
+    : "linear-gradient(180deg, rgba(3, 9, 16, 0.42), rgba(3, 9, 16, 0.34) 70%, rgba(3, 9, 16, 0.42))";
 
   return {
     "--sakura-root-rgb": backdropRgb,
@@ -290,6 +299,7 @@ export function materialOverridesToCSS(
     "--text-primary": textPrimary,
     "--text-secondary": textSecondary,
     "--text-muted": textMuted,
+    "--panel-text-scrim": panelTextScrim,
     "--chrome-frame-bg": `linear-gradient(180deg, ${softLight}, transparent 72%), linear-gradient(90deg, ${softAccent}, transparent 34%, transparent 66%, rgba(${panelRgb}, 0.06)), ${rgba(chrome, chromeAlpha)}`,
     "--statusbar-bg": rgba(chrome, chromeAlpha),
     "--dialog-surface": `linear-gradient(180deg, ${softLight}, transparent 32%), linear-gradient(145deg, rgba(${panelRgb}, 0.1), transparent 50%), ${rgba(backdrop, clampAlpha(panelAlpha, 0.08, 0.96))}`,

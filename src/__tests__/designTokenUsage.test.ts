@@ -804,7 +804,13 @@ describe("design token usage", () => {
     const repairBadgeRule = statusbar.match(/\.repairBadge\s*{[\s\S]*?}/)?.[0] ?? "";
 
     expect(leftPanelRule).toContain("border-radius: var(--radius)");
-    expect(leftPanelRule).toContain("var(--material-panel-filter)");
+    // The text-dense sidebar now frosts via the stronger legibility filter (a
+    // per-mood token: blur+saturate+brightness) instead of the plain chrome
+    // blur, so file-tree rows stay readable over a busy/bright wallpaper. The
+    // intent is unchanged — the panel still filters through a single mood token,
+    // never a hardcoded blur or the card shadow.
+    expect(leftPanelRule).toContain("var(--panel-legibility-filter)");
+    expect(leftPanelRule).toContain("var(--panel-text-scrim)");
     expect(leftPanelRule).not.toContain("var(--material-panel-shadow)");
     expect(rootHeader).toContain("text-transform: none");
     expect(rootHeader).toContain("letter-spacing: 0");
