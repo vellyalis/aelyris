@@ -481,7 +481,7 @@ describe("design token usage", () => {
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
 
-    expect(source).toContain("--material-panel-filter: blur(16px) saturate(1.14) brightness(0.78) contrast(1.08)");
+    expect(source).toContain("--material-panel-filter: blur(16px) saturate(1.2) brightness(0.78) contrast(1.08)");
     expect(source).toContain("linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%)");
     expect(source).toContain("backdrop-filter: var(--material-panel-filter)");
     expect(source).not.toContain("--material-panel-filter: blur(20px)");
