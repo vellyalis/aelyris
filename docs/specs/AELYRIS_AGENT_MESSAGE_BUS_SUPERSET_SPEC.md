@@ -83,7 +83,7 @@ Forbidden until gates pass:
 - strict `agmsg` superset,
 - completed agent message bus,
 - fully autonomous swarm intelligence,
-- complete AI team OS,
+- completed autonomous multi-agent platform,
 - release-ready multi-agent coordination.
 
 ## 5. API Specification

@@ -64,8 +64,8 @@ function grade(percent) {
 const packageJson = read("package.json");
 const nativeFirstDoc = read("docs/history/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.md");
 const fullNativeDoc = read("docs/history/FULL_NATIVE_RUST_FINAL_GOAL.md");
-const claugeDoc = read("docs/history/CLAUGE_INSPIRED_NATIVE_MODE_SHELL_PLAN_2026-05-25.md");
-const claugeSourceAuditDoc = read("docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md");
+const visiblePaneSpec = read("docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md");
+const cockpitUxSpec = read("docs/specs/COCKPIT_UX_SPEC.md");
 
 const nativeClientPath = ".codex-auto/quality/native-client-spike.json";
 const nativeBoundaryPath = ".codex-auto/quality/native-boundary-contract.json";
@@ -173,7 +173,6 @@ addItem(
     nativeFirstDoc.includes("terminal hot path") &&
     nativeFirstDoc.includes("Full-native Rust remains a useful stretch direction") &&
     fullNativeDoc.includes("Superseded As Release Goal") &&
-    claugeDoc.includes("native-first hybrid product goal") &&
     packageJson.includes("verify:native-first:audit"),
   "Release goal is explicitly native-first hybrid; strict full-native remains a stretch audit.",
   {
@@ -289,8 +288,8 @@ addItem(
 
 addItem(
   items,
-  "clauge-mode-architecture",
-  "Clauge-inspired mode shell is implemented without broad super-app sprawl",
+  "mode-shell-architecture",
+  "Aelyris mode shell is implemented without broad app sprawl",
   8,
   hasChecks(nativeClient, [
     "native-mode-shell-contract-proof",
@@ -302,17 +301,16 @@ addItem(
   ]) &&
     nativeFirstDoc.includes("Terminal, Agents, Workspace, Review, Git, Context, History, Settings") &&
     nativeFirstDoc.includes("should not expand into broad REST/SQL/NoSQL/S3 scope") &&
-    claugeSourceAuditDoc.includes("Commit inspected: `1aceff9f014eb997ba5b21eabf93f23c0da2b71c`") &&
-    claugeSourceAuditDoc.includes("upper compatibility inside Aelyris's terminal-first domain") &&
-    claugeSourceAuditDoc.includes("Mode state preservation") &&
-    claugeSourceAuditDoc.includes("Per-mode AI") &&
-    claugeSourceAuditDoc.includes("Cross-mode history"),
-  "Aelyris adopts source-audited Clauge information architecture: mode rail, dominant work surface, contextual inspector, per-mode AI, mode state preservation, and purpose-focused agents without copying REST/SQL/NoSQL/S3 scope.",
+    visiblePaneSpec.includes("visible PTY") &&
+    cockpitUxSpec.includes("useAgentFleet") &&
+    cockpitUxSpec.includes("approval inbox"),
+  "Aelyris mode shell exposes a mode rail, dominant work surface, contextual inspector, mode state preservation, and purpose-focused agent surfaces without broad app sprawl.",
   {
     artifact: nativeClientPath,
-    sourceAuditDoc: "docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md",
+    visiblePaneSpec: "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+    cockpitUxSpec: "docs/specs/COCKPIT_UX_SPEC.md",
   },
-  ["refresh native-client mode shell proofs", "write/update Clauge source audit good-parts doc"],
+  ["refresh native-client mode shell proofs", "refresh mode shell public spec evidence"],
 );
 
 addItem(
@@ -457,7 +455,7 @@ const report = {
     rustOwnsProductTruthBoundary: fullNativeAudit?.currentTruth?.canClaimRustCoreProductBoundary === true,
     reactTauriAllowedForContractBackedUi: true,
     reactWebViewMustNotOwnTerminalTruth: true,
-    claugePatternAdoptedAsInformationArchitecture: blockers.every((entry) => entry.id !== "clauge-mode-architecture"),
+    modeShellArchitectureReady: blockers.every((entry) => entry.id !== "mode-shell-architecture"),
   },
   items,
   blockers: blockers.map((entry) => ({

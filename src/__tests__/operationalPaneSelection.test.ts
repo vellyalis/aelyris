@@ -47,7 +47,7 @@ describe("operationalPaneSelection", () => {
     expect(clearEndedOperationalTerminal(selected, "pty-other")).toBe(selected);
   });
 
-  it("resolves tmux-style tab.index pane choices before fuzzy names", () => {
+  it("resolves mux-style tab.index pane choices before fuzzy names", () => {
     const panes = [
       {
         tabId: "tab-main",

@@ -62,6 +62,6 @@ Git Bash 版は `./fleet-dispatch.sh list` / `dispatch 1.3 --dry-run` / `status`
 
 ## 関連
 
-- マスタープラン: [`../../docs/specs/CODEX_HANDOFF.md`](../../docs/specs/CODEX_HANDOFF.md)
+- 設計索引: [`../../docs/specs/README.md`](../../docs/specs/README.md)
 - 設計索引: [`../../docs/specs/README.md`](../../docs/specs/README.md)
 - 段取りスキル: `subagent-orchestration`（同一モデル fan-out）/ `dmux-workflows`（tmux グリッドで Claude+Codex 混在）

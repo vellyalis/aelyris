@@ -82,8 +82,8 @@ const rightRailSources = [
   source("src/shared/lib/rightRailAdvisor.ts"),
 ].join("\n");
 const docs = [
-  source("docs/history/NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md"),
-  source("docs/history/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md"),
+  source("docs/history/NATIVE_RUST_NATIVE_TERMINAL_PLUS_MIGRATION_PLAN.md"),
+  source("docs/history/RUST_CORE_NATIVE_TERMINAL_TMUX_WIZARD_GOALS.md"),
   source("docs/history/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md"),
   source("docs/history/FULL_NATIVE_RUST_FINAL_GOAL.md"),
 ].join("\n");
@@ -338,7 +338,7 @@ function exactRightRailDemotionProof(container) {
     demotion?.reactDemotionComplete === true &&
     demotion?.readyForReactDemotion === false &&
     demotion?.readyForFullNativeClaim === false &&
-    demotion?.nextProof === "aelyris-native-primary-daily-driver-promotion"
+    demotion?.nextProof === "aelyris-native-primary-operator-promotion"
   );
 }
 
@@ -646,7 +646,7 @@ const hasNativeClientContract =
   cargoToml.includes('name = "aelyris-native"') &&
   aelyrisNative.includes("full_native_readiness_contract") &&
   aelyrisNative.includes("aelyris.full-native-readiness.v1") &&
-  aelyrisNative.includes('"daily-driver no-WebView Rust client"');
+  aelyrisNative.includes('"operator-primary no-WebView Rust client"');
 
 const hasRenderFrameContract =
   renderFrame.includes("aelyris.native.render-frame.v1") &&
@@ -1270,7 +1270,7 @@ items.push(
     10,
     hasCompatibilityOnlyShell,
     "Full-native is not done while React/Tauri/WebView remains the primary shipping shell.",
-    ["keep React shell as compatibility during migration", "promote aelyris-native to primary daily-driver shell"],
+    ["keep React shell as compatibility during migration", "promote aelyris-native to primary operator-primary shell"],
   ),
 );
 
@@ -1297,7 +1297,7 @@ const report = {
         : "native shell candidate",
     canClaimFullNative: missing.length === 0,
     canClaimRustCoreProductBoundary: nativeBoundaryFresh,
-    canClaimDailyDriverNativeShell:
+    canClaimOperatorPrimaryNativeShell:
       hasWinitWgpuFontAtlasTerminal &&
       hasNativeImeDogfood &&
       hasNativeRightRail &&
@@ -1336,7 +1336,7 @@ const report = {
   nextRequiredAction:
     missing.length === 0
       ? "Full-native Rust goal is complete."
-      : "Continue with native visual QA/sleep-resume dogfood, React compatibility demotion, and daily-driver promotion.",
+      : "Continue with native visual QA/sleep-resume dogfood, React compatibility demotion, and operator-primary promotion.",
   artifacts: {
     nativeClientPath,
     nativeBoundaryPath,

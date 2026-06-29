@@ -137,7 +137,7 @@ Avoid until the matching gates are green:
 
 - release-ready / production-ready
 - fully autonomous swarm intelligence
-- complete AI team OS
+- completed autonomous multi-agent platform
 
 Aelyris is alpha and does not claim production readiness; capability claims are
 gated by verifiers.

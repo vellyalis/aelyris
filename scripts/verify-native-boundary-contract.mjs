@@ -231,7 +231,7 @@ const muxLiveProcessPreservationFresh =
       mtime("src-tauri/src/mux/store.rs"),
       mtime("src-tauri/src/mux/graph.rs"),
       mtime("src-tauri/tests/test_api_3d1.rs"),
-      mtime("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md"),
+      mtime("docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md"),
     );
 
 const daemonRestartRestoreProofReady =
@@ -969,7 +969,7 @@ const checks = [
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.readyForReactDemotion === false &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.readyForFullNativeClaim === false &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.nextProof ===
-        "aelyris-native-primary-daily-driver-promotion" &&
+        "aelyris-native-primary-operator-promotion" &&
       nativeClientArtifact?.nativeAccessibility?.operation === "accessibility-proof" &&
       nativeClientArtifact?.nativeAccessibility?.accessibility?.schema === "aelyris.native.accessibility-proof.v1" &&
       nativeClientArtifact?.nativeAccessibility?.accessibility?.nativeAccessibilityTreeProof === true &&

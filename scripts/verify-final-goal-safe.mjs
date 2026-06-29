@@ -1104,7 +1104,7 @@ function goalCompletionMatrixVerdict(data) {
   const sourceArtifactEntries = Object.values(sourceArtifacts);
   const requiredObjectiveTerms = [
     "tmux",
-    "WezTerm",
+    "native-terminal",
     "Claude Code",
     "native-first hybrid",
     "ターミナル中核",
@@ -1648,7 +1648,7 @@ function isExternalOperatorBlocker(value) {
   return (
     isHostSleepUnsupportedBlocker(value) ||
     isReleaseSigningOperatorBlocker(value) ||
-    /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|mux live restore|world-class terminal AI OS aggregate gate is externally blocked|world-class claim blocked: .*external-blocked|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
+    /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|mux live restore|release readiness aggregate gate is externally blocked|release readiness claim blocked: .*external-blocked|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
       text,
     )
   );

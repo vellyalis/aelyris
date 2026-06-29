@@ -16,7 +16,7 @@ const SOURCE_PATHS = [
   "src-tauri/src/mux/store.rs",
   "src-tauri/src/mux/graph.rs",
   "src-tauri/tests/test_api_3d1.rs",
-  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
 ];
 
 function read(rel) {
@@ -41,7 +41,7 @@ const ipcMuxCommands = read("src-tauri/src/ipc/mux_commands.rs");
 const store = read("src-tauri/src/mux/store.rs");
 const graph = read("src-tauri/src/mux/graph.rs");
 const testApi = read("src-tauri/tests/test_api_3d1.rs");
-const design = read("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const visiblePaneSpec = read("docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md");
 
 const checks = [
   check(
@@ -109,11 +109,12 @@ const checks = [
     "The API integration flow asserts detach/attach returns the same processId for each live pane.",
   ),
   check(
-    "design-doc-records-daemon-live-proof-boundary",
-    design.includes("daemon-live-detach-reattach-preserves-existing-pty-process-id") &&
-      design.includes("restart restore remains restore-pending respawn") &&
-      design.includes("same-process preservation is proven only while the daemon remains alive"),
-    "The design document separates daemon-live same-process reattach from restart restore respawn.",
+    "runtime-spec-records-daemon-live-proof-boundary",
+    visiblePaneSpec.includes("Do not claim tmux-level durability until sidecar-owned attach/recover is proven") &&
+      apiMod.includes('"daemon-live-detach-reattach-preserves-existing-pty-process-id"') &&
+      apiMod.includes('attach_policy: "reattach-respawns-only-missing-or-restore-pending-pty-bindings"') &&
+      store.includes('restore-pending:'),
+    "The current runtime spec and daemon contract separate daemon-live reattach from restart restore respawn.",
   ),
 ];
 
@@ -152,7 +153,7 @@ const report = {
       id: "daemon-restart-is-restore-pending-respawn",
       severity: "intentional-boundary",
       detail:
-        "A daemon process restart cannot preserve in-process ConPTY children under the current kill-on-close guard; this gate proves tmux-style client detach/reattach while the daemon remains alive.",
+        "A daemon process restart cannot preserve in-process ConPTY children under the current kill-on-close guard; this gate proves mux-style client detach/reattach while the daemon remains alive.",
     },
     {
       id: "host-live-restore-smoke-can-still-be-environment-blocked",

@@ -1538,12 +1538,11 @@ describe("Release evidence gates", () => {
 });
 
 describe("App right rail composition", () => {
-  it("keeps the Clauge-inspired mode rail visible and routed to the inspector", () => {
+  it("keeps the Aelyris mode rail visible and routed to the inspector", () => {
     const src = getSrc();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
-    const plan = readFileSync(join(process.cwd(), "docs/history/CLAUGE_UI_REFRESH_FINAL_GOAL_2026-05-26.md"), "utf8");
-    const verifier = readFileSync(join(process.cwd(), "scripts/verify-clauge-ui-refresh-contract.mjs"), "utf8");
+    const verifier = readFileSync(join(process.cwd(), "scripts/verify-mode-shell-refresh-contract.mjs"), "utf8");
 
     expect(src).toContain("type ProductModeId");
     expect(src).toContain("const PRODUCT_MODE_RAIL");
@@ -1581,12 +1580,9 @@ describe("App right rail composition", () => {
     expect(styles).toContain(".right-panel-inspector-open");
     expect(styles).toContain(':root[data-mood="aelyris-sakura"] .mode-rail');
     expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-inspector-hero');
-    expect(plan).toContain("Left Mode Rail -> Center Work Surface -> Right Contextual Inspector");
-    expect(plan).toContain("Phase 1: Visible Shell Recomposition");
-    expect(plan).toContain("Phase 2: Inspector Simplification");
-    expect(verifier).toContain("aelyris.clauge-ui-refresh-contract.v1");
+    expect(verifier).toContain("aelyris.mode-shell-refresh-contract.v1");
     expect(verifier).toContain("inspector-summary");
-    expect(packageJson).toContain('"verify:clauge-ui-refresh"');
+    expect(packageJson).toContain('"verify:ui:mode-shell-refresh"');
   });
 
   it("keeps the right rail orchestra-first instead of front-loading telemetry detail", () => {

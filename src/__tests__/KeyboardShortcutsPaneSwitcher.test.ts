@@ -42,7 +42,7 @@ describe("pane switcher keyboard shortcut", () => {
     expect(src).toContain('shortcut: "Ctrl+Shift+`"');
   });
 
-  it("exposes tmux-style next and previous pane cycling", () => {
+  it("exposes mux-style next and previous pane cycling", () => {
     const shortcutSrc = getOnlySource(sources);
     const menuSrc = getOnlySource(menuSources);
 

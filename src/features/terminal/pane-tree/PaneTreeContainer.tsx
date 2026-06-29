@@ -112,9 +112,9 @@ interface PaneTreeContainerProps {
    * state during close), or when no pane has been focused yet.
    */
   onActiveTerminalChange?: (terminalId: string | null) => void;
-  /** Emits the current pane topology and PTY bindings for tmux-style switchers. */
+  /** Emits the current pane topology and PTY bindings for mux-style switchers. */
   onPaneRegistryChange?: (panes: PaneSwitcherEntry[]) => void;
-  /** Human window label used by tmux-style pane switcher routes. */
+  /** Human window label used by mux-style pane switcher routes. */
   switcherWindowLabel?: string;
   /** Imperative focus bridge used by global commands; never remounts terminals. */
   focusPaneRequest?: PaneFocusRequest | null;
@@ -124,11 +124,11 @@ interface PaneTreeContainerProps {
   restartPaneRequest?: PaneRestartRequest | null;
   /** Imperative attach bridge used to bind a detached layout leaf to an existing backend PTY. */
   attachPaneRequest?: PaneAttachRequest | null;
-  /** Imperative rename bridge used by tmux-style management surfaces. */
+  /** Imperative rename bridge used by mux-style management surfaces. */
   renamePaneRequest?: PaneRenameRequest | null;
-  /** Imperative role-cycle bridge used by tmux-style management surfaces. */
+  /** Imperative role-cycle bridge used by mux-style management surfaces. */
   cyclePaneRoleRequest?: PaneRoleCycleRequest | null;
-  /** Imperative layout bridge used by tmux-style layout and swap commands. */
+  /** Imperative layout bridge used by mux-style layout and swap commands. */
   layoutRequest?: PaneLayoutRequest | null;
   /** Imperative bridge to mount a loop-dispatched agent's PTY as a split pane. */
   spawnAgentPaneRequest?: PaneAgentSpawnRequest | null;

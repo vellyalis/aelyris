@@ -7,7 +7,7 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const paths = {
   requirements: "docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md",
-  handoff: "docs/specs/CODEX_HANDOFF.md",
+  specIndex: "docs/specs/README.md",
   rustStatus: "src-tauri/src/agent/status.rs",
   rustAgentMod: "src-tauri/src/agent/mod.rs",
   outputMonitor: "src-tauri/src/agent/output_monitor.rs",
@@ -71,7 +71,7 @@ add(
     source.requirements.includes("Worktree Safety") &&
     source.requirements.includes("UI Token Dial") &&
     source.requirements.includes("Acceptance Definition"),
-  "A durable implementation requirements document exists for the handoff.",
+  "A durable implementation requirements document exists for the current spec index.",
   { path: paths.requirements },
 );
 

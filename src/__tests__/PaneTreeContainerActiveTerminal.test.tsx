@@ -251,7 +251,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       c.onTerminalReady(newPaneId, "pty-B");
     });
     // Rust-mux split returns the pane id that the UI attaches, and the new
-    // pane becomes active like tmux/WezTerm split workflows.
+    // pane becomes active like mux-style split workflows.
     expect(onChange).toHaveBeenLastCalledWith("pty-B");
   });
 

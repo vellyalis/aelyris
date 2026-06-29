@@ -51,7 +51,7 @@ signing/updater / operator proof gates 待ちです。
 
 - Framework: Tauri v2 (Rust backend + React frontend)
 - Frontend: React 19 + TypeScript + CSS Modules + Vite 7
-- Terminal: xterm.js v6 + WebGL addon
+- Terminal: Native Rust-backed terminal rendering (ConPTY; no xterm.js runtime dependency)
 - Editor: Monaco Editor + Vim mode
 - UI: Radix UI primitives + Lucide + motion
 - Backend: Rust (portable-pty, git2, rusqlite, tokio)

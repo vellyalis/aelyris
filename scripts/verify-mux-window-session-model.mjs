@@ -12,7 +12,7 @@ const SOURCE_PATHS = [
   "src-tauri/src/api/mux.rs",
   "src-tauri/src/ipc/mux_commands.rs",
   "scripts/verify-mux-window-session-model.mjs",
-  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
 ];
 
 function read(rel) {
@@ -48,7 +48,7 @@ const manager = read("src-tauri/src/mux/manager.rs");
 const store = read("src-tauri/src/mux/store.rs");
 const apiMux = read("src-tauri/src/api/mux.rs");
 const ipcMux = read("src-tauri/src/ipc/mux_commands.rs");
-const design = read("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const visiblePaneSpec = read("docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md");
 
 const router = between(apiMux, "pub(super) fn router()", ["#[derive(Deserialize)]"]);
 const deleteWorkspace = between(apiMux, "async fn delete_mux_workspace(", ["async fn list_mux_windows("]);
@@ -235,15 +235,12 @@ const checks = [
     "WebSocket stream attach/detach updates backend mux client records and persists the graph instead of remaining an invisible stream-only side effect.",
   ),
   check(
-    "design-keeps-live-restore-separate",
-    hasAll(design, [
-      "daemon-live-detach-reattach-preserves-existing-pty-process-id",
-      "same-process preservation is proven only while the daemon remains alive",
-      "restart restore remains restore-pending respawn",
-      "verify-mux-live-restore",
-      "Sidecar/daemon crash or process restart still restores graph as",
-    ]),
-    "The design keeps this model gate separate from daemon-live process preservation and restart restore proof.",
+    "runtime-spec-keeps-live-restore-separate",
+    visiblePaneSpec.includes("Do not claim tmux-level durability until sidecar-owned attach/recover is proven") &&
+      visiblePaneSpec.includes("WU-VP-3 sidecar-owned loop panes") &&
+      apiMux.includes("record_stream_client_attached") &&
+      store.includes("restore-pending:"),
+    "The current runtime spec and source contracts keep this model gate separate from daemon-live process preservation and restart restore proof.",
   ),
 ];
 

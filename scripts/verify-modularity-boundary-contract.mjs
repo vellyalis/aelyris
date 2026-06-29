@@ -6,8 +6,9 @@ const OUT = join(ROOT, ".codex-auto", "quality", "modularity-boundary-contract.j
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const sourcePaths = {
-  handoff: "docs/specs/CODEX_HANDOFF.md",
-  worldClassDesign: "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  phaseArchitecture: "docs/specs/PHASE_0_1_ARCHITECTURE_SPEC.md",
+  visiblePaneSpec: "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+  fleetManifest: "scripts/fleet/wu-manifest.json",
   controlMod: "src-tauri/src/control/mod.rs",
   app: "src/App.tsx",
   ipcCommands: "src-tauri/src/ipc/commands.rs",
@@ -56,8 +57,9 @@ function check(id, ok, detail, severity = "block", evidence = {}) {
   return { id, ok: Boolean(ok), severity, detail, evidence };
 }
 
-const handoff = read(sourcePaths.handoff);
-const worldClassDesign = read(sourcePaths.worldClassDesign);
+const phaseArchitecture = read(sourcePaths.phaseArchitecture);
+const visiblePaneSpec = read(sourcePaths.visiblePaneSpec);
+const fleetManifest = read(sourcePaths.fleetManifest);
 const controlMod = read(sourcePaths.controlMod);
 
 const baseline = godFileBaselines.map((item) => {
@@ -73,26 +75,28 @@ const baseline = godFileBaselines.map((item) => {
 
 const checks = [
   check(
-    "handoff-defines-capability-layer",
-    handoff.includes("Capability layer") &&
-      handoff.includes("src-tauri/src/control/") &&
-      handoff.includes("Tauri IPC and the MCP server are thin adapters"),
-    "CODEX_HANDOFF keeps domain behavior in the backend capability layer and adapters thin.",
+    "phase-architecture-defines-capability-layer",
+    phaseArchitecture.includes("## 0.5 Capability layer") &&
+      phaseArchitecture.includes("Aelyris Control API") &&
+      phaseArchitecture.includes("Tauri IPC adapter") &&
+      phaseArchitecture.includes("'aelyris' MCP server adapter".replace(/'/g, "'")) &&
+      phaseArchitecture.includes("No capability logic lives in an adapter"),
+    "PHASE_0_1 architecture keeps domain behavior in the backend capability layer and adapters thin.",
   ),
   check(
-    "handoff-defines-god-file-decomposition",
-    handoff.includes("God-file decomposition") &&
-      handoff.includes("commands.rs") &&
-      handoff.includes("App.tsx"),
-    "CODEX_HANDOFF keeps god-file decomposition in scope.",
+    "phase-architecture-defines-god-file-decomposition",
+    phaseArchitecture.includes("## 2. God-file decomposition") &&
+      phaseArchitecture.includes("commands.rs") &&
+      phaseArchitecture.includes("App.tsx"),
+    "PHASE_0_1 architecture keeps god-file decomposition in scope.",
   ),
   check(
-    "world-class-design-defines-modularity-standard",
-    worldClassDesign.includes("Modularity And Changeability Standard") &&
-      worldClassDesign.includes("Boundary Rules") &&
-      worldClassDesign.includes("Work Unit Grain Rules") &&
-      worldClassDesign.includes("Rollback And Changeability Rule"),
-    "World-class design includes explicit modularity, grain, and rollback rules.",
+    "architecture-defines-modularity-standard",
+    phaseArchitecture.includes("The two adapters are *thin*") &&
+      phaseArchitecture.includes("No capability logic lives in an adapter") &&
+      phaseArchitecture.includes("No command renames") &&
+      phaseArchitecture.includes("The migration is incremental and *additive*"),
+    "Current architecture spec includes explicit adapter, migration, and no-command-rename modularity rules.",
   ),
   check(
     "control-domain-modules-present",
@@ -117,18 +121,20 @@ const checks = [
   ),
   check(
     "wu-template-fields-defined",
-    worldClassDesign.includes("owner boundary") &&
-      worldClassDesign.includes("contract changes") &&
-      worldClassDesign.includes("rollback plan") &&
-      worldClassDesign.includes("gates"),
-    "Future WUs must declare owner boundary, contract changes, rollback plan, and gates.",
+    fleetManifest.includes('"workUnits"') &&
+      fleetManifest.includes('"files"') &&
+      fleetManifest.includes('"deps"') &&
+      fleetManifest.includes('"spec"') &&
+      fleetManifest.includes('"notes"'),
+    "Future WUs must declare files, dependencies, spec sections, and notes.",
   ),
   check(
     "no-frontend-source-of-truth-policy",
-    worldClassDesign.includes("frontend source-of-truth fields for durable mux, merge, ownership, or shared") &&
-      worldClassDesign.includes("The frontend pane tree renders") &&
-      worldClassDesign.includes("it does not own it"),
-    "Design blocks frontend-only durable state for mux, merge, ownership, and shared brain.",
+    phaseArchitecture.includes("No capability logic lives in an adapter") &&
+      phaseArchitecture.includes("both faces are thin adapters over it") &&
+      phaseArchitecture.includes("Aelyris Control API") &&
+      visiblePaneSpec.includes("If visible PTY spawn falls back from sidecar to in-process native"),
+    "Specs block frontend-only ownership of durable mux and coordination behavior.",
   ),
 ];
 

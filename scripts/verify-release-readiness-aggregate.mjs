@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 
 const ROOT = resolve(process.cwd());
-const OUT = join(ROOT, ".codex-auto", "quality", "world-class-terminal-ai-os.json");
+const OUT = join(ROOT, ".codex-auto", "quality", "release-readiness-aggregate.json");
 
 const ARTIFACTS = {
   currentReadiness: ".codex-auto/quality/current-readiness-source.json",
@@ -16,20 +16,20 @@ const ARTIFACTS = {
   sharedBrain: ".codex-auto/quality/shared-brain-ownership-persistence-contract.json",
   sharedBrainRestart: ".codex-auto/quality/shared-brain-restart-replay.json",
   muxWindowSession: ".codex-auto/quality/mux-window-session-model.json",
-  muxTmux: ".codex-auto/quality/mux-tmux-grade-contract.json",
+  muxDurability: ".codex-auto/quality/mux-durability-contract.json",
   muxMultiClient: ".codex-auto/quality/mux-multiclient-attach-contract.json",
   muxFallback: ".codex-auto/quality/mux-fallback-blocker-contract.json",
   muxLiveRestore: ".codex-auto/performance/mux-live-restore-smoke.json",
   muxLiveProcessPreservation: ".codex-auto/quality/mux-live-process-preservation.json",
   nativeBoundary: ".codex-auto/quality/native-boundary-contract.json",
   nativeTextShaping: ".codex-auto/quality/native-text-shaping-fallback.json",
-  nativeDailyDriver: ".codex-auto/quality/native-daily-driver-terminal.json",
+  nativePrimaryTerminal: ".codex-auto/quality/native-operator-primary-terminal.json",
   nativeVisualRegression: ".codex-auto/quality/native-visual-regression.json",
 };
 
 const SOURCE_PATHS = [
   "package.json",
-  "scripts/verify-world-class-terminal-ai-os.mjs",
+  "scripts/verify-release-readiness-aggregate.mjs",
   "scripts/verify-current-readiness-source.mjs",
   "scripts/verify-anti-debt-claim-contract.mjs",
   "scripts/verify-modularity-boundary-contract.mjs",
@@ -39,15 +39,15 @@ const SOURCE_PATHS = [
   "scripts/verify-security-mcp-merge-intent-binding.mjs",
   "scripts/verify-shared-brain-ownership-persistence-contract.mjs",
   "scripts/verify-mux-window-session-model.mjs",
-  "scripts/verify-mux-tmux-grade-contract.mjs",
+  "scripts/verify-mux-durability-contract.mjs",
   "scripts/verify-mux-multiclient-attach.mjs",
   "scripts/verify-mux-fallback-blocker.mjs",
   "scripts/verify-mux-live-process-preservation.mjs",
   "scripts/verify-native-boundary-contract.mjs",
-  "scripts/verify-native-daily-driver-terminal.mjs",
+  "scripts/verify-native-operator-primary-terminal.mjs",
   "scripts/verify-native-text-shaping-fallback.mjs",
   "scripts/verify-native-visual-regression.mjs",
-  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
 ];
 
 function pathOf(path) {
@@ -168,14 +168,14 @@ function blockerText(item) {
 
 function isExternalOrPolicyReleaseBlocker(item) {
   const text = blockerText(item);
-  return /authenticated AI CLI prompt|explicit token|token-spend consent|signing\/updater|regenerate signatures|latest\.json|npm supply-chain|npm audit|environment-blocked|spawn EPERM|mux live restore|PTY sidecar|chunked OSC|CDP|ECONNREFUSED|WebView2|right rail visual QA|real OS sleep\/resume|SetSuspendState|GetLastError=50|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|world-class terminal AI OS aggregate gate is externally blocked|world-class claim blocked: .*external-blocked|final goal audit status is blocked-by-external-gates|external host gates/i.test(
+  return /authenticated AI CLI prompt|explicit token|token-spend consent|signing\/updater|regenerate signatures|latest\.json|npm supply-chain|npm audit|environment-blocked|spawn EPERM|mux live restore|PTY sidecar|chunked OSC|CDP|ECONNREFUSED|WebView2|right rail visual QA|real OS sleep\/resume|SetSuspendState|GetLastError=50|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|release readiness aggregate gate is externally blocked|release readiness claim blocked: .*external-blocked|final goal audit status is blocked-by-external-gates|external host gates/i.test(
     text,
   );
 }
 
-function isWorldClassSelfReferenceBlocker(item) {
+function isReleaseReadinessSelfReferenceBlocker(item) {
   const text = blockerText(item);
-  return /world-class-terminal-ai-os|world-class claim blocked|world-class terminal AI OS aggregate/i.test(text);
+  return /release-readiness-aggregate|release readiness claim blocked|release readiness aggregate/i.test(text);
 }
 
 function isFinalGoalEvidenceMapSelfReferenceBlocker(item) {
@@ -193,7 +193,7 @@ function releaseQualityOnlyExternalOrPolicyBlockers(releaseQuality, upstreamClai
     blockers.every(
       (item) =>
         isExternalOrPolicyReleaseBlocker(item) ||
-        (upstreamHasNoImplementationBlock && isWorldClassSelfReferenceBlocker(item)) ||
+        (upstreamHasNoImplementationBlock && isReleaseReadinessSelfReferenceBlocker(item)) ||
         isFinalGoalEvidenceMapSelfReferenceBlocker(item),
     )
   );
@@ -202,7 +202,7 @@ const sourceCutoffMs = Math.max(...SOURCE_PATHS.map(mtime));
 const data = Object.fromEntries(Object.entries(ARTIFACTS).map(([id, path]) => [id, readJson(path)]));
 const artifactList = Object.entries(ARTIFACTS).map(([id, path]) => artifactMeta(id, path));
 
-const tmuxClaim = claim("tmux-grade mux", [
+const tmuxClaim = claim("durable mux", [
   component(
     "mux-window-session-model",
     ARTIFACTS.muxWindowSession,
@@ -213,13 +213,13 @@ const tmuxClaim = claim("tmux-grade mux", [
     { knownGaps: data.muxWindowSession?.knownGaps ?? [] },
   ),
   component(
-    "mux-tmux-grade-contract",
-    ARTIFACTS.muxTmux,
-    data.muxTmux?.ok === true ? (hasKnownGaps(data.muxTmux) ? "review" : "pass") : "block",
-    data.muxTmux?.ok === true
-      ? "tmux-style mux contract passes with recorded review gaps"
-      : "tmux-style mux contract is missing or failing",
-    { knownGaps: data.muxTmux?.knownGaps ?? [] },
+    "mux-durability-contract",
+    ARTIFACTS.muxDurability,
+    data.muxDurability?.ok === true ? (hasKnownGaps(data.muxDurability) ? "review" : "pass") : "block",
+    data.muxDurability?.ok === true
+      ? "mux-style mux contract passes with recorded review gaps"
+      : "mux-style mux contract is missing or failing",
+    { knownGaps: data.muxDurability?.knownGaps ?? [] },
   ),
   component(
     "mux-multiclient-attach",
@@ -234,7 +234,7 @@ const tmuxClaim = claim("tmux-grade mux", [
     ARTIFACTS.muxFallback,
     data.muxFallback?.ok === true ? "pass" : "block",
     data.muxFallback?.ok === true
-      ? "fallback cannot unlock tmux-grade claims"
+      ? "fallback cannot unlock mux durability claims"
       : "fallback blocker contract is missing or failing",
   ),
   component(
@@ -263,7 +263,7 @@ const tmuxClaim = claim("tmux-grade mux", [
   ),
 ]);
 
-const bridgespaceClaim = claim("BridgeSpace/control plane", [
+const sharedWorkspaceClaim = claim("shared-agent-workspace/control plane", [
   component(
     "durable-merge-unification",
     ARTIFACTS.durableMerge,
@@ -326,7 +326,7 @@ const bridgespaceClaim = claim("BridgeSpace/control plane", [
 ]);
 
 function nativeTextShapingReason(nativeTextShaping) {
-  if (nativeTextShaping?.readyForGhosttyClaim === true) {
+  if (nativeTextShaping?.readyForNativeShapingClaim === true) {
     return "native text shaping, renderer integration, and fallback visual fixtures are proven";
   }
   if (
@@ -335,7 +335,7 @@ function nativeTextShapingReason(nativeTextShaping) {
     nativeTextShaping?.realFontFallbackReady !== true &&
     nativeTextShaping?.unsupportedSystemShaper === false
   ) {
-    return "native DirectWrite shaped runs are consumed by the renderer, but real DirectWrite font fallback mapping is not ready for Ghostty claim";
+    return "native DirectWrite shaped runs are consumed by the renderer, but real DirectWrite font fallback mapping is not ready for native shaping";
   }
   if (
     nativeTextShaping?.systemTextShapingReady === true &&
@@ -345,7 +345,7 @@ function nativeTextShapingReason(nativeTextShaping) {
     nativeTextShaping?.visualFallbackGlyphFixturesReady !== true &&
     nativeTextShaping?.unsupportedSystemShaper === false
   ) {
-    return "native DirectWrite shaped runs, real fallback mapping, and fallback atlas rasterization are source-contract ready, but visual fixtures are not ready for Ghostty claim";
+    return "native DirectWrite shaped runs, real fallback mapping, and fallback atlas rasterization are source-contract ready, but visual fixtures are not ready for native shaping";
   }
   if (
     nativeTextShaping?.systemTextShapingReady === true &&
@@ -354,19 +354,19 @@ function nativeTextShapingReason(nativeTextShaping) {
     nativeTextShaping?.rendererFallbackGlyphRasterizationReady !== true &&
     nativeTextShaping?.unsupportedSystemShaper === false
   ) {
-    return "native DirectWrite shaped runs are consumed by the renderer, but fallback glyph rasterization is not ready for Ghostty claim";
+    return "native DirectWrite shaped runs are consumed by the renderer, but fallback glyph rasterization is not ready for native shaping";
   }
   if (
     nativeTextShaping?.systemTextShapingReady === true &&
     nativeTextShaping?.realFontFallbackReady === true &&
     nativeTextShaping?.unsupportedSystemShaper === false
   ) {
-    return "native DirectWrite system shaping/fallback boundary is present, but renderer integration, fallback glyph rasterization, or visual fixtures are not ready for Ghostty claim";
+    return "native DirectWrite system shaping/fallback boundary is present, but renderer integration, fallback glyph rasterization, or visual fixtures are not ready for native shaping";
   }
-  return "native system text shaping and fallback are not ready for Ghostty claim";
+  return "native system text shaping and fallback are not ready for native shaping";
 }
 
-const ghosttyClaim = claim("Ghostty/WezTerm-class native terminal", [
+const nativeTerminalClaim = claim("native-terminal-grade native terminal", [
   component(
     "native-boundary",
     ARTIFACTS.nativeBoundary,
@@ -383,7 +383,7 @@ const ghosttyClaim = claim("Ghostty/WezTerm-class native terminal", [
   component(
     "native-text-shaping",
     ARTIFACTS.nativeTextShaping,
-    data.nativeTextShaping?.readyForGhosttyClaim === true &&
+    data.nativeTextShaping?.readyForNativeShapingClaim === true &&
       artifactSelfFresh(ARTIFACTS.nativeTextShaping, data.nativeTextShaping)
       ? "pass"
       : artifactExternalBlocked(data.nativeTextShaping) &&
@@ -402,21 +402,21 @@ const ghosttyClaim = claim("Ghostty/WezTerm-class native terminal", [
     },
   ),
   component(
-    "native-daily-driver",
-    ARTIFACTS.nativeDailyDriver,
-    data.nativeDailyDriver?.ok === true && artifactSelfFresh(ARTIFACTS.nativeDailyDriver, data.nativeDailyDriver)
+    "native-operator-primary",
+    ARTIFACTS.nativePrimaryTerminal,
+    data.nativePrimaryTerminal?.ok === true && artifactSelfFresh(ARTIFACTS.nativePrimaryTerminal, data.nativePrimaryTerminal)
       ? "pass"
-      : artifactExternalBlocked(data.nativeDailyDriver) && artifactSelfFresh(ARTIFACTS.nativeDailyDriver, data.nativeDailyDriver)
+      : artifactExternalBlocked(data.nativePrimaryTerminal) && artifactSelfFresh(ARTIFACTS.nativePrimaryTerminal, data.nativePrimaryTerminal)
         ? "external-blocked"
         : "block",
-    data.nativeDailyDriver?.ok === true
-      ? "native daily-driver terminal proof is green"
-      : artifactExternalBlocked(data.nativeDailyDriver)
-        ? "native daily-driver terminal proof is externally blocked by host/operator proof gates"
-        : "native daily-driver terminal proof is blocked",
+    data.nativePrimaryTerminal?.ok === true
+      ? "native operator-primary terminal proof is green"
+      : artifactExternalBlocked(data.nativePrimaryTerminal)
+        ? "native operator-primary terminal proof is externally blocked by host/operator proof gates"
+        : "native operator-primary terminal proof is blocked",
     {
-      blockers: data.nativeDailyDriver?.blockers ?? [],
-      fresh: artifactSelfFresh(ARTIFACTS.nativeDailyDriver, data.nativeDailyDriver),
+      blockers: data.nativePrimaryTerminal?.blockers ?? [],
+      fresh: artifactSelfFresh(ARTIFACTS.nativePrimaryTerminal, data.nativePrimaryTerminal),
     },
   ),
   component(
@@ -447,12 +447,12 @@ const releaseClaim = claim("release readiness", [
     ARTIFACTS.currentReadiness,
     data.currentReadiness?.status === "pass"
       ? "pass"
-      : releaseQualityOnlyExternalOrPolicyBlockers(data.releaseQuality, [tmuxClaim, bridgespaceClaim, ghosttyClaim])
+      : releaseQualityOnlyExternalOrPolicyBlockers(data.releaseQuality, [tmuxClaim, sharedWorkspaceClaim, nativeTerminalClaim])
         ? "external-blocked"
         : "block",
     data.currentReadiness?.status === "pass"
       ? "current readiness source is pass"
-      : "current readiness source blocks world-class/release claims",
+      : "current readiness source blocks release readiness claims",
     { claimBlocks: data.currentReadiness?.claimBlocks ?? [] },
   ),
   component(
@@ -460,7 +460,7 @@ const releaseClaim = claim("release readiness", [
     ARTIFACTS.releaseQuality,
     data.releaseQuality?.releaseCandidateReady === true
       ? "pass"
-      : releaseQualityOnlyExternalOrPolicyBlockers(data.releaseQuality, [tmuxClaim, bridgespaceClaim, ghosttyClaim])
+      : releaseQualityOnlyExternalOrPolicyBlockers(data.releaseQuality, [tmuxClaim, sharedWorkspaceClaim, nativeTerminalClaim])
         ? "external-blocked"
         : "block",
     data.releaseQuality?.releaseCandidateReady === true
@@ -491,8 +491,8 @@ const releaseClaim = claim("release readiness", [
 
 const claimDetails = {
   tmux: tmuxClaim,
-  bridgespace: bridgespaceClaim,
-  ghostty: ghosttyClaim,
+  sharedWorkspace: sharedWorkspaceClaim,
+  nativeTerminal: nativeTerminalClaim,
   release: releaseClaim,
 };
 const claims = Object.fromEntries(Object.entries(claimDetails).map(([id, detail]) => [id, detail.status]));
@@ -508,7 +508,7 @@ const reviewReasons = Object.entries(claimDetails).flatMap(([id, detail]) =>
 );
 
 const report = {
-  schema: "aelyris.world-class-terminal-ai-os/v1",
+  schema: "aelyris.release-readiness-aggregate/v1",
   version: 1,
   ok: status === "pass",
   status,
@@ -524,17 +524,17 @@ const report = {
   checks: {
     artifactStatusFailHelperUsed: Object.values(data).some(artifactStatusFail),
     allClaimsPass: status === "pass",
-    noGhosttyClaimWithoutSystemShaping:
-      claims.ghostty !== "pass" || data.nativeTextShaping?.readyForGhosttyClaim === true,
-    noGhosttyClaimWithStaleNativeArtifacts:
-      claims.ghostty !== "pass" ||
+    noNativeShapingClaimWithoutSystemShaping:
+      claims.nativeTerminal !== "pass" || data.nativeTextShaping?.readyForNativeShapingClaim === true,
+    noNativeShapingClaimWithStaleNativeArtifacts:
+      claims.nativeTerminal !== "pass" ||
       [
         ARTIFACTS.nativeBoundary,
         ARTIFACTS.nativeTextShaping,
-        ARTIFACTS.nativeDailyDriver,
+        ARTIFACTS.nativePrimaryTerminal,
         ARTIFACTS.nativeVisualRegression,
       ].every((path) => artifactSelfFresh(path)),
-    noWorldClassClaimWhileReleaseBlocked: claims.release === "pass" || status !== "pass",
+    noReleaseReadinessClaimWhileReleaseBlocked: claims.release === "pass" || status !== "pass",
   },
 };
 

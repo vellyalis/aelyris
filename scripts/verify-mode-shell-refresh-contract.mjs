@@ -4,42 +4,9 @@ import { join } from "node:path";
 const root = process.cwd();
 const app = readFileSync(join(root, "src", "App.tsx"), "utf8");
 const css = readFileSync(join(root, "src", "styles", "global.css"), "utf8");
-const plan = readFileSync(join(root, "docs", "CLAUGE_UI_REFRESH_FINAL_GOAL_2026-05-26.md"), "utf8");
-const sourceAudit = readFileSync(join(root, "docs", "CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md"), "utf8");
 
 const requiredModes = ["terminal", "agents", "workspace", "review", "git", "context", "history", "settings"];
 const checks = [
-  {
-    id: "final-goal-doc",
-    label: "Clauge-inspired final goal is documented",
-    pass:
-      plan.includes("Left Mode Rail -> Center Work Surface -> Right Contextual Inspector") &&
-      plan.includes("native-first hybrid") &&
-      plan.includes("Phase 1: Visible Shell Recomposition") &&
-      plan.includes("Phase 5: Product Edge Upgrade"),
-  },
-  {
-    id: "source-informed-good-parts",
-    label: "Clauge source audit is recorded before claiming upper compatibility",
-    pass:
-      plan.includes("CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md") &&
-      sourceAudit.includes("Commit inspected: `1aceff9f014eb997ba5b21eabf93f23c0da2b71c`") &&
-      sourceAudit.includes("Do not copy Clauge") &&
-      sourceAudit.includes("src/routes/+page.svelte") &&
-      sourceAudit.includes("src/lib/components/sidebar/Sidebar.svelte") &&
-      sourceAudit.includes("src/lib/components/topbar/Topbar.svelte") &&
-      sourceAudit.includes("src/lib/components/ai/AIPanel.svelte") &&
-      sourceAudit.includes("src/lib/modes/agent/components/AgentNav.svelte") &&
-      sourceAudit.includes("Mode state preservation") &&
-      sourceAudit.includes("Per-mode AI") &&
-      sourceAudit.includes("Cross-mode history") &&
-      sourceAudit.includes("aelyris.mcp.server.v1") &&
-      sourceAudit.includes("aelyris.workspace.data.v1") &&
-      sourceAudit.includes("aelyris.mode-preservation.v1") &&
-      sourceAudit.includes("aelyris.history.search.v1") &&
-      sourceAudit.includes("aelyris.agent-identity.v1") &&
-      sourceAudit.includes("upper compatibility inside Aelyris's terminal-first domain"),
-  },
   {
     id: "visible-mode-rail",
     label: "Visible mode rail is rendered in the app shell",
@@ -52,7 +19,7 @@ const checks = [
   },
   {
     id: "all-eight-modes",
-    label: "All 8 Clauge-inspired Aelyris modes exist",
+    label: "All 8 Aelyris shell modes exist",
     pass: requiredModes.every((mode) => app.includes(`id: "${mode}"`)),
   },
   {
@@ -115,7 +82,7 @@ const checks = [
     id: "accessibility-and-resize",
     label: "Mode rail has accessibility and responsive guardrails",
     pass:
-      app.includes('aria-label="Aelyris mode rail"') &&
+      app.includes('aria-label={`${PRODUCT_NAME} mode rail`}') &&
       app.includes("aria-pressed={active}") &&
       css.includes(".mode-rail-button:focus-visible") &&
       css.includes("@media (max-width: 860px)") &&
@@ -128,7 +95,7 @@ const passed = checks.filter((check) => check.pass).length;
 const total = checks.length;
 const percent = Math.round((passed / total) * 100);
 const report = {
-  schema: "aelyris.clauge-ui-refresh-contract.v1",
+  schema: "aelyris.mode-shell-refresh-contract.v1",
   status: passed === total ? "passed" : "failed",
   percent,
   passed,
@@ -142,11 +109,11 @@ const report = {
 
 const outDir = join(root, ".codex-auto", "quality");
 mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, "clauge-ui-refresh-contract.json"), JSON.stringify(report, null, 2));
+writeFileSync(join(outDir, "mode-shell-refresh-contract.json"), JSON.stringify(report, null, 2));
 
 if (report.status !== "passed") {
   console.error(JSON.stringify(report, null, 2));
   process.exit(1);
 }
 
-console.log(`Clauge UI refresh contract: ${percent}% (${passed}/${total})`);
+console.log(`Mode shell refresh contract: ${percent}% (${passed}/${total})`);

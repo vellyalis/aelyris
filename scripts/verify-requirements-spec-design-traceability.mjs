@@ -6,40 +6,34 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "requirements-spec-design-traceability.json");
 
 const DOCS = {
+  agents: "AGENTS.md",
+  publicationReadiness: "docs/PUBLICATION_READINESS.md",
   requirements: "docs/requirements.md",
   specsReadme: "docs/specs/README.md",
-  traceability: "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
-  cockpitRequirements: "docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md",
-  gapAudit: "docs/specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md",
-  worldClassDesign: "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
-  handoff: "docs/specs/CODEX_HANDOFF.md",
+  agentMessage: "docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md",
+  visiblePane: "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+  cockpitUx: "docs/specs/COCKPIT_UX_SPEC.md",
+  mcpToolSurface: "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
+  planner: "docs/specs/PLANNER_SPEC.md",
+  typeBridge: "docs/specs/TYPE_BRIDGE_SPEC.md",
+  uiTokenDial: "docs/specs/UI_TOKEN_DIAL_SPEC.md",
 };
 
 const ARTIFACTS = {
   currentReadiness: ".codex-auto/quality/current-readiness-source.json",
   releaseQuality: ".codex-auto/quality/release-quality-score.json",
-  worldClass: ".codex-auto/quality/world-class-terminal-ai-os.json",
+  releaseReadiness: ".codex-auto/quality/release-readiness-aggregate.json",
   nativeTextShaping: ".codex-auto/quality/native-text-shaping-fallback.json",
-  nativeDailyDriver: ".codex-auto/quality/native-daily-driver-terminal.json",
+  nativePrimaryTerminal: ".codex-auto/quality/native-operator-primary-terminal.json",
   nativeVisualRegression: ".codex-auto/quality/native-visual-regression.json",
   degradationRegister: ".codex-auto/quality/degradation-register.json",
 };
 
 const REQUIRED_TRACE_COMMANDS = [
   "verify:current-readiness-source",
-  "verify:world-class-terminal-ai-os",
   "verify:quality-score",
+  "verify:goal:safe",
   "verify:requirements-spec-design-traceability",
-  "verify:native-text-shaping-fallback",
-  "verify:native-daily-driver-terminal",
-  "verify:native-visual-regression",
-  "verify:mux-window-session-model",
-  "verify:mux-tmux-grade-contract",
-  "verify:mux-multiclient-attach",
-  "verify:mux-fallback-blocker",
-  "verify:mux-live-process-preservation",
-  "verify:shared-brain-restart-replay",
-  "verify:modularity-boundary",
 ];
 
 const STALE_README_PHRASES = ["全て draft / docs only", "設計完了・実装未着手", "source code changes は含まない"];
@@ -83,6 +77,10 @@ function includesAll(text, needles) {
   return needles.every((needle) => text.includes(needle));
 }
 
+function normalizeText(text) {
+  return text.replace(/\s+/g, " ");
+}
+
 function check(id, passed, detail, evidence = {}) {
   return {
     id,
@@ -104,6 +102,7 @@ function artifactMeta(path, data) {
 }
 
 const docs = Object.fromEntries(Object.entries(DOCS).map(([id, path]) => [id, source(path)]));
+const normalizedDocs = Object.fromEntries(Object.entries(docs).map(([id, text]) => [id, normalizeText(text)]));
 const artifacts = Object.fromEntries(Object.entries(ARTIFACTS).map(([id, path]) => [id, readJson(path)]));
 const packageJson = source("package.json");
 
@@ -118,31 +117,31 @@ const releasePercentText =
     ? `${artifacts.releaseQuality.score}/100`
     : null;
 const releaseGrade = typeof artifacts.releaseQuality?.grade === "string" ? artifacts.releaseQuality.grade : null;
-const worldClassClaims = artifacts.worldClass?.claims ?? {};
+const releaseReadinessClaims = artifacts.releaseReadiness?.claims ?? {};
 const blocksProductClaim = (value) => value === "block" || value === "external-blocked";
-const worldClassAllBlocked =
-  blocksProductClaim(worldClassClaims.tmux) &&
-  blocksProductClaim(worldClassClaims.bridgespace) &&
-  blocksProductClaim(worldClassClaims.ghostty) &&
-  blocksProductClaim(worldClassClaims.release);
+const productClaimGatesAllBlocked =
+  blocksProductClaim(releaseReadinessClaims.tmux) &&
+  blocksProductClaim(releaseReadinessClaims.sharedWorkspace) &&
+  blocksProductClaim(releaseReadinessClaims.nativeTerminal) &&
+  blocksProductClaim(releaseReadinessClaims.release);
 const currentReadinessBlocks = Array.isArray(artifacts.currentReadiness?.claimBlocks)
   ? artifacts.currentReadiness.claimBlocks
   : [];
 const nativeTextShapingSubclaimReady =
-  artifacts.nativeTextShaping?.readyForGhosttyClaim === true &&
+  artifacts.nativeTextShaping?.readyForNativeShapingClaim === true &&
   artifacts.nativeTextShaping?.visualFallbackGlyphFixturesReady === true;
-const docsDistinguishNativeTextShapingSubclaim =
-  docs.traceability.includes(
-    "The native text-shaping, native-client, native-input, HWND paste, and native visual QA subclaims are current",
-  ) &&
-  docs.traceability.includes("full Ghostty/WezTerm quality remains blocked") &&
-  docs.worldClassDesign.includes("text-shaping subclaim only") &&
-  docs.worldClassDesign.includes("Ghostty/WezTerm parity remains BLOCKED");
+const docsKeepCurrentClaimPolicy =
+  normalizedDocs.agents.includes("alpha / active development / not release-ready") &&
+  normalizedDocs.requirements.includes("does not claim production readiness") &&
+  normalizedDocs.requirements.includes("capability claims are gated by verifiers") &&
+  normalizedDocs.publicationReadiness.includes("not release-ready") &&
+  normalizedDocs.specsReadme.includes("Aelyris is alpha and does not claim production readiness");
 
 const requiredDocPaths = Object.values(DOCS);
 const missingDocs = requiredDocPaths.filter((path) => !exists(path));
 const staleReadmePhrases = STALE_README_PHRASES.filter((phrase) => docs.specsReadme.includes(phrase));
-const missingTraceCommands = REQUIRED_TRACE_COMMANDS.filter((command) => !docs.traceability.includes(command));
+const publicTraceText = [normalizedDocs.agents, normalizedDocs.requirements, normalizedDocs.specsReadme, normalizedDocs.publicationReadiness].join("\n");
+const missingTraceCommands = REQUIRED_TRACE_COMMANDS.filter((command) => !publicTraceText.includes(command));
 const packageScriptPresent =
   packageJson.includes('"verify:requirements-spec-design-traceability"') &&
   packageJson.includes("scripts/verify-requirements-spec-design-traceability.mjs");
@@ -159,56 +158,56 @@ const checks = [
   ),
   check(
     "requirements-entrypoint-linked",
-    includesAll(docs.requirements, [
-      "AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md",
-      "AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md",
-      "AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
-      "AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
-      "verify:requirements-spec-design-traceability",
-      "releaseCandidateReady=false",
+    includesAll(normalizedDocs.requirements, [
+      "docs/specs/README.md",
+      "AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md",
+      "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+      "does not claim production readiness",
+      "capability claims are gated by verifiers",
+      "pnpm verify:quality-score",
+      "pnpm verify:goal:safe",
+      "pnpm verify:current-readiness-source",
     ]),
-    "docs/requirements.md is the stable AGENTS entrypoint and points to active authority, claim policy, and doc gate",
+    "docs/requirements.md is the stable AGENTS entrypoint and points to the current public spec index, claim policy, and machine-truth gates",
   ),
   check(
     "specs-readme-current",
     includesAll(docs.specsReadme, [
       "../requirements.md",
-      "AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
-      "verify:requirements-spec-design-traceability",
+      "AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md",
+      "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+      "PHASE_0_1_ARCHITECTURE_SPEC.md",
+      "pnpm verify:quality-score",
+      "pnpm verify:goal:safe",
       "古い未着手扱いのステータスではない",
     ]) && staleReadmePhrases.length === 0,
-    "docs/specs/README.md no longer presents the project as docs-only or implementation-not-started",
+    "docs/specs/README.md indexes current public specs and no longer presents the project as docs-only or implementation-not-started",
     { staleReadmePhrases },
   ),
   check(
-    "traceability-matrix-covers-claims",
-    includesAll(docs.traceability, [
-      "Requirement Trace Matrix",
-      "tmux-grade mux",
-      "BridgeSpace-plus AI team OS",
-      "Ghostty/WezTerm-class quality",
-      "Release readiness",
-      "Modularity and implementation grain",
-      "Fallbacks must not unlock product claims",
+    "public-spec-index-covers-current-authority",
+    includesAll(docs.specsReadme, [
+      "Aelyris Control API",
+      "Qralis MCP/control surface",
+      "AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md",
+      "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+      "COCKPIT_UX_SPEC.md",
+      "MCP_TOOL_SURFACE_SPEC.md",
+      "TYPE_BRIDGE_SPEC.md",
+      "PLANNER_SPEC.md",
     ]),
-    "traceability doc maps product claims and anti-debt policy to specs, design, verifiers, artifacts, and status",
+    "public spec index maps the current requirements/spec/design authority without relying on removed internal audit docs",
   ),
   check(
     "traceability-verifier-coverage",
     missingTraceCommands.length === 0,
-    "traceability doc names the active verifier commands for current truth, mux, BridgeSpace, Ghostty, release, and modularity",
+    "public docs name the active verifier commands for current machine truth and this traceability gate",
     { missingTraceCommands },
   ),
   check(
-    "world-class-design-doc-links-doc-gate",
-    includesAll(docs.worldClassDesign, [
-      "verify:world-class-terminal-ai-os",
-      "verify:requirements-spec-design-traceability",
-      "AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
-      "Ghostty/WezTerm parity remains BLOCKED",
-      "must not be softened to `review`",
-    ]),
-    "world-class implementation design links the aggregate gate and the doc traceability gate without softening blocked claims",
+    "public-claim-policy-blocks-overclaim",
+    docsKeepCurrentClaimPolicy && docs.agentMessage.includes("Current verdict: **BLOCK for strict agmsg superset claims**"),
+    "public docs keep alpha/not-release-ready and blocked coordination claims explicit without restoring removed competitor-class claims",
   ),
   check(
     "package-script-present",
@@ -229,16 +228,16 @@ const checks = [
     "machine-truth-blocks-overclaim",
     artifacts.currentReadiness?.status === "block" &&
       artifacts.releaseQuality?.releaseCandidateReady === false &&
-      blocksProductClaim(artifacts.worldClass?.status) &&
-      worldClassAllBlocked,
-    "current artifacts block tmux/BridgeSpace/Ghostty/release overclaims instead of allowing stale green evidence",
+      blocksProductClaim(artifacts.releaseReadiness?.status) &&
+      productClaimGatesAllBlocked,
+    "current artifacts block tmux/shared-agent-workspace/native-terminal/release overclaims instead of allowing stale green evidence",
     {
       currentReadinessStatus: artifacts.currentReadiness?.status ?? null,
       releaseCandidateReady: artifacts.releaseQuality?.releaseCandidateReady ?? null,
-      worldClassStatus: artifacts.worldClass?.status ?? null,
-      worldClassClaims,
+      releaseReadinessStatus: artifacts.releaseReadiness?.status ?? null,
+      releaseReadinessClaims,
       nativeTextShapingSubclaimReady,
-      readyForGhosttyTextShapingSubclaim: artifacts.nativeTextShaping?.readyForGhosttyClaim ?? null,
+      readyForNativeShapingTextShapingSubclaim: artifacts.nativeTextShaping?.readyForNativeShapingClaim ?? null,
     },
   ),
   check(
@@ -253,15 +252,16 @@ const checks = [
     },
   ),
   check(
-    "docs-match-release-score",
+    "docs-point-to-current-machine-truth",
     releaseScoreText !== null &&
       releasePercentText !== null &&
       releaseGrade !== null &&
-      docs.requirements.includes(releaseGrade) &&
-      docs.traceability.includes(releaseScoreText) &&
-      docs.traceability.includes(releasePercentText) &&
-      docs.traceability.includes("releaseCandidateReady=false"),
-    "docs record the current release score and blocked release-candidate status",
+      artifacts.releaseQuality?.releaseCandidateReady === false &&
+      normalizedDocs.requirements.includes("read the freshly generated artifacts") &&
+      normalizedDocs.requirements.includes("override stale prose") &&
+      normalizedDocs.publicationReadiness.includes("Aelyris can be published as an alpha / experimental project") &&
+      normalizedDocs.publicationReadiness.includes("does not claim production readiness"),
+    "public docs avoid stale fixed-score claims and point readers to current generated machine truth",
     {
       releaseScoreText,
       releasePercentText,
@@ -271,12 +271,10 @@ const checks = [
   ),
   check(
     "docs-match-claim-blocks",
-    ["tmux", "bridgespace", "ghostty", "release"].every((claim) => currentReadinessBlocks.includes(claim)) &&
-      docs.requirements.includes("tmux-equivalent") &&
-      docs.requirements.includes("BridgeSpace-plus complete") &&
-      docs.requirements.includes("Ghostty-class") &&
-      docsDistinguishNativeTextShapingSubclaim,
-    "docs keep all currently blocked claims explicit and distinguish honest boundary work from completed parity",
+    ["tmux", "sharedWorkspace", "nativeTerminal", "release"].every((claim) => currentReadinessBlocks.includes(claim)) &&
+      docsKeepCurrentClaimPolicy &&
+      normalizedDocs.agentMessage.includes("strict `agmsg` superset behavior until the gates in this document are green"),
+    "docs keep current claim blocks explicit and distinguish honest substrate work from completed parity",
     { currentReadinessBlocks, nativeTextShapingSubclaimReady },
   ),
   check(
@@ -290,7 +288,7 @@ const checks = [
             item?.id === "native-renderer-text-shaping-integration-deferred") &&
           item?.removalGate === "verify:native-text-shaping-fallback" &&
           Array.isArray(item?.claimBlocks) &&
-          item.claimBlocks.includes("ghostty"),
+          item.claimBlocks.includes("nativeTerminal"),
       ),
     "degradation register records deferred native text-shaping debt when incomplete, or the native text-shaping subclaim is ready",
   ),
@@ -317,11 +315,11 @@ const report = {
     releaseScore: releaseScoreText,
     releasePercent: releasePercentText,
     releaseGrade,
-    worldClassStatus: artifacts.worldClass?.status ?? null,
-    worldClassClaims,
-    readyForGhosttyTextShapingSubclaim: artifacts.nativeTextShaping?.readyForGhosttyClaim ?? null,
+    releaseReadinessStatus: artifacts.releaseReadiness?.status ?? null,
+    releaseReadinessClaims,
+    readyForNativeShapingTextShapingSubclaim: artifacts.nativeTextShaping?.readyForNativeShapingClaim ?? null,
   },
-  claimStatus: worldClassAllBlocked ? "blocked-by-product-gates" : "review-current-artifacts",
+  claimStatus: productClaimGatesAllBlocked ? "blocked-by-product-gates" : "review-current-artifacts",
   summary:
     failed.length === 0
       ? "requirements/spec/design docs are connected to current gates; product claims remain blocked by machine truth"

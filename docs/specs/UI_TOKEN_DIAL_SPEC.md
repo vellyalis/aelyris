@@ -283,7 +283,7 @@ Run after applying, in this order. All are existing gates.
 | Right-rail edge feedback | `node scripts/verify-right-rail-edge-feedback.mjs` | Edge-score card states (tone borders) — confirms the §2/§4 border + selected-surface changes keep `data-tone` legibility. |
 | Right-rail goal track (Tauri) | `node scripts/verify-right-rail-goal-track-tauri.mjs` | Goal-track gold border + progress gradient still resolve after the accent unification. |
 | Right-rail suite | `node scripts/verify-right-rail-suite.mjs` | Umbrella over the above right-rail scripts. |
-| Clauge UI refresh contract | `node scripts/verify-clauge-ui-refresh-contract.mjs` | Broad UI-refresh invariants. |
+| Mode shell refresh contract | `node scripts/verify-mode-shell-refresh-contract.mjs` | Broad mode-shell UI invariants. |
 | Terminal font render contract | `node scripts/verify-terminal-font-render-contract.mjs` | Confirms the accent unification did NOT leak gold into the terminal domain (cyan must stay terminal-only, §5). |
 
 ### 8.2 Playwright visual gates

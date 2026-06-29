@@ -918,7 +918,7 @@ async fn create_list_resize_delete_roundtrip() {
 
     // Detach keeps the mux graph durable while preserving the live ConPTY
     // instances. Attach should therefore be a cheap graph state transition,
-    // not a respawn, which is the daemon-side contract tmux-style clients need.
+    // not a respawn, which is the daemon-side contract mux-style clients need.
     let detach_res = c
         .post(format!("{}/mux/workspaces/{}/detach", base, id))
         .send()

@@ -186,7 +186,7 @@ export function collectPaneRegistry(
   return entries;
 }
 
-/** Collect pane switcher rows in stable tmux-style tree order. */
+/** Collect pane switcher rows in stable mux-style tree order. */
 export function collectPaneSwitcherEntries(
   tree: PaneNode,
   terminalIds: ReadonlyMap<string, string> = new Map(),

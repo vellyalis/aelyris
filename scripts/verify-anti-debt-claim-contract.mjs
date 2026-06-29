@@ -9,7 +9,7 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const paths = {
   releaseQuality: ".codex-auto/quality/release-quality-score.json",
   currentReadiness: ".codex-auto/quality/current-readiness-source.json",
-  worldClass: ".codex-auto/quality/world-class-terminal-ai-os.json",
+  releaseReadiness: ".codex-auto/quality/release-readiness-aggregate.json",
   agentTeam: ".codex-auto/quality/agent-team-orchestration-readiness.json",
   nativeBoundary: ".codex-auto/quality/native-boundary-contract.json",
   nativeTextShaping: ".codex-auto/quality/native-text-shaping-fallback.json",
@@ -97,14 +97,14 @@ function generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeB
         "native",
         "native-boundary-contract-red",
         "native boundary contract is not green, including no-silent-fallback or sidecar command-session proof",
-        ["ghostty", "release"],
+        ["nativeTerminal", "release"],
         "make native boundary contract pass with fresh artifacts",
         "verify-terminal:native-boundary",
       ),
     );
   }
   const nativeTextShapingSubclaimReady =
-    nativeTextShaping?.readyForGhosttyClaim === true &&
+    nativeTextShaping?.readyForNativeShapingClaim === true &&
     nativeTextShaping?.systemTextShapingReady === true &&
     nativeTextShaping?.realFontFallbackReady === true &&
     nativeTextShaping?.rendererTextShapingIntegrated === true &&
@@ -139,13 +139,13 @@ function generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeB
         rendererRunsConsumed && !realFallbackReady
           ? "DirectWrite shaped runs are consumed by the native renderer, but real DirectWrite fallback mapping is not implemented"
           : fallbackGlyphRasterReady
-            ? "DirectWrite shaped runs, real fallback mapping, and fallback atlas rasterization are implemented, but visual fixtures still do not prove Ghostty-class text shaping"
+            ? "DirectWrite shaped runs, real fallback mapping, and fallback atlas rasterization are implemented, but visual fixtures still do not prove native-terminal-grade text shaping"
             : rendererRunsConsumed
-              ? "DirectWrite shaped runs are consumed by the native renderer, but fallback glyph rasterization and visual fixtures still do not prove Ghostty-class text shaping"
+              ? "DirectWrite shaped runs are consumed by the native renderer, but fallback glyph rasterization and visual fixtures still do not prove native-terminal-grade text shaping"
               : systemShaperReady
-                ? "DirectWrite system shaping/fallback boundary exists, but the native renderer and visual fixtures still do not prove Ghostty-class text shaping"
-                : "native renderer still uses a non-final text shaping/fallback boundary; system-backed shaping and real font fallback are required before Ghostty-class claims",
-        ["ghostty", "release"],
+                ? "DirectWrite system shaping/fallback boundary exists, but the native renderer and visual fixtures still do not prove native-terminal-grade text shaping"
+                : "native renderer still uses a non-final text shaping/fallback boundary; system-backed shaping and real font fallback are required before native-terminal-grade claims",
+        ["nativeTerminal", "release"],
         rendererRunsConsumed && !realFallbackReady
           ? "implement real DirectWrite font fallback mapping for shaped clusters before rasterizing fallback glyphs"
           : fallbackGlyphRasterReady
@@ -166,7 +166,7 @@ function generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeB
         "terminal",
         "renderer-fidelity-proof-missing",
         "terminal render fidelity guarantees are missing or stale",
-        ["ghostty"],
+        ["nativeTerminal"],
         "prove DPR backing store, font/render settings, repaint, and text snapping",
         "verify-terminal:font-render",
       ),
@@ -184,7 +184,7 @@ function generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeB
         "orchestrator",
         "ai-cli-boundary-proof-missing",
         "visible AI CLI launch, planner, or sidecar boundary proof is not current",
-        ["bridgespace", "release"],
+        ["sharedWorkspace", "release"],
         "refresh interactive AI CLI, real CLI binary, and launch planner proof",
         "verify-terminal:ai-cli-boundary",
       ),
@@ -197,7 +197,7 @@ function generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeB
         "orchestrator",
         "orchestra-dispatch-proof-red",
         "agent team orchestration readiness artifact is not green",
-        ["bridgespace"],
+        ["sharedWorkspace"],
         "make agent-team orchestration readiness pass without brittle static-only proof",
         "verify:goal:orchestration",
       ),
@@ -232,7 +232,7 @@ function mergeManualRecords(existing, generated) {
 }
 
 function validateRecord(item) {
-  const claimSet = new Set(["tmux", "bridgespace", "ghostty", "release"]);
+  const claimSet = new Set(["tmux", "sharedWorkspace", "nativeTerminal", "release"]);
   return {
     id: item?.id,
     ok:
@@ -250,16 +250,16 @@ function validateRecord(item) {
   };
 }
 
-function currentClaimPasses({ worldClass, releaseQuality }) {
+function currentClaimPasses({ releaseReadiness, releaseQuality }) {
   const passes = new Set();
   if (releaseQuality?.releaseCandidateReady === true) passes.add("release");
-  for (const [claim, value] of Object.entries(worldClass?.claims ?? {})) {
+  for (const [claim, value] of Object.entries(releaseReadiness?.claims ?? {})) {
     if (value === "pass") passes.add(claim);
   }
-  if (worldClass?.status === "pass") {
+  if (releaseReadiness?.status === "pass") {
     passes.add("tmux");
-    passes.add("bridgespace");
-    passes.add("ghostty");
+    passes.add("sharedWorkspace");
+    passes.add("nativeTerminal");
     passes.add("release");
   }
   return passes;
@@ -267,7 +267,7 @@ function currentClaimPasses({ worldClass, releaseQuality }) {
 
 const releaseQuality = readJson(paths.releaseQuality);
 const currentReadiness = readJson(paths.currentReadiness);
-const worldClass = readJson(paths.worldClass);
+const releaseReadiness = readJson(paths.releaseReadiness);
 const agentTeam = readJson(paths.agentTeam);
 const nativeBoundary = readJson(paths.nativeBoundary);
 const nativeTextShaping = readJson(paths.nativeTextShaping);
@@ -278,7 +278,7 @@ const records = mergeManualRecords(
   generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeBoundary, nativeTextShaping }),
 );
 const recordChecks = records.map(validateRecord);
-const passedClaims = currentClaimPasses({ worldClass, releaseQuality });
+const passedClaims = currentClaimPasses({ releaseReadiness, releaseQuality });
 const violations = [];
 for (const item of records) {
   for (const claim of item.claimBlocks ?? []) {
@@ -309,7 +309,7 @@ const checks = {
   noClaimPassesWhileBlocked: violations.length === 0,
   registerHasRemovalGates: records.every((item) => typeof item.removalGate === "string" && item.removalGate.length > 0),
   nativeTextShapingDebtRecorded:
-    nativeTextShaping?.readyForGhosttyClaim === true ||
+    nativeTextShaping?.readyForNativeShapingClaim === true ||
     records.some(
       (item) =>
         [
@@ -320,7 +320,7 @@ const checks = {
         ].includes(item.id) &&
         item.removalGate === "verify:native-text-shaping-fallback" &&
         Array.isArray(item.claimBlocks) &&
-        item.claimBlocks.includes("ghostty"),
+        item.claimBlocks.includes("nativeTerminal"),
     ),
 };
 const ok = Object.values(checks).every(Boolean);

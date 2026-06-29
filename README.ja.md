@@ -4,20 +4,9 @@
 
 Aelyris — Windows 向けのプロジェクトファースト AI 開発ワークスペース。
 
-![Aelyris の可視分割ペインの中で複数の AI コーディングエージェントが並列に作業している様子。左側にプロジェクトのファイルツリー、右側に起動済み・レビュー済みエージェントを示すオーケストレーターレールがある](docs/assets/hero-fleet.png)
-
-> アルファ版の開発時スクリーンショット。各ペインはそれぞれの git worktree 内で
-> 動く対話的なエージェント CLI で、右側にオーケストレーターレールがある。
-> 中央ペインツリーへの複数エージェント並列ディスパッチはまだゲート段階
-> （`verify:agent-team-orchestration-readiness` は未グリーン）であり、これは
-> 並列フリートの保証ではなく土台を示すもの。詳細は下の「現在の状態と制約」を参照。
-
 Aelyris は、実ターミナルのワークスペース、可視の AI エージェントペイン、
 プロジェクト / worktree のコンテキスト、レビューとマージの制御、機械検証可能な
-リリースゲートを 1 つにまとめた Tauri デスクトップアプリです。狙いは、ローカル
-ファーストの AI チーム OS を作ること。実ペインでの並列作業、関数単位の衝突回避、
-intent bus、shared brain、コミットに束縛されたマージを 1 つの監査可能な操作面に
-まとめます。
+リリースゲートを 1 つにまとめた Tauri デスクトップアプリです。実ペインでの並列作業、関数単位の衝突回避、コミットに束縛されたマージを 1 つの監査可能な操作面にまとめることを目指しています。intent bus や shared brain は計画 / 進行中の領域であり、完成主張は verifier がグリーンになるまで行いません。
 
 ## 命名
 
@@ -57,7 +46,7 @@ Aelyris は次のワークフローを目標に設計しています。
 ## 実装済みの土台
 
 - Windows ターミナルランタイム: Tauri v2、Rust バックエンド、WebView2 フロント
-  エンド、ConPTY、xterm.js、ネイティブターミナルの実験。
+  エンド、ConPTY、ネイティブ Rust ターミナルレンダリング。
 - ペイン / mux レイヤー: ペインツリー、分割レイアウト、永続化したペイン状態、
   mux グラフ、sidecar 方向、tmux 級コントラクト検証（ライブな mux 復元の証明は
   まだゲート段階）。
@@ -96,7 +85,7 @@ Aelyris は次のワークフローを目標に設計しています。
 - Tauri v2
 - Rust、Tokio、portable-pty、git2、rusqlite
 - React 19、TypeScript、Vite 7
-- xterm.js と WebGL ターミナルレンダリング
+- ネイティブ Rust ターミナルレンダリング（ConPTY、Rust-owned input / clipboard / IME）
 - Monaco Editor（Vim モード）
 - Radix UI プリミティブ、Lucide アイコン、CSS Modules
 - Windows WebView2、ConPTY、Mica/Acrylic ウィンドウスタイリング
@@ -142,7 +131,7 @@ pnpm verify:goal:safe
 主張ゲート:
 
 ```powershell
-pnpm verify:mux-tmux-grade-contract
+pnpm verify:mux-durability-contract
 pnpm verify:visible-agent-pane-binding
 pnpm verify:terminal:native-boundary
 ```

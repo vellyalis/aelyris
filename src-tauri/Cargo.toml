@@ -53,7 +53,7 @@ portable-pty = "0.8"
 # Terminal state engine (Phase 2 native parsing/grid)
 alacritty_terminal = "0.26"
 # Full-native renderer proof path. Keep the first proof headless/offscreen and
-# Windows-focused; the later daily-driver shell will add a visible winit surface.
+# Windows-focused; the later operator-primary shell will add a visible winit surface.
 wgpu = { version = "28.0.0", default-features = false, features = ["std", "dx12", "wgsl"] }
 pollster = "0.4"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }

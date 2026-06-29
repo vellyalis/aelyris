@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(process.cwd());
-const OUT = join(ROOT, ".codex-auto", "quality", "mux-tmux-grade-contract.json");
+const OUT = join(ROOT, ".codex-auto", "quality", "mux-durability-contract.json");
 
 function read(rel) {
   return readFileSync(join(ROOT, rel), "utf8");
@@ -110,7 +110,7 @@ const checks = [
     "True mux live process preservation is a separate gate; daemon-live detach/reattach can pass, while restart restore respawn remains an explicit boundary.",
   ),
   check(
-    "layout-core-supports-tmux-style-operations",
+    "layout-core-supports-mux-style-operations",
     layout.includes("split_pane") &&
       layout.includes("close_pane") &&
       layout.includes("swap_panes") &&
@@ -225,13 +225,13 @@ const checks = [
       fallbackBlocker.includes("visible-runtime-classifies-native-as-degraded") &&
       fallbackBlocker.includes("ipc-fallback-persists-but-is-not-claim-unlocker") &&
       fallbackBlocker.includes("anti-debt-register-enforces-claim-block-shape"),
-    "Dedicated fallback blocker verifier prevents in-process/native fallback from satisfying the tmux-grade claim.",
+    "Dedicated fallback blocker verifier prevents in-process/native fallback from satisfying the mux durability claim.",
   ),
 ];
 
 const failed = checks.filter((item) => !item.ok);
 const report = {
-  schema: "aelyris.mux-tmux-grade-contract/v1",
+  schema: "aelyris.mux-durability-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,
@@ -267,7 +267,7 @@ if (report.knownGaps.length > 0) {
   for (const gap of report.knownGaps) console.log(`REVIEW ${gap.id}: ${gap.detail}`);
 }
 if (failed.length > 0) {
-  console.error(`\n${failed.length}/${checks.length} mux tmux-grade assertion(s) FAILED`);
+  console.error(`\n${failed.length}/${checks.length} mux durability assertion(s) FAILED`);
   process.exit(1);
 }
-console.log(`\nAll ${checks.length} mux tmux-grade assertions PASSED`);
+console.log(`\nAll ${checks.length} mux durability assertions PASSED`);

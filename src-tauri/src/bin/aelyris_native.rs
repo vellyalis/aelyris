@@ -209,14 +209,14 @@ fn full_native_readiness_contract() -> Value {
     json!({
         "schema": "aelyris.full-native-readiness.v1",
         "currentStage": "native-client-spike",
-        "finalGoal": "daily-driver no-WebView Rust client",
+        "finalGoal": "operator-primary no-WebView Rust client",
         "textShapingPolicy": to_value(&text_shaping_policy).unwrap_or_else(|_| json!({
-            "readyForGhosttyClaim": false,
+            "readyForNativeShapingClaim": false,
             "releaseBlockers": ["native text-shaping policy serialization failed"]
         })),
         "systemTextShapingCapability": to_value(&system_text_shaping).unwrap_or_else(|_| json!({
             "available": false,
-            "readyForGhosttyClaim": false,
+            "readyForNativeShapingClaim": false,
             "blockers": ["native system text-shaping capability serialization failed"]
         })),
         "definitionOfDone": [
@@ -268,7 +268,7 @@ fn full_native_readiness_contract() -> Value {
             "nativeClipboardAndSelectionDogfood": true,
             "nativeThemeGlassWallpaperEditorUi": null,
             "nativeCommandCenterRightRailUi": null,
-            "nativePrimaryDailyDriverPromotion": null,
+            "nativePrimaryOperatorPromotion": null,
             "nativeSettingsAndDialogsUi": null,
             "nativeAccessibilityAndKeyboardNavigation": null,
             "nativeUiaProviderDogfood": null,
@@ -276,13 +276,13 @@ fn full_native_readiness_contract() -> Value {
             "nativeSleepResumeVisualDogfood": true,
             "reactWebViewAsOptionalCompatibilityOnly": true
         },
-        "nextMilestone": "dogfood Japanese candidate selection and primary daily-driver terminal input in aelyris-native while keeping the winit/wgpu font-atlas renderer on the same NativeRenderFrame contract",
+        "nextMilestone": "dogfood Japanese candidate selection and primary operator-primary terminal input in aelyris-native while keeping the winit/wgpu font-atlas renderer on the same NativeRenderFrame contract",
         "doNotClaimFullNativeUntil": [
             "native present-loop is dogfooded by a visible interactive terminal window",
             "winit-wgpu font-atlas renderer is dogfooded as the primary visible terminal renderer",
             "Windows system-backed text shaping and real font fallback are wired into the native renderer without '?' substitution",
             "Japanese IME candidate selection is dogfooded with a real user-driven IME session inside aelyris-native",
-            "Command Center/right rail runs as part of the primary daily-driver native shell",
+            "Command Center/right rail runs as part of the primary operator-primary native shell",
             "native accessibility tree is exposed through UIA/accesskit to assistive technologies",
             "native visual QA proves nonblank rendering, contrast, focus, and input after resize/sleep/resume"
         ]
@@ -630,11 +630,11 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
             }
         },
         "visualFallbackGlyphFixturesReady": ready,
-        "readyForGhosttyTextShapingClaim": ready,
-        "readyForFullGhosttyClaim": false,
-        "remainingFullGhosttyBlockers": [
+        "readyForNativeShapingTextShapingClaim": ready,
+        "readyForFullNativeShapingClaim": false,
+        "remainingFullNativeShapingBlockers": [
             "native visual regression full surface proof",
-            "native daily-driver terminal proof",
+            "native operator-primary terminal proof",
             "native boundary contract"
         ]
     });
@@ -2610,7 +2610,7 @@ fn native_right_rail_demotion_payload(
         "reactDemotionComplete": react_compatibility_only,
         "readyForReactDemotion": native_product_path_ready && react_right_rail_sources_present && !react_compatibility_only,
         "readyForFullNativeClaim": false,
-        "nextProof": "aelyris-native-primary-daily-driver-promotion",
+        "nextProof": "aelyris-native-primary-operator-promotion",
     }))
 }
 
@@ -8130,18 +8130,18 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         "skippedGlyphQuads": app.skipped_glyph_quads,
         "fallbackGlyphQuads": app.fallback_glyph_quads,
         "textShapingPolicy": to_value(&terminal_text_shaping_policy()).unwrap_or_else(|_| json!({
-            "readyForGhosttyClaim": false,
+            "readyForNativeShapingClaim": false,
             "releaseBlockers": ["native text-shaping policy serialization failed"]
         })),
         "systemTextShapingCapability": to_value(&system_text_shaping_capability()).unwrap_or_else(|_| json!({
             "available": false,
-            "readyForGhosttyClaim": false,
+            "readyForNativeShapingClaim": false,
             "blockers": ["native system text-shaping capability serialization failed"]
         })),
         "textShapingBackend": text_shaping_backend,
         "textShapingRendererIntegrationReady": renderer_text_shaping_integrated,
         "textShapingFallbackGlyphRasterizationReady": renderer_fallback_glyph_rasterization_ready,
-        "textShapingReadyForGhosttyClaim": false,
+        "textShapingReadyForNativeShapingClaim": false,
         "textShapingBlockedUntil": [
             "winit/wgpu glyph atlas rasterizes fallback glyphs from DirectWrite-resolved fonts",
             "visual ligature/no-ligature regression artifacts"
@@ -8734,7 +8734,7 @@ mod tests {
         assert!(contract["missing"]["winitWgpuRenderer"].is_null());
         assert!(contract["missing"]["nativeImeLiveDogfood"].is_null());
         assert!(contract["missing"]["nativeCommandCenterRightRailUi"].is_null());
-        assert!(contract["missing"]["nativePrimaryDailyDriverPromotion"].is_null());
+        assert!(contract["missing"]["nativePrimaryOperatorPromotion"].is_null());
         assert!(contract["doNotClaimFullNativeUntil"]
             .as_array()
             .expect("claim guards")

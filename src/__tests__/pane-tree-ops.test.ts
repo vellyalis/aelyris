@@ -250,7 +250,7 @@ describe("countLeaves", () => {
   });
 });
 
-describe("tmux-style pane layout operations", () => {
+describe("mux-style pane layout operations", () => {
   it("swaps panes by moving pane ids so terminal bindings move with the pane", () => {
     const left = createLeaf("powershell", "C:/repo", { title: "left", role: "work" });
     const tree = splitPane(left, left.id, "right", "cmd");

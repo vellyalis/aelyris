@@ -8,7 +8,7 @@ Read it first, then use this file only for Claude-specific operating notes.
 1. `AGENTS.md`
 2. `docs/requirements.md`
 3. `docs/AGENT_WORKFLOWS.md`
-4. `docs/specs/CODEX_HANDOFF.md`
+4. `docs/specs/README.md`
 5. The Work Unit spec section for the task at hand
 6. This Claude-specific note
 

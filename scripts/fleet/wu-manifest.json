@@ -1,6 +1,6 @@
 {
   "$schema": "fleet-wu-manifest.v1",
-  "handoff": "docs/specs/CODEX_HANDOFF.md",
+  "specIndex": "docs/specs/README.md",
   "worktreePrefix": "aelyris-wt-",
   "note": "suggestedAgent reflects model routing (Opus=design/UI/architecture, Codex=backend impl). Codex is usage-limited until 2026-07-01; until then route backend WUs to claude/opus too.",
   "workUnits": {

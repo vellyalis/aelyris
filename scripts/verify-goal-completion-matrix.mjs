@@ -5,11 +5,11 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "goal-completion-matrix.json");
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const OBJECTIVE =
-  "Aelyrisをtmux/WezTerm/Claude Code水準を超えるnative-first hybrid AI workspace terminalとして、ターミナル中核、mux復元、IME/clipboard、右レール実ワークフロー、AI CLI sidecar、sleep/resume、runtime hygiene、配布前品質スコアの証跡ゲートを全てグリーンにし、実装に実用上100%の自信を持てる状態まで到達させる。";
+  "Aelyrisをtmux/native-terminal/Claude Code水準を超えるnative-first hybrid AI workspace terminalとして、ターミナル中核、mux復元、IME/clipboard、右レール実ワークフロー、AI CLI sidecar、sleep/resume、runtime hygiene、配布前品質スコアの証跡ゲートを全てグリーンにし、実装に実用上100%の自信を持てる状態まで到達させる。";
 
 const requiredObjectiveTerms = [
   "tmux",
-  "WezTerm",
+  "native-terminal",
   "Claude Code",
   "native-first hybrid",
   "ターミナル中核",
@@ -70,7 +70,7 @@ const objectiveMatrix = [
   },
   {
     id: "rust-mux-daemon-boundary",
-    clause: "tmux/WezTerm水準以上のmux復元とRust daemon境界",
+    clause: "tmux/native-terminal水準以上のmux復元とRust daemon境界",
     finalAuditRequirementId: "rust-mux-daemon-boundary",
     requiredScoreIds: ["mux-performance", "process-reconnect-command-evidence", "native-boundary-contract"],
     requiredArtifacts: ["nativeBoundary"],

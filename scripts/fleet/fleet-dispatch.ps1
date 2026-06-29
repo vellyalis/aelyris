@@ -4,7 +4,7 @@
   Fleet dispatcher for Aelyris worktree-based parallel development.
 
 .DESCRIPTION
-  Turns a CODEX_HANDOFF Work Unit id into a ready-to-run agent task:
+  Turns a fleet Work Unit id into a ready-to-run agent task:
   creates an isolated git worktree + branch, writes a self-contained brief
   into it, and prints the launch command. Also reports fleet status and
   drives the sequential-merge tail.
@@ -79,7 +79,7 @@ Then implement **Work Unit $id — $($wu.title)**.
 - Suggested agent: $agent$notes
 
 ## Rules (binding)
-- Honor the Shared Contract (CODEX_HANDOFF §3) and the do-not-break list (§6).
+- Honor the current spec contracts in docs/specs/README.md and the referenced phase/spec section.
 - This worktree is isolated on branch '$(Get-BranchName $id $wu)' off '$baseBranch'. Stay in scope: touch only this WU's files.
 - Do NOT commit FLEET_BRIEF.md (it is the brief, not source).
 - Communicate via the orchestrator only (no peer-to-peer). Write progress to .fleet/status.md if asked.

@@ -106,7 +106,7 @@ pub struct TerminalTextShapingPolicy {
     pub system_capability: SystemTextShapingCapability,
     pub ligature_policy: LigaturePolicy,
     pub required_fallback_classes: Vec<FontFallbackClass>,
-    pub ready_for_ghostty_claim: bool,
+    pub ready_for_native_shaping_claim: bool,
     pub renderer_integration_ready: bool,
     pub visual_fixture_ready: bool,
     pub release_blockers: Vec<String>,
@@ -121,7 +121,7 @@ pub struct ShapedRun {
     pub real_font_fallback_ready: bool,
     pub renderer_integration_ready: bool,
     pub visual_fixture_ready: bool,
-    pub ready_for_ghostty_claim: bool,
+    pub ready_for_native_shaping_claim: bool,
     pub ligatures_used: bool,
     pub clusters: Vec<GlyphCluster>,
     pub release_blockers: Vec<String>,
@@ -139,7 +139,7 @@ pub struct SystemTextShapingCapability {
     pub system_font_fallback: bool,
     pub renderer_integration_ready: bool,
     pub visual_fixture_ready: bool,
-    pub ready_for_ghostty_claim: bool,
+    pub ready_for_native_shaping_claim: bool,
     pub detail: String,
     pub blockers: Vec<String>,
 }
@@ -202,7 +202,7 @@ impl TextShaper for PolicyTextShaper {
             real_font_fallback_ready: false,
             renderer_integration_ready: false,
             visual_fixture_ready: false,
-            ready_for_ghostty_claim: false,
+            ready_for_native_shaping_claim: false,
             ligatures_used: false,
             clusters,
             release_blockers: terminal_text_shaping_policy().release_blockers,
@@ -696,7 +696,7 @@ impl TextShaper for DirectWriteTextShaper {
             }),
             renderer_integration_ready: false,
             visual_fixture_ready: false,
-            ready_for_ghostty_claim: false,
+            ready_for_native_shaping_claim: false,
             ligatures_used: false,
             clusters,
             release_blockers: terminal_text_shaping_policy().release_blockers,
@@ -809,7 +809,7 @@ pub fn terminal_text_shaping_policy() -> TerminalTextShapingPolicy {
             FontFallbackClass::NerdFont,
             FontFallbackClass::BoxDrawing,
         ],
-        ready_for_ghostty_claim: false,
+        ready_for_native_shaping_claim: false,
         renderer_integration_ready: false,
         visual_fixture_ready: false,
         release_blockers,
@@ -834,7 +834,7 @@ pub fn system_text_shaping_capability() -> SystemTextShapingCapability {
             system_font_fallback: false,
             renderer_integration_ready: false,
             visual_fixture_ready: false,
-            ready_for_ghostty_claim: false,
+            ready_for_native_shaping_claim: false,
             detail: "DirectWrite system shaping is unavailable on this target/build".to_string(),
             blockers: vec![
                 "wire DirectWrite shaped clusters into the winit/wgpu glyph atlas path".to_string(),
@@ -880,7 +880,7 @@ fn system_text_shaping_capability_windows() -> SystemTextShapingCapability {
         system_font_fallback,
         renderer_integration_ready: false,
         visual_fixture_ready: false,
-        ready_for_ghostty_claim: false,
+        ready_for_native_shaping_claim: false,
         detail: if available {
             format!(
                 "DirectWrite factory, system font collection, and sample text layout are available; installed fallback candidate coverage is {installed_candidate_coverage}; IDWriteFontFallback sample mapping is {system_font_fallback}; renderer fallback rasterization and visual dogfood remain pending"
@@ -1126,7 +1126,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_keeps_ghostty_claim_blocked_until_system_shaper() {
+    fn policy_keeps_native_shaping_claim_blocked_until_system_shaper() {
         let policy = terminal_text_shaping_policy();
 
         assert_eq!(policy.schema, TEXT_SHAPING_SCHEMA);
@@ -1151,7 +1151,7 @@ mod tests {
         }
         assert!(!policy.renderer_integration_ready);
         assert!(!policy.visual_fixture_ready);
-        assert!(!policy.ready_for_ghostty_claim);
+        assert!(!policy.ready_for_native_shaping_claim);
         if !policy.system_capability.system_font_fallback {
             assert!(policy
                 .release_blockers
@@ -1190,7 +1190,7 @@ mod tests {
         assert_eq!(run.backend, TextShapingBackend::PolicyFallback);
         assert!(!run.system_shaper_ready);
         assert!(!run.real_font_fallback_ready);
-        assert!(!run.ready_for_ghostty_claim);
+        assert!(!run.ready_for_native_shaping_claim);
         assert!(!run.ligatures_used);
         assert_eq!(
             run.clusters.iter().filter(|c| c.fallback_required).count(),
@@ -1245,7 +1245,7 @@ mod tests {
         assert!(run.system_shaper_ready);
         assert!(!run.renderer_integration_ready);
         assert!(!run.visual_fixture_ready);
-        assert!(!run.ready_for_ghostty_claim);
+        assert!(!run.ready_for_native_shaping_claim);
         assert_eq!(
             run.real_font_fallback_ready,
             run.clusters.iter().all(|cluster| {

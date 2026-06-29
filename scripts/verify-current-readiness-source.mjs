@@ -7,7 +7,7 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const paths = {
   releaseQuality: ".codex-auto/quality/release-quality-score.json",
-  worldClass: ".codex-auto/quality/world-class-terminal-ai-os.json",
+  releaseReadiness: ".codex-auto/quality/release-readiness-aggregate.json",
   antiDebt: ".codex-auto/quality/anti-debt-claim-contract.json",
   modularity: ".codex-auto/quality/modularity-boundary-contract.json",
   requirementsTrace: ".codex-auto/quality/requirements-spec-design-traceability.json",
@@ -74,17 +74,17 @@ function claimBlocksFromRelease(releaseQuality) {
     if (/mux|pane|reconnect|scrollback|sidecar|pty|live-command|multipane|recovered-command/.test(text)) {
       blocks.add("tmux");
     }
-    if (/native|terminal-render|font|ime|dpi|visual|ghostty|wezterm|canvas|text render/.test(text)) {
-      blocks.add("ghostty");
+    if (/native|terminal-render|font|ime|dpi|visual|nativeTerminal|nativeterminal|canvas|text render/.test(text)) {
+      blocks.add("nativeTerminal");
     }
     if (/agent|orchestr|mcp|merge|ownership|shared brain|ai-cli|right-rail|command-center/.test(text)) {
-      blocks.add("bridgespace");
+      blocks.add("sharedWorkspace");
     }
   }
   return [...blocks].sort();
 }
 
-function staleContradictions({ releaseQuality, promotionGate, worldClass }) {
+function staleContradictions({ releaseQuality, promotionGate, releaseReadiness }) {
   const contradictions = [];
   const releaseMtime = mtimeMs(paths.releaseQuality);
   const promotionMtime = mtimeMs(paths.promotionGate);
@@ -101,10 +101,10 @@ function staleContradictions({ releaseQuality, promotionGate, worldClass }) {
       currentMtimeMs: releaseMtime,
     });
   }
-  if (worldClass?.status === "pass" && releaseQuality?.releaseCandidateReady !== true) {
+  if (releaseReadiness?.status === "pass" && releaseQuality?.releaseCandidateReady !== true) {
     contradictions.push({
-      artifact: paths.worldClass,
-      reason: "world-class aggregate claims pass while current release-quality-score blocks release readiness",
+      artifact: paths.releaseReadiness,
+      reason: "release readiness aggregate claims pass while current release-quality-score blocks release readiness",
       currentArtifact: paths.releaseQuality,
     });
   }
@@ -125,7 +125,7 @@ function validReleaseShape(releaseQuality) {
 }
 
 const releaseQuality = readJson(paths.releaseQuality);
-const worldClass = readJson(paths.worldClass);
+const releaseReadiness = readJson(paths.releaseReadiness);
 const antiDebt = readJson(paths.antiDebt);
 const modularity = readJson(paths.modularity);
 const requirementsTrace = readJson(paths.requirementsTrace);
@@ -134,7 +134,7 @@ const promotionGate = readJson(paths.promotionGate);
 
 const status = releaseStatus(releaseQuality);
 const claimBlocks = claimBlocksFromRelease(releaseQuality);
-const contradictions = staleContradictions({ releaseQuality, promotionGate, worldClass });
+const contradictions = staleContradictions({ releaseQuality, promotionGate, releaseReadiness });
 
 const checks = {
   releaseQualityExists: releaseQuality != null,
@@ -147,10 +147,10 @@ const checks = {
     promotionGate.readyForPromotion !== true ||
     releaseQuality?.releaseCandidateReady === true ||
     contradictions.some((item) => item.artifact === paths.promotionGate),
-  worldClassCannotOverrideRelease:
-    worldClass?.status !== "pass" ||
+  releaseReadinessCannotOverrideRelease:
+    releaseReadiness?.status !== "pass" ||
     releaseQuality?.releaseCandidateReady === true ||
-    contradictions.some((item) => item.artifact === paths.worldClass),
+    contradictions.some((item) => item.artifact === paths.releaseReadiness),
 };
 
 const ok = Object.values(checks).every(Boolean);
@@ -164,7 +164,7 @@ const report = {
   status,
   authoritativeSources: [
     "release-quality-score",
-    ...(worldClass ? ["world-class-terminal-ai-os"] : []),
+    ...(releaseReadiness ? ["release-readiness-aggregate"] : []),
     ...(requirementsTrace ? ["requirements-spec-design-traceability"] : []),
     ...(antiDebt ? ["anti-debt-claim-contract"] : []),
     ...(modularity ? ["modularity-boundary-contract"] : []),
@@ -191,7 +191,7 @@ const report = {
   },
   artifacts: {
     releaseQuality: artifactMeta(paths.releaseQuality, releaseQuality),
-    worldClass: artifactMeta(paths.worldClass, worldClass),
+    releaseReadiness: artifactMeta(paths.releaseReadiness, releaseReadiness),
     requirementsTrace: artifactMeta(paths.requirementsTrace, requirementsTrace),
     antiDebt: artifactMeta(paths.antiDebt, antiDebt),
     modularity: artifactMeta(paths.modularity, modularity),

@@ -142,10 +142,10 @@ function isRightRailEdgeEnvironmentBlocker(blocker) {
   return /right-rail-edge/i.test(text) && /visual QA evidence|fresh visual QA evidence/i.test(text);
 }
 
-function isWorldClassExternalBlocker(blocker) {
+function isReleaseReadinessExternalBlocker(blocker) {
   const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
   return (
-    /world-class-terminal-ai-os|world-class/i.test(text) &&
+    /release-readiness-aggregate|release readiness/i.test(text) &&
     /externally blocked|external-blocked|environment-blocked|spawn EPERM|CDP|ECONNREFUSED|WebView2|real Windows sleep\/resume|real OS sleep\/resume|host\/operator proof|signing\/updater|explicit token|authenticated AI CLI prompt/i.test(
       text,
     )
@@ -1430,7 +1430,7 @@ const allowedExternalBlockersOnly =
       isChunkedOscEnvironmentBlocker(blocker) ||
       isRightRailEdgeEnvironmentBlocker(blocker) ||
       isCommandEvidenceEnvironmentBlocker(blocker) ||
-      isWorldClassExternalBlocker(blocker),
+      isReleaseReadinessExternalBlocker(blocker),
   ) &&
     (hostSleepBlockers.length === 0 || realSuspendExternalBlockedEvidenceReady) &&
     (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady) &&
@@ -1561,14 +1561,14 @@ let externalBlockedRisks = unresolvedBlockers
   )
   .concat(
     unresolvedBlockers
-      .filter((blocker) => isWorldClassExternalBlocker(blocker))
+      .filter((blocker) => isReleaseReadinessExternalBlocker(blocker))
       .map((blocker) => ({
-        kind: "world-class-aggregate-external-proof-gate",
-        area: blocker?.area ?? "world-class-terminal-ai-os",
+        kind: "release-readiness-aggregate-external-proof-gate",
+        area: blocker?.area ?? "release-readiness-aggregate",
         blocker: blocker?.blocker ?? String(blocker),
         canAutoResolve: false,
         requiredAction:
-          "Run the remaining host/operator world-class proof gates, then rerun pnpm verify:world-class-terminal-ai-os, pnpm verify:quality-score, and pnpm verify:final-goal-audit.",
+          "Run the remaining host/operator release readiness proof gates, then rerun pnpm verify:release-readiness-aggregate, pnpm verify:quality-score, and pnpm verify:final-goal-audit.",
       })),
   );
 externalBlockedRisks = [
@@ -1619,7 +1619,7 @@ const implementationFixableRisks = [
         !isChunkedOscEnvironmentBlocker(blocker) &&
         !(isRightRailEdgeEnvironmentBlocker(blocker) && rightRailEdgeVisualHostBlockedEvidenceReady) &&
         !isCommandEvidenceEnvironmentBlocker(blocker) &&
-        !isWorldClassExternalBlocker(blocker) &&
+        !isReleaseReadinessExternalBlocker(blocker) &&
         !(isLiveAiChaosExternalBlocker(blocker) && liveAiChaosExternalDependencyReady),
     )
     .map((blocker) => ({

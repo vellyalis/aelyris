@@ -12,23 +12,25 @@ function check(id, ok, detail, evidence = {}) {
   return { id, ok: Boolean(ok), detail, evidence };
 }
 
-const design = read("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const visiblePaneSpec = read("docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md");
+const requirements = read("docs/requirements.md");
 const packageJson = read("package.json");
 const api = read("src-tauri/src/api/mod.rs");
 const app = read("src/App.tsx");
 const ipcMux = read("src-tauri/src/ipc/mux_commands.rs");
 const antiDebt = read("scripts/verify-anti-debt-claim-contract.mjs");
-const tmuxContract = read("scripts/verify-mux-tmux-grade-contract.mjs");
+const tmuxContract = read("scripts/verify-mux-durability-contract.mjs");
 
 const checks = [
   check(
     "design-declares-fallbacks-claim-blocking",
-    design.includes("Fallbacks are allowed only as explicit degraded modes") &&
-      design.includes("A fallback must never satisfy") &&
-      design.includes("In-process PTY fallback can keep the app usable, but blocks `tmux`") &&
-      design.includes('"fallbackPath": "in-process-pty"') &&
-      design.includes('"removalGate": "verify-mux-fallback-blocker"'),
-    "The world-class design states that in-process PTY fallback is degraded and blocks the tmux claim.",
+    visiblePaneSpec.includes("Keep in-process fallback only as degraded mode") &&
+      visiblePaneSpec.includes("durability-degraded") &&
+      visiblePaneSpec.includes("Do not claim tmux-level durability until sidecar-owned attach/recover is proven") &&
+      requirements.includes("does not claim production readiness") &&
+      requirements.includes("capability claims are") &&
+      requirements.includes("gated by verifiers"),
+    "The current runtime spec and requirements state that in-process fallback is degraded and cannot unlock mux durability claims.",
   ),
   check(
     "visible-runtime-classifies-native-as-degraded",
@@ -55,9 +57,9 @@ const checks = [
       ipcMux.includes("api_state.mux_store.as_ref()") &&
       ipcMux.includes(".save_graph(&graph)") &&
       tmuxContract.includes("ipc-fallback-persistence-has-no-unit-test-yet") &&
-      design.includes("Tauri IPC in-process mux fallback save snapshots") &&
-      design.includes("In-process native fallback must block the tmux-equivalent claim"),
-    "IPC fallback durability is preserved for user safety, while tmux-grade status remains blocked by explicit fallback policy.",
+      visiblePaneSpec.includes("Keep in-process fallback only as degraded mode") &&
+      visiblePaneSpec.includes("Do not claim tmux-level durability until sidecar-owned attach/recover is proven"),
+    "IPC fallback durability is preserved for user safety, while mux durability status remains blocked by explicit fallback policy.",
   ),
   check(
     "anti-debt-register-enforces-claim-block-shape",

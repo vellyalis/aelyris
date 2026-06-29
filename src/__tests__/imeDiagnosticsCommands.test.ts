@@ -29,7 +29,7 @@ describe("IME diagnostics command surface", () => {
     expect(src).toContain("Reproduce the terminal input bug");
   });
 
-  it("exposes tmux-style broadcast as a deliberate command palette and menu action", () => {
+  it("exposes mux-style broadcast as a deliberate command palette and menu action", () => {
     const src = getSrc();
 
     expect(src).toContain('id: "broadcast-to-all-panes"');

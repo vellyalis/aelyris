@@ -1607,7 +1607,7 @@ async function main() {
       "native right rail demotion proof must not claim full-native readiness",
     );
     assert(
-      nativeRightRailDemotion.rightRailDemotion?.nextProof === "aelyris-native-primary-daily-driver-promotion",
+      nativeRightRailDemotion.rightRailDemotion?.nextProof === "aelyris-native-primary-operator-promotion",
       "native right rail demotion next proof mismatch",
     );
     report.checks.push("native-right-rail-demotion-contract-proof");

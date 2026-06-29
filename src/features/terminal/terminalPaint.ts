@@ -322,7 +322,7 @@ export function paintCursor(
        * terminal — `block` and `hollowBlock` previously rendered
        * identically, which silently dropped the focus signal. A 1-px
        * outline matches the convention every modern terminal
-       * (iTerm2, Terminal.app, Windows Terminal, Wezterm) uses for
+       * (other terminals) use for
        * "I'm not the keyboard target right now". The 0.5-px inset is
        * needed because canvas strokeRect centres the line on the
        * coordinate, so a 1-px stroke at integer coords would split

@@ -1,5 +1,5 @@
 // Make-or-break check: does the visible fleet now render the LIVE INTERACTIVE
-// claude TUI in a pane (the BridgeSpace experience), instead of headless `-p`
+// claude TUI in a pane (the shared-agent-workspace experience), instead of headless `-p`
 // print output? Dispatches one worktree-backed task, then screenshots the
 // center panel at intervals so we can SEE whether claude's interactive
 // interface (alt-screen, boxes, working spinner) renders via the native

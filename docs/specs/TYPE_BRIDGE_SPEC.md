@@ -66,4 +66,4 @@ The contract is the firewall; the mock removes the wait. Front and back meet onl
 
 - Depends on **WU-0.1** (`AgentRunStatus`) and **WU-0.2** (`AgentSession`) — the types must exist to bridge.
 - Slots as **WU-0.7** in Phase 0, right after 0.2; do it **before** the Phase 2 front/back fan-out so the cockpit surfaces are built against a test-frozen contract.
-- Tier 2 is deferred to after Phase 0/1 (see CODEX_HANDOFF §7).
+- Tier 2 is deferred to after Phase 0/1 (see docs/specs/README.md).

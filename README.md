@@ -2,17 +2,11 @@
 
 # Aelyris
 
-**A local-first AI team OS for your terminal.** Run coding agents as a visible
-team — in real parallel panes — that share what they know, avoid each other's
-edits down to the function level, deliberate before they act, and carry work all
-the way through review and a commit-bound merge.
+**A project-first AI development workspace for Windows.** Run coding agents in visible terminal panes, keep work isolated by worktree and ownership boundaries, and review changes through auditable gates before merge.
 
-![A fleet of AI coding agents working in parallel inside Aelyris's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
 
 > **Alpha — active development, not yet release-ready.** Every readiness claim is
 > backed by a verifier you can run yourself. Expect rough edges; APIs are moving.
-> The screenshot is a live development capture, not a proven parallel-fleet
-> guarantee — see the limits below.
 
 ## The problem
 
@@ -31,21 +25,14 @@ guardrails.
   per symbol*, using tree-sitter extraction (Rust / TS / TSX) with a diff-hunk
   fallback. Orchestrated lanes are conflict-aware: disjoint symbols run in
   parallel, overlapping work is serialized automatically.
-- **Agents that deliberate before acting.** An intent bus lets an agent announce
-  "I'm about to switch auth to JWT" or "extract AuthService"; peers align, object,
-  or defer — so design conflicts surface in discussion, not at merge.
-- **A shared brain.** A live snapshot aggregates every agent, event, ownership
-  lease, open intent, blocker, and recorded decision — the real-time "who's doing
-  what, where" — plus a code knowledge graph the fleet reasons over
-  (User → AuthService → JWTProvider), not just files.
+- **Coordination roadmap with gated claims.** Local agent messaging, shared-brain replay, and code-graph reasoning are active design targets, but public claims stay behind verifier gates until the evidence is current.
 - **Merges bound to a commit.** An approval is bound to the exact commit it was
   granted against; the git update uses an old-OID compare-and-swap, so a moved
   branch tip is rejected, never silently merged. Objective gate commands
   (build / test / lint) run in the task's worktree and can block a merge even
   after a human approves.
 - **Local-first and auditable.** A broad MCP control plane (terminal, mux,
-  worktree, fleet, task graph, events, ownership, intents, knowledge graph,
-  review, merge — over JSON-RPC), an event/audit trail, and risk classification
+  worktree, fleet, task graph, events, ownership, review, merge — over JSON-RPC), an event/audit trail, and risk classification
   around shell, file, and AI-CLI actions. It runs on your machine — not a hosted
   dashboard.
 
@@ -55,7 +42,6 @@ guardrails.
 - Visible multi-agent fleet, per-agent worktrees, role-routed dispatch
   (implementer / tester / reviewer) with deterministic branch names.
 - File- and symbol-level ownership leasing with automatic conflict serialization.
-- Intent bus, shared-brain snapshot, and a code knowledge graph.
 - Worktree diff review, mechanical pre-merge gates, and commit-bound merge.
 - A broad MCP surface and an event/audit timeline.
 

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 
 const ROOT = resolve(process.cwd());
-const OUT = join(ROOT, ".codex-auto", "quality", "native-daily-driver-terminal.json");
+const OUT = join(ROOT, ".codex-auto", "quality", "native-operator-primary-terminal.json");
 
 const ARTIFACTS = {
   nativeClient: ".codex-auto/quality/native-client-spike.json",
@@ -82,7 +82,7 @@ const SOURCE_GROUPS = {
 };
 
 const SOURCE_PATHS = Array.from(
-  new Set(["scripts/verify-native-daily-driver-terminal.mjs", ...Object.values(SOURCE_GROUPS).flat()]),
+  new Set(["scripts/verify-native-operator-primary-terminal.mjs", ...Object.values(SOURCE_GROUPS).flat()]),
 );
 
 function pathOf(path) {
@@ -194,7 +194,7 @@ const checks = [
   check(
     "native-boundary-green",
     nativeBoundary?.ok === true && nativeBoundary?.status === "pass" && artifactFresh("nativeBoundary"),
-    "native boundary contract must be green and current before daily-driver claims",
+    "native boundary contract must be green and current before operator-primary claims",
     {
       artifact: ARTIFACTS.nativeBoundary,
       fresh: artifactFresh("nativeBoundary"),
@@ -222,14 +222,14 @@ const checks = [
       textShaping?.rendererTextShapingIntegrated === true &&
       textShaping?.rendererFallbackGlyphRasterizationReady === true &&
       textShaping?.unsupportedSystemShaper === false,
-    "daily-driver native terminal quality requires DirectWrite system shaping, real font fallback, renderer integration, and fallback glyph rasterization",
+    "operator-primary native terminal quality requires DirectWrite system shaping, real font fallback, renderer integration, and fallback glyph rasterization",
     {
       artifact: ARTIFACTS.textShaping,
       systemTextShapingReady: textShaping?.systemTextShapingReady ?? null,
       realFontFallbackReady: textShaping?.realFontFallbackReady ?? null,
       rendererTextShapingIntegrated: textShaping?.rendererTextShapingIntegrated ?? null,
       rendererFallbackGlyphRasterizationReady: textShaping?.rendererFallbackGlyphRasterizationReady ?? null,
-      readyForGhosttyClaim: textShaping?.readyForGhosttyClaim ?? null,
+      readyForNativeShapingClaim: textShaping?.readyForNativeShapingClaim ?? null,
       unsupportedSystemShaper: textShaping?.unsupportedSystemShaper ?? null,
       fresh: artifactFresh("textShaping"),
       cutoffMs: freshnessCutoffs.textShaping.cutoffMs,
@@ -265,7 +265,7 @@ const checks = [
     },
   ),
   check(
-    "primary-shell-daily-driver",
+    "primary-shell-operator-primary",
     primaryShell?.readyForFullNativeClaim === true &&
       primaryShell?.primaryShellWindow?.interactiveWindow === true &&
       primaryShell?.primaryShellWindow?.nonBlank === true &&
@@ -293,7 +293,7 @@ const checks = [
   check(
     "process-reconnect-and-osc-current",
     processReconnect?.ok === true && artifactFresh("processReconnect") && chunkedOsc?.ok === true && artifactFresh("chunkedOsc"),
-    "process reconnect and chunked OSC behavior must be current daily-driver evidence",
+    "process reconnect and chunked OSC behavior must be current operator-primary evidence",
     {
       processReconnect: ARTIFACTS.processReconnect,
       processReconnectEnvironmentBlocked: ARTIFACTS.processReconnectEnvironmentBlocked,
@@ -312,13 +312,13 @@ const checks = [
         (chunkedOsc?.ok === true || artifactEnvironmentBlocked(chunkedOscEnvironmentBlocked)) &&
         (artifactEnvironmentBlocked(processReconnectEnvironmentBlocked) || artifactEnvironmentBlocked(chunkedOscEnvironmentBlocked)),
       externalBlocker:
-        "Process reconnect or chunked OSC daily-driver live proof is blocked by host process/WebView2 policy, with environment-blocked artifacts preserved.",
+        "Process reconnect or chunked OSC operator-primary live proof is blocked by host process/WebView2 policy, with environment-blocked artifacts preserved.",
     },
   ),
   check(
     "native-sleep-resume-postcheck",
     nativePostcheck?.ok === true && nativePostcheck?.checks?.nativeVisual === true && artifactFresh("nativePostcheck"),
-    "native daily-driver proof requires a current post-resume visual write smoke",
+    "native operator-primary proof requires a current post-resume visual write smoke",
     {
       artifact: ARTIFACTS.nativePostcheck,
       fresh: artifactFresh("nativePostcheck"),
@@ -328,7 +328,7 @@ const checks = [
     {
       externalBlocked: hasRealSleepResumeOperatorGate(),
       externalBlocker:
-        "The native post-resume visual proof requires an operator-controlled real Windows sleep/resume cycle before a daily-driver claim is allowed.",
+        "The native post-resume visual proof requires an operator-controlled real Windows sleep/resume cycle before a operator-primary claim is allowed.",
     },
   ),
 ];
@@ -346,12 +346,12 @@ const report = {
   sourcePaths: SOURCE_PATHS,
   freshnessCutoffs,
   artifactPaths: ARTIFACTS,
-  readyForDailyDriverClaim: ok,
+  readyForOperatorPrimaryClaim: ok,
   summary: ok
-    ? "native daily-driver terminal proof is current"
+    ? "native operator-primary terminal proof is current"
     : externallyBlockedOnly
-      ? `${externalBlockedChecks.length} native daily-driver terminal gates require external host/operator proof`
-      : `${failed.length} native daily-driver terminal gates are blocked`,
+      ? `${externalBlockedChecks.length} native operator-primary terminal gates require external host/operator proof`
+      : `${failed.length} native operator-primary terminal gates are blocked`,
   blockers: failed.map((item) => item.detail),
   externalBlockers: externalBlockedChecks.map((item) => item.externalBlocker ?? item.detail),
   failedChecks: failed.map((item) => item.id),

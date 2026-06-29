@@ -218,7 +218,7 @@ const checks = [
       realFontFallbackReady: textShaping?.realFontFallbackReady ?? null,
       rendererFallbackGlyphRasterizationReady: textShaping?.rendererFallbackGlyphRasterizationReady ?? null,
       visualFallbackGlyphFixturesReady: textShaping?.visualFallbackGlyphFixturesReady ?? null,
-      readyForGhosttyClaim: textShaping?.readyForGhosttyClaim ?? null,
+      readyForNativeShapingClaim: textShaping?.readyForNativeShapingClaim ?? null,
       textShapingExternalBlocked: textShapingEnvironmentBlocked(),
       unsupportedSystemShaper: textShaping?.unsupportedSystemShaper ?? null,
       fresh: artifactFresh("textShaping"),

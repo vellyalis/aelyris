@@ -146,7 +146,7 @@ async function verifyCleanWorktree() {
   const hidden = entries.length > shown.length ? [`  ... ${entries.length - shown.length} more`] : [];
   throw new Error(
     [
-      "Worktree must be clean before claiming production/world-class release readiness.",
+      "Worktree must be clean before claiming production/release readiness.",
       "Commit, stash, or intentionally park active changes first; dirty source invalidates build evidence.",
       ...shown,
       ...hidden,

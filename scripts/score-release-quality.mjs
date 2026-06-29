@@ -221,8 +221,8 @@ const nativeBoundaryContractPath = join(ROOT, ".codex-auto", "quality", "native-
 const nativeBoundaryContract = readJson(nativeBoundaryContractPath);
 const nativeClientSpikePath = join(ROOT, ".codex-auto", "quality", "native-client-spike.json");
 const nativeClientSpike = readJson(nativeClientSpikePath);
-const worldClassTerminalAiOsPath = join(ROOT, ".codex-auto", "quality", "world-class-terminal-ai-os.json");
-const worldClassTerminalAiOs = readJson(worldClassTerminalAiOsPath);
+const releaseReadinessTerminalAiOsPath = join(ROOT, ".codex-auto", "quality", "release-readiness-aggregate.json");
+const releaseReadinessTerminalAiOs = readJson(releaseReadinessTerminalAiOsPath);
 const tauriRuntimeHygienePath = join(ROOT, ".codex-auto", "quality", "tauri-runtime-hygiene.json");
 const tauriRuntimeHygiene = readJson(tauriRuntimeHygienePath);
 const releaseHygieneContractPath = join(ROOT, ".codex-auto", "quality", "release-hygiene-contract.json");
@@ -312,8 +312,8 @@ const nativeBoundaryContractScriptSource = readFileSync(
   "utf8",
 );
 const nativeClientSpikeScriptSource = readFileSync(join(ROOT, "scripts", "verify-native-client-spike.mjs"), "utf8");
-const worldClassTerminalAiOsScriptSource = readFileSync(
-  join(ROOT, "scripts", "verify-world-class-terminal-ai-os.mjs"),
+const releaseReadinessTerminalAiOsScriptSource = readFileSync(
+  join(ROOT, "scripts", "verify-release-readiness-aggregate.mjs"),
   "utf8",
 );
 const finalGoalAuditScriptSource = readFileSync(join(ROOT, "scripts", "verify-final-goal-audit.mjs"), "utf8");
@@ -1317,59 +1317,59 @@ add(
       ],
 );
 
-const worldClassClaimIds = ["tmux", "bridgespace", "ghostty", "release"];
-const worldClassArtifactCurrent =
-  worldClassTerminalAiOs != null &&
-  ["pass", "block", "review", "external-blocked"].includes(worldClassTerminalAiOs?.status) &&
-  mtimeMs(worldClassTerminalAiOsPath) + 5_000 >=
+const releaseReadinessClaimIds = ["tmux", "sharedWorkspace", "nativeTerminal", "release"];
+const releaseReadinessArtifactCurrent =
+  releaseReadinessTerminalAiOs != null &&
+  ["pass", "block", "review", "external-blocked"].includes(releaseReadinessTerminalAiOs?.status) &&
+  mtimeMs(releaseReadinessTerminalAiOsPath) + 5_000 >=
     Math.max(
-      mtimeMs(join(ROOT, "scripts", "verify-world-class-terminal-ai-os.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-release-readiness-aggregate.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-current-readiness-source.mjs")),
-      mtimeMs(join(ROOT, "scripts", "verify-native-daily-driver-terminal.mjs")),
+      mtimeMs(join(ROOT, "scripts", "verify-native-operator-primary-terminal.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-native-text-shaping-fallback.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-native-visual-regression.mjs")),
-      mtimeMs(join(ROOT, "docs", "specs", "AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md")),
+      mtimeMs(join(ROOT, "docs", "specs", "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md")),
     );
-const worldClassFresh =
-  worldClassArtifactCurrent && worldClassTerminalAiOs?.ok === true && worldClassTerminalAiOs?.status === "pass";
-const worldClassClaims = worldClassTerminalAiOs?.claims ?? {};
-const worldClassSourcePass =
-  packageJsonSource.includes('"verify:world-class-terminal-ai-os"') &&
-  worldClassTerminalAiOsScriptSource.includes('schema: "aelyris.world-class-terminal-ai-os/v1"') &&
-  worldClassTerminalAiOsScriptSource.includes("noGhosttyClaimWithoutSystemShaping") &&
-  worldClassTerminalAiOsScriptSource.includes("noWorldClassClaimWhileReleaseBlocked") &&
-  worldClassTerminalAiOsScriptSource.includes("nativeTextShaping") &&
-  worldClassTerminalAiOsScriptSource.includes("muxLiveRestore") &&
-  worldClassTerminalAiOsScriptSource.includes("sharedBrainRestart");
-const worldClassPass =
-  worldClassFresh && worldClassSourcePass && worldClassClaimIds.every((id) => worldClassClaims[id] === "pass");
+const releaseReadinessFresh =
+  releaseReadinessArtifactCurrent && releaseReadinessTerminalAiOs?.ok === true && releaseReadinessTerminalAiOs?.status === "pass";
+const releaseReadinessClaims = releaseReadinessTerminalAiOs?.claims ?? {};
+const releaseReadinessSourcePass =
+  packageJsonSource.includes('"verify:release-readiness-aggregate"') &&
+  releaseReadinessTerminalAiOsScriptSource.includes('schema: "aelyris.release-readiness-aggregate/v1"') &&
+  releaseReadinessTerminalAiOsScriptSource.includes("noNativeShapingClaimWithoutSystemShaping") &&
+  releaseReadinessTerminalAiOsScriptSource.includes("noReleaseReadinessClaimWhileReleaseBlocked") &&
+  releaseReadinessTerminalAiOsScriptSource.includes("nativeTextShaping") &&
+  releaseReadinessTerminalAiOsScriptSource.includes("muxLiveRestore") &&
+  releaseReadinessTerminalAiOsScriptSource.includes("sharedBrainRestart");
+const releaseReadinessPass =
+  releaseReadinessFresh && releaseReadinessSourcePass && releaseReadinessClaimIds.every((id) => releaseReadinessClaims[id] === "pass");
 add(
   scores,
-  "world-class-terminal-ai-os",
-  "World-class terminal AI OS aggregate gate",
-  worldClassPass ? 16 : 0,
+  "release-readiness-aggregate",
+  "Release readiness aggregate gate",
+  releaseReadinessPass ? 16 : 0,
   16,
-  worldClassPass
-    ? "tmux, BridgeSpace, Ghostty/native terminal, and release claims are all pass"
-    : worldClassTerminalAiOs
-      ? `${worldClassTerminalAiOs.status ?? "unknown"}: ${worldClassClaimIds
-          .map((id) => `${id}=${worldClassClaims[id] ?? "missing"}`)
+  releaseReadinessPass
+    ? "tmux, shared-agent-workspace, native terminal, and release claims are all pass"
+    : releaseReadinessTerminalAiOs
+      ? `${releaseReadinessTerminalAiOs.status ?? "unknown"}: ${releaseReadinessClaimIds
+          .map((id) => `${id}=${releaseReadinessClaims[id] ?? "missing"}`)
           .join(", ")}`
       : "missing",
-  worldClassPass
+  releaseReadinessPass
     ? []
     : [
-        ...(worldClassArtifactCurrent ? [] : ["world-class terminal AI OS artifact is missing or stale"]),
-        ...(worldClassArtifactCurrent && worldClassTerminalAiOs?.status === "block"
-          ? ["world-class terminal AI OS aggregate gate is currently blocked"]
+        ...(releaseReadinessArtifactCurrent ? [] : ["release readiness aggregate artifact is missing or stale"]),
+        ...(releaseReadinessArtifactCurrent && releaseReadinessTerminalAiOs?.status === "block"
+          ? ["release readiness aggregate gate is currently blocked"]
           : []),
-        ...(worldClassArtifactCurrent && worldClassTerminalAiOs?.status === "external-blocked"
-          ? ["world-class terminal AI OS aggregate gate is externally blocked"]
+        ...(releaseReadinessArtifactCurrent && releaseReadinessTerminalAiOs?.status === "external-blocked"
+          ? ["release readiness aggregate gate is externally blocked"]
           : []),
-        ...(worldClassSourcePass ? [] : ["world-class terminal AI OS verifier or package wiring is incomplete"]),
-        ...worldClassClaimIds
-          .filter((id) => worldClassClaims[id] !== "pass")
-          .map((id) => `world-class claim blocked: ${id}=${worldClassClaims[id] ?? "missing"}`),
+        ...(releaseReadinessSourcePass ? [] : ["release readiness aggregate verifier or package wiring is incomplete"]),
+        ...releaseReadinessClaimIds
+          .filter((id) => releaseReadinessClaims[id] !== "pass")
+          .map((id) => `release readiness claim blocked: ${id}=${releaseReadinessClaims[id] ?? "missing"}`),
       ],
 );
 
@@ -4651,7 +4651,7 @@ const finalGoalAuditSourcePass =
   goalCompletionMatrixSource.includes("consentGate") &&
   goalCompletionMatrixSource.includes("blocked-by-explicit-consent") &&
   goalCompletionMatrixSource.includes("tmux") &&
-  goalCompletionMatrixSource.includes("WezTerm") &&
+  goalCompletionMatrixSource.includes("native-terminal") &&
   goalCompletionMatrixSource.includes("Claude Code") &&
   goalCompletionMatrixSource.includes("native-first hybrid") &&
   goalCompletionMatrixSource.includes("IME/clipboard") &&
@@ -4892,7 +4892,7 @@ const finalGoalAuditFresh =
       mtimeMs(join(ROOT, "scripts", "verify-goal-documentation-freshness.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-authenticated-ai-cli-consent-packet.mjs")),
       mtimeMs(join(ROOT, "docs", "TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md")),
-      mtimeMs(join(ROOT, "docs", "NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md")),
+      mtimeMs(join(ROOT, "docs", "NATIVE_RUST_NATIVE_TERMINAL_PLUS_MIGRATION_PLAN.md")),
       mtimeMs(tauriRuntimeHygienePath),
       mtimeMs(releaseHygieneContractPath),
       mtimeMs(goalAntiStallContractPath),

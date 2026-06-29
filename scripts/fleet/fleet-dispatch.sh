@@ -49,7 +49,7 @@ Then implement **Work Unit $id — $title**.
 ${notes:+WU-specific note: $notes}
 
 ## Rules (binding)
-- Honor the Shared Contract (CODEX_HANDOFF §3) and the do-not-break list (§6).
+- Honor the current spec contracts in docs/specs/README.md and the referenced phase/spec section.
 - Isolated on branch '$(branch_of "$id")' off '$BASE_BRANCH'. Touch only this WU's files.
 - Do NOT commit FLEET_BRIEF.md (it is the brief, not source).
 - Communicate via the orchestrator only (no peer-to-peer).

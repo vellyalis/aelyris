@@ -21,7 +21,8 @@ const SOURCE_PATHS = [
   "src-tauri/src/term/text_shaping.rs",
   "src-tauri/src/bin/aelyris_native.rs",
   "src-tauri/Cargo.toml",
-  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
+  "docs/requirements.md",
 ];
 
 function source(path) {
@@ -96,7 +97,7 @@ const termMod = source("src-tauri/src/term/mod.rs");
 const textShaping = source("src-tauri/src/term/text_shaping.rs");
 const nativeClient = source("src-tauri/src/bin/aelyris_native.rs");
 const cargoToml = source("src-tauri/Cargo.toml");
-const g5Design = source("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const requirements = source("docs/requirements.md");
 const sourceCutoffMs = Math.max(mtime("scripts/verify-native-text-shaping-fallback.mjs"), ...SOURCE_PATHS.map(mtime));
 const visualFixtureSourceCutoffMs = Math.max(
   mtime("src-tauri/src/term/text_shaping.rs"),
@@ -165,14 +166,14 @@ const checks = [
     "policy fallback classifies Japanese, emoji, Powerline, Nerd Font, and box drawing glyph requirements",
   ),
   check(
-    "ghostty-claim-blocked",
+    "native-shaping-claim-blocked",
     hasAll(textShaping, [
-      "ready_for_ghostty_claim: false",
+      "ready_for_native_shaping_claim: false",
       "renderer_integration_ready: false",
       "visual_fixture_ready: false",
       "native visual regression must prove ligature/no-ligature",
-    ]) && !textShaping.includes("ready_for_ghostty_claim: true"),
-    "policy keeps Ghostty/WezTerm claims blocked until renderer integration and visual fallback fixtures are proven",
+    ]) && !textShaping.includes("ready_for_native_shaping_claim: true"),
+    "policy keeps native-terminal claims blocked until renderer integration and visual fallback fixtures are proven",
   ),
   check(
     "native-client-artifact-honesty",
@@ -190,7 +191,7 @@ const checks = [
       '"fontAtlasQuestionMarkSubstitutions"',
       '"textShapingRendererIntegrationReady": renderer_text_shaping_integrated',
       '"textShapingFallbackGlyphRasterizationReady": renderer_fallback_glyph_rasterization_ready',
-      '"textShapingReadyForGhosttyClaim": false',
+      '"textShapingReadyForNativeShapingClaim": false',
       '"textShapingBlockedUntil"',
       "winit/wgpu glyph atlas rasterizes fallback glyphs from DirectWrite-resolved fonts",
       "text-shaping-fixture-proof",
@@ -203,7 +204,7 @@ const checks = [
   check(
     "tests-cover-policy-contract",
     hasAll(textShaping, [
-      "policy_keeps_ghostty_claim_blocked_until_system_shaper",
+      "policy_keeps_native_shaping_claim_blocked_until_system_shaper",
       "policy_shaper_classifies_required_fallbacks",
       "directwrite_shaper_shapes_system_clusters_without_unlocking_visual_claim",
       "combining_marks_stay_with_previous_cluster",
@@ -212,14 +213,11 @@ const checks = [
     "Rust tests lock the no-false-claim policy and fallback classification behavior",
   ),
   check(
-    "design-doc-updated",
-    hasAll(g5Design, [
-      "G5 Implementation Status",
-      "Native text-shaping contract added",
-      "Ghostty/WezTerm parity remains BLOCKED",
-      "verify:native-text-shaping-fallback",
-    ]),
-    "G5 design doc records the implemented boundary and remaining release blockers",
+    "claim-policy-records-native-blockers",
+    requirements.includes("native-quality") &&
+      requirements.includes("does not claim production readiness") &&
+      packageJson.includes("verify:native-text-shaping-fallback"),
+    "Current requirements and package gates keep native-quality claims blocked until verifier evidence is current",
   ),
 ];
 
@@ -287,7 +285,7 @@ const visualFixtureEnvironmentBlocked =
   rendererTextShapingIntegrated &&
   rendererFallbackGlyphRasterizationReady &&
   /EPERM|spawn/i.test(`${fixtureRun.error ?? ""} ${fixtureRun.stderrTail ?? ""}`);
-const readyForGhosttyClaim =
+const readyForNativeShapingClaim =
   systemTextShapingReady &&
   realFontFallbackReady &&
   rendererTextShapingIntegrated &&
@@ -321,13 +319,13 @@ const report = {
   rendererFallbackGlyphRasterizationReady,
   visualFallbackGlyphFixturesReady,
   visualFixtureEnvironmentBlocked,
-  readyForGhosttyClaim,
+  readyForNativeShapingClaim,
   fullNativeBlocked: true,
   unsupportedSystemShaper,
   summary:
     failed.length === 0
-      ? readyForGhosttyClaim
-        ? "native text-shaping subclaim is ready with DirectWrite shaped runs, DirectWrite-resolved fallback atlas rasterization, and a fresh PNG fixture; full Ghostty/WezTerm parity remains blocked by native visual, daily-driver, and boundary gates"
+      ? readyForNativeShapingClaim
+        ? "native text-shaping subclaim is ready with DirectWrite shaped runs, DirectWrite-resolved fallback atlas rasterization, and a fresh PNG fixture; full native-terminal parity remains blocked by native visual, operator-primary, and boundary gates"
         : visualFixtureEnvironmentBlocked
           ? "native text-shaping source and renderer contracts are ready, but fresh visual fixture generation is environment-blocked by host process policy"
           : "native text-shaping consumes DirectWrite shaped runs and can rasterize DirectWrite-resolved fallback fonts; visual fixtures still block the text-shaping subclaim"
