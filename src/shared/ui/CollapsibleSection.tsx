@@ -1,6 +1,6 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import styles from "./CollapsibleSection.module.css";
 
 export interface CollapsibleSectionProps {
@@ -60,15 +60,6 @@ export function CollapsibleSection({
     },
     [fullKey],
   );
-
-  // Close on Esc when focus is on the trigger (Radix doesn't
-  // close the section on Escape by default — it only closes
-  // popovers/dialogs).
-  useEffect(() => {
-    /* no-op for now; placeholder so future global shortcuts
-     * (e.g. Ctrl+Alt+1..3 to focus a specific section) have a
-     * stable hook point. */
-  }, []);
 
   return (
     <Collapsible.Root open={open} onOpenChange={handleOpenChange} className={styles.root}>

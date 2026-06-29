@@ -127,7 +127,7 @@
   --rail-control-active-bg:
     linear-gradient(180deg, rgba(148, 226, 241, 0.13), rgba(148, 226, 241, 0.045)), rgba(4, 14, 25, 0.46);
   --rail-chip-bg: rgba(142, 226, 241, 0.08);
-  --rail-focus-ring: rgba(142, 226, 241, 0.34);
+  --rail-focus-ring: rgba(142, 226, 241, 0.62);
   --chrome-separator-bg: linear-gradient(180deg, transparent, rgba(104, 214, 238, 0.055), transparent);
   --statusbar-bg: linear-gradient(180deg, rgba(2, 8, 16, 0.44), rgba(2, 8, 16, 0.5)), var(--statusbar-legibility-scrim);
   --statusbar-filter: blur(16px) saturate(1.12) brightness(0.62) contrast(1.12);
@@ -972,9 +972,9 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 }
 
 .mode-rail {
-  width: 58px;
-  min-width: 58px;
-  max-width: 58px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1073,7 +1073,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 
 .mode-rail-label {
   color: currentColor;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--weight-semibold);
   line-height: 1;
 }
@@ -1082,8 +1082,8 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   position: absolute;
   top: 2px;
   right: 3px;
-  min-width: 12px;
-  height: 12px;
+  min-width: 13px;
+  height: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1091,7 +1091,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   background: color-mix(in srgb, var(--rail-chip-bg) 88%, transparent);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: var(--weight-semibold);
   line-height: 1;
 }
@@ -1197,7 +1197,13 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   border: 0;
   cursor: col-resize;
   z-index: 1;
-  background: transparent;
+  /* Faint at-rest hairline so the resize affordance is discoverable before
+   * hover; the gold glow on hover/focus/active still takes over below. */
+  background: linear-gradient(
+    90deg,
+    transparent 0 5px,
+    color-mix(in srgb, var(--rail-control-border) 70%, transparent) 6px
+  );
   transition: background var(--duration-fast);
   user-select: none;
   touch-action: none;
@@ -5029,6 +5035,13 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   .right-panel-advisor {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+  }
+
+  /* The resize handle is transparent-at-rest in normal mode; give it a
+   * CanvasText edge so it stays visible under Windows High Contrast. */
+  .left-panel-resize-handle {
+    background: Canvas;
+    border-left: 1px solid CanvasText;
   }
 
   .mode-rail-button[data-active="true"],
