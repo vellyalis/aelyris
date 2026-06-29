@@ -831,13 +831,12 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  /* `transparent` is critical: the window itself is set
-   * `transparent: true` in tauri.conf.json with
-   * `windowEffects: ["mica", "acrylic", "blur"]`. Anything other
-   * than transparent here (including a faint translucent fill)
-   * would cover the OS-level Mica material and turn the window
-   * into a flat dark surface — exactly the "did you turn off
-   * transparency?" tell that dogfood flagged. */
+  /* `transparent` is critical: the window is `transparent: true` with
+   * `windowEffects.effects: []` (no material) so the desktop shows through.
+   * Any non-transparent fill here (even a faint translucent one) would cover
+   * that see-through and turn the window into a flat dark surface — the "did
+   * you turn off transparency?" tell that dogfood flagged. The wallpaper, when
+   * set, paints on `.app-container::before` as a translucent layer instead. */
   background: transparent;
   /* Win11's DWMWA_WINDOW_CORNER_PREFERENCE rounds the OS window edge
    * at ~8px. Match that radius on the inner container so the inner
@@ -870,11 +869,13 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  /* Opaque backstop UNDER the wallpaper image: when a wallpaper is set this makes it
-   * the app's solid backdrop (covering the desktop even if the image is scaled /
-   * letterboxed / has alpha). useTheme sets the backstop to an opaque mood colour when
-   * an image is present and to `transparent` when none, so a wallpaper-less window stays
-   * see-through to the desktop. */
+  /* Backstop UNDER the wallpaper image. useTheme (`seeThrough` arg) sets it:
+   *   - transparent in see-through mode (window_effect="transparent", default)
+   *     so the wallpaper is a translucent layer over the live desktop;
+   *   - an opaque mood colour in opaque material modes (mica/acrylic) so a
+   *     scaled/letterboxed/alpha image still fully covers the desktop;
+   *   - transparent when no image, so a wallpaper-less window stays see-through.
+   * The whole layer (backstop + image) is multiplied by --aelyris-wallpaper-opacity. */
   background-color: var(--aelyris-wallpaper-backstop, transparent);
   background-image: var(--aelyris-wallpaper-image);
   background-position: var(--aelyris-wallpaper-position-x) var(--aelyris-wallpaper-position-y);

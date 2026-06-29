@@ -75,84 +75,96 @@ fn apply_windows_app_identity() {
 #[cfg(not(windows))]
 fn apply_windows_app_identity() {}
 
-/// Apply the DWM system backdrop (Acrylic/Mica) to a window HWND, honoring the
-/// `window_effect` config string ("acrylic" -> `DWMSBT_TRANSIENTWINDOW` real
-/// desktop translucency, "mica" -> `DWMSBT_MAINWINDOW` wallpaper tint; unknown
-/// defaults to acrylic). The opposite type is used as the fallback if the OS
-/// refuses the primary. Extracted so the same logic runs both once at startup
-/// (setup closure) and live, without a restart, via the `set_window_effect`
-/// command. Returns the human-readable label of the backdrop actually applied,
-/// or an error string if both were refused.
+/// Resolve a `window_effect` config string to the DWM system-backdrop type to
+/// request (`DWM_SYSTEMBACKDROP_TYPE` value) plus a human-readable label.
+///
+/// CRITICAL — DO NOT "fix" `transparent` to apply Mica/Acrylic. On a wry
+/// per-pixel-transparent window (`transparent: true` in tauri.conf), applying
+/// ANY DWM system-backdrop MATERIAL (Mica = `DWMSBT_MAINWINDOW`=2, Acrylic =
+/// `DWMSBT_TRANSIENTWINDOW`=3) fills the client area and OCCLUDES the per-pixel
+/// transparency — the desktop and windows behind STOP showing through. This was
+/// the 2026-04 "acrylic see-through" regression: a backdrop was added believing
+/// `DWMSBT_TRANSIENTWINDOW` revealed the desktop, but on a transparent wry
+/// window it HIDES it (verified by OS screen capture: material => opaque gray;
+/// no material => desktop/windows behind show through). See-through therefore
+/// REQUIRES no material, i.e. `DWMSBT_NONE`=1. `mica`/`acrylic` are opt-in
+/// OPAQUE Win11 materials that deliberately trade see-through for the frosted
+/// look. Guarded by the `backdrop_for_effect_*` unit tests below and the
+/// empty-`windowEffects` config test (`window-transparency.test.ts`); the
+/// window must also keep `windowEffects.effects: []` in tauri.conf so the
+/// window-vibrancy accent material is not re-introduced as a second occluder.
+pub(crate) fn backdrop_for_effect(window_effect: &str) -> (i32, &'static str) {
+    match window_effect.trim().to_ascii_lowercase().as_str() {
+        "mica" => (
+            2,
+            "Mica via DWMSBT_MAINWINDOW (opaque wallpaper tint, no see-through)",
+        ),
+        "acrylic" => (
+            3,
+            "Acrylic via DWMSBT_TRANSIENTWINDOW (opaque frosted material, no see-through)",
+        ),
+        // "transparent" / "none" / "" / unknown -> no material = per-pixel
+        // see-through to the desktop and windows behind.
+        _ => (
+            1,
+            "Transparent via DWMSBT_NONE (per-pixel see-through to desktop)",
+        ),
+    }
+}
+
+/// Apply the DWM system backdrop for `window_effect` to a window HWND. Shared by
+/// the startup setup closure and the live `set_window_effect` command, so
+/// switching effect at runtime matches a fresh launch. Returns the applied label
+/// or an error string if the OS refused the attribute. See
+/// [`backdrop_for_effect`] for why `transparent` maps to no material.
 #[cfg(windows)]
 pub(crate) fn apply_window_backdrop(
     hwnd: windows::Win32::Foundation::HWND,
     window_effect: &str,
 ) -> Result<&'static str, String> {
-    use windows::Win32::Graphics::Dwm::{
-        DwmSetWindowAttribute, DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW,
-        DWMWA_SYSTEMBACKDROP_TYPE,
-    };
+    use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE};
 
-    let prefer_mica = window_effect.eq_ignore_ascii_case("mica");
-    // (label, backdrop type) pairs in apply order: primary first.
-    let (primary_label, primary_value, fallback_label, fallback_value) = if prefer_mica {
-        (
-            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
-            DWMSBT_MAINWINDOW.0,
-            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
-            DWMSBT_TRANSIENTWINDOW.0,
-        )
-    } else {
-        (
-            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
-            DWMSBT_TRANSIENTWINDOW.0,
-            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
-            DWMSBT_MAINWINDOW.0,
-        )
-    };
-
-    let primary_result = unsafe {
+    let (value, label) = backdrop_for_effect(window_effect);
+    let result = unsafe {
         DwmSetWindowAttribute(
             hwnd,
             DWMWA_SYSTEMBACKDROP_TYPE,
-            &primary_value as *const i32 as *const _,
+            &value as *const i32 as *const _,
             std::mem::size_of::<i32>() as u32,
         )
     };
-    match primary_result {
+    match result {
         Ok(()) => {
-            log::info!(
-                "window chrome: {primary_label} applied (window_effect={window_effect})"
-            );
-            Ok(primary_label)
+            log::info!("window chrome: {label} applied (window_effect={window_effect})");
+            Ok(label)
         }
-        Err(primary_err) => {
-            log::warn!(
-                "window chrome: {primary_label} refused ({primary_err}); falling back to {fallback_label}"
-            );
-            let fallback_result = unsafe {
-                DwmSetWindowAttribute(
-                    hwnd,
-                    DWMWA_SYSTEMBACKDROP_TYPE,
-                    &fallback_value as *const i32 as *const _,
-                    std::mem::size_of::<i32>() as u32,
-                )
-            };
-            match fallback_result {
-                Ok(()) => {
-                    log::info!("window chrome: {fallback_label} applied as fallback");
-                    Ok(fallback_label)
-                }
-                Err(fallback_err) => {
-                    log::warn!(
-                        "window chrome: {fallback_label} also refused ({fallback_err}); window will render with CSS-only glass"
-                    );
-                    Err(format!(
-                        "both backdrops refused: primary={primary_err}; fallback={fallback_err}"
-                    ))
-                }
-            }
+        Err(e) => {
+            log::warn!("window chrome: {label} refused ({e}); window keeps CSS-only glass");
+            Err(format!("DWM backdrop refused: {e}"))
         }
+    }
+}
+
+#[cfg(test)]
+mod backdrop_tests {
+    use super::backdrop_for_effect;
+
+    // DWM_SYSTEMBACKDROP_TYPE: NONE=1, MAINWINDOW(Mica)=2, TRANSIENTWINDOW(Acrylic)=3.
+    #[test]
+    fn backdrop_for_effect_maps_transparent_to_none_so_see_through_is_preserved() {
+        // Regression guard for the 2026-04 "acrylic occludes transparency" bug:
+        // anything that is NOT an explicit opaque material must request NO
+        // material (DWMSBT_NONE) so the wry transparent window stays see-through.
+        for effect in ["transparent", "none", "", "garbage", "  TRANSPARENT  "] {
+            assert_eq!(backdrop_for_effect(effect).0, 1, "effect={effect:?}");
+        }
+    }
+
+    #[test]
+    fn backdrop_for_effect_maps_opaque_materials() {
+        assert_eq!(backdrop_for_effect("mica").0, 2);
+        assert_eq!(backdrop_for_effect("acrylic").0, 3);
+        assert_eq!(backdrop_for_effect("Acrylic").0, 3);
     }
 }
 
@@ -523,10 +535,11 @@ pub fn run() {
                     );
                 }
             }
-            // Window chrome on Windows is provided by tauri.conf.json
-            // `windowEffects` by default. Direct HWND/DWM mutation is kept
-            // behind an explicit dogfood flag because startup stability wins
-            // over experimental translucency tweaks in release builds.
+            // Window chrome on Windows: the window is created with
+            // `windowEffects.effects: []` (no material) so it is per-pixel
+            // transparent; this block then sets the DWM system backdrop from
+            // window_effect (transparent => DWMSBT_NONE = see-through). An
+            // explicit dogfood flag (AELYRIS_DISABLE_DWM_CHROME=1) skips it.
             #[cfg(windows)]
             {
                 use windows::Win32::Foundation::HWND;
@@ -534,22 +547,22 @@ pub fn run() {
                     DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
                 };
 
-                // Direct DWM backdrop is the DEFAULT on Windows: Tauri's
-                // `windowEffects` acrylic silently fails to apply a real backdrop on Win11 25H2,
-                // so without this the transparent WebView2 client area has nothing to show through
-                // to and renders opaque. Opt out with AELYRIS_DISABLE_DWM_CHROME=1 (falls back to
-                // Tauri windowEffects).
-                //
-                // The backdrop type follows config.appearance.window_effect:
-                //   acrylic -> DWMSBT_TRANSIENTWINDOW (real desktop translucency)
-                //   mica    -> DWMSBT_MAINWINDOW (wallpaper tint)
-                // The other type is used as the fallback if the OS refuses the
-                // primary. Unknown/missing config defaults to acrylic.
+                // Window backdrop follows config.appearance.window_effect via
+                // `apply_window_backdrop` / `backdrop_for_effect`:
+                //   transparent (default) -> DWMSBT_NONE  => per-pixel see-through
+                //   mica                  -> DWMSBT_MAINWINDOW (opaque tint)
+                //   acrylic               -> DWMSBT_TRANSIENTWINDOW (opaque frost)
+                // IMPORTANT: a material (mica/acrylic) OCCLUDES the wry transparent
+                // client area, so see-through uses NO material. The window must
+                // also keep tauri.conf `windowEffects.effects: []` so the
+                // window-vibrancy accent material is not re-added as a second
+                // occluder. Escape hatch AELYRIS_DISABLE_DWM_CHROME=1 skips this
+                // block entirely (leaves the window in its created state).
                 let direct_dwm_disabled =
                     std::env::var("AELYRIS_DISABLE_DWM_CHROME").as_deref() == Ok("1");
                 if direct_dwm_disabled {
                     log::info!(
-                        "window chrome: direct DWM chrome disabled by env; using Tauri windowEffects"
+                        "window chrome: direct DWM chrome disabled by env (AELYRIS_DISABLE_DWM_CHROME=1)"
                     );
                 } else if let Some(window) = app.get_webview_window("main") {
                     let window_effect = config::load_config().appearance.window_effect;

@@ -2753,7 +2753,7 @@ const tauriRuntimeHygieneSourcePass =
   ptySidecarSource.includes("stderr(std::process::Stdio::null())") &&
   tauriLibSource.includes("apply_windows_app_identity();") &&
   tauriLibSource.includes("AELYRIS_DISABLE_DWM_CHROME") &&
-  tauriLibSource.includes("direct DWM chrome disabled by env; using Tauri windowEffects") &&
+  tauriLibSource.includes("direct DWM chrome disabled by env") &&
   tauriGoalTrackScriptSource.includes("browser.disconnect") &&
   tauriGoalTrackScriptSource.includes("AELYRIS_TAURI_GOAL_TRACK_CLOSE_BROWSER") &&
   liveAiCliPostLaunchChaosSource.includes("browser.disconnect") &&
