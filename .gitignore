@@ -108,6 +108,5 @@ docs/history/
 .claude/skills/
 PLAN.md
 docs/specs/*_HANDOFF.md
-docs/specs/*_REQUIREMENTS_2*.md
 docs/specs/*_GAP_*.md
 *.orig

@@ -2,7 +2,7 @@
 
 Date: 2026-06-28 JST
 Status: design ready for work-unit planning; implementation not complete
-Related plan: `../../PLAN.md`
+Related requirements: `../requirements.md`
 Related public copy: `../GITHUB_INTRODUCTION.md`
 
 Naming note: **Aelyris** is the product name, pronounced **Aelys** / **エイリス**. The CLI and short name is `aelys`. Product surfaces use **Aelyris Core**, **Aelyris Grid**, and **Aelyris Pane**. **Qralis** is the coordination engine name for messaging, roles, directives, and multi-agent coordination. This document turns the `agmsg` comparative audit into Aelyris/Qralis requirements,
