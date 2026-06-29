@@ -1,7 +1,7 @@
 // Live Tauri/WebView2 smoke for right-rail native preference sync.
 //
 // Prerequisite:
-//   set AETHER_API_TOKEN=dev && pnpm.cmd tauri:dev
+//   set QUORUM_API_TOKEN=dev && pnpm.cmd tauri:dev
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222

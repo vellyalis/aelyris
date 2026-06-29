@@ -106,7 +106,7 @@ mux/upper-compat refresh). Remaining:
 ### B1 — Current-date live MCP + visible-pane evidence with the bearer token  *(P1)*
 - Re-run `verify-mcp-task-surface-live` / `verify-shared-brain-live` /
   `verify-autonomy-loop-live` and the pane proofs with the CURRENT
-  `AETHER_API_TOKEN` (read from the dev log) + explicit AI-token consent. Needs
+  `QUORUM_API_TOKEN` (read from the dev log) + explicit AI-token consent. Needs
   the app running. Effort: **small** (operational), **requires user consent** for
   token spend.
 
@@ -261,7 +261,7 @@ NOT leak into A6 / A5 / Fusion.
   MCP verbs; the lease + `refresh`/`release` keep claims live; the `fs:changed` watcher event is
   frontend-facing only).
 - **B1 (live)** — exercise the extractor MCP verbs (`claim_from_diff` / `claim_from_source` over
-  HTTP with the current `AETHER_API_TOKEN`) on the running app. NOTE: `verify-symbol-ownership-live.mjs`
+  HTTP with the current `QUORUM_API_TOKEN`) on the running app. NOTE: `verify-symbol-ownership-live.mjs`
   drives the **Tauri IPC** surface (`symbol_claims`/`symbol_conflicts`/`symbol_release`), not the
   MCP verbs — a live MCP harness + token consent is the operator step.
 - **A6 / A5 / Fusion** — unchanged, still sequenced after A4 per the order above.

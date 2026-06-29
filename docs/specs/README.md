@@ -12,7 +12,7 @@ release-ready は現在の製品主張ではない。現行 machine truth は
 
 初版: 2026-06-13。Last reviewed: 2026-06-28 JST。現在は公開読者と実装者向けの spec index として維持する。
 
-Current release evidence for this spec index: `43/100`, `150/351`, grade `D`, `releaseCandidateReady=false` as of 2026-06-28 JST. Current final audit status is `blocked` with `implementationFixableCount=46`, `policyBlockedCount=1`, and `externalBlockedCount=12`. The authenticated prompt gate remains `authenticated-ai-cli-prompt-smoke`; the consent packet is `authenticated-ai-cli-consent-packet`, and token-spending prompt execution requires `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
+Current release evidence for this spec index: `43/100`, `150/351`, grade `D`, `releaseCandidateReady=false` as of 2026-06-28 JST. Current final audit status is `blocked` with `implementationFixableCount=46`, `policyBlockedCount=1`, and `externalBlockedCount=12`. The authenticated prompt gate remains `authenticated-ai-cli-prompt-smoke`; the consent packet is `authenticated-ai-cli-consent-packet`, and token-spending prompt execution requires `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
 
 ## 実装者はここから: [CODEX_HANDOFF.md](./CODEX_HANDOFF.md)
 

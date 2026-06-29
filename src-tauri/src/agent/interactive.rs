@@ -246,8 +246,8 @@ pub fn agent_command_spec(
     }
 
     let mut env = HashMap::new();
-    env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
-    env.insert("AETHER_AGENT_MODEL".to_string(), model.to_string());
+    env.insert("QUORUM_AGENT_CLI".to_string(), format!("{:?}", cli));
+    env.insert("QUORUM_AGENT_MODEL".to_string(), model.to_string());
 
     Ok((program, args, env))
 }
@@ -261,7 +261,7 @@ fn ps_single_quote(token: &str) -> String {
 /// Launch the agent CLI **inside a visible PowerShell pane**, running its full
 /// INTERACTIVE TUI — the operator's mental model: split pane → a shell starts →
 /// the AI CLI is invoked in it and you watch it work live. Run via `powershell
-/// -Command "& <cli> … $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"`.
+/// -Command "& <cli> … $env:QUORUM_AGENT_PROMPT; exit $LASTEXITCODE"`.
 ///
 /// Deliberately **no `-p`**: `-p`/`--print` is headless ("Print response and
 /// exit") — the operator sees only a text dump, not the agent's live interface.
@@ -274,7 +274,7 @@ fn ps_single_quote(token: &str) -> String {
 /// `; exit $LASTEXITCODE` is a backstop: if the CLI *does* exit (e.g. a crash),
 /// PowerShell exits with its code so the PTY-exit recovery path still fires.
 ///
-/// The prompt travels through the `AETHER_AGENT_PROMPT` env var and is referenced
+/// The prompt travels through the `QUORUM_AGENT_PROMPT` env var and is referenced
 /// (not interpolated) inside the command, so arbitrary prompt text needs no
 /// shell escaping.
 pub fn agent_shell_command_spec(
@@ -299,12 +299,12 @@ pub fn agent_shell_command_spec(
         command.push(' ');
         command.push_str(&ps_single_quote(arg));
     }
-    command.push_str(" $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE");
+    command.push_str(" $env:QUORUM_AGENT_PROMPT; exit $LASTEXITCODE");
 
     let mut env = HashMap::new();
-    env.insert("AETHER_AGENT_CLI".to_string(), format!("{:?}", cli));
-    env.insert("AETHER_AGENT_MODEL".to_string(), model);
-    env.insert("AETHER_AGENT_PROMPT".to_string(), prompt.to_string());
+    env.insert("QUORUM_AGENT_CLI".to_string(), format!("{:?}", cli));
+    env.insert("QUORUM_AGENT_MODEL".to_string(), model);
+    env.insert("QUORUM_AGENT_PROMPT".to_string(), prompt.to_string());
 
     Ok((
         platform_cli_program("powershell"),
@@ -607,11 +607,11 @@ mod tests {
         assert!(!args.iter().any(|a| a == "-p"), "must NOT be headless -p");
         assert_eq!(args, vec!["--model", "opus", "build the login screen"]);
         assert_eq!(
-            env.get("AETHER_AGENT_MODEL").map(String::as_str),
+            env.get("QUORUM_AGENT_MODEL").map(String::as_str),
             Some("opus")
         );
         assert_eq!(
-            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            env.get("QUORUM_AGENT_CLI").map(String::as_str),
             Some("Claude")
         );
     }
@@ -664,7 +664,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            env.get("QUORUM_AGENT_CLI").map(String::as_str),
             Some("Codex")
         );
     }
@@ -696,7 +696,7 @@ mod tests {
         );
         assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
         assert_eq!(
-            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            env.get("QUORUM_AGENT_CLI").map(String::as_str),
             Some("Codex")
         );
     }
@@ -717,7 +717,7 @@ mod tests {
         );
         assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
         assert_eq!(
-            env.get("AETHER_AGENT_CLI").map(String::as_str),
+            env.get("QUORUM_AGENT_CLI").map(String::as_str),
             Some("Gemini")
         );
     }
@@ -802,16 +802,16 @@ mod tests {
         // the agent work. Completion is detected from worktree outputs instead.
         assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
         assert!(
-            cmd.ends_with("'acceptEdits' $env:AETHER_AGENT_PROMPT; exit $LASTEXITCODE"),
+            cmd.ends_with("'acceptEdits' $env:QUORUM_AGENT_PROMPT; exit $LASTEXITCODE"),
             "interactive prompt via env, exit-code backstop: {cmd}"
         );
         // The prompt (with its embedded quote) lives in the env var, unescaped.
         assert_eq!(
-            env.get("AETHER_AGENT_PROMPT").map(String::as_str),
+            env.get("QUORUM_AGENT_PROMPT").map(String::as_str),
             Some("build the 'login' screen")
         );
         assert_eq!(
-            env.get("AETHER_AGENT_MODEL").map(String::as_str),
+            env.get("QUORUM_AGENT_MODEL").map(String::as_str),
             Some("sonnet")
         );
     }

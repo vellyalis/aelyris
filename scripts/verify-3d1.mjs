@@ -9,11 +9,11 @@
 // running. The script does NOT spawn the app — start it separately.
 //
 // Authentication: the app requires `Authorization: Bearer <token>` on every
-// REST call. The token is either `AETHER_API_TOKEN` (if set when the app was
+// REST call. The token is either `QUORUM_API_TOKEN` (if set when the app was
 // started) or the ephemeral UUID logged at WARN level on startup. Export that
 // token before running this script:
 //
-//   AETHER_API_TOKEN=<token> node scripts/verify-3d1.mjs
+//   QUORUM_API_TOKEN=<token> node scripts/verify-3d1.mjs
 //
 // Exit code: 0 on full PASS, 1 on any failure.
 
@@ -22,10 +22,10 @@ const HTTP = `http://127.0.0.1:${PORT}`;
 const WS = `ws://127.0.0.1:${PORT}`;
 const MARKER = `aether-verify-${Date.now()}`;
 
-const TOKEN = process.env.AETHER_API_TOKEN;
+const TOKEN = process.env.QUORUM_API_TOKEN;
 if (!TOKEN) {
   console.error(
-    "AETHER_API_TOKEN env var not set — export the token printed by the app at startup.",
+    "QUORUM_API_TOKEN env var not set — export the token printed by the app at startup.",
   );
   process.exit(1);
 }
@@ -95,7 +95,7 @@ async function main() {
   record("server reachable + token accepted", reachable);
   if (!reachable) {
     console.log(
-      "\nServer not responding (or token rejected). Check that `pnpm tauri:dev` is running and AETHER_API_TOKEN matches the app log.",
+      "\nServer not responding (or token rejected). Check that `pnpm tauri:dev` is running and QUORUM_API_TOKEN matches the app log.",
     );
     process.exit(1);
   }

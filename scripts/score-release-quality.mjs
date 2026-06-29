@@ -2745,7 +2745,7 @@ const tauriRuntimeHygieneSourcePass =
   ptySidecarSource.includes("stdout(std::process::Stdio::null())") &&
   ptySidecarSource.includes("stderr(std::process::Stdio::null())") &&
   tauriLibSource.includes("apply_windows_app_identity();") &&
-  tauriLibSource.includes("AETHER_DISABLE_DWM_CHROME") &&
+  tauriLibSource.includes("QUORUM_DISABLE_DWM_CHROME") &&
   tauriLibSource.includes("direct DWM chrome disabled by env; using Tauri windowEffects") &&
   tauriGoalTrackScriptSource.includes("browser.disconnect") &&
   tauriGoalTrackScriptSource.includes("AETHER_TAURI_GOAL_TRACK_CLOSE_BROWSER") &&
@@ -2901,7 +2901,7 @@ const authenticatedAiCliConsentPacketPass =
   authenticatedAiCliConsentPacket?.checks?.noRawPromptTextPersisted === true &&
   authenticatedAiCliConsentPacket?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
   authenticatedAiCliConsentPacket?.packet?.requiredEnv ===
-    "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
   authenticatedAiCliConsentPacket?.packet?.tokenGate === "explicit consent" &&
   authenticatedAiCliConsentPacket?.packet?.wouldSpendTokens === true &&
   typeof authenticatedAiCliConsentPacket?.consentPacketSha256 === "string" &&
@@ -2912,7 +2912,7 @@ const authenticatedAiCliConsentPacketPass =
         entry?.provider === provider &&
         entry?.status === "ready" &&
         entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-        String(entry?.requiredEnv ?? "").includes(`AETHER_AUTH_PROMPT_PROVIDER=${provider}`),
+        String(entry?.requiredEnv ?? "").includes(`QUORUM_AUTH_PROMPT_PROVIDER=${provider}`),
     ),
   );
 const authenticatedAiCliPromptPass =
@@ -3007,7 +3007,7 @@ const authenticatedAiCliPromptPreflightGuardPass =
   authenticatedAiCliPromptVerifierSource.includes("cleanupAfterFailure") &&
   authenticatedAiCliPromptVerifierSource.includes("sessionBaseline") &&
   authenticatedAiCliPromptVerifierSource.includes("unexpectedNewSessions") &&
-  authenticatedAiCliPromptVerifierSource.includes("AETHER_AUTH_PROMPT_CLOSE_BROWSER") &&
+  authenticatedAiCliPromptVerifierSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
   authenticatedAiCliPromptVerifierSource.includes("browser.disconnect") &&
   authenticatedAiCliPromptVerifierSource.includes("browserCloseRequested") &&
   authenticatedAiCliPromptOutputEvidencePrivacy &&
@@ -3015,7 +3015,7 @@ const authenticatedAiCliPromptPreflightGuardPass =
   authenticatedPromptConsentTestSource.includes("consented but preflight-blocked") &&
   authenticatedPromptConsentTestSource.includes("consented but provider-missing") &&
   appSilentBugsTestSource.includes("cleanupAfterFailure") &&
-  appSilentBugsTestSource.includes("AETHER_AUTH_PROMPT_CLOSE_BROWSER") &&
+  appSilentBugsTestSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
   appSilentBugsTestSource.includes("unexpectedNewSessions") &&
   appSilentBugsTestSource.includes("browser.disconnect") &&
   authenticatedPromptConsentTestSource.includes("safe and incomplete") &&
@@ -3079,7 +3079,7 @@ add(
         authenticatedAiCliPromptVerifierSource.includes("unexpectedNewSessions")
           ? []
           : ["authenticated prompt verifier does not prove baseline-aware cleanup after prompt-path failures"]),
-        ...(authenticatedAiCliPromptVerifierSource.includes("AETHER_AUTH_PROMPT_CLOSE_BROWSER") &&
+        ...(authenticatedAiCliPromptVerifierSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
         authenticatedAiCliPromptVerifierSource.includes("browser.disconnect") &&
         authenticatedAiCliPromptVerifierSource.includes("browserCloseRequested") &&
         authenticatedAiCliPromptVerifierSource.includes("process.exit(report.ok ? 0 : process.exitCode || 1)")
@@ -3092,7 +3092,7 @@ add(
         authenticatedPromptConsentTestSource.includes("consented but provider-missing") &&
         authenticatedPromptConsentTestSource.includes("safe and incomplete") &&
         appSilentBugsTestSource.includes("cleanupAfterFailure") &&
-        appSilentBugsTestSource.includes("AETHER_AUTH_PROMPT_CLOSE_BROWSER") &&
+        appSilentBugsTestSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
         appSilentBugsTestSource.includes("unexpectedNewSessions") &&
         appSilentBugsTestSource.includes("browser.disconnect")
           ? []
@@ -3673,10 +3673,10 @@ const tauriGoalTrackSmokePass =
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.command ===
     "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.requiredEnv ?? "").includes(
-    "AETHER_AUTH_PROMPT_CONSENT=",
+    "QUORUM_AUTH_PROMPT_CONSENT=",
   ) &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.providerEnvRequirement ?? "").includes(
-    "AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+    "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   ) &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.tokenGate === "explicit consent" &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.artifactFreshness?.status === "green" &&
@@ -3833,7 +3833,7 @@ const goalTrackSignals = [
       appSource.includes("data-non-consent-blocker-count") &&
       appSource.includes("data-no-token-prompt-sent") &&
       appSource.includes("data-provider-env") &&
-      appSource.includes("AETHER_AUTH_PROMPT_PROVIDER=") &&
+      appSource.includes("QUORUM_AUTH_PROMPT_PROVIDER=") &&
       appSource.includes('className="right-panel-goal-track-consent-command"') &&
       appSource.includes('aria-label="Authenticated prompt consent command"') &&
       appSource.includes('className="right-panel-goal-track-residual"') &&
@@ -4595,7 +4595,7 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("consentPacketArtifact") &&
   finalGoalAuditScriptSource.includes("readyToRunAfterConsent") &&
   finalGoalAuditScriptSource.includes("providerReadiness") &&
-  finalGoalAuditScriptSource.includes("AETHER_AUTH_PROMPT_CONSENT") &&
+  finalGoalAuditScriptSource.includes("QUORUM_AUTH_PROMPT_CONSENT") &&
   finalGoalAuditScriptSource.includes("tauri-runtime-hygiene") &&
   finalGoalAuditScriptSource.includes("authenticated-ai-cli-provider-required-smoke") &&
   finalGoalAuditScriptSource.includes("authenticated-ai-cli-preflight-matrix") &&
@@ -4732,8 +4732,8 @@ const finalGoalAuditSourcePass =
   goalOperatorFinishSource.includes("goal-operator-finish.json") &&
   goalOperatorFinishSource.includes("I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
   goalOperatorFinishSource.includes("I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS") &&
-  goalOperatorFinishSource.includes("delete env.AETHER_AUTH_PROMPT_CONSENT") &&
-  goalOperatorFinishSource.includes("delete env.AETHER_ALLOW_OS_SLEEP") &&
+  goalOperatorFinishSource.includes("delete env.QUORUM_AUTH_PROMPT_CONSENT") &&
+  goalOperatorFinishSource.includes("delete env.QUORUM_ALLOW_OS_SLEEP") &&
   goalDocumentationFreshnessSource.includes("goal-documentation-freshness.json") &&
   goalDocumentationFreshnessSource.includes("CURRENT_STATE_DOCS") &&
   goalDocumentationFreshnessSource.includes("currentLocalDate") &&
@@ -4929,17 +4929,17 @@ const finalGoalAuditNextAction = String(finalGoalAudit?.nextRequiredAction ?? ""
 const finalGoalAuditNextActionPass =
   finalGoalAuditComplete ||
   (finalGoalAuditNextAction.includes("pnpm verify:terminal:authenticated-ai-cli-prompt") &&
-    finalGoalAuditNextAction.includes("AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
-    finalGoalAuditNextAction.includes("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini"));
+    finalGoalAuditNextAction.includes("QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+    finalGoalAuditNextAction.includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini"));
 const finalGoalAuditConsentGatePass =
   finalGoalAuditComplete ||
   (finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.command ===
     "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
     String(
       finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.requiredEnv ?? "",
-    ).includes("AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+    ).includes("QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.requiredProviderEnv ===
-      "AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
+      "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.wouldSpendTokens === true &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.tokenGate ===
       "explicit consent" &&

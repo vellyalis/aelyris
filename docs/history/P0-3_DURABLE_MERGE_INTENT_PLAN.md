@@ -34,7 +34,7 @@ Goal locked with Codex (independent reviewer, different model) on 2026-06-24 —
 4. Approval shape — schema + handler to `intentId` + approval evidence only; explicit server-side rejection of `repoPath`/`sourceBranch`/`targetBranch` + all unknown fields (NOT relying on `additionalProperties`).
 5. Merge execution — approve loads stored intent, revalidates OIDs, CAS-claims `merging`, runs `perform_merge` outside locks, maps `AlreadyMerged`→`merged`, handles `conflict`/`needs_reconcile`.
 6. Pending view + reject — `list_pending_approvals` synthesizes a thin merge view from the store; `review.reject` moves to the store.
-7. Verifiers — `scripts/verify-security-mcp-merge-intent-binding.mjs` (static/live binding) + `scripts/verify-merge-idempotency.mjs` (live), using the existing `AETHER_API_URL`/`AETHER_API_TOKEN` `/mcp/tools/call` harness.
+7. Verifiers — `scripts/verify-security-mcp-merge-intent-binding.mjs` (static/live binding) + `scripts/verify-merge-idempotency.mjs` (live), using the existing `QUORUM_API_URL`/`QUORUM_API_TOKEN` `/mcp/tools/call` harness.
 8. Regression — focused cargo tests + new verifiers + existing `pnpm verify:mcp-orchestrator`; whole-WU Codex review; merge `--no-ff`.
 
 ## Follow-ups (explicitly deferred, NOT silently absorbed)

@@ -13,7 +13,7 @@ use super::error::PtyError;
 use super::scrollback::{search_scrollback_text, FilePtyScrollbackStore, PtyScrollbackSearchMatch};
 use super::shell::ShellType;
 
-pub const PTY_SCROLLBACK_DIR_ENV: &str = "AETHER_PTY_SCROLLBACK_DIR";
+pub const PTY_SCROLLBACK_DIR_ENV: &str = "QUORUM_PTY_SCROLLBACK_DIR";
 
 /// Broadcast channel capacity per PTY. Sized for burst safety: at 4 KiB per
 /// chunk this is ~4 MiB of backlog before a slow subscriber starts lagging.
@@ -174,7 +174,7 @@ impl PtyManager {
         let program = shell.program().to_string();
         let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
         let mut env = std::collections::HashMap::new();
-        env.insert("AETHER_SHELL".to_string(), program.clone());
+        env.insert("QUORUM_SHELL".to_string(), program.clone());
 
         let id = self.spawn_command(&program, &args, cols, rows, cwd, Some(env))?;
         if let Ok(mut instances) = self.instances.lock() {
@@ -198,7 +198,7 @@ impl PtyManager {
         let program = shell.program().to_string();
         let args: Vec<String> = shell.args().into_iter().map(|s| s.to_string()).collect();
         let mut env = std::collections::HashMap::new();
-        env.insert("AETHER_SHELL".to_string(), program.clone());
+        env.insert("QUORUM_SHELL".to_string(), program.clone());
 
         self.spawn_command_with_id(id, &program, &args, cols, rows, cwd, Some(env))?;
         if let Ok(mut instances) = self.instances.lock() {
@@ -274,7 +274,7 @@ impl PtyManager {
         cmd.env("AETHER_TERMINAL_ID", id);
         cmd.env("AETHER_PROJECT", &resolved_cwd);
 
-        // Extra environment variables (e.g. AETHER_SHELL for shells, model info for agents)
+        // Extra environment variables (e.g. QUORUM_SHELL for shells, model info for agents)
         if let Some(envs) = &extra_env {
             for (k, v) in envs {
                 cmd.env(k, v);

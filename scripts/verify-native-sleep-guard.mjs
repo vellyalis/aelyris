@@ -57,7 +57,7 @@ async function runNativeSleepWithoutOptIn() {
     };
 
     const env = { ...process.env };
-    delete env.AETHER_ALLOW_OS_SLEEP;
+    delete env.QUORUM_ALLOW_OS_SLEEP;
     let child;
     try {
       child = spawn(nativeBin, ["sleep-now"], {
@@ -95,10 +95,10 @@ if (!existsSync(nativeBin)) {
   const refusalText = `${result.stderr}\n${result.stdout}`;
   const checks = {
     nativeBinaryExists: true,
-    optInEnvAbsent: process.env.AETHER_ALLOW_OS_SLEEP !== "1",
+    optInEnvAbsent: process.env.QUORUM_ALLOW_OS_SLEEP !== "1",
     exitedNonZero: Number(result.status) !== 0,
     returnedQuickly: Number(result.elapsedMs) < 10_000,
-    refusalMessagePresent: /refuses to suspend Windows without AETHER_ALLOW_OS_SLEEP=1/i.test(refusalText),
+    refusalMessagePresent: /refuses to suspend Windows without QUORUM_ALLOW_OS_SLEEP=1/i.test(refusalText),
     didNotEmitSleepSuccessJson: !/"operation"\s*:\s*"sleep-now"/.test(result.stdout),
     noRealSleepAttemptClaimed: !/"nativeWindowsSleepApi"\s*:\s*true/.test(result.stdout),
     noPowershellFallback: true,
@@ -125,7 +125,7 @@ if (!existsSync(nativeBin)) {
     },
     safetyBoundary: {
       requiresExplicitOptIn: true,
-      explicitOptInEnv: "AETHER_ALLOW_OS_SLEEP=1",
+      explicitOptInEnv: "QUORUM_ALLOW_OS_SLEEP=1",
       explicitOptInArg: "--i-understand-this-sleeps-windows",
       verifiedWithoutSleepingHost: true,
     },

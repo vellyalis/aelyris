@@ -403,10 +403,10 @@ add(
   checks,
   "no-token-no-sleep-contract",
   !packageJson.includes("verify:goal:orchestration:unsafe") &&
-    !orchestrator.includes("AETHER_AUTH_PROMPT_CONSENT") &&
-    !orchestrator.includes("AETHER_ALLOW_OS_SLEEP") &&
-    !orchestraDialog.includes("AETHER_AUTH_PROMPT_CONSENT") &&
-    !orchestraDialog.includes("AETHER_ALLOW_OS_SLEEP"),
+    !orchestrator.includes("QUORUM_AUTH_PROMPT_CONSENT") &&
+    !orchestrator.includes("QUORUM_ALLOW_OS_SLEEP") &&
+    !orchestraDialog.includes("QUORUM_AUTH_PROMPT_CONSENT") &&
+    !orchestraDialog.includes("QUORUM_ALLOW_OS_SLEEP"),
   "This orchestration verifier is local, non-token, and does not invoke OS sleep gates.",
   { tokenSpendingPromptExecuted: false, realOsSleepInvoked: false },
 );

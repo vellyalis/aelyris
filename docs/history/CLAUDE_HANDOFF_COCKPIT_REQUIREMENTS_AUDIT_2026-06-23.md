@@ -217,7 +217,7 @@ Current failed/blocked checks:
   - Result: true.
 - `Test-NetConnection 127.0.0.1 -Port 9333`
   - Result: true.
-- `AETHER_API_TOKEN=dev node scripts/verify-mcp-task-surface-live.mjs`
+- `QUORUM_API_TOKEN=dev node scripts/verify-mcp-task-surface-live.mjs`
   - Result: HTTP 401. Current bearer token is not available in this shell.
 
 Visual artifacts inspected:
@@ -397,12 +397,12 @@ Ports were open:
 - CDP: `127.0.0.1:9222` true.
 - API: `127.0.0.1:9333` true.
 
-But the shell did not have the current `AETHER_API_TOKEN`; old `dev` token
+But the shell did not have the current `QUORUM_API_TOKEN`; old `dev` token
 returned HTTP 401. Claude should get the current token from the dev log or start
 Tauri with an explicit token, then run:
 
 ```powershell
-$env:AETHER_API_TOKEN='<current-token>'
+$env:QUORUM_API_TOKEN='<current-token>'
 node scripts/verify-mcp-task-surface-live.mjs
 node scripts/verify-shared-brain-live.mjs
 node scripts/verify-autonomy-loop-live.mjs

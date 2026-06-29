@@ -15,7 +15,7 @@ Updated: 2026-06-28
 - `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Purpose
 
@@ -69,7 +69,7 @@ The "Known gaps" list above is the original 2026-05-12 baseline. The current imp
 - `aether-native` is now a Rust-native, no-WebView attaching client spike. `pnpm verify:terminal:native-client` proves it reaches the same daemon instance, creates a layered Win32 native window, renders daemon-captured terminal text through Win32/GDI with nonblank pixel evidence, feeds daemon capture into Rust `TermEngine`, materializes a renderer-neutral `NativeRenderFrame` with schema `aether.native.render-frame.v1`, renders a native 100x24 terminal grid with nonblank cell/pixel evidence, proves the renderer consumed the same frame hash, and can list, send, capture, detach, and attach through the mux API.
 - Production release evidence now passes for all implementation-fixable gates: `pnpm verify:release:production`, strict release doctor, supply-chain audit, mux restore/performance, scrollback, and quality score `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
 - `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`.
-- The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens. The opt-in artifact is `authenticated-ai-cli-consent-packet`, and the final smoke requires `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens. The opt-in artifact is `authenticated-ai-cli-consent-packet`, and the final smoke requires `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
 Remaining Core Wizard gaps:
 
@@ -401,7 +401,7 @@ Completed:
   - `aetherctl capture <id> [--lines n] [--raw]`
 - Added durable PTY scrollback for daemon/API capture:
   - `FilePtyScrollbackStore` appends PTY output to bounded per-terminal log files.
-  - `AETHER_PTY_SCROLLBACK_DIR` enables durable scrollback for the source-built PTY server and embedded API fallback.
+  - `QUORUM_PTY_SCROLLBACK_DIR` enables durable scrollback for the source-built PTY server and embedded API fallback.
   - `GET /sessions/:id/capture` can read durable scrollback after the live session has closed.
   - Scrollback paths percent-encode terminal ids and prune each terminal log to a bounded size.
 - Added explicit daemon contract and stricter sidecar validation:
@@ -410,7 +410,7 @@ Completed:
   - Sidecar attach now rejects wrong process kind, mismatched daemon protocol, mismatched package version, empty instance id, zero pid, and unexpected executable path.
 - Added transactional mux graph snapshot persistence:
   - `FileMuxSnapshotStore` writes validated `VersionedMuxSnapshot` JSON through temp-file then rename.
-  - `AETHER_MUX_SNAPSHOT_DIR` enables snapshot persistence for the source-built PTY server and embedded API fallback.
+  - `QUORUM_MUX_SNAPSHOT_DIR` enables snapshot persistence for the source-built PTY server and embedded API fallback.
   - Snapshot restore marks panes as detached and PTY bindings as `restore-pending:<pane_id>` so stale process ids are not treated as live sessions.
   - API create, resize, split, pane close, swap, move, even/tiled layout, and workspace delete now sync snapshots when a store is configured.
 - Added mux-owned pane/layout control endpoints:
@@ -963,7 +963,7 @@ Remaining before this can be called Core Wizard:
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -977,4 +977,4 @@ Remaining before this can be called Core Wizard:
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Rust-core terminal, mux restore, native IME/clipboard, AI CLI sidecar, right rail workflow, and runtime hygiene gates are green in the non-token/non-real-sleep scope.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.

@@ -1,16 +1,16 @@
 // Opt-in authenticated AI CLI prompt smoke.
 //
 // This verifier may spend real provider tokens. It refuses to launch an AI CLI
-// unless AETHER_AUTH_PROMPT_CONSENT is set to the exact consent phrase below.
+// unless QUORUM_AUTH_PROMPT_CONSENT is set to the exact consent phrase below.
 //
 // Required for token-spending execution:
-//   AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS
+//   QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS
 //
 // Optional:
-//   AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini
+//   QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini
 //   AETHER_AUTH_PROMPT_TEXT="..."
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_AUTH_PROMPT_APP_URL=http://localhost:1420/
+//   QUORUM_AUTH_PROMPT_APP_URL=http://localhost:1420/
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -21,13 +21,13 @@ import { chromium } from "@playwright/test";
 
 const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
 const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_AUTH_PROMPT_APP_URL ?? "http://localhost:1420/";
+const APP_URL = process.env.QUORUM_AUTH_PROMPT_APP_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
 const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const ROOT = resolve(process.cwd());
 const OUT = process.env.AETHER_AUTH_PROMPT_OUT ?? ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json";
 const WAIT_MS = Number.parseInt(process.env.AETHER_AUTH_PROMPT_WAIT_MS ?? "90000", 10);
-const RAW_PROVIDER = process.env.AETHER_AUTH_PROMPT_PROVIDER;
+const RAW_PROVIDER = process.env.QUORUM_AUTH_PROMPT_PROVIDER;
 const PROVIDER_EXPLICIT = typeof RAW_PROVIDER === "string" && RAW_PROVIDER.trim().length > 0;
 const PROVIDER = String(RAW_PROVIDER ?? "codex").toLowerCase();
 const SUPPORTED_PROVIDERS = new Set(["codex", "claude", "gemini"]);
@@ -323,10 +323,10 @@ function optInCommand() {
   return {
     command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
     env: {
-      AETHER_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
-      AETHER_AUTH_PROMPT_PROVIDER: PROVIDER,
+      QUORUM_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
+      QUORUM_AUTH_PROMPT_PROVIDER: PROVIDER,
       AETHER_TAURI_CDP: CDP,
-      AETHER_AUTH_PROMPT_APP_URL: APP_URL,
+      QUORUM_AUTH_PROMPT_APP_URL: APP_URL,
     },
   };
 }
@@ -349,11 +349,11 @@ async function main() {
   const noTokenPreflight = buildNoTokenPreflight(PROVIDER);
   report.nonTokenPreflight = noTokenPreflight;
 
-  if (process.env.AETHER_AUTH_PROMPT_CONSENT !== CONSENT_PHRASE) {
+  if (process.env.QUORUM_AUTH_PROMPT_CONSENT !== CONSENT_PHRASE) {
     report.status = "requires_opt_in";
     report.checks = {
       consent: false,
-      requiredEnv: `AETHER_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
+      requiredEnv: `QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
       tokenSpendingExecutionBlocked: true,
       safeNoPromptSent: true,
       consentPacketReady: true,
@@ -373,7 +373,7 @@ async function main() {
     report.status = PROVIDER_EXPLICIT ? "unsupported_provider" : "provider_required";
     report.checks = {
       consent: true,
-      requiredEnv: `AETHER_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`,
+      requiredEnv: `QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`,
       explicitProvider: PROVIDER_EXPLICIT,
       supportedProvider: SUPPORTED_PROVIDERS.has(PROVIDER),
       tokenSpendingExecutionBlocked: true,
@@ -397,7 +397,7 @@ async function main() {
     report.status = "preflight_blocked";
     report.checks = {
       consent: true,
-      requiredEnv: `AETHER_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
+      requiredEnv: `QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
       tokenSpendingExecutionBlocked: true,
       safeNoPromptSent: true,
       consentPacketReady: false,
@@ -519,7 +519,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     const cdpShutdown = {
-      browserCloseRequested: process.env.AETHER_AUTH_PROMPT_CLOSE_BROWSER === "1",
+      browserCloseRequested: process.env.QUORUM_AUTH_PROMPT_CLOSE_BROWSER === "1",
       cdpDetached: false,
       browserClosed: false,
       error: null,

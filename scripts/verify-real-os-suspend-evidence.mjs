@@ -104,7 +104,7 @@ Real sleep modes:
 Targets and safety:
   --native-primary                Target aether-native.exe instead of the Tauri release shell.
   --launch-native-primary         Launch a short-lived native primary shell during the proof.
-  AETHER_ALLOW_OS_SLEEP=1         Required before --cycle can invoke the sleep API.
+  QUORUM_ALLOW_OS_SLEEP=1         Required before --cycle can invoke the sleep API.
 `);
 }
 
@@ -233,14 +233,14 @@ function tokenPath() {
 }
 
 function apiToken() {
-  if (process.env.AETHER_API_TOKEN?.trim()) return process.env.AETHER_API_TOKEN.trim();
+  if (process.env.QUORUM_API_TOKEN?.trim()) return process.env.QUORUM_API_TOKEN.trim();
   const path = tokenPath();
   if (!path || !existsSync(path)) return "";
   return readFileSync(path, "utf8").trim();
 }
 
 function apiBaseUrl() {
-  if (process.env.AETHER_API_URL?.trim()) return process.env.AETHER_API_URL.trim();
+  if (process.env.QUORUM_API_URL?.trim()) return process.env.QUORUM_API_URL.trim();
   const path = tokenPath();
   return path && existsSync(path) ? SIDECAR_API_BASE_URL : DEFAULT_API_BASE_URL;
 }
@@ -362,8 +362,8 @@ function launchNativePrimaryShellForSuspend(options = {}) {
       windowsHide: true,
       env: {
         ...process.env,
-        AETHER_API_URL: apiBaseUrl(),
-        AETHER_API_TOKEN: apiToken(),
+        QUORUM_API_URL: apiBaseUrl(),
+        QUORUM_API_TOKEN: apiToken(),
       },
     });
   } catch (error) {
@@ -488,8 +488,8 @@ async function runNativeJson(commandArgs, timeoutMs = 60000) {
         windowsHide: true,
         env: {
           ...process.env,
-          AETHER_API_URL: apiBaseUrl(),
-          AETHER_API_TOKEN: apiToken(),
+          QUORUM_API_URL: apiBaseUrl(),
+          QUORUM_API_TOKEN: apiToken(),
         },
       });
     } catch (error) {
@@ -777,10 +777,10 @@ async function launchIsolatedSidecarForPreflight() {
       windowsHide: true,
       env: {
         ...process.env,
-        AETHER_API_TOKEN: tokenValue,
-        AETHER_PTY_SERVER_PORT: String(port),
-        AETHER_MUX_SNAPSHOT_DIR: muxDir,
-        AETHER_PTY_SCROLLBACK_DIR: scrollbackDir,
+        QUORUM_API_TOKEN: tokenValue,
+        QUORUM_PTY_SERVER_PORT: String(port),
+        QUORUM_MUX_SNAPSHOT_DIR: muxDir,
+        QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
       },
     });
   } catch (error) {
@@ -1318,10 +1318,10 @@ function assertWindowsSleepCycleAllowed() {
   if (process.platform !== "win32") {
     fail("guarded sleep cycle requires Windows", process.platform);
   }
-  if (process.env.AETHER_ALLOW_OS_SLEEP !== "1") {
+  if (process.env.QUORUM_ALLOW_OS_SLEEP !== "1") {
     fail(
       "refusing to put Windows to sleep without explicit opt-in",
-      `set AETHER_ALLOW_OS_SLEEP=1 and run ${NATIVE_PRIMARY_REQUESTED ? "pnpm verify:production:suspend:native-cycle" : "pnpm verify:production:suspend:cycle"}`,
+      `set QUORUM_ALLOW_OS_SLEEP=1 and run ${NATIVE_PRIMARY_REQUESTED ? "pnpm verify:production:suspend:native-cycle" : "pnpm verify:production:suspend:cycle"}`,
     );
   }
 }
@@ -1334,9 +1334,9 @@ function invokeWindowsSleep() {
       encoding: "utf8",
       env: {
         ...process.env,
-        AETHER_ALLOW_OS_SLEEP: "1",
-        AETHER_API_URL: apiBaseUrl(),
-        AETHER_API_TOKEN: apiToken(),
+        QUORUM_ALLOW_OS_SLEEP: "1",
+        QUORUM_API_URL: apiBaseUrl(),
+        QUORUM_API_TOKEN: apiToken(),
       },
       windowsHide: true,
       timeout: Number.parseInt(process.env.AETHER_OS_SLEEP_TIMEOUT_MS ?? "1200000", 10),
@@ -1915,8 +1915,8 @@ async function probeWindowsEventLogAccess() {
 async function writeNativePreflight() {
   const sidecar = await launchIsolatedSidecarForPreflight();
   if (sidecar.ok) {
-    process.env.AETHER_API_URL = sidecar.baseUrl;
-    process.env.AETHER_API_TOKEN = sidecar.tokenValue;
+    process.env.QUORUM_API_URL = sidecar.baseUrl;
+    process.env.QUORUM_API_TOKEN = sidecar.tokenValue;
   }
   const target = { ...suspendTargetMetadata(), launchNativePrimaryRequested: true };
   const launch = launchNativePrimaryShellForSuspend({ force: true, holdMs: NATIVE_PREFLIGHT_HOLD_MS });
@@ -1994,8 +1994,8 @@ async function writeNativePreflight() {
 async function writeNativePostcheckPreflight() {
   const sidecar = await launchIsolatedSidecarForPreflight();
   if (sidecar.ok) {
-    process.env.AETHER_API_URL = sidecar.baseUrl;
-    process.env.AETHER_API_TOKEN = sidecar.tokenValue;
+    process.env.QUORUM_API_URL = sidecar.baseUrl;
+    process.env.QUORUM_API_TOKEN = sidecar.tokenValue;
   }
   const target = { ...suspendTargetMetadata(), launchNativePrimaryRequested: true };
   const launch = launchNativePrimaryShellForSuspend({
@@ -2100,8 +2100,8 @@ async function writeNativePostcheckWriteSmoke() {
   }
   const sidecar = await launchIsolatedSidecarForPreflight();
   if (sidecar.ok) {
-    process.env.AETHER_API_URL = sidecar.baseUrl;
-    process.env.AETHER_API_TOKEN = sidecar.tokenValue;
+    process.env.QUORUM_API_URL = sidecar.baseUrl;
+    process.env.QUORUM_API_TOKEN = sidecar.tokenValue;
   }
   const target = suspendTargetMetadata();
   const launch = launchNativePrimaryShellForSuspend({

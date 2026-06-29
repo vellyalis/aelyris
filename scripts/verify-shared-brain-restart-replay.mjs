@@ -1,9 +1,9 @@
 // Two-phase live replay verifier for shared-brain restart durability.
 //
 // Usage:
-//   AETHER_API_TOKEN=... node scripts/verify-shared-brain-restart-replay.mjs --phase seed
+//   QUORUM_API_TOKEN=... node scripts/verify-shared-brain-restart-replay.mjs --phase seed
 //   # restart Aether Terminal
-//   AETHER_API_TOKEN=... node scripts/verify-shared-brain-restart-replay.mjs --phase verify --id <printed-id>
+//   QUORUM_API_TOKEN=... node scripts/verify-shared-brain-restart-replay.mjs --phase verify --id <printed-id>
 //
 // It verifies that Context Store, durable event log, file ownership, symbol
 // ownership, and aether.shared_brain.snapshot survive the process boundary.
@@ -12,8 +12,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(process.cwd());
-const BASE = process.env.AETHER_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.AETHER_API_TOKEN;
+const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.QUORUM_API_TOKEN;
 const OUT = join(ROOT, ".codex-auto", "quality", "shared-brain-restart-replay.json");
 const SEED = join(ROOT, ".codex-auto", "quality", "shared-brain-restart-replay-seed.json");
 
@@ -36,7 +36,7 @@ if (!TOKEN) {
     blockers: [
       {
         capability: "aether-api-token",
-        message: "AETHER_API_TOKEN is required for the two-phase live restart replay verifier",
+        message: "QUORUM_API_TOKEN is required for the two-phase live restart replay verifier",
         phase: "host-preflight",
         command: "node scripts/verify-shared-brain-restart-replay.mjs",
       },
@@ -46,7 +46,7 @@ if (!TOKEN) {
   };
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
-  console.error("AETHER_API_TOKEN is required");
+  console.error("QUORUM_API_TOKEN is required");
   process.exit(1);
 }
 

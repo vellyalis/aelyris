@@ -76,9 +76,9 @@ function childEnv(extra = {}) {
     ...extra,
     AETHER_NON_TOKEN_GOAL_REFRESH: "1",
   };
-  delete env.AETHER_AUTH_PROMPT_CONSENT;
-  delete env.AETHER_AUTH_PROMPT_PROVIDER;
-  delete env.AETHER_ALLOW_OS_SLEEP;
+  delete env.QUORUM_AUTH_PROMPT_CONSENT;
+  delete env.QUORUM_AUTH_PROMPT_PROVIDER;
+  delete env.QUORUM_ALLOW_OS_SLEEP;
   return env;
 }
 

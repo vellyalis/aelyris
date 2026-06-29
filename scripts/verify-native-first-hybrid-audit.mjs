@@ -449,7 +449,7 @@ const report = {
     realMachineSleepExecuted: false,
     requiredForNativeFirstImplementationConfidence: false,
     requiredForStrictFullNativeClaim: true,
-    explicitOptInEnv: "AETHER_ALLOW_OS_SLEEP=1",
+    explicitOptInEnv: "QUORUM_ALLOW_OS_SLEEP=1",
   },
   currentTruth: {
     releaseGoal: "native-first hybrid",

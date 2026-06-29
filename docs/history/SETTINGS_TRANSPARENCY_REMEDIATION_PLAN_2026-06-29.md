@@ -27,7 +27,7 @@ translucent over whichever backdrop is active.
 ## Phase 0 — HIGH correctness (blocking; land first)
 
 ### 0.1 Fix the broken test + release scorer (debt HIGH #1)
-My uncommitted `lib.rs` change renamed the env var to `AETHER_DISABLE_DWM_CHROME`
+My uncommitted `lib.rs` change renamed the env var to `QUORUM_DISABLE_DWM_CHROME`
 and changed the log message, breaking two pins of the OLD strings.
 - `src/__tests__/AppSilentBugs.test.ts:810-811` — update assertions to the new env var + message (assert the *intent*: "DWM chrome is env-gated", not the literal old string).
 - `scripts/score-release-quality.mjs:2748-2749` — same two substrings.

@@ -623,7 +623,7 @@ async fn request(method: Method, path: &str, body: Option<Value>) -> Result<Valu
 }
 
 fn api_base_url() -> String {
-    if let Ok(url) = env::var("AETHER_API_URL") {
+    if let Ok(url) = env::var("QUORUM_API_URL") {
         let trimmed = url.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -637,7 +637,7 @@ fn api_base_url() -> String {
 }
 
 fn api_token() -> Option<String> {
-    if let Ok(token) = env::var("AETHER_API_TOKEN") {
+    if let Ok(token) = env::var("QUORUM_API_TOKEN") {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
@@ -735,7 +735,7 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aetherctl commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AETHER_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AETHER_API_TOKEN  overrides bearer token; otherwise reads the Aether sidecar token file"
+        "aetherctl commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  QUORUM_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  QUORUM_API_TOKEN  overrides bearer token; otherwise reads the Aether sidecar token file"
     );
 }
 

@@ -362,12 +362,12 @@ function buildConsentRunActions(
   const providers = consentProviders(packet);
   const defaultProvider = defaultConsentProvider(packet, providers);
   const command = packet.command || "pnpm verify:terminal:authenticated-ai-cli-prompt";
-  const requiredEnv = packet.requiredEnv || "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
-  const providerEnv = `AETHER_AUTH_PROMPT_PROVIDER=${providers.join("|")}`;
+  const requiredEnv = packet.requiredEnv || "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
+  const providerEnv = `QUORUM_AUTH_PROMPT_PROVIDER=${providers.join("|")}`;
   return providers.map((provider) => {
     const powershellSnippet = [
-      `$env:AETHER_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"`,
-      `$env:AETHER_AUTH_PROMPT_PROVIDER="${provider}"`,
+      `$env:QUORUM_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"`,
+      `$env:QUORUM_AUTH_PROMPT_PROVIDER="${provider}"`,
       command,
     ].join("\n");
     return {

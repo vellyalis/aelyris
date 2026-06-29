@@ -16,7 +16,7 @@
 //! ```
 //!
 //! All routes require a `Authorization: Bearer <token>` header. The token is
-//! read from the `AETHER_API_TOKEN` env var at startup; if unset, a random
+//! read from the `QUORUM_API_TOKEN` env var at startup; if unset, a random
 //! token is generated and logged once so the running user can copy it.
 //!
 //! Sessions created via this API land in the same `PtyManager` as Tauri-spawned
@@ -75,7 +75,7 @@ pub const DEFAULT_PORT: u16 = 9333;
 pub const PROCESS_KIND_EMBEDDED: &str = "embedded-api";
 pub const PROCESS_KIND_SIDE_CAR: &str = "pty-sidecar";
 pub const DAEMON_PROTOCOL_VERSION: u32 = 2;
-pub const MUX_SNAPSHOT_DIR_ENV: &str = "AETHER_MUX_SNAPSHOT_DIR";
+pub const MUX_SNAPSHOT_DIR_ENV: &str = "QUORUM_MUX_SNAPSHOT_DIR";
 
 /// Per-frame write deadline for the WS send half.
 ///
@@ -112,7 +112,7 @@ pub const MAX_PTY_SESSIONS: usize = 32;
 /// Default allowed CORS origin — the Tauri dev server. In release builds the
 /// webview loads from `tauri://localhost` which does not send `Origin` so is
 /// unaffected by CORS; the list only matters for browser clients. Override
-/// via `AETHER_API_CORS_ORIGIN` (comma-separated, e.g. `https://foo,https://bar`).
+/// via `QUORUM_API_CORS_ORIGIN` (comma-separated, e.g. `https://foo,https://bar`).
 pub const DEFAULT_CORS_ORIGIN: &str = "http://127.0.0.1:1420";
 
 /// REST rate-limit bucket: tolerant enough for local UI reload/reconnect storms
@@ -213,7 +213,7 @@ pub struct ApiState {
     /// bumps an `Arc`), and the internal state is `Mutex`-guarded.
     pub rate_limiter: Arc<RateLimiter>,
     /// Allowed CORS origins. Applied as a `tower_http::cors::CorsLayer` in
-    /// `router()`. Defaulted from `AETHER_API_CORS_ORIGIN`; browser clients
+    /// `router()`. Defaulted from `QUORUM_API_CORS_ORIGIN`; browser clients
     /// from other origins get no `Access-Control-Allow-Origin` header and
     /// will fail the preflight.
     pub cors_origins: Vec<HeaderValue>,
@@ -462,13 +462,13 @@ impl ApiState {
     }
 }
 
-/// Read the comma-separated `AETHER_API_CORS_ORIGIN` env var. Individual
+/// Read the comma-separated `QUORUM_API_CORS_ORIGIN` env var. Individual
 /// typos are logged at `warn` and skipped. If the entire list fails to
 /// parse, we fall back to the dev-server default rather than leave the
 /// server with a zero-origin allow-list (which silently breaks every
 /// browser client). Returns the dev-server default when unset / empty.
 fn default_cors_origins() -> Vec<HeaderValue> {
-    match std::env::var("AETHER_API_CORS_ORIGIN") {
+    match std::env::var("QUORUM_API_CORS_ORIGIN") {
         Ok(s) if !s.trim().is_empty() => {
             let parsed: Vec<HeaderValue> = s
                 .split(',')
@@ -478,7 +478,7 @@ fn default_cors_origins() -> Vec<HeaderValue> {
                         Ok(v) => Some(v),
                         Err(_) => {
                             log::warn!(
-                                "api: AETHER_API_CORS_ORIGIN entry {:?} is not a valid \
+                                "api: QUORUM_API_CORS_ORIGIN entry {:?} is not a valid \
                                  HeaderValue — dropping",
                                 trimmed
                             );
@@ -489,7 +489,7 @@ fn default_cors_origins() -> Vec<HeaderValue> {
                 .collect();
             if parsed.is_empty() {
                 log::warn!(
-                    "api: AETHER_API_CORS_ORIGIN parsed to zero valid origins — \
+                    "api: QUORUM_API_CORS_ORIGIN parsed to zero valid origins — \
                      falling back to {}",
                     DEFAULT_CORS_ORIGIN
                 );
@@ -1166,16 +1166,16 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
-    /// Read `AETHER_API_TOKEN` from the environment. If the variable is unset
+    /// Read `QUORUM_API_TOKEN` from the environment. If the variable is unset
     /// or empty, generate a random UUID and log it once at WARN level so the
     /// operator can see it in the app's log output.
     pub fn from_env() -> Self {
-        let token = match std::env::var("AETHER_API_TOKEN") {
+        let token = match std::env::var("QUORUM_API_TOKEN") {
             Ok(t) if !t.is_empty() => t,
             _ => {
                 let generated = uuid::Uuid::new_v4().to_string();
                 log::warn!(
-                    "api: AETHER_API_TOKEN not set — generated ephemeral token: {}",
+                    "api: QUORUM_API_TOKEN not set — generated ephemeral token: {}",
                     generated
                 );
                 generated

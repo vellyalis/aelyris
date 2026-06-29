@@ -1,7 +1,7 @@
 // P2-07 live Tauri/WebView2 PTY and AI CLI chaos smoke.
 //
 // Prerequisite:
-//   AETHER_API_TOKEN=dev pnpm.cmd tauri:dev
+//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222

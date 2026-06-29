@@ -149,8 +149,8 @@ const checks = [
       apiMod.includes("store.load_all_graphs()") &&
       apiMod.includes("graph_for_snapshot_restore(graph)") &&
       apiMod.includes("with_env_mux_store") &&
-      apiMod.includes("AETHER_MUX_SNAPSHOT_DIR"),
-    "ApiState loads mux snapshots on startup from AETHER_MUX_SNAPSHOT_DIR and converts them to restore-pending graphs.",
+      apiMod.includes("QUORUM_MUX_SNAPSHOT_DIR"),
+    "ApiState loads mux snapshots on startup from QUORUM_MUX_SNAPSHOT_DIR and converts them to restore-pending graphs.",
   ),
   check(
     "api-mux-mutating-routes-persist-snapshots",

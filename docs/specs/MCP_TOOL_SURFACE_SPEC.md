@@ -82,7 +82,7 @@ existing pattern verbatim:
 
 | Concern | Existing mechanism | File:line |
 |---------|--------------------|-----------|
-| Bearer token | `AETHER_API_TOKEN` env var; random UUID generated + logged once if unset | `src-tauri/src/api/mod.rs:676-689` |
+| Bearer token | `QUORUM_API_TOKEN` env var; random UUID generated + logged once if unset | `src-tauri/src/api/mod.rs:676-689` |
 | Constant-time compare | `subtle::ConstantTimeEq` via `ct_eq` | `src-tauri/src/api/mod.rs:710-739` |
 | Loopback bind only | `SocketAddr::from(([127,0,0,1], port))` | `src-tauri/src/api/mod.rs:990-992` |
 | Per-IP rate limit | `RateLimiter` token bucket, REST + WS buckets | `src-tauri/src/api/mod.rs:336-501` |

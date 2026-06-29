@@ -5,7 +5,7 @@
 // using Chromium device emulation as DPI proof.
 //
 // Prerequisite:
-//   AETHER_API_TOKEN=dev pnpm.cmd tauri:dev
+//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222

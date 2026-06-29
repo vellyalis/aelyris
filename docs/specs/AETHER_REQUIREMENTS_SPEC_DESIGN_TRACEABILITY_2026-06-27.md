@@ -41,7 +41,7 @@ work cannot rely on scattered narrative docs.
 
 ## Current Gate Residuals
 
-Current final audit status is `blocked`: `implementationFixableCount=46`, `policyBlockedCount=1`, `externalBlockedCount=12`. The token-spending gate is `authenticated-ai-cli-prompt-smoke`; the consent packet is `authenticated-ai-cli-consent-packet`; prompt execution requires `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
+Current final audit status is `blocked`: `implementationFixableCount=46`, `policyBlockedCount=1`, `externalBlockedCount=12`. The token-spending gate is `authenticated-ai-cli-prompt-smoke`; the consent packet is `authenticated-ai-cli-consent-packet`; prompt execution requires `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
 
 ## Active Design Status
 

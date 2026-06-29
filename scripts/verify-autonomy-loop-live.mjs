@@ -4,16 +4,16 @@
 // its target branch by a REAL git merge — the same loop the cockpit runs.
 //
 // Deterministic (no real agent / no auth): the task is pre-placed in review.
-// Prereq: `pnpm tauri:dev` running; AETHER_API_TOKEN set to the API bearer token.
+// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const BASE = process.env.AETHER_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.AETHER_API_TOKEN;
+const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.QUORUM_API_TOKEN;
 if (!TOKEN) {
-  console.error("AETHER_API_TOKEN is required");
+  console.error("QUORUM_API_TOKEN is required");
   process.exit(2);
 }
 

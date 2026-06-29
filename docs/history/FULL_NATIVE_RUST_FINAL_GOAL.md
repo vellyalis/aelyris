@@ -212,7 +212,7 @@ The second score is the new goal. It is not complete until every missing item ab
 ## 2026-05-24 Progress 6
 
 - Added `aether-native settings-proof`.
-- Added `AETHER_CONFIG_HOME` support to the Rust config path so native settings verification can use an isolated temporary config home without touching the user's real `~/.aether/config.toml`.
+- Added `QUORUM_CONFIG_HOME` support to the Rust config path so native settings verification can use an isolated temporary config home without touching the user's real `~/.aether/config.toml`.
 - The proof uses the real Rust `load_config` / `save_config` path to round-trip theme, mood, opacity, palette overrides, material overrides, and wallpaper image placement.
 - The proof then changes opacity and wallpaper opacity, saves again, reloads again, and records `hotReloadProof.changedWithoutReact=true`.
 - `pnpm verify:terminal:native-client` now includes `native-settings-config-roundtrip-proof`, `native-settings-hot-reload-proof`, `native-settings-wallpaper-customization-proof`, and `native-settings-material-customization-proof`.
@@ -473,7 +473,7 @@ The second score is the new goal. It is not complete until every missing item ab
 ## 2026-05-26 Progress 27
 
 - Added a guarded Rust-native sleep entrypoint: `aether-native sleep-now`.
-- The command uses the Windows power API from Rust and refuses to sleep the host unless the caller explicitly opts in with `AETHER_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows`.
+- The command uses the Windows power API from Rust and refuses to sleep the host unless the caller explicitly opts in with `QUORUM_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows`.
 - `scripts/verify-real-os-suspend-evidence.mjs` now uses `aether-native sleep-now` for `--native-primary` guarded cycles, keeping PowerShell out of the final native sleep path.
 - Repaired a native-client verifier regression where `aether-native primary-shell-proof` read only the previous `native-client-spike.json` while the current verifier run was still assembling its artifact.
 - The verifier now passes current-run checks to the primary shell proof, and the Rust proof merges those checks with persisted artifacts. This keeps promotion gates honest without depending on stale JSON.
@@ -496,7 +496,7 @@ The second score is the new goal. It is not complete until every missing item ab
 - Refreshed `.codex-auto/production-smoke/real-os-suspend-resume.json` to point at the current native-primary executable without running sleep. It remains `pending` by design.
 - Validation passed: `node --check scripts\verify-real-os-suspend-evidence.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, `pnpm verify:production:suspend:native-diagnose`, and `pnpm verify:full-native:audit`.
 - `pnpm verify:full-native:audit` remains `98/100`, `118/120`, `S`, `in-progress`.
-- Remaining blocker: explicitly opted-in real Windows sleep/resume cycle with `pnpm verify:production:suspend:native-cycle` after setting `AETHER_ALLOW_OS_SLEEP=1`.
+- Remaining blocker: explicitly opted-in real Windows sleep/resume cycle with `pnpm verify:production:suspend:native-cycle` after setting `QUORUM_ALLOW_OS_SLEEP=1`.
 
 ## 2026-05-26 Progress 29
 
@@ -520,7 +520,7 @@ The second score is the new goal. It is not complete until every missing item ab
   - `pnpm verify:production:suspend:native-resume`;
   - `pnpm verify:production:suspend:native-postcheck`;
   - `pnpm verify:full-native:audit`.
-- The guarded cycle action records `requiresExplicitOptIn=true` and `explicitOptInEnv=AETHER_ALLOW_OS_SLEEP=1`, so the native Command Center can surface the host-power safety boundary instead of hiding it in script docs.
+- The guarded cycle action records `requiresExplicitOptIn=true` and `explicitOptInEnv=QUORUM_ALLOW_OS_SLEEP=1`, so the native Command Center can surface the host-power safety boundary instead of hiding it in script docs.
 - `scripts/verify-native-client-spike.mjs` now requires this runbook and records `native-command-center-sleep-resume-runbook-proof`.
 - `scripts/verify-full-native-rust-gap-audit.mjs` now refuses the Command Center data proof unless the final sleep/resume runbook exists in the Rust-native action model.
 - Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, `pnpm verify:production:suspend:native-preflight`, and `pnpm verify:full-native:audit`.
@@ -562,8 +562,8 @@ The second score is the new goal. It is not complete until every missing item ab
 ## 2026-05-26 Progress 34
 
 - Added a no-host-sleep proof for the guarded native sleep command.
-- `scripts/verify-native-sleep-guard.mjs` now runs the debug `aether-native.exe sleep-now` entrypoint with `AETHER_ALLOW_OS_SLEEP` explicitly absent, captures stdout/stderr through files, and verifies the command fails closed quickly.
-- The proof requires the refusal text to mention `AETHER_ALLOW_OS_SLEEP=1`, rejects any success JSON, rejects any real sleep-attempt claim, and verifies no PowerShell fallback was used.
+- `scripts/verify-native-sleep-guard.mjs` now runs the debug `aether-native.exe sleep-now` entrypoint with `QUORUM_ALLOW_OS_SLEEP` explicitly absent, captures stdout/stderr through files, and verifies the command fails closed quickly.
+- The proof requires the refusal text to mention `QUORUM_ALLOW_OS_SLEEP=1`, rejects any success JSON, rejects any real sleep-attempt claim, and verifies no PowerShell fallback was used.
 - Added `pnpm verify:production:suspend:native-sleep-guard`, writing `.codex-auto/production-smoke/native-sleep-guard-refusal.json`.
 - `scripts/verify-full-native-rust-gap-audit.mjs` now surfaces `nativeSleepGuard` in `currentTruth` and records the sleep-guard artifact path.
 - The Rust-native Command Center runbook now exposes `verify-native-sleep-guard` as a no-React/no-WebView proof action, and `scripts/verify-native-client-spike.mjs` requires that runbook action before accepting the native sleep/resume runbook proof.

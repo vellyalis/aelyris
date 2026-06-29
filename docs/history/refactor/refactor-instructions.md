@@ -252,7 +252,7 @@ native-bin / 一部 FE を触ったら `node scripts/score-release-quality.mjs` 
 #### C群-4: セキュリティ境界（document / Q・挙動不変でない限り触らない）
 - **C-20 🔴 security validator が god-file 内**（`validate_path`/`is_dangerous_path` が `commands.rs`）— 将来分割が境界を無言で動かすリスク。`ipc/path_safety.rs` への pure move を提案（テスト同伴・glob 経由で解決維持）。C-10/C-13 と統合。
 - **C-18(MCP) 🔴 `safety`(GATED/REVIEWER_AUTHORITY) は advisory のみ**（`tools_call` は safety を読まない・唯一の境界は bearer token）— token 保持者は全 verb 実行可。enforcement shim を入れるか localhost-single-token 信頼が意図かを Q。
-- **C-21 🔴 ephemeral token を log 出力**（`AETHER_API_TOKEN` 未設定時、runtime 全体を `127.0.0.1:9333` に自動 bind し token を log）— log 読める local process が spawn_agent+review.approve 権限取得。fingerprint のみ log / 明示設定要求を Q。
+- **C-21 🔴 ephemeral token を log 出力**（`QUORUM_API_TOKEN` 未設定時、runtime 全体を `127.0.0.1:9333` に自動 bind し token を log）— log 読める local process が spawn_agent+review.approve 権限取得。fingerprint のみ log / 明示設定要求を Q。
 - その他 document のみ（挙動変えない）: `start_branch_comparison` が branch名を validate せず `git diff` に渡す（read-only・低severity・`validate_branch_name` 追加を Q）; `validate_path` 空文字=Ok の soft no-op に意図 comment; MD XSS 二層を一緒に保つ invariant 明記; AI CLI headless spawn が API 経路の NUL/長さ bound を持たない（defense-in-depth gap）。
 
 #### C群-5: DB / 並行（hardening・挙動 sensitive）

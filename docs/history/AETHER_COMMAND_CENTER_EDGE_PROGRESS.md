@@ -15,7 +15,7 @@ Scope: Sequential execution toward the command-center edge plan.
 - `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Superseded Canonical State - 2026-05-22
 
@@ -23,7 +23,7 @@ Scope: Sequential execution toward the command-center edge plan.
 - `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
 - `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `proofArtifactPassCount=27/27`, and no implementation-fixable blocker.
 - The only remaining blocker is `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
-- The opt-in artifact is `authenticated-ai-cli-consent-packet`; that final smoke requires `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- The opt-in artifact is `authenticated-ai-cli-consent-packet`; that final smoke requires `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
 ### Phase 2.48 - Native winit/wgpu Font Atlas Proof
 
@@ -95,7 +95,7 @@ Status: done
 Implemented:
 
 - Added `aether-native settings-proof`.
-- Added `AETHER_CONFIG_HOME` support to the Rust config loader so proof runs can use an isolated config directory and avoid mutating the user's real `~/.aether/config.toml`.
+- Added `QUORUM_CONFIG_HOME` support to the Rust config loader so proof runs can use an isolated config directory and avoid mutating the user's real `~/.aether/config.toml`.
 - The proof writes and reloads theme, mood, window opacity, palette overrides, material overrides, wallpaper image path, wallpaper opacity, wallpaper position, and wallpaper scale through the real Rust `load_config` / `save_config` path.
 - The proof saves a second generation and reloads it to verify settings changes can be observed without React/WebView, recording `hotReloadProof.changedWithoutReact=true`.
 - The native-client verifier now requires `native-settings-config-roundtrip-proof`, `native-settings-hot-reload-proof`, `native-settings-wallpaper-customization-proof`, and `native-settings-material-customization-proof`.
@@ -2324,7 +2324,7 @@ Implemented:
 - Added `pnpm verify:production:suspend:cycle` for a single guarded Windows sleep/resume evidence flow.
 - Wired the production release gate so `--sleep-cycle` or `AETHER_RELEASE_SLEEP_CYCLE=1` uses that guarded cycle instead of the older split diagnose/evidence pair.
 - The cycle refreshes the release app identity, records begin time, invokes Windows sleep, records resume time, runs post-resume process/API/terminal/SQLite probes, then promotes the evidence to `pass` only if strict Windows power events are present.
-- The command refuses to sleep unless `AETHER_ALLOW_OS_SLEEP=1` is set, and that guard now runs before any evidence/session file is touched.
+- The command refuses to sleep unless `QUORUM_ALLOW_OS_SLEEP=1` is set, and that guard now runs before any evidence/session file is touched.
 - Programmatic attempted-suspend-only evidence still cannot pass; the strict validator still requires provider-matched suspend and resume events.
 
 Validation:
@@ -2334,11 +2334,11 @@ Validation:
 - `pnpm exec biome check --write scripts\verify-real-os-suspend-evidence.mjs package.json src\__tests__\AppSilentBugs.test.ts`
 - `pnpm exec biome check --write scripts\verify-production-release-gate.mjs src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
-- `pnpm verify:production:suspend:cycle` without `AETHER_ALLOW_OS_SLEEP=1` exited `1` and left both evidence and session timestamps unchanged.
+- `pnpm verify:production:suspend:cycle` without `QUORUM_ALLOW_OS_SLEEP=1` exited `1` and left both evidence and session timestamps unchanged.
 
 Residual:
 
-- This removes operator-step ambiguity and prevents accidental false evidence. It does not itself create the missing real Windows sleep/resume proof; the host must actually enter and resume from a Windows sleep state with `AETHER_ALLOW_OS_SLEEP=1` for the score blocker to clear.
+- This removes operator-step ambiguity and prevents accidental false evidence. It does not itself create the missing real Windows sleep/resume proof; the host must actually enter and resume from a Windows sleep state with `QUORUM_ALLOW_OS_SLEEP=1` for the score blocker to clear.
 
 ### Phase 1.80 - Real OS Sleep Cycle Noise Reduction
 
@@ -2354,7 +2354,7 @@ Validation:
 
 - `Start-Process <repo>\src-tauri\target\release\Aether.exe`
 - `pnpm verify:production:suspend:refresh-app`
-- `AETHER_ALLOW_OS_SLEEP=1 pnpm verify:production:suspend:cycle`
+- `QUORUM_ALLOW_OS_SLEEP=1 pnpm verify:production:suspend:cycle`
 - `node --check scripts\verify-real-os-suspend-evidence.mjs`
 - `pnpm exec biome check --write scripts\verify-real-os-suspend-evidence.mjs`
 
@@ -3313,7 +3313,7 @@ Implemented:
 
 - Added `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs`.
 - Added `pnpm verify:terminal:authenticated-ai-cli-prompt`.
-- The verifier refuses to launch a real AI CLI prompt unless `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` is set.
+- The verifier refuses to launch a real AI CLI prompt unless `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` is set.
 - Without consent it writes `.codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json` with `status=requires_opt_in`, `wouldSpendTokens=true`, and the required env var.
 - With consent it is prepared to:
   - attach to the live Tauri/WebView2 runtime through CDP;
@@ -3459,7 +3459,7 @@ Implemented:
 - Added `waitForPowerShellReady()` to the live chaos smoke before both the initial write and the post-restart write.
 - The rerun then exposed a dev runtime crash with `STATUS_HEAP_CORRUPTION`; the smoke was still carrying a stale `edgeLoop` URL parameter from the browser state.
 - Hardened `withChaosQaParams()` to delete `state`, `edgeLoop`, and `dashboardState`, and to set `v=live-pty-ai-cli-chaos`.
-- Restarted the dev runtime cleanly with `AETHER_API_TOKEN=dev`, reran the smoke, and confirmed fresh pass.
+- Restarted the dev runtime cleanly with `QUORUM_API_TOKEN=dev`, reran the smoke, and confirmed fresh pass.
 
 Validation:
 
@@ -4367,7 +4367,7 @@ Status: done
 Implemented:
 
 - Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so token-spending execution now requires an explicit supported provider.
-- A consented run with no `AETHER_AUTH_PROMPT_PROVIDER` now writes `status=provider_required`, keeps `safeNoPromptSent=true`, and exits before CDP attach, session spawn, or prompt send.
+- A consented run with no `QUORUM_AUTH_PROMPT_PROVIDER` now writes `status=provider_required`, keeps `safeNoPromptSent=true`, and exits before CDP attach, session spawn, or prompt send.
 - A consented run with an unsupported provider now writes `status=unsupported_provider` and also exits before token-spending work.
 - Added `scripts/verify-authenticated-ai-cli-provider-guard.mjs` and `pnpm verify:terminal:authenticated-ai-cli-provider-guard` to prove the missing-provider path is blocked.
 - Tightened `authenticated-ai-cli-preflight-gate` scoring so the provider-required guard artifact must be fresh and prove `tokenBlocked`, `noPromptSent`, and `noSessionSpawned`.
@@ -4406,7 +4406,7 @@ Implemented:
 - Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so consented prompt execution captures a session baseline before spawn.
 - Success cleanup now requires structured proof: stop attempted, list checked, spawned session absent, no new unexpected sessions, and no stop/list errors.
 - Failure cleanup now attempts `stop_interactive_agent` and records `cleanupAfterFailure` instead of only setting `cleanupAttempted`.
-- CDP shutdown now detaches from the attached WebView2 browser by default and only closes the host when `AETHER_AUTH_PROMPT_CLOSE_BROWSER=1`.
+- CDP shutdown now detaches from the attached WebView2 browser by default and only closes the host when `QUORUM_AUTH_PROMPT_CLOSE_BROWSER=1`.
 - Tightened `scripts/score-release-quality.mjs` so authenticated prompt scoring requires fresh embedded non-token preflight artifacts and structured cleanup proof.
 - Updated final-goal audit logic so it can reach `complete` after the authenticated prompt blocker is cleared, while still preserving the current `blocked-by-explicit-consent` release state.
 
@@ -4437,7 +4437,7 @@ Residual:
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -4679,7 +4679,7 @@ Residual:
 ## 2026-05-26 Guarded Native Sleep And Primary Shell Gate Repair
 
 - Added `aether-native sleep-now` as the Rust-native guarded sleep command for the final real Windows sleep/resume path.
-- The command is intentionally fail-closed: it refuses to call the Windows power API unless `AETHER_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows` is present.
+- The command is intentionally fail-closed: it refuses to call the Windows power API unless `QUORUM_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows` is present.
 - Updated `verify-real-os-suspend-evidence.mjs` so native-primary guarded cycles use the Rust command instead of PowerShell.
 - Fixed stale-artifact pressure in `aether-native primary-shell-proof`: the proof now merges persisted native-client checks with the current verifier run's checks, so primary-shell promotion is evaluated from the proof run that is actually in progress.
 - Revalidated the native IME OS dogfood path after the regression report. Full native-client verification again passes IME OS composition/result/prompt-row checks.
@@ -4708,7 +4708,7 @@ Residual:
 
 - Added a final-gate runbook to the Rust-native Command Center action model.
 - The native actions now cover preflight, begin/arm, guarded host sleep cycle, resume timestamp capture, post-resume checks, and the final full-native audit.
-- The host sleep action is explicitly marked with `requiresExplicitOptIn=true` and `explicitOptInEnv=AETHER_ALLOW_OS_SLEEP=1`.
+- The host sleep action is explicitly marked with `requiresExplicitOptIn=true` and `explicitOptInEnv=QUORUM_ALLOW_OS_SLEEP=1`.
 - The native-client verifier now requires `native-command-center-sleep-resume-runbook-proof`.
 - The full-native audit now requires this runbook before accepting the Command Center data/action proof, keeping the final gate discoverable from the Rust native product surface.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
@@ -4748,7 +4748,7 @@ Residual:
 
 - Added a Command Center-visible proof that the native sleep action is fail-closed before a real host-power test is attempted.
 - The new `verify-native-sleep-guard` runbook action is owned by the Rust-native Command Center model, requires no React/WebView surface, and points to `pnpm verify:production:suspend:native-sleep-guard`.
-- The verifier runs `aether-native sleep-now` without `AETHER_ALLOW_OS_SLEEP=1` and proves that it refuses quickly, does not emit success JSON, does not claim a real sleep attempt, and does not fall back to PowerShell.
+- The verifier runs `aether-native sleep-now` without `QUORUM_ALLOW_OS_SLEEP=1` and proves that it refuses quickly, does not emit success JSON, does not claim a real sleep attempt, and does not fall back to PowerShell.
 - Evidence is stored at `.codex-auto/production-smoke/native-sleep-guard-refusal.json`, and the full-native audit now reports it under `currentTruth.nativeSleepGuard`.
 - Validation passed: `pnpm verify:production:suspend:native-sleep-guard`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
@@ -4780,7 +4780,7 @@ Residual:
 - Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - The terminal render-fidelity gate is green, and browser/Codex preview now uses the production `TerminalCanvas` path instead of a clean DOM-text surrogate.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Final Goal Evidence Refresh
 
@@ -4788,7 +4788,7 @@ Residual:
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Terminal text clarity is now guarded by the production canvas path plus a Sharp-mode no-backdrop-blur terminal shell path.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Chunked OSC Safe Refresh Guard
 

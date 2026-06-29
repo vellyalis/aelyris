@@ -547,12 +547,12 @@ async function main() {
     if (goalTrack.consentPacket.command !== "pnpm verify:terminal:authenticated-ai-cli-prompt") {
       failures.push("consent packet command is not visible in Tauri runtime");
     }
-    if (!String(goalTrack.consentPacket.requiredEnv ?? "").includes("AETHER_AUTH_PROMPT_CONSENT=")) {
+    if (!String(goalTrack.consentPacket.requiredEnv ?? "").includes("QUORUM_AUTH_PROMPT_CONSENT=")) {
       failures.push("consent packet required environment is not visible in Tauri runtime");
     }
     if (
       !String(goalTrack.consentPacket.providerEnvRequirement ?? "").includes(
-        "AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+        "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       )
     ) {
       failures.push("consent packet provider environment is not visible in Tauri runtime");
@@ -571,7 +571,7 @@ async function main() {
     }
     if (
       !String(goalTrack.consentPacket.runAction.providerEnv ?? "").includes(
-        "AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+        "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       )
     ) {
       failures.push("consent packet verified run action does not expose provider selection");
@@ -581,7 +581,7 @@ async function main() {
     }
     if (
       !String(goalTrack.consentPacket.runAction.snippet ?? "").includes(
-        '$env:AETHER_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
+        '$env:QUORUM_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
       )
     ) {
       failures.push("consent packet verified run action does not expose a PowerShell consent snippet");
@@ -599,7 +599,7 @@ async function main() {
       if (action.requiresExplicitConsent !== "true") {
         failures.push(`consent packet ${provider} action does not mark explicit consent requirement`);
       }
-      if (!String(action.snippet ?? "").includes(`$env:AETHER_AUTH_PROMPT_PROVIDER="${provider}"`)) {
+      if (!String(action.snippet ?? "").includes(`$env:QUORUM_AUTH_PROMPT_PROVIDER="${provider}"`)) {
         failures.push(`consent packet ${provider} action does not expose a provider-specific PowerShell snippet`);
       }
     }

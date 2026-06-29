@@ -18,8 +18,8 @@
 # The integration is idempotent: re-sourcing will not double-wrap PS1 or
 # double-register the DEBUG trap.
 
-if [[ -n "${AETHER_SHELL_INTEGRATION:-}" ]]; then return; fi
-export AETHER_SHELL_INTEGRATION=1
+if [[ -n "${QUORUM_SHELL_INTEGRATION:-}" ]]; then return; fi
+export QUORUM_SHELL_INTEGRATION=1
 
 # Tracks whether the DEBUG trap has already fired for the current command,
 # so a command that internally calls other functions still only emits a

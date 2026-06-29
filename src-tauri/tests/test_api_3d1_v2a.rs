@@ -44,7 +44,7 @@ fn base_state() -> ApiState {
         // Keep most tests off the global rate limiter so assertions don't
         // accidentally trip the 60-req/min REST default.
         .with_rate_limiter(Arc::new(RateLimiter::unlimited()))
-        // Explicit CORS list avoids leaking from AETHER_API_CORS_ORIGIN env
+        // Explicit CORS list avoids leaking from QUORUM_API_CORS_ORIGIN env
         // set in the surrounding process.
         .with_cors_origins(vec![HeaderValue::from_static("http://127.0.0.1:1420")])
 }

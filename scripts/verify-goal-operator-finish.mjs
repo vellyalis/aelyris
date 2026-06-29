@@ -117,10 +117,10 @@ function artifactMeta(path) {
 
 function noTokenNoSleepEnv(extra = {}) {
   const env = { ...process.env, ...extra };
-  delete env.AETHER_AUTH_PROMPT_CONSENT;
-  delete env.AETHER_AUTH_PROMPT_PROVIDER;
+  delete env.QUORUM_AUTH_PROMPT_CONSENT;
+  delete env.QUORUM_AUTH_PROMPT_PROVIDER;
   delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP;
-  delete env.AETHER_ALLOW_OS_SLEEP;
+  delete env.QUORUM_ALLOW_OS_SLEEP;
   return env;
 }
 
@@ -336,8 +336,8 @@ function entryPassed(score, id) {
   return entry != null && entry.max > 0 && entry.points === entry.max;
 }
 
-const rawProvider = String(process.env.AETHER_AUTH_PROMPT_PROVIDER ?? "").trim().toLowerCase();
-const consentEnv = String(process.env.AETHER_AUTH_PROMPT_CONSENT ?? "").trim();
+const rawProvider = String(process.env.QUORUM_AUTH_PROMPT_PROVIDER ?? "").trim().toLowerCase();
+const consentEnv = String(process.env.QUORUM_AUTH_PROMPT_CONSENT ?? "").trim();
 const sleepEnv = String(process.env.AETHER_GOAL_OPERATOR_RUN_SLEEP ?? "").trim();
 const tokenEnvPresent = consentEnv.length > 0 || rawProvider.length > 0;
 const sleepEnvPresent = sleepEnv.length > 0;
@@ -347,7 +347,7 @@ const sleepUserCycleRequested = sleepEnv === SLEEP_PHRASE;
 const invalidOperatorEnv =
   (tokenEnvPresent && !tokenPromptRequested) ||
   (sleepEnvPresent && !sleepUserCycleRequested) ||
-  process.env.AETHER_ALLOW_OS_SLEEP === "1";
+  process.env.QUORUM_ALLOW_OS_SLEEP === "1";
 
 const steps = [
   runNodeStep(
@@ -440,7 +440,7 @@ const reportStatus = invalidOperatorEnv
 const nextRequiredAction = goalComplete
   ? "Goal is complete."
   : invalidOperatorEnv
-    ? `Use AETHER_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} with AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini, or AETHER_GOAL_OPERATOR_RUN_SLEEP=${SLEEP_PHRASE}; do not set AETHER_ALLOW_OS_SLEEP for this handoff.`
+    ? `Use QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} with QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini, or AETHER_GOAL_OPERATOR_RUN_SLEEP=${SLEEP_PHRASE}; do not set QUORUM_ALLOW_OS_SLEEP for this handoff.`
     : tokenPromptProved && !realSleepProved
       ? "Run the real sleep operator gate listed in runbook, then rerun pnpm verify:goal:operator-finish."
       : "Run the token prompt and real sleep operator gates listed in runbook, then rerun pnpm verify:goal:operator-finish.";
@@ -454,8 +454,8 @@ const runbook = {
   tokenPrompt: {
     command: "pnpm verify:goal:operator-finish",
     env: {
-      AETHER_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
-      AETHER_AUTH_PROMPT_PROVIDER: "codex",
+      QUORUM_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
+      QUORUM_AUTH_PROMPT_PROVIDER: "codex",
     },
     providerChoices: ["codex", "claude", "gemini"],
     safety: "Runs only when the exact consent phrase and an explicit provider are present.",
@@ -535,7 +535,7 @@ const report = {
     tokenPromptRequested,
     sleepEnvPresent,
     sleepUserCycleRequested,
-    noAetherAllowOsSleep: process.env.AETHER_ALLOW_OS_SLEEP !== "1",
+    noAetherAllowOsSleep: process.env.QUORUM_ALLOW_OS_SLEEP !== "1",
     invalidOperatorEnv,
     requiredTokenConsent: CONSENT_PHRASE,
     requiredSleepPhrase: SLEEP_PHRASE,

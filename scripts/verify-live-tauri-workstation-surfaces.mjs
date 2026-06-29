@@ -1,7 +1,7 @@
 // Production live Tauri/WebView2 workstation surface smoke.
 //
 // Prerequisite:
-//   set AETHER_API_TOKEN=dev && pnpm.cmd tauri:dev
+//   set QUORUM_API_TOKEN=dev && pnpm.cmd tauri:dev
 //
 // Optional env:
 //   AETHER_TAURI_CDP=http://127.0.0.1:9222

@@ -142,10 +142,10 @@ function noTokenNoSleepEnv(extra = {}) {
     ...extra,
     AETHER_GOAL_FINALIZE_NON_TOKEN: "1",
   };
-  delete env.AETHER_AUTH_PROMPT_CONSENT;
-  delete env.AETHER_AUTH_PROMPT_PROVIDER;
+  delete env.QUORUM_AUTH_PROMPT_CONSENT;
+  delete env.QUORUM_AUTH_PROMPT_PROVIDER;
   delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP;
-  delete env.AETHER_ALLOW_OS_SLEEP;
+  delete env.QUORUM_ALLOW_OS_SLEEP;
   return env;
 }
 
@@ -542,7 +542,7 @@ const report = {
     manualSleepCycle: {
       command: MANUAL_SLEEP_COMMAND,
       requires: "Start the verifier, manually put Windows to sleep, wake it, then let post-resume probes finish.",
-      safety: "The finalizer does not invoke OS sleep and does not set AETHER_ALLOW_OS_SLEEP.",
+      safety: "The finalizer does not invoke OS sleep and does not set QUORUM_ALLOW_OS_SLEEP.",
     },
     releaseSigningAndUpdater: {
       command: "pnpm tauri:build:dist",

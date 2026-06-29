@@ -161,9 +161,9 @@ const checks = {
   operatorFinishRequiresExactHumanOptIn: hasAll(operatorFinish, [
     "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
     "I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS",
-    "delete env.AETHER_AUTH_PROMPT_CONSENT",
-    "delete env.AETHER_AUTH_PROMPT_PROVIDER",
-    "delete env.AETHER_ALLOW_OS_SLEEP",
+    "delete env.QUORUM_AUTH_PROMPT_CONSENT",
+    "delete env.QUORUM_AUTH_PROMPT_PROVIDER",
+    "delete env.QUORUM_ALLOW_OS_SLEEP",
     "delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP",
   ]),
   operatorFinishHasReplayFallback: hasAll(operatorFinish, [
@@ -267,9 +267,9 @@ const checks = {
   nonTokenRefreshNeverSpendsTokensOrSleeps: hasAll(nonTokenRefresh, [
     "tokenSpendingPromptExecuted: false",
     "realOsSleepInvoked: false",
-    "delete env.AETHER_AUTH_PROMPT_CONSENT",
-    "delete env.AETHER_AUTH_PROMPT_PROVIDER",
-    "delete env.AETHER_ALLOW_OS_SLEEP",
+    "delete env.QUORUM_AUTH_PROMPT_CONSENT",
+    "delete env.QUORUM_AUTH_PROMPT_PROVIDER",
+    "delete env.QUORUM_ALLOW_OS_SLEEP",
   ]),
   nonTokenRefreshCoversCurrentContracts: hasAll(nonTokenRefresh, [
     "chunked-osc-live",
@@ -299,7 +299,7 @@ const checks = {
       "AETHER_GOAL_FINALIZE_SKIP_OPERATOR",
       "docs/history/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
       "scripts/verify-goal-external-gate-readiness.mjs",
-      "delete env.AETHER_AUTH_PROMPT_CONSENT",
+      "delete env.QUORUM_AUTH_PROMPT_CONSENT",
       "delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP",
       "tokenSpendingPromptExecuted: false",
       "realOsSleepInvoked: false",
@@ -384,7 +384,7 @@ const checks = {
       "ready-for-manual-sleep-cycle",
       "hostBlockerClassified",
       "evidenceDoesNotFakePass",
-      "Does not set AETHER_ALLOW_OS_SLEEP and does not call SetSuspendState.",
+      "Does not set QUORUM_ALLOW_OS_SLEEP and does not call SetSuspendState.",
       "pnpm verify:production:suspend:native-user-cycle",
       "pnpm verify:goal:operator-finish",
       "pnpm verify:goal:finalize",

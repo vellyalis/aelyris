@@ -17,12 +17,12 @@
 #   - Installs a PSReadLine key handler on Enter to emit OSC 133;C right
 #     before the command executes (so Aether can delimit command vs output).
 #
-# Re-sourcing is idempotent: the `AETHER_SHELL_INTEGRATION` flag guards
+# Re-sourcing is idempotent: the `QUORUM_SHELL_INTEGRATION` flag guards
 # duplicate installation, which also keeps `__aether_original_prompt`
 # from being captured twice and producing nested OSC sequences.
 
-if ($env:AETHER_SHELL_INTEGRATION -eq "1") { return }
-$env:AETHER_SHELL_INTEGRATION = "1"
+if ($env:QUORUM_SHELL_INTEGRATION -eq "1") { return }
+$env:QUORUM_SHELL_INTEGRATION = "1"
 
 $script:__aether_esc = [char]27
 $script:__aether_bel = [char]7

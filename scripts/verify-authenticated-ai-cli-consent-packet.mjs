@@ -97,8 +97,8 @@ const providerReadiness = PROVIDERS.map((provider) => {
   const checks = {
     rowReady: row?.ready === true,
     commandExact: command === REQUIRED_COMMAND,
-    consentExact: env?.AETHER_AUTH_PROMPT_CONSENT === CONSENT_PHRASE,
-    providerExact: env?.AETHER_AUTH_PROMPT_PROVIDER === provider,
+    consentExact: env?.QUORUM_AUTH_PROMPT_CONSENT === CONSENT_PHRASE,
+    providerExact: env?.QUORUM_AUTH_PROMPT_PROVIDER === provider,
   };
   return {
     provider,
@@ -120,7 +120,7 @@ const sourceArtifactsFresh =
   (artifacts.authenticatedPrompt.fresh || providerGuardBlocksPrompt);
 const packetCore = {
   command: REQUIRED_COMMAND,
-  requiredEnv: `AETHER_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
+  requiredEnv: `QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
   tokenGate: "explicit consent",
   wouldSpendTokens: true,
   promptState: promptExecutedWithConsent ? "executed_with_consent" : "blocked_without_consent",
@@ -175,7 +175,7 @@ const report = {
   packet: packetCore,
   providerReadiness,
   artifacts: packetCore.sourceArtifacts,
-  nextRequiredAction: `Set AETHER_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} and AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run ${REQUIRED_COMMAND} only if token-spend validation is desired.`,
+  nextRequiredAction: `Set QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} and QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run ${REQUIRED_COMMAND} only if token-spend validation is desired.`,
 };
 
 writeReport(report);

@@ -727,7 +727,7 @@ Current proof:
 - PASS `cargo test --manifest-path src-tauri\Cargo.toml control::merge --lib`
   - 5 passed.
 - BLOCK `pnpm verify:merge-idempotency`
-  - Requires a running API token: `AETHER_API_TOKEN is required (start pnpm tauri:dev and export it)`.
+  - Requires a running API token: `QUORUM_API_TOKEN is required (start pnpm tauri:dev and export it)`.
 
 Remaining REVIEW items:
 

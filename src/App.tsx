@@ -4907,7 +4907,7 @@ export function App() {
       )
     : [];
   const rightRailGoalTrackConsentProviderEnv = rightRailGoalTrack.consentPacket
-    ? `AETHER_AUTH_PROMPT_PROVIDER=${(
+    ? `QUORUM_AUTH_PROMPT_PROVIDER=${(
         rightRailGoalTrackConsentProviders.length > 0
           ? rightRailGoalTrackConsentProviders
           : ["codex", "claude", "gemini"]

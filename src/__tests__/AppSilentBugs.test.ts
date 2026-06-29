@@ -181,7 +181,7 @@ describe("Release evidence gates", () => {
     expect(script).toContain("--help, -h");
     expect(script).toContain("Show this message and exit without touching evidence or sleeping.");
     expect(script).toContain("function assertWindowsSleepCycleAllowed");
-    expect(script).toContain("AETHER_ALLOW_OS_SLEEP");
+    expect(script).toContain("QUORUM_ALLOW_OS_SLEEP");
     expect(script).toContain("refusing to put Windows to sleep without explicit opt-in");
     expect(script).toContain("SetSuspendState");
     expect(script).toContain('if (args.has("--cycle"))');
@@ -470,9 +470,9 @@ describe("Release evidence gates", () => {
 
     expect(packageJson).toContain('"verify:goal:refresh-safe": "node scripts/verify-goal-non-token-refresh.mjs"');
     expect(script).toContain("goal-non-token-refresh.json");
-    expect(script).toContain("delete env.AETHER_AUTH_PROMPT_CONSENT");
-    expect(script).toContain("delete env.AETHER_AUTH_PROMPT_PROVIDER");
-    expect(script).toContain("delete env.AETHER_ALLOW_OS_SLEEP");
+    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_CONSENT");
+    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_PROVIDER");
+    expect(script).toContain("delete env.QUORUM_ALLOW_OS_SLEEP");
     expect(script).toContain("verify-terminal-font-render-contract.mjs");
     expect(script).toContain("verify-glass-legibility-contract.mjs");
     expect(script).toContain("verify-native-terminal-input-host.mjs");
@@ -503,13 +503,13 @@ describe("Release evidence gates", () => {
     expect(script).toContain("realOsSleepInvoked: false");
     expect(script).toContain("noUnsafeConsentEnvPresent");
     expect(script).toContain("noOsSleepEnvPresent");
-    expect(script).toContain("AETHER_ALLOW_OS_SLEEP");
-    expect(script).toContain("AETHER_AUTH_PROMPT_CONSENT");
+    expect(script).toContain("QUORUM_ALLOW_OS_SLEEP");
+    expect(script).toContain("QUORUM_AUTH_PROMPT_CONSENT");
     expect(script).toContain("pnpm verify:production:suspend:native-user-cycle");
     expect(script).toContain("pnpm verify:terminal:authenticated-ai-cli-prompt");
     expect(script).toContain("pnpm verify:goal:operator-finish");
     expect(script).toContain("token-spending-explicit-consent");
-    expect(script).toContain("This readiness verifier does not set AETHER_ALLOW_OS_SLEEP");
+    expect(script).toContain("This readiness verifier does not set QUORUM_ALLOW_OS_SLEEP");
     expect(script).toContain("external-operator-gates-complete");
     expect(script).toContain("completeExternalGatesProved");
     expect(finalAudit).toContain("externalGateReadinessPath");
@@ -535,10 +535,10 @@ describe("Release evidence gates", () => {
     expect(script).toContain("--user-sleep-cycle");
     expect(script).toContain("verify-goal-non-token-refresh.mjs");
     expect(script).toContain("verify-final-goal-safe.mjs");
-    expect(script).toContain("delete env.AETHER_AUTH_PROMPT_CONSENT");
-    expect(script).toContain("delete env.AETHER_AUTH_PROMPT_PROVIDER");
+    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_CONSENT");
+    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_PROVIDER");
     expect(script).toContain("delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP");
-    expect(script).toContain("delete env.AETHER_ALLOW_OS_SLEEP");
+    expect(script).toContain("delete env.QUORUM_ALLOW_OS_SLEEP");
     expect(script).toContain("externalReadinessArtifactReady");
     expect(script).toContain("spawnBlocked");
     expect(script).toContain("pass-current-artifact-replay");
@@ -745,7 +745,7 @@ describe("Release evidence gates", () => {
       'ACCEPTED_AGENT_BACKENDS = new Set(["native", "sidecar", "sidecar-command-session"])',
     );
     expect(promptSmoke).toContain("browser.disconnect");
-    expect(promptSmoke).toContain("AETHER_AUTH_PROMPT_CLOSE_BROWSER");
+    expect(promptSmoke).toContain("QUORUM_AUTH_PROMPT_CLOSE_BROWSER");
     expect(promptSmoke).toContain("browserCloseRequested");
     expect(promptSmoke).toContain("createHash");
     expect(promptSmoke).toContain("outputEvidence");
@@ -807,7 +807,7 @@ describe("Release evidence gates", () => {
     expect(ptySidecar).toContain("stdout(std::process::Stdio::null())");
     expect(ptySidecar).toContain("stderr(std::process::Stdio::null())");
     expect(lib).toContain("apply_windows_app_identity();");
-    expect(lib).toContain("AETHER_DISABLE_DWM_CHROME");
+    expect(lib).toContain("QUORUM_DISABLE_DWM_CHROME");
     expect(lib).toContain("direct DWM chrome disabled by env; using Tauri windowEffects");
     expect(score).toContain("p2-07-live-tauri-pty-ai-cli-chaos.json");
     expect(score).toContain('"live-ai-cli-post-launch-chaos"');
@@ -1081,7 +1081,7 @@ describe("Release evidence gates", () => {
     expect(src).toContain('aria-label="Authenticated prompt consent command"');
     expect(src).toContain("rightRailGoalTrackConsentProviderEnv");
     expect(src).toContain("data-provider-env");
-    expect(src).toContain("AETHER_AUTH_PROMPT_PROVIDER=");
+    expect(src).toContain("QUORUM_AUTH_PROMPT_PROVIDER=");
     expect(src).toContain('className="right-panel-goal-track-risks"');
     expect(src).toContain('data-source="runtime-fallback"');
     expect(src).toContain('data-source="qa-fixture"');
@@ -1365,7 +1365,7 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain("consentPacketArtifact");
     expect(finalGoalAuditScript).toContain("readyToRunAfterConsent");
     expect(finalGoalAuditScript).toContain("providerReadiness");
-    expect(finalGoalAuditScript).toContain("AETHER_AUTH_PROMPT_CONSENT");
+    expect(finalGoalAuditScript).toContain("QUORUM_AUTH_PROMPT_CONSENT");
     expect(finalGoalAuditScript).toContain("Set $" + "{promptExecutionGate.requiredEnv} and $");
     expect(finalGoalAuditScript).toContain("{promptExecutionGate.requiredProviderEnv}, then run");
     expect(finalGoalAuditScript).toContain("authenticated-ai-cli-provider-required-smoke.json");
@@ -1382,7 +1382,7 @@ describe("Release evidence gates", () => {
     expect(score).toContain("goal-documentation-freshness");
     expect(goalDocumentationFreshnessScript).toContain("consentPacketNamed");
     expect(goalDocumentationFreshnessScript).toContain("consentProviderRequired");
-    expect(goalDocumentationFreshnessScript).toContain("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
+    expect(goalDocumentationFreshnessScript).toContain("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
     expect(goalDocumentationFreshnessScript).toContain("requiredDocPaths");
     expect(goalDocumentationFreshnessScript).toContain("checkedDocCount");
     expect(score).toContain("REQUIRED_GOAL_DOCUMENT_PATHS");
@@ -1515,7 +1515,7 @@ describe("Release evidence gates", () => {
     expect(tauriGoalTrackScript).toContain("sourceArtifacts");
     expect(tauriGoalTrackScript).toContain("sourceContract");
     expect(tauriGoalTrackScript).toContain("SOURCE_CONTRACT_PATHS");
-    expect(finalGoalSafeVerifier).not.toContain("AETHER_AUTH_PROMPT_CONSENT:");
+    expect(finalGoalSafeVerifier).not.toContain("QUORUM_AUTH_PROMPT_CONSENT:");
     expect(goalDocumentationFreshnessScript).toContain("CURRENT_STATE_DOCS");
     expect(goalDocumentationFreshnessScript).toContain("FINAL_GOAL_SAFE_VERIFIER_PATH");
     expect(goalDocumentationFreshnessScript).toContain("expectedSafeProofArtifactCount");

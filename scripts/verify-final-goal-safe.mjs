@@ -289,8 +289,8 @@ function authenticatedPreflightMatrixVerdict(data) {
         row?.ready === true &&
         everyCheckPassed(row.checks) &&
         row.optInCommand?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-        row.optInCommand?.env?.AETHER_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-        row.optInCommand?.env?.AETHER_AUTH_PROMPT_PROVIDER === provider
+        row.optInCommand?.env?.QUORUM_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+        row.optInCommand?.env?.QUORUM_AUTH_PROMPT_PROVIDER === provider
       );
     });
   return {
@@ -324,7 +324,7 @@ function authenticatedConsentPacketVerdict(data) {
     data?.checks?.allProviderOptInCommandsReady === true &&
     data?.checks?.sourceArtifactsFresh === true &&
     data?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-    data?.packet?.requiredEnv === "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    data?.packet?.requiredEnv === "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
     data?.packet?.tokenGate === "explicit consent" &&
     data?.packet?.wouldSpendTokens === true &&
     typeof data?.consentPacketSha256 === "string" &&
@@ -335,7 +335,7 @@ function authenticatedConsentPacketVerdict(data) {
           entry?.provider === provider &&
           entry?.status === "ready" &&
           entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-          String(entry?.requiredEnv ?? "").includes(`AETHER_AUTH_PROMPT_PROVIDER=${provider}`),
+          String(entry?.requiredEnv ?? "").includes(`QUORUM_AUTH_PROMPT_PROVIDER=${provider}`),
       ),
     );
   return {
@@ -386,7 +386,7 @@ function externalGateReadinessVerdict(data) {
     data?.runbook?.realSleepResume?.command === "pnpm verify:production:suspend:native-user-cycle" &&
     data?.runbook?.realSleepResume?.handoff === "pnpm verify:goal:sleep-handoff" &&
     data?.runbook?.realSleepResume?.safety ===
-      "This readiness verifier does not set AETHER_ALLOW_OS_SLEEP and does not invoke Windows sleep." &&
+      "This readiness verifier does not set QUORUM_ALLOW_OS_SLEEP and does not invoke Windows sleep." &&
     data?.runbook?.finalizeClosure?.command === "pnpm verify:goal:finalize" &&
     data?.runbook?.closeoutSnapshot?.command === "pnpm verify:goal:closeout" &&
     afterEitherGateClosesViaFinalizer &&
@@ -395,8 +395,8 @@ function externalGateReadinessVerdict(data) {
         (entry) =>
           entry?.provider === provider &&
           entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-          entry?.env?.AETHER_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-          entry?.env?.AETHER_AUTH_PROMPT_PROVIDER === provider &&
+          entry?.env?.QUORUM_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+          entry?.env?.QUORUM_AUTH_PROMPT_PROVIDER === provider &&
           entry?.costClass === "token-spending-explicit-consent",
       ),
     );
@@ -482,7 +482,7 @@ function realOsSleepOperatorHandoffVerdict(data) {
     data?.checks?.verifierWaitsForManualSleep === true &&
     data?.runbook?.manualSleepCycle?.command === "pnpm verify:production:suspend:native-user-cycle" &&
     data?.runbook?.manualSleepCycle?.safety ===
-      "Does not set AETHER_ALLOW_OS_SLEEP and does not call SetSuspendState." &&
+      "Does not set QUORUM_ALLOW_OS_SLEEP and does not call SetSuspendState." &&
     data?.runbook?.operatorFinish?.command === "pnpm verify:goal:operator-finish" &&
     afterManualGate.includes("pnpm verify:goal:operator-finish") &&
     afterManualGate.includes("pnpm verify:goal:finalize") &&
@@ -516,7 +516,7 @@ function operatorFinishVerdict(data) {
     externalReadinessStep?.ok === true &&
     data?.runbook?.readinessOnly?.command === "pnpm verify:goal:operator-finish" &&
     data?.runbook?.tokenPrompt?.command === "pnpm verify:goal:operator-finish" &&
-    data?.runbook?.tokenPrompt?.env?.AETHER_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    data?.runbook?.tokenPrompt?.env?.QUORUM_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
     Array.isArray(data?.runbook?.tokenPrompt?.providerChoices) &&
     ["codex", "claude", "gemini"].every((provider) => data.runbook.tokenPrompt.providerChoices.includes(provider)) &&
     data?.runbook?.sleepResume?.env?.AETHER_GOAL_OPERATOR_RUN_SLEEP ===
@@ -1486,10 +1486,10 @@ function safeStepEnv(id) {
     ...(BOOTSTRAP_RIGHT_RAIL ? { AETHER_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP: "1" } : {}),
   };
   if (id === "operator-finish-handoff" || id === "git-finalization-readiness") {
-    delete env.AETHER_AUTH_PROMPT_CONSENT;
-    delete env.AETHER_AUTH_PROMPT_PROVIDER;
+    delete env.QUORUM_AUTH_PROMPT_CONSENT;
+    delete env.QUORUM_AUTH_PROMPT_PROVIDER;
     delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP;
-    delete env.AETHER_ALLOW_OS_SLEEP;
+    delete env.QUORUM_ALLOW_OS_SLEEP;
   }
   return env;
 }
@@ -1935,8 +1935,8 @@ function rightRailGoalTrackVerdict(data) {
     (expectedPercent == null || goalTrack.percent === expectedPercent) &&
     consentPacket.status === "ready" &&
     consentPacket.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-    String(consentPacket.requiredEnv ?? "").includes("AETHER_AUTH_PROMPT_CONSENT=") &&
-    String(consentPacket.providerEnvRequirement ?? "").includes("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini") &&
+    String(consentPacket.requiredEnv ?? "").includes("QUORUM_AUTH_PROMPT_CONSENT=") &&
+    String(consentPacket.providerEnvRequirement ?? "").includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini") &&
     consentPacket.tokenGate === "explicit consent" &&
     ["codex", "claude", "gemini"].every((provider) => readyProviders.includes(provider)) &&
     countAuthenticatedPromptBlockers(remaining) === (coreGoalComplete ? 0 : 1) &&

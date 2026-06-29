@@ -14,8 +14,8 @@
 # Idempotent: re-sourcing will not double-wrap $PROMPT or double-register
 # hooks.
 
-if [[ -n "${AETHER_SHELL_INTEGRATION:-}" ]]; then return; fi
-export AETHER_SHELL_INTEGRATION=1
+if [[ -n "${QUORUM_SHELL_INTEGRATION:-}" ]]; then return; fi
+export QUORUM_SHELL_INTEGRATION=1
 
 autoload -Uz add-zsh-hook
 

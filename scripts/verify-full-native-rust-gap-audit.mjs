@@ -180,7 +180,7 @@ function exactNativeSleepResumeRunbook(commandCenter) {
     action("run-native-user-sleep-cycle")?.requiresUserSleepAction === true &&
     action("run-native-user-sleep-cycle")?.doesNotInvokeSleepApi === true &&
     action("run-native-sleep-cycle")?.requiresExplicitOptIn === true &&
-    action("run-native-sleep-cycle")?.explicitOptInEnv === "AETHER_ALLOW_OS_SLEEP=1"
+    action("run-native-sleep-cycle")?.explicitOptInEnv === "QUORUM_ALLOW_OS_SLEEP=1"
   );
 }
 

@@ -408,7 +408,7 @@ impl Default for AppConfig {
 }
 
 fn config_path() -> std::path::PathBuf {
-    if let Ok(path) = std::env::var("AETHER_CONFIG_HOME") {
+    if let Ok(path) = std::env::var("QUORUM_CONFIG_HOME") {
         return std::path::PathBuf::from(path).join("config.toml");
     }
     let home = std::env::var("USERPROFILE")

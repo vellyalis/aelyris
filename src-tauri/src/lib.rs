@@ -457,7 +457,7 @@ pub fn run() {
                 // Direct DWM backdrop is the DEFAULT on Windows: Tauri's
                 // `windowEffects` acrylic silently fails to apply a real backdrop on Win11 25H2,
                 // so without this the transparent WebView2 client area has nothing to show through
-                // to and renders opaque. Opt out with AETHER_DISABLE_DWM_CHROME=1 (falls back to
+                // to and renders opaque. Opt out with QUORUM_DISABLE_DWM_CHROME=1 (falls back to
                 // Tauri windowEffects).
                 //
                 // The backdrop type follows config.appearance.window_effect:
@@ -466,7 +466,7 @@ pub fn run() {
                 // The other type is used as the fallback if the OS refuses the
                 // primary. Unknown/missing config defaults to acrylic.
                 let direct_dwm_disabled =
-                    std::env::var("AETHER_DISABLE_DWM_CHROME").as_deref() == Ok("1");
+                    std::env::var("QUORUM_DISABLE_DWM_CHROME").as_deref() == Ok("1");
                 if direct_dwm_disabled {
                     log::info!(
                         "window chrome: direct DWM chrome disabled by env; using Tauri windowEffects"

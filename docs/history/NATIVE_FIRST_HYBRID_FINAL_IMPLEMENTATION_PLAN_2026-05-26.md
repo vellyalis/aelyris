@@ -138,7 +138,7 @@ This is the goal-complete implementation gate. It is intentionally stricter abou
 These are not implementation blockers, but they must remain visible before a public release claim:
 
 - signed distribution artifacts and installer;
-- actual Windows sleep/resume cycle with `AETHER_ALLOW_OS_SLEEP=1`;
+- actual Windows sleep/resume cycle with `QUORUM_ALLOW_OS_SLEEP=1`;
 - clean-shutdown Tauri runtime hygiene after closing dev/CDP processes;
 - final old release self-reference loop for `verify:final-goal-audit` / `verify:right-rail-goal-track-tauri`.
 

@@ -6,7 +6,7 @@
 //       commit is idempotent (status "merged", not an error).
 //
 // Operator-run (it needs a live server + creates a temp git repo it can reach):
-//   pnpm tauri:dev   # in another terminal; export AETHER_API_TOKEN
+//   pnpm tauri:dev   # in another terminal; export QUORUM_API_TOKEN
 //   node scripts/verify-merge-idempotency.mjs
 //
 // The headless regression guard for the same invariants is the STATIC
@@ -16,10 +16,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const BASE = process.env.AETHER_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.AETHER_API_TOKEN;
+const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.QUORUM_API_TOKEN;
 if (!TOKEN) {
-  console.error("AETHER_API_TOKEN is required (start `pnpm tauri:dev` and export it)");
+  console.error("QUORUM_API_TOKEN is required (start `pnpm tauri:dev` and export it)");
   process.exit(2);
 }
 

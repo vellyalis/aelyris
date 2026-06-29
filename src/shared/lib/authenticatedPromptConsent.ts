@@ -327,7 +327,7 @@ export function deriveAuthenticatedPromptConsentPacket(
       detail: "Run pnpm verify:terminal:authenticated-ai-cli-prompt without consent first",
       provider: "unknown",
       command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+      requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
       preflightReady: false,
       safeNoPromptSent: true,
       wouldSpendTokens: true,
@@ -349,7 +349,7 @@ export function deriveAuthenticatedPromptConsentPacket(
   const command = report.nextCommand?.command || "pnpm verify:terminal:authenticated-ai-cli-prompt";
   const requiredEnv =
     text(checks.requiredEnv) ||
-    `AETHER_AUTH_PROMPT_CONSENT=${text(report.nextCommand?.env?.AETHER_AUTH_PROMPT_CONSENT)}`;
+    `QUORUM_AUTH_PROMPT_CONSENT=${text(report.nextCommand?.env?.QUORUM_AUTH_PROMPT_CONSENT)}`;
   const status: AuthenticatedPromptConsentStatus =
     report.status === "pass" && report.ok === true
       ? "pass"
@@ -358,7 +358,7 @@ export function deriveAuthenticatedPromptConsentPacket(
         : consentPacketReady && preflightReady && safeNoPromptSent
           ? "ready"
           : "incomplete";
-  const provider = report.provider || text(report.nextCommand?.env?.AETHER_AUTH_PROMPT_PROVIDER) || "unknown";
+  const provider = report.provider || text(report.nextCommand?.env?.QUORUM_AUTH_PROMPT_PROVIDER) || "unknown";
 
   return {
     status,

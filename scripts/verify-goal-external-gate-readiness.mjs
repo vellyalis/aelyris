@@ -240,8 +240,8 @@ function providerRowsReady(matrix) {
     return (
       row?.ready === true &&
       row?.optInCommand?.command === AUTH_PROMPT_COMMAND &&
-      row?.optInCommand?.env?.AETHER_AUTH_PROMPT_CONSENT === CONSENT_PHRASE &&
-      row?.optInCommand?.env?.AETHER_AUTH_PROMPT_PROVIDER === provider &&
+      row?.optInCommand?.env?.QUORUM_AUTH_PROMPT_CONSENT === CONSENT_PHRASE &&
+      row?.optInCommand?.env?.QUORUM_AUTH_PROMPT_PROVIDER === provider &&
       everyTrue(row?.checks)
     );
   });
@@ -462,8 +462,8 @@ function artifactFreshForExternalGate(key, artifact) {
 
 const checks = {
   noUnsafeConsentEnvPresent:
-    !process.env.AETHER_AUTH_PROMPT_CONSENT?.trim() && !process.env.AETHER_AUTH_PROMPT_PROVIDER?.trim(),
-  noOsSleepEnvPresent: process.env.AETHER_ALLOW_OS_SLEEP !== "1",
+    !process.env.QUORUM_AUTH_PROMPT_CONSENT?.trim() && !process.env.QUORUM_AUTH_PROMPT_PROVIDER?.trim(),
+  noOsSleepEnvPresent: process.env.QUORUM_ALLOW_OS_SLEEP !== "1",
   releaseScoreCurrentExternalGateShape: releaseScoreExternalGateShape || releaseScoreCompleteShape,
   finalAuditExternalGateShape: finalAuditExternalGateShape || finalAuditCompleteShape,
   completionMatrixExternalGateShape: completionMatrixExternalGateShape || completionMatrixCompleteShape,
@@ -496,8 +496,8 @@ const externalRunbook = {
     provider,
     command: AUTH_PROMPT_COMMAND,
     env: {
-      AETHER_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
-      AETHER_AUTH_PROMPT_PROVIDER: provider,
+      QUORUM_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
+      QUORUM_AUTH_PROMPT_PROVIDER: provider,
     },
     costClass: "token-spending-explicit-consent",
     safety: "Do not run unless the operator explicitly accepts token spend for the selected provider.",
@@ -506,7 +506,7 @@ const externalRunbook = {
     command: "pnpm verify:production:suspend:native-user-cycle",
     handoff: "pnpm verify:goal:sleep-handoff",
     requires: "Start the verifier, manually put Windows to sleep, wake it, then let the verifier finish post-resume checks.",
-    safety: "This readiness verifier does not set AETHER_ALLOW_OS_SLEEP and does not invoke Windows sleep.",
+    safety: "This readiness verifier does not set QUORUM_ALLOW_OS_SLEEP and does not invoke Windows sleep.",
   },
   afterEitherGate: [
     "pnpm verify:goal:operator-finish",

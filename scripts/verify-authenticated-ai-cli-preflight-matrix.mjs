@@ -114,8 +114,8 @@ function optInCommand(provider) {
   return {
     command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
     env: {
-      AETHER_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
-      AETHER_AUTH_PROMPT_PROVIDER: provider,
+      QUORUM_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
+      QUORUM_AUTH_PROMPT_PROVIDER: provider,
     },
   };
 }

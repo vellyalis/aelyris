@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 static POWERSHELL_PROGRAM: OnceLock<String> = OnceLock::new();
 static CMD_PROGRAM: OnceLock<String> = OnceLock::new();
 static WSL_PROGRAM: OnceLock<String> = OnceLock::new();
-const POWERSHELL_STARTUP_SCRIPT: &str = r#"try { Set-PSReadLineOption -PredictionSource None } catch {}; if ($env:AETHER_SHELL_INTEGRATION -ne '1') { $env:AETHER_SHELL_INTEGRATION = '1'; $script:__aether_esc = [char]27; $script:__aether_bel = [char]7; $script:__aether_original_prompt = (Get-Item function:prompt).ScriptBlock; function script:__aether_commandEnd([int]$exit) { "$($script:__aether_esc)]133;D;$exit$($script:__aether_bel)" }; function global:prompt { $success = $?; $lastExit = if ($success) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }; $body = & $script:__aether_original_prompt; "$(script:__aether_commandEnd $lastExit)$($script:__aether_esc)]133;A$($script:__aether_bel)$body$($script:__aether_esc)]133;B$($script:__aether_bel)" } }"#;
+const POWERSHELL_STARTUP_SCRIPT: &str = r#"try { Set-PSReadLineOption -PredictionSource None } catch {}; if ($env:QUORUM_SHELL_INTEGRATION -ne '1') { $env:QUORUM_SHELL_INTEGRATION = '1'; $script:__aether_esc = [char]27; $script:__aether_bel = [char]7; $script:__aether_original_prompt = (Get-Item function:prompt).ScriptBlock; function script:__aether_commandEnd([int]$exit) { "$($script:__aether_esc)]133;D;$exit$($script:__aether_bel)" }; function global:prompt { $success = $?; $lastExit = if ($success) { 0 } elseif ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }; $body = & $script:__aether_original_prompt; "$(script:__aether_commandEnd $lastExit)$($script:__aether_esc)]133;A$($script:__aether_bel)$body$($script:__aether_esc)]133;B$($script:__aether_bel)" } }"#;
 
 /// Supported shell types on Windows
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -198,7 +198,7 @@ mod tests {
             .any(|arg| arg.contains("Set-PSReadLineOption -PredictionSource None")));
         assert!(args
             .iter()
-            .any(|arg| arg.contains("AETHER_SHELL_INTEGRATION")));
+            .any(|arg| arg.contains("QUORUM_SHELL_INTEGRATION")));
         assert!(args.iter().any(|arg| arg.contains("133;A")));
         assert!(args.iter().any(|arg| arg.contains("133;D")));
     }

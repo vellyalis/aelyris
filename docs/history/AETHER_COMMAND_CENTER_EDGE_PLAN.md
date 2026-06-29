@@ -16,7 +16,7 @@ Status: Updated 2026-06-28 after current release-quality refresh and bundle-budg
 - `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Position
 
@@ -111,7 +111,7 @@ Implementation-fixable release blockers are currently closed, but the final rele
 - `pnpm verify:quality-score` reports `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
 - `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`.
 - The remaining blockers are host real sleep/resume evidence and `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
-- The opt-in packet is `authenticated-ai-cli-consent-packet`; running that final smoke requires both `AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- The opt-in packet is `authenticated-ai-cli-consent-packet`; running that final smoke requires both `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 - Strict release doctor, signed updater artifacts, `latest.json`, supply-chain audit, Native IME, live WebView2 smoke, mux restore/performance, and scrollback pass; real OS sleep/resume remains host-blocked until a capable/user-initiated sleep cycle emits power events.
 - Risk register scoring reports `0 open, 0 accepted release`.
 
@@ -634,7 +634,7 @@ This is the highest leverage slice because it changes the product from "feature 
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -648,7 +648,7 @@ This is the highest leverage slice because it changes the product from "feature 
 - Current release score evidence before the self-referential final-goal map is `90/100`, `303/335`, `releaseCandidateReady=false`.
 - Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Final Goal Evidence Refresh
 
@@ -656,4 +656,4 @@ This is the highest leverage slice because it changes the product from "feature 
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - The terminal render-fidelity gate is green, including the Sharp text path that avoids terminal-shell backdrop blur for canvas glyph clarity.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.

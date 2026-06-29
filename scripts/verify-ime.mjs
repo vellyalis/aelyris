@@ -18,7 +18,7 @@
 //      multi-terminal scoping are checked when the live WebView exposes the
 //      needed DOM/CDP surfaces.
 //
-// Requires `AETHER_API_TOKEN=dev pnpm tauri:dev` running with CDP on 9222.
+// Requires `QUORUM_API_TOKEN=dev pnpm tauri:dev` running with CDP on 9222.
 // Run: pnpm node scripts/verify-ime.mjs
 //
 // Optional env:
@@ -132,7 +132,7 @@ async function connectOverCdpWithRetry() {
   }
 
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP} within ${timeoutMs}ms. Start Aether with "AETHER_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${lastError?.message ?? "CDP endpoint did not respond"}`,
+    `Cannot attach to WebView2 CDP at ${CDP} within ${timeoutMs}ms. Start Aether with "QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${lastError?.message ?? "CDP endpoint did not respond"}`,
   );
 }
 

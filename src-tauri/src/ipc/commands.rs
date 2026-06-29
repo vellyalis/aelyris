@@ -1101,7 +1101,7 @@ pub async fn respawn_terminal(
             .map(|s| s.to_string())
             .collect();
         let mut env = std::collections::HashMap::new();
-        env.insert("AETHER_SHELL".to_string(), program.clone());
+        env.insert("QUORUM_SHELL".to_string(), program.clone());
         pty_manager.spawn_command_with_id(
             &spawn_id,
             &program,
@@ -1298,7 +1298,7 @@ pub async fn force_restart_terminal(
             .map(|s| s.to_string())
             .collect();
         let mut env = std::collections::HashMap::new();
-        env.insert("AETHER_SHELL".to_string(), program.clone());
+        env.insert("QUORUM_SHELL".to_string(), program.clone());
         let spawn_result = pty_manager.spawn_command_with_id(
             &spawn_id,
             &program,

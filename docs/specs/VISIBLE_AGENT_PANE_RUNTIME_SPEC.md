@@ -41,7 +41,7 @@
   - `-p` は付けない。
 - `agent_shell_command_spec(model, prompt, autonomous)`:
   - visible pane の PowerShell 内で CLI を呼ぶ。
-  - prompt は `AETHER_AGENT_PROMPT` env var。
+  - prompt は `QUORUM_AGENT_PROMPT` env var。
   - `-p` は付けない。
   - `; exit $LASTEXITCODE` は crash/backstop 用で、正常完了検出の主経路ではない。
 
@@ -147,7 +147,7 @@ Rules:
 Visible TUI prompt delivery:
 
 - Direct spawn (`spawn_interactive_agent`): prompt as CLI positional arg where supported.
-- Pane shell spawn (`PaneFleet`): prompt via `AETHER_AGENT_PROMPT`, referenced inside PowerShell command.
+- Pane shell spawn (`PaneFleet`): prompt via `QUORUM_AGENT_PROMPT`, referenced inside PowerShell command.
 - No prompt shell interpolation.
 - No `-p`.
 

@@ -425,7 +425,7 @@ function currentStateDocFreshness(path) {
       text?.includes(`releaseCandidateReady=${releaseScore?.releaseCandidateReady === true}`) === true,
     consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
     consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
-    consentProviderRequired: text?.includes("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
+    consentProviderRequired: text?.includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
     noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
     noStaleReleaseReadyClaim:
       releaseScore?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
@@ -772,7 +772,7 @@ const promptConsentPacketReady =
   authenticatedPromptConsentPacket?.checks?.sourceArtifactsFresh === true &&
   authenticatedPromptConsentPacket?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
   authenticatedPromptConsentPacket?.packet?.requiredEnv ===
-    "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
   authenticatedPromptConsentPacket?.packet?.tokenGate === "explicit consent" &&
   typeof authenticatedPromptConsentPacket?.consentPacketSha256 === "string";
 const glassLegibilityContractReady =
@@ -856,11 +856,11 @@ const releaseOperationsExternalGateEvidenceReady =
       externalGateReadiness?.checks?.noOsSleepEnvPresent === true));
 const promptExecutionGate = {
   command: authenticatedPrompt?.nextCommand?.command ?? "pnpm verify:terminal:authenticated-ai-cli-prompt",
-  requiredEnv: promptChecks.requiredEnv ?? "AETHER_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
-  requiredProviderEnv: "AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+  requiredEnv: promptChecks.requiredEnv ?? "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+  requiredProviderEnv: "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   env: authenticatedPrompt?.nextCommand?.env ?? {},
   provider:
-    authenticatedPrompt?.provider ?? authenticatedPrompt?.nextCommand?.env?.AETHER_AUTH_PROMPT_PROVIDER ?? "unknown",
+    authenticatedPrompt?.provider ?? authenticatedPrompt?.nextCommand?.env?.QUORUM_AUTH_PROMPT_PROVIDER ?? "unknown",
   cdp: authenticatedPrompt?.nextCommand?.env?.AETHER_TAURI_CDP ?? authenticatedPrompt?.cdp ?? null,
   wouldSpendTokens: authenticatedPrompt?.wouldSpendTokens === true,
   tokenGate: authenticatedPrompt?.wouldSpendTokens === true ? "explicit consent" : "not required",

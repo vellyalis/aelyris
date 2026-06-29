@@ -1,7 +1,7 @@
 // Live Tauri/WebView2 smoke for multi-pane command-block evidence.
 //
 // Prerequisite:
-//   AETHER_API_TOKEN=dev pnpm.cmd tauri:dev
+//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
 //   AETHER_MULTIPANE_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
@@ -118,7 +118,7 @@ async function connectOverCdpWithRetry() {
     }
   }
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with AETHER_API_TOKEN=dev pnpm.cmd tauri:dev. ${
+    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev. ${
       lastError?.message ?? "CDP endpoint did not respond"
     }`,
   );

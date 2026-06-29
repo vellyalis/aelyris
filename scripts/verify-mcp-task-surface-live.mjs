@@ -3,13 +3,13 @@
 // decompose, assign, and inspect work over MCP HTTP, operating on the same
 // Arc<TaskManager> the cockpit shows (one source of truth).
 //
-// Prereq: `pnpm tauri:dev` running; AETHER_API_TOKEN set to the API bearer token
+// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token
 // (printed at startup as "generated ephemeral token: <uuid>" when unset).
-// Run: AETHER_API_TOKEN=<token> node scripts/verify-mcp-task-surface-live.mjs
-const BASE = process.env.AETHER_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.AETHER_API_TOKEN;
+// Run: QUORUM_API_TOKEN=<token> node scripts/verify-mcp-task-surface-live.mjs
+const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.QUORUM_API_TOKEN;
 if (!TOKEN) {
-  console.error("AETHER_API_TOKEN is required (the API bearer token from the dev log)");
+  console.error("QUORUM_API_TOKEN is required (the API bearer token from the dev log)");
   process.exit(2);
 }
 

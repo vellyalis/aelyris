@@ -252,9 +252,9 @@ const realSleepAlreadyProved =
 
 const checks = {
   noUnsafeConsentEnvPresent:
-    !process.env.AETHER_AUTH_PROMPT_CONSENT?.trim() && !process.env.AETHER_AUTH_PROMPT_PROVIDER?.trim(),
+    !process.env.QUORUM_AUTH_PROMPT_CONSENT?.trim() && !process.env.QUORUM_AUTH_PROMPT_PROVIDER?.trim(),
   noOsSleepEnvPresent:
-    process.env.AETHER_ALLOW_OS_SLEEP !== "1" && process.env.AETHER_GOAL_OPERATOR_RUN_SLEEP !== SLEEP_PHRASE,
+    process.env.QUORUM_ALLOW_OS_SLEEP !== "1" && process.env.AETHER_GOAL_OPERATOR_RUN_SLEEP !== SLEEP_PHRASE,
   releaseScoreExternalGateShape:
     projectedExternalGateScoreShape(releaseScore, finalAudit) &&
     realSleepScore?.points >= 10,
@@ -370,7 +370,7 @@ const report = {
       command: USER_CYCLE_COMMAND,
       requires:
         "Start the verifier, manually put Windows to sleep from Start menu/lid/power button, wake it, then let post-resume probes finish.",
-      safety: "Does not set AETHER_ALLOW_OS_SLEEP and does not call SetSuspendState.",
+      safety: "Does not set QUORUM_ALLOW_OS_SLEEP and does not call SetSuspendState.",
       progressArtifact: ".codex-auto/quality/goal-operator-progress.json",
       evidenceArtifact: ".codex-auto/production-smoke/real-os-suspend-resume.json",
     },

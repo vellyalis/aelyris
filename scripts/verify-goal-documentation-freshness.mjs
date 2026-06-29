@@ -111,7 +111,7 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
     currentSafeProofArtifactCount: proofArtifactCount.length > 0 && text?.includes(proofArtifactCount) === true,
     consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
     consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
-    consentProviderRequired: text?.includes("AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
+    consentProviderRequired: text?.includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
     defaultFinalizeNoGit: text?.includes("`pnpm verify:goal:finalize` excludes git finalization by default") === true,
     optionalGitFinalizeEnvNamed: text?.includes("AETHER_GOAL_FINALIZE_INCLUDE_GIT=1") === true,
     gitNotRequiredForProductEvidence: text?.includes("not required for product/safe/finalize evidence") === true,

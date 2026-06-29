@@ -1262,8 +1262,8 @@ fn native_settings_payload(args: &[String]) -> Result<Value, String> {
     }
     std::fs::create_dir_all(&temp_home)
         .map_err(|err| format!("create settings proof dir: {err}"))?;
-    let previous_home = env::var("AETHER_CONFIG_HOME").ok();
-    env::set_var("AETHER_CONFIG_HOME", &temp_home);
+    let previous_home = env::var("QUORUM_CONFIG_HOME").ok();
+    env::set_var("QUORUM_CONFIG_HOME", &temp_home);
 
     let result = (|| -> Result<Value, String> {
         let mut config = load_config();
@@ -1371,9 +1371,9 @@ fn native_settings_payload(args: &[String]) -> Result<Value, String> {
     })();
 
     if let Some(previous_home) = previous_home {
-        env::set_var("AETHER_CONFIG_HOME", previous_home);
+        env::set_var("QUORUM_CONFIG_HOME", previous_home);
     } else {
-        env::remove_var("AETHER_CONFIG_HOME");
+        env::remove_var("QUORUM_CONFIG_HOME");
     }
 
     result
@@ -1638,13 +1638,13 @@ async fn power_events_proof(args: &[String]) -> Result<(), String> {
 }
 
 async fn sleep_now(args: &[String]) -> Result<(), String> {
-    let allow = env::var("AETHER_ALLOW_OS_SLEEP").unwrap_or_default() == "1"
+    let allow = env::var("QUORUM_ALLOW_OS_SLEEP").unwrap_or_default() == "1"
         || args
             .iter()
             .any(|arg| arg == "--i-understand-this-sleeps-windows");
     if !allow {
         return Err(
-            "sleep-now refuses to suspend Windows without AETHER_ALLOW_OS_SLEEP=1 or --i-understand-this-sleeps-windows"
+            "sleep-now refuses to suspend Windows without QUORUM_ALLOW_OS_SLEEP=1 or --i-understand-this-sleeps-windows"
                 .to_string(),
         );
     }
@@ -4007,7 +4007,7 @@ fn native_client_identity() -> Value {
 }
 
 fn api_base_url() -> String {
-    if let Ok(url) = env::var("AETHER_API_URL") {
+    if let Ok(url) = env::var("QUORUM_API_URL") {
         let trimmed = url.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -4021,7 +4021,7 @@ fn api_base_url() -> String {
 }
 
 fn api_token() -> Option<String> {
-    if let Ok(token) = env::var("AETHER_API_TOKEN") {
+    if let Ok(token) = env::var("QUORUM_API_TOKEN") {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
@@ -4231,7 +4231,7 @@ fn native_command_center_actions(missing: &[Value]) -> Vec<Value> {
         "requiresReact": false,
         "requiresWebView": false,
         "requiresExplicitOptIn": true,
-        "explicitOptInEnv": "AETHER_ALLOW_OS_SLEEP=1",
+        "explicitOptInEnv": "QUORUM_ALLOW_OS_SLEEP=1",
         "evidencePath": ".codex-auto/production-smoke/real-os-suspend-resume.json",
     }));
     actions.push(json!({
@@ -4404,7 +4404,7 @@ fn sha256_bytes_hex(bytes: &[u8]) -> String {
 
 fn print_help() {
     println!(
-        "aether-native commands:\n  contract\n  window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  render-proof [--session id] [--text text] [--expect text] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  present-loop-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  gpu-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n]\n  winit-wgpu-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--show]\n  text-shaping-fixture-proof [--text text] [--cols n] [--rows n] [--png path] [--out path]\n  ime-proof [--prompt text] [--preedit text] [--commit text] [--cols n] [--rows n]\n  ime-dogfood-proof [--commit text]\n  ime-os-dogfood-proof [--preedit text] [--commit text]\n  settings-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n]\n  settings-window-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n] [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-proof\n  command-center-window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-input-scroll-proof\n  mode-shell-proof [--mode id]\n  mode-rail-window-proof [--mode id] [--duration-ms n] [--alpha 1..255] [--show]\n  inspector-window-proof [--mode id] [--alpha 1..255] [--duration-ms n] [--show]\n  right-rail-demotion-proof\n  accessibility-proof\n  uia-provider-proof\n  visual-qa-proof\n  primary-shell-proof [--duration-ms n] [--alpha 1..255] [--show]\n  power-events-proof --start-epoch n --end-epoch n\n  db-smoke-proof\n  sleep-now [--i-understand-this-sleeps-windows]\n  list\n  graph <workspace>\n  attach <workspace>\n  detach <workspace>\n  send <session> <text...> [--enter]\n  capture <session> [--lines n] [--raw]\n\nEnvironment:\n  AETHER_API_URL    daemon URL; defaults to sidecar token location or http://127.0.0.1:9333\n  AETHER_API_TOKEN  bearer token; otherwise reads the Aether sidecar token file"
+        "aether-native commands:\n  contract\n  window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  render-proof [--session id] [--text text] [--expect text] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  present-loop-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  gpu-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n]\n  winit-wgpu-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--show]\n  text-shaping-fixture-proof [--text text] [--cols n] [--rows n] [--png path] [--out path]\n  ime-proof [--prompt text] [--preedit text] [--commit text] [--cols n] [--rows n]\n  ime-dogfood-proof [--commit text]\n  ime-os-dogfood-proof [--preedit text] [--commit text]\n  settings-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n]\n  settings-window-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n] [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-proof\n  command-center-window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-input-scroll-proof\n  mode-shell-proof [--mode id]\n  mode-rail-window-proof [--mode id] [--duration-ms n] [--alpha 1..255] [--show]\n  inspector-window-proof [--mode id] [--alpha 1..255] [--duration-ms n] [--show]\n  right-rail-demotion-proof\n  accessibility-proof\n  uia-provider-proof\n  visual-qa-proof\n  primary-shell-proof [--duration-ms n] [--alpha 1..255] [--show]\n  power-events-proof --start-epoch n --end-epoch n\n  db-smoke-proof\n  sleep-now [--i-understand-this-sleeps-windows]\n  list\n  graph <workspace>\n  attach <workspace>\n  detach <workspace>\n  send <session> <text...> [--enter]\n  capture <session> [--lines n] [--raw]\n\nEnvironment:\n  QUORUM_API_URL    daemon URL; defaults to sidecar token location or http://127.0.0.1:9333\n  QUORUM_API_TOKEN  bearer token; otherwise reads the Aether sidecar token file"
     );
 }
 

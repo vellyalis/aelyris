@@ -78,10 +78,10 @@ function startSidecar(port, muxDir, scrollbackDir) {
   if (process.platform === "win32" && process.env.AETHER_NATIVE_CLIENT_USE_POWERSHELL_START === "1") {
     const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
     const command = [
-      `$env:AETHER_API_TOKEN=${quote(token)};`,
-      `$env:AETHER_PTY_SERVER_PORT=${quote(port)};`,
-      `$env:AETHER_MUX_SNAPSHOT_DIR=${quote(muxDir)};`,
-      `$env:AETHER_PTY_SCROLLBACK_DIR=${quote(scrollbackDir)};`,
+      `$env:QUORUM_API_TOKEN=${quote(token)};`,
+      `$env:QUORUM_PTY_SERVER_PORT=${quote(port)};`,
+      `$env:QUORUM_MUX_SNAPSHOT_DIR=${quote(muxDir)};`,
+      `$env:QUORUM_PTY_SCROLLBACK_DIR=${quote(scrollbackDir)};`,
       `$p=Start-Process -FilePath ${quote(sidecar)} -PassThru -WindowStyle Hidden;`,
       "Write-Output $p.Id",
     ].join(" ");
@@ -129,10 +129,10 @@ function startSidecar(port, muxDir, scrollbackDir) {
       cwd: root,
       env: {
         ...process.env,
-        AETHER_API_TOKEN: token,
-        AETHER_PTY_SERVER_PORT: String(port),
-        AETHER_MUX_SNAPSHOT_DIR: muxDir,
-        AETHER_PTY_SCROLLBACK_DIR: scrollbackDir,
+        QUORUM_API_TOKEN: token,
+        QUORUM_PTY_SERVER_PORT: String(port),
+        QUORUM_MUX_SNAPSHOT_DIR: muxDir,
+        QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
       },
       shell: false,
       stdio: "ignore",
@@ -217,7 +217,7 @@ function assertNativeSleepResumeRunbook(actions) {
   );
   assert(guarded?.requiresExplicitOptIn === true, "guarded native sleep cycle must require explicit opt-in");
   assert(
-    guarded?.explicitOptInEnv === "AETHER_ALLOW_OS_SLEEP=1",
+    guarded?.explicitOptInEnv === "QUORUM_ALLOW_OS_SLEEP=1",
     "guarded native sleep cycle opt-in env missing",
   );
   assert(
@@ -298,8 +298,8 @@ async function runNative(base, args) {
         cwd: root,
         env: {
           ...process.env,
-          AETHER_API_URL: base,
-          AETHER_API_TOKEN: token,
+          QUORUM_API_URL: base,
+          QUORUM_API_TOKEN: token,
         },
         shell: false,
         stdio: ["ignore", stdoutFd, stderrFd],

@@ -1210,8 +1210,8 @@ fn spawn_server_process(token: &str) -> Result<(), String> {
     let exe = current_server_exe()?;
     let mut command = crate::process::hidden_command(exe);
     command
-        .env("AETHER_API_TOKEN", token)
-        .env("AETHER_PTY_SERVER_PORT", SIDE_CAR_PORT.to_string())
+        .env("QUORUM_API_TOKEN", token)
+        .env("QUORUM_PTY_SERVER_PORT", SIDE_CAR_PORT.to_string())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());

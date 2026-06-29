@@ -3,7 +3,7 @@
 use aether_terminal_lib::{api, command_risk, db, logging, pty::PtyManager};
 
 fn parse_port() -> u16 {
-    std::env::var("AETHER_PTY_SERVER_PORT")
+    std::env::var("QUORUM_PTY_SERVER_PORT")
         .ok()
         .and_then(|raw| raw.parse::<u16>().ok())
         .unwrap_or(api::DEFAULT_PORT)

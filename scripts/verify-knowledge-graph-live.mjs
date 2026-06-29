@@ -2,11 +2,11 @@
 // code STRUCTURE (User -> AuthService -> JWTProvider -> Redis), and a change's
 // blast radius (impact) is known up front. Deterministic (no agent / no auth).
 //
-// Prereq: `pnpm tauri:dev` running; AETHER_API_TOKEN set to the API bearer token.
-const BASE = process.env.AETHER_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.AETHER_API_TOKEN;
+// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token.
+const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.QUORUM_API_TOKEN;
 if (!TOKEN) {
-  console.error("AETHER_API_TOKEN is required");
+  console.error("QUORUM_API_TOKEN is required");
   process.exit(2);
 }
 

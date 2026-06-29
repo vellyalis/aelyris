@@ -21,12 +21,12 @@ verb surface:
 **Native MCP (preferred — register once, call as native tools).** `POST /mcp` speaks
 JSON-RPC 2.0 (Streamable HTTP), so register Aether as a standard MCP server and the
 `aether.*` verbs become native tools (no HTTP boilerplate). Set a *fixed*
-`AETHER_API_TOKEN` before `pnpm tauri:dev` (otherwise the token rotates each launch), then:
+`QUORUM_API_TOKEN` before `pnpm tauri:dev` (otherwise the token rotates each launch), then:
 ```json
 // .mcp.json
 { "mcpServers": { "aether": {
   "type": "http", "url": "http://127.0.0.1:9333/mcp",
-  "headers": { "Authorization": "Bearer ${AETHER_API_TOKEN}" } } } }
+  "headers": { "Authorization": "Bearer ${QUORUM_API_TOKEN}" } } } }
 ```
 
 **Direct REST (no registration — call from Bash/node).**
@@ -36,7 +36,7 @@ POST http://127.0.0.1:9333/mcp/tools/call
   { "name": "aether.<verb>", "arguments": { ... } }
 → { "ok": true, "result": { ... } }
 ```
-- **Token:** `$env:AETHER_API_TOKEN`, or grep the dev log for `ephemeral token: <uuid>`
+- **Token:** `$env:QUORUM_API_TOKEN`, or grep the dev log for `ephemeral token: <uuid>`
   (printed at startup when the env var is unset). Port is `9333`.
 - **Catalog:** `GET /mcp/tools/list` (REST) or the `tools/list` JSON-RPC method returns
   every verb with its JSON schema — read it to confirm arguments. ~54 `aether.*` verbs.

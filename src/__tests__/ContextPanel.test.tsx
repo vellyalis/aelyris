@@ -139,7 +139,7 @@ describe("ContextPanel", () => {
         sessions={[
           session("a", {
             name: "Builder",
-            logs: [{ timestamp: 1, type: "text", content: "Used AETHER_API_TOKEN=secret-value for a local smoke" }],
+            logs: [{ timestamp: 1, type: "text", content: "Used QUORUM_API_TOKEN=secret-value for a local smoke" }],
           }),
         ]}
         projectName="Aether"

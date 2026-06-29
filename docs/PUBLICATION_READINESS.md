@@ -48,7 +48,7 @@ Remaining gate classes:
 - right-rail visual QA,
 - live command, multipane command, recovered command, and process reconnect
   evidence,
-- authenticated AI CLI prompt smoke, which requires explicit token-spend consent. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt execution requires `AETHER_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
+- authenticated AI CLI prompt smoke, which requires explicit token-spend consent. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt execution requires `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
 
 ## Publish Checklist
 

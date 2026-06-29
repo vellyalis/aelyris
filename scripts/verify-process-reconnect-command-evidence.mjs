@@ -1,7 +1,7 @@
 // Live Tauri/WebView2 smoke for app-process reconnect to a long-lived sidecar.
 //
 // Prerequisite:
-//   AETHER_API_TOKEN=dev pnpm.cmd tauri:dev
+//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // This smoke intentionally stops the current Aether.exe process, verifies the
 // PTY sidecar still owns the test terminal, starts the debug Aether.exe again,
@@ -26,7 +26,7 @@ const CDP = process.env.AETHER_PROCESS_RECONNECT_CDP ?? "http://127.0.0.1:9222";
 const APP_URL = process.env.AETHER_PROCESS_RECONNECT_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
 const PROJECT_PATH = (process.env.AETHER_PROCESS_RECONNECT_PROJECT ?? ROOT).replaceAll("\\", "/");
-const TOKEN = process.env.AETHER_PROCESS_RECONNECT_TOKEN ?? readSidecarToken() ?? process.env.AETHER_API_TOKEN ?? "dev";
+const TOKEN = process.env.AETHER_PROCESS_RECONNECT_TOKEN ?? readSidecarToken() ?? process.env.QUORUM_API_TOKEN ?? "dev";
 const OUT =
   process.env.AETHER_PROCESS_RECONNECT_OUT ?? ".codex-auto/production-smoke/process-reconnect-command-evidence.json";
 const WAIT_MS = Number.parseInt(process.env.AETHER_PROCESS_RECONNECT_WAIT_MS ?? "90000", 10);
@@ -104,7 +104,7 @@ async function ensureDevServer() {
   if (!appUrlNeedsDevServer() || (await devServerReady())) return null;
   const child = spawn("pnpm.cmd", ["dev"], {
     cwd: ROOT,
-    env: { ...process.env, AETHER_API_TOKEN: TOKEN },
+    env: { ...process.env, QUORUM_API_TOKEN: TOKEN },
     stdio: "ignore",
     windowsHide: true,
   });
@@ -122,7 +122,7 @@ async function ensureDevServer() {
 
 function readSidecarToken() {
   const candidates = [
-    process.env.AETHER_PTY_SERVER_TOKEN_FILE,
+    process.env.QUORUM_PTY_SERVER_TOKEN_FILE,
     process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Aether Terminal", "aether-pty-server.token") : null,
     process.env.USERPROFILE ? join(process.env.USERPROFILE, ".aether", "aether-pty-server.token") : null,
   ].filter(Boolean);
@@ -214,7 +214,7 @@ async function connectOverCdpWithRetry() {
     }
   }
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with AETHER_API_TOKEN=dev pnpm.cmd tauri:dev. ${
+    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev. ${
       lastError?.message ?? "CDP endpoint did not respond"
     }`,
   );
@@ -373,7 +373,7 @@ function startDebugApp() {
   }
   return spawn(DEBUG_APP_EXE, [], {
     cwd: join(ROOT, "src-tauri"),
-    env: { ...process.env, AETHER_API_TOKEN: TOKEN },
+    env: { ...process.env, QUORUM_API_TOKEN: TOKEN },
     stdio: "ignore",
     windowsHide: true,
   });
