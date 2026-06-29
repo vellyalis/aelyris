@@ -2,74 +2,153 @@
 
 # Aelyris
 
-**A project-first AI development workspace for Windows.** Run coding agents in visible terminal panes, keep work isolated by worktree and ownership boundaries, and review changes through auditable gates before merge.
+**A project-first AI development workspace for Windows.** Run many AI coding
+agents in parallel — each in its own visible terminal pane — and ship their work
+safely through worktree isolation, function-level conflict avoidance, and
+auditable review/merge gates.
 
+> **Alpha — active development, not yet stable for release.** Every readiness
+> claim is backed by a verifier you can run yourself. Expect rough edges; APIs
+> are moving.
 
-> **Alpha — active development, not yet release-ready.** Every readiness claim is
-> backed by a verifier you can run yourself. Expect rough edges; APIs are moving.
+## Why now
 
-## The problem
+AI has made writing code the easy part. A new wave of builders — many of them not
+career engineers — can now describe what they want and have an agent write it.
+The hard part has moved: it is no longer *writing* the code, it is **orchestrating
+many AI coding agents at once without them stepping on each other — and trusting
+what they produced enough to ship it.**
 
-Point several AI coding agents at one repository and it usually turns into chaos:
-they edit the same files, overwrite each other, and you can't tell who changed
-what. Most tooling runs a single agent, or fans agents out invisibly with no real
-guardrails.
+Run several agents at one repository the naive way and it turns into chaos: they
+edit the same files, overwrite each other, and you can't tell who changed what.
+Most tooling either runs one agent at a time, or fans agents out *invisibly* as
+hidden background jobs with no real guardrails — which is exactly what a
+non-engineer can't supervise and an engineer can't debug.
 
-## What makes it different
+Aelyris is the layer that makes parallel AI development **visible, coordinated,
+and safe to ship** — so an engineer never has to hand-wire the plumbing, and a
+non-engineer never has to learn it.
 
-- **Visible, steerable parallelism.** Each agent runs as an interactive CLI in its
-  own pane and its own git worktree. You watch them work — and can steer a running
-  agent away from specific files mid-flight — instead of trusting an invisible
-  headless swarm.
-- **Coordination in code, not just prompts.** Ownership is tracked per file *and
-  per symbol*, using tree-sitter extraction (Rust / TS / TSX) with a diff-hunk
-  fallback. Orchestrated lanes are conflict-aware: disjoint symbols run in
-  parallel, overlapping work is serialized automatically.
-- **Coordination roadmap with gated claims.** Local agent messaging, shared-brain replay, and code-graph reasoning are active design targets, but public claims stay behind verifier gates until the evidence is current.
-- **Merges bound to a commit.** An approval is bound to the exact commit it was
-  granted against; the git update uses an old-OID compare-and-swap, so a moved
-  branch tip is rejected, never silently merged. Objective gate commands
-  (build / test / lint) run in the task's worktree and can block a merge even
-  after a human approves.
-- **Local-first and auditable.** A broad MCP control plane (terminal, mux,
-  worktree, fleet, task graph, events, ownership, review, merge — over JSON-RPC), an event/audit trail, and risk classification
-  around shell, file, and AI-CLI actions. It runs on your machine — not a hosted
-  dashboard.
+## What it does today
 
-## What's here today
+These are real, shipped capabilities. The single strong factual claim Aelyris
+makes is that it has a Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+worktree, ownership, review, and merge substrate — each item below is part of
+that substrate and backed by a runnable verifier.
 
-**Agent coordination**
-- Visible multi-agent fleet, per-agent worktrees, role-routed dispatch
-  (implementer / tester / reviewer) with deterministic branch names.
-- File- and symbol-level ownership leasing with automatic conflict serialization.
-- Worktree diff review, mechanical pre-merge gates, and commit-bound merge.
-- A broad MCP surface and an event/audit timeline.
+### One pane = one agent (visible, not hidden)
 
-**Terminal & workspace**
-- Native, Rust-backed terminal (ConPTY) with Rust-owned input, clipboard, and IME,
-  true split panes, and a session/scrollback substrate.
+Each agent runs as a **real, interactive AI CLI in its own visible terminal
+pane** — not as an opaque background "subagent" you can't see. This is the core
+design choice, and it pays off four ways:
+
+- **Observability** — you watch the actual session scroll by, exactly as the
+  agent sees it.
+- **Steering** — you can redirect a *running* agent mid-flight (e.g. away from
+  specific files) instead of waiting for a black box to finish.
+- **Trust** — you ship work you actually watched happen, not output a hidden
+  swarm asserts is fine.
+- **Debuggability** — when something goes wrong, the real terminal session *is*
+  the log.
+
+Each agent also gets its **own git worktree**, so parallel agents never share a
+working tree.
+
+### Function-level conflict avoidance ("shared brain")
+
+Many agents can work the **same codebase in parallel without clobbering each
+other**, because ownership is tracked not just per file but **per symbol (down to
+the function)**:
+
+- Claims/locks carry an inclusive line range with a **lease** (a crashed agent's
+  claims self-release) and a **confidence tier** — exact ranges from
+  tree-sitter / LSP hard-block on overlap, inferred diff-hunk ranges only warn.
+- Orchestrated lanes are conflict-aware: **disjoint symbols run in parallel;
+  overlapping work is serialized automatically.** Two agents may edit the *same
+  file* as long as they own different functions.
+- A code knowledge-graph core answers "if this symbol changes, what's the blast
+  radius?" (the transitive set of dependents), so coordination reasons about
+  structure, not just filenames.
+
+### Auditable review and commit-bound merge
+
+Nothing reaches your main branch unsupervised:
+
+- Worktree diff review plus **mechanical pre-merge gates** — objective
+  build / test / lint commands run in the task's worktree and can block a merge
+  *even after a human approves*.
+- An approval is **bound to the exact commit** it was granted against. The git
+  update uses an old-OID compare-and-swap, so a branch tip that moved underneath
+  is rejected, never silently merged.
+
+### Persistent terminal & workspace substrate
+
+- **Native, Rust-backed terminal** (ConPTY) with Rust-owned input, clipboard, and
+  IME; true split panes; and a **session/scrollback substrate** with a
+  detach/reattach path — the foundation for not losing long-running parallel work
+  across restarts.
+- A broad **MCP control plane** over JSON-RPC (terminal, mux, worktree, fleet,
+  task graph, events, ownership, review, merge), an **event/audit trail**, and
+  **risk classification** around shell, file, and AI-CLI actions.
 - Monaco editor with Vim mode, file tree, search, Git and worktree tooling, and a
   pull-request inspector.
 
+It is **local-first**: this runs on your machine, not a hosted dashboard.
+
+### Who this is for
+
+- **Engineers** get fast, safe parallel agent development without hand-wiring
+  worktrees, locks, gates, and audit — the low-level plumbing is bundled.
+- **Non-engineers** (the "vibe coding" wave) get the same plumbing as
+  **guardrails**: the review/merge gates, audit trail, and function-level
+  conflict avoidance are the safety net that lets someone who *can't*
+  self-review ship without quietly breaking the codebase.
+
+## What is coming next
+
+Near-term, planned work (tracked by the same verifier discipline):
+
+- End-to-end **session restore across restarts** — the detach/reattach substrate
+  exists today; full live restoration is being hardened.
+- **Live shared-brain population** — the knowledge-graph and impact-analysis core
+  is implemented and unit-tested; wiring it from real repo sources (LSP
+  aggregation) and proving restart/replay is the next adapter.
+- **Local agent messaging** (intent bus) — design target, not yet a completed
+  claim.
+- **LSP go-to-definition, diagnostics, and references** — editor intelligence is
+  currently partial (completion and hover only).
+- Native visual quality: advanced **text shaping and font fallback**.
+- Broader **parallel dispatch** into the central pane tree.
+
+## Where this is going (the goal)
+
+This is a **goal**, framed as a goal, not a current claim.
+
+Aelyris aims to become a **foundational layer** that sits *above* the classic,
+hand-configured world of terminal multiplexing and ad-hoc agent orchestration —
+so running many AI agents in parallel, at high speed, with built-in
+safety/review, becomes the default rather than something you assemble yourself.
+The vision is a calm, inspectable cockpit where one agent implements, another
+tests, another reviews, and the human keeps the final judgment — with the
+plumbing (persistent multiplexed terminals, governance, audit, worktrees, merge
+gates) bundled underneath so neither an engineer nor a non-engineer has to think
+about it.
+
+We keep that ambition honest the same way we keep everything else honest: by
+gating each claim behind a verifier you can run, and by clearly separating what
+ships today from what is still ahead.
+
 ## Honest limits (today)
 
-- Aelyris orchestrates existing coding-agent CLIs; it doesn't replace your IDE or
-  the agents themselves.
-- Conflict-awareness applies to orchestrated lanes — arbitrary manual git outside
-  Aelyris's flow can still bypass it.
+- Aelyris **orchestrates existing coding-agent CLIs**; it doesn't replace your
+  IDE or the agents themselves.
+- Conflict avoidance applies to **orchestrated lanes** — arbitrary manual git
+  outside Aelyris's flow can still bypass it.
 - Editor intelligence is partial (completion and hover; go-to-definition,
   diagnostics, and references are not in yet).
 - Full session restore across restarts, native-rendering polish, and
   signing/updater are still being hardened.
 - Windows-first.
-
-## Roadmap
-
-- End-to-end session restore across restarts (detach/reattach substrate exists
-  today).
-- Native visual quality: advanced text shaping and font fallback.
-- LSP go-to-definition, diagnostics, and references.
-- Broader parallel dispatch into the central pane tree.
 
 ## Tech stack
 
