@@ -102,3 +102,14 @@ coverage/
 .eslintcache
 *.tsbuildinfo
 .pnpm-store/
+
+# Internal-only docs (kept local for dev, never published).
+docs/history/
+.claude/skills/
+PLAN.md
+docs/specs/CODEX_HANDOFF.md
+docs/specs/*_COCKPIT_REQUIREMENTS_*.md
+docs/specs/*_GAP_AUDIT_*.md
+docs/specs/*_GAP_CLOSURE_*.md
+docs/specs/*_TRACEABILITY_*.md
+*.orig

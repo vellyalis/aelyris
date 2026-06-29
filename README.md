@@ -2,115 +2,104 @@
 
 # Aelyris
 
-Aelyris — project-first AI development workspace for Windows.
+**A local-first AI team OS for your terminal.** Run coding agents as a visible
+team — in real parallel panes — that share what they know, avoid each other's
+edits down to the function level, deliberate before they act, and carry work all
+the way through review and a commit-bound merge.
 
 ![A fleet of AI coding agents working in parallel inside Aelyris's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
 
-> Development screenshot of the alpha: visible agent panes, each an interactive
-> agent CLI in its own git worktree, with the orchestrator rail on the right.
-> Multi-agent parallel dispatch into the central pane tree is still gated
-> (`verify:agent-team-orchestration-readiness` is not yet green) — this shows the
-> substrate, not a proven parallel-fleet guarantee. See status and limitations below.
+> **Alpha — active development, not yet release-ready.** Every readiness claim is
+> backed by a verifier you can run yourself. Expect rough edges; APIs are moving.
+> The screenshot is a live development capture, not a proven parallel-fleet
+> guarantee — see the limits below.
 
-Aelyris is a Tauri desktop app that combines a real terminal workspace,
-visible AI-agent panes, project/worktree context, review and merge controls, and
-machine-checked release gates. The long-term target is not just another terminal
-tab manager: Aelyris is being built as an auditable operating surface for AI
-development teams.
+## The problem
 
-## Current Status
+Point several AI coding agents at one repository and it usually turns into chaos:
+they edit the same files, overwrite each other, and you can't tell who changed
+what. Most tooling runs a single agent, or fans agents out invisibly with no real
+guardrails.
 
-**Alpha / active development. Not release-ready.**
+## What makes it different
 
-The repository is public-previewable, but the product must not yet claim
-tmux-equivalent, BridgeSpace-plus, Ghostty/WezTerm-class, world-class terminal AI
-OS, release-ready status, or strict `agmsg` superset behavior.
+- **Visible, steerable parallelism.** Each agent runs as an interactive CLI in its
+  own pane and its own git worktree. You watch them work — and can steer a running
+  agent away from specific files mid-flight — instead of trusting an invisible
+  headless swarm.
+- **Coordination in code, not just prompts.** Ownership is tracked per file *and
+  per symbol*, using tree-sitter extraction (Rust / TS / TSX) with a diff-hunk
+  fallback. Orchestrated lanes are conflict-aware: disjoint symbols run in
+  parallel, overlapping work is serialized automatically.
+- **Agents that deliberate before acting.** An intent bus lets an agent announce
+  "I'm about to switch auth to JWT" or "extract AuthService"; peers align, object,
+  or defer — so design conflicts surface in discussion, not at merge.
+- **A shared brain.** A live snapshot aggregates every agent, event, ownership
+  lease, open intent, blocker, and recorded decision — the real-time "who's doing
+  what, where" — plus a code knowledge graph the fleet reasons over
+  (User → AuthService → JWTProvider), not just files.
+- **Merges bound to a commit.** An approval is bound to the exact commit it was
+  granted against; the git update uses an old-OID compare-and-swap, so a moved
+  branch tip is rejected, never silently merged. Objective gate commands
+  (build / test / lint) run in the task's worktree and can block a merge even
+  after a human approves.
+- **Local-first and auditable.** A broad MCP control plane (terminal, mux,
+  worktree, fleet, task graph, events, ownership, intents, knowledge graph,
+  review, merge — over JSON-RPC), an event/audit trail, and risk classification
+  around shell, file, and AI-CLI actions. It runs on your machine — not a hosted
+  dashboard.
 
-Latest documented machine evidence, generated locally on 2026-06-29 JST. Regenerate with `pnpm verify:quality-score`, `pnpm verify:goal:safe`, and `pnpm verify:world-class-terminal-ai-os` before making release claims:
+## What's here today
 
-- `release-quality-score`: `35/100`, `124/351`, grade `D`
-- `releaseCandidateReady`: `false`
-- Machine field: `releaseCandidateReady=false`
-- `final-goal-safe`: `ok=false`, `status=blocked`
-- `requirements-spec-design-traceability`: `pass-doc-traceability-current`
-- `world-class-terminal-ai-os`: `status=external-blocked`
+**Agent coordination**
+- Visible multi-agent fleet, per-agent worktrees, role-routed dispatch
+  (implementer / tester / reviewer) with deterministic branch names.
+- File- and symbol-level ownership leasing with automatic conflict serialization.
+- Intent bus, shared-brain snapshot, and a code knowledge graph.
+- Worktree diff review, mechanical pre-merge gates, and commit-bound merge.
+- A broad MCP surface and an event/audit timeline.
 
-The current defensible claim is:
+**Terminal & workspace**
+- Native, Rust-backed terminal (ConPTY) with Rust-owned input, clipboard, and IME,
+  true split panes, and a session/scrollback substrate.
+- Monaco editor with Vim mode, file tree, search, Git and worktree tooling, and a
+  pull-request inspector.
 
-> Aelyris has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
-> worktree, ownership, review, and merge substrate. The world-class product claim
-> is still blocked by live durability, restart/replay, native-quality,
-> signing/updater, and external operator-proof gates.
+## Honest limits (today)
 
-## What Aelyris Is
+- Aelyris orchestrates existing coding-agent CLIs; it doesn't replace your IDE or
+  the agents themselves.
+- Conflict-awareness applies to orchestrated lanes — arbitrary manual git outside
+  Aelyris's flow can still bypass it.
+- Editor intelligence is partial (completion and hover; go-to-definition,
+  diagnostics, and references are not in yet).
+- Full session restore across restarts, native-rendering polish, and
+  signing/updater are still being hardened.
+- Windows-first.
 
-Aelyris is designed around this target workflow:
+## Roadmap
 
-1. Open a project, not just a shell.
-2. Split work into visible agent lanes.
-3. Route agents toward inspectable terminal panes, with visible PTY paths
-   already implemented and full pane-tree orchestration still gated.
-4. Keep work isolated through worktrees and ownership claims.
-5. Review, approve, and merge through an auditable control layer.
-6. Treat product claims as gates backed by scripts and artifacts, not prose.
+- End-to-end session restore across restarts (detach/reattach substrate exists
+  today).
+- Native visual quality: advanced text shaping and font fallback.
+- LSP go-to-definition, diagnostics, and references.
+- Broader parallel dispatch into the central pane tree.
 
-## Implemented Substrate
+## Tech stack
 
-- Windows terminal runtime: Tauri v2, Rust backend, WebView2 frontend, ConPTY,
-  xterm.js, and native terminal experiments.
-- Pane and mux layer: pane tree, split layouts, persisted pane state, mux graph,
-  sidecar direction, and a tmux-grade-contract verifier whose live mux-restore
-  proof is still gated.
-- Visible AI agents: interactive Codex, Claude, and Gemini CLI launch paths that
-  avoid using print/headless mode for human-visible panes.
-- AI control plane: task/orchestrator APIs, MCP surface, event/context plumbing,
-  and command-risk boundaries.
-- Project operations: file tree, search, Monaco editor, PR inspector, Git and
-  worktree tooling, review/merge intent flow, and ownership tracking.
-- Release proof chain: quality score, final-goal audit, traceability, hygiene,
-  anti-debt, mux/native/agent orchestration, and external-gate verifiers.
-
-## Known Limitations
-
-These are intentional public-readiness boundaries, not hidden footnotes:
-
-- No stable public release is published yet.
-- The package remains `"private": true`; the app is not intended for npm
-  publication.
-- Full tmux-equivalent durability is still blocked by live restore and
-  sidecar/host proof gates.
-- BridgeSpace-plus shared-brain claims still require live restart/replay proof
-  and green agent-team orchestration evidence on a capable host.
-- Ghostty/WezTerm-class terminal quality is not claimed until daily-driver,
-  native visual regression, text shaping/fallback, reconnect, and real
-  sleep/resume evidence are all current.
-- Some live verifiers require WebView2/CDP access, real Windows sleep/resume, or
-  host process policies that are not available in every development sandbox.
-- Authenticated AI CLI prompt smoke tests may spend tokens and are never run
-  without explicit operator consent.
-- Release signing/updater artifacts are operator-owned and are not generated by
-  default.
-- Strict `agmsg`-class local agent messaging is planned, but not implemented or claimable yet.
-
-## Tech Stack
-
-- Tauri v2
-- Rust, Tokio, portable-pty, git2, rusqlite
+- Tauri v2 — Rust backend, WebView2 frontend
+- Rust: Tokio, portable-pty, git2, rusqlite
+- Native, Rust-backed terminal rendering (ConPTY; no xterm.js)
 - React 19, TypeScript, Vite 7
-- xterm.js and WebGL terminal rendering
-- Monaco Editor with Vim mode
+- Monaco editor with Vim mode
 - Radix UI primitives, Lucide icons, CSS Modules
-- Windows WebView2, ConPTY, Mica/Acrylic window styling
 
 ## Requirements
 
-- Windows 11 recommended
+- Windows 11 recommended (Windows 10 runs with reduced visuals)
 - Rust toolchain
-- Node.js 24+
-- pnpm 10+
+- Node.js 24+, pnpm 10+
 - WebView2 runtime
-
-Windows 10 may work with reduced visual/runtime behavior.
 
 ## Development
 
@@ -119,8 +108,8 @@ pnpm install
 pnpm tauri dev
 ```
 
-The first Rust/Tauri build can be slow, especially after cleaning Cargo
-`target` directories.
+The first Rust/Tauri build can be slow, especially after cleaning Cargo `target`
+directories.
 
 ## Build
 
@@ -131,84 +120,44 @@ pnpm tauri:build:dist
 
 ## Verification
 
-Useful non-token checks:
+Aelyris keeps its claims honest by backing them with runnable verifiers. Useful
+non-token checks:
 
 ```powershell
 pnpm verify:release:hygiene
 pnpm verify:requirements-spec-design-traceability
 pnpm verify:quality-score
-pnpm verify:goal:safe
 ```
 
-Claim gates:
+Token-spending AI prompt validation is opt-in only and never runs without
+explicit operator consent.
 
-```powershell
-pnpm verify:world-class-terminal-ai-os
-pnpm verify:mux-tmux-grade-contract
-pnpm verify:visible-agent-pane-binding
-pnpm verify:terminal:native-boundary
-```
-
-Token-spending AI prompt validation is opt-in only. See the consent packet
-verifier before running authenticated prompt smoke tests:
-
-```powershell
-pnpm verify:terminal:authenticated-ai-cli-consent-packet
-```
-
-## Documentation Map
+## Documentation
 
 - Documentation guide: `docs/README.md`
-- GitHub introduction draft: `docs/GITHUB_INTRODUCTION.md`
-- Roadmap plan: `PLAN.md`
-- Agent workflow guide: `docs/AGENT_WORKFLOWS.md`
+- Introduction: `docs/GITHUB_INTRODUCTION.md`
+- Contributor workflow: `docs/AGENT_WORKFLOWS.md`
 - Publication readiness: `docs/PUBLICATION_READINESS.md`
-- Requirements entrypoint: `docs/requirements.md`
-- Work-unit handoff: `docs/specs/CODEX_HANDOFF.md`
-- Visible agent runtime boundary:
-  `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
-- Requirements/spec/design traceability:
-  `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
-- Agent message bus superset spec:
-  `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
-- World-class gap closure design:
-  `docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md`
+- Requirements & claim policy: `docs/requirements.md`
+- Visible-agent runtime boundary: `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
 
-## Repository Hygiene
+## Repository hygiene
 
-Generated local artifacts are intentionally ignored:
-
-- `node_modules/`
-- `dist/`
-- `.codex-auto/`
-- `artifacts/`
-- `src-tauri/target/`
-- `src-tauri/pty-server/target/`
-- `src-tauri/binaries/`
-
-Do not commit secrets, local `.env` files, generated signing material, or Cargo
-build output.
+Generated local artifacts are intentionally ignored (`node_modules/`, `dist/`,
+`src-tauri/target/`, build output, signing material, local `.env` files). Do not
+commit secrets, tokens, or generated artifacts.
 
 ## Contributing
 
-This project is moving quickly. Before opening a change, read `AGENTS.md` and
-`docs/specs/CODEX_HANDOFF.md`, choose a scoped work unit, and keep requirements,
-implementation, and verifier artifacts aligned.
-
-See `CONTRIBUTING.md` for the public contribution workflow.
+Aelyris moves quickly. Before opening a change, read `AGENTS.md` and
+`CONTRIBUTING.md`, keep requirements / implementation / verifier artifacts
+aligned, and don't introduce a claim that its matching gate doesn't yet support.
 
 ## Security
 
-Do not publish vulnerabilities as GitHub issues until they have been triaged.
-See `SECURITY.md`.
+Please don't open a public issue for a suspected vulnerability before it's been
+triaged — see `SECURITY.md`.
 
 ## License
 
 MIT. See `LICENSE`.
-
-
-
-
-
-
-
