@@ -2,7 +2,7 @@
 
 Date: 2026-06-28 JST
 Status: active roadmap; not a release claim
-Primary spec: `docs/specs/ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+Primary spec: `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 
 This plan keeps the product direction concrete after the `agmsg` comparative
 audit. The aim is to make Quorum more than a terminal and more than a message
@@ -45,7 +45,7 @@ Deliverables:
 
 Acceptance:
 
-- `docs/specs/ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md` exists.
+- `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md` exists.
 - `docs/requirements.md` points to it.
 - `docs/specs/README.md` and traceability mention it.
 - A reviewer can see exactly what is missing before public claims.

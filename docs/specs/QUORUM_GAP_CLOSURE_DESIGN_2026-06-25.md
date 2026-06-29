@@ -2,7 +2,7 @@
 
 Date: 2026-06-25
 Status: DESIGN READY FOR WORK-UNIT PLANNING
-Related audit: `docs/specs/AETHER_TMUX_BRIDGESPACE_GHOSTTY_GAP_AUDIT_2026-06-25.md`
+Related audit: `docs/specs/QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
 
 This document answers the re-audit question:
 
@@ -1387,7 +1387,7 @@ Current output:
   claims remain blocked; it fails only when the documentation stack becomes
   stale, disconnected, or overclaiming.
 - Traceability source:
-  `docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`.
+  `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`.
 
 Current blocking reasons:
 

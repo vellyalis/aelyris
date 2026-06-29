@@ -234,11 +234,11 @@ const currentStateDocPaths = [
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
-  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
 const detailedCurrentStateDocPaths = new Set([
   "docs/PUBLICATION_READINESS.md",
-  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ]);
 const releaseScoreSourcePaths = [
   "package.json",

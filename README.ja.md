@@ -170,11 +170,11 @@ pnpm verify:terminal:authenticated-ai-cli-consent-packet
 - 可視エージェントランタイム境界:
   `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
 - 要件 / 仕様 / 設計トレーサビリティ:
-  `docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+  `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
 - エージェントメッセージバススーパーセット仕様:
-  `docs/specs/ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+  `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 - ギャップクローズ設計:
-  `docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md`
+  `docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md`
 
 ## リポジトリの衛生
 

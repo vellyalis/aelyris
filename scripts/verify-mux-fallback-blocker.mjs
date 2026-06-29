@@ -12,7 +12,7 @@ function check(id, ok, detail, evidence = {}) {
   return { id, ok: Boolean(ok), detail, evidence };
 }
 
-const design = read("docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md");
+const design = read("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
 const packageJson = read("package.json");
 const api = read("src-tauri/src/api/mod.rs");
 const app = read("src/App.tsx");

@@ -37,7 +37,7 @@ Quorum を「**単一指示で自律ビルドする** AIワークスペース」
 
 | Spec | 対応 Phase | 中身 |
 |---|---|---|
-| **[AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md](./AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md)** | cross-cutting | 要件 -> 仕様 -> 実装設計 -> verifier -> artifact の追跡表。今後の作業で doc/gate を更新しているかの監査入口 |
+| **[QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md](./QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md)** | cross-cutting | 要件 -> 仕様 -> 実装設計 -> verifier -> artifact の追跡表。今後の作業で doc/gate を更新しているかの監査入口 |
 | **[CODEX_HANDOFF.md](./CODEX_HANDOFF.md)** | all | 作業分解・依存DAG・受け入れ基準・実行バッチ・do-not-break。**入口** |
 | [PHASE_0_1_ARCHITECTURE_SPEC.md](./PHASE_0_1_ARCHITECTURE_SPEC.md) | 0 + 1 | **能力レイヤー(§0.5)**・runtime統一(`AgentSession`/`AgentRunStatus`/`useAgentFleet`)・god file分割・worktree自動配線・validator単一化・router配線・**ゲートモデル(§5)** |
 | [MCP_TOOL_SURFACE_SPEC.md](./MCP_TOOL_SURFACE_SPEC.md) | 2.5 | `aether.mcp.v1` の tool catalog（FREE/GATED 分類・既存IPCへのマッピング）・transport(stdio/HTTP)・ゲート強制・orchestrator例 |
@@ -46,10 +46,10 @@ Quorum を「**単一指示で自律ビルドする** AIワークスペース」
 | [COCKPIT_UX_SPEC.md](./COCKPIT_UX_SPEC.md) | 2 + 4 | 6サーフェス（attentionレール / 承認インボックス / フリートグリッド / マージ待ち / kanban起動 / Windowsトースト）を `useAgentFleet().sessions` 単一ソースの投影として規定 |
 | [TYPE_BRIDGE_SPEC.md](./TYPE_BRIDGE_SPEC.md) | 0（WU-0.7） | **front/back 同時開発の地盤**。Rust⇄TS の契約を contract test で凍結（依存ゼロ）＋ frontend mock で待ち時間ゼロ。tauri-specta codegen は後回し |
 | [PLANNER_SPEC.md](./PLANNER_SPEC.md) | 5（WU-5.1/5.2） | **自律チーム開発ループの最後の1枚**。一行タスク→要件定義+WU分解→`wu-manifest`→fleet dispatch（5.1）、plan→dispatch→test→review→gated merge→repeat（5.2）。`aether-plan` skill で今すぐ手動実行可 |
-| [ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md](./ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md) | active / agent coordination | `agmsg` 比較監査を要件・仕様・設計に落とした agent message bus 計画。inbox/history、delivery policy、role lease、directive、driver trust、superset gate |
+| [QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md](./QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md) | active / agent coordination | `agmsg` 比較監査を要件・仕様・設計に落とした agent message bus 計画。inbox/history、delivery policy、role lease、directive、driver trust、superset gate |
 | [AETHER_FUSION_COORDINATOR_AUDIT_2026-06-23.md](../history/AETHER_FUSION_COORDINATOR_AUDIT_2026-06-23.md) (history) | future / composition | **Fusion Coordinator 監査**。LLM重み合体ではなく inference-time multi-agent / MoA / swarm coordination を Quorum Control API 上に載せる判断、Claude `-p` 監査結果、API shape、安全境界、実装順序 |
-| [AETHER_TMUX_BRIDGESPACE_GHOSTTY_GAP_AUDIT_2026-06-25.md](./AETHER_TMUX_BRIDGESPACE_GHOSTTY_GAP_AUDIT_2026-06-25.md) | current audit | tmux / BridgeSpace / Ghostty / release readiness の現状監査。world-class claim は REVIEW / BLOCK |
-| [AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md](./AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md) | active closure | G1-G6 workstreams、anti-debt rules、fallback policy、G5 native terminal closure、G6 aggregate gate |
+| [QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md](./QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md) | current audit | tmux / BridgeSpace / Ghostty / release readiness の現状監査。world-class claim は REVIEW / BLOCK |
+| [QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md](./QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md) | active closure | G1-G6 workstreams、anti-debt rules、fallback policy、G5 native terminal closure、G6 aggregate gate |
 
 ## 依存関係（要約。詳細DAGは CODEX_HANDOFF §5）
 

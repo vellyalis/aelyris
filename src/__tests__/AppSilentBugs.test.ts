@@ -1318,7 +1318,7 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain("docs/README.md");
     expect(finalGoalAuditScript).toContain("docs/PUBLICATION_READINESS.md");
     expect(finalGoalAuditScript).toContain("docs/specs/README.md");
-    expect(finalGoalAuditScript).toContain("docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
+    expect(finalGoalAuditScript).toContain("docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
     expect(finalGoalAuditScript).toContain("src/features/terminal/keymap.ts");
     expect(finalGoalAuditScript).toContain("src/features/terminal/hooks/useAICliDetection.ts");
     expect(finalGoalAuditScript).toContain("src/shared/hooks/useKeyboardShortcuts.ts");
@@ -1391,7 +1391,7 @@ describe("Release evidence gates", () => {
     expect(score).toContain("final-goal-audit-after-goal-docs");
     expect(score).toContain("quality-score-final");
     expect(score).toContain("docs/specs/README.md");
-    expect(score).toContain("docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
+    expect(score).toContain("docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
     expect(goalDocumentationFreshnessScript).toContain("README.md");
     expect(goalDocumentationFreshnessScript).toContain("docs/README.md");
     expect(goalDocumentationFreshnessScript).toContain("docs/PUBLICATION_READINESS.md");

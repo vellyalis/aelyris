@@ -1321,7 +1321,7 @@ const worldClassArtifactCurrent =
       mtimeMs(join(ROOT, "scripts", "verify-native-daily-driver-terminal.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-native-text-shaping-fallback.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-native-visual-regression.mjs")),
-      mtimeMs(join(ROOT, "docs", "specs", "AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md")),
+      mtimeMs(join(ROOT, "docs", "specs", "QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md")),
     );
 const worldClassFresh =
   worldClassArtifactCurrent && worldClassTerminalAiOs?.ok === true && worldClassTerminalAiOs?.status === "pass";
@@ -4518,7 +4518,7 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("pass-current-native-hwnd-paste-contract") &&
   finalGoalAuditScriptSource.includes("scripts/verify-native-hwnd-paste-live.mjs") &&
   finalGoalAuditScriptSource.includes("docs/specs/README.md") &&
-  finalGoalAuditScriptSource.includes("docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
+  finalGoalAuditScriptSource.includes("docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
   finalGoalAuditScriptSource.includes("src/features/terminal/keymap.ts") &&
   finalGoalAuditScriptSource.includes("src/features/terminal/hooks/useAICliDetection.ts") &&
   finalGoalAuditScriptSource.includes("src/shared/hooks/useKeyboardShortcuts.ts") &&

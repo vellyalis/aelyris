@@ -21,7 +21,7 @@ const SOURCE_PATHS = [
   "src-tauri/src/term/text_shaping.rs",
   "src-tauri/src/bin/aether_native.rs",
   "src-tauri/Cargo.toml",
-  "docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md",
+  "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
 ];
 
 function source(path) {
@@ -96,7 +96,7 @@ const termMod = source("src-tauri/src/term/mod.rs");
 const textShaping = source("src-tauri/src/term/text_shaping.rs");
 const nativeClient = source("src-tauri/src/bin/aether_native.rs");
 const cargoToml = source("src-tauri/Cargo.toml");
-const g5Design = source("docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md");
+const g5Design = source("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
 const sourceCutoffMs = Math.max(mtime("scripts/verify-native-text-shaping-fallback.mjs"), ...SOURCE_PATHS.map(mtime));
 const visualFixtureSourceCutoffMs = Math.max(
   mtime("src-tauri/src/term/text_shaping.rs"),

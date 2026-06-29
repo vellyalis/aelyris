@@ -19,27 +19,27 @@ authoritative requirement, specification, design, and proof sources.
    safety controls.
 
 2. World-class claim requirements:
-   `docs/specs/AETHER_TMUX_BRIDGESPACE_GHOSTTY_GAP_AUDIT_2026-06-25.md`
+   `docs/specs/QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
 
    Owns the current gap classification for tmux-grade mux behavior,
    BridgeSpace-plus AI team OS behavior, Ghostty / WezTerm-class Windows
    terminal quality, and release readiness.
 
 3. Gap-closure implementation requirements:
-   `docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md`
+   `docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md`
 
    Owns the active implementation workstreams, anti-debt rules, fallback policy,
    G5 native terminal closure gates, and G6 aggregate world-class gate.
 
 4. Agent-message superset requirements:
-   `docs/specs/ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+   `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 
    Owns the `agmsg` comparative audit result, local agent message bus
    requirements, delivery policy, role leases, directive protocol, driver trust,
    and the strict-superset claim boundary.
 
 5. Traceability:
-   `docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+   `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
 
    Owns the mapping from requirement -> specification -> implementation design
    -> verifier -> current artifact.

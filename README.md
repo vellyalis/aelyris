@@ -168,11 +168,11 @@ pnpm verify:terminal:authenticated-ai-cli-consent-packet
 - Visible agent runtime boundary:
   `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
 - Requirements/spec/design traceability:
-  `docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+  `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
 - Agent message bus superset spec:
-  `docs/specs/ASTRA_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+  `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 - World-class gap closure design:
-  `docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md`
+  `docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md`
 
 ## Repository Hygiene
 

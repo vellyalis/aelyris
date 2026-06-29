@@ -16,7 +16,7 @@ const SOURCE_PATHS = [
   "src-tauri/src/mux/store.rs",
   "src-tauri/src/mux/graph.rs",
   "src-tauri/tests/test_api_3d1.rs",
-  "docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md",
+  "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
 ];
 
 function read(rel) {
@@ -41,7 +41,7 @@ const ipcMuxCommands = read("src-tauri/src/ipc/mux_commands.rs");
 const store = read("src-tauri/src/mux/store.rs");
 const graph = read("src-tauri/src/mux/graph.rs");
 const testApi = read("src-tauri/tests/test_api_3d1.rs");
-const design = read("docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md");
+const design = read("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
 
 const checks = [
   check(

@@ -42,7 +42,7 @@ const productSourceFiles = [
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
-  "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
   "docs/release-build-playbook.md",
 ];
 const optionalGitSourceFiles = [
@@ -164,7 +164,7 @@ function sourceCutoffMsForStep(id) {
     "docs/PUBLICATION_READINESS.md",
     "docs/requirements.md",
     "docs/specs/README.md",
-    "docs/specs/AETHER_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+    "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
   ];
   const stepSources = {
     "goal-documentation-freshness": [

@@ -231,7 +231,7 @@ const muxLiveProcessPreservationFresh =
       mtime("src-tauri/src/mux/store.rs"),
       mtime("src-tauri/src/mux/graph.rs"),
       mtime("src-tauri/tests/test_api_3d1.rs"),
-      mtime("docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md"),
+      mtime("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md"),
     );
 
 const daemonRestartRestoreProofReady =

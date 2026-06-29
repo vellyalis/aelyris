@@ -7,7 +7,7 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const sourcePaths = {
   handoff: "docs/specs/CODEX_HANDOFF.md",
-  worldClassDesign: "docs/specs/AETHER_WORLD_CLASS_GAP_CLOSURE_IMPLEMENTATION_DESIGN_2026-06-25.md",
+  worldClassDesign: "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
   controlMod: "src-tauri/src/control/mod.rs",
   app: "src/App.tsx",
   ipcCommands: "src-tauri/src/ipc/commands.rs",
