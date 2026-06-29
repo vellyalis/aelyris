@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { PRODUCT_NAME } from "../../shared/constants/product";
 import styles from "./UpdateBanner.module.css";
 
 /**
@@ -145,7 +146,7 @@ export function UpdateBanner({
   return (
     <div className={styles.banner} role="status" aria-live="polite">
       <span className={styles.text}>
-        Aether Terminal <strong>{update.version}</strong> is available
+        {PRODUCT_NAME} <strong>{update.version}</strong> is available
         {update.currentVersion ? ` (current ${update.currentVersion})` : ""}.
       </span>
       <button

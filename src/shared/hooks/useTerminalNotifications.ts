@@ -1,5 +1,6 @@
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef } from "react";
+import { PRODUCT_NAME } from "../constants/product";
 import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
 
 interface UseTerminalNotificationsOptions {
@@ -52,7 +53,7 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
           return;
         }
         lastNotificationTime.current[terminalId] = now;
-        sendWindowsNotification("Aether Terminal", "Agent has responded ✦");
+        sendWindowsNotification(PRODUCT_NAME, "Agent has responded ✦");
       }
     },
     [activeTabId, tabs, onTabActivity],

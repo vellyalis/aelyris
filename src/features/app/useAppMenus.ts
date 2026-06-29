@@ -19,6 +19,7 @@ import {
   Terminal as TerminalIcon,
 } from "lucide-react";
 import { useMemo } from "react";
+import { PRODUCT_NAME } from "../../shared/constants/product";
 import type { ShellType, TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { formatOperationalPaneChoice, resolveOperationalPaneChoice } from "../../shared/lib/operationalPaneSelection";
@@ -608,7 +609,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       },
       {
         id: "about",
-        label: "About Aether Terminal",
+        label: `About ${PRODUCT_NAME}`,
         description: "Version and credits",
         category: "Help",
         icon: Info,
@@ -802,7 +803,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         items: [
           { label: "Help Guide", shortcut: "F1", action: () => setHelpVisible(true) },
           { divider: true, label: "" },
-          { label: "About Aether Terminal", action: () => setAboutVisible(true) },
+          { label: `About ${PRODUCT_NAME}`, action: () => setAboutVisible(true) },
         ],
       },
     ],

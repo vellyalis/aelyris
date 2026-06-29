@@ -813,7 +813,7 @@ test.describe("Visual QA layout guard", () => {
     });
     await page.reload();
     await page.setViewportSize({ width: 584, height: 800 });
-    await expect(page.getByRole("heading", { name: "Aether Terminal" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Quorum" })).toBeVisible({ timeout: 10_000 });
 
     const layout = await readSurfaceLayout(page, "body");
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);

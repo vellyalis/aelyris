@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useState } from "react";
+import { PRODUCT_NAME } from "../../shared/constants/product";
 import styles from "./HelpDialog.module.css";
 
 interface HelpDialogProps {
@@ -22,12 +23,12 @@ const SECTIONS: { id: HelpSection; label: string }[] = [
 
 const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
   overview: {
-    title: "Aether Terminal",
+    title: PRODUCT_NAME,
     items: [
       "Project-first Windows terminal for shipping code with AI agents beside the shell.",
       "Run PowerShell/CMD/Git Bash/WSL panes, edit files, review diffs, and launch agents from one project window.",
       "Use the right panel as a work rail: Run starts agents/tools, Git reviews outputs and source state, Health watches live panes and failures.",
-      "Aether is useful when shell work, file edits, agent output, and release checks must stay tied to the same project context.",
+      `${PRODUCT_NAME} is useful when shell work, file edits, agent output, and release checks must stay tied to the same project context.`,
     ],
   },
   terminal: {

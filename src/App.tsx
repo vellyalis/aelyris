@@ -58,6 +58,7 @@ import {
   type AiCliProbeEvidence,
   deriveAiCliLaunchPlan,
 } from "./shared/lib/aiCliLaunchPlanner";
+import { PRODUCT_NAME } from "./shared/constants/product";
 import { getAuditCorrelationId } from "./shared/lib/auditRecovery";
 import {
   commandHistoryRecordsToCommandBlocks,
@@ -944,7 +945,7 @@ function createDevVisualQaSessions(
       name: id,
       status: "coding",
       model: "claude-sonnet",
-      prompt: "Harden Aether Command Center",
+      prompt: "Harden Quorum Command Center",
       startedAt: now - 120_000,
       logs: [
         { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
@@ -3248,7 +3249,7 @@ export function App() {
       if (interval != null) window.clearInterval(interval);
     };
   }, [projectPath]);
-  const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? "Aether") : "Aether";
+  const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? PRODUCT_NAME) : PRODUCT_NAME;
   const workspaceProfile = useMemo(
     () => resolveWorkspaceProfile(projectPath || rootProjectPath || "workspace", activeTabId),
     [activeTabId, projectPath, resolveWorkspaceProfile, rootProjectPath],
@@ -4499,7 +4500,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const title = projectPath ? `${projectName} — Aether Terminal` : "Aether Terminal";
+    const title = projectPath ? `${projectName} — ${PRODUCT_NAME}` : PRODUCT_NAME;
     document.title = title;
     if (!isTauriRuntime()) return;
     import("@tauri-apps/api/window")
@@ -5189,9 +5190,9 @@ export function App() {
             />
 
             <main className="app-main">
-              <nav className="mode-rail" aria-label="Aether mode rail" data-active-mode={productMode}>
+              <nav className="mode-rail" aria-label={`${PRODUCT_NAME} mode rail`} data-active-mode={productMode}>
                 <div className="mode-rail-brand" aria-hidden="true">
-                  A
+                  {PRODUCT_NAME[0]}
                 </div>
                 <div className="mode-rail-list">
                   {PRODUCT_MODE_RAIL.map((mode) => {

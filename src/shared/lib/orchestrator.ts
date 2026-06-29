@@ -336,7 +336,7 @@ export function buildOrchestraPrompts(config: OrchestraConfig): OrchestraPrompt[
           ...ownershipLines,
           role.promptTemplate.replace("{task}", plan.task),
           "",
-          "Aether Orchestra Contract:",
+          "Quorum Orchestra Contract:",
           `- Project: ${plan.projectPath}`,
           `- Worktree branch: ${branchName}`,
           `- Lane: ${role.lane}`,

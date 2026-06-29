@@ -35,7 +35,7 @@ interface SettingsProps {
 }
 
 const THEMES = [
-  { id: "aether-dark", label: "Aether Dark" },
+  { id: "aether-dark", label: "Quorum Dark" },
   { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
   { id: "catppuccin-frappe", label: "Catppuccin Frappé" },
   { id: "catppuccin-macchiato", label: "Catppuccin Macchiato" },
@@ -1138,7 +1138,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 />
                 <p className={styles.hint}>
                   Off (default): terminal sessions keep running in the background daemon and reattach with their
-                  scrollback after an app restart or crash. On: quitting Aether also stops the daemon and every session
+                  scrollback after an app restart or crash. On: quitting Quorum also stops the daemon and every session
                   it hosts.
                 </p>
               </div>
@@ -1152,7 +1152,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>Shell Integration</h3>
               <p className={styles.hint}>
-                Aether parses OSC 133 prompt marks for "jump to previous prompt" and exit-code coloring. Install the
+                Quorum parses OSC 133 prompt marks for "jump to previous prompt" and exit-code coloring. Install the
                 helper script for your shell to enable these features.
               </p>
               <ShellIntegrationSection />

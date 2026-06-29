@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import { PRODUCT_NAME } from "../../shared/constants/product";
 import styles from "./Settings.module.css";
 
 /**
@@ -99,7 +100,7 @@ export function UpdateCheckSection({ checkUpdate = defaultCheckUpdate }: UpdateC
       </div>
       {summary && <div className={className}>{summary}</div>}
       <p className={styles.hint}>
-        Aether is local-only by default; the updater requires a configured endpoint and signing key. See{" "}
+        {PRODUCT_NAME} is local-only by default; the updater requires a configured endpoint and signing key. See{" "}
         <code>docs/auto_updater_setup.md</code> for the one-time setup.
       </p>
     </div>

@@ -43,7 +43,7 @@ test.describe("Phase 1 visual regression — chrome cluster", () => {
     // Reset to welcome state for this single test.
     await page.evaluate(() => localStorage.clear());
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText("Aether Terminal")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Quorum")).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveScreenshot("welcome.png", {
       maxDiffPixelRatio: 0.02,
       fullPage: true,

@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
+import { PRODUCT_NAME } from "../constants/product";
 import styles from "./OnboardingOverlay.module.css";
 
 const STORAGE_KEY = "aether:onboarding-done";
@@ -14,7 +15,7 @@ interface Step {
 
 const STEPS: Step[] = [
   {
-    title: "Welcome to Aether Terminal",
+    title: `Welcome to ${PRODUCT_NAME}`,
     description: "An AI-native workspace for developers on Windows. Here's a quick tour.",
     position: "center",
   },
@@ -42,7 +43,7 @@ const STEPS: Step[] = [
   },
   {
     title: "You're all set!",
-    description: "Explore, build, and ship. Aether is your workspace.",
+    description: `Explore, build, and ship. ${PRODUCT_NAME} is your workspace.`,
     position: "center",
   },
 ];

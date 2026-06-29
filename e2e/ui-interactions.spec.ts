@@ -94,8 +94,8 @@ test.describe("Welcome screen interactions", () => {
     await expect(btn).toBeEnabled();
   });
 
-  test("title shows Aether Terminal branding", async ({ page }) => {
-    await expect(page.getByText("Aether Terminal")).toBeVisible({ timeout: 10_000 });
+  test("title shows Quorum branding", async ({ page }) => {
+    await expect(page.getByText("Quorum")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Project terminal for shells, agents, edits, and review")).toBeVisible();
   });
 });

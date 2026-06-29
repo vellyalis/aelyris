@@ -3,6 +3,7 @@ import { FolderOpen, GitBranch, Settings as SettingsIcon, Upload } from "lucide-
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import logoPng from "../../assets/logo.png";
+import { PRODUCT_NAME } from "../../shared/constants/product";
 import styles from "./WelcomeScreen.module.css";
 
 interface ProjectInfo {
@@ -135,8 +136,8 @@ export function WelcomeScreen({ onOpenProject, onOpenSettings }: WelcomeScreenPr
           animate={{ scale: 1, opacity: 1 }}
           transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 20, delay: 0.05 }}
         >
-          <img src={logoPng} alt="Aether" width={48} height={48} className={styles.logoIcon} />
-          <h1 className={styles.title}>Aether Terminal</h1>
+          <img src={logoPng} alt={PRODUCT_NAME} width={48} height={48} className={styles.logoIcon} />
+          <h1 className={styles.title}>{PRODUCT_NAME}</h1>
         </motion.div>
         <motion.p
           className={styles.greeting}

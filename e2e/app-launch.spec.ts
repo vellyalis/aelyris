@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * E2E tests for Aether Terminal UI rendering.
+ * E2E tests for Quorum UI rendering.
  * Runs against Vite dev server (localhost:1420).
  *
  * Without Tauri backend, the app shows WelcomeScreen
@@ -33,7 +33,7 @@ test.describe("Welcome screen (no project)", () => {
   });
 
   test("renders the welcome screen", async ({ page }) => {
-    await expect(page.getByText("Aether Terminal")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Quorum")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Project terminal for shells, agents, edits, and review")).toBeVisible();
   });
 
