@@ -75,6 +75,87 @@ fn apply_windows_app_identity() {
 #[cfg(not(windows))]
 fn apply_windows_app_identity() {}
 
+/// Apply the DWM system backdrop (Acrylic/Mica) to a window HWND, honoring the
+/// `window_effect` config string ("acrylic" -> `DWMSBT_TRANSIENTWINDOW` real
+/// desktop translucency, "mica" -> `DWMSBT_MAINWINDOW` wallpaper tint; unknown
+/// defaults to acrylic). The opposite type is used as the fallback if the OS
+/// refuses the primary. Extracted so the same logic runs both once at startup
+/// (setup closure) and live, without a restart, via the `set_window_effect`
+/// command. Returns the human-readable label of the backdrop actually applied,
+/// or an error string if both were refused.
+#[cfg(windows)]
+pub(crate) fn apply_window_backdrop(
+    hwnd: windows::Win32::Foundation::HWND,
+    window_effect: &str,
+) -> Result<&'static str, String> {
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW,
+        DWMWA_SYSTEMBACKDROP_TYPE,
+    };
+
+    let prefer_mica = window_effect.eq_ignore_ascii_case("mica");
+    // (label, backdrop type) pairs in apply order: primary first.
+    let (primary_label, primary_value, fallback_label, fallback_value) = if prefer_mica {
+        (
+            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
+            DWMSBT_MAINWINDOW.0,
+            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
+            DWMSBT_TRANSIENTWINDOW.0,
+        )
+    } else {
+        (
+            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
+            DWMSBT_TRANSIENTWINDOW.0,
+            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
+            DWMSBT_MAINWINDOW.0,
+        )
+    };
+
+    let primary_result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_SYSTEMBACKDROP_TYPE,
+            &primary_value as *const i32 as *const _,
+            std::mem::size_of::<i32>() as u32,
+        )
+    };
+    match primary_result {
+        Ok(()) => {
+            log::info!(
+                "window chrome: {primary_label} applied (window_effect={window_effect})"
+            );
+            Ok(primary_label)
+        }
+        Err(primary_err) => {
+            log::warn!(
+                "window chrome: {primary_label} refused ({primary_err}); falling back to {fallback_label}"
+            );
+            let fallback_result = unsafe {
+                DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_SYSTEMBACKDROP_TYPE,
+                    &fallback_value as *const i32 as *const _,
+                    std::mem::size_of::<i32>() as u32,
+                )
+            };
+            match fallback_result {
+                Ok(()) => {
+                    log::info!("window chrome: {fallback_label} applied as fallback");
+                    Ok(fallback_label)
+                }
+                Err(fallback_err) => {
+                    log::warn!(
+                        "window chrome: {fallback_label} also refused ({fallback_err}); window will render with CSS-only glass"
+                    );
+                    Err(format!(
+                        "both backdrops refused: primary={primary_err}; fallback={fallback_err}"
+                    ))
+                }
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     apply_windows_app_identity();
@@ -450,8 +531,7 @@ pub fn run() {
             {
                 use windows::Win32::Foundation::HWND;
                 use windows::Win32::Graphics::Dwm::{
-                    DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE,
-                    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+                    DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
                 };
 
                 // Direct DWM backdrop is the DEFAULT on Windows: Tauri's
@@ -473,64 +553,13 @@ pub fn run() {
                     );
                 } else if let Some(window) = app.get_webview_window("main") {
                     let window_effect = config::load_config().appearance.window_effect;
-                    let prefer_mica = window_effect.eq_ignore_ascii_case("mica");
-                    // (label, backdrop type) pairs in apply order: primary first.
-                    let (primary_label, primary_value, fallback_label, fallback_value) = if prefer_mica
-                    {
-                        (
-                            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
-                            DWMSBT_MAINWINDOW.0,
-                            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
-                            DWMSBT_TRANSIENTWINDOW.0,
-                        )
-                    } else {
-                        (
-                            "Acrylic via DWMSBT_TRANSIENTWINDOW (real desktop translucency)",
-                            DWMSBT_TRANSIENTWINDOW.0,
-                            "Mica via DWMSBT_MAINWINDOW (wallpaper tint)",
-                            DWMSBT_MAINWINDOW.0,
-                        )
-                    };
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
                             let hwnd = HWND(hwnd_raw.0 as *mut _);
 
-                            // 1. Backdrop via DWMWA_SYSTEMBACKDROP_TYPE.
-                            let primary_result = unsafe {
-                                DwmSetWindowAttribute(
-                                    hwnd,
-                                    DWMWA_SYSTEMBACKDROP_TYPE,
-                                    &primary_value as *const i32 as *const _,
-                                    std::mem::size_of::<i32>() as u32,
-                                )
-                            };
-                            match primary_result {
-                                Ok(()) => log::info!(
-                                    "window chrome: {primary_label} applied (window_effect={window_effect})"
-                                ),
-                                Err(primary_err) => {
-                                    log::warn!(
-                                        "window chrome: {primary_label} refused ({primary_err}); falling back to {fallback_label}"
-                                    );
-                                    let fallback_result = unsafe {
-                                        DwmSetWindowAttribute(
-                                            hwnd,
-                                            DWMWA_SYSTEMBACKDROP_TYPE,
-                                            &fallback_value as *const i32 as *const _,
-                                            std::mem::size_of::<i32>() as u32,
-                                        )
-                                    };
-                                    if let Err(fallback_err) = fallback_result {
-                                        log::warn!(
-                                            "window chrome: {fallback_label} also refused ({fallback_err}); window will render with CSS-only glass"
-                                        );
-                                    } else {
-                                        log::info!(
-                                            "window chrome: {fallback_label} applied as fallback"
-                                        );
-                                    }
-                                }
-                            }
+                            // 1. Backdrop via DWMWA_SYSTEMBACKDROP_TYPE. Shared
+                            //    with the live `set_window_effect` command.
+                            let _ = apply_window_backdrop(hwnd, &window_effect);
 
                             // 2. Rounded outer-window corners.
                             //    DWMWCP_ROUND is a no-op on Win10 (the
@@ -1014,6 +1043,7 @@ pub fn run() {
             ipc::get_pr_diff,
             ipc::load_app_config,
             ipc::save_app_config,
+            ipc::set_window_effect,
             ipc::persist_wallpaper_image,
             ipc::read_file,
             ipc::open_in_vscode,

@@ -121,6 +121,33 @@ pub fn save_app_config(config: crate::config::AppConfig) -> Result<(), String> {
     crate::config::save_config(&config)
 }
 
+/// Apply the window backdrop (Acrylic/Mica) to the main window live, without a
+/// restart. The frontend calls this right after `save_app_config` so toggling
+/// Settings → Window Effect takes effect immediately instead of only at the next
+/// launch. The same `apply_window_backdrop` helper runs at startup, so behavior
+/// is identical. On non-Windows platforms this is a no-op that succeeds.
+#[tauri::command]
+pub fn set_window_effect(app: tauri::AppHandle, effect: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use tauri::Manager;
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "main window not found".to_string())?;
+        let hwnd_raw = window
+            .hwnd()
+            .map_err(|e| format!("hwnd unavailable for window effect: {e}"))?;
+        let hwnd = windows::Win32::Foundation::HWND(hwnd_raw.0 as *mut _);
+        crate::apply_window_backdrop(hwnd, &effect)?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, effect);
+        Ok(())
+    }
+}
+
 /// Get watchdog rules
 #[tauri::command]
 pub fn get_watchdog_rules() -> crate::watchdog::WatchdogRules {
