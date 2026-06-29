@@ -64,9 +64,6 @@ const DEFAULT_ACTIONS: ToolkitAction[] = [
   { id: "npm-test", label: "Run Tests", badge: "var(--ctp-red)", command: "npm test" },
 ];
 
-const TOOLKIT_PRIORITY_ACTION_IDS = ["open-vscode", "git-status", "git-log", "commit-push", "create-pr"] as const;
-const TOOLKIT_PRIORITY_ACTION_ID_SET = new Set<string>(TOOLKIT_PRIORITY_ACTION_IDS);
-
 function actionTone(action: ToolkitAction): "git" | "runtime" | "test" | "workspace" | "custom" {
   if (["create-pr", "commit-push", "git-status", "git-log", "worktree"].includes(action.id)) return "git";
   if (action.id === "dev-server") return "runtime";
@@ -149,7 +146,6 @@ export function ToolkitPanel({
   const [importParsed, setImportParsed] = useState<ToolkitAction[] | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const primaryActionId = actions.find((action) => action.id === "dev-server")?.id ?? actions[0]?.id;
-  const priorityActions = actions.filter((action) => TOOLKIT_PRIORITY_ACTION_ID_SET.has(action.id));
 
   useEffect(() => {
     if (forceExpanded) setCollapsed(false);
@@ -394,66 +390,33 @@ export function ToolkitPanel({
           {actions.length === 0 ? (
             <div className={styles.emptyHint}>Create or import a command to run it against the selected pane.</div>
           ) : (
-            <>
-              {priorityActions.length > 0 && (
-                <section
-                  className={styles.priorityDock}
-                  data-toolkit-role="git-vscode"
-                  aria-label="Git and VS Code tools"
-                >
-                  <div className={styles.priorityDockHeader}>
-                    <span>Git + VS Code</span>
-                    <small>{priorityActions.length}</small>
-                  </div>
-                  <div className={styles.priorityActions}>
-                    {priorityActions.map((action) => (
-                      <button
-                        type="button"
-                        key={action.id}
-                        className={styles.priorityAction}
-                        data-tone={actionTone(action)}
-                        onClick={() => void runAction(action)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          handleEdit(action);
-                        }}
-                        title={`${action.command}\nTarget: ${activeTargetLabel}`}
-                      >
-                        <span className={styles.priorityActionIcon}>{ICON_MAP[action.id] ?? null}</span>
-                        <span>{action.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-              <div className={styles.grid}>
-                {actions.map((a) => {
-                  const priority = a.id === primaryActionId ? "primary" : "orbit";
-                  return (
-                    <button
-                      type="button"
-                      key={a.id}
-                      className={styles.action}
-                      data-priority={priority}
-                      data-tone={actionTone(a)}
-                      onClick={() => void runAction(a)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        handleEdit(a);
-                      }}
-                      title={`${a.command}\nTarget: ${activeTargetLabel}`}
-                    >
-                      <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
-                      <span className={styles.actionBody}>
-                        <span className={styles.actionLabel}>{a.label}</span>
-                        <span className={styles.actionCommand}>{a.command}</span>
-                      </span>
-                      <span className={styles.badge} style={{ background: a.badge }} />
-                    </button>
-                  );
-                })}
-              </div>
-            </>
+            <div className={styles.grid}>
+              {actions.map((a) => {
+                const priority = a.id === primaryActionId ? "primary" : "orbit";
+                return (
+                  <button
+                    type="button"
+                    key={a.id}
+                    className={styles.action}
+                    data-priority={priority}
+                    data-tone={actionTone(a)}
+                    onClick={() => void runAction(a)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleEdit(a);
+                    }}
+                    title={`${a.command}\nTarget: ${activeTargetLabel}`}
+                  >
+                    <span className={styles.actionIcon}>{ICON_MAP[a.id] ?? null}</span>
+                    <span className={styles.actionBody}>
+                      <span className={styles.actionLabel}>{a.label}</span>
+                      <span className={styles.actionCommand}>{a.command}</span>
+                    </span>
+                    <span className={styles.badge} style={{ background: a.badge }} />
+                  </button>
+                );
+              })}
+            </div>
           )}
           <div className={styles.bottomActions}>
             <button type="button" className={styles.bottomBtn} onClick={handleAdd}>
