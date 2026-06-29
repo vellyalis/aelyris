@@ -50,7 +50,7 @@ Git Bash 版は `./fleet-dispatch.sh list` / `dispatch 1.3 --dry-run` / `status`
 
 並列エージェントは**互いに直接通信しない**。オーケストレーター（あなた / Opus）が唯一のバス:
 
-- **指示（orchestrator → agent）**: Aelyris の `send_keys_by_target`（`@role` / `role:` / pty-id 宛先解決）。将来は MCP `aelyris.send_steer`。tmux なら `tmux send-keys -t <pane>`。
+- **指示（orchestrator → agent）**: Aelyris の `send_keys_by_target`（`@role` / `role:` / pty-id 宛先解決）。型付きステアは MCP `aelyris.agent.steer_avoid`（対象エージェントを特定ファイルから遠ざける）。
 - **観測（agent → orchestrator）**: `status` の ahead/behind、各 worktree の `git diff`、エージェントが任意で書く `.fleet/status.md`。
 - **結果の受け渡し**: 共有アーティファクト（ファイル）経由。peer-to-peer はしない。
 
@@ -64,4 +64,4 @@ Git Bash 版は `./fleet-dispatch.sh list` / `dispatch 1.3 --dry-run` / `status`
 
 - 設計索引: [`../../docs/specs/README.md`](../../docs/specs/README.md)
 - 設計索引: [`../../docs/specs/README.md`](../../docs/specs/README.md)
-- 段取りスキル: `subagent-orchestration`（同一モデル fan-out）/ `dmux-workflows`（tmux グリッドで Claude+Codex 混在）
+- 段取りスキル: `subagent-orchestration`（同一モデルの fan-out）

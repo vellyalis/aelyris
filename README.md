@@ -57,6 +57,35 @@ design choice, and it pays off four ways:
 When you launch an agent against a named branch, it gets its **own git
 worktree**, so those parallel agents never share a working tree.
 
+### A native terminal multiplexer, rebuilt for a fleet
+
+The terminal layer is **not a wrapper around an existing multiplexer** — panes,
+splits, persistent sessions, and the layout model are written from scratch in
+Rust, designed from the start for many long-running, supervised agents rather
+than one person at a keyboard:
+
+- **A real layout engine** — a workspace → window → tab → pane graph over a binary
+  split tree: split, close, swap, move, rotate, zoom, balanced tiling,
+  even/equalize, and synchronized input across panes, plus break-a-pane-to-its-own-tab
+  and join-back.
+- **A prefix-key binding engine** — a familiar "one prefix chord, then a command
+  key" model that resolves into pane and window commands, with rebindable,
+  conflict-checked bindings (execution is wired in the UI).
+- **Sessions that can outlive the app** — long-running terminals can be hosted by
+  an out-of-process daemon kept deliberately outside the app's kill-on-close job,
+  so it survives an app restart (or crash) and is re-adopted on the next launch.
+  The in-process path rebuilds the **full pane layout** from an atomic
+  per-workspace snapshot and backfills **file-backed scrollback**, so a restored
+  pane comes back with its history rather than blank.
+- **Native, no-orphan process ownership** — every pane is a real native session
+  (ConPTY on Windows) under Rust-owned input, clipboard, and IME, and every
+  spawned child is placed in a kill-on-close job so an agent CLI can never be left
+  orphaned.
+
+This is the substrate the visible panes live in — a multiplexer whose design
+choices (durable sessions, structured layout state, no orphaned processes) only
+make sense if you assume persistent, observed, parallel work.
+
 ### Function-level conflict avoidance ("shared brain")
 
 Many agents can work the **same codebase in parallel without clobbering each
@@ -86,17 +115,41 @@ Nothing reaches your main branch unsupervised:
   update uses an old-OID compare-and-swap, so a branch tip that moved underneath
   is rejected, never silently merged.
 
-### Persistent terminal & workspace substrate
+### One capability surface, two faces
 
-- **Native, Rust-backed terminal** (ConPTY) with Rust-owned input, clipboard, and
-  IME; true split panes; and a **session/scrollback substrate** with a
-  detach/reattach path — the foundation for not losing long-running parallel work
-  across restarts.
-- A broad **MCP control plane** over JSON-RPC (terminal, mux, worktree, fleet,
-  task graph, events, ownership, review, merge), an **event/audit trail**, and
-  **risk classification** around shell, file, and AI-CLI actions.
-- Monaco editor with Vim mode, file tree, search, Git and worktree tooling, and a
-  pull-request inspector.
+Everything Aelyris can do lives in **one backend capability layer** with two faces
+over it: the **cockpit UI** a human drives, and a **JSON-RPC (MCP) control plane**
+an orchestrating AI — or a plain script — drives. Both talk to the same core, so
+what you can do by hand and what an agent can do by call stay in lockstep, against
+structured state rather than scraped terminal text.
+
+The control plane is **60+ typed verbs**, each wired to a real backend module — a
+drift test asserts the catalog and the JSON schemas list the *identical* set, and
+any verb without a handler is rejected at dispatch, so nothing is advertised that
+isn't implemented. The surface spans:
+
+- **Terminal & multiplexer** — list sessions, capture bounded scrollback, read the
+  workspace graph, send guarded input to live panes.
+- **Worktree & fleet** — validate / create / remove git worktrees; route, spawn,
+  stop, and steer agents; read live fleet status.
+- **Coordination** — file- and **symbol-level** ownership (claim / refresh /
+  release, with conflicts), a **knowledge-graph blast-radius** query, a shared
+  project-decision (ADR) store, a typed **intent bus**, and a no-loss **event
+  stream** that survives restart.
+- **Review & merge** — request approval, list pending decisions, and a **durable,
+  commit-bound merge intent** whose approval call takes *only* an intent id, so it
+  can never be re-pointed at a different repo or branch.
+- **Shared-brain snapshot** — one call returns the whole picture: live agents,
+  activity, ownership, unresolved merges, blockers, and project decisions.
+
+Every verb passes through a single **governance authorization** choke point (today
+a local single-operator allow-all seam an enterprise build can swap for RBAC
+without touching a handler), privileged actions are **risk-classified** around
+shell and file commands — including the input an agent CLI receives — and the
+whole stream lands in an **event/audit trail**.
+
+Around all of this sits the rest of the workspace: a Monaco editor with Vim mode, a
+file tree, search, Git and worktree tooling, and a pull-request inspector.
 
 It is **local-first**: this runs on your machine, not a hosted dashboard.
 
@@ -158,7 +211,9 @@ Aelyris aims to become a **foundational layer** that sits *above* the classic,
 hand-configured world of terminal multiplexing and ad-hoc agent orchestration —
 so running many AI agents in parallel, at high speed, with built-in
 safety/review, becomes the default rather than something you assemble yourself.
-The vision is a calm, inspectable cockpit where one agent implements, another
+The bet underneath it: agent coordination shouldn't be a layer of scripts
+scraping a tool built for one person at a keyboard — it should be the substrate
+itself. The vision is a calm, inspectable cockpit where one agent implements, another
 tests, another reviews, and the human keeps the final judgment — with the
 plumbing (persistent multiplexed terminals, governance, audit, worktrees, merge
 gates) bundled underneath so neither an engineer nor a non-engineer has to think

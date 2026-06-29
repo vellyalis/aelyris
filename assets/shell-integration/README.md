@@ -71,8 +71,8 @@ echo $?
 In Aelyris, the "last command" indicator should turn red after
 `false` (exit 1) and recover after `echo $?`. If you see no change, the
 OSC 133 emission is not reaching the terminal — the most common cause is
-that your prompt is already wrapping something else (tmux / screen) that
-swallows the sequences before they reach Aelyris.
+that another program in your prompt chain (for example a terminal multiplexer
+or session wrapper) is swallowing the sequences before they reach Aelyris.
 
 ## Why the scripts are so small
 
