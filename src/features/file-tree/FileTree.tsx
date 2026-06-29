@@ -29,7 +29,6 @@ interface FileTreeProps {
   onFileSelect?: (path: string) => void;
   onOpenDiff?: (path: string) => void;
   changedFiles?: ChangedFileInfo[];
-  onSearch?: (query: string) => void;
 }
 
 interface TreeActions {
@@ -551,15 +550,6 @@ export function FileTree({ rootPath, onFileSelect, onOpenDiff, changedFiles = []
               ))
             )}
           </div>
-          {changedFiles.length > 0 && (
-            <button
-              type="button"
-              className={styles.changesBar}
-              aria-label={`${changedFiles.length} files with changes`}
-            >
-              Show {changedFiles.length} change{changedFiles.length === 1 ? "" : "s"}
-            </button>
-          )}
         </>
       )}
     </div>

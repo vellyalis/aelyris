@@ -293,7 +293,8 @@
   transition: opacity var(--duration-fast) var(--ease-apple);
   flex-shrink: 0;
 }
-.fileRow:hover .fileActions {
+.fileRow:hover .fileActions,
+.fileRow:focus-within .fileActions {
   opacity: 1;
 }
 .fileActions button {
@@ -309,11 +310,4 @@
 }
 .fileActions button:hover {
   color: var(--text-primary);
-}
-
-.empty {
-  padding: var(--space-8);
-  text-align: center;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
 }

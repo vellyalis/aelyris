@@ -377,13 +377,13 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
                       <button
                         type="button"
                         className={styles.fileName}
-                        onClick={() => onOpenDiff?.(f.path)}
+                        onClick={() => onOpenDiff?.(`${projectPath}/${f.path}`)}
                         aria-label={`Open diff for ${f.path}`}
                         title={f.path}
                       >
                         {fileName(f.path)}
                       </button>
-                      <span className={styles.filePath}>{f.path.replace(fileName(f.path), "")}</span>
+                      <span className={styles.filePath}>{f.path.slice(0, f.path.length - fileName(f.path).length)}</span>
                       <span className={styles.fileActions}>
                         {g.id === "changes" || g.id === "untracked" ? (
                           <>
