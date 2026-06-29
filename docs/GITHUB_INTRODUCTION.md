@@ -78,9 +78,9 @@ Aelyris という名前は、air、astral、iris、Elysian のような響きを
 
 このプロジェクトは現在も開発中です。Rust/Tauri ベースのターミナル、見える
 エージェント実行、worktree を意識したプロジェクト操作、オーケストレーション、
-レビュー、ローカル検証ゲートの土台はあります。一方で、リリース品質や
-world-class といった大きな主張は、検証コマンドと証跡で確認できる状態になるまで
-控えめに扱います。
+レビュー、ローカル検証ゲートの土台はあります。一方で、リリース品質などの
+大きな主張は、検証コマンドと証跡で確認できる状態になるまで控えめに扱います。
+Aelyris はアルファであり、製品としての完成は主張しません。
 
 ## README Opening Variant
 
@@ -135,10 +135,9 @@ Good public wording:
 
 Avoid until the matching gates are green:
 
-- release-ready
+- release-ready / production-ready
 - fully autonomous swarm intelligence
 - complete AI team OS
-- tmux replacement
-- Ghostty-class or WezTerm-class terminal
-- BridgeSpace-plus complete
-- world-class terminal AI OS
+
+Aelyris is alpha and does not claim production readiness; capability claims are
+gated by verifiers.

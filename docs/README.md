@@ -20,13 +20,14 @@ Read in this order:
 6. `AGENT_WORKFLOWS.md` - agent/skill workflow routing and closeout rules.
 7. Verifier commands such as `pnpm verify:quality-score` and `pnpm verify:goal:safe` - generate local `.codex-auto/quality/*.json` evidence.
 
-Latest documented release evidence as of the 2026-06-29 JST public-doc refresh. Regenerate locally before release decisions:
+Aelyris is alpha and does not claim production readiness; capability claims are
+gated by verifiers. Regenerate the machine evidence locally before release
+decisions rather than quoting any score from older docs:
 
-- `release-quality-score`: `35/100`, `124/351`, grade `D`
-- `releaseCandidateReady`: `false`
-- Machine field: `releaseCandidateReady=false`
-- `final-goal-safe`: `ok=false`, `status=blocked`
-- `world-class-terminal-ai-os`: `status=external-blocked`
+```powershell
+pnpm verify:quality-score
+pnpm verify:goal:safe
+```
 
 Do not use older score mentions in historical progress files as current release
 truth.
@@ -43,14 +44,10 @@ These files are active entrypoints:
 
 - `requirements.md`
 - `GITHUB_INTRODUCTION.md`
-- `../PLAN.md`
+- `PUBLICATION_READINESS.md`
 - `specs/README.md`
-- `specs/CODEX_HANDOFF.md`
 - `specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
-- `specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
 - `specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
-- `specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md`
-- `specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
 - `AGENT_WORKFLOWS.md`
 
 These documents define what can be claimed, what is still gated, and which
@@ -58,42 +55,21 @@ verifiers prove the current state.
 
 ## Historical And Background Documents
 
-Many root-level `docs/*.md` files are audit trails, older implementation plans,
-or progress logs. They are useful for context but may contain stale score values
-such as old `S`, `A`, `95/100`, or `96/100` release snapshots.
-
-Treat these as historical unless they explicitly point back to `requirements.md`,
-`specs/README.md`, or freshly generated local `.codex-auto/quality` artifacts:
-
-- `AELYRIS_COMMAND_CENTER_EDGE_PROGRESS.md`
-- `AELYRIS_COMMAND_CENTER_EDGE_PLAN.md`
-- `RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md`
-- `NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md`
-- `TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md`
-- `AI_WORKSTATION_*`
-- `LONGRUN_*`
-- older competitive audits and migration plans
-
-Do not delete or rewrite these casually. They are useful history and may be
-referenced by work-unit docs. If a historical file becomes actively maintained
-again, update this index and ensure its status section names the current machine
-truth.
+Older audit trails, implementation plans, and progress logs may surface in git
+history or work-unit notes. They can contain stale score values such as old `S`,
+`A`, `95/100`, or `96/100` release snapshots. Treat any such material as
+historical unless it explicitly points back to `requirements.md`,
+`specs/README.md`, or freshly generated local `.codex-auto/quality` artifacts.
 
 ## Public Claim Policy
 
-Do not claim any of the following in public-facing docs until the matching gate
-is green:
-
-- tmux-equivalent or full tmux replacement,
-- BridgeSpace-plus complete,
-- Ghostty-class or WezTerm-class daily-driver terminal,
-- world-class Windows terminal AI OS,
-- release-ready,
-- strict `agmsg` superset or completed agent-message-bus coordination.
+Aelyris is alpha and does not claim production readiness; capability claims are
+gated by verifiers. Do not claim readiness or completed capabilities in
+public-facing docs until the matching gate is green.
 
 The safe public claim is narrower: Aelyris has a real terminal, mux, sidecar,
-visible-agent, MCP, worktree, ownership, review, and merge substrate, while the
-world-class product claim remains gated.
+visible-agent, MCP, worktree, ownership, review, and merge substrate, while
+larger product claims remain gated.
 
 ## Maintenance Rule
 

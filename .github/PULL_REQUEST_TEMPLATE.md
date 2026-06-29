@@ -24,7 +24,7 @@ State which checks were run and whether any blocker is an external/operator gate
 ## Claim policy
 
 - [ ] This PR does not introduce any claim blocked by `docs/requirements.md`
-      (tmux-equivalent, world-class, release-ready, etc.) without a green gate.
+      (release-ready, production-ready, etc.) without a green gate.
 
 ## Debt check
 

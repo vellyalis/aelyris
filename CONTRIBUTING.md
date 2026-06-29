@@ -12,7 +12,6 @@ Read these files first:
 
 - `AGENTS.md`
 - `docs/requirements.md`
-- `docs/specs/CODEX_HANDOFF.md`
 - `docs/specs/README.md`
 
 Pick one scoped work unit. Avoid broad rewrites unless the current work unit
@@ -44,18 +43,13 @@ or explicit AI-token consent, state that directly in the change notes.
 
 ## Claim Policy
 
-Do not add public wording that claims any of the following unless the matching
-gate is green:
-
-- tmux-equivalent or full tmux replacement,
-- BridgeSpace-plus complete,
-- Ghostty-class or WezTerm-class daily-driver terminal,
-- world-class Windows terminal AI OS,
-- release-ready.
+Aelyris is alpha and does not claim production readiness; capability claims are
+gated by verifiers. Do not add public wording that claims readiness or completed
+capabilities unless the matching gate is green.
 
 The current safe public framing is that Aelyris has a real terminal, mux,
 visible-agent, MCP, worktree, ownership, review, and merge substrate, while
-world-class product claims remain gated.
+larger product claims remain gated.
 
 ## Pull Request Expectations
 

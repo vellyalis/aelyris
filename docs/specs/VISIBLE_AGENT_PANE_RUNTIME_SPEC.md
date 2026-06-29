@@ -1,7 +1,7 @@
 # Visible Agent Pane Runtime Spec
 
 作成: 2026-06-23
-対象: Aelyris を可視エージェント作業台にするための runtime 境界仕様（tmux / BridgeSpace を参照点とする）。
+対象: Aelyris を可視エージェント作業台にするための runtime 境界仕様（tmux 等のマルチプレクサを参照点とする）。
 
 ## 0. 結論
 
@@ -104,11 +104,11 @@ Frontend 側:
 
 ## 2. Product Target
 
-Aelyris の方向性は、BridgeSpace の「賑やかな multi-pane ADE」を正面から真似ることではない。
+Aelyris の方向性は、賑やかな multi-pane ADE を正面から真似ることではない。
 
 目標は:
 
-> tmux-grade durable panes + BridgeSpace-style agent workspace + Aelyris の worktree / review / audit / merge control を一体化した、可視で監査できる AI 開発ワークスペース。
+> tmux-grade durable panes + 可視エージェントワークスペース + Aelyris の worktree / review / audit / merge control を一体化した、可視で監査できる AI 開発ワークスペース。
 
 よって最重要体験は次の 1 画面である。
 

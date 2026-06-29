@@ -45,6 +45,6 @@ material.
 
 ## Current Public-Readiness Status
 
-The project is not release-ready. Release and world-class product claims remain
+The project is not release-ready. Release and readiness claims remain
 gated by machine-readable verifier artifacts under `.codex-auto/quality/` and
 the scripts in `package.json`.

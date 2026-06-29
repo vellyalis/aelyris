@@ -18,7 +18,7 @@ If this file conflicts with `AGENTS.md` or the current claim policy, follow
 ## Claude-Specific Notes
 
 - Do not start from old progress logs. Use `docs/README.md` to distinguish current docs from historical docs.
-- Do not claim release readiness or world-class status from old score snapshots. Regenerate with `pnpm verify:quality-score` and `pnpm verify:goal:safe` when readiness matters.
+- Do not claim release readiness from old score snapshots. Regenerate with `pnpm verify:quality-score` and `pnpm verify:goal:safe` when readiness matters.
 - Visible agent work must use interactive/visible PTY paths. Do not route human-visible panes through `-p` / `--print`.
 - Keep `package.json` as `"private": true` unless npm publication is explicitly planned.
 - Do not run token-spending authenticated AI prompt smoke tests without the documented explicit consent environment variables.

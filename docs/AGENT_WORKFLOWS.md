@@ -40,7 +40,7 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 - Move long verb catalogs, examples, and recovery tables into `references/`.
 - Use scripts only for deterministic repeated checks; document inputs, outputs, and side effects.
 - Require `unknown` or `external-blocked` when code, spec, or live evidence was not checked.
-- A reviewer skill can find risks, but it cannot make a release or world-class claim true.
+- A reviewer skill can find risks, but it cannot make a release or readiness claim true.
 
 ## Minimum Task Closeout
 

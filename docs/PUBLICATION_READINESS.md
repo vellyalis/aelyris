@@ -8,22 +8,18 @@ GitHub readers do not need to infer readiness from scattered historical docs.
 ## Current Verdict
 
 Aelyris can be published as an alpha / experimental project if the README keeps
-the current limitations visible. It should not be published as a stable release
-or advertised as tmux-equivalent, BridgeSpace-plus complete, Ghostty/WezTerm-class,
-world-class, release-ready, or a strict `agmsg` superset.
+the current limitations visible. Aelyris is alpha and does not claim production
+readiness; capability claims are gated by verifiers. It should not be published
+as a stable release.
 
-Latest documented machine evidence, generated locally on 2026-06-29 JST. Regenerate before release decisions:
+Regenerate the machine evidence locally before release decisions:
 
-| Gate | Current state |
-| --- | --- |
-| Release quality | `35/100`, `124/351`, grade `D` |
-| Release candidate | `false` |
-| Machine release flag | `releaseCandidateReady=false` |
-| Final safe gate | `ok=false`, `blocked` |
-| Requirements/spec/design traceability | `pass-doc-traceability-current` |
-| World-class terminal AI OS | `external-blocked` |
-| Release hygiene | `pass-current-release-hygiene-contract` |
-| Final audit residuals | `implementationFixableCount=46`, `policyBlockedCount=1`, `externalBlockedCount=12` |
+```powershell
+pnpm verify:quality-score
+pnpm verify:goal:safe
+pnpm verify:release:hygiene
+pnpm verify:requirements-spec-design-traceability
+```
 
 ## Ready For Public Preview
 
@@ -42,8 +38,8 @@ Remaining gate classes:
 - npm supply-chain audit child-process environment block,
 - mux live restore proof,
 - chunked OSC/WebView2/CDP live proof,
-- world-class aggregate gate,
-- tmux / BridgeSpace / Ghostty / release claim gates,
+- aggregate readiness gate,
+- release claim gates,
 - real OS sleep/resume proof,
 - right-rail visual QA,
 - live command, multipane command, recovered command, and process reconnect
@@ -72,8 +68,8 @@ Then confirm:
   names, shell history, or credentials.
 - New public docs avoid machine-specific absolute paths; use `<repo>`,
   `<codex-home>`, or documented environment variables instead.
-- GitHub description and topics do not overclaim world-class or release-ready
-  status.
+- GitHub description and topics do not overclaim readiness or completed
+  capabilities.
 
 ## Suggested GitHub Description
 

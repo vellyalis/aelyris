@@ -17,77 +17,51 @@ authoritative requirement, specification, design, and proof sources.
 
 ## Current Requirements Authority
 
-1. Product requirements:
-   `docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md`
+The active spec index is `docs/specs/README.md`. Start there for the current read
+order and the authoritative specs. Key still-active specs include:
 
-   Owns the AI Agent OS / autonomous cockpit requirements: Aelyris Control API,
-   Planner / Worker / Reviewer hierarchy, Task Graph, Event Bus, Context Store,
-   Cost Manager, worktree isolation, merge authority, and non-blocking automated
-   safety controls.
-
-2. World-class claim requirements:
-   `docs/specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
-
-   Owns the current gap classification for tmux-grade mux behavior,
-   BridgeSpace-plus AI team OS behavior, Ghostty / WezTerm-class Windows
-   terminal quality, and release readiness.
-
-3. Gap-closure implementation requirements:
-   `docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md`
-
-   Owns the active implementation workstreams, anti-debt rules, fallback policy,
-   G5 native terminal closure gates, and G6 aggregate world-class gate.
-
-4. Agent-message superset requirements:
+1. Agent-message superset requirements:
    `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 
    Owns the `agmsg` comparative audit result, local agent message bus
    requirements, delivery policy, role leases, directive protocol, driver trust,
    and the strict-superset claim boundary.
 
-5. Traceability:
-   `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+2. Visible agent pane runtime boundary:
+   `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
 
-   Owns the mapping from requirement -> specification -> implementation design
-   -> verifier -> current artifact.
+   Owns the visible PTY / interactive TUI rule for human-visible agents and the
+   pane-tree orchestration design.
+
+3. Supporting specs (planner, MCP tool surface, type bridge, cockpit UX,
+   architecture) are indexed in `docs/specs/README.md`.
 
 ## Current Claim Policy
 
-The product must not claim any of these until the matching gate is green:
-
-- tmux-equivalent / full tmux rewrite
-- BridgeSpace-plus complete
-- Ghostty-class or WezTerm-class daily-driver terminal
-- world-class Windows terminal AI OS
-- release-ready
-- strict `agmsg` superset / completed agent-message-bus coordination
+Aelyris is alpha and does not claim production readiness; capability claims are
+gated by verifiers. The product must not claim readiness or completed
+capabilities until the matching gate is green.
 
 The current defensible claim is narrower:
 
 > Aelyris has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
-> worktree, ownership, review, and merge substrate, but the world-class claim is
+> worktree, ownership, review, and merge substrate, but larger product claims are
 > still blocked by durability, persistence, native-quality, and current-proof
 > gates.
 
 ## Current Machine Truth
 
-Run these before claiming readiness:
+Run these before claiming readiness and read the freshly generated artifacts
+rather than any score quoted in prose:
 
 ```powershell
-pnpm verify:world-class-terminal-ai-os
 pnpm verify:quality-score
+pnpm verify:goal:safe
 pnpm verify:current-readiness-source
-pnpm verify:requirements-spec-design-traceability
 ```
 
-Current expected classification after the 2026-06-27 doc sync:
-
-- `.codex-auto/quality/world-class-terminal-ai-os.json`: `status=external-blocked`
-- `.codex-auto/quality/release-quality-score.json`: score `35/100`,
-  `124/351`, grade `D`, `releaseCandidateReady=false`
-- `.codex-auto/quality/current-readiness-source.json`: `status=block`
-
-These artifacts override stale prose, older promotion gates, and historical
+The locally generated `.codex-auto/quality/*.json` artifacts are the current
+machine truth. They override stale prose, older promotion gates, and historical
 green snapshots.
 
 ## Documentation Maintenance Rule
