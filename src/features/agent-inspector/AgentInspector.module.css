@@ -1126,7 +1126,9 @@
 :global(:root[data-mood="aelyris-sakura"]) .modelSelect,
 :global(:root[data-mood="aelyris-sakura"]) .promptField {
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 62%), rgba(255, 246, 250, 0.76);
+  /* Subtle glass tint (mirrors Pro's ~0.05 card), not an opaque pink tile, so
+     the panel/wallpaper shows through the nested session cards. */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 62%), rgba(255, 246, 250, 0.1);
   color: var(--text-primary);
   box-shadow:
     var(--rim-top),
@@ -1136,7 +1138,7 @@
 :global(:root[data-mood="aelyris-sakura"]) .cardActive,
 :global(:root[data-mood="aelyris-sakura"]) .cardSelected {
   background:
-    linear-gradient(90deg, var(--session-subtle, rgba(189, 63, 104, 0.12)), transparent 68%), rgba(255, 241, 248, 0.9);
+    linear-gradient(90deg, var(--session-subtle, rgba(189, 63, 104, 0.12)), transparent 68%), rgba(255, 241, 248, 0.16);
   box-shadow:
     var(--rim-top),
     inset 0 0 0 1px color-mix(in srgb, var(--session-accent, var(--accent)) 28%, transparent),

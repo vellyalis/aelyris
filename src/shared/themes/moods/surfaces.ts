@@ -60,7 +60,7 @@ const PANEL_BLUR = "blur(8px)";
  */
 const PANEL_LEGIBILITY_FILTER_DARK = "blur(18px) saturate(1.3) brightness(0.72)";
 const PANEL_LEGIBILITY_FILTER_CRYSTAL = "blur(20px) saturate(1.28) brightness(0.82)";
-const PANEL_LEGIBILITY_FILTER_LIGHT = "blur(18px) saturate(1.18) brightness(1.02)";
+const PANEL_LEGIBILITY_FILTER_LIGHT = "blur(7px) saturate(1.12) brightness(1.0)";
 
 /**
  * Low-alpha legibility scrim composited into the text-dense panel background
@@ -73,7 +73,7 @@ const PANEL_TEXT_SCRIM_DARK =
 const PANEL_TEXT_SCRIM_CRYSTAL =
   "linear-gradient(180deg, rgba(2, 10, 20, 0.34), rgba(2, 10, 20, 0.28) 70%, rgba(2, 10, 20, 0.34))";
 const PANEL_TEXT_SCRIM_LIGHT =
-  "linear-gradient(180deg, rgba(255, 252, 254, 0.4), rgba(255, 250, 253, 0.32) 70%, rgba(255, 252, 254, 0.4))";
+  "linear-gradient(180deg, rgba(255, 252, 254, 0.12), rgba(255, 250, 253, 0.1) 70%, rgba(255, 252, 254, 0.12))";
 
 /**
  * Chrome legibility scrim — the thin top/bottom chrome (header bar, workspace +
@@ -280,20 +280,20 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     "--settings-card-bg-hover": "rgba(255, 241, 248, 0.84)",
     "--settings-card-bg-active": "rgba(255, 236, 246, 0.9)",
     "--toolkit-grid-bg":
-      "linear-gradient(135deg, rgba(189, 63, 104, 0.075), transparent 38%, rgba(252, 201, 185, 0.09)), rgba(255, 245, 250, 0.72)",
+      "linear-gradient(135deg, rgba(189, 63, 104, 0.075), transparent 38%, rgba(252, 201, 185, 0.09)), rgba(255, 245, 250, 0.18)",
     "--toolkit-grid-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.44), inset 0 -1px 0 rgba(130, 49, 73, 0.12)",
     "--toolkit-tile-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 218, 233, 0.08)), rgba(255, 247, 251, 0.78)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 218, 233, 0.08)), rgba(255, 247, 251, 0.2)",
     "--toolkit-tile-primary-bg":
-      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 46%), rgba(255, 242, 249, 0.82)",
+      "linear-gradient(135deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 46%), rgba(255, 242, 249, 0.26)",
     "--toolkit-tile-hover-bg":
-      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%), rgba(255, 237, 246, 0.88)",
+      "linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%), rgba(255, 237, 246, 0.32)",
     "--toolkit-tile-text": "rgba(47, 22, 33, 0.92)",
     "--toolkit-icon-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(189, 63, 104, 0.06)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(255, 247, 251, 0.78))",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(189, 63, 104, 0.06)), color-mix(in srgb, var(--tone, var(--accent)) 12%, rgba(255, 247, 251, 0.26))",
     "--toolkit-bottom-bg":
-      "linear-gradient(90deg, rgba(189, 63, 104, 0.07), transparent 52%, rgba(252, 201, 185, 0.07)), rgba(255, 244, 250, 0.78)",
-    "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.84)",
+      "linear-gradient(90deg, rgba(189, 63, 104, 0.07), transparent 52%, rgba(252, 201, 185, 0.07)), rgba(255, 244, 250, 0.2)",
+    "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.28)",
   },
   "aelyris-obsidian": darkMoodSurfaces({
     shell: "8, 8, 13",

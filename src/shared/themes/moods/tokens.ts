@@ -376,13 +376,13 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--aelyris-smoke-mauve": "#e8a6b8",
     "--aelyris-moon": "#fffafd",
     "--aelyris-champagne": "#823149",
-    "--glass-clear": "rgba(255, 242, 248, 0.075)",
-    "--glass-ground": "rgba(255, 243, 249, 0.58)",
-    "--glass-frame": "rgba(255, 241, 248, 0.56)",
-    "--glass-standard": "rgba(255, 240, 248, 0.68)",
-    "--glass-dense": "rgba(255, 237, 246, 0.76)",
-    "--glass-thick": "rgba(255, 234, 244, 0.84)",
-    "--glass-solid": "rgba(255, 247, 251, 0.88)",
+    "--glass-clear": "rgba(255, 242, 248, 0.04)",
+    "--glass-ground": "rgba(255, 243, 249, 0.18)",
+    "--glass-frame": "rgba(255, 241, 248, 0.12)",
+    "--glass-standard": "rgba(255, 240, 248, 0.14)",
+    "--glass-dense": "rgba(255, 237, 246, 0.18)",
+    "--glass-thick": "rgba(255, 234, 244, 0.24)",
+    "--glass-solid": "rgba(255, 247, 251, 0.8)",
     "--aelyris-bg": "var(--glass-clear)",
     "--aelyris-bg-sidebar": "var(--glass-standard)",
     "--aelyris-bg-elevated": "var(--glass-dense)",
@@ -401,8 +401,8 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--text-on-accent": "#fffaff",
     "--row-hover": "rgba(189, 63, 104, 0.13)",
     "--row-hover-strong": "rgba(189, 63, 104, 0.2)",
-    "--terminal-canvas-bg": "rgba(83, 33, 56, 0.54)",
-    "--terminal-raster-bg": "rgba(83, 33, 56, 0.88)",
+    "--terminal-canvas-bg": "rgba(83, 33, 56, 0.32)",
+    "--terminal-raster-bg": "rgba(83, 33, 56, 0.5)",
     "--terminal-well-bg":
       "radial-gradient(ellipse at 44% -18%, rgba(255, 198, 219, 0.18), transparent 46%), radial-gradient(ellipse at 78% 18%, rgba(252, 201, 185, 0.1), transparent 38%), linear-gradient(180deg, rgba(111, 43, 73, 0.28), rgba(54, 22, 42, 0.42))",
     "--terminal-chrome-bg": "rgba(78, 31, 54, 0.42)",
@@ -426,11 +426,11 @@ export const MOOD_CSS: Record<MoodPresetId, Record<string, string>> = {
     "--mood-window-rim":
       "inset 0 1px 0 rgba(255, 255, 255, 0.46), inset 0 0 0 1px rgba(130, 49, 73, 0.12), inset 0 -1px 0 rgba(130, 49, 73, 0.06)",
     "--mood-left-panel-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 30%), linear-gradient(135deg, rgba(252, 201, 185, 0.14), rgba(255, 218, 233, 0.16)), rgba(255, 241, 248, 0.86)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 30%), linear-gradient(135deg, rgba(252, 201, 185, 0.12), rgba(255, 218, 233, 0.12)), rgba(255, 241, 248, 0.18)",
     "--mood-center-panel-bg":
       "radial-gradient(ellipse at 50% 0%, rgba(189, 63, 104, 0.05), transparent 44%), linear-gradient(180deg, rgba(255, 248, 252, 0.1), rgba(255, 222, 236, 0.06)), rgba(255, 248, 252, 0.06)",
     "--mood-right-panel-bg":
-      "linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 26%), linear-gradient(145deg, rgba(252, 201, 185, 0.14), rgba(255, 218, 233, 0.17)), rgba(255, 241, 248, 0.88)",
+      "linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 26%), linear-gradient(145deg, rgba(252, 201, 185, 0.12), rgba(255, 218, 233, 0.12)), rgba(255, 241, 248, 0.2)",
     "--mood-widget-bg":
       "linear-gradient(160deg, rgba(255, 255, 255, 0.36), rgba(255, 226, 237, 0.16)), rgba(255, 246, 250, 0.82)",
     "--mood-widget-veil":
