@@ -5,8 +5,7 @@
 //
 // Behavioral proof lives in the Rust suite (review_approve_rejects_overrides_…,
 // request_merge_is_idempotent_…, perform_merge_bound_…); this script guards the
-// SOURCE-LEVEL invariants those tests rely on. See
-// docs/specs/P0-3_DURABLE_MERGE_INTENT_PLAN.md (the 5 hard boundaries).
+// SOURCE-LEVEL invariants those tests rely on (the 5 hard boundaries).
 import fs from "node:fs";
 import path from "node:path";
 

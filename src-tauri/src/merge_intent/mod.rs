@@ -1,5 +1,5 @@
 //! Durable merge intent (P0-3) — the immutable, persisted record of an
-//! operator-approved merge. See `docs/specs/P0-3_DURABLE_MERGE_INTENT_PLAN.md`.
+//! operator-approved merge.
 //!
 //! The merge-defining fields (`repo_path`, `source_branch`, `target_branch`,
 //! `source_oid`, `target_oid`, `task_id`, `intent_id`, `created_at`) are captured

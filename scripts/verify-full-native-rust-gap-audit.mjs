@@ -81,12 +81,18 @@ const rightRailSources = [
   source("src/shared/lib/rightRailGoalTrack.ts"),
   source("src/shared/lib/rightRailAdvisor.ts"),
 ].join("\n");
+// Historical background docs live under docs/history/, which is intentionally
+// not published. A missing historical doc is treated as a skipped (non-blocking)
+// background reference rather than a hard failure: source() returns "" when the
+// file is absent, so these entries simply contribute nothing when unavailable.
 const docs = [
   source("docs/history/NATIVE_RUST_NATIVE_TERMINAL_PLUS_MIGRATION_PLAN.md"),
   source("docs/history/RUST_CORE_NATIVE_TERMINAL_TMUX_WIZARD_GOALS.md"),
   source("docs/history/TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md"),
   source("docs/history/FULL_NATIVE_RUST_FINAL_GOAL.md"),
-].join("\n");
+]
+  .filter((text) => text.length > 0)
+  .join("\n");
 
 const nativeClientPath = ".codex-auto/quality/native-client-spike.json";
 const nativeBoundaryPath = ".codex-auto/quality/native-boundary-contract.json";

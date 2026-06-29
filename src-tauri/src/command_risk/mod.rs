@@ -1,7 +1,7 @@
 //! Backend command-risk policy (P0-4) — the CANONICAL, backend-authoritative classifier
 //! for destructive-command risk. A faithful port of the frontend `src/shared/lib/shellSafety.ts`
 //! (which is now advisory UX only). Every command-carrying backend write path classifies
-//! through here before reaching a PTY. See `docs/specs/P0-4_BACKEND_COMMAND_RISK_PLAN.md`.
+//! through here before reaching a PTY.
 //!
 //! Parity with the frontend is enforced by a SHARED golden corpus (`corpus.json`) asserted
 //! by both the Rust tests here and the Vitest suite, so the two policies cannot drift.

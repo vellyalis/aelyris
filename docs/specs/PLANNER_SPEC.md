@@ -1,15 +1,14 @@
 # Autonomous Planner & Orchestration Loop Spec (WU-5.1 / 5.2)
 
-> ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
-> requirements ([AELYRIS_COCKPIT_REQUIREMENTS](./AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md),
-> v2.0) now specify **full autonomy with no human gate in the critical path**: the
-> **Reviewer agent merges to `main` automatically** once all quality gates are green,
-> and the **watchdog auto-decides** tool-approval instead of routing to a human. The
-> "sequential **gated** merge / never self-grants / surfaced to the human (never
-> auto-granted)" language below describes the **superseded v1 gate model** — under
-> v2 the loop merges automatically via the Reviewer on all-green gates and does not
-> pause for a human. The round/budget runaway guard, star comms, and reviewer ≠
-> implementer rule remain.
+> ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
+> requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
+> autonomy** model: agents can dispatch, review, and merge through **gated controls**,
+> and autonomy is bounded by verifier gates (this is alpha). The loop can merge via
+> the Reviewer (reviewer ≠ implementer) only on all-green gates. The "sequential
+> **gated** merge / never self-grants / surfaced to the human (never auto-granted)"
+> language below describes the **earlier v1 gate model** — treat it as historical on
+> the *merge* and *human-grant* axes. The round/budget runaway guard, star comms, and
+> reviewer ≠ implementer rule remain.
 
 Status: Draft (docs only). The **capstone** of the autonomous team-dev loop.
 Owns: how throwing a one-line task at the orchestrator becomes requirements → WU decomposition →

@@ -1,17 +1,16 @@
 # Aelyris MCP Tool Surface Spec (`aelyris.mcp.v1`)
 
-> ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
-> requirements ([AELYRIS_COCKPIT_REQUIREMENTS](./AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md),
-> v2.0) now specify **full autonomy with no human gate in the critical path**: the
-> **Reviewer agent merges to `main` automatically** once all quality gates are green,
-> and the **watchdog auto-decides** tool-approval (auto-approve / auto-deny, keeping
-> only an auto-deny floor for catastrophic/irreversible ops) instead of routing to a
-> human Decision Inbox. The §3.5 / §4 "GATED / never returns done / human clicks
-> grant / never auto-merges main" content describes the **superseded v1 gate model**
-> — treat it as historical on the *merge* and *human-grant* axes; `request_merge` may
-> resolve to `done` after the Reviewer's all-green verdict, and the grant path's
-> human step is replaced by the watchdog auto-decision. These mechanics are rewritten
-> during Batch E/G. Automated, non-blocking compensating controls remain.
+> ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
+> requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
+> autonomy** model: agents can dispatch, review, and merge through **gated controls**,
+> and autonomy is bounded by verifier gates (this is alpha). A Reviewer agent
+> (reviewer ≠ implementer) can advance `request_merge` to `done` only after all
+> quality gates are green, and tool-approval can be auto-decided within a policy
+> envelope that keeps an auto-deny floor for catastrophic/irreversible ops. The
+> §3.5 / §4 "GATED / never returns done / human clicks grant / never auto-merges
+> main" content describes the **earlier v1 gate model** — treat it as historical on
+> the *merge* and *human-grant* axes; these mechanics are rewritten during Batch E/G.
+> Automated, non-blocking compensating controls and human post-hoc override remain.
 
 Status: Draft / binding design alignment
 Audience: backend (Rust) + orchestration engineering

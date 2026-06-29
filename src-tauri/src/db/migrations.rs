@@ -422,7 +422,6 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         -- rows are the source of truth: the merge-defining columns are captured at
         -- request time and an UPDATE trigger makes them immutable, so approve takes
         -- only an intentId and can never be redirected.
-        -- See docs/specs/P0-3_DURABLE_MERGE_INTENT_PLAN.md.
         CREATE TABLE IF NOT EXISTS merge_intents (
             -- NOT NULL is explicit: a rowid-table PRIMARY KEY allows NULL in
             -- SQLite, and a NULL id would let the immutability trigger's

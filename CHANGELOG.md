@@ -286,8 +286,8 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     palette swap doesn't need a hex grep.
 
 - **Terminal pane quality sweep — silent UX bugs and dead chrome
-  found by review pass.** Self-audit triggered by dogfood "still
-  many low-quality areas around the terminal":
+  found by review pass.** Review pass prompted by feedback on
+  several rough areas around the terminal:
   - **Active pane indicator was wired but unused.**
     `TerminalInfoBar` accepted `isActive` from `PaneTreeRenderer`
     and immediately discarded it (`isActive: _isActive`,
@@ -724,8 +724,8 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 - **Form primitives modernisation — radix Switch + Select replace
   native `<select>` / `<input type=checkbox>` in Settings.**
-  Dogfood: "are you using shadcn / Tailwind? what other old UI is
-  left?" Honest answer: Tailwind + shadcn aren't on this project
+  Prompted by a question about whether shadcn / Tailwind are in use
+  and what older UI remains: Tailwind + shadcn aren't on this project
   by design (Liquid Glass tokens are CSS-Modules-driven), so
   shadcn-style modernisation has to come via Radix primitives.
   Settings was the loudest tell — four native `<select>` boxes
@@ -1117,7 +1117,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 - **Chunked OSC inline image protocol — E2E + offline integration**
   (post-0.2.4 Tier 🔴 #1, Sprint 3 first wave) — locks in correctness
-  without depending on a live Win11 dogfood session.
+  without depending on a live Win11 manual test session.
   - `e2e/image-flows.spec.ts` test 2 is no longer `test.fixme` — the
     Kitty APC escape it used to feed (which ConPTY silently dropped)
     has been replaced with a `powershell -ExecutionPolicy Bypass -File
@@ -1152,7 +1152,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     at `docs/inline-image-dogfood.md` for the 30-second smoke and
     `docs/chunked-osc-image-protocol.md` for the byte spec.
   - `docs/chunked-osc-troubleshooting.md` catalogues every failure
-    mode we've seen so far (no image, garbage on grid, image
+    mode we've seen so far (no image, garbled output on grid, image
     disappearing, `term_image_data` null, signature mismatch, oversize
     DATA frame, ExecutionPolicy block, BSD `od --endian=big` absence,
     diag CDP miss) with diagnostic + fix steps for each.
@@ -1248,7 +1248,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   Kitty graphics protocol (`\x1b_G…\x1b\\`) and Sixel
   (`\x1bP…q…\x1b\\`) escape sequences are now recognised and
   pre-empted by the engine's `advance()` scanner so they no longer
-  leak into the alacritty grid as ASCII garbage. This is the
+  leak into the alacritty grid as stray ASCII noise. This is the
   correctness fix that has to land before pixel decoding can be wired
   in (`docs/sixel-kitty-spike.md`). The new `term::images` module
   contains a boundary scanner mirroring the OSC 133 `ParseStep`
@@ -1332,7 +1332,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   smoke test that asserts `term_image_data(unknown imageId) → null`
   (no PTY behaviour required, always runs when CDP is up). Test 2:
   pipes a Kitty PNG escape through `[Console]::Out.Write` and asserts
-  the payload comes back as a `\x89PNG`-prefixed blob. The dogfood
+  the payload comes back as a `\x89PNG`-prefixed blob. The
   diagnostic (see `scripts/diag-image-escape.mjs` and
   `docs/sixel-kitty-spike.md` § "Sprint 3 — E2E coverage") confirmed
   that `portable-pty 0.8.1` does not pass

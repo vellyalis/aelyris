@@ -101,13 +101,13 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 
-# Internal-only docs (kept local for dev, never published).
+# Internal-only working docs kept local for dev (planning notes, handoffs,
+# and gap/audit drafts). These are not published. Historical docs and local
+# skill packs stay ignored as well.
 docs/history/
 .claude/skills/
 PLAN.md
-docs/specs/CODEX_HANDOFF.md
-docs/specs/*_COCKPIT_REQUIREMENTS_*.md
-docs/specs/*_GAP_AUDIT_*.md
-docs/specs/*_GAP_CLOSURE_*.md
-docs/specs/*_TRACEABILITY_*.md
+docs/specs/*_HANDOFF.md
+docs/specs/*_REQUIREMENTS_2*.md
+docs/specs/*_GAP_*.md
 *.orig

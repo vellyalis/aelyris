@@ -1,16 +1,16 @@
 # Phase 0 + Phase 1 Architecture Spec — Runtime Unification & Worktree Auto-Wiring
 
-> ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
-> requirements ([AELYRIS_COCKPIT_REQUIREMENTS](./AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md),
-> v2.0) now specify **full autonomy with no human gate in the critical path**: the
-> **Reviewer agent merges to `main` automatically** once all quality gates are green,
-> and the **watchdog auto-decides** tool-approval (auto-approve / auto-deny, keeping
-> only an auto-deny floor for catastrophic/irreversible ops) instead of routing to a
-> human Decision Inbox. The §5 "Gate model — the safety boundary" content (the
-> `merge` = GATED / human-decision rows, the "MUST NOT expose a free merge_to_main
-> tool" rule, and the human-clicks-grant flow) describes the **superseded v1 gate
-> model** — treat it as historical on the *merge* and *human-grant* axes; the §5
-> mechanics are rewritten to the auto model during Batch E/G. Automated,
+> ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
+> requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
+> autonomy** model: agents can dispatch, review, and merge through **gated controls**,
+> and autonomy is bounded by verifier gates (this is alpha). A Reviewer agent
+> (reviewer ≠ implementer) can advance a merge to `main` only after all quality gates
+> are green, and tool-approval can be auto-decided within a policy envelope that keeps
+> an auto-deny floor for catastrophic/irreversible ops. The §5 "Gate model — the
+> safety boundary" content (the `merge` = GATED / human-decision rows, the "MUST NOT
+> expose a free merge_to_main tool" rule, and the human-clicks-grant flow) describes
+> the **earlier v1 gate model** — treat it as historical on the *merge* and
+> *human-grant* axes; the §5 mechanics are rewritten during Batch E/G. Automated,
 > non-blocking compensating controls remain (reviewer ≠ implementer, all-green
 > gates, Cost Manager caps, human post-hoc override).
 

@@ -1024,7 +1024,7 @@ impl Drop for ActiveMuxClient {
 /// single-token, single-user deployment — any authenticated caller is
 /// already trusted. If this module ever grows multi-tenant auth, swap
 /// this policy for per-tenant quotas before landing the multi-tenant
-/// change. See `docs/phase3/3d-1-v2-plan.md` for the follow-up note.
+/// change.
 pub struct TicketRegistry {
     tickets: Mutex<HashMap<TicketId, TicketEntry>>,
     max_live: usize,

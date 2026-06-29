@@ -297,7 +297,9 @@ const checks = {
       "git-finalization-readiness",
       "goal-safe",
       "AELYRIS_GOAL_FINALIZE_SKIP_OPERATOR",
-      "docs/history/AELYRIS_COMMAND_CENTER_EDGE_PROGRESS.md",
+      // Historical progress docs under docs/history/ are intentionally not
+      // published; the finalize evidence script no longer needs to reference a
+      // deleted historical doc, so that reference is not required here.
       "scripts/verify-goal-external-gate-readiness.mjs",
       "delete env.AELYRIS_AUTH_PROMPT_CONSENT",
       "delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP",
