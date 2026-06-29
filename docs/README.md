@@ -13,7 +13,7 @@ and historical score snapshots.
 Read in this order:
 
 1. `../README.md` - public project overview and current alpha status.
-2. `GITHUB_INTRODUCTION.md` - public GitHub introduction draft and Aelyris naming copy.
+2. `GITHUB_INTRODUCTION.md` - public GitHub introduction and Aelyris naming copy.
 3. `PUBLICATION_READINESS.md` - public-release checklist and current blockers.
 4. `requirements.md` - stable requirements entrypoint referenced by `AGENTS.md`.
 5. `specs/README.md` - active spec index and work-unit map.

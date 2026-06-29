@@ -2,6 +2,8 @@
 
 # Aelyris
 
+![AI coding agents working in parallel inside Aelyris's visible split panes — four interactive agent CLIs coordinating on separate tasks alongside a shell, with the project file tree on the left and the orchestrator rail on the right](docs/assets/hero-fleet.png)
+
 **A project-first AI development workspace for Windows.** Run many AI coding
 agents in parallel — each in its own visible terminal pane — and ship their work
 safely through worktree isolation, function-level conflict avoidance, and
@@ -21,12 +23,13 @@ what they produced enough to ship it.**
 
 Run several agents at one repository the naive way and it turns into chaos: they
 edit the same files, overwrite each other, and you can't tell who changed what.
-Most tooling either runs one agent at a time, or fans agents out *invisibly* as
-hidden background jobs with no real guardrails — which is exactly what a
+A common failure mode is tooling that either runs one agent at a time, or fans
+agents out *invisibly* as hidden background jobs — which is exactly what a
 non-engineer can't supervise and an engineer can't debug.
 
 Aelyris is the layer that makes parallel AI development **visible, coordinated,
-and safe to ship** — so an engineer never has to hand-wire the plumbing, and a
+and reviewable** — so the work is easy to watch and check rather than blindly
+trusted, and an engineer never has to hand-wire the plumbing while a
 non-engineer never has to learn it.
 
 ## What it does today
@@ -51,8 +54,8 @@ design choice, and it pays off four ways:
 - **Debuggability** — when something goes wrong, the real terminal session *is*
   the log.
 
-Each agent also gets its **own git worktree**, so parallel agents never share a
-working tree.
+When you launch an agent against a named branch, it gets its **own git
+worktree**, so those parallel agents never share a working tree.
 
 ### Function-level conflict avoidance ("shared brain")
 
@@ -61,14 +64,16 @@ other**, because ownership is tracked not just per file but **per symbol (down t
 the function)**:
 
 - Claims/locks carry an inclusive line range with a **lease** (a crashed agent's
-  claims self-release) and a **confidence tier** — exact ranges from
-  tree-sitter / LSP hard-block on overlap, inferred diff-hunk ranges only warn.
+  claims self-release) and a **confidence tier** — exact ranges are parser-backed
+  today (a tree-sitter parse) and hard-block on overlap; inferred diff-hunk ranges
+  only warn. An LSP-backed exact tier is planned but not yet wired.
 - Orchestrated lanes are conflict-aware: **disjoint symbols run in parallel;
   overlapping work is serialized automatically.** Two agents may edit the *same
   file* as long as they own different functions.
-- A code knowledge-graph core answers "if this symbol changes, what's the blast
-  radius?" (the transitive set of dependents), so coordination reasons about
-  structure, not just filenames.
+- A code knowledge-graph core answers "if this module changes, what's the blast
+  radius?" (the transitive set of dependent modules), so coordination reasons
+  about structure, not just filenames. The indexer is module-level today;
+  symbol-level impact is a planned refinement.
 
 ### Auditable review and commit-bound merge
 
@@ -101,24 +106,49 @@ It is **local-first**: this runs on your machine, not a hosted dashboard.
   worktrees, locks, gates, and audit — the low-level plumbing is bundled.
 - **Non-engineers** (the "vibe coding" wave) get the same plumbing as
   **guardrails**: the review/merge gates, audit trail, and function-level
-  conflict avoidance are the safety net that lets someone who *can't*
-  self-review ship without quietly breaking the codebase.
+  conflict avoidance are the safety net that helps make work visible and
+  reviewable for someone who *can't* self-review — a safety net, not a
+  safe-to-ship guarantee.
 
 ## What is coming next
 
-Near-term, planned work (tracked by the same verifier discipline):
+The items below are a **roadmap of planned work**, not shipped capabilities. They
+are tracked under the same verifier discipline as everything else, and each is
+labeled *planned* on purpose to keep the line between done and intended clear.
 
-- End-to-end **session restore across restarts** — the detach/reattach substrate
-  exists today; full live restoration is being hardened.
-- **Live shared-brain population** — the knowledge-graph and impact-analysis core
-  is implemented and unit-tested; wiring it from real repo sources (LSP
-  aggregation) and proving restart/replay is the next adapter.
-- **Local agent messaging** (intent bus) — design target, not yet a completed
-  claim.
-- **LSP go-to-definition, diagnostics, and references** — editor intelligence is
-  currently partial (completion and hover only).
-- Native visual quality: advanced **text shaping and font fallback**.
-- Broader **parallel dispatch** into the central pane tree.
+**Symbol intelligence (planned)**
+
+- **LSP-backed exact symbol extraction** — extraction today is parser/tree-sitter
+  based; a planned LSP `documentSymbol` tier would give exact symbol boundaries.
+- **Symbol-level knowledge-graph blast-radius** — impact analysis is module-level
+  today; per-symbol blast-radius is planned.
+- **LSP go-to-definition, diagnostics, and find-references** — editor intelligence
+  is currently partial (completion and hover only); these are planned.
+
+**Shared brain and session state (planned)**
+
+- **Live shared-brain population from real repo sources** — the knowledge-graph
+  and impact-analysis core exists and is unit-tested; live indexing from real
+  repo sources is planned.
+- **Full session and scrollback restore across restart** — the detach/reattach
+  substrate exists today; full live restore is planned.
+
+**Coordination and ownership (planned)**
+
+- **Typed intent bus and richer agent steering** — planned local agent messaging
+  and steering controls.
+- **Claim persistence and a conflict / parallel-safe badge in the UI** — planned
+  durability for ownership claims plus a visible parallel-safety indicator.
+- **Ownership auto-refresh via a file watcher** — planned automatic refresh of
+  ownership state as files change.
+
+**Native visuals (planned)**
+
+- **Native text shaping (ligatures) and a real window transparency slider** —
+  planned visual-quality work.
+
+These are the planned next layers toward the foundational layer described below —
+each one gated behind a verifier before it becomes a claim.
 
 ## Where this is going (the goal)
 
@@ -192,6 +222,7 @@ non-token checks:
 pnpm verify:release:hygiene
 pnpm verify:requirements-spec-design-traceability
 pnpm verify:quality-score
+pnpm verify:goal:safe
 ```
 
 Token-spending AI prompt validation is opt-in only and never runs without
