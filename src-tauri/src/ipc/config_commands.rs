@@ -131,6 +131,13 @@ pub fn set_window_effect(app: tauri::AppHandle, effect: String) -> Result<(), St
     #[cfg(windows)]
     {
         use tauri::Manager;
+        // Respect the same opt-out the startup path honors (lib.rs setup
+        // closure). Without this, saving settings would re-enable direct DWM
+        // HWND mutation even for an operator who explicitly disabled it.
+        if std::env::var("AELYRIS_DISABLE_DWM_CHROME").as_deref() == Ok("1") {
+            log::info!("set_window_effect: skipped (AELYRIS_DISABLE_DWM_CHROME=1)");
+            return Ok(());
+        }
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "main window not found".to_string())?;

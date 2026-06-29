@@ -556,12 +556,16 @@ export function Settings({ visible, onClose }: SettingsProps) {
     invoke("save_app_config", { config: merged })
       .then(() => {
         // Apply the window backdrop live so switching Acrylic/Mica takes effect
-        // immediately instead of only at the next launch. Best-effort: a failure
+        // immediately instead of only at the next launch. Only when the value
+        // actually changed, so saving unrelated settings does not trigger
+        // needless DWM writes or a spurious error toast. Best-effort: a failure
         // here (e.g. OS refuses the backdrop) must not block saving the rest of
-        // the settings, so swallow it after logging via the toast below.
-        invoke("set_window_effect", { effect: windowEffect }).catch((err) => {
-          toast.error("Failed to apply window effect", String(err));
-        });
+        // the settings, so swallow it after surfacing via the toast.
+        if (windowEffect !== storeWindowEffect) {
+          invoke("set_window_effect", { effect: windowEffect }).catch((err) => {
+            toast.error("Failed to apply window effect", String(err));
+          });
+        }
         setThemeId(theme);
         setMoodPresetId(mood);
         setGhostDiffLiveMode(liveMode);
