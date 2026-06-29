@@ -5,6 +5,7 @@ import { type EditorOpenMode, loadEditorOpenMode, saveEditorOpenMode } from "../
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import {
   sanitizeDefaultShell,
+  sanitizeWindowEffect,
   type TerminalCursorStyle,
   type TerminalTextClarity,
   useAppStore,
@@ -73,8 +74,9 @@ const UI_FONTS: { value: string; label: string }[] = [
   { value: 'system-ui, -apple-system, "Segoe UI", sans-serif', label: "System UI" },
 ];
 const WINDOW_EFFECT_OPTIONS: { value: WindowEffect; label: string }[] = [
-  { value: "mica", label: "Mica (wallpaper tint)" },
-  { value: "acrylic", label: "Acrylic (translucent)" },
+  { value: "transparent", label: "Transparent (see-through to desktop)" },
+  { value: "mica", label: "Mica (opaque wallpaper tint)" },
+  { value: "acrylic", label: "Acrylic (opaque frosted)" },
 ];
 
 function uiFontPrimary(stack: string): string {
@@ -316,7 +318,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setLineHeight(cfg.appearance.line_height);
       setLigatures(cfg.appearance.ligatures);
       setUiFont(matchUiFontValue(cfg.appearance.ui_font_family));
-      setWindowEffect(cfg.appearance.window_effect === "acrylic" ? "acrylic" : "mica");
+      setWindowEffect(sanitizeWindowEffect(cfg.appearance.window_effect));
       replaceThemeOverrides(cfg.appearance.theme_overrides ?? {});
       setDefaultShell(cfg.terminal.default_shell);
       setCursorStyle(cfg.terminal.cursor_style);
@@ -355,7 +357,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setLineHeight(cfg.appearance.line_height);
         setLigatures(cfg.appearance.ligatures);
         setUiFont(matchUiFontValue(cfg.appearance.ui_font_family));
-        setWindowEffect(cfg.appearance.window_effect === "acrylic" ? "acrylic" : "mica");
+        setWindowEffect(sanitizeWindowEffect(cfg.appearance.window_effect));
         setDefaultShell(cfg.terminal.default_shell);
         setCursorStyle(cfg.terminal.cursor_style);
         setCursorBlink(cfg.terminal.cursor_blink);
@@ -555,6 +557,9 @@ export function Settings({ visible, onClose }: SettingsProps) {
     };
     invoke("save_app_config", { config: merged })
       .then(() => {
+        // Window backdrop is applied live by the dropdown's onValueChange (see
+        // set_window_effect there), so Save only needs to persist the config —
+        // re-applying here would touch the DWM on every unrelated settings save.
         setThemeId(theme);
         setMoodPresetId(mood);
         setGhostDiffLiveMode(liveMode);
@@ -1038,16 +1043,23 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   value={windowEffect}
                   onValueChange={(next) => {
                     markEdited();
-                    const effect: WindowEffect = next === "acrylic" ? "acrylic" : "mica";
+                    const effect = sanitizeWindowEffect(next);
                     setWindowEffect(effect);
                     setStoreWindowEffect(effect);
+                    // Apply the backdrop live the moment the effect changes, so
+                    // transparent<->mica<->acrylic switches are immediate (no
+                    // restart). Persisted on Save via save_app_config. Best-effort:
+                    // an OS refusal must not break the dropdown.
+                    invoke("set_window_effect", { effect }).catch((err) => {
+                      toast.error("Failed to apply window effect", String(err));
+                    });
                   }}
                   options={WINDOW_EFFECT_OPTIONS}
                   ariaLabel="Window backdrop"
                 />
                 <p className={styles.hint}>
-                  Windows backdrop type. Acrylic is fully translucent; Mica is a subtle wallpaper tint. Takes effect on
-                  next launch.
+                  Transparent shows the desktop and windows behind through the app (see-through). Mica and Acrylic are
+                  opaque Windows materials that cover the desktop. Applies immediately.
                 </p>
               </div>
             </section>

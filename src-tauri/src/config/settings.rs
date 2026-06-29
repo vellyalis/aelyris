@@ -468,7 +468,10 @@ fn default_true() -> bool {
     true
 }
 fn default_window_effect() -> String {
-    "mica".to_string()
+    // "transparent" = per-pixel see-through (no DWM material). A material
+    // (mica/acrylic) occludes the wry transparent window — see
+    // `backdrop_for_effect` in lib.rs.
+    "transparent".to_string()
 }
 fn default_opacity() -> f32 {
     0.95

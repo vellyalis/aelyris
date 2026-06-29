@@ -12,6 +12,7 @@ function ThemeProbe({
   wallpaper,
   windowOpacity,
   terminalSurfaceOpacity,
+  seeThrough,
 }: {
   themeId: string;
   moodPresetId: MoodPresetId;
@@ -25,6 +26,7 @@ function ThemeProbe({
   };
   windowOpacity?: number;
   terminalSurfaceOpacity?: number;
+  seeThrough?: boolean;
 }) {
   useThemeApplier(
     themeId,
@@ -34,6 +36,7 @@ function ThemeProbe({
     wallpaper,
     windowOpacity,
     terminalSurfaceOpacity,
+    seeThrough,
   );
   return null;
 }
@@ -227,6 +230,41 @@ describe("useThemeApplier", () => {
     expect(style.getPropertyValue("--aelyris-wallpaper-position-x").trim()).toBe("20%");
     expect(style.getPropertyValue("--aelyris-wallpaper-position-y").trim()).toBe("75%");
     expect(style.getPropertyValue("--aelyris-wallpaper-size").trim()).toBe("135% auto");
+  });
+
+  it("keeps the wallpaper backstop transparent in see-through mode so the desktop bleeds through", async () => {
+    // Regression guard: in see-through mode (default) a set wallpaper must NOT
+    // paint an opaque backstop, or it would occlude the live desktop behind the
+    // transparent window — the exact failure the user hit.
+    render(
+      <ThemeProbe
+        themeId="aelyris-dark"
+        moodPresetId="aelyris-pro"
+        wallpaper={{ imagePath: "C:/Users/example/Pictures/wp.jpg", opacity: 0.5 }}
+        seeThrough
+      />,
+    );
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--aelyris-wallpaper-image")).toContain("wp.jpg");
+    });
+    expect(document.documentElement.style.getPropertyValue("--aelyris-wallpaper-backstop").trim()).toBe("transparent");
+  });
+
+  it("uses an opaque wallpaper backstop in opaque material mode (mica/acrylic)", async () => {
+    render(
+      <ThemeProbe
+        themeId="aelyris-dark"
+        moodPresetId="aelyris-pro"
+        wallpaper={{ imagePath: "C:/Users/example/Pictures/wp.jpg", opacity: 0.5 }}
+        seeThrough={false}
+      />,
+    );
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--aelyris-wallpaper-image")).toContain("wp.jpg");
+    });
+    const backstop = document.documentElement.style.getPropertyValue("--aelyris-wallpaper-backstop").trim();
+    expect(backstop).not.toBe("transparent");
+    expect(backstop).toMatch(/^#|rgb/);
   });
 
   it("applies global window opacity as backdrop strength variables without dimming text nodes", async () => {

@@ -2347,6 +2347,7 @@ export function App() {
   const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);
   const appWindowOpacity = useAppStore((s) => s.appWindowOpacity);
   const terminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
+  const windowEffect = useAppStore((s) => s.windowEffect);
   const uiFontFamily = useAppStore((s) => s.uiFontFamily);
   const fallbackTelemetryEvents = useAppStore((s) => s.fallbackTelemetryEvents);
   const recordFallbackTelemetry = useAppStore((s) => s.recordFallbackTelemetry);
@@ -2365,6 +2366,7 @@ export function App() {
     wallpaperForMood,
     appWindowOpacity,
     terminalSurfaceOpacity,
+    windowEffect === "transparent",
   );
 
   useEffect(() => {

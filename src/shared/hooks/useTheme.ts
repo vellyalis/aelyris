@@ -68,6 +68,11 @@ export function useThemeApplier(
   wallpaper?: { imagePath?: string | null; opacity?: number; positionX?: number; positionY?: number; scale?: number },
   windowOpacity = 0.95,
   terminalSurfaceOpacity = 0.82,
+  // See-through window (window_effect="transparent", the default): the wallpaper
+  // is a translucent layer over the live desktop, so its backstop must stay
+  // transparent. When false (opaque mica/acrylic material) the backstop covers
+  // the desktop so the wallpaper reads as a solid backdrop.
+  seeThrough = true,
 ) {
   const mood = normalizeMoodPreset(moodPresetId);
 
@@ -93,9 +98,15 @@ export function useThemeApplier(
     const imagePath = wallpaper?.imagePath?.trim();
     if (imagePath) {
       root.style.setProperty("--aelyris-wallpaper-image", `url("${resolveWallpaperImageUrl(imagePath)}")`);
-      // Opaque mood-appropriate backstop so a scaled/letterboxed/alpha wallpaper still
-      // fully covers the desktop. Transparent when no image keeps the window see-through.
-      root.style.setProperty("--aelyris-wallpaper-backstop", light ? "#fbf2f7" : "#05070e");
+      // See-through (default): keep the backstop transparent so the wallpaper
+      // image floats as a translucent layer and the live desktop/windows behind
+      // bleed through at the wallpaper's opacity. Opaque material modes use a
+      // mood-appropriate backstop so a scaled/letterboxed/alpha image still
+      // fully covers the desktop.
+      root.style.setProperty(
+        "--aelyris-wallpaper-backstop",
+        seeThrough ? "transparent" : light ? "#fbf2f7" : "#05070e",
+      );
     } else {
       root.style.setProperty("--aelyris-wallpaper-image", "none");
       root.style.setProperty("--aelyris-wallpaper-backstop", "transparent");
@@ -148,6 +159,7 @@ export function useThemeApplier(
     wallpaper?.scale,
     windowOpacity,
     terminalSurfaceOpacity,
+    seeThrough,
   ]);
 }
 
