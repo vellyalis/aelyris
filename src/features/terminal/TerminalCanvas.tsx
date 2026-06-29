@@ -325,6 +325,11 @@ export function TerminalCanvas({
   // a scroll-to-live frame on an unchanged snapshot would ref-match every row
   // and skip repaint — leaving stale scrollback pixels on screen.
   const prevScrolledUpRef = useRef<boolean>(false);
+  // Tracks the last raster background color painted into the canvas. A mood
+  // switch only changes this CSS-derived color (cell content is unchanged), so
+  // without it the per-row dirty check skips every row and the canvas keeps the
+  // previous mood's backing color forever.
+  const prevRasterBackgroundRef = useRef<string>("");
   const prevCanvasGeometryRef = useRef<{
     cellWidth: number;
     cellHeight: number;
@@ -745,6 +750,9 @@ export function TerminalCanvas({
     // different source than prevSnapshotRef records, so ref-equality skips
     // would otherwise leave the wrong grid on the canvas.
     const viewModeChanged = prevScrolledUpRef.current !== scrolledUp;
+    // Mood/theme switches change only the raster background color; force a full
+    // repaint so the new backing color reaches every row's pixels.
+    const backgroundChanged = prevRasterBackgroundRef.current !== rasterBackground;
     const prevSel = prevSelectionRef.current;
     const selectionChanged = prevSel !== selection;
     const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch, scrollback.scrollOffset);
@@ -768,7 +776,7 @@ export function TerminalCanvas({
 
     ctx.textBaseline = "top";
 
-    if (dimsChanged || canvasGeometryChanged) {
+    if (dimsChanged || canvasGeometryChanged || backgroundChanged) {
       ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
     }
 
@@ -795,6 +803,7 @@ export function TerminalCanvas({
       // exactly what we want (the whole viewport must repaint).
       const rowContentChanged = !prev || prev.cells[row] !== rowCells;
       if (
+        !backgroundChanged &&
         !shouldRepaintRow({
           dimsChanged,
           canvasGeometryChanged,
@@ -890,6 +899,7 @@ export function TerminalCanvas({
     prevCursorOnRef.current = cursorOn;
     prevGhostRef.current = ghost;
     prevScrolledUpRef.current = scrolledUp;
+    prevRasterBackgroundRef.current = rasterBackground;
     prevCanvasGeometryRef.current = {
       cellWidth: cellMetrics.width,
       cellHeight: cellMetrics.height,
