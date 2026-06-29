@@ -559,7 +559,7 @@ impl MuxKeymapRegistry {
             .lock()
             .map_err(|_| "MuxKeymapRegistry lock poisoned".to_string())?;
         let engine = engines.entry(terminal_id.to_string()).or_insert_with(|| {
-            crate::mux::keymap::KeymapEngine::aether_default()
+            crate::mux::keymap::KeymapEngine::aelyris_default()
                 .unwrap_or_else(|_| crate::mux::keymap::KeymapEngine::default())
         });
         Ok(engine.process_key(key))
@@ -1101,7 +1101,7 @@ pub async fn respawn_terminal(
             .map(|s| s.to_string())
             .collect();
         let mut env = std::collections::HashMap::new();
-        env.insert("QUORUM_SHELL".to_string(), program.clone());
+        env.insert("AELYRIS_SHELL".to_string(), program.clone());
         pty_manager.spawn_command_with_id(
             &spawn_id,
             &program,
@@ -1298,7 +1298,7 @@ pub async fn force_restart_terminal(
             .map(|s| s.to_string())
             .collect();
         let mut env = std::collections::HashMap::new();
-        env.insert("QUORUM_SHELL".to_string(), program.clone());
+        env.insert("AELYRIS_SHELL".to_string(), program.clone());
         let spawn_result = pty_manager.spawn_command_with_id(
             &spawn_id,
             &program,
@@ -3347,7 +3347,7 @@ pub fn start_agent(
                 fields.insert("session_id".into(), stderr_session_id.clone());
                 stderr_log_ring.push_entry(
                     "WARN",
-                    "aether_terminal_lib::agent::stderr",
+                    "aelyris_lib::agent::stderr",
                     line.chars().take(500).collect::<String>(),
                     fields,
                 );
@@ -3395,7 +3395,7 @@ pub fn start_agent(
                             }
                             log_ring.push_entry(
                                 effect.log_level.unwrap_or("INFO"),
-                                "aether_terminal_lib::agent::watchdog",
+                                "aelyris_lib::agent::watchdog",
                                 format!("watchdog {}: {}", payload.decision, payload.tool),
                                 fields,
                             );
@@ -3510,7 +3510,7 @@ pub fn start_chat_agent(
 
     // Build image args: save base64 to temp files
     let image_paths: Vec<String> = if let Some(imgs) = &images {
-        let tmp_dir = std::env::temp_dir().join("aether-chat-images");
+        let tmp_dir = std::env::temp_dir().join("aelyris-chat-images");
         std::fs::create_dir_all(&tmp_dir).ok();
         imgs.iter()
             .enumerate()
@@ -3605,7 +3605,7 @@ pub fn start_chat_agent(
 /// Save a base64-encoded image to a temp file, return the file path
 #[tauri::command]
 pub fn save_temp_image(data: String) -> Result<String, String> {
-    let tmp_dir = std::env::temp_dir().join("aether-chat-images");
+    let tmp_dir = std::env::temp_dir().join("aelyris-chat-images");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
     // Strip data URI prefix if present
     let raw = if let Some(pos) = data.find(',') {
@@ -3794,7 +3794,7 @@ fn save_clipboard_image_impl() -> Result<Option<String>, String> {
         let _ = GlobalUnlock(global);
         let bmp = bmp_bytes_from_dib(&dib)?;
 
-        let tmp_dir = std::env::temp_dir().join("aether-chat-images");
+        let tmp_dir = std::env::temp_dir().join("aelyris-chat-images");
         std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
         let path = tmp_dir.join(format!("clipboard_{}.bmp", uuid::Uuid::new_v4()));
         std::fs::write(&path, bmp).map_err(|e| e.to_string())?;
@@ -4094,13 +4094,13 @@ mod tests {
     fn vscode_diff_args_uses_native_diff_flag() {
         assert_eq!(
             vscode_diff_args(
-                "C:/Users/example/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs",
+                "C:/Users/example/AppData/Local/Temp/aelyris-vscode-diff/HEAD-main.rs",
                 "C:/repo/project/src/main.rs"
             )
             .unwrap(),
             vec![
                 "--diff".to_string(),
-                "C:/Users/example/AppData/Local/Temp/aether-vscode-diff/HEAD-main.rs".to_string(),
+                "C:/Users/example/AppData/Local/Temp/aelyris-vscode-diff/HEAD-main.rs".to_string(),
                 "C:/repo/project/src/main.rs".to_string()
             ]
         );
@@ -4149,7 +4149,7 @@ mod tests {
         }
 
         let unicode_dir =
-            std::env::temp_dir().join(format!("aether-ipc-cwd-馬-{}", std::process::id()));
+            std::env::temp_dir().join(format!("aelyris-ipc-cwd-馬-{}", std::process::id()));
         std::fs::create_dir_all(&unicode_dir).unwrap();
         let normalized = normalize_cwd(Some(unicode_dir.to_string_lossy().to_string())).unwrap();
         let canonical = std::fs::canonicalize(&unicode_dir).unwrap();
@@ -4211,12 +4211,12 @@ mod tests {
     #[test]
     fn command_history_cwd_normalizes_windows_and_url_separators() {
         assert_eq!(
-            normalize_command_history_cwd(r"C:\repo\aether-terminal\"),
-            "C:/repo/aether-terminal"
+            normalize_command_history_cwd(r"C:\repo\aelyris\"),
+            "C:/repo/aelyris"
         );
         assert_eq!(
-            normalize_command_history_cwd("C:/repo/aether-terminal"),
-            "C:/repo/aether-terminal"
+            normalize_command_history_cwd("C:/repo/aelyris"),
+            "C:/repo/aelyris"
         );
         assert_eq!(normalize_command_history_cwd("C:/"), "C:/");
         assert_eq!(normalize_command_history_cwd("   "), ".");

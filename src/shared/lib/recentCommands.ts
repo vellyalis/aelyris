@@ -1,6 +1,6 @@
 import { reportInvokeFailure } from "./fallbackTelemetry";
 
-const STORAGE_KEY = "aether:recentCommands";
+const STORAGE_KEY = "aelyris:recentCommands";
 const MAX_RECENT = 6;
 
 /** Load the recently-used command ID list (most recent first). */

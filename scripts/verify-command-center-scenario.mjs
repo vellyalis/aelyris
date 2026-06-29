@@ -5,11 +5,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(process.cwd());
 const OUT =
-  process.env.AETHER_COMMAND_CENTER_SCENARIO_OUT ??
+  process.env.AELYRIS_COMMAND_CENTER_SCENARIO_OUT ??
   join(ROOT, ".codex-auto", "production-smoke", "command-center-scenario.json");
 const TEST = "src/__tests__/commandCenterScenario.test.ts";
 const NOW = Date.parse("2026-05-19T15:00:00.000Z");
-const WORKSPACE = process.env.AETHER_COMMAND_CENTER_WORKSPACE ?? process.cwd().replaceAll("\\", "/");
+const WORKSPACE = process.env.AELYRIS_COMMAND_CENTER_WORKSPACE ?? process.cwd().replaceAll("\\", "/");
 const TARGET_FILE = "src/features/terminal/NativeTerminalArea.tsx";
 
 const ACTION_PHASE = {
@@ -247,11 +247,11 @@ async function main() {
     name: "Native Terminal Implementer",
     status: "done",
     role: "implementer",
-    owner: "aether",
+    owner: "aelyris",
     workspaceScope: WORKSPACE,
     worktree: {
       name: "native-terminal-edge",
-      path: `${WORKSPACE}/.aether/worktrees/native-terminal-edge`,
+      path: `${WORKSPACE}/.aelyris/worktrees/native-terminal-edge`,
       branch: "codex/native-terminal-edge",
       is_main: false,
       head_sha: "abc123",
@@ -383,7 +383,7 @@ async function main() {
   const impact = traceAgentImpact(graph, "impl");
   const pack = buildContextPack({
     generatedAt: "2026-05-19T15:00:00.000Z",
-    workspace: { name: "Aether Terminal", path: WORKSPACE, branch: "main", threadId: "thread-command-center" },
+    workspace: { name: "Aelyris", path: WORKSPACE, branch: "main", threadId: "thread-command-center" },
     activeTask: {
       id: "edge-command-center",
       title: "Native terminal command center scenario",
@@ -448,7 +448,7 @@ async function main() {
           command.endSequence === 14,
       ) &&
       provenance.tests.some((test) => test.status === "pass") &&
-      provenance.worktrees.includes(`${WORKSPACE}/.aether/worktrees/native-terminal-edge`),
+      provenance.worktrees.includes(`${WORKSPACE}/.aelyris/worktrees/native-terminal-edge`),
     finalReportAndContextReady:
       impact.finalReports.includes("final_report:final-native-edge") &&
       impact.contextPacks.includes("context_pack:handoff-native-edge") &&

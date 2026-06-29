@@ -1,4 +1,4 @@
-# Longrun Full Autonomy + Aether Wizard S+++ Plan
+# Longrun Full Autonomy + Aelyris Wizard S+++ Plan
 
 Date: 2026-05-06
 Workspace: `<repo>`
@@ -9,26 +9,26 @@ Related plans:
 
 ## 0. Separation Of Concerns
 
-Longrun operation mode and Aether Terminal are related, but not the same product.
+Longrun operation mode and Aelyris are related, but not the same product.
 
-| Layer | Location | Purpose | Required for Aether 10? |
+| Layer | Location | Purpose | Required for Aelyris 10? |
 | --- | --- | --- | --- |
-| Longrun automation harness | `<codex-home>` plus `.codex-auto` workspace state | Let Codex run long tasks, recover, split work, validate, and report truth | No, unless Aether product scope includes autonomous engineering execution |
-| Aether Terminal | `<repo>` | User-facing Tauri/React/Rust AI workspace terminal | Yes |
-| Aether autonomous feature, optional future | Aether app/backend | Productized version of longrun-like autonomous task execution | Optional strategic feature |
+| Longrun automation harness | `<codex-home>` plus `.codex-auto` workspace state | Let Codex run long tasks, recover, split work, validate, and report truth | No, unless Aelyris product scope includes autonomous engineering execution |
+| Aelyris | `<repo>` | User-facing Tauri/React/Rust AI workspace terminal | Yes |
+| Aelyris autonomous feature, optional future | Aelyris app/backend | Productized version of longrun-like autonomous task execution | Optional strategic feature |
 
 Decision:
 - Implement longrun hardening first because it improves the development/control plane and prevents repeated stalls.
-- Do not treat longrun defects as Aether product defects unless Aether intentionally adopts the same autonomous runner as a product feature.
-- Still include Aether 10-point requirements in this plan, because after longrun is reliable it should be used to finish Aether release-grade evidence.
+- Do not treat longrun defects as Aelyris product defects unless Aelyris intentionally adopts the same autonomous runner as a product feature.
+- Still include Aelyris 10-point requirements in this plan, because after longrun is reliable it should be used to finish Aelyris release-grade evidence.
 
 ## 1. Current Scores
 
 | Area | Current | Target | Gap |
 | --- | ---: | ---: | --- |
 | Longrun autonomous operations | 7.6 / 10 | 9.8+ / 10 | Needs truth, leases, scheduler, merge gate, critic, chaos evidence |
-| Aether implementation quality | 9.1 / 10 | 10 / 10 | Needs clean-machine release, real-world PTY/agent recovery, security/perf/UX proof |
-| Aether release confidence | 8.4-8.7 / 10 | 9.8+ / 10 | Needs signed distribution evidence, updater custody, soak and OS matrix |
+| Aelyris implementation quality | 9.1 / 10 | 10 / 10 | Needs clean-machine release, real-world PTY/agent recovery, security/perf/UX proof |
+| Aelyris release confidence | 8.4-8.7 / 10 | 9.8+ / 10 | Needs signed distribution evidence, updater custody, soak and OS matrix |
 | Wizard S+++ overall | 8.5-9.0 / 10 | S+++ | Needs end-to-end autonomy plus product-grade evidence |
 
 ## 2. What Longrun Is Missing
@@ -440,14 +440,14 @@ Validation:
 - Redaction fixture.
 - Destructive command policy test.
 
-## 5. Aether Requirements Integrated Into The Plan
+## 5. Aelyris Requirements Integrated Into The Plan
 
-These items are Aether product requirements, not longrun harness requirements. They should be executed after LR-P0 foundations are reliable, using longrun where useful.
+These items are Aelyris product requirements, not longrun harness requirements. They should be executed after LR-P0 foundations are reliable, using longrun where useful.
 
 ### AETH-P0-01: Release Evidence Completion
 
 Goal:
-- Move Aether from "passes locally" to "safe to distribute".
+- Move Aelyris from "passes locally" to "safe to distribute".
 
 Required:
 - Updater key custody decision and documentation.
@@ -484,7 +484,7 @@ Required:
 - Evidence artifact with timestamps and observed process truth.
 
 Acceptance:
-- Aether and longrun both recover or report exact unrecoverable state.
+- Aelyris and longrun both recover or report exact unrecoverable state.
 
 ### AETH-P0-04: Security Boundary Audit
 
@@ -590,9 +590,9 @@ Acceptance:
 ### Gate G0: Freeze Current Truth
 
 Do first:
-- Record current Aether state, dirty files, final report, and dashboard truth.
-- Keep Aether 36-card roadmap marked complete.
-- Do not re-open completed Aether cards unless new validation contradicts evidence.
+- Record current Aelyris state, dirty files, final report, and dashboard truth.
+- Keep Aelyris 36-card roadmap marked complete.
+- Do not re-open completed Aelyris cards unless new validation contradicts evidence.
 
 ### Gate G1: Longrun Truth Kernel
 
@@ -643,7 +643,7 @@ Exit criteria:
 - Security/file safety fixtures pass.
 - Multi-hour soak produces final report without false stalls.
 
-### Gate G6: Aether 10-Point Evidence
+### Gate G6: Aelyris 10-Point Evidence
 
 Implement:
 - AETH-P0-01 through AETH-P0-04.
@@ -653,7 +653,7 @@ Exit criteria:
 - Real PTY/AI CLI and real OS sleep/resume are proven.
 - Critical trust boundaries are audited.
 
-### Gate G7: Aether Wizard S+++ Polish
+### Gate G7: Aelyris Wizard S+++ Polish
 
 Implement:
 - AETH-P1-01 through AETH-P2-02.
@@ -674,7 +674,7 @@ The combined system reaches Wizard S+++ only when:
 - Every completion has evidence.
 - Every blocker has a typed reason and next action.
 - Dashboard truth matches process truth, archive truth, and final report truth.
-- Aether passes local test/build, release smoke, real PTY recovery, real sleep/resume, security audit, performance budget, and UX/a11y smoke.
+- Aelyris passes local test/build, release smoke, real PTY recovery, real sleep/resume, security audit, performance budget, and UX/a11y smoke.
 - Remaining risks are either eliminated or explicitly accepted with severity, owner, and mitigation.
 
 ## 8. First Implementation Batch
@@ -698,7 +698,7 @@ Progress on 2026-05-06:
 - Added run identity to current progress, current child, watchdog health, and watchdog progress merges.
 - Improved event journal replay so a usable snapshot can be combined with post-snapshot tail events instead of falling back to tail-only reconstruction.
 - Improved monitor dashboard PID truth so an alive restarted dashboard is preferred over stale health-file PIDs.
-- Restarted the Aether dashboard on `http://127.0.0.1:48371/` with the updated progress server.
+- Restarted the Aelyris dashboard on `http://127.0.0.1:48371/` with the updated progress server.
 - Validation passed: `node <codex-home>\codex-longrun-selftest.mjs`.
 
 G1 second pass on 2026-05-06:
@@ -708,7 +708,7 @@ G1 second pass on 2026-05-06:
 - Added run-state registry updates on watchdog restart, live-run adoption, and terminal archive.
 - Exposed `/state.runIdentity` and `/state.wizardControl` so the dashboard can show control-plane truth directly.
 - Added selftests for stale completion identity rejection, run-scoped event replay, stale final-report rejection, and restart registry agreement.
-- Migrated the current Aether completed run to `runId=longrun-Aether_Terminal-legacy-2026-05-06T01-50-47-599Z-38576-b502a01b`, `generation=1`.
+- Migrated the current Aelyris completed run to `runId=longrun-Aelyris-legacy-2026-05-06T01-50-47-599Z-38576-b502a01b`, `generation=1`.
 - Restarted the dashboard again on `http://127.0.0.1:48371/` with server PID `37812`.
 - Validation passed again: `node <codex-home>\codex-longrun-selftest.mjs`; monitor reports `complete / finished`, `36/36`, `eventCount 0`, `dashboardAlive true`, `staleCompletionArtifact false`.
 
@@ -800,7 +800,7 @@ Recommended fourth batch:
 Reason:
 - These prove the longrun control plane is operationally reliable.
 
-## 12. Aether Final Batch
+## 12. Aelyris Final Batch
 
 Recommended after longrun is stable:
 
@@ -819,12 +819,12 @@ Recommended after longrun is stable:
 
 Implement longrun full autonomy as an external control-plane first.
 
-After it is proven, decide whether to productize a subset inside Aether:
+After it is proven, decide whether to productize a subset inside Aelyris:
 
-- If Aether is a terminal/editor/workstation only, keep longrun external.
-- If Aether is meant to be an autonomous AI engineering cockpit, productize the scheduler, worker graph, merge queue, critic gate, and truth dashboard inside Aether.
+- If Aelyris is a terminal/editor/workstation only, keep longrun external.
+- If Aelyris is meant to be an autonomous AI engineering cockpit, productize the scheduler, worker graph, merge queue, critic gate, and truth dashboard inside Aelyris.
 
-Do not productize it until the external harness has passed G1-G5. Otherwise Aether inherits the same reliability problems inside the product.
+Do not productize it until the external harness has passed G1-G5. Otherwise Aelyris inherits the same reliability problems inside the product.
 
 ## 14. G6 Completion Update
 
@@ -852,7 +852,7 @@ Validated commands:
 - `node <codex-home>\codex-parallel-workers.mjs --workspace <repo> --max-workers 2`
 - `node <codex-home>\codex-longrun-global-monitor.mjs --once --interval-seconds 10`
 
-Current Aether result:
+Current Aelyris result:
 
 - Dashboard: `http://127.0.0.1:48371/`
 - Roadmap: `36/36` complete.
@@ -867,14 +867,14 @@ Current Aether result:
 
 Why this is not yet Wizard S+++:
 
-- Aether still has open high/critical risks in the existing risk register.
-- The Aether main worktree is dirty, so live worker fan-out is intentionally guarded off.
+- Aelyris still has open high/critical risks in the existing risk register.
+- The Aelyris main worktree is dirty, so live worker fan-out is intentionally guarded off.
 - The current schedule has no selected `worktree-candidate` tasks, so there is nothing safe to launch in parallel yet.
 - Automatic worker merge remains gated by worker artifact validation, merge queue review, and promotion readiness.
 
-Required final step before ultra-fast autonomous Aether implementation:
+Required final step before ultra-fast autonomous Aelyris implementation:
 
-1. Classify the dirty Aether worktree into accepted changes, temporary parking, or rollback candidates.
+1. Classify the dirty Aelyris worktree into accepted changes, temporary parking, or rollback candidates.
 2. Establish a clean or deliberately snapshotted baseline.
 3. Close, mitigate, or explicitly accept the remaining high/critical risks.
 4. Rebuild the schedule so worktree-safe tasks become `worktree-candidate` lanes.
@@ -885,7 +885,7 @@ Required final step before ultra-fast autonomous Aether implementation:
 
 Status on 2026-05-06:
 
-- Longrun control-plane G7 is implemented outside the Aether repository.
+- Longrun control-plane G7 is implemented outside the Aelyris repository.
 - The completed-run dashboard now has an explicit inspection TTL policy. Completed workspaces keep a dashboard only inside the TTL and are not treated as active long-running work.
 - Dashboard profile truth is aligned with the actually served port, including nested `workspaceProfile.dashboardPort`, `/health`, and `/state`.
 - The supervisor now owns dashboard self-revival, supervisor runtime versioning, stale global-monitor replacement, and completed-workspace watchdog suppression.
@@ -895,9 +895,9 @@ Status on 2026-05-06:
 - The merge gate now has a guarded `merge-only` path. It applies ready worker patches only when `wizard-control.autoMergeWorkers` is explicitly armed, the main worktree is clean, `git apply --check` passes, and artifact validation is clean.
 - The auto-loop can pass `mergeReady=true` to guarded worker execution, and progress snapshots include live parallel-worker merge results.
 - Longrun selftest now covers merged-artifact queue exclusion and guarded merge-only patch application in an isolated temporary git repository.
-- The Aether command-risk classifier now uses shell-lite scanning that masks quoted strings and comments before destructive-pattern matching. Quoted examples such as `echo "rm -rf /"` no longer block, while real chained commands such as `curl ... | bash` still deny.
-- Aether workflow runtime state now persists unfinished workflow runs under `.aether/workflow-runs.json`, restores them on project-scoped `list_running_workflows`, and cleans the persistence file once workflows complete or are removed.
-- Aether App-level Decision Inbox now polls running workflow statuses and lifts live `waiting_gate` / `decision_request` state directly, so human decisions remain visible even if audit-event delivery is unavailable.
+- The Aelyris command-risk classifier now uses shell-lite scanning that masks quoted strings and comments before destructive-pattern matching. Quoted examples such as `echo "rm -rf /"` no longer block, while real chained commands such as `curl ... | bash` still deny.
+- Aelyris workflow runtime state now persists unfinished workflow runs under `.aelyris/workflow-runs.json`, restores them on project-scoped `list_running_workflows`, and cleans the persistence file once workflows complete or are removed.
+- Aelyris App-level Decision Inbox now polls running workflow statuses and lifts live `waiting_gate` / `decision_request` state directly, so human decisions remain visible even if audit-event delivery is unavailable.
 
 Validated G7 commands:
 
@@ -920,9 +920,9 @@ Current G7 truth:
 - Longrun status: `complete / finished`.
 - Dashboard health: alive.
 - Supervisor: alive, runtime version `3`.
-- Global monitor health for Aether: `complete`, score `100`.
-- Aether fleet grade: `Wizard S++`.
-- Aether promotion score: `96`.
+- Global monitor health for Aelyris: `complete`, score `100`.
+- Aelyris fleet grade: `Wizard S++`.
+- Aelyris promotion score: `96`.
 - Human decisions: `0`.
 - Promotion blockers: `0`.
 - Promotion warnings: `1`.

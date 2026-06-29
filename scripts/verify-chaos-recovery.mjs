@@ -70,7 +70,7 @@ async function scenario(id, description, fn) {
 }
 
 function makeWorkspace(name) {
-  const workspace = mkdtempSync(join(tmpdir(), `aether-chaos-${name}-`));
+  const workspace = mkdtempSync(join(tmpdir(), `aelyris-chaos-${name}-`));
   const auto = join(workspace, ".codex-auto");
   mkdirSync(auto, { recursive: true });
   writeFileSync(join(workspace, "AGENT_STATE.md"), "# Goal\n\nP2-07 chaos verifier fixture\n", "utf8");
@@ -85,7 +85,7 @@ function cleanupWorkspace(workspace) {
 function stopProcessesMentioningWorkspace(workspace) {
   if (process.platform !== "win32") return;
   const script = `
-$needle = [Environment]::GetEnvironmentVariable('AETHER_CHAOS_WORKSPACE')
+$needle = [Environment]::GetEnvironmentVariable('AELYRIS_CHAOS_WORKSPACE')
 if (-not $needle) { exit 0 }
 Get-CimInstance Win32_Process |
   Where-Object { [int]$_.ProcessId -ne ${process.pid} -and [string]$_.CommandLine -like "*$needle*" } |
@@ -99,7 +99,7 @@ Get-CimInstance Win32_Process |
       encoding: "utf8",
       windowsHide: true,
       timeout: 10_000,
-      env: { ...process.env, AETHER_CHAOS_WORKSPACE: workspace },
+      env: { ...process.env, AELYRIS_CHAOS_WORKSPACE: workspace },
     });
   } catch {
     // Best-effort cleanup; rmSync below still has retries.
@@ -292,7 +292,7 @@ await scenario("moved-workspace-needs-attention", "Treat a moved/missing workspa
       dependency: { kind: "environment", workspace: missingWorkspace },
       environment: {
         workspace: missingWorkspace,
-        packageManager: "definitely-missing-aether-package-manager",
+        packageManager: "definitely-missing-aelyris-package-manager",
       },
     });
     const probe = await probeExternalDependency(analysis, {

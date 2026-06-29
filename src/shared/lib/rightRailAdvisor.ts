@@ -6,12 +6,12 @@ import { listWorkstationGraphChangedFiles, type WorkstationGraph } from "./works
 import { buildWorkstationSummary } from "./workstationSummary";
 
 export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
-  schema: "aether.react.right-rail-compatibility-client.v1",
+  schema: "aelyris.react.right-rail-compatibility-client.v1",
   surface: "right-rail-advisor",
-  primarySurface: "aether-native",
+  primarySurface: "aelyris-native",
   compatibilityRole: "legacy-tauri-react-client",
   productTruthOwner: "rust-native-command-center",
-  nativeContract: "aether.native.right-rail-demotion-proof.v1",
+  nativeContract: "aelyris.native.right-rail-demotion-proof.v1",
   reactOwnsProductTruth: false,
   webviewDispatchRequired: false,
 } as const;

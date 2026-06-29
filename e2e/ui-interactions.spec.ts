@@ -6,18 +6,18 @@ import { test, expect } from "@playwright/test";
  */
 
 function visualQaProjectPath() {
-  return process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+  return process.env.AELYRIS_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 }
 
 const setupProject = async (page: import("@playwright/test").Page) => {
   const projectPath = visualQaProjectPath();
-  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
+  await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
     waitUntil: "domcontentloaded",
   });
   await page.evaluate((path) => {
-    localStorage.setItem("aether:visualQa", "1");
-    localStorage.setItem("aether:visualQaProject", path);
-    localStorage.setItem("aether:onboarding-done", "true");
+    localStorage.setItem("aelyris:visualQa", "1");
+    localStorage.setItem("aelyris:visualQaProject", path);
+    localStorage.setItem("aelyris:onboarding-done", "true");
   }, projectPath);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
@@ -58,25 +58,25 @@ test.describe("Theme persistence", () => {
     const projectPath = visualQaProjectPath();
     await page.goto("/");
     await page.evaluate((path) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", path);
-      localStorage.setItem("aether:theme", "catppuccin-latte");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", path);
+      localStorage.setItem("aelyris:theme", "catppuccin-latte");
     }, projectPath);
     await page.reload();
     await page.waitForTimeout(1000);
 
-    const theme = await page.evaluate(() => localStorage.getItem("aether:theme"));
+    const theme = await page.evaluate(() => localStorage.getItem("aelyris:theme"));
     expect(theme).toBe("catppuccin-latte");
   });
 
   test("model selection persists in localStorage", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.setItem("aether:selectedModel", "claude-opus");
+      localStorage.setItem("aelyris:selectedModel", "claude-opus");
     });
     await page.reload();
 
-    const model = await page.evaluate(() => localStorage.getItem("aether:selectedModel"));
+    const model = await page.evaluate(() => localStorage.getItem("aelyris:selectedModel"));
     expect(model).toBe("claude-opus");
   });
 });
@@ -94,8 +94,8 @@ test.describe("Welcome screen interactions", () => {
     await expect(btn).toBeEnabled();
   });
 
-  test("title shows Quorum branding", async ({ page }) => {
-    await expect(page.getByText("Quorum")).toBeVisible({ timeout: 10_000 });
+  test("title shows Aelyris branding", async ({ page }) => {
+    await expect(page.getByText("Aelyris")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Project terminal for shells, agents, edits, and review")).toBeVisible();
   });
 });

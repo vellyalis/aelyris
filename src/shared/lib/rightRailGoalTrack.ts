@@ -1,10 +1,10 @@
 export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
-  schema: "aether.react.right-rail-compatibility-client.v1",
+  schema: "aelyris.react.right-rail-compatibility-client.v1",
   surface: "right-rail-goal-track",
-  primarySurface: "aether-native",
+  primarySurface: "aelyris-native",
   compatibilityRole: "legacy-tauri-react-client",
   productTruthOwner: "rust-native-command-center",
-  nativeContract: "aether.native.right-rail-demotion-proof.v1",
+  nativeContract: "aelyris.native.right-rail-demotion-proof.v1",
   reactOwnsProductTruth: false,
   webviewDispatchRequired: false,
 } as const;
@@ -362,12 +362,12 @@ function buildConsentRunActions(
   const providers = consentProviders(packet);
   const defaultProvider = defaultConsentProvider(packet, providers);
   const command = packet.command || "pnpm verify:terminal:authenticated-ai-cli-prompt";
-  const requiredEnv = packet.requiredEnv || "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
-  const providerEnv = `QUORUM_AUTH_PROMPT_PROVIDER=${providers.join("|")}`;
+  const requiredEnv = packet.requiredEnv || "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
+  const providerEnv = `AELYRIS_AUTH_PROMPT_PROVIDER=${providers.join("|")}`;
   return providers.map((provider) => {
     const powershellSnippet = [
-      `$env:QUORUM_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"`,
-      `$env:QUORUM_AUTH_PROMPT_PROVIDER="${provider}"`,
+      `$env:AELYRIS_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"`,
+      `$env:AELYRIS_AUTH_PROMPT_PROVIDER="${provider}"`,
       command,
     ].join("\n");
     return {

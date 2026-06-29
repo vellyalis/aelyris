@@ -1,9 +1,9 @@
 [package]
-name = "aether-pty-server"
+name = "aelyris-pty-server"
 version = "0.2.3"
 edition = "2021"
 
 [dependencies]
-aether_terminal_lib = { package = "aether-terminal", path = ".." }
+aelyris_lib = { package = "aelyris", path = ".." }
 log = "0.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

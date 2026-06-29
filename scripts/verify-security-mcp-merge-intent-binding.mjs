@@ -23,13 +23,13 @@ const domain = read("src-tauri/src/merge_intent/mod.rs");
 const controlMerge = read("src-tauri/src/control/merge.rs");
 
 // Isolate the approve handler body so "must NOT contain" checks are scoped to it.
-const approveStart = mcp.indexOf('"aether.review.approve" => {');
-const approveEnd = mcp.indexOf('"aether.review.reject" => {', approveStart);
+const approveStart = mcp.indexOf('"aelyris.review.approve" => {');
+const approveEnd = mcp.indexOf('"aelyris.review.reject" => {', approveStart);
 const approveBody = approveStart >= 0 && approveEnd > approveStart ? mcp.slice(approveStart, approveEnd) : "";
 
 // The approve INPUT SCHEMA block (declared shape) — from its "name" up to the
 // next tool's "name", so the whole schema (incl. "required") is captured.
-const approveSchemaStart = mcp.indexOf('"name": "aether.review.approve"');
+const approveSchemaStart = mcp.indexOf('"name": "aelyris.review.approve"');
 const nextNameStart = approveSchemaStart >= 0 ? mcp.indexOf('"name":', approveSchemaStart + 10) : -1;
 const approveSchema =
   approveSchemaStart >= 0 && nextNameStart > approveSchemaStart ? mcp.slice(approveSchemaStart, nextNameStart) : "";
@@ -191,7 +191,7 @@ const checks = [
 
 const failed = checks.filter((c) => !c.ok);
 const report = {
-  schema: "aether.security.merge-intent-binding.v1",
+  schema: "aelyris.security.merge-intent-binding.v1",
   generatedFromSource: true,
   ok: failed.length === 0,
   total: checks.length,

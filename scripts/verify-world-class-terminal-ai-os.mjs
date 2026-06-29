@@ -47,7 +47,7 @@ const SOURCE_PATHS = [
   "scripts/verify-native-daily-driver-terminal.mjs",
   "scripts/verify-native-text-shaping-fallback.mjs",
   "scripts/verify-native-visual-regression.mjs",
-  "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
 ];
 
 function pathOf(path) {
@@ -508,7 +508,7 @@ const reviewReasons = Object.entries(claimDetails).flatMap(([id, detail]) =>
 );
 
 const report = {
-  schema: "aether.world-class-terminal-ai-os/v1",
+  schema: "aelyris.world-class-terminal-ai-os/v1",
   version: 1,
   ok: status === "pass",
   status,

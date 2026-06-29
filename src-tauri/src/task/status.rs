@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 /// Canonical Task Graph lifecycle states.
 ///
-/// See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+/// See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 /// Requirement 4 (Task Graph). Mirrored in TS by
 /// `src/shared/types/taskStatus.ts` and kept in lockstep by
 /// `src/__tests__/taskStatusContract.test.ts`.

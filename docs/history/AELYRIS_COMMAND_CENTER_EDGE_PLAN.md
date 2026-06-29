@@ -1,8 +1,8 @@
-> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aether is alpha / not release-ready.
-# Aether Command Center Edge Plan
+> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aelyris is alpha / not release-ready.
+# Aelyris Command Center Edge Plan
 
 Date: 2026-05-14
-Owner: Aether Terminal
+Owner: Aelyris
 Status: Updated 2026-06-28 after current release-quality refresh and bundle-budget pass
 
 ## Current Canonical State - 2026-06-28
@@ -13,14 +13,14 @@ Status: Updated 2026-06-28 after current release-quality refresh and bundle-budg
 - The world-class claims remain blocked: tmux, BridgeSpace, Ghostty/WezTerm-class daily-driver quality, and release readiness must not be claimed until the current release-quality and world-class gates pass.
 - The required safe proof registry target is `27/27`, but current final-goal evidence is not complete; stale historical `27/27` phase notes below are retained only as history unless refreshed by the current gate chain.
 - Long external/operator gates persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so resumed work can distinguish a real stall from a sleep/token/signing handoff.
-- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Position
 
-Aether should not compete as "another terminal with AI buttons."
+Aelyris should not compete as "another terminal with AI buttons."
 
 The winning edge is:
 
@@ -43,19 +43,19 @@ The rail should not be called "Mission Control" in product copy. The current use
 
 tmux wins on durable server semantics, prefix/keymaps, windows/panes, scripting, detach/attach, and muscle memory.
 
-Aether must match this locally through the Rust mux core, then exceed it by attaching repo, worktree, task, agent, review, and recovery state to every pane.
+Aelyris must match this locally through the Rust mux core, then exceed it by attaching repo, worktree, task, agent, review, and recovery state to every pane.
 
 ### WezTerm
 
 WezTerm sets the bar for a modern Rust terminal: GPU rendering, panes/tabs/windows, native scrollback, remote mux domains, Lua configuration, rich keybindings, color/font/image capabilities, and CLI control.
 
-Aether should not try to beat WezTerm by only becoming more configurable. It should beat it by making project work explainable and recoverable.
+Aelyris should not try to beat WezTerm by only becoming more configurable. It should beat it by making project work explainable and recoverable.
 
 ### Warp
 
 Warp's edge is an agentic development environment: agents, conversations, context, permissions, task lists, model choice, Active AI, MCP, rules, and team/workflow surfaces.
 
-Aether must answer with a stronger local-first story:
+Aelyris must answer with a stronger local-first story:
 
 - local project and worktree state is the source of truth;
 - panes are real terminals, not opaque chat threads;
@@ -68,13 +68,13 @@ cmux is focused on managing multiple AI coding agents through a native terminal 
 
 ccmux is leaner and Claude Code-oriented. The useful lesson is speed and clarity: opening many agents should feel instant, and the UI should make parallel work obvious.
 
-Aether's opportunity is to combine cmux-style agent workspace control with tmux-grade persistence and a richer project/review layer.
+Aelyris's opportunity is to combine cmux-style agent workspace control with tmux-grade persistence and a richer project/review layer.
 
 ### PraisonAI
 
 PraisonAI is not a terminal competitor; it is an agent/workflow framework. Its relevant strengths are multi-agent orchestration, memory, RAG, tools, MCP, approval/guardrail patterns, dashboard/flow builder, persistence, and many provider integrations.
 
-Aether should borrow the shape, not the category:
+Aelyris should borrow the shape, not the category:
 
 - workflows as visible graphs;
 - role-based agents;
@@ -84,13 +84,13 @@ Aether should borrow the shape, not the category:
 - human handoff;
 - provider/model routing.
 
-The difference: Aether should bind those features to real terminals, real worktrees, real files, and local mux sessions.
+The difference: Aelyris should bind those features to real terminals, real worktrees, real files, and local mux sessions.
 
-## Current Aether Assets
+## Current Aelyris Assets
 
 Already useful:
 
-- Rust mux graph with split, close, move, swap, even, tiled, rotate, break, join, zoom, detach, attach, sync panes, broadcast, durable scrollback, and `aetherctl`.
+- Rust mux graph with split, close, move, swap, even, tiled, rotate, break, join, zoom, detach, attach, sync panes, broadcast, durable scrollback, and `aelys`.
 - Release gates for mux live restore, mux performance, scrollback, IME, focused UI tests, and distribution artifacts.
 - Right rail surfaces:
   - Run / Changes / Health modes;
@@ -111,7 +111,7 @@ Implementation-fixable release blockers are currently closed, but the final rele
 - `pnpm verify:quality-score` reports `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
 - `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`.
 - The remaining blockers are host real sleep/resume evidence and `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
-- The opt-in packet is `authenticated-ai-cli-consent-packet`; running that final smoke requires both `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- The opt-in packet is `authenticated-ai-cli-consent-packet`; running that final smoke requires both `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 - Strict release doctor, signed updater artifacts, `latest.json`, supply-chain audit, Native IME, live WebView2 smoke, mux restore/performance, and scrollback pass; real OS sleep/resume remains host-blocked until a capable/user-initiated sleep cycle emits power events.
 - Risk register scoring reports `0 open, 0 accepted release`.
 
@@ -125,7 +125,7 @@ The right rail has moved from a passive product-edge gap to a guarded Command Ce
 
 ### 2026-05-25 Clauge-Inspired Adjustment
 
-Clauge is useful as an information-architecture reference: explicit modes, purpose-pinned agents, context/worktree/approval visibility, and one-keystroke switching. Aether should adopt that clarity without becoming a generic super-app.
+Clauge is useful as an information-architecture reference: explicit modes, purpose-pinned agents, context/worktree/approval visibility, and one-keystroke switching. Aelyris should adopt that clarity without becoming a generic super-app.
 
 The Command Center/right rail should evolve into a contextual Inspector inside a native mode shell:
 
@@ -137,7 +137,7 @@ The Command Center/right rail should evolve into a contextual Inspector inside a
 
 The detailed plan is `docs/history/CLAUGE_INSPIRED_NATIVE_MODE_SHELL_PLAN_2026-05-25.md`.
 
-The next edge pass should not spend its first energy on more passive telemetry. It should make Aether answer:
+The next edge pass should not spend its first energy on more passive telemetry. It should make Aelyris answer:
 
 - Which run owns this project state?
 - What changed, and why?
@@ -186,7 +186,7 @@ This loop is the edge. Everything in the rail should either advance this loop or
 
 The target is not "better than the current build." The target is a product that feels unfairly useful compared with a normal terminal plus separate AI CLIs.
 
-Use a 200-point internal score, not a 100-point score. Aether should not be considered ready for a flagship release until it can score at least 180/200 in evidence-backed review, and the product goal is 200+ by exceeding the baseline with differentiating features.
+Use a 200-point internal score, not a 100-point score. Aelyris should not be considered ready for a flagship release until it can score at least 180/200 in evidence-backed review, and the product goal is 200+ by exceeding the baseline with differentiating features.
 
 ### Scorecard
 
@@ -201,7 +201,7 @@ Use a 200-point internal score, not a 100-point score. Aether should not be cons
 | Workflow/context/memory | 20 | reusable context packs, approval gates, traces, workflow templates, and local memory/RAG hooks are usable without prompt pasting. |
 | Review/release loop | 15 | changes, provenance, tests, PR readiness, rollback, installers, and release evidence are linked and reproducible. |
 | Security/guardrails | 10 | dangerous commands, path scope, secret exposure, API auth, stream tickets, and automation rules are explicit and tested. |
-| Product explanation and onboarding | 10 | a new user understands why Aether exists within one minute without reading docs. |
+| Product explanation and onboarding | 10 | a new user understands why Aelyris exists within one minute without reading docs. |
 | Distribution and operations | 10 | app identity, task-manager identity, installer, updater, logs, crash handling, and diagnostics are production-grade. |
 | Extensibility and future native path | 10 | CLI/API/config boundaries allow a future full-native Rust shell and third-party automation. |
 
@@ -426,7 +426,7 @@ Goal: prevent old URL parameters, stale edge-loop history, or cached rail state 
 Tasks:
 
 - Add a rail truth banner/state reducer that separates URL-requested scenario state from authoritative runtime state.
-- Mark visual QA/debug scenario state as simulated when `aetherVisualQa=1` or stale `edgeLoop` history is present.
+- Mark visual QA/debug scenario state as simulated when `aelyrisVisualQa=1` or stale `edgeLoop` history is present.
 - Add "current evidence" links to quality score, release doctor, live smoke, and risk closure artifacts when in diagnostic mode.
 - Add tests for stale `state=blocked` URL, stale edge history, fresh `releaseCandidateReady=false` consent-gated truth, and real blocked runtime state.
 
@@ -455,7 +455,7 @@ Exit criteria:
 
 ### Milestone 3: Worktree/Pane/Agent Provenance
 
-Goal: make Aether impossible to confuse with a generic terminal.
+Goal: make Aelyris impossible to confuse with a generic terminal.
 
 Tasks:
 
@@ -584,14 +584,14 @@ Tasks:
   - dim/blur;
   - contrast constraints.
 - Add native-shell compatibility constraints to every new rail/terminal feature: no new mux truth only in React.
-- Add a small `aether-native` terminal client milestone to prove transparent window, native terminal rendering, native input, and daemon attach.
+- Add a small `aelyris-native` terminal client milestone to prove transparent window, native terminal rendering, native input, and daemon attach.
 - Keep Monaco/editor outside the critical native path; default to VSCode/external editor for full editing.
 
 Exit criteria:
 
 - New customization features can be implemented once and consumed by both shells.
 - The native spike attaches to the same session graph instead of creating a parallel terminal.
-- Full-native work advances Aether's edge: lower latency, cleaner identity, better IME/clipboard, and stronger customization.
+- Full-native work advances Aelyris's edge: lower latency, cleaner identity, better IME/clipboard, and stronger customization.
 
 ## Scoring Target
 
@@ -606,7 +606,7 @@ Exit criteria:
 | Product explanation in first minute | C+ | A |
 | Release confidence | A- | A+ |
 
-The first true S-grade claim should wait until Milestones 1-3 are implemented and validated. Milestones 4-6 are what turn Aether from a strong local terminal into a product people can justify choosing.
+The first true S-grade claim should wait until Milestones 1-3 are implemented and validated. Milestones 4-6 are what turn Aelyris from a strong local terminal into a product people can justify choosing.
 
 ## Immediate Next Implementation Slice
 
@@ -634,7 +634,7 @@ This is the highest leverage slice because it changes the product from "feature 
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -648,7 +648,7 @@ This is the highest leverage slice because it changes the product from "feature 
 - Current release score evidence before the self-referential final-goal map is `90/100`, `303/335`, `releaseCandidateReady=false`.
 - Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Final Goal Evidence Refresh
 
@@ -656,4 +656,4 @@ This is the highest leverage slice because it changes the product from "feature 
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - The terminal render-fidelity gate is green, including the Sharp text path that avoids terminal-shell backdrop blur for canvas glyph clarity.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.

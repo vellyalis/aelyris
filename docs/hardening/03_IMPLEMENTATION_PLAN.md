@@ -50,10 +50,10 @@
 - **変更**: 各 Manager に**同一DBファイルへの専用接続**を `attach_db` で渡し、`load_*` で in-memory を再構築（[`02_SPEC.md` 実装メモ](02_SPEC.md)）。
 - **エラー方針（実装で確定）**: load失敗は**loud な error ログ＋in-memory継続（soft-fail）**。デスクトップアプリを丸ごと止めない。重要: 失敗時は `attach_db` が Err を返し **db を attach しない**ので、以後のミューテーションは永続化されず、壊れた可能性のあるDBを**上書きしない**（安全）。
 - **テスト**: lib.rs は実機寄りなので、復元ロジック本体は P1-2/P1-3 のユニットでカバー済。ここは配線。
-- **観点チェック**: infra without wiring 禁止 → MCP `aether.context.*` / `aether.task.*` が新Manager経由で永続化されることを1つ結合テスト。
+- **観点チェック**: infra without wiring 禁止 → MCP `aelyris.context.*` / `aelyris.task.*` が新Manager経由で永続化されることを1つ結合テスト。
 
 ### P1-5 ⬜ 実機検証（耐久性の証明）
-- **手順**: `pnpm tauri dev` → 指揮役で context.set + task数件をRunningへ → プロセス kill → 再起動 → context/task が復元されていることを確認（CDPまたはMCP `aether.context.all` / `aether.task.list`）。
+- **手順**: `pnpm tauri dev` → 指揮役で context.set + task数件をRunningへ → プロセス kill → 再起動 → context/task が復元されていることを確認（CDPまたはMCP `aelyris.context.all` / `aelyris.task.list`）。
 - **記録**: 結果を [`00_README.md`](00_README.md) ステータストラッカーと memory `project_visible_pane_integration_handoff.md` に追記。
 - **完了条件**: FR-1/2/3 の受入条件すべてPASS。
 
@@ -77,7 +77,7 @@
 - P3-2 ⬜ `event_bus/manager.rs` を durable log 主・ring従に。`recent`/`by_channel` は `since` ベースへ。
 - P3-3 ⬜ 256件超でも全件保持・購読カーソル欠番なしを assert（FR-4受入）。
 - P3-4 ⬜ （任意）tokio broadcast で真のpush。ポーリング購読は後方互換で残す。
-- P3-5 ⬜ MCP `aether.event.*` を since カーソル対応に（infra wiring）。
+- P3-5 ⬜ MCP `aelyris.event.*` を since カーソル対応に（infra wiring）。
 
 ---
 

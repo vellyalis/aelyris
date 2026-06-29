@@ -8,7 +8,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
-  background: var(--aether-bg-elevated);
+  background: var(--aelyris-bg-elevated);
   border-bottom: 1px solid var(--gold);
   color: var(--text-primary);
   font-size: var(--text-sm);

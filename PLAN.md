@@ -1,17 +1,17 @@
-# Quorum Plan
+# Aelyris Plan
 
 Date: 2026-06-28 JST
 Status: active roadmap; not a release claim
-Primary spec: `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+Primary spec: `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 
 This plan keeps the product direction concrete after the `agmsg` comparative
-audit. The aim is to make Quorum more than a terminal and more than a message
+audit. The aim is to make Aelyris more than a terminal and more than a message
 CLI: a local-first workspace where agents, panes, tasks, reviews, worktrees, and
-evidence stay connected.
+evidence stay connected. The coordination engine for this layer is **Qralis**.
 
 ## Current Truth
 
-Quorum is still alpha and not release-ready. Current local evidence shows
+Aelyris is still alpha and not release-ready. Current local evidence shows
 `releaseCandidateReady=false`; the latest `release-quality-score` artifact is
 `43/100`, `150/351`, grade `D`. Public claims must remain guarded until current
 verifier artifacts are green.
@@ -24,7 +24,7 @@ The agmsg comparison adds one new claim boundary:
 
 ## Product North Star
 
-Quorum should become a calm cockpit for multi-agent development.
+Aelyris should become a calm cockpit for multi-agent development.
 
 - Humans keep the final judgment.
 - Agents work in visible lanes and isolated worktrees.
@@ -45,7 +45,7 @@ Deliverables:
 
 Acceptance:
 
-- `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md` exists.
+- `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md` exists.
 - `docs/requirements.md` points to it.
 - `docs/specs/README.md` and traceability mention it.
 - A reviewer can see exactly what is missing before public claims.
@@ -75,7 +75,7 @@ Goal: match and exceed agmsg delivery behavior.
 Work:
 
 - Implement `monitor`, `turn`, `both`, and `off`.
-- Add Quorum-specific policies: `review_gate`, `task_scope`, `human_only`.
+- Add Aelyris-specific policies: `review_gate`, `task_scope`, `human_only`.
 - Prove idempotency for `both`.
 - Prove no worker/session starts for empty inbox or `off` mode.
 
@@ -106,7 +106,7 @@ Goal: let agents request host actions safely.
 
 Work:
 
-- Define `aether.directive.v1` schema (the `aether.*` namespace is an internal code identifier and is unaffected by the Quorum product name).
+- Define `qralis.directive.v1` schema for the Qralis coordination engine.
 - Parse directives from agent output.
 - Preview risk and required authority.
 - Execute only through existing command-risk/tool-approval gates.
@@ -182,7 +182,7 @@ Work:
 Acceptance:
 
 - `agmsg-superset.json` is current and green.
-- Public docs may then say Quorum is an agmsg-class local messaging superset.
+- Public docs may then say Aelyris is an agmsg-class local messaging superset.
 - Still do not claim release-ready unless the release and world-class gates pass.
 
 ## Risks

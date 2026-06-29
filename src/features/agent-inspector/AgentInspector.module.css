@@ -732,7 +732,7 @@
 .modelSelect {
   flex: 1;
   padding: var(--space-2) var(--space-4);
-  background: var(--aether-bg-card);
+  background: var(--aelyris-bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -758,7 +758,7 @@
 .promptField {
   width: 100%;
   padding: var(--space-3) var(--space-4);
-  background: var(--aether-bg-card);
+  background: var(--aelyris-bg-card);
   border: 1px solid var(--gold-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -1110,21 +1110,21 @@
   margin: var(--space-2) var(--space-4);
 }
 
-:global(:root[data-mood="aether-sakura"]) .tab:hover,
-:global(:root[data-mood="aether-sakura"]) .iconBtn:hover,
-:global(:root[data-mood="aether-sakura"]) .activityResetBtn:hover,
-:global(:root[data-mood="aether-sakura"]) .bulkAction:hover {
+:global(:root[data-mood="aelyris-sakura"]) .tab:hover,
+:global(:root[data-mood="aelyris-sakura"]) .iconBtn:hover,
+:global(:root[data-mood="aelyris-sakura"]) .activityResetBtn:hover,
+:global(:root[data-mood="aelyris-sakura"]) .bulkAction:hover {
   background: color-mix(in srgb, var(--accent) 10%, rgba(255, 246, 250, 0.72));
   color: var(--text-primary);
 }
 
-:global(:root[data-mood="aether-sakura"]) .card,
-:global(:root[data-mood="aether-sakura"]) .sessionActivitySummary,
-:global(:root[data-mood="aether-sakura"]) .activitySearchRow,
-:global(:root[data-mood="aether-sakura"]) .activityChip,
-:global(:root[data-mood="aether-sakura"]) .worktreeInput,
-:global(:root[data-mood="aether-sakura"]) .modelSelect,
-:global(:root[data-mood="aether-sakura"]) .promptField {
+:global(:root[data-mood="aelyris-sakura"]) .card,
+:global(:root[data-mood="aelyris-sakura"]) .sessionActivitySummary,
+:global(:root[data-mood="aelyris-sakura"]) .activitySearchRow,
+:global(:root[data-mood="aelyris-sakura"]) .activityChip,
+:global(:root[data-mood="aelyris-sakura"]) .worktreeInput,
+:global(:root[data-mood="aelyris-sakura"]) .modelSelect,
+:global(:root[data-mood="aelyris-sakura"]) .promptField {
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 62%), rgba(255, 246, 250, 0.76);
   color: var(--text-primary);
@@ -1133,8 +1133,8 @@
     inset 0 0 0 1px rgba(130, 49, 73, 0.06);
 }
 
-:global(:root[data-mood="aether-sakura"]) .cardActive,
-:global(:root[data-mood="aether-sakura"]) .cardSelected {
+:global(:root[data-mood="aelyris-sakura"]) .cardActive,
+:global(:root[data-mood="aelyris-sakura"]) .cardSelected {
   background:
     linear-gradient(90deg, var(--session-subtle, rgba(189, 63, 104, 0.12)), transparent 68%), rgba(255, 241, 248, 0.9);
   box-shadow:
@@ -1143,21 +1143,21 @@
     0 2px 8px rgba(130, 49, 73, 0.1);
 }
 
-:global(:root[data-mood="aether-sakura"]) .cardMeta,
-:global(:root[data-mood="aether-sakura"]) .sessionActivityMeta,
-:global(:root[data-mood="aether-sakura"]) .activitySearch::placeholder,
-:global(:root[data-mood="aether-sakura"]) .cardFiles,
-:global(:root[data-mood="aether-sakura"]) .cardAge {
+:global(:root[data-mood="aelyris-sakura"]) .cardMeta,
+:global(:root[data-mood="aelyris-sakura"]) .sessionActivityMeta,
+:global(:root[data-mood="aelyris-sakura"]) .activitySearch::placeholder,
+:global(:root[data-mood="aelyris-sakura"]) .cardFiles,
+:global(:root[data-mood="aelyris-sakura"]) .cardAge {
   color: rgba(74, 34, 49, 0.82);
   opacity: 1;
 }
 
-:global(:root[data-mood="aether-sakura"]) .progressTrack,
-:global(:root[data-mood="aether-sakura"]) .budgetTrack {
+:global(:root[data-mood="aelyris-sakura"]) .progressTrack,
+:global(:root[data-mood="aelyris-sakura"]) .budgetTrack {
   background: rgba(130, 49, 73, 0.14);
 }
 
-:global(:root[data-mood="aether-sakura"]) .ctxMenu {
+:global(:root[data-mood="aelyris-sakura"]) .ctxMenu {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 34%), rgba(255, 244, 250, 0.94);
   border-color: color-mix(in srgb, var(--accent) 24%, transparent);
   box-shadow:
@@ -1165,20 +1165,20 @@
     0 18px 44px rgba(80, 32, 52, 0.18);
 }
 
-:global(:root[data-mood="aether-sakura"]) .ctxItem {
+:global(:root[data-mood="aelyris-sakura"]) .ctxItem {
   color: rgba(47, 22, 33, 0.9);
 }
 
-:global(:root[data-mood="aether-sakura"]) .ctxItem[data-highlighted] {
+:global(:root[data-mood="aelyris-sakura"]) .ctxItem[data-highlighted] {
   background: color-mix(in srgb, var(--accent) 14%, rgba(255, 241, 248, 0.84));
   color: #24121b;
 }
 
-:global(:root[data-mood="aether-sakura"]) .ctxItem[data-disabled] {
+:global(:root[data-mood="aelyris-sakura"]) .ctxItem[data-disabled] {
   color: rgba(74, 34, 49, 0.52);
 }
 
-:global(:root[data-mood="aether-sakura"]) .ctxDivider {
+:global(:root[data-mood="aelyris-sakura"]) .ctxDivider {
   background: rgba(130, 49, 73, 0.14);
 }
 
@@ -1218,7 +1218,7 @@
   word-break: break-all;
 }
 
-:global(:root[data-mood="aether-sakura"]) .cardPreviewText {
+:global(:root[data-mood="aelyris-sakura"]) .cardPreviewText {
   color: rgba(74, 34, 49, 0.82);
   opacity: 1;
 }

@@ -63,13 +63,13 @@ if (!host) {
 }
 
 run("cargo", ["build", "--manifest-path", "src-tauri/pty-server/Cargo.toml", "--release"]);
-run("cargo", ["build", "--manifest-path", "src-tauri/Cargo.toml", "--release", "--bin", "aetherctl"]);
+run("cargo", ["build", "--manifest-path", "src-tauri/Cargo.toml", "--release", "--bin", "aelys"]);
 
 const extension = process.platform === "win32" ? ".exe" : "";
-const built = join(tauriDir, "pty-server", "target", "release", `aether-pty-server${extension}`);
-const bundled = join(tauriDir, "binaries", `aether-pty-server-${host}${extension}`);
-const builtCtl = join(tauriDir, "target", "release", `aetherctl${extension}`);
-const accidentalMainPackageBin = join(tauriDir, "target", "release", `aether-pty-server${extension}`);
+const built = join(tauriDir, "pty-server", "target", "release", `aelyris-pty-server${extension}`);
+const bundled = join(tauriDir, "binaries", `aelyris-pty-server-${host}${extension}`);
+const builtCtl = join(tauriDir, "target", "release", `aelys${extension}`);
+const accidentalMainPackageBin = join(tauriDir, "target", "release", `aelyris-pty-server${extension}`);
 mkdirSync(dirname(bundled), { recursive: true });
 copyFileSync(built, bundled);
 const now = new Date();
@@ -77,4 +77,4 @@ utimesSync(bundled, now, now);
 utimesSync(builtCtl, now, now);
 rmSync(accidentalMainPackageBin, { force: true });
 console.log(`Prepared PTY sidecar: ${bundled}`);
-console.log(`Prepared aetherctl: ${builtCtl}`);
+console.log(`Prepared aelys: ${builtCtl}`);

@@ -56,7 +56,7 @@ describe("HelmPanel", () => {
 
   it("toggles task done on checkbox click", () => {
     // Pre-populate localStorage
-    localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Test task", done: false }]));
+    localStorage.setItem("aelyris:helm:tasks", JSON.stringify([{ id: "t-1", label: "Test task", done: false }]));
     const { container } = render(<HelmPanel />);
     // Native `<input type=checkbox>` was replaced by a `role=checkbox`
     // button (Lucide Circle / CircleCheck — Apple Reminders pattern).
@@ -71,12 +71,12 @@ describe("HelmPanel", () => {
   });
 
   it("drops malformed persisted tasks instead of crashing the rail", () => {
-    localStorage.setItem("aether:helm:tasks", JSON.stringify({ id: "not-an-array" }));
+    localStorage.setItem("aelyris:helm:tasks", JSON.stringify({ id: "not-an-array" }));
     const { container } = render(<HelmPanel />);
     expect(container.textContent).toContain("No tasks");
 
     localStorage.setItem(
-      "aether:helm:tasks",
+      "aelyris:helm:tasks",
       JSON.stringify([{ id: "t-1", label: "Valid", done: true }, { id: 2, label: "Invalid" }, null]),
     );
     const second = render(<HelmPanel />);
@@ -85,7 +85,7 @@ describe("HelmPanel", () => {
   });
 
   it("deletes task on delete-button click", () => {
-    localStorage.setItem("aether:helm:tasks", JSON.stringify([{ id: "t-1", label: "Delete me", done: false }]));
+    localStorage.setItem("aelyris:helm:tasks", JSON.stringify([{ id: "t-1", label: "Delete me", done: false }]));
     const { container } = render(<HelmPanel />);
     expect(container.textContent).toContain("Delete me");
     // Lucide X replaced the raw "×" glyph — locate by aria-label instead.
@@ -105,7 +105,7 @@ describe("HelmPanel", () => {
     fireEvent.change(input, { target: { value: "Saved task" } });
     fireEvent.keyDown(input, { key: "Enter" });
     // Check localStorage
-    const saved = JSON.parse(localStorage.getItem("aether:helm:tasks") ?? "[]");
+    const saved = JSON.parse(localStorage.getItem("aelyris:helm:tasks") ?? "[]");
     expect(saved.length).toBe(1);
     expect(saved[0].label).toBe("Saved task");
     expect(saved[0].done).toBe(false);

@@ -28,7 +28,7 @@
   background: var(--dialog-surface);
   backdrop-filter: var(--dialog-surface-blur) saturate(1.05);
   -webkit-backdrop-filter: var(--dialog-surface-blur) saturate(1.05);
-  border: 1px solid var(--aether-border-strong);
+  border: 1px solid var(--aelyris-border-strong);
   border-radius: var(--radius-dialog);
   overflow: hidden;
   box-shadow:
@@ -63,7 +63,7 @@
   min-height: 30px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 88%, white 12%), var(--gold));
   border: 1px solid color-mix(in srgb, var(--gold) 74%, black);
-  color: var(--aether-ink);
+  color: var(--aelyris-ink);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   font-family: var(--font-ui);
@@ -194,49 +194,49 @@
   border: 0;
 }
 
-.moodCard[data-mood="aether-sky"] {
+.moodCard[data-mood="aelyris-sky"] {
   --mood-a: #78cfff;
   --mood-b: #f0cf7a;
   --mood-c: #1c3553;
 }
 
-.moodCard[data-mood="aether-moonwater"] {
+.moodCard[data-mood="aelyris-moonwater"] {
   --mood-a: #52d7ff;
   --mood-b: #f5c7e3;
   --mood-c: #06213a;
 }
 
-.moodCard[data-mood="aether-crystal"] {
+.moodCard[data-mood="aelyris-crystal"] {
   --mood-a: #8be9ff;
   --mood-b: #d8f7ff;
   --mood-c: #081d2f;
 }
 
-.moodCard[data-mood="aether-dream"] {
+.moodCard[data-mood="aelyris-dream"] {
   --mood-a: #c8b6ff;
   --mood-b: #ffd996;
   --mood-c: #2f2548;
 }
 
-.moodCard[data-mood="aether-cute"] {
+.moodCard[data-mood="aelyris-cute"] {
   --mood-a: #72f0dc;
   --mood-b: #ffd1dc;
   --mood-c: #1d4540;
 }
 
-.moodCard[data-mood="aether-sakura"] {
+.moodCard[data-mood="aelyris-sakura"] {
   --mood-a: #bd3f68;
   --mood-b: #fcc9b9;
   --mood-c: #fff7fb;
 }
 
-.moodCard[data-mood="aether-obsidian"] {
+.moodCard[data-mood="aelyris-obsidian"] {
   --mood-a: #d8b766;
   --mood-b: #89dceb;
   --mood-c: #202029;
 }
 
-.moodCard[data-mood="aether-pro"] {
+.moodCard[data-mood="aelyris-pro"] {
   --mood-a: #9bc7df;
   --mood-b: #c7b37a;
   --mood-c: #28323b;

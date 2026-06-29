@@ -31,26 +31,26 @@ import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 
-const THEME_OVERRIDES_KEY = "aether:themeOverrides";
-const MOOD_PRESET_KEY = "aether:moodPreset";
-const SAKURA_MATERIAL_OVERRIDES_KEY = "aether:sakuraMaterialOverrides";
-const MOOD_MATERIAL_OVERRIDES_KEY = "aether:moodMaterialOverrides";
-const WALLPAPER_IMAGE_KEY = "aether:wallpaperImagePath";
-const WALLPAPER_OPACITY_KEY = "aether:wallpaperOpacity";
-const WALLPAPER_SETTINGS_KEY = "aether:wallpaperSettingsByMood";
-const APP_WINDOW_OPACITY_KEY = "aether:windowOpacity";
-const TERMINAL_FONT_FAMILY_KEY = "aether:terminalFontFamily";
-const TERMINAL_FONT_SIZE_KEY = "aether:terminalFontSize";
-const TERMINAL_TEXT_CLARITY_KEY = "aether:terminalTextClarity";
-const TERMINAL_SURFACE_OPACITY_KEY = "aether:terminalSurfaceOpacity";
-const TERMINAL_LINE_HEIGHT_KEY = "aether:terminalLineHeight";
-const TERMINAL_LIGATURES_KEY = "aether:terminalLigatures";
-const TERMINAL_CURSOR_STYLE_KEY = "aether:terminalCursorStyle";
-const TERMINAL_CURSOR_BLINK_KEY = "aether:terminalCursorBlink";
-const DEFAULT_SHELL_KEY = "aether:defaultShell";
-const UI_FONT_FAMILY_KEY = "aether:uiFontFamily";
-const WINDOW_EFFECT_KEY = "aether:windowEffect";
-const WORKSPACE_PROFILES_KEY = "aether:workspaceProfiles";
+const THEME_OVERRIDES_KEY = "aelyris:themeOverrides";
+const MOOD_PRESET_KEY = "aelyris:moodPreset";
+const SAKURA_MATERIAL_OVERRIDES_KEY = "aelyris:sakuraMaterialOverrides";
+const MOOD_MATERIAL_OVERRIDES_KEY = "aelyris:moodMaterialOverrides";
+const WALLPAPER_IMAGE_KEY = "aelyris:wallpaperImagePath";
+const WALLPAPER_OPACITY_KEY = "aelyris:wallpaperOpacity";
+const WALLPAPER_SETTINGS_KEY = "aelyris:wallpaperSettingsByMood";
+const APP_WINDOW_OPACITY_KEY = "aelyris:windowOpacity";
+const TERMINAL_FONT_FAMILY_KEY = "aelyris:terminalFontFamily";
+const TERMINAL_FONT_SIZE_KEY = "aelyris:terminalFontSize";
+const TERMINAL_TEXT_CLARITY_KEY = "aelyris:terminalTextClarity";
+const TERMINAL_SURFACE_OPACITY_KEY = "aelyris:terminalSurfaceOpacity";
+const TERMINAL_LINE_HEIGHT_KEY = "aelyris:terminalLineHeight";
+const TERMINAL_LIGATURES_KEY = "aelyris:terminalLigatures";
+const TERMINAL_CURSOR_STYLE_KEY = "aelyris:terminalCursorStyle";
+const TERMINAL_CURSOR_BLINK_KEY = "aelyris:terminalCursorBlink";
+const DEFAULT_SHELL_KEY = "aelyris:defaultShell";
+const UI_FONT_FAMILY_KEY = "aelyris:uiFontFamily";
+const WINDOW_EFFECT_KEY = "aelyris:windowEffect";
+const WORKSPACE_PROFILES_KEY = "aelyris:workspaceProfiles";
 const MAX_FALLBACK_TELEMETRY_EVENTS = 30;
 const DEFAULT_TERMINAL_FONT_FAMILY =
   "Cascadia Code, Cascadia Mono, Cascadia Next JP, BIZ UDGothic, Yu Gothic UI, Meiryo, Noto Sans Mono CJK JP, IBM Plex Mono, monospace";
@@ -360,9 +360,9 @@ function loadMoodMaterialOverrides(): Partial<Record<MoodPresetId, MoodMaterialO
         }
       }
     }
-    if (!cleaned["aether-sakura"]) {
+    if (!cleaned["aelyris-sakura"]) {
       const legacy = loadSakuraMaterialOverrides();
-      if (Object.keys(legacy).length > 0) cleaned["aether-sakura"] = legacy;
+      if (Object.keys(legacy).length > 0) cleaned["aelyris-sakura"] = legacy;
     }
   } catch (err) {
     reportStorageFailure("load_mood_material_overrides", err);
@@ -660,7 +660,7 @@ function finiteNumberOr(value: unknown, fallback: number): number {
 }
 
 function loadAgentBudget(): { spent: number; limit: number } {
-  const parsed = readStorageJson("aether:budget", {});
+  const parsed = readStorageJson("aelyris:budget", {});
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { spent: 0, limit: 10 };
   const record = parsed as Record<string, unknown>;
   return {
@@ -673,7 +673,7 @@ const KANBAN_COLUMN_IDS = new Set<KanbanColumnId>(["todo", "in_progress", "revie
 const TASK_PRIORITIES = new Set<KanbanTask["priority"]>(["low", "medium", "high", "critical"]);
 
 function loadKanbanTasks(): KanbanTask[] {
-  const parsed = readStorageJson("aether:kanban", []);
+  const parsed = readStorageJson("aelyris:kanban", []);
   if (!Array.isArray(parsed)) return [];
   return parsed
     .filter(
@@ -709,14 +709,14 @@ function loadKanbanTasks(): KanbanTask[] {
 
 function persistKanbanTasks(tasks: KanbanTask[]): void {
   try {
-    localStorage.setItem("aether:kanban", JSON.stringify(tasks));
+    localStorage.setItem("aelyris:kanban", JSON.stringify(tasks));
   } catch (err) {
     reportStorageFailure("persist_kanban_tasks", err);
   }
 }
 
 function loadOpenFiles(): string[] {
-  const parsed = readStorageJson("aether:openFiles", []);
+  const parsed = readStorageJson("aelyris:openFiles", []);
   if (!Array.isArray(parsed)) return [];
   return [...new Set(parsed.filter((item): item is string => typeof item === "string" && item.length > 0))];
 }
@@ -733,13 +733,13 @@ function replacePathPrefix(path: string, oldPath: string, newPath: string): stri
 
 function persistEditorFiles(openFiles: string[], activeFile: string | null): void {
   try {
-    localStorage.setItem("aether:openFiles", JSON.stringify(openFiles));
+    localStorage.setItem("aelyris:openFiles", JSON.stringify(openFiles));
   } catch (err) {
     reportStorageFailure("persist_open_files", err);
   }
   try {
-    if (activeFile) localStorage.setItem("aether:activeFile", activeFile);
-    else localStorage.removeItem("aether:activeFile");
+    if (activeFile) localStorage.setItem("aelyris:activeFile", activeFile);
+    else localStorage.removeItem("aelyris:activeFile");
   } catch (err) {
     reportStorageFailure("persist_active_file", err);
   }
@@ -766,16 +766,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Theme
   themeId: (() => {
     try {
-      return localStorage.getItem("aether:theme") ?? "aether-dark";
+      return localStorage.getItem("aelyris:theme") ?? "aelyris-dark";
     } catch (err) {
       reportStorageFailure("load_theme", err, "info");
-      return "aether-dark";
+      return "aelyris-dark";
     }
   })(),
   setThemeId: (id) => {
     set({ themeId: id });
     try {
-      localStorage.setItem("aether:theme", id);
+      localStorage.setItem("aelyris:theme", id);
     } catch (err) {
       reportStorageFailure("persist_theme", err);
     }
@@ -850,10 +850,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (Object.keys(cleanedForMood).length > 0) nextAll[preset] = cleanedForMood;
       else delete nextAll[preset];
       persistMoodMaterialOverrides(nextAll);
-      if (preset === "aether-sakura") persistSakuraMaterialOverrides(cleanedForMood);
+      if (preset === "aelyris-sakura") persistSakuraMaterialOverrides(cleanedForMood);
       return {
         moodMaterialOverrides: nextAll,
-        ...(preset === "aether-sakura" ? { sakuraMaterialOverrides: cleanedForMood } : {}),
+        ...(preset === "aelyris-sakura" ? { sakuraMaterialOverrides: cleanedForMood } : {}),
       };
     }),
   resetMoodMaterialOverrides: (mood) =>
@@ -862,10 +862,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const nextAll = { ...s.moodMaterialOverrides };
       delete nextAll[preset];
       persistMoodMaterialOverrides(nextAll);
-      if (preset === "aether-sakura") persistSakuraMaterialOverrides({});
+      if (preset === "aelyris-sakura") persistSakuraMaterialOverrides({});
       return {
         moodMaterialOverrides: nextAll,
-        ...(preset === "aether-sakura" ? { sakuraMaterialOverrides: {} } : {}),
+        ...(preset === "aelyris-sakura" ? { sakuraMaterialOverrides: {} } : {}),
       };
     }),
   replaceMoodMaterialOverrides: (overrides) =>
@@ -876,13 +876,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (Object.keys(cleaned).length > 0) nextAll[preset.id] = cleaned;
       }
       persistMoodMaterialOverrides(nextAll);
-      persistSakuraMaterialOverrides(nextAll["aether-sakura"] ?? {});
+      persistSakuraMaterialOverrides(nextAll["aelyris-sakura"] ?? {});
       return {
         moodMaterialOverrides: nextAll,
-        sakuraMaterialOverrides: nextAll["aether-sakura"] ?? {},
+        sakuraMaterialOverrides: nextAll["aelyris-sakura"] ?? {},
       };
     }),
-  sakuraMaterialOverrides: loadMoodMaterialOverrides()["aether-sakura"] ?? {},
+  sakuraMaterialOverrides: loadMoodMaterialOverrides()["aelyris-sakura"] ?? {},
   setSakuraMaterialOverride: (key, value) =>
     set((s) => {
       const next = { ...s.sakuraMaterialOverrides } as Record<string, string | number>;
@@ -896,8 +896,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const cleaned = sanitizeSakuraMaterialOverrides(next);
       persistSakuraMaterialOverrides(cleaned);
       const nextAll = { ...s.moodMaterialOverrides };
-      if (Object.keys(cleaned).length > 0) nextAll["aether-sakura"] = cleaned;
-      else delete nextAll["aether-sakura"];
+      if (Object.keys(cleaned).length > 0) nextAll["aelyris-sakura"] = cleaned;
+      else delete nextAll["aelyris-sakura"];
       persistMoodMaterialOverrides(nextAll);
       return { sakuraMaterialOverrides: cleaned, moodMaterialOverrides: nextAll };
     }),
@@ -905,7 +905,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSakuraMaterialOverrides({});
     set((s) => {
       const nextAll = { ...s.moodMaterialOverrides };
-      delete nextAll["aether-sakura"];
+      delete nextAll["aelyris-sakura"];
       persistMoodMaterialOverrides(nextAll);
       return { sakuraMaterialOverrides: {}, moodMaterialOverrides: nextAll };
     });
@@ -1102,7 +1102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Project
   rootProjectPath: (() => {
     try {
-      return localStorage.getItem("aether:lastProject");
+      return localStorage.getItem("aelyris:lastProject");
     } catch (err) {
       reportStorageFailure("load_last_project", err, "info");
       return null;
@@ -1111,8 +1111,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setRootProjectPath: (path) => {
     set({ rootProjectPath: path });
     try {
-      if (path) localStorage.setItem("aether:lastProject", path);
-      else localStorage.removeItem("aether:lastProject");
+      if (path) localStorage.setItem("aelyris:lastProject", path);
+      else localStorage.removeItem("aelyris:lastProject");
     } catch (err) {
       reportStorageFailure("persist_last_project", err);
     }
@@ -1123,7 +1123,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSidebarSection: (section: SidebarSection) => set({ sidebarSection: section }),
   sidebarCollapsed: (() => {
     try {
-      return localStorage.getItem("aether:sidebarCollapsed") === "1";
+      return localStorage.getItem("aelyris:sidebarCollapsed") === "1";
     } catch (err) {
       reportStorageFailure("load_sidebar_collapsed", err, "info");
       return false;
@@ -1133,7 +1133,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const next = toggleOrSet(v, s.sidebarCollapsed);
       try {
-        localStorage.setItem("aether:sidebarCollapsed", next ? "1" : "0");
+        localStorage.setItem("aelyris:sidebarCollapsed", next ? "1" : "0");
       } catch (err) {
         reportStorageFailure("persist_sidebar_collapsed", err, "info");
       }
@@ -1141,7 +1141,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   sidebarWidth: (() => {
     try {
-      const raw = localStorage.getItem("aether:sidebarWidth");
+      const raw = localStorage.getItem("aelyris:sidebarWidth");
       const parsed = raw ? Number.parseInt(raw, 10) : NaN;
       if (Number.isFinite(parsed) && parsed >= 200 && parsed <= 480) {
         return parsed;
@@ -1155,7 +1155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(() => {
       const clamped = Math.max(200, Math.min(480, Math.round(v)));
       try {
-        localStorage.setItem("aether:sidebarWidth", String(clamped));
+        localStorage.setItem("aelyris:sidebarWidth", String(clamped));
       } catch (err) {
         reportStorageFailure("persist_sidebar_width", err, "warning");
       }
@@ -1163,7 +1163,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   rightPanelWidth: (() => {
     try {
-      const raw = localStorage.getItem("aether:rightPanelWidth");
+      const raw = localStorage.getItem("aelyris:rightPanelWidth");
       const parsed = raw ? Number.parseInt(raw, 10) : NaN;
       if (Number.isFinite(parsed) && parsed >= 260 && parsed <= 480) {
         return parsed;
@@ -1177,7 +1177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(() => {
       const clamped = Math.max(260, Math.min(480, Math.round(v)));
       try {
-        localStorage.setItem("aether:rightPanelWidth", String(clamped));
+        localStorage.setItem("aelyris:rightPanelWidth", String(clamped));
       } catch (err) {
         reportStorageFailure("persist_right_panel_width", err, "warning");
       }
@@ -1205,7 +1205,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Agent model
   selectedModel: (() => {
     try {
-      return localStorage.getItem("aether:selectedModel") ?? "claude-sonnet";
+      return localStorage.getItem("aelyris:selectedModel") ?? "claude-sonnet";
     } catch (err) {
       reportStorageFailure("load_selected_model", err, "info");
       return "claude-sonnet";
@@ -1214,7 +1214,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedModel: (modelId) => {
     set({ selectedModel: modelId });
     try {
-      localStorage.setItem("aether:selectedModel", modelId);
+      localStorage.setItem("aelyris:selectedModel", modelId);
     } catch (err) {
       reportStorageFailure("persist_selected_model", err);
     }
@@ -1226,7 +1226,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const budget = { ...s.agentBudget, spent: s.agentBudget.spent + cost };
       try {
-        localStorage.setItem("aether:budget", JSON.stringify(budget));
+        localStorage.setItem("aelyris:budget", JSON.stringify(budget));
       } catch (err) {
         reportStorageFailure("persist_agent_budget_spent", err);
       }
@@ -1236,7 +1236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const budget = { ...s.agentBudget, limit };
       try {
-        localStorage.setItem("aether:budget", JSON.stringify(budget));
+        localStorage.setItem("aelyris:budget", JSON.stringify(budget));
       } catch (err) {
         reportStorageFailure("persist_agent_budget_limit", err);
       }
@@ -1244,7 +1244,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   perSessionCostCap: (() => {
     try {
-      const v = Number(localStorage.getItem("aether:perSessionCostCap") ?? "2");
+      const v = Number(localStorage.getItem("aelyris:perSessionCostCap") ?? "2");
       return Number.isFinite(v) && v > 0 ? v : 2;
     } catch (err) {
       reportStorageFailure("load_per_session_cost_cap", err, "info");
@@ -1254,14 +1254,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPerSessionCostCap: (cap) => {
     set({ perSessionCostCap: cap });
     try {
-      localStorage.setItem("aether:perSessionCostCap", String(cap));
+      localStorage.setItem("aelyris:perSessionCostCap", String(cap));
     } catch (err) {
       reportStorageFailure("persist_per_session_cost_cap", err);
     }
   },
   contextWarnPct: (() => {
     try {
-      const v = Number(localStorage.getItem("aether:contextWarnPct") ?? "85");
+      const v = Number(localStorage.getItem("aelyris:contextWarnPct") ?? "85");
       return Number.isFinite(v) && v > 0 && v <= 100 ? v : 85;
     } catch (err) {
       reportStorageFailure("load_context_warn_pct", err, "info");
@@ -1271,7 +1271,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setContextWarnPct: (pct) => {
     set({ contextWarnPct: pct });
     try {
-      localStorage.setItem("aether:contextWarnPct", String(pct));
+      localStorage.setItem("aelyris:contextWarnPct", String(pct));
     } catch (err) {
       reportStorageFailure("persist_context_warn_pct", err);
     }
@@ -1318,7 +1318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openFiles: loadOpenFiles(),
   activeFile: (() => {
     try {
-      return localStorage.getItem("aether:activeFile") ?? null;
+      return localStorage.getItem("aelyris:activeFile") ?? null;
     } catch (err) {
       reportStorageFailure("load_active_file", err, "info");
       return null;
@@ -1340,8 +1340,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveFile: (path) => {
     set({ activeFile: path });
     try {
-      if (path) localStorage.setItem("aether:activeFile", path);
-      else localStorage.removeItem("aether:activeFile");
+      if (path) localStorage.setItem("aelyris:activeFile", path);
+      else localStorage.removeItem("aelyris:activeFile");
     } catch (err) {
       reportStorageFailure("persist_active_file", err);
     }
@@ -1349,8 +1349,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearFiles: () => {
     set({ openFiles: [], activeFile: null, unsavedFiles: new Set() });
     try {
-      localStorage.removeItem("aether:openFiles");
-      localStorage.removeItem("aether:activeFile");
+      localStorage.removeItem("aelyris:openFiles");
+      localStorage.removeItem("aelyris:activeFile");
     } catch (err) {
       reportStorageFailure("clear_editor_files", err);
     }
@@ -1429,7 +1429,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // first paint; Settings load_app_config then rehydrates from config.toml.
   ghostDiffLiveMode: (() => {
     try {
-      return localStorage.getItem("aether:ghostDiffLiveMode") === "1";
+      return localStorage.getItem("aelyris:ghostDiffLiveMode") === "1";
     } catch {
       return false;
     }
@@ -1437,7 +1437,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGhostDiffLiveMode: (v) => {
     set({ ghostDiffLiveMode: v });
     try {
-      localStorage.setItem("aether:ghostDiffLiveMode", v ? "1" : "0");
+      localStorage.setItem("aelyris:ghostDiffLiveMode", v ? "1" : "0");
     } catch (err) {
       reportStorageFailure("persist_ghost_diff_live_mode", err, "info");
     }

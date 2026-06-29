@@ -1,6 +1,6 @@
 import type { ImageMetrics } from "../../shared/types/terminal";
 
-export const TERMINAL_PERFORMANCE_EVENT = "aether:terminal-performance-sample";
+export const TERMINAL_PERFORMANCE_EVENT = "aelyris:terminal-performance-sample";
 
 export const MiB = 1024 * 1024;
 
@@ -111,7 +111,7 @@ export interface PerformanceObservatorySnapshot {
 }
 
 export interface PerformanceDiagnosticBundle {
-  kind: "aether.performance.diagnostic";
+  kind: "aelyris.performance.diagnostic";
   generatedAt: string;
   summary: {
     terminalId: string | null;
@@ -357,7 +357,7 @@ export function createPerformanceDiagnosticBundle(
   snapshot: PerformanceObservatorySnapshot,
 ): PerformanceDiagnosticBundle {
   return {
-    kind: "aether.performance.diagnostic",
+    kind: "aelyris.performance.diagnostic",
     generatedAt: new Date(snapshot.updatedAt).toISOString(),
     summary: {
       terminalId: snapshot.terminalId,

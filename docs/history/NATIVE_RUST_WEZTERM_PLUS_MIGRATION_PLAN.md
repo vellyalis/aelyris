@@ -1,4 +1,4 @@
-> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aether is alpha / not release-ready.
+> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aelyris is alpha / not release-ready.
 # Native Rust / WezTerm-Plus Migration Plan
 
 Date: 2026-05-12
@@ -12,14 +12,14 @@ Updated: 2026-06-28
 - The world-class claims remain blocked: tmux, BridgeSpace, Ghostty/WezTerm-class daily-driver quality, and release readiness must not be claimed until the current release-quality and world-class gates pass.
 - The required safe proof registry target is `27/27`, but current final-goal evidence is not complete; stale historical `27/27` phase notes below are retained only as history unless refreshed by the current gate chain.
 - Long external/operator gates persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so resumed work can distinguish a real stall from a sleep/token/signing handoff.
-- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Position
 
-Aether should target a native Rust product, but not by rewriting the whole app in one jump.
+Aelyris should target a native Rust product, but not by rewriting the whole app in one jump.
 The current backend already contains the important terminal foundations:
 
 - `portable-pty` for PTY management
@@ -33,7 +33,7 @@ Detailed Rust-core goals, grade ladder, acceptance criteria, and performance bud
 `docs/history/RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md`.
 
 The product edge for the right rail, agent orchestration, review loop, and PraisonAI/Warp/cmux-style
-command-center experience is locked in `docs/history/AETHER_COMMAND_CENTER_EDGE_PLAN.md`.
+command-center experience is locked in `docs/history/AELYRIS_COMMAND_CENTER_EDGE_PLAN.md`.
 
 ## What WezTerm Sets As The Bar
 
@@ -49,9 +49,9 @@ WezTerm is not just a renderer. The competitive bar is:
 - font fallback, ligatures, emoji, true color, rich text attributes
 - CLI control over running windows/tabs/panes
 
-Aether must match the terminal baseline and exceed it through project/AI-native workflows.
+Aelyris must match the terminal baseline and exceed it through project/AI-native workflows.
 
-## Where Aether Can Actually Beat WezTerm
+## Where Aelyris Can Actually Beat WezTerm
 
 We should not try to beat WezTerm by being "another configurable terminal." The edge should be:
 
@@ -62,7 +62,7 @@ We should not try to beat WezTerm by being "another configurable terminal." The 
 - Operational replay: session restore includes layout, cwd, shell, scrollback, prompt marks, command blocks, failures, and agent context.
 - Right rail as command center: not a passive dashboard, but a task launcher, reviewer, recovery panel, and routing surface.
 
-This is the reason Aether should exist.
+This is the reason Aelyris should exist.
 
 ## Native Rust Options
 
@@ -110,7 +110,7 @@ Recommended as Phase 2/3 after Rust core contracts are stable.
 
 ### Option C: Fork/Embed WezTerm
 
-Use WezTerm as terminal/mux foundation and layer Aether project/AI surfaces around it.
+Use WezTerm as terminal/mux foundation and layer Aelyris project/AI surfaces around it.
 
 Pros:
 - Fastest route to terminal parity.
@@ -119,9 +119,9 @@ Pros:
 Cons:
 - Deep integration cost.
 - Product identity and architecture become coupled to upstream internals.
-- Aether-specific project/AI state may fight WezTerm abstractions.
+- Aelyris-specific project/AI state may fight WezTerm abstractions.
 
-Only worth a spike if pure Aether mux/render work slips.
+Only worth a spike if pure Aelyris mux/render work slips.
 
 ## Can We Reimplement The Same App 1:1 In Full Native Rust?
 
@@ -148,24 +148,24 @@ The 2026-05-13 ordering is still correct, but the baseline has moved.
 
 Current verified state:
 
-- The terminal/core implementation is no longer blocked by an implementation-fixable release issue. `pnpm verify:quality-score` reports `95/100`, grade `A`, `317/335`, `releaseCandidateReady=false`; `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`. The current state is `blocked-by-external-gates` because release signing/updater material, real OS sleep/resume, and `authenticated-ai-cli-prompt-smoke` require operator action. `authenticated-ai-cli-consent-packet` is green and requires both `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` before that prompt smoke is run.
+- The terminal/core implementation is no longer blocked by an implementation-fixable release issue. `pnpm verify:quality-score` reports `95/100`, grade `A`, `317/335`, `releaseCandidateReady=false`; `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`. The current state is `blocked-by-external-gates` because release signing/updater material, real OS sleep/resume, and `authenticated-ai-cli-prompt-smoke` require operator action. `authenticated-ai-cli-consent-packet` is green and requires both `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` before that prompt smoke is run.
 - `pnpm verify:release:production`, strict release doctor, signed updater artifacts, and `latest.json` remain release-chain evidence, but they do not override the current authenticated prompt consent gate.
 - xterm.js is no longer the terminal dependency. `package.json` has no `@xterm` dependency, terminal parsing/grid state is Rust-owned through `alacritty_terminal`, and the UI renders Rust terminal snapshots through the current Canvas/WebView shell.
-- PTY lifecycle, sidecar control, mux inspection, `aetherctl`, durable scrollback capture/search, mux performance, and real OS sleep/resume evidence are release-gated.
+- PTY lifecycle, sidecar control, mux inspection, `aelys`, durable scrollback capture/search, mux performance, and real OS sleep/resume evidence are release-gated.
 - The native Windows input path has advanced from "IME placement helpers" to a Tauri-default native HWND input surface scaffold. The WebView textarea remains only as a non-Tauri/emergency fallback and test compatibility path; it is not the desired long-term product boundary.
 - The Rust mux now covers split, close, resize, move, swap, even, tiled, rotate, break, join, zoom, broadcast, synchronized panes, detach, attach, scrollback search, and prefix/keymap dispatch.
-- `aether-native` now exists as a no-WebView Rust client spike that attaches to the same daemon instance and proves list, send, capture, detach, and attach through the mux API.
-- `aether-native window-proof` now creates a layered Win32 native window in the `aether-native` process and records HWND, alpha, no-activate behavior, executable identity, and `webviewUsed=false` / `reactUsed=false`.
-- `aether-native render-proof` now reads a daemon session capture and renders the captured terminal text through Win32/GDI into a native memory DC, recording draw calls and non-background pixel samples. This still does not claim native GPU terminal rendering yet; it locks the native process/window/text-render/daemon boundary before the compositor work.
-- `aether-native grid-render-proof` now reads daemon capture, feeds it into Rust `TermEngine`, and renders a 100x24 terminal cell grid through native Win32/GDI with nonblank cell and pixel evidence. This proves terminal-grid ownership beyond raw text drawing while still keeping `winit`/`wgpu` and native IME dogfood as explicit next steps.
-- `NativeRenderFrame` now exists as a renderer-neutral Rust contract (`aether.native.render-frame.v1`) between `GridSnapshot` and native drawing. The live native proof emits a stable frame hash and proves the Win32/GDI renderer consumed the same frame, so the next `winit`/`wgpu` renderer can replace GDI without inventing a new terminal truth.
-- Right-rail smoke and action-clarity gates pass, but the product opportunity is still underdeveloped: the rail is not yet the unmistakable reason to choose Aether over tmux plus AI CLIs.
+- `aelyris-native` now exists as a no-WebView Rust client spike that attaches to the same daemon instance and proves list, send, capture, detach, and attach through the mux API.
+- `aelyris-native window-proof` now creates a layered Win32 native window in the `aelyris-native` process and records HWND, alpha, no-activate behavior, executable identity, and `webviewUsed=false` / `reactUsed=false`.
+- `aelyris-native render-proof` now reads a daemon session capture and renders the captured terminal text through Win32/GDI into a native memory DC, recording draw calls and non-background pixel samples. This still does not claim native GPU terminal rendering yet; it locks the native process/window/text-render/daemon boundary before the compositor work.
+- `aelyris-native grid-render-proof` now reads daemon capture, feeds it into Rust `TermEngine`, and renders a 100x24 terminal cell grid through native Win32/GDI with nonblank cell and pixel evidence. This proves terminal-grid ownership beyond raw text drawing while still keeping `winit`/`wgpu` and native IME dogfood as explicit next steps.
+- `NativeRenderFrame` now exists as a renderer-neutral Rust contract (`aelyris.native.render-frame.v1`) between `GridSnapshot` and native drawing. The live native proof emits a stable frame hash and proves the Win32/GDI renderer consumed the same frame, so the next `winit`/`wgpu` renderer can replace GDI without inventing a new terminal truth.
+- Right-rail smoke and action-clarity gates pass, but the product opportunity is still underdeveloped: the rail is not yet the unmistakable reason to choose Aelyris over tmux plus AI CLIs.
 
 Corrections to the old plan:
 
 - Phase 1 is no longer "build the Rust core from scratch." The new Phase 1 is "make the current Rust core the only terminal truth and remove remaining compatibility shadows."
 - Phase 2 should not begin by recreating the entire app UI. It should start with a native attaching terminal client that proves the daemon/API boundary, renderer-neutral native frame contract, native text/grid rendering, native text input, GPU terminal rendering, transparency, and process identity.
-- Phase 3 should not carry Monaco forward as a parity requirement. The default product direction is VSCode/external editor for full editing, while Aether keeps review, diff, provenance, command center, and terminal-native context.
+- Phase 3 should not carry Monaco forward as a parity requirement. The default product direction is VSCode/external editor for full editing, while Aelyris keeps review, diff, provenance, command center, and terminal-native context.
 - The full-native shell is now primarily a UI/compositor/accessibility problem, not a PTY/mux correctness problem.
 
 ### Revised 2026-05-19 Native Path
@@ -194,13 +194,13 @@ Exit criteria:
 
 Duration: 2-4 weeks.
 
-Goal: make Aether behave like a real mux product where the UI is only a client.
+Goal: make Aelyris behave like a real mux product where the UI is only a client.
 
 Deliverables:
 
 - Background mux daemon lifecycle that outlives the UI shell by policy, not just by sidecar accident.
 - Named sessions, window groups, and attach permissions.
-- `aetherctl` parity for list/create/attach/detach/split/join/swap/move/layout/send/capture/search/export/import.
+- `aelys` parity for list/create/attach/detach/split/join/swap/move/layout/send/capture/search/export/import.
 - Daemon restart and UI crash tests that prove live/detached/dead state is never lied about.
 - Config reload for keymaps, startup layout, shell profiles, and theme terminal tokens.
 
@@ -226,11 +226,11 @@ Likely stack:
 
 Deliverables:
 
-- `aether-native` crate that attaches to the current mux daemon.
+- `aelyris-native` crate that attaches to the current mux daemon.
 - One native transparent window with tab/pane terminal rendering.
 - Japanese IME and clipboard path entirely outside WebView.
 - Image-background, opacity, cover/contain/position, and Sakura/glass token prototype.
-- Task Manager/process identity proof: visible as Aether-native/Aether, not generic WebView.
+- Task Manager/process identity proof: visible as Aelyris-native/Aelyris, not generic WebView.
 
 Exit criteria:
 
@@ -255,13 +255,13 @@ Deliverables:
 Exit criteria:
 
 - Sakura and every preset can be tuned without gray, muddy, or low-contrast surfaces.
-- Native UI supports the same customization classes that users expect from WezTerm-style configuration plus Aether's visual presets.
+- Native UI supports the same customization classes that users expect from WezTerm-style configuration plus Aelyris's visual presets.
 
 #### Phase 3: Command Center Native Workspace
 
 Duration: 8-16 weeks.
 
-Goal: move only the pieces that make Aether differentiated, not generic editor bulk.
+Goal: move only the pieces that make Aelyris differentiated, not generic editor bulk.
 
 Deliverables:
 
@@ -276,7 +276,7 @@ Exit criteria:
 - A developer can run parallel AI/dev sessions, review changes, recover failures, and ship without the WebView shell.
 - The native shell is chosen because it is faster, clearer, and more controllable, not merely because it is native.
 
-#### Phase 4: WezTerm-Plus / Aether Edge
+#### Phase 4: WezTerm-Plus / Aelyris Edge
 
 Duration: 4-8 weeks.
 
@@ -292,7 +292,7 @@ Deliverables:
 
 Exit criteria:
 
-- Aether can honestly be pitched as "future tmux/WezTerm-grade terminal-control target (not a current public claim) plus project-aware AI command center."
+- Aelyris can honestly be pitched as "future tmux/WezTerm-grade terminal-control target (not a current public claim) plus project-aware AI command center."
 
 ### Edge Upgrades Added By This Audit
 
@@ -327,10 +327,10 @@ These are the highest-leverage ways to turn the product from "good terminal work
 
 The full-native plan still stands, but the ordering should be stricter:
 
-- Phase 1 is no longer just "build Rust core." A first slice is already in place: typed mux graph, mux HTTP API, `aetherctl`, live detach/attach, durable scrollback capture, and a mux performance gate.
+- Phase 1 is no longer just "build Rust core." A first slice is already in place: typed mux graph, mux HTTP API, `aelys`, live detach/attach, durable scrollback capture, and a mux performance gate.
 - The immediate blocker before a native shell spike is now UI ownership: React must stop inventing pane topology that Rust cannot see. Split/close operations should flow through Rust mux first, and the UI should attach to returned pane ids.
 - Native-shell work should start as an attaching client, not as a parallel terminal implementation. If it cannot drive the same mux daemon/API, it is premature.
-- The first attaching client, Win32 window proof, and daemon-capture native text render proof are now in place through `aether-native` and `pnpm verify:terminal:native-client`; the next native step is the actual `winit`/`wgpu` terminal renderer plus native IME dogfood, not another parallel API client.
+- The first attaching client, Win32 window proof, and daemon-capture native text render proof are now in place through `aelyris-native` and `pnpm verify:terminal:native-client`; the next native step is the actual `winit`/`wgpu` terminal renderer plus native IME dogfood, not another parallel API client.
 - The daemon boundary is now more valuable than a direct rewrite. Full-native Rust should replace the WebView shell only after the sidecar/daemon contract proves session survival, layout replay, keymaps, scrollback, and IME behavior.
 - Time estimate is unchanged for full product parity, but risk has shifted: terminal core parity is moving down, native UI/editor/accessibility parity remains the expensive part.
 
@@ -340,7 +340,7 @@ Duration: 1 week
 
 Deliverables:
 - WezTerm/tmux/ccmux parity matrix
-- Aether edge feature list
+- Aelyris edge feature list
 - latency budgets: launch, split pane, close pane, input echo, IME, resize, scroll
 - native architecture decision record
 
@@ -371,7 +371,7 @@ Exit criteria:
 Duration: 4-8 weeks
 
 Deliverables:
-- `aether-native` prototype crate
+- `aelyris-native` prototype crate
 - one window, tabs, panes, native GPU terminal surface
 - IME path validated on Windows Japanese input
 - settings and theme token rendering
@@ -413,7 +413,7 @@ Deliverables:
 - migration path from current Tauri config/state
 
 Exit criteria:
-- Aether has terminal parity plus project/AI-native edge
+- Aelyris has terminal parity plus project/AI-native edge
 - current Tauri shell can be deprecated
 
 ## Rough Time Estimate
@@ -431,15 +431,15 @@ Trying to rewrite everything directly is likely slower than the phased path.
 ## Immediate Next Work
 
 1. Delete or hard-gate remaining terminal compatibility shadows, especially normal-path WebView textarea ownership.
-2. Make daemon-first session survival and `aetherctl` parity the next Rust-core product boundary.
-3. Add the `aether-native` terminal client spike only as an attaching client to the current mux daemon/API.
+2. Make daemon-first session survival and `aelys` parity the next Rust-core product boundary.
+3. Add the `aelyris-native` terminal client spike only as an attaching client to the current mux daemon/API.
 4. Convert the right rail into an action-oriented command center with provenance, recovery, context packs, and ranked next actions.
 5. Keep Tauri/React as the shipping UI until the native client beats it on latency, IME, customization, accessibility, and daily workflow parity.
 ## 2026-05-22 Final Evidence Refresh
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -453,4 +453,4 @@ Trying to rewrite everything directly is likely slower than the phased path.
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Native-first hybrid is the release target; full-native Rust remains a stricter migration track after the current Rust-core/Tauri shell is externally unblocked.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.

@@ -11,14 +11,14 @@ pub fn load_app_config() -> crate::config::AppConfig {
     crate::config::load_config()
 }
 
-/// Directory under `$HOME/.aether` where picked wallpaper images are copied so
+/// Directory under `$HOME/.aelyris` where picked wallpaper images are copied so
 /// they fall inside the Tauri `assetProtocol.scope` (`$HOME/**`). Mirrors the
 /// `config_path()` home resolution in `config/settings.rs`.
 fn wallpapers_dir() -> PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".aether").join("wallpapers")
+    PathBuf::from(home).join(".aelyris").join("wallpapers")
 }
 
 /// Content-addressed destination name for a wallpaper copy: `<sha256>.<ext>`.
@@ -91,7 +91,7 @@ mod wallpaper_tests {
 
     #[test]
     fn copy_lands_in_scope_dir_and_is_idempotent() {
-        let tmp = std::env::temp_dir().join(format!("aether-wp-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("aelyris-wp-test-{}", std::process::id()));
         let src = tmp.join("source.png");
         let dest_dir = tmp.join("wallpapers");
         std::fs::create_dir_all(&tmp).unwrap();
@@ -109,7 +109,7 @@ mod wallpaper_tests {
 
     #[test]
     fn copy_rejects_missing_source() {
-        let dir = std::env::temp_dir().join("aether-wp-missing");
+        let dir = std::env::temp_dir().join("aelyris-wp-missing");
         let err = copy_wallpaper_into(Path::new("C:/definitely/not/here.png"), &dir).unwrap_err();
         assert!(err.contains("not a file"));
     }

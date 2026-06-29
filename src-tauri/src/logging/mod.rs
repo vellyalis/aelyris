@@ -55,7 +55,7 @@ pub struct LogEntry {
     /// Uppercase: "TRACE", "DEBUG", "INFO", "WARN", "ERROR".
     pub level: String,
     /// `tracing::Metadata::target()` — usually the originating module
-    /// path (e.g. `aether_terminal_lib::pty::manager`).
+    /// path (e.g. `aelyris_lib::pty::manager`).
     pub target: String,
     /// The formatted log message (the `%message` field).
     pub message: String,
@@ -198,7 +198,7 @@ impl LogRing {
             "inline-image cap eviction (FIFO): dropped {evicted_count} entr{plural} / \
              {evicted_bytes} bytes; {remaining_bytes_used} of {cap} bytes retained"
         );
-        self.push_entry("WARN", "aether_terminal_lib::term::images", message, fields);
+        self.push_entry("WARN", "aelyris_lib::term::images", message, fields);
     }
 }
 
@@ -443,7 +443,7 @@ mod tests {
         ring.log_image_evicted("term-1", 2, 4096, 49 * 1024 * 1024, 50 * 1024 * 1024);
         let only = ring.recent(1).into_iter().next().unwrap();
         assert_eq!(only.level, "WARN");
-        assert_eq!(only.target, "aether_terminal_lib::term::images");
+        assert_eq!(only.target, "aelyris_lib::term::images");
         assert_eq!(
             only.fields.get("event").map(String::as_str),
             Some("image_evicted"),

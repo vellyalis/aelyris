@@ -1,6 +1,6 @@
 //! Shell-integration installer (post-0.2.2 Tier 🔴 #2).
 //!
-//! Aether ships OSC 133 helper scripts for PowerShell, Bash, and Zsh in
+//! Aelyris ships OSC 133 helper scripts for PowerShell, Bash, and Zsh in
 //! `assets/shell-integration/`, but until now there was no in-app way to
 //! get them onto a user's system — they had to find the file, figure out
 //! the right `$PROFILE` / `~/.bashrc` / `~/.zshrc` path, and `source`
@@ -12,7 +12,7 @@
 //!    asset directory at runtime.
 //!
 //! 2. **Status detection.** For each supported shell we report whether the
-//!    profile file exists and whether the Aether `source` line is already
+//!    profile file exists and whether the Aelyris `source` line is already
 //!    present, so the UI can branch between "install" and "already
 //!    installed".
 //!
@@ -29,14 +29,14 @@ use std::path::{Path, PathBuf};
 
 /// Embedded script contents, captured at compile time so the runtime path
 /// to the source file does not have to exist on the user's machine.
-const SCRIPT_PWSH: &str = include_str!("../../../assets/shell-integration/aether.ps1");
-const SCRIPT_BASH: &str = include_str!("../../../assets/shell-integration/aether.bash");
-const SCRIPT_ZSH: &str = include_str!("../../../assets/shell-integration/aether.zsh");
+const SCRIPT_PWSH: &str = include_str!("../../../assets/shell-integration/aelyris.ps1");
+const SCRIPT_BASH: &str = include_str!("../../../assets/shell-integration/aelyris.bash");
+const SCRIPT_ZSH: &str = include_str!("../../../assets/shell-integration/aelyris.zsh");
 
 /// Marker comment written above the source line so re-running install (or
 /// another install for a different shell) can find and skip it deterministically.
 /// Anything containing this exact substring counts as "already installed".
-const INSTALL_MARKER: &str = "# Aether Terminal shell integration";
+const INSTALL_MARKER: &str = "# Aelyris shell integration";
 
 /// Supported shells. Kept tiny on purpose — we only want to maintain
 /// scripts for shells where OSC 133 emission is straightforward.
@@ -57,12 +57,12 @@ impl ShellKind {
         }
     }
 
-    /// Filename Aether writes the script to inside its install dir.
+    /// Filename Aelyris writes the script to inside its install dir.
     pub fn script_filename(self) -> &'static str {
         match self {
-            ShellKind::PowerShell => "aether.ps1",
-            ShellKind::Bash => "aether.bash",
-            ShellKind::Zsh => "aether.zsh",
+            ShellKind::PowerShell => "aelyris.ps1",
+            ShellKind::Bash => "aelyris.bash",
+            ShellKind::Zsh => "aelyris.zsh",
         }
     }
 
@@ -81,16 +81,16 @@ impl ShellKind {
 pub struct ShellIntegrationStatus {
     pub shell: ShellKind,
     pub label: &'static str,
-    /// Where Aether would source the script from. Returned as a string
+    /// Where Aelyris would source the script from. Returned as a string
     /// because the frontend only needs to display it.
     pub script_path: String,
-    /// User's profile / rc file Aether would append the source line to.
+    /// User's profile / rc file Aelyris would append the source line to.
     pub profile_path: String,
     /// Whether the profile file currently exists.
     pub profile_exists: bool,
     /// Whether the install marker is already present in the profile file.
     pub installed: bool,
-    /// The exact line Aether would append. Surfaced so the UI can show a
+    /// The exact line Aelyris would append. Surfaced so the UI can show a
     /// preview *and* offer a "copy to clipboard" affordance for users
     /// whose profile lives somewhere non-standard.
     pub source_line: String,
@@ -110,13 +110,13 @@ pub struct InstallResult {
 }
 
 /// Resolve the install directory for the embedded scripts. Defaults to
-/// `~/.aether/shell-integration/`; created lazily on first install.
+/// `~/.aelyris/shell-integration/`; created lazily on first install.
 pub fn install_dir() -> Result<PathBuf, String> {
     let home = home_dir().ok_or_else(|| "could not resolve home directory".to_string())?;
-    Ok(home.join(".aether").join("shell-integration"))
+    Ok(home.join(".aelyris").join("shell-integration"))
 }
 
-/// Where Aether would write `kind`'s script.
+/// Where Aelyris would write `kind`'s script.
 pub fn script_path(kind: ShellKind) -> Result<PathBuf, String> {
     Ok(install_dir()?.join(kind.script_filename()))
 }
@@ -138,7 +138,7 @@ pub fn profile_path(kind: ShellKind) -> Option<PathBuf> {
     })
 }
 
-/// Build the exact source line Aether would append for `kind`, given the
+/// Build the exact source line Aelyris would append for `kind`, given the
 /// resolved script path. Quoting is shell-aware so paths containing
 /// spaces (the typical Windows case under `C:\Users\<name>\…`) survive.
 pub fn source_line(kind: ShellKind, script_path: &Path) -> String {
@@ -282,12 +282,12 @@ mod tests {
     fn source_line_quotes_paths_per_shell() {
         let pwsh = source_line(
             ShellKind::PowerShell,
-            Path::new("C:\\tmp\\with space\\aether.ps1"),
+            Path::new("C:\\tmp\\with space\\aelyris.ps1"),
         );
-        assert_eq!(pwsh, ". \"C:\\tmp\\with space\\aether.ps1\"");
+        assert_eq!(pwsh, ". \"C:\\tmp\\with space\\aelyris.ps1\"");
 
-        let bash = source_line(ShellKind::Bash, Path::new("/home/x/.aether/aether.bash"));
-        assert_eq!(bash, "source '/home/x/.aether/aether.bash'");
+        let bash = source_line(ShellKind::Bash, Path::new("/home/x/.aelyris/aelyris.bash"));
+        assert_eq!(bash, "source '/home/x/.aelyris/aelyris.bash'");
     }
 
     #[test]
@@ -295,11 +295,11 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let profile = write_profile(tmp.path(), "# user content\n");
         let appended =
-            append_source_line_if_missing(&profile, "source '/x/aether.bash'").expect("append");
+            append_source_line_if_missing(&profile, "source '/x/aelyris.bash'").expect("append");
         assert!(appended);
         let after = fs::read_to_string(&profile).expect("read");
         assert!(after.contains(INSTALL_MARKER));
-        assert!(after.contains("source '/x/aether.bash'"));
+        assert!(after.contains("source '/x/aelyris.bash'"));
         // User's original content survives.
         assert!(after.starts_with("# user content"));
     }
@@ -308,12 +308,12 @@ mod tests {
     fn append_is_idempotent_when_marker_present() {
         let tmp = TempDir::new().expect("tempdir");
         let seed = format!(
-            "# user content\n\n{}\nsource '/x/aether.bash'\n",
+            "# user content\n\n{}\nsource '/x/aelyris.bash'\n",
             INSTALL_MARKER
         );
         let profile = write_profile(tmp.path(), &seed);
         let appended =
-            append_source_line_if_missing(&profile, "source '/x/aether.bash'").expect("append");
+            append_source_line_if_missing(&profile, "source '/x/aelyris.bash'").expect("append");
         assert!(!appended, "second install should be a no-op");
         let after = fs::read_to_string(&profile).expect("read");
         assert_eq!(after, seed, "file should be byte-for-byte unchanged");
@@ -326,7 +326,7 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let profile = tmp.path().join("nested").join("profile.ps1");
         let appended =
-            append_source_line_if_missing(&profile, ". \"C:\\x\\aether.ps1\"").expect("append");
+            append_source_line_if_missing(&profile, ". \"C:\\x\\aelyris.ps1\"").expect("append");
         assert!(appended);
         assert!(profile.is_file());
         let contents = fs::read_to_string(&profile).expect("read");

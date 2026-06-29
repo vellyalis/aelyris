@@ -1,7 +1,7 @@
-# Aether Terminal Quality Audit
+# Aelyris Quality Audit
 
 Date: 2026-05-02
-Scope: Aether Terminal app, AI workstation surfaces, terminal/IME reliability, pane/process/session model, longrun/ops dashboard, release and verification system.
+Scope: Aelyris app, AI workstation surfaces, terminal/IME reliability, pane/process/session model, longrun/ops dashboard, release and verification system.
 
 ## Executive Score
 
@@ -9,7 +9,7 @@ Overall: **7.9 / 10**
 
 Target for wizard-grade: **9.3+ / 10**
 
-Aether is no longer a prototype shell. It has a serious terminal surface, right-rail workstation model, process manager, live pane truth, review/observe/command modes, IME verification, release gates, visual QA, and a longrun monitoring stack. The remaining gap is not one missing button; it is the absence of a fully authoritative operational core that makes every pane, agent, tool call, retry, file change, context budget, and recovery event replayable and trustworthy across crashes, sleep/resume, reloads, and multiple projects.
+Aelyris is no longer a prototype shell. It has a serious terminal surface, right-rail workstation model, process manager, live pane truth, review/observe/command modes, IME verification, release gates, visual QA, and a longrun monitoring stack. The remaining gap is not one missing button; it is the absence of a fully authoritative operational core that makes every pane, agent, tool call, retry, file change, context budget, and recovery event replayable and trustworthy across crashes, sleep/resume, reloads, and multiple projects.
 
 ## Evidence Checked
 
@@ -23,7 +23,7 @@ Aether is no longer a prototype shell. It has a serious terminal surface, right-
 - Browser check:
   - `http://127.0.0.1:47822/` dashboard rendered and had no console warnings/errors.
   - Current old `http://127.0.0.1:47820/` view appeared visually empty at first viewport despite rich DOM, which is a monitoring UX risk.
-  - `http://localhost:1420/?aetherVisualQa=1` rendered the app visual QA state and had no console warnings/errors.
+  - `http://localhost:1420/?aelyrisVisualQa=1` rendered the app visual QA state and had no console warnings/errors.
 - Fresh all-suite Vitest attempt did not complete within 120s in this audit turn, so this document treats previous release-gate evidence as the latest passing proof and marks full-suite recency as unresolved.
 
 ## Scorecard
@@ -201,7 +201,7 @@ Aether is no longer a prototype shell. It has a serious terminal surface, right-
 
 ## Definition Of Wizard-Grade
 
-Aether reaches wizard-grade when:
+Aelyris reaches wizard-grade when:
 
 - A user can always answer "what is running, why, what changed, what is blocked, what is next" within five seconds.
 - Every important event can be replayed after reload, crash, sleep, or handoff.

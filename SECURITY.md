@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Quorum is currently in alpha development. No stable public release is
+Aelyris is currently in alpha development. No stable public release is
 supported yet.
 
 Security fixes are handled on the default development line until a supported
@@ -26,7 +26,7 @@ include:
 
 ## Security Boundaries
 
-Quorum works near several sensitive boundaries:
+Aelyris works near several sensitive boundaries:
 
 - local shell and PTY execution,
 - project file access,

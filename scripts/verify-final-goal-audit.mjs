@@ -123,7 +123,7 @@ function isCommandEvidenceEnvironmentBlocker(blocker) {
     /command-evidence|live-command-evidence|multipane-command-evidence|recovered-command-evidence|process-reconnect-command-evidence/i.test(
       text,
     ) &&
-    /environment-blocked|spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aether\.exe/i.test(
+    /environment-blocked|spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aelyris\.exe/i.test(
       text,
     )
   );
@@ -132,7 +132,7 @@ function isChunkedOscEnvironmentBlocker(blocker) {
   const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
   return (
     /terminal-core-edge|chunked OSC|chunked-osc-live/i.test(text) &&
-    /environment-blocked|CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM|No running debug\/release Aether\.exe/i.test(
+    /environment-blocked|CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM|No running debug\/release Aelyris\.exe/i.test(
       text,
     )
   );
@@ -234,11 +234,11 @@ const currentStateDocPaths = [
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
-  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
 const detailedCurrentStateDocPaths = new Set([
   "docs/PUBLICATION_READINESS.md",
-  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ]);
 const releaseScoreSourcePaths = [
   "package.json",
@@ -425,7 +425,7 @@ function currentStateDocFreshness(path) {
       text?.includes(`releaseCandidateReady=${releaseScore?.releaseCandidateReady === true}`) === true,
     consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
     consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
-    consentProviderRequired: text?.includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
+    consentProviderRequired: text?.includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
     noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
     noStaleReleaseReadyClaim:
       releaseScore?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
@@ -532,8 +532,8 @@ const chunkedOscLiveHostBlockedEvidenceReady =
   mtime(chunkedOscLiveEnvironmentBlockedPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-chunked-osc-live.mjs"),
-      mtime("scripts/aether-imgcat.ps1"),
-      mtime("scripts/aether-imgcat.sh"),
+      mtime("scripts/aelyris-imgcat.ps1"),
+      mtime("scripts/aelyris-imgcat.sh"),
       mtime("e2e/fixtures/inline-image-1x1.png"),
       mtime("e2e/fixtures/inline-image-32x32.png"),
     );
@@ -772,7 +772,7 @@ const promptConsentPacketReady =
   authenticatedPromptConsentPacket?.checks?.sourceArtifactsFresh === true &&
   authenticatedPromptConsentPacket?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
   authenticatedPromptConsentPacket?.packet?.requiredEnv ===
-    "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
   authenticatedPromptConsentPacket?.packet?.tokenGate === "explicit consent" &&
   typeof authenticatedPromptConsentPacket?.consentPacketSha256 === "string";
 const glassLegibilityContractReady =
@@ -856,12 +856,12 @@ const releaseOperationsExternalGateEvidenceReady =
       externalGateReadiness?.checks?.noOsSleepEnvPresent === true));
 const promptExecutionGate = {
   command: authenticatedPrompt?.nextCommand?.command ?? "pnpm verify:terminal:authenticated-ai-cli-prompt",
-  requiredEnv: promptChecks.requiredEnv ?? "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
-  requiredProviderEnv: "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+  requiredEnv: promptChecks.requiredEnv ?? "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+  requiredProviderEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   env: authenticatedPrompt?.nextCommand?.env ?? {},
   provider:
-    authenticatedPrompt?.provider ?? authenticatedPrompt?.nextCommand?.env?.QUORUM_AUTH_PROMPT_PROVIDER ?? "unknown",
-  cdp: authenticatedPrompt?.nextCommand?.env?.AETHER_TAURI_CDP ?? authenticatedPrompt?.cdp ?? null,
+    authenticatedPrompt?.provider ?? authenticatedPrompt?.nextCommand?.env?.AELYRIS_AUTH_PROMPT_PROVIDER ?? "unknown",
+  cdp: authenticatedPrompt?.nextCommand?.env?.AELYRIS_TAURI_CDP ?? authenticatedPrompt?.cdp ?? null,
   wouldSpendTokens: authenticatedPrompt?.wouldSpendTokens === true,
   tokenGate: authenticatedPrompt?.wouldSpendTokens === true ? "explicit consent" : "not required",
   consentPacketReady:
@@ -1532,7 +1532,7 @@ let externalBlockedRisks = unresolvedBlockers
         blocker: blocker?.blocker ?? String(blocker),
         canAutoResolve: false,
         requiredAction:
-          "Run the matching command-evidence verifier on a Windows host with Aether/WebView2 CDP available, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+          "Run the matching command-evidence verifier on a Windows host with Aelyris/WebView2 CDP available, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
       })),
   )
   .concat(
@@ -1556,7 +1556,7 @@ let externalBlockedRisks = unresolvedBlockers
         blocker: blocker?.blocker ?? String(blocker),
         canAutoResolve: false,
         requiredAction:
-          "Run pnpm verify:terminal:chunked-osc-live on a Windows host with Aether/WebView2 CDP available, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+          "Run pnpm verify:terminal:chunked-osc-live on a Windows host with Aelyris/WebView2 CDP available, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
       })),
   )
   .concat(

@@ -1,6 +1,6 @@
 // Live native-HWND paste verifier.
 //
-// Requires Aether/Tauri dev to be running with WebView2 CDP exposed on 9222.
+// Requires Aelyris/Tauri dev to be running with WebView2 CDP exposed on 9222.
 // This intentionally drives the Windows native input child HWND with a real WM_PASTE
 // instead of calling native_terminal_input_commit directly. It proves the
 // Rust native input surface intercepts OS clipboard paste before any default
@@ -15,10 +15,10 @@ import { chromium } from "playwright";
 const ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\//, ""));
 const OUT = resolve(ROOT, ".codex-auto/production-smoke/native-hwnd-paste-live.json");
 const NATIVE_CLIENT_ARTIFACT = resolve(ROOT, ".codex-auto/quality/native-client-spike.json");
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_TAURI_APP_URL ?? "http://localhost:1420/";
-const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AETHER_TAURI_PAGE_TIMEOUT_MS ?? "20000", 10);
-const PASTE_SENDER_TIMEOUT_MS = Number.parseInt(process.env.AETHER_NATIVE_PASTE_TIMEOUT_MS ?? "30000", 10);
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_TAURI_APP_URL ?? "http://localhost:1420/";
+const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_TAURI_PAGE_TIMEOUT_MS ?? "20000", 10);
+const PASTE_SENDER_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_NATIVE_PASTE_TIMEOUT_MS ?? "30000", 10);
 const WM_PASTE = "0x0302";
 
 function writeArtifact(report) {
@@ -55,7 +55,7 @@ function nativeClientPasteGuardFresh(nativeClient) {
     mtime(NATIVE_CLIENT_ARTIFACT) + 5_000 >=
       Math.max(
         mtime(resolve(ROOT, "scripts/verify-native-client-spike.mjs")),
-        mtime(resolve(ROOT, "src-tauri/src/bin/aether_native.rs")),
+        mtime(resolve(ROOT, "src-tauri/src/bin/aelyris_native.rs")),
         mtime(resolve(ROOT, "src-tauri/src/term/native_input.rs")),
         mtime(resolve(ROOT, "src-tauri/src/ipc/commands.rs")),
       )
@@ -71,9 +71,9 @@ function mapNativePasteGuardCase(testCase) {
   return {
     id: idMap[testCase?.id] ?? testCase?.id ?? "unknown-native-paste-guard-case",
     ok: testCase?.ok === true,
-    shell: "aether-native",
+    shell: "aelyris-native",
     path: "native-input-hwnd-wm-paste",
-    message: "aether-native no-CDP WM_PASTE guard proof",
+    message: "aelyris-native no-CDP WM_PASTE guard proof",
     expectedAction: testCase?.expectedAction ?? null,
     expectedReason: testCase?.expectedReason ?? null,
     expectedLineEndings: testCase?.expectedLineEndings ?? null,
@@ -107,7 +107,7 @@ function nativeClientPasteGuardFallback(error) {
   const cases = Array.isArray(pasteGuard?.cases) ? pasteGuard.cases.map(mapNativePasteGuardCase) : [];
   const ok =
     nativeClientPasteGuardFresh(nativeClient) &&
-    pasteGuard?.schema === "aether.native.paste-guard-proof.v1" &&
+    pasteGuard?.schema === "aelyris.native.paste-guard-proof.v1" &&
     pasteGuard?.nativePasteGuardProof === true &&
     pasteGuard?.nativeHwndWmPaste === true &&
     pasteGuard?.nativeSurfaceHwnd &&
@@ -133,7 +133,7 @@ function nativeClientPasteGuardFallback(error) {
     appPageUrl: null,
     terminalId: null,
     hwnd: pasteGuard.nativeSurfaceHwnd,
-    source: "aether-native-paste-guard-proof",
+    source: "aelyris-native-paste-guard-proof",
     nativeClientArtifact: ".codex-auto/quality/native-client-spike.json",
     expectation:
       "A real Windows WM_PASTE sent to the native input HWND is intercepted by Rust, single-line paste is normalized, and destructive/multiline paste is blocked before PTY write.",
@@ -141,7 +141,7 @@ function nativeClientPasteGuardFallback(error) {
       windowsHost: true,
       tauriPageAttached: false,
       nativeNoCdpProof: true,
-      aetherNativePasteGuardProof: true,
+      aelyrisNativePasteGuardProof: true,
       nativeSurfaceHwndAvailable: typeof pasteGuard.nativeSurfaceHwnd === "string",
       wmPasteSentToNativeHwnd: pasteGuard.nativeHwndWmPaste === true,
       singleLineLfNormalizedAndExecuted: pasteGuard.singleLineLfNormalizedAndExecuted === true,
@@ -247,13 +247,13 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public static class AetherNativePasteSender {
+public static class AelyrisNativePasteSender {
   [DllImport("user32.dll", SetLastError=true)]
   public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
 }
 "@
-$text = [Environment]::GetEnvironmentVariable("AETHER_NATIVE_PASTE_TEXT")
-$hwndHex = [Environment]::GetEnvironmentVariable("AETHER_NATIVE_PASTE_HWND")
+$text = [Environment]::GetEnvironmentVariable("AELYRIS_NATIVE_PASTE_TEXT")
+$hwndHex = [Environment]::GetEnvironmentVariable("AELYRIS_NATIVE_PASTE_HWND")
 $hex = $hwndHex -replace '^0x',''
 $hwnd = [IntPtr]([Convert]::ToInt64($hex, 16))
 $last = $null
@@ -268,15 +268,15 @@ for ($i = 0; $i -lt 10; $i++) {
   }
 }
 if ($last -ne $null) { throw $last }
-$result = [AetherNativePasteSender]::SendMessage($hwnd, ${WM_PASTE}, [IntPtr]::Zero, [IntPtr]::Zero)
+$result = [AelyrisNativePasteSender]::SendMessage($hwnd, ${WM_PASTE}, [IntPtr]::Zero, [IntPtr]::Zero)
 Write-Output ("wm_paste_sent hwnd={0} result={1}" -f $hwndHex, $result.ToInt64())
 `;
   const child = spawnSync("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script], {
     cwd: ROOT,
     env: {
       ...process.env,
-      AETHER_NATIVE_PASTE_TEXT: text,
-      AETHER_NATIVE_PASTE_HWND: hwndHex,
+      AELYRIS_NATIVE_PASTE_TEXT: text,
+      AELYRIS_NATIVE_PASTE_HWND: hwndHex,
     },
     encoding: "utf8",
     timeout: PASTE_SENDER_TIMEOUT_MS,
@@ -393,15 +393,15 @@ async function runCase(page, terminalId, testCase) {
 }
 
 function makeCases(token) {
-  const safeMarker = `AETHER_SAFE_${token}`;
-  const blockedMarker = `AETHER_BLOCK_${token}`;
-  const multiMarkerA = `AETHER_MULTI_A_${token}`;
-  const multiMarkerB = `AETHER_MULTI_B_${token}`;
+  const safeMarker = `AELYRIS_SAFE_${token}`;
+  const blockedMarker = `AELYRIS_BLOCK_${token}`;
+  const multiMarkerA = `AELYRIS_MULTI_A_${token}`;
+  const multiMarkerB = `AELYRIS_MULTI_B_${token}`;
   return [
     {
       id: "single-line-lf-normalized-and-executed",
       message: "single-line LF paste is allowed, normalized to Enter, drained through Rust, and visibly executed",
-      text: `$m='AETHER_SAFE'+'_ ${token}'.Replace(' ',''); Write-Output $m\n`,
+      text: `$m='AELYRIS_SAFE'+'_ ${token}'.Replace(' ',''); Write-Output $m\n`,
       outputMarker: safeMarker,
       expectedAction: "allowed",
       expectedReason: "single-line paste normalized by native input guard",
@@ -411,7 +411,7 @@ function makeCases(token) {
     {
       id: "destructive-commented-paste-blocked-before-pty",
       message: "paste text containing a destructive command signature is blocked before any PTY write",
-      text: `$m='AETHER_BLOCK'+'_ ${token}'.Replace(' ',''); Write-Output $m # git reset --hard HEAD\n`,
+      text: `$m='AELYRIS_BLOCK'+'_ ${token}'.Replace(' ',''); Write-Output $m # git reset --hard HEAD\n`,
       outputMarker: blockedMarker,
       expectedAction: "blocked",
       expectedReason: "destructive command paste blocked by native input guard",
@@ -422,8 +422,8 @@ function makeCases(token) {
       id: "multiline-paste-blocked-before-pty",
       message: "multi-line paste is blocked until an explicit UI confirmation path exists",
       text:
-        `$m='AETHER_MULTI_A'+'_ ${token}'.Replace(' ',''); Write-Output $m\n` +
-        `$m='AETHER_MULTI_B'+'_ ${token}'.Replace(' ',''); Write-Output $m\n`,
+        `$m='AELYRIS_MULTI_A'+'_ ${token}'.Replace(' ',''); Write-Output $m\n` +
+        `$m='AELYRIS_MULTI_B'+'_ ${token}'.Replace(' ',''); Write-Output $m\n`,
       outputMarker: multiMarkerA,
       secondaryOutputMarker: multiMarkerB,
       expectedAction: "blocked",
@@ -440,7 +440,7 @@ try {
   browser = await chromium.connectOverCDP(CDP);
   const page = await findTauriPage(browser);
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", ROOT.replaceAll("\\", "/"));
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "native-hwnd-paste-live");
@@ -544,7 +544,7 @@ try {
 } catch (error) {
   if (nativeClientPasteGuardFallback(error)) {
     console.warn(
-      `native HWND paste CDP path unavailable; accepted fresh aether-native no-CDP paste-guard proof: ${OUT}`,
+      `native HWND paste CDP path unavailable; accepted fresh aelyris-native no-CDP paste-guard proof: ${OUT}`,
     );
     process.exitCode = 0;
   } else {
@@ -566,7 +566,7 @@ try {
       const page = await findTauriPage(browser).catch(() => null);
       if (page && terminalId) await call(page, "close_terminal", { id: terminalId }).catch(() => {});
     } finally {
-      if (process.env.AETHER_NATIVE_HWND_PASTE_CLOSE_BROWSER === "1") {
+      if (process.env.AELYRIS_NATIVE_HWND_PASTE_CLOSE_BROWSER === "1") {
         await withTimeout(browser.close(), 1500, "CDP browser close").catch(() => {});
       } else if (typeof browser.disconnect === "function") {
         await withTimeout(browser.disconnect(), 1500, "CDP browser disconnect").catch(() => {});

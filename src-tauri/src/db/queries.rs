@@ -12,7 +12,7 @@ use crate::knowledge_graph::CodeNode;
 /// Aliased to keep query signatures readable (and satisfy clippy::type_complexity).
 type CodeGraphRows = (Vec<CodeNode>, Vec<(String, String)>);
 
-/// Core database handle for Aether Terminal
+/// Core database handle for Aelyris
 pub struct Database {
     conn: Connection,
 }
@@ -2688,7 +2688,7 @@ mod tests {
                 owner: Some("rust-core".to_string()),
                 source: "rust".to_string(),
                 metadata_json: serde_json::json!({
-                    "schema": "aether.workspace.data.v1",
+                    "schema": "aelyris.workspace.data.v1",
                     "modes": ["terminal", "review", "agents"]
                 }),
                 created_at: String::new(),
@@ -2697,7 +2697,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             workspace_item.metadata_json["schema"],
-            "aether.workspace.data.v1"
+            "aelyris.workspace.data.v1"
         );
         assert_eq!(db.list_workspace_items(workspace, 10).unwrap().len(), 1);
 
@@ -2707,7 +2707,7 @@ mod tests {
                 workspace_id: workspace.to_string(),
                 active_mode: "terminal".to_string(),
                 snapshot_json: serde_json::json!({
-                    "schema": "aether.mode-preservation.v1",
+                    "schema": "aelyris.mode-preservation.v1",
                     "activePaneId": "pane-1",
                     "selectedRail": "observe",
                     "restoredModes": ["terminal", "agents", "review", "context"]
@@ -2726,7 +2726,7 @@ mod tests {
                 purpose: "implementation".to_string(),
                 worktree_path: Some("C:/repo".to_string()),
                 context_usage_json: serde_json::json!({
-                    "schema": "aether.agent-identity.v1",
+                    "schema": "aelyris.agent-identity.v1",
                     "windowTokens": 128000,
                     "usedTokens": 42000
                 }),
@@ -2742,7 +2742,7 @@ mod tests {
         assert_eq!(identity.provider, "codex");
         assert_eq!(
             identity.context_usage_json["schema"],
-            "aether.agent-identity.v1"
+            "aelyris.agent-identity.v1"
         );
 
         db.upsert_history_search_entry(&HistorySearchEntryRecord {
@@ -3143,7 +3143,7 @@ mod tests {
     #[test]
     fn test_pane_tree_layout_save_get_delete() {
         let db = Database::open_memory().unwrap();
-        let key = "aether:paneTree:tab-test";
+        let key = "aelyris:paneTree:tab-test";
         let first = r#"{"version":1,"tree":{"type":"terminal","id":"pane-a","shell":"powershell"},"activePaneId":"pane-a"}"#;
         let second = r#"{"version":1,"tree":{"type":"terminal","id":"pane-a","shell":"cmd","title":"build"},"activePaneId":null}"#;
 
@@ -3165,7 +3165,7 @@ mod tests {
     fn test_pane_tree_layout_rejects_invalid_json() {
         let db = Database::open_memory().unwrap();
         let err = db
-            .save_pane_tree_layout("aether:paneTree:bad", "", "{")
+            .save_pane_tree_layout("aelyris:paneTree:bad", "", "{")
             .unwrap_err();
         assert!(err.contains("invalid JSON"));
     }

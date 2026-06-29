@@ -25,7 +25,7 @@ The longrun control plane was hardened around four S++ requirements:
 - Dashboard `/health` now returns typed JSON: workspace, port, PID, server PID, canonical URL, stale status, and timestamp.
 - Watchdog dashboard checks now require typed health, matching workspace, matching port, and live server PID.
 - `current-dashboard.json` is rewritten with the actual serving PID, not only the hidden launcher PID.
-- Dashboard restart now prefers the stable workspace port (`48371` for Aether) and stops stale same-workspace dashboard servers on that port before drifting to another port.
+- Dashboard restart now prefers the stable workspace port (`48371` for Aelyris) and stops stale same-workspace dashboard servers on that port before drifting to another port.
 
 ### Completion Archive
 
@@ -38,7 +38,7 @@ The longrun control plane was hardened around four S++ requirements:
 - Dashboard state rendering now redacts `statePath`, `stdoutPath`, and `stderrPath` when metadata points outside the workspace.
 - Heavy child process kill logic now requires the process to be under the longrun root and command line to include the workspace path. It no longer treats parent-missing processes as kill candidates.
 - `quality-baseline.json` blocker taxonomy drift is now caught by the roadmap quality gate.
-- Aether baseline was updated to include the `destructive` blocker kind.
+- Aelyris baseline was updated to include the `destructive` blocker kind.
 
 ## Validation
 

@@ -3,18 +3,18 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use aether_terminal_lib::db::{self, Database};
+use aelyris_lib::db::{self, Database};
 use reqwest::Method;
 use serde_json::{json, Value};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9333";
 const SIDECAR_BASE_URL: &str = "http://127.0.0.1:9334";
-const TOKEN_FILE_NAME: &str = "aether-pty-server.token";
+const TOKEN_FILE_NAME: &str = "aelyris-pty-server.token";
 
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
-        eprintln!("aetherctl: {err}");
+        eprintln!("aelys: {err}");
         std::process::exit(1);
     }
 }
@@ -142,7 +142,7 @@ fn db_smoke() -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|err| err.to_string())?
         .as_millis();
-    let storage_key = format!("aether:paneTree:post-resume-smoke-{nonce}");
+    let storage_key = format!("aelyris:paneTree:post-resume-smoke-{nonce}");
     let project_path = env::current_dir()
         .map_err(|err| err.to_string())?
         .to_string_lossy()
@@ -623,7 +623,7 @@ async fn request(method: Method, path: &str, body: Option<Value>) -> Result<Valu
 }
 
 fn api_base_url() -> String {
-    if let Ok(url) = env::var("QUORUM_API_URL") {
+    if let Ok(url) = env::var("AELYRIS_API_URL") {
         let trimmed = url.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -637,7 +637,7 @@ fn api_base_url() -> String {
 }
 
 fn api_token() -> Option<String> {
-    if let Ok(token) = env::var("QUORUM_API_TOKEN") {
+    if let Ok(token) = env::var("AELYRIS_API_TOKEN") {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
@@ -657,14 +657,14 @@ fn token_path() -> Option<PathBuf> {
     if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
         return Some(
             PathBuf::from(local_app_data)
-                .join("Aether Terminal")
+                .join("Aelyris")
                 .join(TOKEN_FILE_NAME),
         );
     }
     env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(PathBuf::from))
-        .map(|home| home.join(".aether").join(TOKEN_FILE_NAME))
+        .map(|home| home.join(".aelyris").join(TOKEN_FILE_NAME))
 }
 
 fn option_value(args: &[String], name: &str) -> Option<String> {
@@ -735,7 +735,7 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aetherctl commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  QUORUM_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  QUORUM_API_TOKEN  overrides bearer token; otherwise reads the Aether sidecar token file"
+        "aelys commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the Aelyris sidecar token file"
     );
 }
 
@@ -758,7 +758,7 @@ mod tests {
     fn search_query_ignores_supported_options_and_preserves_terms() {
         let args = strings(&[
             "pane-1",
-            "aether",
+            "aelyris",
             "marker",
             "--lines",
             "500",
@@ -766,7 +766,7 @@ mod tests {
             "3",
             "--case-sensitive",
         ]);
-        assert_eq!(search_query(&args).unwrap(), "aether marker");
+        assert_eq!(search_query(&args).unwrap(), "aelyris marker");
     }
 
     #[test]

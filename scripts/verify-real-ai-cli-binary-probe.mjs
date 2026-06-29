@@ -15,15 +15,15 @@ import { fileURLToPath } from "node:url";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const EXTENSION = process.platform === "win32" ? ".exe" : "";
 const SIDECAR =
-  process.env.AETHER_REAL_AI_CLI_SIDECAR ??
-  join(ROOT, "src-tauri", "pty-server", "target", "release", `aether-pty-server${EXTENSION}`);
+  process.env.AELYRIS_REAL_AI_CLI_SIDECAR ??
+  join(ROOT, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${EXTENSION}`);
 const OUT =
-  process.env.AETHER_REAL_AI_CLI_OUT ?? join(ROOT, ".codex-auto", "production-smoke", "real-ai-cli-binary-probe.json");
-const TOKEN = process.env.AETHER_REAL_AI_CLI_TOKEN ?? "real-ai-cli-probe-token";
-const WAIT_MS = Number.parseInt(process.env.AETHER_REAL_AI_CLI_WAIT_MS ?? "60000", 10);
-const MAX_ATTEMPTS = Math.max(1, Number.parseInt(process.env.AETHER_REAL_AI_CLI_MAX_ATTEMPTS ?? "2", 10));
+  process.env.AELYRIS_REAL_AI_CLI_OUT ?? join(ROOT, ".codex-auto", "production-smoke", "real-ai-cli-binary-probe.json");
+const TOKEN = process.env.AELYRIS_REAL_AI_CLI_TOKEN ?? "real-ai-cli-probe-token";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_REAL_AI_CLI_WAIT_MS ?? "60000", 10);
+const MAX_ATTEMPTS = Math.max(1, Number.parseInt(process.env.AELYRIS_REAL_AI_CLI_MAX_ATTEMPTS ?? "2", 10));
 const CLIS = ["codex", "claude", "gemini"];
-const EXISTING_BASE = process.env.AETHER_REAL_AI_CLI_BASE?.replace(/\/+$/, "") ?? null;
+const EXISTING_BASE = process.env.AELYRIS_REAL_AI_CLI_BASE?.replace(/\/+$/, "") ?? null;
 
 if (!existsSync(SIDECAR)) {
   throw new Error(
@@ -52,10 +52,10 @@ function startSidecar(port, tempRoot) {
     cwd: ROOT,
     env: {
       ...process.env,
-      QUORUM_API_TOKEN: TOKEN,
-      QUORUM_PTY_SERVER_PORT: String(port),
-      QUORUM_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
-      QUORUM_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
+      AELYRIS_API_TOKEN: TOKEN,
+      AELYRIS_PTY_SERVER_PORT: String(port),
+      AELYRIS_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
+      AELYRIS_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
     },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
@@ -234,7 +234,7 @@ async function probeCliAttempt(base, discovery, attempt) {
     };
   }
 
-  const marker = `AETHER_REAL_AI_CLI_${discovery.cli.toUpperCase()}_${Math.random()
+  const marker = `AELYRIS_REAL_AI_CLI_${discovery.cli.toUpperCase()}_${Math.random()
     .toString(36)
     .slice(2, 8)}`.toUpperCase();
   const launcher = process.platform === "win32" ? "cmd.exe" : "sh";
@@ -257,7 +257,7 @@ async function probeCliAttempt(base, discovery, attempt) {
       cwd: ROOT,
       env: {
         [pathKey()]: resolvedPath,
-        AETHER_REAL_AI_CLI_PROBE: discovery.cli,
+        AELYRIS_REAL_AI_CLI_PROBE: discovery.cli,
         ...(discovery.cli === "gemini" ? { GEMINI_CLI_NO_RELAUNCH: "1" } : {}),
       },
     }),
@@ -388,7 +388,7 @@ async function main() {
     } else {
       writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
     }
-    if (process.env.AETHER_KEEP_REAL_AI_CLI_TEMP !== "1") {
+    if (process.env.AELYRIS_KEEP_REAL_AI_CLI_TEMP !== "1") {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   }

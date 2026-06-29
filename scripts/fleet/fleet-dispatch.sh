@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fleet dispatcher (bash companion) for Aether worktree-based parallel dev.
+# Fleet dispatcher (bash companion) for Aelyris worktree-based parallel dev.
 # Mirrors fleet-dispatch.ps1 for use from Git Bash. Requires: git, jq.
 #
 #   ./fleet-dispatch.sh list
@@ -9,7 +9,7 @@
 #   ./fleet-dispatch.sh collect 1.3
 #   ./fleet-dispatch.sh cleanup 1.3 --delete-branch
 #
-# This script only orchestrates git worktrees + briefs. It never edits Aether
+# This script only orchestrates git worktrees + briefs. It never edits Aelyris
 # source — the agent you launch does the implementation.
 set -euo pipefail
 

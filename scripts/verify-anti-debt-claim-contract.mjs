@@ -293,7 +293,7 @@ for (const item of records) {
 }
 
 const register = {
-  schema: "aether.degradation-register/v1",
+  schema: "aelyris.degradation-register/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   localDate: currentLocalDate(),
@@ -325,7 +325,7 @@ const checks = {
 };
 const ok = Object.values(checks).every(Boolean);
 const report = {
-  schema: "aether.anti-debt-claim-contract/v1",
+  schema: "aelyris.anti-debt-claim-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   localDate: currentLocalDate(),

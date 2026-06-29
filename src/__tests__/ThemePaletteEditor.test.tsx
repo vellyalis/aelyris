@@ -7,7 +7,7 @@ import { getPalette } from "../shared/themes/catppuccin";
 
 beforeEach(() => {
   try {
-    localStorage.removeItem("aether:themeOverrides");
+    localStorage.removeItem("aelyris:themeOverrides");
   } catch {
     /* ignore */
   }
@@ -18,7 +18,7 @@ afterEach(() => cleanup());
 
 describe("ThemePaletteEditor", () => {
   it("renders one row per accent and the reset button starts disabled", () => {
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    render(<ThemePaletteEditor themeId="aelyris-dark" />);
     // 16 accents in ACCENT_KEYS
     expect(screen.getAllByRole("listitem")).toHaveLength(16);
 
@@ -29,28 +29,28 @@ describe("ThemePaletteEditor", () => {
 
   it("commits a hex edit through the input on Enter and writes to the store", () => {
     const onDirty = vi.fn();
-    render(<ThemePaletteEditor themeId="aether-dark" onDirty={onDirty} />);
+    render(<ThemePaletteEditor themeId="aelyris-dark" onDirty={onDirty} />);
     const input = screen.getByLabelText(/sapphire hex value/i) as HTMLInputElement;
 
     fireEvent.change(input, { target: { value: "#abcdef" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(useAppStore.getState().themeOverrides["aether-dark"]).toEqual({
+    expect(useAppStore.getState().themeOverrides["aelyris-dark"]).toEqual({
       sapphire: "#abcdef",
     });
     expect(onDirty).toHaveBeenCalled();
   });
 
   it("normalises 3-digit shorthand on commit", () => {
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    render(<ThemePaletteEditor themeId="aelyris-dark" />);
     const input = screen.getByLabelText(/sapphire hex value/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "#abc" } });
     fireEvent.blur(input);
-    expect(useAppStore.getState().themeOverrides["aether-dark"]?.sapphire).toBe("#aabbcc");
+    expect(useAppStore.getState().themeOverrides["aelyris-dark"]?.sapphire).toBe("#aabbcc");
   });
 
   it("flags invalid hex with aria-invalid and does not write", () => {
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    render(<ThemePaletteEditor themeId="aelyris-dark" />);
     const input = screen.getByLabelText(/sapphire hex value/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "not-a-hex" } });
     fireEvent.blur(input);
@@ -59,10 +59,10 @@ describe("ThemePaletteEditor", () => {
   });
 
   it("clears override when committed value matches base palette", () => {
-    const base = getPalette("aether-dark");
+    const base = getPalette("aelyris-dark");
     // Seed an override first
-    useAppStore.getState().setAccentOverride("aether-dark", "sapphire", "#111111");
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    useAppStore.getState().setAccentOverride("aelyris-dark", "sapphire", "#111111");
+    render(<ThemePaletteEditor themeId="aelyris-dark" />);
     const input = screen.getByLabelText(/sapphire hex value/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: base.sapphire } });
     fireEvent.blur(input);
@@ -71,9 +71,9 @@ describe("ThemePaletteEditor", () => {
 
   it("global Reset button drops every override and reflects the count", () => {
     const onDirty = vi.fn();
-    useAppStore.getState().setAccentOverride("aether-dark", "sapphire", "#111111");
-    useAppStore.getState().setAccentOverride("aether-dark", "mauve", "#222222");
-    render(<ThemePaletteEditor themeId="aether-dark" onDirty={onDirty} />);
+    useAppStore.getState().setAccentOverride("aelyris-dark", "sapphire", "#111111");
+    useAppStore.getState().setAccentOverride("aelyris-dark", "mauve", "#222222");
+    render(<ThemePaletteEditor themeId="aelyris-dark" onDirty={onDirty} />);
 
     const resetBtn = screen.getByRole("button", { name: /reset all accents/i });
     expect(resetBtn.textContent).toContain("Reset (2)");
@@ -83,8 +83,8 @@ describe("ThemePaletteEditor", () => {
   });
 
   it("shows a per-accent reset button only for overridden accents", () => {
-    useAppStore.getState().setAccentOverride("aether-dark", "sapphire", "#111111");
-    render(<ThemePaletteEditor themeId="aether-dark" />);
+    useAppStore.getState().setAccentOverride("aelyris-dark", "sapphire", "#111111");
+    render(<ThemePaletteEditor themeId="aelyris-dark" />);
 
     const sapphireReset = screen.getByRole("button", { name: /reset sapphire to default/i });
     expect(sapphireReset).toHaveProperty("disabled", false);
@@ -97,10 +97,10 @@ describe("ThemePaletteEditor", () => {
   });
 
   it("isolates overrides per themeId when prop changes", () => {
-    useAppStore.getState().setAccentOverride("aether-dark", "sapphire", "#aaaaaa");
+    useAppStore.getState().setAccentOverride("aelyris-dark", "sapphire", "#aaaaaa");
     useAppStore.getState().setAccentOverride("catppuccin-latte", "sapphire", "#bbbbbb");
 
-    const { rerender } = render(<ThemePaletteEditor themeId="aether-dark" />);
+    const { rerender } = render(<ThemePaletteEditor themeId="aelyris-dark" />);
     let input = screen.getByLabelText(/sapphire hex value/i) as HTMLInputElement;
     expect(input.value).toBe("#aaaaaa");
 

@@ -1,6 +1,6 @@
 //! Orchestrator scheduling — the deterministic brain of the autonomous loop.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy /
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy /
 //! Acceptance: end-to-end autonomy). The full loop is: LLM decomposition ->
 //! `plan` (this) -> dispatch agents -> monitor -> transition tasks -> repeat.
 //! The LLM decomposition and the actual agent spawn/monitor are runtime side

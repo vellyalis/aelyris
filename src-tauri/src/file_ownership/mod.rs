@@ -1,6 +1,6 @@
 //! File Ownership — declarative path claims for parallel agents.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 //! Requirement 8. The Planner assigns path patterns to agents (e.g.
 //! `src/auth/**` -> Agent #3) so parallel lanes never write the same files;
 //! overlapping claims are surfaced up front rather than discovered at merge

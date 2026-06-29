@@ -2,7 +2,7 @@
 
 ## Summary
 
-The dirty worktree is active implementation work, not disposable residue. It is being split into reviewable commits on branch `codex/aether-worktree-classification-2026-05-06`.
+The dirty worktree is active implementation work, not disposable residue. It is being split into reviewable commits on branch `codex/aelyris-worktree-classification-2026-05-06`.
 
 `AGENT_STATE.md` is local Codex handoff state and is ignored instead of committed.
 
@@ -12,7 +12,7 @@ The dirty worktree is active implementation work, not disposable residue. It is 
 
 Keep:
 
-- New Aether 9.8 audit, progress, implementation, operations, performance, release, and longrun autonomy docs.
+- New Aelyris 9.8 audit, progress, implementation, operations, performance, release, and longrun autonomy docs.
 - The merged/obsolete cleanup audit.
 - Deletion of old roadmap, phase, handoff, and historical design docs that were superseded by the new consolidated documents.
 
@@ -50,7 +50,7 @@ Keep:
 
 Reason:
 
-- These provide repeatable release/validation gates for the newly implemented Aether workstation state.
+- These provide repeatable release/validation gates for the newly implemented Aelyris workstation state.
 
 ## Remaining Risk
 

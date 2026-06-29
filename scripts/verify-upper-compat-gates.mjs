@@ -5,7 +5,7 @@ import process from "node:process";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "upper-compat-gates.json");
-const DB_PATH = join(ROOT, ".codex-auto", "production-smoke", "upper-compat", "verify-aether.db");
+const DB_PATH = join(ROOT, ".codex-auto", "production-smoke", "upper-compat", "verify-aelyris.db");
 
 function read(path) {
   const full = join(ROOT, path);
@@ -52,17 +52,17 @@ const apiSource = read("src-tauri/src/api/mod.rs");
 const mcpSource = read("src-tauri/src/api/mcp.rs");
 const dbSource = read("src-tauri/src/db/queries.rs");
 const migrationSource = read("src-tauri/src/db/migrations.rs");
-const nativeSource = read("src-tauri/src/bin/aether_native.rs");
+const nativeSource = read("src-tauri/src/bin/aelyris_native.rs");
 
 const run = spawnSync(
   "cargo",
-  ["run", "--quiet", "--manifest-path", "src-tauri/Cargo.toml", "--bin", "aether-native", "--", "upper-compat-proof"],
+  ["run", "--quiet", "--manifest-path", "src-tauri/Cargo.toml", "--bin", "aelyris-native", "--", "upper-compat-proof"],
   {
     cwd: ROOT,
     encoding: "utf8",
     env: {
       ...process.env,
-      AETHER_UPPER_COMPAT_DB_PATH: DB_PATH,
+      AELYRIS_UPPER_COMPAT_DB_PATH: DB_PATH,
     },
     timeout: 240_000,
   },
@@ -74,7 +74,7 @@ if (run.error || run.status === null) {
   // undefined. Emit an explicit BLOCKED artifact instead of crashing on
   // `run.stderr.split(...)` below — a blocked host must be reported, not masked.
   const blocked = {
-    schema: "aether.upper-compat-gates.verification.v1",
+    schema: "aelyris.upper-compat-gates.verification.v1",
     status: "environment-blocked",
     strictPass: false,
     generatedAt: new Date().toISOString(),
@@ -112,54 +112,54 @@ function addCheck(id, passed, detail, evidence = {}) {
 }
 
 addCheck(
-  "aether.mcp.server.v1",
+  "aelyris.mcp.server.v1",
   run.status === 0 &&
-    proof?.schema === "aether.upper-compat-proof.v1" &&
-    gateComplete(proof, "aether.mcp.server.v1") &&
+    proof?.schema === "aelyris.upper-compat-proof.v1" &&
+    gateComplete(proof, "aelyris.mcp.server.v1") &&
     apiSource.includes("/mcp/contract") &&
     apiSource.includes("/mcp/tools/list") &&
     apiSource.includes("/mcp/tools/call") &&
     mcpSource.includes("terminal.capture") &&
     mcpSource.includes("mux.workspace.safeInput"),
   "Local MCP contract and tool-call routes are Rust-backed and route through PTY/mux state.",
-  { routes: proof?.gates?.["aether.mcp.server.v1"]?.routes ?? [] },
+  { routes: proof?.gates?.["aelyris.mcp.server.v1"]?.routes ?? [] },
 );
 
 addCheck(
-  "aether.workspace.data.v1",
-  gateComplete(proof, "aether.workspace.data.v1") &&
+  "aelyris.workspace.data.v1",
+  gateComplete(proof, "aelyris.workspace.data.v1") &&
     migrationSource.includes("CREATE TABLE IF NOT EXISTS workspace_items") &&
     dbSource.includes("upsert_workspace_item") &&
     dbSource.includes("list_workspace_items"),
   "Workspace tasks, reviews, handoffs, and context packs persist in SQLite through Rust APIs.",
-  proof?.gates?.["aether.workspace.data.v1"] ?? {},
+  proof?.gates?.["aelyris.workspace.data.v1"] ?? {},
 );
 
 addCheck(
-  "aether.mode-preservation.v1",
-  gateComplete(proof, "aether.mode-preservation.v1") &&
+  "aelyris.mode-preservation.v1",
+  gateComplete(proof, "aelyris.mode-preservation.v1") &&
     migrationSource.includes("CREATE TABLE IF NOT EXISTS mode_preservation_snapshots") &&
     dbSource.includes("save_mode_preservation_snapshot"),
   "Mode/rail/pane restoration snapshots are durable and not tied to React state.",
-  proof?.gates?.["aether.mode-preservation.v1"] ?? {},
+  proof?.gates?.["aelyris.mode-preservation.v1"] ?? {},
 );
 
 addCheck(
-  "aether.history.search.v1",
-  gateComplete(proof, "aether.history.search.v1") &&
+  "aelyris.history.search.v1",
+  gateComplete(proof, "aelyris.history.search.v1") &&
     migrationSource.includes("CREATE TABLE IF NOT EXISTS history_search_entries") &&
     dbSource.includes("search_workspace_history"),
   "Cross-mode history search persists command, review, and handoff evidence in Rust-owned storage.",
-  proof?.gates?.["aether.history.search.v1"] ?? {},
+  proof?.gates?.["aelyris.history.search.v1"] ?? {},
 );
 
 addCheck(
-  "aether.agent-identity.v1",
-  gateComplete(proof, "aether.agent-identity.v1") &&
+  "aelyris.agent-identity.v1",
+  gateComplete(proof, "aelyris.agent-identity.v1") &&
     migrationSource.includes("CREATE TABLE IF NOT EXISTS agent_identity_records") &&
     dbSource.includes("upsert_agent_identity"),
   "Agent provider/auth/install/worktree/context identity is durable and visible without WebView-only state.",
-  proof?.gates?.["aether.agent-identity.v1"] ?? {},
+  proof?.gates?.["aelyris.agent-identity.v1"] ?? {},
 );
 
 addCheck(
@@ -175,7 +175,7 @@ addCheck(
 const passed = checks.filter((check) => check.status === "passed").length;
 const total = checks.length;
 const report = {
-  schema: "aether.upper-compat-gates.verification.v1",
+  schema: "aelyris.upper-compat-gates.verification.v1",
   status: passed === total ? "pass" : "fail",
   score: Math.round((passed / total) * 100),
   passed,

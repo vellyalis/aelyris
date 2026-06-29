@@ -9,7 +9,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Create a background helper command without flashing a console window.
 ///
-/// Aether is a GUI app, so short-lived helpers such as `where.exe`, `git.exe`,
+/// Aelyris is a GUI app, so short-lived helpers such as `where.exe`, `git.exe`,
 /// `gh.exe`, and language servers must not borrow the foreground with a black
 /// console window while panes or files are opening.
 pub fn hidden_command<S: AsRef<OsStr>>(program: S) -> Command {
@@ -47,7 +47,7 @@ pub fn guard_child_against_orphan(pid: u32) {
     #[cfg(not(windows))]
     {
         // No portable equivalent; POSIX would use a process group / prctl
-        // PR_SET_PDEATHSIG. Aether targets Windows, so this is a documented no-op.
+        // PR_SET_PDEATHSIG. Aelyris targets Windows, so this is a documented no-op.
         let _ = pid;
     }
 }

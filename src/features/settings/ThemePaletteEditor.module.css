@@ -129,7 +129,7 @@
 .hexInput {
   width: 100%;
   padding: var(--space-1) var(--space-3);
-  background: var(--aether-bg);
+  background: var(--aelyris-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);

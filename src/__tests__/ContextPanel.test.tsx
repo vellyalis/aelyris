@@ -139,10 +139,10 @@ describe("ContextPanel", () => {
         sessions={[
           session("a", {
             name: "Builder",
-            logs: [{ timestamp: 1, type: "text", content: "Used QUORUM_API_TOKEN=secret-value for a local smoke" }],
+            logs: [{ timestamp: 1, type: "text", content: "Used AELYRIS_API_TOKEN=secret-value for a local smoke" }],
           }),
         ]}
-        projectName="Aether"
+        projectName="Aelyris"
         projectPath="C:/repo"
         branch="feature/context-pack"
         changedFiles={[{ path: "src/shared/lib/contextPack.ts", status: "created" }]}

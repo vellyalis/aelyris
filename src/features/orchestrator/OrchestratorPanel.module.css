@@ -65,7 +65,7 @@
 .nextIds {
   min-width: 0;
   overflow: hidden;
-  color: var(--aether-champagne);
+  color: var(--aelyris-champagne);
   font-family: ui-monospace, SFMono-Regular, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -110,7 +110,7 @@
   background: var(--status-edit);
 }
 .statusReview {
-  background: var(--aether-champagne);
+  background: var(--aelyris-champagne);
 }
 .statusDone {
   background: var(--status-done);
@@ -196,7 +196,7 @@
   flex: 0 0 auto;
   max-width: 45%;
   overflow: hidden;
-  color: var(--aether-champagne);
+  color: var(--aelyris-champagne);
   font-family: ui-monospace, SFMono-Regular, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;

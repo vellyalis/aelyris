@@ -200,7 +200,7 @@ add(
 add(
   checks,
   "role-prompt-handoff-contract",
-  orchestrator.includes("Aether Orchestra Contract:") &&
+  orchestrator.includes("Aelyris Orchestra Contract:") &&
     orchestrator.includes("- Project:") &&
     orchestrator.includes("- Worktree branch:") &&
     orchestrator.includes("- Lane:") &&
@@ -355,9 +355,9 @@ add(
   upperCompat?.status === "pass" &&
     upperCompat?.score === 100 &&
     allCheckStatusesPassed(upperCompat) &&
-    upperCompatGates["aether.workspace.data.v1"]?.complete === true &&
-    upperCompatGates["aether.mode-preservation.v1"]?.complete === true &&
-    upperCompatGates["aether.agent-identity.v1"]?.complete === true &&
+    upperCompatGates["aelyris.workspace.data.v1"]?.complete === true &&
+    upperCompatGates["aelyris.mode-preservation.v1"]?.complete === true &&
+    upperCompatGates["aelyris.agent-identity.v1"]?.complete === true &&
     upperCompatVerifier.includes("workspace_items") &&
     upperCompatVerifier.includes("agent_identity_records") &&
     upperCompatVerifier.includes("mode_preservation_snapshots"),
@@ -403,10 +403,10 @@ add(
   checks,
   "no-token-no-sleep-contract",
   !packageJson.includes("verify:goal:orchestration:unsafe") &&
-    !orchestrator.includes("QUORUM_AUTH_PROMPT_CONSENT") &&
-    !orchestrator.includes("QUORUM_ALLOW_OS_SLEEP") &&
-    !orchestraDialog.includes("QUORUM_AUTH_PROMPT_CONSENT") &&
-    !orchestraDialog.includes("QUORUM_ALLOW_OS_SLEEP"),
+    !orchestrator.includes("AELYRIS_AUTH_PROMPT_CONSENT") &&
+    !orchestrator.includes("AELYRIS_ALLOW_OS_SLEEP") &&
+    !orchestraDialog.includes("AELYRIS_AUTH_PROMPT_CONSENT") &&
+    !orchestraDialog.includes("AELYRIS_ALLOW_OS_SLEEP"),
   "This orchestration verifier is local, non-token, and does not invoke OS sleep gates.",
   { tokenSpendingPromptExecuted: false, realOsSleepInvoked: false },
 );
@@ -447,7 +447,7 @@ const report = {
     rightRailDefaultPrimarySurfaces: ["Orchestra Command", "Toolkit", "Agents", "Review"],
     deferredSurfaces: ["Evidence", "Health", "Queue"],
     muxTruthSource: muxPerformance?.contract?.terminalCorePolicy?.muxTruthSource ?? "daemon-api",
-    nativeWorkspaceIdentity: upperCompatGates["aether.agent-identity.v1"]?.complete === true,
+    nativeWorkspaceIdentity: upperCompatGates["aelyris.agent-identity.v1"]?.complete === true,
   },
   sourceCutoffMs,
   sourceMtims,

@@ -22,7 +22,7 @@ export interface SwitchProps {
  * no animation).
  *
  * The visual is a 32 × 18 pill with a 14 × 14 thumb that slides
- * 14 px on toggle, rendered in the Aether gold accent when on.
+ * 14 px on toggle, rendered in the Aelyris gold accent when on.
  * Pair it with an external `<label htmlFor>` or use the inline
  * `label` prop to bake the row in one shot.
  */

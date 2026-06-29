@@ -19,10 +19,10 @@ function git(cwd, ...args) {
 
 /** A temp repo with `feature` one commit ahead of `main`, `main` checked out. */
 function setupRepo() {
-  const dir = mkdtempSync(join(tmpdir(), "aether-orch-"));
+  const dir = mkdtempSync(join(tmpdir(), "aelyris-orch-"));
   git(dir, "init", "-b", "main");
-  git(dir, "config", "user.email", "verify@aether.test");
-  git(dir, "config", "user.name", "Aether Verify");
+  git(dir, "config", "user.email", "verify@aelyris.test");
+  git(dir, "config", "user.name", "Aelyris Verify");
   writeFileSync(join(dir, "a.txt"), "A");
   git(dir, "add", "a.txt");
   git(dir, "commit", "-m", "base");

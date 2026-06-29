@@ -1,12 +1,12 @@
 // Live verification of the native MCP endpoint (JSON-RPC 2.0 over Streamable HTTP)
-// so Aether registers as a standard MCP server. POST /mcp with JSON-RPC; checks
+// so Aelyris registers as a standard MCP server. POST /mcp with JSON-RPC; checks
 // initialize / tools.list / tools.call / notifications / errors conform.
 //
-// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token.
-const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.QUORUM_API_TOKEN;
+// Prereq: `pnpm tauri:dev` running; AELYRIS_API_TOKEN set to the API bearer token.
+const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.AELYRIS_API_TOKEN;
 if (!TOKEN) {
-  console.error("QUORUM_API_TOKEN is required");
+  console.error("AELYRIS_API_TOKEN is required");
   process.exit(2);
 }
 
@@ -29,20 +29,20 @@ async function main() {
   // 1. initialize
   const init = await (await rpc("initialize", { protocolVersion: "2024-11-05", capabilities: {} }, 1)).json();
   ok(init.jsonrpc === "2.0" && init.id === 1, "initialize is valid JSON-RPC 2.0 (echoes id)");
-  ok(init.result?.serverInfo?.name === "aether-terminal", "serverInfo.name = aether-terminal");
+  ok(init.result?.serverInfo?.name === "aelyris", "serverInfo.name = aelyris");
   ok(!!init.result?.capabilities?.tools, "advertises the tools capability");
   ok(typeof init.result?.instructions === "string" && init.result.instructions.length > 80, "ships orchestration instructions");
 
   // 2. tools/list
   const list = await (await rpc("tools/list", {}, 2)).json();
   ok(Array.isArray(list.result?.tools) && list.result.tools.length >= 50, `tools/list returns the verb catalog (${list.result?.tools?.length})`);
-  ok(list.result.tools.some((t) => t.name === "aether.orchestrator.step"), "catalog includes orchestrator.step");
-  ok(list.result.tools.some((t) => t.name === "aether.knowledge.impact"), "catalog includes knowledge.impact");
+  ok(list.result.tools.some((t) => t.name === "aelyris.orchestrator.step"), "catalog includes orchestrator.step");
+  ok(list.result.tools.some((t) => t.name === "aelyris.knowledge.impact"), "catalog includes knowledge.impact");
 
   // 3. tools/call round-trip (context.set then context.get over JSON-RPC)
   const ns = `rpc-${Date.now()}`;
-  await rpc("tools/call", { name: "aether.context.set", arguments: { key: `${ns}-k`, value: "v" } }, 3);
-  const call = await (await rpc("tools/call", { name: "aether.context.get", arguments: { key: `${ns}-k` } }, 4)).json();
+  await rpc("tools/call", { name: "aelyris.context.set", arguments: { key: `${ns}-k`, value: "v" } }, 3);
+  const call = await (await rpc("tools/call", { name: "aelyris.context.get", arguments: { key: `${ns}-k` } }, 4)).json();
   ok(call.result?.isError === false, "tools/call succeeds (isError:false)");
   ok(call.result?.structuredContent?.value === "v", "tools/call returns structuredContent");
   ok(JSON.parse(call.result.content[0].text).value === "v", "content[0].text is the JSON-serialized result");
@@ -56,14 +56,14 @@ async function main() {
   ok(bad.error?.code === -32601, "unknown method -> JSON-RPC error -32601");
 
   // 6. tool-level error -> result with isError:true (NOT a protocol error)
-  const toolErr = await (await rpc("tools/call", { name: "aether.task.transition", arguments: { id: `${ns}-missing`, to: "running" } }, 6)).json();
+  const toolErr = await (await rpc("tools/call", { name: "aelyris.task.transition", arguments: { id: `${ns}-missing`, to: "running" } }, 6)).json();
   ok(toolErr.result?.isError === true && !toolErr.error, "a tool error surfaces as result.isError:true, not a JSON-RPC error");
 
   if (failures.length) {
     console.error(`\n${failures.length} assertion(s) FAILED`);
     process.exit(1);
   }
-  console.log("\nAll native MCP (JSON-RPC 2.0) live assertions PASSED — Aether is registerable as a standard MCP server");
+  console.log("\nAll native MCP (JSON-RPC 2.0) live assertions PASSED — Aelyris is registerable as a standard MCP server");
 }
 
 main().catch((err) => {

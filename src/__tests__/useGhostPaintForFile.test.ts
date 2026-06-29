@@ -19,7 +19,7 @@ describe("computeRelativePath", () => {
 
   it("strips the project prefix and normalizes slashes", () => {
     expect(
-      computeRelativePath("C:\\dev\\Aether_Terminal\\src\\App.tsx", "C:\\dev\\Aether_Terminal"),
+      computeRelativePath("C:\\dev\\Aelyris\\src\\App.tsx", "C:\\dev\\Aelyris"),
     ).toBe("src/App.tsx");
   });
 

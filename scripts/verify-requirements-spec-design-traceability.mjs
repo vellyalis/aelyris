@@ -8,10 +8,10 @@ const OUT = join(ROOT, ".codex-auto", "quality", "requirements-spec-design-trace
 const DOCS = {
   requirements: "docs/requirements.md",
   specsReadme: "docs/specs/README.md",
-  traceability: "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
-  cockpitRequirements: "docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md",
-  gapAudit: "docs/specs/QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md",
-  worldClassDesign: "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  traceability: "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  cockpitRequirements: "docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md",
+  gapAudit: "docs/specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md",
+  worldClassDesign: "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
   handoff: "docs/specs/CODEX_HANDOFF.md",
 };
 
@@ -160,10 +160,10 @@ const checks = [
   check(
     "requirements-entrypoint-linked",
     includesAll(docs.requirements, [
-      "AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md",
-      "QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md",
-      "QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
-      "QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+      "AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md",
+      "AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md",
+      "AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
+      "AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
       "verify:requirements-spec-design-traceability",
       "releaseCandidateReady=false",
     ]),
@@ -173,7 +173,7 @@ const checks = [
     "specs-readme-current",
     includesAll(docs.specsReadme, [
       "../requirements.md",
-      "QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+      "AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
       "verify:requirements-spec-design-traceability",
       "古い未着手扱いのステータスではない",
     ]) && staleReadmePhrases.length === 0,
@@ -204,7 +204,7 @@ const checks = [
     includesAll(docs.worldClassDesign, [
       "verify:world-class-terminal-ai-os",
       "verify:requirements-spec-design-traceability",
-      "QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+      "AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
       "Ghostty/WezTerm parity remains BLOCKED",
       "must not be softened to `review`",
     ]),
@@ -304,7 +304,7 @@ const sourcePaths = [
   ...Object.values(ARTIFACTS),
 ];
 const report = {
-  schema: "aether.requirements-spec-design-traceability/v1",
+  schema: "aelyris.requirements-spec-design-traceability/v1",
   version: 1,
   ok: failed.length === 0,
   status: failed.length === 0 ? "pass-doc-traceability-current" : "fail-doc-traceability",

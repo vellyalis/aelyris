@@ -40,7 +40,7 @@ fn duration_from(started_at: &Option<String>, completed_at: &str) -> Option<u64>
 
 fn workflow_runs_path(project_path: &str) -> PathBuf {
     Path::new(project_path)
-        .join(".aether")
+        .join(".aelyris")
         .join("workflow-runs.json")
 }
 

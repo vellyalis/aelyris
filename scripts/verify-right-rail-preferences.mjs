@@ -1,12 +1,12 @@
 // Live Tauri/WebView2 smoke for right-rail native preference sync.
 //
 // Prerequisite:
-//   set QUORUM_API_TOKEN=dev && pnpm.cmd tauri:dev
+//   set AELYRIS_API_TOKEN=dev && pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_RIGHT_RAIL_PREFS_OUT=.codex-auto/production-smoke/right-rail-preferences.json
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_RIGHT_RAIL_PREFS_OUT=.codex-auto/production-smoke/right-rail-preferences.json
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -14,11 +14,11 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_RIGHT_RAIL_PREFS_OUT ?? ".codex-auto/production-smoke/right-rail-preferences.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_PREFS_WAIT_MS ?? "90000", 10);
-const REQUIRE_CDP = process.env.AETHER_RIGHT_RAIL_PREFS_REQUIRE_CDP === "1";
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_RIGHT_RAIL_PREFS_OUT ?? ".codex-auto/production-smoke/right-rail-preferences.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_PREFS_WAIT_MS ?? "90000", 10);
+const REQUIRE_CDP = process.env.AELYRIS_RIGHT_RAIL_PREFS_REQUIRE_CDP === "1";
 const IAB_PROOF = ".codex-auto/production-smoke/right-rail-iab-proof.json";
 
 const report = {
@@ -111,11 +111,11 @@ async function connectWithWait() {
 
 function targetQaUrl(rawUrl) {
   const url = new URL(rawUrl);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "right-rail-preferences");
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -146,11 +146,11 @@ async function assertTauriInternals(page) {
 async function seedQaStorage(page) {
   await page
     .evaluate((projectPath) => {
-      window.localStorage.setItem("aether:visualQa", "1");
-      window.localStorage.setItem("aether:visualQaProject", projectPath);
-      window.localStorage.setItem("aether:lastProject", projectPath);
-      window.localStorage.setItem("aether:onboarding-done", "true");
-      window.localStorage.removeItem("aether:dashboardStateUrl");
+      window.localStorage.setItem("aelyris:visualQa", "1");
+      window.localStorage.setItem("aelyris:visualQaProject", projectPath);
+      window.localStorage.setItem("aelyris:lastProject", projectPath);
+      window.localStorage.setItem("aelyris:onboarding-done", "true");
+      window.localStorage.removeItem("aelyris:dashboardStateUrl");
     }, PROJECT_PATH)
     .catch(() => {});
 }
@@ -168,15 +168,15 @@ async function saveConfig(page, config) {
 
 async function restoreUiStorage(page, snapshot) {
   await page.evaluate((state) => {
-    if (state.guardrail == null) window.localStorage.removeItem("aether:right-rail-guardrail-selection");
-    else window.localStorage.setItem("aether:right-rail-guardrail-selection", state.guardrail);
-    if (state.workflow == null) window.localStorage.removeItem("aether:right-rail-widget:workflow");
-    else window.localStorage.setItem("aether:right-rail-widget:workflow", state.workflow);
+    if (state.guardrail == null) window.localStorage.removeItem("aelyris:right-rail-guardrail-selection");
+    else window.localStorage.setItem("aelyris:right-rail-guardrail-selection", state.guardrail);
+    if (state.workflow == null) window.localStorage.removeItem("aelyris:right-rail-widget:workflow");
+    else window.localStorage.setItem("aelyris:right-rail-widget:workflow", state.workflow);
     window.dispatchEvent(
-      new CustomEvent("aether:right-rail-guardrail-sync", { detail: { selection: state.guardrail ?? "Auto" } }),
+      new CustomEvent("aelyris:right-rail-guardrail-sync", { detail: { selection: state.guardrail ?? "Auto" } }),
     );
     window.dispatchEvent(
-      new CustomEvent("aether:right-rail-widget-sync", {
+      new CustomEvent("aelyris:right-rail-widget-sync", {
         detail: { widget: "workflow", open: state.workflow === "1" },
       }),
     );
@@ -191,7 +191,7 @@ async function main() {
   try {
     await probeCdpTcp().catch((error) => {
       if (applyIabProofFallback(error instanceof Error ? error.message : String(error))) {
-        throw new Error("__AETHER_IAB_PROOF_FALLBACK__");
+        throw new Error("__AELYRIS_IAB_PROOF_FALLBACK__");
       }
       throw error;
     });
@@ -208,8 +208,8 @@ async function main() {
     await seedQaStorage(page);
     configBackup = await loadConfig(page);
     storageBackup = await page.evaluate(() => ({
-      guardrail: window.localStorage.getItem("aether:right-rail-guardrail-selection"),
-      workflow: window.localStorage.getItem("aether:right-rail-widget:workflow"),
+      guardrail: window.localStorage.getItem("aelyris:right-rail-guardrail-selection"),
+      workflow: window.localStorage.getItem("aelyris:right-rail-widget:workflow"),
     }));
 
     await page.goto(targetQaUrl(page.url()), { waitUntil: "domcontentloaded", timeout: WAIT_MS });
@@ -225,7 +225,7 @@ async function main() {
         const config = await window.__TAURI_INTERNALS__.invoke("load_app_config");
         return (
           select?.value === "Builder" &&
-          window.localStorage.getItem("aether:right-rail-guardrail-selection") === "Builder" &&
+          window.localStorage.getItem("aelyris:right-rail-guardrail-selection") === "Builder" &&
           config.workspace_profile?.global_defaults?.pane_layout?.right_rail_guardrail_profile === "Builder"
         );
       },
@@ -245,7 +245,7 @@ async function main() {
         const expected = previous !== "true";
         return (
           open === String(expected) &&
-          window.localStorage.getItem("aether:right-rail-widget:workflow") === (expected ? "1" : "0") &&
+          window.localStorage.getItem("aelyris:right-rail-widget:workflow") === (expected ? "1" : "0") &&
           config.workspace_profile?.global_defaults?.pane_layout?.right_rail_widgets?.workflow === expected
         );
       },
@@ -272,7 +272,7 @@ async function main() {
     report.checks.noRuntimeErrors = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message === "__AETHER_IAB_PROOF_FALLBACK__") {
+    if (message === "__AELYRIS_IAB_PROOF_FALLBACK__") {
       process.exitCode = 0;
     } else if (!applyIabProofFallback(message)) {
       report.errors.push(message);

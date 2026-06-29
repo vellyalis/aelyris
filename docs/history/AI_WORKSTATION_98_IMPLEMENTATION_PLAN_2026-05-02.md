@@ -1,4 +1,4 @@
-# Aether Terminal 9.8 Implementation Plan
+# Aelyris 9.8 Implementation Plan
 
 Date: 2026-05-02
 Source audit: `docs/history/AI_WORKSTATION_QUALITY_AUDIT_2026-05-02.md`
@@ -6,7 +6,7 @@ Target: **9.8 / 10**
 
 ## Goal
 
-Aether Terminal を「AI ワークステーションとして強い」段階から、長時間・複数プロジェクト・複数エージェント・日本語 IME・クラッシュ/スリープ復旧まで任せられる **9.8 点級の実用品質** に引き上げる。
+Aelyris を「AI ワークステーションとして強い」段階から、長時間・複数プロジェクト・複数エージェント・日本語 IME・クラッシュ/スリープ復旧まで任せられる **9.8 点級の実用品質** に引き上げる。
 
 9.8 点の定義は、単に機能数が多いことではない。ユーザーと Codex が常に次を 5 秒以内に判断できる状態を指す。
 
@@ -129,7 +129,7 @@ Priority: P0
 Score impact: +0.35 to +0.45
 Depends on: Phase 0
 
-現状の最大ギャップ。UI 各所が個別の状態を持つ限り、進捗・復旧・監査・再生が不安定になる。ここで Aether の black box recorder を作る。
+現状の最大ギャップ。UI 各所が個別の状態を持つ限り、進捗・復旧・監査・再生が不安定になる。ここで Aelyris の black box recorder を作る。
 
 ### Backend Schema
 

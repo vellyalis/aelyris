@@ -95,7 +95,7 @@ pub async fn review_branch(
         let _ = crate::control::worktree::commit_for_branch(
             &repo_path,
             &source_branch,
-            &format!("aether: review {source_branch}"),
+            &format!("aelyris: review {source_branch}"),
         );
         let diff = crate::git::diff_three_dot(
             &repo_path,

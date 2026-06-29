@@ -254,8 +254,8 @@ pub fn predict_worktree_path(repo_path: &str, branch_name: &str) -> std::path::P
 /// BEFORE it is merged: committing to the worktree's checked-out `branch` advances
 /// `refs/heads/<branch>`, which is exactly the ref `perform_merge` resolves as the
 /// merge source (without this the source tip never moves and the merge is empty).
-/// The identity reuses the repo config, else a deterministic `Aether
-/// <aether@local>` fallback, matching the merge commit.
+/// The identity reuses the repo config, else a deterministic `Aelyris
+/// <aelyris@local>` fallback, matching the merge commit.
 pub fn commit_worktree(
     repo_path: &str,
     branch: &str,
@@ -308,7 +308,7 @@ pub fn commit_worktree(
 
     let signature = repo
         .signature()
-        .or_else(|_| git2::Signature::now("Aether", "aether@local"))
+        .or_else(|_| git2::Signature::now("Aelyris", "aelyris@local"))
         .map_err(|e| format!("Commit signature: {}", e))?;
 
     // Commit on HEAD (the worktree's checked-out source branch), parented on its
@@ -496,7 +496,7 @@ mod tests {
         // The worker writes a file but never commits — the real production gap.
         std::fs::write(wt.join("GREETING.md"), "hello").unwrap();
 
-        let oid = commit_worktree(&repo_str, "agent/y", "aether: task-greeting")
+        let oid = commit_worktree(&repo_str, "agent/y", "aelyris: task-greeting")
             .expect("commit ok")
             .expect("a commit was made");
 
@@ -530,7 +530,7 @@ mod tests {
         );
 
         // Idempotency: committing the now-clean worktree again is a no-op.
-        assert!(commit_worktree(&repo_str, "agent/y", "aether: again")
+        assert!(commit_worktree(&repo_str, "agent/y", "aelyris: again")
             .expect("ok")
             .is_none());
     }

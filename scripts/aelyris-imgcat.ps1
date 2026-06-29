@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Pipe a PNG file through the Aether chunked-OSC inline-image protocol.
+    Pipe a PNG file through the Aelyris chunked-OSC inline-image protocol.
 
 .DESCRIPTION
     Win11 ConPTY strips Kitty APC and truncates any single OSC above ~512
@@ -23,7 +23,7 @@
     base64 payload.
 
 .EXAMPLE
-    PS> aether-imgcat.ps1 .\e2e\fixtures\inline-image-32x32.png
+    PS> aelyris-imgcat.ps1 .\e2e\fixtures\inline-image-32x32.png
 
 .NOTES
     Exit codes:

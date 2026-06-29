@@ -2,7 +2,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-function Get-AetherLocalDate {
+function Get-AelyrisLocalDate {
   try {
     $tz = [System.TimeZoneInfo]::FindSystemTimeZoneById("Tokyo Standard Time")
     return [System.TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, $tz).ToString("yyyy-MM-dd")
@@ -126,7 +126,7 @@ $readyForGitFinalization = $repositoryPresent -and $noExistingIndexLock -and $gi
 $report = [ordered]@{
   version = 1
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-  localDate = Get-AetherLocalDate
+  localDate = Get-AelyrisLocalDate
   timeZone = "Asia/Tokyo"
   ok = $true
   status = if ($readyForGitFinalization) { "ready-for-commit-and-merge" } else { "blocked-by-git-metadata-permissions" }

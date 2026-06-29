@@ -17,7 +17,7 @@ const FINAL_AUDIT_PATH = join(ROOT, ".codex-auto", "quality", "final-goal-audit.
 const FINAL_SAFE_PATH = join(ROOT, ".codex-auto", "quality", "final-goal-safe-summary.json");
 const OUTPUT_TAIL_CHARS = 5000;
 const SAFE_STEP_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_STEP_TIMEOUT_MS = Number(process.env.AETHER_GOAL_REFRESH_STEP_TIMEOUT_MS ?? 180_000);
+const DEFAULT_STEP_TIMEOUT_MS = Number(process.env.AELYRIS_GOAL_REFRESH_STEP_TIMEOUT_MS ?? 180_000);
 const STEP_FALLBACK_ARTIFACTS = {
   "terminal-font-render": [".codex-auto/quality/terminal-font-render-contract.json"],
   "chunked-osc-live": [
@@ -74,11 +74,11 @@ function childEnv(extra = {}) {
   const env = {
     ...process.env,
     ...extra,
-    AETHER_NON_TOKEN_GOAL_REFRESH: "1",
+    AELYRIS_NON_TOKEN_GOAL_REFRESH: "1",
   };
-  delete env.QUORUM_AUTH_PROMPT_CONSENT;
-  delete env.QUORUM_AUTH_PROMPT_PROVIDER;
-  delete env.QUORUM_ALLOW_OS_SLEEP;
+  delete env.AELYRIS_AUTH_PROMPT_CONSENT;
+  delete env.AELYRIS_AUTH_PROMPT_PROVIDER;
+  delete env.AELYRIS_ALLOW_OS_SLEEP;
   return env;
 }
 
@@ -352,7 +352,7 @@ const steps = [
   runNodeStep("terminal-font-render", "Terminal text render contract", "verify-terminal-font-render-contract.mjs"),
   runNodeStep("chunked-osc-live", "Chunked OSC inline-image live proof", "verify-chunked-osc-live-safe.mjs", {
     acceptChunkedOscEnvironmentBlocked: true,
-    timeoutMs: Number(process.env.AETHER_CHUNKED_OSC_SAFE_TIMEOUT_MS ?? 45_000),
+    timeoutMs: Number(process.env.AELYRIS_CHUNKED_OSC_SAFE_TIMEOUT_MS ?? 45_000),
   }),
   runNodeStep("native-terminal-input", "Native terminal input host", "verify-native-terminal-input-host.mjs"),
   runNodeStep("native-boundary", "Native terminal boundary contract", "verify-native-boundary-contract.mjs"),
@@ -400,7 +400,7 @@ const steps = [
   runNodeStep("right-rail-goal-track", "Right rail Goal Track Tauri proof", "verify-right-rail-goal-track-tauri.mjs", {
     acceptRightRailEnvironmentBlocked: true,
     env: {
-      AETHER_TAURI_GOAL_TRACK_WAIT_MS: process.env.AETHER_TAURI_GOAL_TRACK_WAIT_MS ?? "12000",
+      AELYRIS_TAURI_GOAL_TRACK_WAIT_MS: process.env.AELYRIS_TAURI_GOAL_TRACK_WAIT_MS ?? "12000",
     },
   }),
   runNodeStep("quality-score-final", "Release quality score final refresh", "score-release-quality.mjs"),

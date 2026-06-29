@@ -13,7 +13,7 @@ const N = Number.parseInt(process.env.FLEET_N ?? "8", 10);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function setupRepo() {
-  const dir = mkdtempSync(join(tmpdir(), "aether-fleet-demo-"));
+  const dir = mkdtempSync(join(tmpdir(), "aelyris-fleet-demo-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: dir });
   execFileSync("git", ["config", "user.email", "v@a.test"], { cwd: dir });
   execFileSync("git", ["config", "user.name", "V"], { cwd: dir });

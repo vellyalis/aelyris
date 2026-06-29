@@ -2,7 +2,7 @@
 
 ## Current Verdict
 
-Longrun control-plane implementation is complete enough to resume Aether work.
+Longrun control-plane implementation is complete enough to resume Aelyris work.
 
 - Workspace: `<repo>`
 - Git branch: `master`
@@ -11,7 +11,7 @@ Longrun control-plane implementation is complete enough to resume Aether work.
 - Extra local branches: none
 - Dashboard: `http://127.0.0.1:48371/`
 - Longrun status: complete / finished
-- Aether 9.8 roadmap: 36 / 36 complete
+- Aelyris 9.8 roadmap: 36 / 36 complete
 - Decision Inbox: 0
 - Attention Inbox: 0 after stale-notification reconciliation
 - Fleet level: green
@@ -34,7 +34,7 @@ Longrun control-plane implementation is complete enough to resume Aether work.
 
 ## Fixed In This Cleanup Pass
 
-- Merged the previously classified Aether changes into `master`.
+- Merged the previously classified Aelyris changes into `master`.
 - Deleted the now-merged cleanup branch.
 - Confirmed only one git worktree remains.
 - Hardened PTY integration tests against Windows/ConPTY load timing.
@@ -74,7 +74,7 @@ Follow-up validation passed:
 
 ## What Still Prevents Wizard S+++
 
-Wizard S+++ is not blocked by longrun infrastructure anymore. It is blocked by Aether product/release risks that are intentionally still open in `.codex-auto\risk-register.json`.
+Wizard S+++ is not blocked by longrun infrastructure anymore. It is blocked by Aelyris product/release risks that are intentionally still open in `.codex-auto\risk-register.json`.
 
 Main remaining risk groups:
 
@@ -83,11 +83,11 @@ Main remaining risk groups:
 - Release/operations gaps such as updater key custody, clean-VM MSI install proof, and real authenticated AI CLI kill/recovery proof.
 - Low-level security/assurance gaps such as audit hash-chain strength and AI CLI alternate-screen heuristic limits.
 
-These are Aether quality items, not reasons to block returning to Aether implementation. The clean baseline and live worker scheduler are ready to support that next phase.
+These are Aelyris quality items, not reasons to block returning to Aelyris implementation. The clean baseline and live worker scheduler are ready to support that next phase.
 
 ## Recommended Next Phase
 
-Use the completed longrun mode to attack the 32 open Aether risks in parallel batches:
+Use the completed longrun mode to attack the 32 open Aelyris risks in parallel batches:
 
 1. Live Tauri/WebView2 smoke matrix batch.
 2. Provider/data-contract implementation batch.
@@ -95,4 +95,4 @@ Use the completed longrun mode to attack the 32 open Aether risks in parallel ba
 4. Release custody and clean-VM installer proof batch.
 5. Final promotion pass after the risk register reaches zero unaccepted open risks.
 
-The scheduler should only arm live parallel workers when new Aether work cards exist, the main worktree is clean, and merge/promotion gates remain enabled.
+The scheduler should only arm live parallel workers when new Aelyris work cards exist, the main worktree is clean, and merge/promotion gates remain enabled.

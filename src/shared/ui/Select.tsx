@@ -32,7 +32,7 @@ export interface SelectProps {
  *
  * The Radix version keyboards the same way (Type-ahead, Home/End,
  * Arrow keys), but renders a portal-attached menu we can theme to
- * match the Aether dialog surface.
+ * match the Aelyris dialog surface.
  */
 export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
   { value, onValueChange, options, placeholder, disabled, ariaLabel, id, triggerClassName },

@@ -6,11 +6,11 @@ import process from "node:process";
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "goal-finalize-evidence.json");
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
-const DEFAULT_TIMEOUT_MS = Number.parseInt(process.env.AETHER_GOAL_FINALIZE_STEP_TIMEOUT_MS ?? "180000", 10);
-const HEARTBEAT_MS = Number.parseInt(process.env.AETHER_GOAL_FINALIZE_HEARTBEAT_MS ?? "30000", 10);
+const DEFAULT_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_GOAL_FINALIZE_STEP_TIMEOUT_MS ?? "180000", 10);
+const HEARTBEAT_MS = Number.parseInt(process.env.AELYRIS_GOAL_FINALIZE_HEARTBEAT_MS ?? "30000", 10);
 const OUTPUT_TAIL_CHARS = 5000;
-const SKIP_OPERATOR = process.env.AETHER_GOAL_FINALIZE_SKIP_OPERATOR === "1";
-const INCLUDE_GIT_FINALIZATION = process.env.AETHER_GOAL_FINALIZE_INCLUDE_GIT === "1";
+const SKIP_OPERATOR = process.env.AELYRIS_GOAL_FINALIZE_SKIP_OPERATOR === "1";
+const INCLUDE_GIT_FINALIZATION = process.env.AELYRIS_GOAL_FINALIZE_INCLUDE_GIT === "1";
 const MANUAL_SLEEP_COMMAND = "pnpm verify:production:suspend:native-user-cycle";
 const AFTER_EXTERNAL_GATE_COMMANDS = [
   "pnpm verify:goal:operator-finish",
@@ -42,7 +42,7 @@ const productSourceFiles = [
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
-  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
   "docs/release-build-playbook.md",
 ];
 const optionalGitSourceFiles = [
@@ -140,12 +140,12 @@ function noTokenNoSleepEnv(extra = {}) {
   const env = {
     ...process.env,
     ...extra,
-    AETHER_GOAL_FINALIZE_NON_TOKEN: "1",
+    AELYRIS_GOAL_FINALIZE_NON_TOKEN: "1",
   };
-  delete env.QUORUM_AUTH_PROMPT_CONSENT;
-  delete env.QUORUM_AUTH_PROMPT_PROVIDER;
-  delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP;
-  delete env.QUORUM_ALLOW_OS_SLEEP;
+  delete env.AELYRIS_AUTH_PROMPT_CONSENT;
+  delete env.AELYRIS_AUTH_PROMPT_PROVIDER;
+  delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP;
+  delete env.AELYRIS_ALLOW_OS_SLEEP;
   return env;
 }
 
@@ -164,7 +164,7 @@ function sourceCutoffMsForStep(id) {
     "docs/PUBLICATION_READINESS.md",
     "docs/requirements.md",
     "docs/specs/README.md",
-    "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+    "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
   ];
   const stepSources = {
     "goal-documentation-freshness": [
@@ -542,7 +542,7 @@ const report = {
     manualSleepCycle: {
       command: MANUAL_SLEEP_COMMAND,
       requires: "Start the verifier, manually put Windows to sleep, wake it, then let post-resume probes finish.",
-      safety: "The finalizer does not invoke OS sleep and does not set QUORUM_ALLOW_OS_SLEEP.",
+      safety: "The finalizer does not invoke OS sleep and does not set AELYRIS_ALLOW_OS_SLEEP.",
     },
     releaseSigningAndUpdater: {
       command: "pnpm tauri:build:dist",

@@ -1,15 +1,15 @@
 // Live verification of the MCP Task Graph + orchestrator surface (Face 2,
-// BR4/BR9) against the running Aether API. Proves the orchestrator AI can
+// BR4/BR9) against the running Aelyris API. Proves the orchestrator AI can
 // decompose, assign, and inspect work over MCP HTTP, operating on the same
 // Arc<TaskManager> the cockpit shows (one source of truth).
 //
-// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token
+// Prereq: `pnpm tauri:dev` running; AELYRIS_API_TOKEN set to the API bearer token
 // (printed at startup as "generated ephemeral token: <uuid>" when unset).
-// Run: QUORUM_API_TOKEN=<token> node scripts/verify-mcp-task-surface-live.mjs
-const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.QUORUM_API_TOKEN;
+// Run: AELYRIS_API_TOKEN=<token> node scripts/verify-mcp-task-surface-live.mjs
+const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.AELYRIS_API_TOKEN;
 if (!TOKEN) {
-  console.error("QUORUM_API_TOKEN is required (the API bearer token from the dev log)");
+  console.error("AELYRIS_API_TOKEN is required (the API bearer token from the dev log)");
   process.exit(2);
 }
 
@@ -33,7 +33,7 @@ const ok = (cond, msg) => {
 };
 
 // 1. Create an assigned task with branch bindings over MCP.
-const created = await call("aether.task.create", {
+const created = await call("aelyris.task.create", {
   id,
   title: "auth API",
   owner: "claude",
@@ -48,7 +48,7 @@ ok(
 );
 
 // 2. It shows up in the shared graph with its assignment + branch bindings.
-const listed = await call("aether.task.list");
+const listed = await call("aelyris.task.list");
 const found = listed.tasks.find((t) => t.id === id);
 ok(found?.owner === "claude", `task.list shows ${id} owned by claude`);
 ok(
@@ -58,7 +58,7 @@ ok(
 ok(found?.status === "ready", `root task is ready after the gate (got ${found?.status})`);
 
 // 3. The scheduler plans to dispatch it.
-const planned = await call("aether.orchestrator.plan", { activeAgents: 0 });
+const planned = await call("aelyris.orchestrator.plan", { activeAgents: 0 });
 ok(planned.plan.state === "active", `orchestrator.plan state active (got ${planned.plan.state})`);
 ok(
   planned.plan.to_dispatch.includes(id),
@@ -66,9 +66,9 @@ ok(
 );
 
 // 4. Transition it through the lifecycle over MCP.
-const ran = await call("aether.task.transition", { id, to: "running" });
+const ran = await call("aelyris.task.transition", { id, to: "running" });
 ok(ran.to === "running", "task.transition -> running");
-const listed2 = await call("aether.task.list");
+const listed2 = await call("aelyris.task.list");
 ok(
   listed2.tasks.find((t) => t.id === id)?.status === "running",
   "graph reflects the running transition",

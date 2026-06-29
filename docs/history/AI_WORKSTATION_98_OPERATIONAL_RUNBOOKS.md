@@ -1,4 +1,4 @@
-# Aether Terminal 9.8 Operational Runbooks
+# Aelyris 9.8 Operational Runbooks
 
 Updated: 2026-05-06
 Scope: P3-02 Docs and operational runbooks

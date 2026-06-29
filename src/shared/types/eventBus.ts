@@ -1,6 +1,6 @@
 /**
  * Event Bus taxonomy — TS mirror of `src-tauri/src/event_bus/mod.rs`. See
- * docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 5.
+ * docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 5.
  */
 export const EVENT_CHANNELS = ["planning", "backend", "frontend", "database", "review", "system"] as const;
 export type EventChannel = (typeof EVENT_CHANNELS)[number];

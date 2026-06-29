@@ -783,7 +783,7 @@ async fn import_mux_workspace(
     Query(query): Query<ImportMuxWorkspaceQuery>,
     Json(snapshot): Json<VersionedMuxSnapshot>,
 ) -> ApiResult<Json<MuxGraph>> {
-    if snapshot.schema != format!("aether.mux.v{MUX_GRAPH_VERSION}") {
+    if snapshot.schema != format!("aelyris.mux.v{MUX_GRAPH_VERSION}") {
         return Err(ApiError::BadRequest(format!(
             "unsupported mux snapshot schema: {}",
             snapshot.schema

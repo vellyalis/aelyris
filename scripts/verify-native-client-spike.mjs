@@ -10,18 +10,18 @@ const bundledSidecar = join(
   root,
   "src-tauri",
   "binaries",
-  process.platform === "win32" ? "aether-pty-server-x86_64-pc-windows-msvc.exe" : "aether-pty-server",
+  process.platform === "win32" ? "aelyris-pty-server-x86_64-pc-windows-msvc.exe" : "aelyris-pty-server",
 );
-const releaseSidecar = join(root, "src-tauri", "pty-server", "target", "release", `aether-pty-server${extension}`);
+const releaseSidecar = join(root, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${extension}`);
 const sidecar =
-  process.env.AETHER_NATIVE_CLIENT_SIDECAR ??
+  process.env.AELYRIS_NATIVE_CLIENT_SIDECAR ??
   (existsSync(bundledSidecar) ? bundledSidecar : releaseSidecar);
 const out =
-  process.env.AETHER_NATIVE_CLIENT_OUT ??
+  process.env.AELYRIS_NATIVE_CLIENT_OUT ??
   join(root, ".codex-auto", "quality", "native-client-spike.json");
-const token = process.env.AETHER_NATIVE_CLIENT_TOKEN ?? "native-client-spike-token";
+const token = process.env.AELYRIS_NATIVE_CLIENT_TOKEN ?? "native-client-spike-token";
 const cargoManifest = join(root, "src-tauri", "Cargo.toml");
-const nativeBin = join(root, "src-tauri", "target", "debug", `aether-native${extension}`);
+const nativeBin = join(root, "src-tauri", "target", "debug", `aelyris-native${extension}`);
 
 if (!existsSync(sidecar)) {
   throw new Error(`PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
@@ -75,13 +75,13 @@ async function waitForReady(base) {
 }
 
 function startSidecar(port, muxDir, scrollbackDir) {
-  if (process.platform === "win32" && process.env.AETHER_NATIVE_CLIENT_USE_POWERSHELL_START === "1") {
+  if (process.platform === "win32" && process.env.AELYRIS_NATIVE_CLIENT_USE_POWERSHELL_START === "1") {
     const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
     const command = [
-      `$env:QUORUM_API_TOKEN=${quote(token)};`,
-      `$env:QUORUM_PTY_SERVER_PORT=${quote(port)};`,
-      `$env:QUORUM_MUX_SNAPSHOT_DIR=${quote(muxDir)};`,
-      `$env:QUORUM_PTY_SCROLLBACK_DIR=${quote(scrollbackDir)};`,
+      `$env:AELYRIS_API_TOKEN=${quote(token)};`,
+      `$env:AELYRIS_PTY_SERVER_PORT=${quote(port)};`,
+      `$env:AELYRIS_MUX_SNAPSHOT_DIR=${quote(muxDir)};`,
+      `$env:AELYRIS_PTY_SCROLLBACK_DIR=${quote(scrollbackDir)};`,
       `$p=Start-Process -FilePath ${quote(sidecar)} -PassThru -WindowStyle Hidden;`,
       "Write-Output $p.Id",
     ].join(" ");
@@ -111,7 +111,7 @@ function startSidecar(port, muxDir, scrollbackDir) {
         pid,
         exitCode: null,
         signalCode: null,
-        aetherStartedByPowerShell: true,
+        aelyrisStartedByPowerShell: true,
         kill() {
           spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
             stdio: "ignore",
@@ -129,10 +129,10 @@ function startSidecar(port, muxDir, scrollbackDir) {
       cwd: root,
       env: {
         ...process.env,
-        QUORUM_API_TOKEN: token,
-        QUORUM_PTY_SERVER_PORT: String(port),
-        QUORUM_MUX_SNAPSHOT_DIR: muxDir,
-        QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
+        AELYRIS_API_TOKEN: token,
+        AELYRIS_PTY_SERVER_PORT: String(port),
+        AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
+        AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
       },
       shell: false,
       stdio: "ignore",
@@ -217,7 +217,7 @@ function assertNativeSleepResumeRunbook(actions) {
   );
   assert(guarded?.requiresExplicitOptIn === true, "guarded native sleep cycle must require explicit opt-in");
   assert(
-    guarded?.explicitOptInEnv === "QUORUM_ALLOW_OS_SLEEP=1",
+    guarded?.explicitOptInEnv === "AELYRIS_ALLOW_OS_SLEEP=1",
     "guarded native sleep cycle opt-in env missing",
   );
   assert(
@@ -232,7 +232,7 @@ function assertNativeSleepResumeRunbook(actions) {
 
 function killProcess(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  if (child.aetherStartedByPowerShell && child.pid) {
+  if (child.aelyrisStartedByPowerShell && child.pid) {
     spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
       stdio: "ignore",
       windowsHide: true,
@@ -254,10 +254,10 @@ function nearlyEqual(actual, expected, epsilon = 0.001) {
 }
 
 function buildNativeBinary() {
-  if (process.env.AETHER_NATIVE_CLIENT_FORCE_BUILD !== "1" && existsSync(nativeBin)) {
+  if (process.env.AELYRIS_NATIVE_CLIENT_FORCE_BUILD !== "1" && existsSync(nativeBin)) {
     return;
   }
-  const result = spawnSync("cargo", ["build", "--quiet", "--manifest-path", cargoManifest, "--bin", "aether-native"], {
+  const result = spawnSync("cargo", ["build", "--quiet", "--manifest-path", cargoManifest, "--bin", "aelyris-native"], {
     cwd: root,
     encoding: "utf8",
     shell: false,
@@ -266,10 +266,10 @@ function buildNativeBinary() {
   });
   if (result.error) throw new Error(`cargo build spawn failed: ${result.error.message}`);
   if (result.status !== 0) {
-    throw new Error(`cargo build aether-native failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    throw new Error(`cargo build aelyris-native failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   }
   if (!existsSync(nativeBin)) {
-    throw new Error(`aether-native binary not found after build: ${nativeBin}`);
+    throw new Error(`aelyris-native binary not found after build: ${nativeBin}`);
   }
 }
 
@@ -298,8 +298,8 @@ async function runNative(base, args) {
         cwd: root,
         env: {
           ...process.env,
-          QUORUM_API_URL: base,
-          QUORUM_API_TOKEN: token,
+          AELYRIS_API_URL: base,
+          AELYRIS_API_TOKEN: token,
         },
         shell: false,
         stdio: ["ignore", stdoutFd, stderrFd],
@@ -308,7 +308,7 @@ async function runNative(base, args) {
     } catch (error) {
       closeFiles();
       cleanupFiles();
-      reject(new Error(`aether-native spawn failed for ${args.join(" ")}: ${error.message}`));
+      reject(new Error(`aelyris-native spawn failed for ${args.join(" ")}: ${error.message}`));
       return;
     }
     const timeout = setTimeout(() => {
@@ -316,13 +316,13 @@ async function runNative(base, args) {
         child.kill();
       } catch {}
       closeFiles();
-      reject(new Error(`aether-native ${args.join(" ")} timed out`));
+      reject(new Error(`aelyris-native ${args.join(" ")} timed out`));
     }, 60_000);
     child.once("error", (error) => {
       clearTimeout(timeout);
       closeFiles();
       cleanupFiles();
-      reject(new Error(`aether-native spawn failed for ${args.join(" ")}: ${error.message}`));
+      reject(new Error(`aelyris-native spawn failed for ${args.join(" ")}: ${error.message}`));
     });
     child.once("close", (code) => {
       clearTimeout(timeout);
@@ -331,13 +331,13 @@ async function runNative(base, args) {
       const stderr = readFileSync(stderrPath, "utf8");
       cleanupFiles();
       if (code !== 0) {
-        reject(new Error(`aether-native ${args.join(" ")} failed with ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+        reject(new Error(`aelyris-native ${args.join(" ")} failed with ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
         return;
       }
       try {
         resolve(JSON.parse(stdout));
       } catch (error) {
-        reject(new Error(`aether-native ${args.join(" ")} returned invalid JSON: ${error.message}\n${stdout}`));
+        reject(new Error(`aelyris-native ${args.join(" ")} returned invalid JSON: ${error.message}\n${stdout}`));
       }
     });
   });
@@ -435,8 +435,8 @@ async function main() {
 
     const nativeContract = await runNative(base, ["contract"]);
     report.nativeContract = nativeContract;
-    assert(nativeContract.schema === "aether.native.client.v1", "native contract schema missing");
-    assert(nativeContract.client?.process === "aether-native", "native process identity missing");
+    assert(nativeContract.schema === "aelyris.native.client.v1", "native contract schema missing");
+    assert(nativeContract.client?.process === "aelyris-native", "native process identity missing");
     assert(nativeContract.client?.uiBoundary === "no-webview", "native client must not claim WebView ownership");
     assert(nativeContract.claims?.webviewUsed === false, "native client contract must explicitly reject WebView use");
     assert(nativeContract.claims?.muxTruthSource === "daemon-api", "native client must attach to daemon API truth");
@@ -463,7 +463,7 @@ async function main() {
     assert(nativeWindow.window?.reactUsed === false, "native window proof must not use React");
     assert(nativeWindow.window?.layered === true, "native window proof must enable layered transparency");
     assert(nativeWindow.window?.alpha === 218, "native window proof must preserve requested alpha");
-    assert(nativeWindow.window?.processIdentity?.process === "aether-native", "native window process identity missing");
+    assert(nativeWindow.window?.processIdentity?.process === "aelyris-native", "native window process identity missing");
     report.checks.push("native-window-proof-no-webview");
     report.checks.push("native-window-layered-alpha");
 
@@ -484,7 +484,7 @@ async function main() {
     );
     report.checks.push("native-list-reads-mux-workspaces");
 
-    const marker = `aether-native-client-${Date.now()}`;
+    const marker = `aelyris-native-client-${Date.now()}`;
     await runNative(base, ["send", workspaceId, "echo", marker, "--enter"]);
     const nativeCapture = await waitForNativeCapture(base, workspaceId, marker);
     report.nativeCapture = {
@@ -571,12 +571,12 @@ async function main() {
     assert(nativeGridRender.grid?.cols === 100, "native grid proof must use requested columns");
     assert(nativeGridRender.grid?.rows === 24, "native grid proof must use requested rows");
     assert(nativeGridRender.grid?.nonBlankCells > 0, "native grid proof must produce nonblank cells");
-    assert(nativeGridRender.renderFrame?.schema === "aether.native.render-frame.v1", "native render frame schema missing");
+    assert(nativeGridRender.renderFrame?.schema === "aelyris.native.render-frame.v1", "native render frame schema missing");
     assert(nativeGridRender.renderFrame?.rendererBoundary === "rust-native-render-frame", "native render frame boundary missing");
     assert(nativeGridRender.renderFrame?.webviewUsed === false, "native render frame must not use WebView");
     assert(nativeGridRender.renderFrame?.reactUsed === false, "native render frame must not use React");
     assert(nativeGridRender.renderFrame?.frameSha256?.length === 64, "native render frame must include a stable hash");
-    assert(nativeGridRender.renderDiff?.schema === "aether.native.render-diff.v1", "native render diff schema missing");
+    assert(nativeGridRender.renderDiff?.schema === "aelyris.native.render-diff.v1", "native render diff schema missing");
     assert(
       nativeGridRender.renderDiff?.currentFrameSha256 === nativeGridRender.renderFrame?.frameSha256,
       "native render diff must target the current render frame hash",
@@ -586,7 +586,7 @@ async function main() {
     assert(nativeGridRender.renderDiff?.reactUsed === false, "native render diff must not use React");
     assert(nativeGridRender.renderDiff?.dirtyCells > 0, "native render diff must expose dirty cells");
     assert(nativeGridRender.renderDiff?.dirtyRects?.length > 0, "native render diff must expose dirty rects");
-    assert(nativeGridRender.renderCommit?.schema === "aether.native.render-commit.v1", "native render commit schema missing");
+    assert(nativeGridRender.renderCommit?.schema === "aelyris.native.render-commit.v1", "native render commit schema missing");
     assert(nativeGridRender.renderCommit?.rendererBoundary === "rust-native-render-pipeline", "native render commit boundary missing");
     assert(nativeGridRender.renderCommit?.webviewUsed === false, "native render commit must not use WebView");
     assert(nativeGridRender.renderCommit?.reactUsed === false, "native render commit must not use React");
@@ -669,7 +669,7 @@ async function main() {
     );
     assert(nativePresentLoop.source?.capture?.sessionId === workspaceId, "native present loop must read session capture");
     assert(nativePresentLoop.source?.expectedFound === true, "native present loop must include captured marker text");
-    assert(nativePresentLoop.renderFrame?.schema === "aether.native.render-frame.v1", "native present loop frame missing");
+    assert(nativePresentLoop.renderFrame?.schema === "aelyris.native.render-frame.v1", "native present loop frame missing");
     assert(nativePresentLoop.presentLoop?.terminalRenderer === "native-win32-present-loop-proof", "native present loop renderer missing");
     assert(nativePresentLoop.presentLoop?.presentLoop === true, "native present loop flag missing");
     assert(nativePresentLoop.presentLoop?.interactiveWindow === true, "native present loop did not create an interactive window");
@@ -714,7 +714,7 @@ async function main() {
     );
     assert(nativeGpuRender.source?.capture?.sessionId === workspaceId, "native GPU render proof must read session capture");
     assert(nativeGpuRender.source?.expectedFound === true, "native GPU render proof must include captured marker text");
-    assert(nativeGpuRender.renderFrame?.schema === "aether.native.render-frame.v1", "native GPU render frame schema missing");
+    assert(nativeGpuRender.renderFrame?.schema === "aelyris.native.render-frame.v1", "native GPU render frame schema missing");
     assert(nativeGpuRender.gpu?.terminalRenderer === "wgpu-offscreen-frame-proof", "native GPU renderer proof missing");
     assert(nativeGpuRender.gpu?.gpuRenderer === true, "native GPU renderer flag missing");
     assert(nativeGpuRender.gpu?.drawCalls === 1, "native GPU render proof must submit one draw call");
@@ -761,7 +761,7 @@ async function main() {
     );
     assert(nativeWinitWgpu.source?.capture?.sessionId === workspaceId, "native winit/wgpu proof must read session capture");
     assert(nativeWinitWgpu.source?.expectedFound === true, "native winit/wgpu proof must include captured marker text");
-    assert(nativeWinitWgpu.renderFrame?.schema === "aether.native.render-frame.v1", "native winit/wgpu frame schema missing");
+    assert(nativeWinitWgpu.renderFrame?.schema === "aelyris.native.render-frame.v1", "native winit/wgpu frame schema missing");
     assert(nativeWinitWgpu.winitWgpu?.terminalRenderer === "native-winit-wgpu-terminal", "native winit/wgpu renderer missing");
     assert(nativeWinitWgpu.winitWgpu?.renderer === "winit-wgpu-surface-present-loop", "native winit/wgpu surface loop missing");
     assert(nativeWinitWgpu.winitWgpu?.gpuRenderer === true, "native winit/wgpu proof must be GPU-backed");
@@ -798,7 +798,7 @@ async function main() {
     const nativeIme = await runNative(base, [
       "ime-proof",
       "--prompt",
-      "PS C:\\Aether> ",
+      "PS C:\\Aelyris> ",
       "--preedit",
       "あああ",
       "--commit",
@@ -814,7 +814,7 @@ async function main() {
       renderFrame: nativeIme.renderFrame,
     };
     assert(nativeIme.operation === "ime-proof", "native IME proof operation missing");
-    assert(nativeIme.ime?.schema === "aether.native.ime-proof.v1", "native IME proof schema missing");
+    assert(nativeIme.ime?.schema === "aelyris.native.ime-proof.v1", "native IME proof schema missing");
     assert(nativeIme.ime?.mode === "state-machine-proof", "native IME proof must be honest about proof mode");
     assert(nativeIme.ime?.nativeImeStateMachine === true, "native IME state machine proof missing");
     assert(nativeIme.ime?.nativePreeditOverlay === true, "native IME preedit overlay proof missing");
@@ -840,7 +840,7 @@ async function main() {
     };
     assert(nativeImeDogfood.operation === "ime-dogfood-proof", "native IME dogfood operation missing");
     assert(
-      nativeImeDogfood.imeDogfood?.schema === "aether.native.ime-dogfood-proof.v1",
+      nativeImeDogfood.imeDogfood?.schema === "aelyris.native.ime-dogfood-proof.v1",
       "native IME dogfood schema missing",
     );
     assert(nativeImeDogfood.imeDogfood?.nativeHwndImeDogfood === true, "native HWND IME dogfood missing");
@@ -898,7 +898,7 @@ async function main() {
     };
     assert(nativeImeOsDogfood.operation === "ime-os-dogfood-proof", "native OS IME dogfood operation missing");
     assert(
-      nativeImeOsDogfood.imeOsDogfood?.schema === "aether.native.ime-os-dogfood-proof.v1",
+      nativeImeOsDogfood.imeOsDogfood?.schema === "aelyris.native.ime-os-dogfood-proof.v1",
       "native OS IME dogfood schema missing",
     );
     assert(
@@ -966,7 +966,7 @@ async function main() {
     };
     assert(nativePasteGuard.operation === "paste-guard-proof", "native paste guard operation missing");
     assert(
-      nativePasteGuard.pasteGuard?.schema === "aether.native.paste-guard-proof.v1",
+      nativePasteGuard.pasteGuard?.schema === "aelyris.native.paste-guard-proof.v1",
       "native paste guard schema missing",
     );
     assert(nativePasteGuard.pasteGuard?.nativePasteGuardProof === true, "native paste guard flag missing");
@@ -998,9 +998,9 @@ async function main() {
       "--theme",
       "sakura-hub",
       "--mood",
-      "aether-sakura",
+      "aelyris-sakura",
       "--wallpaper",
-      "C:\\Images\\aether-native-sakura.jpg",
+      "C:\\Images\\aelyris-native-sakura.jpg",
       "--opacity",
       "0.82",
       "--wallpaper-opacity",
@@ -1011,16 +1011,16 @@ async function main() {
       settings: nativeSettings.settings,
     };
     assert(nativeSettings.operation === "settings-proof", "native settings proof operation missing");
-    assert(nativeSettings.settings?.schema === "aether.native.settings-proof.v1", "native settings proof schema missing");
+    assert(nativeSettings.settings?.schema === "aelyris.native.settings-proof.v1", "native settings proof schema missing");
     assert(nativeSettings.settings?.nativeSettings === true, "native settings proof flag missing");
     assert(nativeSettings.settings?.webviewUsed === false, "native settings proof must not use WebView");
     assert(nativeSettings.settings?.reactUsed === false, "native settings proof must not use React");
     assert(nativeSettings.settings?.theme === "sakura-hub", "native settings theme did not persist");
-    assert(nativeSettings.settings?.mood === "aether-sakura", "native settings mood did not persist");
+    assert(nativeSettings.settings?.mood === "aelyris-sakura", "native settings mood did not persist");
     assert(nativeSettings.settings?.hotReloadProof?.changedWithoutReact === true, "native settings hot reload proof missing");
     assert(nativeSettings.settings?.paletteProof?.accentCount >= 3, "native settings palette overrides missing");
     assert(nativeSettings.settings?.materialProof?.panelColor === "#fff2f7", "native settings material override missing");
-    assert(nativeSettings.settings?.wallpaperProof?.imagePath === "C:\\Images\\aether-native-sakura.jpg", "native settings wallpaper path missing");
+    assert(nativeSettings.settings?.wallpaperProof?.imagePath === "C:\\Images\\aelyris-native-sakura.jpg", "native settings wallpaper path missing");
     assert(nearlyEqual(nativeSettings.settings?.wallpaperProof?.opacity, 0.31), "native settings wallpaper hot reload opacity missing");
     assert(nativeSettings.settings?.wallpaperProof?.scale === 135, "native settings wallpaper scale missing");
     report.checks.push("native-settings-config-roundtrip-proof");
@@ -1033,9 +1033,9 @@ async function main() {
       "--theme",
       "sakura-hub",
       "--mood",
-      "aether-sakura",
+      "aelyris-sakura",
       "--wallpaper",
-      "C:\\Images\\aether-native-sakura.jpg",
+      "C:\\Images\\aelyris-native-sakura.jpg",
       "--opacity",
       "0.82",
       "--wallpaper-opacity",
@@ -1052,7 +1052,7 @@ async function main() {
     };
     assert(nativeSettingsWindow.operation === "settings-window-proof", "native settings window proof operation missing");
     assert(
-      nativeSettingsWindow.window?.schema === "aether.native.settings-window-proof.v1",
+      nativeSettingsWindow.window?.schema === "aelyris.native.settings-window-proof.v1",
       "native settings window schema missing",
     );
     assert(nativeSettingsWindow.window?.nativeSettingsWindow === true, "native settings window flag missing");
@@ -1101,7 +1101,7 @@ async function main() {
     };
     assert(nativeCommandCenter.operation === "command-center-proof", "native command center proof operation missing");
     assert(
-      nativeCommandCenter.commandCenter?.schema === "aether.native.command-center-proof.v1",
+      nativeCommandCenter.commandCenter?.schema === "aelyris.native.command-center-proof.v1",
       "native command center schema missing",
     );
     assert(nativeCommandCenter.commandCenter?.nativeCommandCenter === true, "native command center flag missing");
@@ -1159,11 +1159,11 @@ async function main() {
       "native command center window proof operation missing",
     );
     assert(
-      nativeCommandCenterWindow.commandCenter?.schema === "aether.native.command-center-proof.v1",
+      nativeCommandCenterWindow.commandCenter?.schema === "aelyris.native.command-center-proof.v1",
       "native command center window proof must include the data contract",
     );
     assert(
-      nativeCommandCenterWindow.window?.schema === "aether.native.command-center-window-proof.v1",
+      nativeCommandCenterWindow.window?.schema === "aelyris.native.command-center-window-proof.v1",
       "native command center window schema missing",
     );
     assert(
@@ -1203,12 +1203,12 @@ async function main() {
       "native command center input/scroll proof operation missing",
     );
     assert(
-      nativeCommandCenterInputScroll.commandCenter?.schema === "aether.native.command-center-proof.v1",
+      nativeCommandCenterInputScroll.commandCenter?.schema === "aelyris.native.command-center-proof.v1",
       "native command center input/scroll proof must include the data contract",
     );
     assert(
       nativeCommandCenterInputScroll.inputScroll?.schema ===
-        "aether.native.command-center-input-scroll-proof.v1",
+        "aelyris.native.command-center-input-scroll-proof.v1",
       "native command center input/scroll schema missing",
     );
     assert(
@@ -1259,10 +1259,10 @@ async function main() {
     };
     assert(nativeModeShell.operation === "mode-shell-proof", "native mode shell proof operation missing");
     assert(
-      nativeModeShell.commandCenter?.schema === "aether.native.command-center-proof.v1",
+      nativeModeShell.commandCenter?.schema === "aelyris.native.command-center-proof.v1",
       "native mode shell proof must include the command center contract",
     );
-    assert(nativeModeShell.modeShell?.schema === "aether.native.mode-shell.v1", "native mode shell schema missing");
+    assert(nativeModeShell.modeShell?.schema === "aelyris.native.mode-shell.v1", "native mode shell schema missing");
     assert(nativeModeShell.modeShell?.nativeModeShell === true, "native mode shell flag missing");
     assert(nativeModeShell.modeShell?.webviewUsed === false, "native mode shell must not use WebView");
     assert(nativeModeShell.modeShell?.reactUsed === false, "native mode shell must not use React");
@@ -1288,7 +1288,7 @@ async function main() {
       assert(entry, `native mode shell route matrix missing ${mode}`);
       assertModeShellRoute(entry.selectedEntityRoute, mode);
     }
-    assert(nativeModeShell.modeShell?.modeRail?.schema === "aether.native.mode-rail.v1", "native mode rail schema missing");
+    assert(nativeModeShell.modeShell?.modeRail?.schema === "aelyris.native.mode-rail.v1", "native mode rail schema missing");
     assert(nativeModeShell.modeShell?.modeRail?.modeCount === 8, "native mode rail count missing");
     assert(nativeModeShell.modeShell?.modeRail?.keyboardFirst === true, "native mode rail keyboard-first proof missing");
     assert(nativeModeShell.modeShell?.modeRail?.shortcutsStable === true, "native mode rail shortcuts proof missing");
@@ -1297,7 +1297,7 @@ async function main() {
       "native mode rail shortcuts must exactly match Alt+1..Alt+8",
     );
     assert(
-      nativeModeShell.modeShell?.inspector?.schema === "aether.native.inspector.v1",
+      nativeModeShell.modeShell?.inspector?.schema === "aelyris.native.inspector.v1",
       "native inspector schema missing",
     );
     assert(
@@ -1326,7 +1326,7 @@ async function main() {
     assert(nativeModeShell.modeShell?.inspector?.webviewUsed === false, "native inspector must not use WebView");
     assert(nativeModeShell.modeShell?.inspector?.reactUsed === false, "native inspector must not use React");
     assert(
-      nativeModeShell.modeShell?.rightInspectorContractId === "aether.native.inspector.v1:command-center",
+      nativeModeShell.modeShell?.rightInspectorContractId === "aelyris.native.inspector.v1:command-center",
       "native right inspector contract id missing",
     );
     assert(
@@ -1375,11 +1375,11 @@ async function main() {
     };
     assert(nativeModeRailWindow.operation === "mode-rail-window-proof", "native mode rail window operation missing");
     assert(
-      nativeModeRailWindow.modeShell?.schema === "aether.native.mode-shell.v1",
+      nativeModeRailWindow.modeShell?.schema === "aelyris.native.mode-shell.v1",
       "native mode rail window must include the mode shell contract",
     );
     assert(
-      nativeModeRailWindow.window?.schema === "aether.native.mode-rail-window-proof.v1",
+      nativeModeRailWindow.window?.schema === "aelyris.native.mode-rail-window-proof.v1",
       "native mode rail window schema missing",
     );
     assert(nativeModeRailWindow.window?.nativeModeRailWindow === true, "native mode rail window flag missing");
@@ -1438,15 +1438,15 @@ async function main() {
     };
     assert(nativeInspectorWindow.operation === "inspector-window-proof", "native inspector window operation missing");
     assert(
-      nativeInspectorWindow.commandCenter?.schema === "aether.native.command-center-proof.v1",
+      nativeInspectorWindow.commandCenter?.schema === "aelyris.native.command-center-proof.v1",
       "native inspector window must include the command center contract",
     );
     assert(
-      nativeInspectorWindow.modeShell?.schema === "aether.native.mode-shell.v1",
+      nativeInspectorWindow.modeShell?.schema === "aelyris.native.mode-shell.v1",
       "native inspector window must include the mode shell contract",
     );
     assert(
-      nativeInspectorWindow.window?.schema === "aether.native.inspector-window-proof.v1",
+      nativeInspectorWindow.window?.schema === "aelyris.native.inspector-window-proof.v1",
       "native inspector window schema missing",
     );
     assert(nativeInspectorWindow.window?.nativeInspectorWindow === true, "native inspector window flag missing");
@@ -1458,11 +1458,11 @@ async function main() {
     assert(nativeInspectorWindow.window?.reactUsed === false, "native inspector window must not use React");
     assert(nativeInspectorWindow.window?.selectedMode === "terminal", "native inspector selected mode mismatch");
     assert(
-      nativeInspectorWindow.window?.rightInspectorContractId === "aether.native.inspector.v1:command-center",
+      nativeInspectorWindow.window?.rightInspectorContractId === "aelyris.native.inspector.v1:command-center",
       "native inspector contract id missing",
     );
     assert(
-      nativeInspectorWindow.window?.inspector?.schema === "aether.native.inspector.v1",
+      nativeInspectorWindow.window?.inspector?.schema === "aelyris.native.inspector.v1",
       "native inspector embedded contract missing",
     );
     assert(nativeInspectorWindow.window?.commandCenterBacked === true, "native inspector must be command-center backed");
@@ -1533,7 +1533,7 @@ async function main() {
       "native right rail demotion operation missing",
     );
     assert(
-      nativeRightRailDemotion.rightRailDemotion?.schema === "aether.native.right-rail-demotion-proof.v1",
+      nativeRightRailDemotion.rightRailDemotion?.schema === "aelyris.native.right-rail-demotion-proof.v1",
       "native right rail demotion schema missing",
     );
     assert(
@@ -1607,7 +1607,7 @@ async function main() {
       "native right rail demotion proof must not claim full-native readiness",
     );
     assert(
-      nativeRightRailDemotion.rightRailDemotion?.nextProof === "aether-native-primary-daily-driver-promotion",
+      nativeRightRailDemotion.rightRailDemotion?.nextProof === "aelyris-native-primary-daily-driver-promotion",
       "native right rail demotion next proof mismatch",
     );
     report.checks.push("native-right-rail-demotion-contract-proof");
@@ -1622,7 +1622,7 @@ async function main() {
     };
     assert(nativeAccessibility.operation === "accessibility-proof", "native accessibility proof operation missing");
     assert(
-      nativeAccessibility.accessibility?.schema === "aether.native.accessibility-proof.v1",
+      nativeAccessibility.accessibility?.schema === "aelyris.native.accessibility-proof.v1",
       "native accessibility schema missing",
     );
     assert(
@@ -1675,7 +1675,7 @@ async function main() {
     };
     assert(nativeUiaProvider.operation === "uia-provider-proof", "native UIA provider proof operation missing");
     assert(
-      nativeUiaProvider.uiaProvider?.schema === "aether.native.uia-provider-proof.v1",
+      nativeUiaProvider.uiaProvider?.schema === "aelyris.native.uia-provider-proof.v1",
       "native UIA provider schema missing",
     );
     assert(
@@ -1687,7 +1687,7 @@ async function main() {
     assert(nativeUiaProvider.uiaProvider?.uiaProviderBound === true, "native UIA provider must be bound");
     assert(
       nativeUiaProvider.uiaProvider?.elementFromHandle === true &&
-        nativeUiaProvider.uiaProvider?.root?.name === "Aether Native Accessibility Dogfood",
+        nativeUiaProvider.uiaProvider?.root?.name === "Aelyris Native Accessibility Dogfood",
       "native UIA provider must be observable through ElementFromHandle",
     );
     assert(nativeUiaProvider.uiaProvider?.descendantCount >= 3, "native UIA provider descendants missing");
@@ -1729,7 +1729,7 @@ async function main() {
     };
     assert(nativeVisualQa.operation === "visual-qa-proof", "native visual QA proof operation missing");
     assert(
-      nativeVisualQa.visualQa?.schema === "aether.native.visual-qa-proof.v1",
+      nativeVisualQa.visualQa?.schema === "aelyris.native.visual-qa-proof.v1",
       "native visual QA schema missing",
     );
     assert(nativeVisualQa.visualQa?.nativeVisualQaHarness === true, "native visual QA harness flag missing");
@@ -1744,7 +1744,7 @@ async function main() {
     assert(nativeVisualQa.visualQa?.pixelProbe?.webviewCdpUsed === false, "native visual QA must not use CDP");
     assert(
       nativeVisualQa.visualQa?.sleepResumeRecoveryProbe?.schema ===
-        "aether.native.sleep-resume-recovery-probe.v1" &&
+        "aelyris.native.sleep-resume-recovery-probe.v1" &&
         nativeVisualQa.visualQa?.sleepResumeRecoveryProbe?.syntheticPowerBroadcastDogfood === true &&
         nativeVisualQa.visualQa?.sleepResumeRecoveryProbe?.realWindowsSleepResumeDogfood === false &&
         nativeVisualQa.visualQa?.sleepResumeRecoveryProbe?.doesNotClaimMachineSleep === true &&
@@ -1773,7 +1773,7 @@ async function main() {
     report.checks.push("native-sleep-resume-recovery-probe-proof");
     report.checks.push("native-visual-qa-honesty-proof");
 
-    process.env.AETHER_NATIVE_CLIENT_CURRENT_CHECKS = JSON.stringify(report.checks);
+    process.env.AELYRIS_NATIVE_CLIENT_CURRENT_CHECKS = JSON.stringify(report.checks);
     const nativePrimaryShell = await runNative(base, ["primary-shell-proof", "--duration-ms", "140", "--alpha", "232"]);
     report.nativePrimaryShell = {
       operation: nativePrimaryShell.operation,
@@ -1781,12 +1781,12 @@ async function main() {
     };
     assert(nativePrimaryShell.operation === "primary-shell-proof", "native primary shell proof operation missing");
     assert(
-      nativePrimaryShell.primaryShell?.schema === "aether.native.primary-shell-proof.v1",
+      nativePrimaryShell.primaryShell?.schema === "aelyris.native.primary-shell-proof.v1",
       "native primary shell schema missing",
     );
     assert(
       nativePrimaryShell.primaryShell?.nativePrimaryShellPromotion === true &&
-        nativePrimaryShell.primaryShell?.primarySurface === "aether-native",
+        nativePrimaryShell.primaryShell?.primarySurface === "aelyris-native",
       "native primary shell promotion flag missing",
     );
     assert(
@@ -1805,7 +1805,7 @@ async function main() {
     );
     assert(
       nativePrimaryShell.primaryShell?.primaryShellWindow?.schema ===
-        "aether.native.primary-shell-window-proof.v1" &&
+        "aelyris.native.primary-shell-window-proof.v1" &&
         nativePrimaryShell.primaryShell?.primaryShellWindow?.nativePrimaryShellWindow === true &&
         nativePrimaryShell.primaryShell?.primaryShellWindow?.nonBlank === true &&
         nativePrimaryShell.primaryShell?.primaryShellWindow?.modeRowsRendered >= 8 &&

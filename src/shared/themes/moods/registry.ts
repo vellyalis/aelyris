@@ -1,12 +1,12 @@
 export type MoodPresetId =
-  | "aether-sky"
-  | "aether-moonwater"
-  | "aether-crystal"
-  | "aether-dream"
-  | "aether-cute"
-  | "aether-sakura"
-  | "aether-obsidian"
-  | "aether-pro";
+  | "aelyris-sky"
+  | "aelyris-moonwater"
+  | "aelyris-crystal"
+  | "aelyris-dream"
+  | "aelyris-cute"
+  | "aelyris-sakura"
+  | "aelyris-obsidian"
+  | "aelyris-pro";
 
 export interface MoodPreset {
   id: MoodPresetId;
@@ -14,17 +14,17 @@ export interface MoodPreset {
   tone: string;
 }
 
-export const DEFAULT_MOOD_PRESET: MoodPresetId = "aether-sky";
+export const DEFAULT_MOOD_PRESET: MoodPresetId = "aelyris-sky";
 
 export const MOOD_PRESETS: readonly MoodPreset[] = [
-  { id: "aether-sky", label: "Quorum Sky", tone: "Airy blue glass" },
-  { id: "aether-moonwater", label: "Quorum Moonwater", tone: "Moonlit cyan tide" },
-  { id: "aether-crystal", label: "Quorum Crystal", tone: "Clear cinematic glass" },
-  { id: "aether-dream", label: "Quorum Dream", tone: "Soft lavender aurora" },
-  { id: "aether-cute", label: "Quorum Cute", tone: "Clear mint and rose" },
-  { id: "aether-sakura", label: "Quorum Sakura", tone: "Cherry blossom glass" },
-  { id: "aether-obsidian", label: "Quorum Obsidian", tone: "Midnight gold cockpit" },
-  { id: "aether-pro", label: "Quorum Pro", tone: "Quiet graphite focus" },
+  { id: "aelyris-sky", label: "Aelyris Sky", tone: "Airy blue glass" },
+  { id: "aelyris-moonwater", label: "Aelyris Moonwater", tone: "Moonlit cyan tide" },
+  { id: "aelyris-crystal", label: "Aelyris Crystal", tone: "Clear cinematic glass" },
+  { id: "aelyris-dream", label: "Aelyris Dream", tone: "Soft lavender aurora" },
+  { id: "aelyris-cute", label: "Aelyris Cute", tone: "Clear mint and rose" },
+  { id: "aelyris-sakura", label: "Aelyris Sakura", tone: "Cherry blossom glass" },
+  { id: "aelyris-obsidian", label: "Aelyris Obsidian", tone: "Midnight gold cockpit" },
+  { id: "aelyris-pro", label: "Aelyris Pro", tone: "Quiet graphite focus" },
 ] as const;
 
 export const MOOD_SET = new Set<string>(MOOD_PRESETS.map((preset) => preset.id));

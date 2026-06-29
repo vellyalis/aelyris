@@ -1,7 +1,7 @@
 # Autonomous Planner & Orchestration Loop Spec (WU-5.1 / 5.2)
 
 > ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
-> requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
+> requirements ([AELYRIS_COCKPIT_REQUIREMENTS](./AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md),
 > v2.0) now specify **full autonomy with no human gate in the critical path**: the
 > **Reviewer agent merges to `main` automatically** once all quality gates are green,
 > and the **watchdog auto-decides** tool-approval instead of routing to a human. The
@@ -23,7 +23,7 @@ fleet dispatch → parallel impl/test/review → star-comms → sequential gated
 ## 0. Insight
 
 The planner is the **automation of what a human orchestrator does by hand**. The exemplar is this
-very repo's `CODEX_HANDOFF.md`: a one-line objective ("make Quorum a cockpit") became an audit →
+very repo's `CODEX_HANDOFF.md`: a one-line objective ("make Aelyris a cockpit") became an audit →
 5 specs → 26 Work Units with a dependency DAG. WU-5.1 makes an LLM (Opus) do that planning pass
 and emit the result as `scripts/fleet/wu-manifest.json` — the contract `fleet-dispatch` already reads.
 
@@ -61,12 +61,12 @@ and emit the result as `scripts/fleet/wu-manifest.json` — the contract `fleet-
 
 - **5.1** depends on WU-0.1/0.2/0.3 (the fleet session model + manifest contract) and the Orchestra path.
 - **5.2** depends on 5.1 + WU-3.2 (merge queue) + the cockpit surfaces (2.1/2.2) for human supervision.
-- Build last — it assembles the whole stack. Until then, the **`aether-plan` skill** lets an orchestrator agent perform 5.1 manually (§5).
+- Build last — it assembles the whole stack. Until then, the **`aelyris-plan` skill** lets an orchestrator agent perform 5.1 manually (§5).
 
 ## 5. Skill bridge (usable today, before the in-app feature exists)
 
-The **`aether-plan`** project skill packages the 5.1 planning procedure so an orchestrator agent
-(Opus) can do it now: one-liner → spec + `wu-manifest.json` → hand to the `aether-fleet` skill for
-dispatch. It composes with `aether-fleet` (execution). Deeper planning patterns: `blueprint`
+The **`aelyris-plan`** project skill packages the 5.1 planning procedure so an orchestrator agent
+(Opus) can do it now: one-liner → spec + `wu-manifest.json` → hand to the `aelyris-fleet` skill for
+dispatch. It composes with `aelyris-fleet` (execution). Deeper planning patterns: `blueprint`
 (objective → construction plan + DAG), `ralphinho-rfc-pipeline` (RFC-driven multi-agent DAG +
 quality gates + merge queue), `devfleet` (plan → parallel dispatch → monitor).

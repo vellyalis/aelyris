@@ -16,9 +16,9 @@ describe("PanelHeader", () => {
   });
 
   it("renders subtitle + count as separate elements", () => {
-    const { container } = render(<PanelHeader title="Toolkit" subtitle="aether-terminal" count={7} />);
+    const { container } = render(<PanelHeader title="Toolkit" subtitle="aelyris" count={7} />);
     expect(container.textContent).toContain("Toolkit");
-    expect(container.textContent).toContain("aether-terminal");
+    expect(container.textContent).toContain("aelyris");
     expect(container.textContent).toContain("7");
   });
 

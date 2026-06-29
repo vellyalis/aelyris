@@ -4,13 +4,13 @@ Date: 2026-05-26
 
 ## Final Goal
 
-Aether's visible product shell must match the native-first hybrid product direction:
+Aelyris's visible product shell must match the native-first hybrid product direction:
 
 ```text
 Left Mode Rail -> Center Work Surface -> Right Contextual Inspector
 ```
 
-This is not a request to copy Clauge's visual skin or broaden Aether into a REST/SQL/NoSQL/S3 super-app. The useful reference is the information architecture: one project window, explicit modes, workflow-specific AI surfaces, local-first state, MCP-ready workspace data, and a right inspector that explains the selected work instead of becoming a noisy dashboard.
+This is not a request to copy Clauge's visual skin or broaden Aelyris into a REST/SQL/NoSQL/S3 super-app. The useful reference is the information architecture: one project window, explicit modes, workflow-specific AI surfaces, local-first state, MCP-ready workspace data, and a right inspector that explains the selected work instead of becoming a noisy dashboard.
 
 The source-informed Clauge audit is tracked in:
 
@@ -18,7 +18,7 @@ The source-informed Clauge audit is tracked in:
 
 That audit was written against a local clone of `ansxuman/Clauge` at commit
 `1aceff9f014eb997ba5b21eabf93f23c0da2b71c`. The implementation target is
-upper compatibility inside Aether's terminal-first domain, not code copying or
+upper compatibility inside Aelyris's terminal-first domain, not code copying or
 feature sprawl into every Clauge mode.
 
 The UI refresh is complete only when a first-time user can answer these questions without documentation:
@@ -126,7 +126,7 @@ Exit criteria:
 
 ## Phase 5: Product Edge Upgrade
 
-Goal: make Aether's edge stronger than "terminal plus panels."
+Goal: make Aelyris's edge stronger than "terminal plus panels."
 
 Planned work:
 

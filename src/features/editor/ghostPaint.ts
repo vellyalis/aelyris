@@ -147,8 +147,8 @@ export function installGhostPaint(editor: GhostEditor, monaco: MonacoNs, options
           range: new monaco.Range(startLine, 1, endLine, Number.MAX_SAFE_INTEGER),
           options: {
             isWholeLine: true,
-            className: "aether-ghost-delete-line",
-            linesDecorationsClassName: "aether-ghost-delete-gutter",
+            className: "aelyris-ghost-delete-line",
+            linesDecorationsClassName: "aelyris-ghost-delete-gutter",
             hoverMessage: {
               value: `Ghost delete (${tint.roleLabel})`,
             },
@@ -161,7 +161,7 @@ export function installGhostPaint(editor: GhostEditor, monaco: MonacoNs, options
           range: new monaco.Range(anchor, 1, anchor, 1),
           options: {
             isWholeLine: true,
-            linesDecorationsClassName: "aether-ghost-modify-gutter",
+            linesDecorationsClassName: "aelyris-ghost-modify-gutter",
             hoverMessage: {
               value: `Ghost change (${tint.roleLabel}) — open panel to review`,
             },
@@ -206,13 +206,13 @@ export function installGhostPaint(editor: GhostEditor, monaco: MonacoNs, options
 
 function buildAddZoneNode(lines: string[], tint: LayerTint, layerId: string, hunkIndex: number): HTMLElement {
   const root = document.createElement("div");
-  root.className = "aether-ghost-add-zone";
-  root.dataset.aetherLayer = layerId;
-  root.dataset.aetherHunk = String(hunkIndex);
-  root.style.setProperty("--aether-ghost-tint", tint.roleColor);
+  root.className = "aelyris-ghost-add-zone";
+  root.dataset.aelyrisLayer = layerId;
+  root.dataset.aelyrisHunk = String(hunkIndex);
+  root.style.setProperty("--aelyris-ghost-tint", tint.roleColor);
   for (const line of lines) {
     const row = document.createElement("div");
-    row.className = "aether-ghost-add-line";
+    row.className = "aelyris-ghost-add-line";
     // Non-breaking space for empty add lines so the row keeps its height.
     row.textContent = line.length === 0 ? "\u00a0" : line;
     root.appendChild(row);

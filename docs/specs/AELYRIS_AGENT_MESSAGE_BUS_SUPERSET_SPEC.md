@@ -1,13 +1,13 @@
-# Quorum Agent Message Bus Superset Requirements / Specification / Design
+# Aelyris Agent Message Bus Superset Requirements / Specification / Design
 
 Date: 2026-06-28 JST
 Status: design ready for work-unit planning; implementation not complete
 Related plan: `../../PLAN.md`
 Related public copy: `../GITHUB_INTRODUCTION.md`
 
-Naming note: **Quorum** is the product name (formerly Aether Terminal). The lowercase `aether.*` namespace and `AETHER_*` identifiers remain the current repository, runtime, API, and schema prefix as internal code tokens, unaffected by the product-name change. This document turns the `agmsg` comparative audit into Quorum requirements,
+Naming note: **Aelyris** is the product name, pronounced **Aelys** / **エイリス**. The CLI and short name is `aelys`. Product surfaces use **Aelyris Core**, **Aelyris Grid**, and **Aelyris Pane**. **Qralis** is the coordination engine name for messaging, roles, directives, and multi-agent coordination. This document turns the `agmsg` comparative audit into Aelyris/Qralis requirements,
 specification, and implementation design. The goal is not to copy `agmsg` as a
-standalone CLI. The goal is to make Quorum a strict superset of that class of
+standalone CLI. The goal is to make Aelyris a strict superset of that class of
 local agent messaging, then exceed it by binding messages to visible panes,
 TaskGraph, worktrees, review, merge, and evidence.
 
@@ -20,7 +20,7 @@ Audited reference:
 
 Current verdict: **BLOCK for strict agmsg superset claims**.
 
-Quorum already has a stronger product substrate than `agmsg`: Tauri/Rust
+Aelyris already has a stronger product substrate than `agmsg`: Tauri/Rust
 workspace UI, real terminal panes, TaskGraph, EventBus, MCP/control APIs,
 worktree isolation, file/symbol ownership, review/merge gates, and release
 evidence. However, it does not yet implement the concrete local agent-message
@@ -39,13 +39,13 @@ Missing or weaker than `agmsg` today:
 - Watch-once / no-empty-worker safety gates.
 - No-loss and backpressure semantics for message publication.
 
-Quorum can still claim a broader AI development workspace direction, but it must
+Aelyris can still claim a broader AI development workspace direction, but it must
 not claim strict `agmsg` superset behavior until the gates in this document are
 green.
 
 ## 2. Product Requirement
 
-Quorum must provide a local-first coordination layer where AI agents and human
+Aelyris must provide a local-first coordination layer where AI agents and human
 operators can exchange durable, addressed messages that are visible, replayable,
 permissioned, and connected to the actual project work.
 
@@ -59,7 +59,7 @@ visible panes, worktrees, review gates, ownership, merge intent, and evidence.
 | --- | --- | --- |
 | AMB-R1 | Local message bus backed by SQLite/WAL and repo-local project identity. | BLOCK |
 | AMB-R2 | Addressed messages with inbox, history, read/ack state, sender, recipient, role, task, pane, and evidence refs. | BLOCK |
-| AMB-R3 | Delivery modes: `monitor`, `turn`, `both`, `off`, plus Quorum policy hooks for review-gated and task-scoped delivery. | BLOCK |
+| AMB-R3 | Delivery modes: `monitor`, `turn`, `both`, `off`, plus Aelyris policy hooks for review-gated and task-scoped delivery. | BLOCK |
 | AMB-R4 | Team and agent identity: whoami/team list, role membership, active/inactive state, driver identity, and session linkage. | REVIEW |
 | AMB-R5 | Persistent role leases equivalent to `actas`: acquire, renew, release, steal-with-reason, expiry, and audit events. | BLOCK |
 | AMB-R6 | Peer lifecycle: spawn, ready sentinel, health, graceful despawn, force despawn, and message-route cleanup. | REVIEW |
@@ -75,7 +75,7 @@ visible panes, worktrees, review gates, ownership, merge intent, and evidence.
 
 Allowed before implementation:
 
-> Quorum is designing a local-first agent coordination layer that will connect
+> Aelyris is designing a local-first agent coordination layer that will connect
 > messages, tasks, panes, reviews, and evidence in one workspace.
 
 Forbidden until gates pass:
@@ -88,45 +88,44 @@ Forbidden until gates pass:
 
 ## 5. API Specification
 
-Internal naming may keep the existing `aether.*` prefix until a full product
-rename is planned. Public copy uses Quorum.
+Qralis API names are the target public/internal contract for the coordination layer. Any legacy implementation aliases must be treated as compatibility shims, not public names.
 
 ### Message API
 
 | API | Authority | Purpose |
 | --- | --- | --- |
-| `aether.message.send` | FREE or scoped WRITE | Send an addressed message to an agent, role, task, or team. |
-| `aether.message.inbox` | FREE | Read the caller's inbox projection. |
-| `aether.message.history` | FREE | Read immutable message history for a thread, task, agent, or role. |
-| `aether.message.ack` | FREE | Mark delivery/read state for a message. |
-| `aether.message.watch` | FREE streaming | Stream eligible messages according to delivery policy. |
-| `aether.message.thread` | FREE | Return a conversation thread with evidence and task refs. |
+| `qralis.message.send` | FREE or scoped WRITE | Send an addressed message to an agent, role, task, or team. |
+| `qralis.message.inbox` | FREE | Read the caller's inbox projection. |
+| `qralis.message.history` | FREE | Read immutable message history for a thread, task, agent, or role. |
+| `qralis.message.ack` | FREE | Mark delivery/read state for a message. |
+| `qralis.message.watch` | FREE streaming | Stream eligible messages according to delivery policy. |
+| `qralis.message.thread` | FREE | Return a conversation thread with evidence and task refs. |
 
 ### Identity And Role Lease API
 
 | API | Authority | Purpose |
 | --- | --- | --- |
-| `aether.team.whoami` | FREE | Resolve current team, agent identity, driver, and session. |
-| `aether.team.list_agents` | FREE | List known agents and their roles/status. |
-| `aether.role.acquire` | GATED when stealing | Acquire an exclusive role lease. |
-| `aether.role.renew` | FREE for holder | Extend an existing lease. |
-| `aether.role.release` | FREE for holder | Release a lease. |
-| `aether.role.status` | FREE | Inspect role holders and lease expiry. |
+| `qralis.team.whoami` | FREE | Resolve current team, agent identity, driver, and session. |
+| `qralis.team.list_agents` | FREE | List known agents and their roles/status. |
+| `qralis.role.acquire` | GATED when stealing | Acquire an exclusive role lease. |
+| `qralis.role.renew` | FREE for holder | Extend an existing lease. |
+| `qralis.role.release` | FREE for holder | Release a lease. |
+| `qralis.role.status` | FREE | Inspect role holders and lease expiry. |
 
 ### Directive API
 
 | API | Authority | Purpose |
 | --- | --- | --- |
-| `aether.directive.submit` | FREE parse, GATED execute | Submit a host-action directive from an agent output. |
-| `aether.directive.preview` | FREE | Show intended action, authority, and risk. |
-| `aether.directive.apply` | GATED | Execute after policy approval. |
-| `aether.directive.status` | FREE | Read durable outcome and audit refs. |
+| `qralis.directive.submit` | FREE parse, GATED execute | Submit a host-action directive from an agent output. |
+| `qralis.directive.preview` | FREE | Show intended action, authority, and risk. |
+| `qralis.directive.apply` | GATED | Execute after policy approval. |
+| `qralis.directive.status` | FREE | Read durable outcome and audit refs. |
 
 Directive schema baseline:
 
 ```json
 {
-  "schema": "aether.directive.v1",
+  "schema": "qralis.directive.v1",
   "id": "uuidv7-or-equivalent",
   "issuedBy": "agent-id",
   "taskId": "task-id-or-null",
@@ -175,7 +174,7 @@ Hard requirements:
 | `both` | Stream now and keep turn-boundary delivery. | Proof that duplicate handling is idempotent through `message_id` plus `idempotency_key`. |
 | `off` | No automatic delivery; manual inbox/history only. | Proof that no process is spawned and no stream event is delivered. |
 
-Quorum-specific extension:
+Aelyris-specific extension:
 
 - `review_gate`: deliver when a task reaches review or conflict state.
 - `task_scope`: deliver only to agents bound to a task/lane/worktree.
@@ -270,10 +269,10 @@ strict agmsg superset claims as blocked.
 
 ## 12. Open Decisions
 
-- When to run a full brand/API rename. AMB-1 through AMB-10 use `aether.*` APIs and `aether.*.v1` schema literals until that separate rename work unit exists.
-- Whether third-party `agmsg` import/export should be supported in v1 or deferred. Core Quorum message ids use UUIDv7 plus sequence cursors.
+- When to run a full brand/API rename. AMB-1 through AMB-10 use `qralis.*` APIs and `qralis.*.v1` schema literals for the coordination engine contract.
+- Whether third-party `agmsg` import/export should be supported in v1 or deferred. Core Aelyris message ids use UUIDv7 plus sequence cursors.
 - Whether compatibility with `agmsg` CLI file/database layout is required, or
-  whether Quorum only needs behavioral superset semantics.
+  whether Aelyris only needs behavioral superset semantics.
 - Whether third-party `agmsg` import/export should be supported.
 - Which message bodies can be included in context packs by default.
 

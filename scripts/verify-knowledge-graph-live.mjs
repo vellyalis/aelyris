@@ -2,11 +2,11 @@
 // code STRUCTURE (User -> AuthService -> JWTProvider -> Redis), and a change's
 // blast radius (impact) is known up front. Deterministic (no agent / no auth).
 //
-// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token.
-const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.QUORUM_API_TOKEN;
+// Prereq: `pnpm tauri:dev` running; AELYRIS_API_TOKEN set to the API bearer token.
+const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.AELYRIS_API_TOKEN;
 if (!TOKEN) {
-  console.error("QUORUM_API_TOKEN is required");
+  console.error("AELYRIS_API_TOKEN is required");
   process.exit(2);
 }
 
@@ -33,33 +33,33 @@ const sortedEq = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...
 
 async function main() {
   // Build User -> AuthService -> JWTProvider -> Redis (namespaced).
-  await call("aether.knowledge.add_node", { id: N("AuthService"), kind: "service", file: "src/auth/service.ts" });
-  await call("aether.knowledge.add_edge", { dependent: N("User"), dependency: N("AuthService") });
-  await call("aether.knowledge.add_edge", { dependent: N("AuthService"), dependency: N("JWTProvider") });
-  await call("aether.knowledge.add_edge", { dependent: N("JWTProvider"), dependency: N("Redis") });
+  await call("aelyris.knowledge.add_node", { id: N("AuthService"), kind: "service", file: "src/auth/service.ts" });
+  await call("aelyris.knowledge.add_edge", { dependent: N("User"), dependency: N("AuthService") });
+  await call("aelyris.knowledge.add_edge", { dependent: N("AuthService"), dependency: N("JWTProvider") });
+  await call("aelyris.knowledge.add_edge", { dependent: N("JWTProvider"), dependency: N("Redis") });
 
   // Direct structure.
-  const deps = await call("aether.knowledge.dependencies", { id: N("AuthService") });
+  const deps = await call("aelyris.knowledge.dependencies", { id: N("AuthService") });
   ok(sortedEq(deps.dependencies, [N("JWTProvider")]), "dependencies_of(AuthService) = [JWTProvider]");
-  const dependents = await call("aether.knowledge.dependents", { id: N("JWTProvider") });
+  const dependents = await call("aelyris.knowledge.dependents", { id: N("JWTProvider") });
   ok(sortedEq(dependents.dependents, [N("AuthService")]), "dependents_of(JWTProvider) = [AuthService]");
 
   // Blast radius — the whole point.
-  const impactRedis = await call("aether.knowledge.impact", { id: N("Redis") });
+  const impactRedis = await call("aelyris.knowledge.impact", { id: N("Redis") });
   ok(
     sortedEq(impactRedis.impact, [N("AuthService"), N("JWTProvider"), N("User")]),
     `impact(Redis) = the transitive blast radius [AuthService, JWTProvider, User] (got ${JSON.stringify(impactRedis.impact)})`,
   );
-  const impactJwt = await call("aether.knowledge.impact", { id: N("JWTProvider") });
+  const impactJwt = await call("aelyris.knowledge.impact", { id: N("JWTProvider") });
   ok(
     sortedEq(impactJwt.impact, [N("AuthService"), N("User")]),
     "impact(JWTProvider) = [AuthService, User] (not Redis, which is below it)",
   );
-  const impactUser = await call("aether.knowledge.impact", { id: N("User") });
+  const impactUser = await call("aelyris.knowledge.impact", { id: N("User") });
   ok(!impactUser.impact.includes(N("Redis")), "impact(User) (a leaf consumer) does not ripple downward");
 
   // The full graph is queryable.
-  const graph = await call("aether.knowledge.graph");
+  const graph = await call("aelyris.knowledge.graph");
   const myNodes = graph.nodes.filter((n) => n.id.startsWith(ns));
   ok(myNodes.length >= 4, `knowledge.graph returns the nodes (got ${myNodes.length})`);
   const authNode = myNodes.find((n) => n.id === N("AuthService"));

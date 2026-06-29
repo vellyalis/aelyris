@@ -17,9 +17,9 @@ impl AccessControl for DenyVerb {
 #[test]
 fn default_allows_every_verb() {
     let g = Governance::new();
-    assert!(g.authorize("operator", "aether.spawn_agent").is_allowed());
+    assert!(g.authorize("operator", "aelyris.spawn_agent").is_allowed());
     assert!(g
-        .authorize("anyone", "aether.orchestrator.step")
+        .authorize("anyone", "aelyris.orchestrator.step")
         .is_allowed());
 }
 
@@ -45,12 +45,12 @@ fn default_principal_and_resolver_are_the_operator() {
 
 #[test]
 fn a_denying_policy_blocks_only_its_verb() {
-    let g = Governance::with_access(Box::new(DenyVerb("aether.spawn_agent")));
-    match g.authorize("operator", "aether.spawn_agent") {
+    let g = Governance::with_access(Box::new(DenyVerb("aelyris.spawn_agent")));
+    match g.authorize("operator", "aelyris.spawn_agent") {
         AccessDecision::Deny(reason) => assert!(reason.contains("not allowed")),
         AccessDecision::Allow => panic!("denying policy must deny its verb"),
     }
     // Every other verb still flows — swapping the policy changes the decision,
     // not the single choke point.
-    assert!(g.authorize("operator", "aether.event.recent").is_allowed());
+    assert!(g.authorize("operator", "aelyris.event.recent").is_allowed());
 }

@@ -248,7 +248,7 @@ describe("release quality goal inputs", () => {
           rightRailGoalTrackCycleBoundaryExplained: true,
         },
         nextRequiredAction:
-          "Set QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS and run pnpm verify:terminal:authenticated-ai-cli-prompt if token-spend validation is desired.",
+          "Set AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS and run pnpm verify:terminal:authenticated-ai-cli-prompt if token-spend validation is desired.",
       }),
     );
 

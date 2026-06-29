@@ -1,27 +1,27 @@
 // Live Tauri/WebView2 smoke for multi-pane command-block evidence.
 //
 // Prerequisite:
-//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
+//   AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_MULTIPANE_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
-//   AETHER_MULTIPANE_COMMAND_EVIDENCE_URL=http://localhost:1420/
-//   AETHER_MULTIPANE_COMMAND_EVIDENCE_PROJECT=C:/repo/aether-terminal
-//   AETHER_MULTIPANE_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/multipane-command-evidence.json
+//   AELYRIS_MULTIPANE_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
+//   AELYRIS_MULTIPANE_COMMAND_EVIDENCE_URL=http://localhost:1420/
+//   AELYRIS_MULTIPANE_COMMAND_EVIDENCE_PROJECT=C:/repo/aelyris
+//   AELYRIS_MULTIPANE_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/multipane-command-evidence.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_MULTIPANE_COMMAND_EVIDENCE_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_MULTIPANE_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
+const CDP = process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
-const PROJECT_PATH = (process.env.AETHER_MULTIPANE_COMMAND_EVIDENCE_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const PROJECT_PATH = (process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT =
-  process.env.AETHER_MULTIPANE_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/multipane-command-evidence.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_MULTIPANE_COMMAND_EVIDENCE_WAIT_MS ?? "90000", 10);
-const LONG_OUTPUT_LINES = Number.parseInt(process.env.AETHER_MULTIPANE_COMMAND_EVIDENCE_LINES ?? "96", 10);
+  process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/multipane-command-evidence.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_WAIT_MS ?? "90000", 10);
+const LONG_OUTPUT_LINES = Number.parseInt(process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_LINES ?? "96", 10);
 
 const report = {
   ok: false,
@@ -71,7 +71,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.startsWith(APP_ORIGIN) ||
@@ -89,20 +89,20 @@ function describePages(context) {
   return pages.map((page, index) => `  ${index + 1}. ${page.url() || "(blank)"}`).join("\n");
 }
 
-function pickAetherPage(context) {
+function pickAelyrisPage(context) {
   const pages = context?.pages() ?? [];
-  return pages.find(isAetherPage) ?? pages.find((page) => page.url() === "about:blank") ?? pages[0] ?? null;
+  return pages.find(isAelyrisPage) ?? pages.find((page) => page.url() === "about:blank") ?? pages[0] ?? null;
 }
 
 function targetQaUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "multipane-command-evidence");
   url.searchParams.delete("state");
   url.searchParams.delete("edgeLoop");
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -118,7 +118,7 @@ async function connectOverCdpWithRetry() {
     }
   }
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev. ${
+    `Cannot attach to WebView2 CDP at ${CDP}. Start Aelyris with AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev. ${
       lastError?.message ?? "CDP endpoint did not respond"
     }`,
   );
@@ -126,9 +126,9 @@ async function connectOverCdpWithRetry() {
 
 async function ensureCleanApp(page) {
   await page.evaluate((projectPath) => {
-    localStorage.setItem("aether:lastProject", projectPath);
-    localStorage.setItem("aether:onboarding-done", "1");
-    localStorage.removeItem("aether:dashboardStateUrl");
+    localStorage.setItem("aelyris:lastProject", projectPath);
+    localStorage.setItem("aelyris:onboarding-done", "1");
+    localStorage.removeItem("aelyris:dashboardStateUrl");
   }, PROJECT_PATH);
   await page.goto(targetQaUrl(), { waitUntil: "domcontentloaded", timeout: WAIT_MS });
   await page.waitForSelector(".app-container", { timeout: WAIT_MS });
@@ -224,7 +224,7 @@ async function waitForHistoryContains(page, terminalId, marker) {
 }
 
 async function submitLongCommand(page, terminalId, label) {
-  const marker = `AETHER_${label}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+  const marker = `AELYRIS_${label}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
   const done = `${marker}_DONE`;
   const command = `for ($i=1; $i -le ${LONG_OUTPUT_LINES}; $i++) { Write-Output "${marker}_$i" }; Write-Output "${done}"`;
   await call(page, "send_keys", { terminalId, data: `${command}\r` });
@@ -253,9 +253,9 @@ async function main() {
   try {
     browser = await connectOverCdpWithRetry();
     const context = browser.contexts()[0];
-    const page = pickAetherPage(context);
+    const page = pickAelyrisPage(context);
     if (!page) {
-      throw new Error(`No Aether Tauri page found over CDP.\n${describePages(context)}`);
+      throw new Error(`No Aelyris Tauri page found over CDP.\n${describePages(context)}`);
     }
 
     await ensureCleanApp(page);

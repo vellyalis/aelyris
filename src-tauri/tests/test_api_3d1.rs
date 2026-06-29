@@ -4,9 +4,9 @@
 //! `reqwest`. The session-creating tests require Windows (they spawn `cmd`
 //! via ConPTY) and are gated on `target_os`.
 
-use aether_terminal_lib::api::{self, ApiState, AuthConfig, WS_MAX_INPUT_FRAME_BYTES};
-use aether_terminal_lib::mux::store::FileMuxSnapshotStore;
-use aether_terminal_lib::pty::PtyManager;
+use aelyris_lib::api::{self, ApiState, AuthConfig, WS_MAX_INPUT_FRAME_BYTES};
+use aelyris_lib::mux::store::FileMuxSnapshotStore;
+use aelyris_lib::pty::PtyManager;
 use reqwest::header::AUTHORIZATION;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -72,7 +72,7 @@ fn collect_layout_pane_ids(node: &serde_json::Value, ids: &mut Vec<String>) {
 
 #[tokio::test]
 async fn governance_denies_a_rest_route_with_403() {
-    use aether_terminal_lib::governance::{AccessControl, AccessDecision, Governance};
+    use aelyris_lib::governance::{AccessControl, AccessDecision, Governance};
     use std::sync::Arc;
 
     struct DenyAll;
@@ -185,7 +185,7 @@ async fn daemon_contract_exposes_versioned_capabilities() {
     assert_eq!(body["protocolVersion"], api::DAEMON_PROTOCOL_VERSION);
     assert_eq!(
         body["muxGraphVersion"],
-        aether_terminal_lib::mux::graph::MUX_GRAPH_VERSION
+        aelyris_lib::mux::graph::MUX_GRAPH_VERSION
     );
     assert_eq!(body["transport"], "loopback-http-websocket");
     assert_eq!(body["authPolicy"], "bearer-token-or-disabled-test-mode");
@@ -223,15 +223,15 @@ async fn daemon_contract_exposes_versioned_capabilities() {
     );
     assert_eq!(
         body["terminalCorePolicy"]["renderFrameSchema"],
-        "aether.native.render-frame.v1"
+        "aelyris.native.render-frame.v1"
     );
     assert_eq!(
         body["terminalCorePolicy"]["renderDiffSchema"],
-        "aether.native.render-diff.v1"
+        "aelyris.native.render-diff.v1"
     );
     assert_eq!(
         body["terminalCorePolicy"]["renderCommitSchema"],
-        "aether.native.render-commit.v1"
+        "aelyris.native.render-commit.v1"
     );
     assert_eq!(
         body["terminalCorePolicy"]["renderPipelineBoundary"],
@@ -587,10 +587,10 @@ async fn create_list_resize_delete_roundtrip() {
     }
 
     // REST input works without requiring a WebSocket client, which is the
-    // control path used by aetherctl and future daemon attach/detach flows.
+    // control path used by aelys and future daemon attach/detach flows.
     let input_res = c
         .post(format!("{}/sessions/{}/input", base, id))
-        .json(&json!({"text": "echo aether-rest-input\r"}))
+        .json(&json!({"text": "echo aelyris-rest-input\r"}))
         .send()
         .await
         .unwrap();
@@ -611,13 +611,13 @@ async fn create_list_resize_delete_roundtrip() {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        if captured.contains("aether-rest-input") {
+        if captured.contains("aelyris-rest-input") {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(
-        captured.contains("aether-rest-input"),
+        captured.contains("aelyris-rest-input"),
         "capture did not include REST input echo: {}",
         captured
     );
@@ -684,7 +684,7 @@ async fn create_list_resize_delete_roundtrip() {
 
     let sync_input_res = c
         .post(format!("{}/sessions/{}/input", base, id))
-        .json(&json!({"text": "echo aether-mux-sync\r"}))
+        .json(&json!({"text": "echo aelyris-mux-sync\r"}))
         .send()
         .await
         .unwrap();
@@ -706,13 +706,13 @@ async fn create_list_resize_delete_roundtrip() {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            if pane_capture.contains("aether-mux-sync") {
+            if pane_capture.contains("aelyris-mux-sync") {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(
-            pane_capture.contains("aether-mux-sync"),
+            pane_capture.contains("aelyris-mux-sync"),
             "mux synchronized input did not reach pane {}: {}",
             pane_id,
             pane_capture
@@ -729,7 +729,7 @@ async fn create_list_resize_delete_roundtrip() {
 
     let broadcast_res = c
         .post(format!("{}/mux/workspaces/{}/input", base, id))
-        .json(&json!({"text": "echo aether-mux-broadcast\r"}))
+        .json(&json!({"text": "echo aelyris-mux-broadcast\r"}))
         .send()
         .await
         .unwrap();
@@ -754,13 +754,13 @@ async fn create_list_resize_delete_roundtrip() {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            if pane_capture.contains("aether-mux-broadcast") {
+            if pane_capture.contains("aelyris-mux-broadcast") {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(
-            pane_capture.contains("aether-mux-broadcast"),
+            pane_capture.contains("aelyris-mux-broadcast"),
             "mux broadcast did not reach pane {}: {}",
             pane_id,
             pane_capture
@@ -962,7 +962,7 @@ async fn create_list_resize_delete_roundtrip() {
 
     let detached_input_res = c
         .post(format!("{}/sessions/{}/input", base, id))
-        .json(&json!({"text": "echo aether-detached-live\r"}))
+        .json(&json!({"text": "echo aelyris-detached-live\r"}))
         .send()
         .await
         .unwrap();
@@ -983,13 +983,13 @@ async fn create_list_resize_delete_roundtrip() {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        if detached_capture.contains("aether-detached-live") {
+        if detached_capture.contains("aelyris-detached-live") {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(
-        detached_capture.contains("aether-detached-live"),
+        detached_capture.contains("aelyris-detached-live"),
         "detached live PTY did not keep processing input: {}",
         detached_capture
     );
@@ -1138,7 +1138,7 @@ async fn mux_snapshot_store_persists_and_restores_api_graphs() {
         .json()
         .await
         .unwrap();
-    assert_eq!(exported["schema"], "aether.mux.v1");
+    assert_eq!(exported["schema"], "aelyris.mux.v1");
     assert_eq!(exported["graph"]["activeWorkspaceId"], id);
 
     let duplicate_import = c
@@ -1244,7 +1244,7 @@ async fn durable_scrollback_survives_session_close() {
         .unwrap()
         .to_string();
 
-    let marker = "aether-durable-scrollback";
+    let marker = "aelyris-durable-scrollback";
     let input_res = c
         .post(format!("{}/sessions/{}/input", base, id))
         .json(&json!({"text": format!("echo {marker}\r")}))

@@ -78,7 +78,7 @@ describe("useTabManager", () => {
       result.current.addTab("cmd");
     });
 
-    const saved = localStorage.getItem("aether:tabs");
+    const saved = localStorage.getItem("aelyris:tabs");
     expect(saved).not.toBeNull();
     if (saved === null) throw new Error("Expected persisted tabs");
     const parsed = JSON.parse(saved);
@@ -145,32 +145,32 @@ describe("useTabManager", () => {
 
   it("uses a deterministic single tab for dev visual QA", () => {
     localStorage.setItem(
-      "aether:tabs",
+      "aelyris:tabs",
       JSON.stringify([
         { id: "saved-1", label: "Old", shell: "powershell" },
         { id: "saved-2", label: "Old 2", shell: "cmd" },
       ]),
     );
-    window.history.replaceState(null, "", "/?aetherVisualQa=1&projectPath=C:/work/Aether_Terminal");
+    window.history.replaceState(null, "", "/?aelyrisVisualQa=1&projectPath=C:/work/Aelyris");
 
     const { result } = renderHook(() => useTabManager("powershell"));
 
     expect(result.current.tabs).toEqual([
       {
         id: "tab-visual-qa",
-        label: "Aether_Terminal",
+        label: "Aelyris",
         shell: "powershell",
-        cwd: "C:/work/Aether_Terminal",
+        cwd: "C:/work/Aelyris",
       },
     ]);
     expect(result.current.activeTabId).toBe("tab-visual-qa");
   });
 
   it("does not let stored visual QA state override normal tab restore", () => {
-    localStorage.setItem("aether:visualQa", "1");
-    localStorage.setItem("aether:visualQaProject", "C:/work/Aether_Terminal");
+    localStorage.setItem("aelyris:visualQa", "1");
+    localStorage.setItem("aelyris:visualQaProject", "C:/work/Aelyris");
     localStorage.setItem(
-      "aether:tabs",
+      "aelyris:tabs",
       JSON.stringify([{ id: "saved-1", label: "Saved", shell: "cmd", cwd: "C:/work/Saved" }]),
     );
 

@@ -6,7 +6,7 @@ import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "release-quality-score.json");
 const VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
-const BOOTSTRAP_RIGHT_RAIL_GOAL_TRACK = process.env.AETHER_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP === "1";
+const BOOTSTRAP_RIGHT_RAIL_GOAL_TRACK = process.env.AELYRIS_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP === "1";
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const releaseFinalGoalArtifactLock = acquireFinalGoalArtifactLock("score-release-quality");
 process.on("exit", releaseFinalGoalArtifactLock);
@@ -44,7 +44,7 @@ function hasCleanChaosQaUrl(value) {
   try {
     const url = new URL(String(value ?? ""));
     return (
-      url.searchParams.get("aetherVisualQa") === "1" &&
+      url.searchParams.get("aelyrisVisualQa") === "1" &&
       url.searchParams.get("v") === "live-pty-ai-cli-chaos" &&
       !url.searchParams.has("state") &&
       !url.searchParams.has("edgeLoop") &&
@@ -421,8 +421,8 @@ const interactiveCommandsSource = readFileSync(
 const interactiveAgentSource = readFileSync(join(ROOT, "src-tauri", "src", "agent", "interactive.rs"), "utf8");
 const tauriLibSource = readFileSync(join(ROOT, "src-tauri", "src", "lib.rs"), "utf8");
 const apiSource = readFileSync(join(ROOT, "src-tauri", "src", "api", "mod.rs"), "utf8");
-const aetherctlSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aetherctl.rs"), "utf8");
-const aetherNativeSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aether_native.rs"), "utf8");
+const aelysSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aelys.rs"), "utf8");
+const aelyrisNativeSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aelyris_native.rs"), "utf8");
 const termModSource = readFileSync(join(ROOT, "src-tauri", "src", "term", "mod.rs"), "utf8");
 const termRenderFrameSource = readFileSync(join(ROOT, "src-tauri", "src", "term", "render_frame.rs"), "utf8");
 const termRenderPipelineSource = readFileSync(join(ROOT, "src-tauri", "src", "term", "render_pipeline.rs"), "utf8");
@@ -430,7 +430,14 @@ const ptySidecarSource = readFileSync(join(ROOT, "src-tauri", "src", "pty_sideca
 const appSource = readFileSync(join(ROOT, "src", "App.tsx"), "utf8");
 const terminalEvidenceSource = readFileSync(join(ROOT, "src", "shared", "lib", "terminalEvidence.ts"), "utf8");
 const visualQaLayoutSource = readFileSync(join(ROOT, "e2e", "visual-qa-layout.spec.ts"), "utf8");
-const themeMoodsSource = readFileSync(join(ROOT, "src", "shared", "themes", "moods.ts"), "utf8");
+const themeMoodSourcePaths = [
+  join(ROOT, "src", "shared", "themes", "moods", "index.ts"),
+  join(ROOT, "src", "shared", "themes", "moods", "material.ts"),
+  join(ROOT, "src", "shared", "themes", "moods", "registry.ts"),
+  join(ROOT, "src", "shared", "themes", "moods", "surfaces.ts"),
+  join(ROOT, "src", "shared", "themes", "moods", "tokens.ts"),
+];
+const themeMoodsSource = themeMoodSourcePaths.map((path) => readFileSync(path, "utf8")).join("\n");
 const themeApplierSource = readFileSync(join(ROOT, "src", "shared", "hooks", "useTheme.ts"), "utf8");
 const appStoreSource = readFileSync(join(ROOT, "src", "shared", "store", "appStore.ts"), "utf8");
 const recentCommandsSource = readFileSync(join(ROOT, "src", "shared", "lib", "recentCommands.ts"), "utf8");
@@ -488,9 +495,9 @@ const settingsSaveMergeTestSource = readFileSync(join(ROOT, "src", "__tests__", 
 const designTokenUsageTestSource = readFileSync(join(ROOT, "src", "__tests__", "designTokenUsage.test.ts"), "utf8");
 
 const scores = [];
-const nsis = join(ROOT, "src-tauri", "target", "release", "bundle", "nsis", `Aether Terminal_${VERSION}_x64-setup.exe`);
-const msi = join(ROOT, "src-tauri", "target", "release", "bundle", "msi", `Aether Terminal_${VERSION}_x64_en-US.msi`);
-const appExe = join(ROOT, "src-tauri", "target", "release", "Aether.exe");
+const nsis = join(ROOT, "src-tauri", "target", "release", "bundle", "nsis", `Aelyris_${VERSION}_x64-setup.exe`);
+const msi = join(ROOT, "src-tauri", "target", "release", "bundle", "msi", `Aelyris_${VERSION}_x64_en-US.msi`);
+const appExe = join(ROOT, "src-tauri", "target", "release", "Aelyris.exe");
 const newestDistArtifactMs = Math.max(
   mtimeMs(appExe),
   mtimeMs(nsis),
@@ -697,8 +704,8 @@ const chunkedOscLiveFresh =
   mtimeMs(chunkedOscLivePath) + 5_000 >=
     Math.max(
       mtimeMs(join(ROOT, "scripts", "verify-chunked-osc-live.mjs")),
-      mtimeMs(join(ROOT, "scripts", "aether-imgcat.ps1")),
-      mtimeMs(join(ROOT, "scripts", "aether-imgcat.sh")),
+      mtimeMs(join(ROOT, "scripts", "aelyris-imgcat.ps1")),
+      mtimeMs(join(ROOT, "scripts", "aelyris-imgcat.sh")),
       mtimeMs(join(ROOT, "e2e", "fixtures", "inline-image-1x1.png")),
       mtimeMs(join(ROOT, "e2e", "fixtures", "inline-image-32x32.png")),
     );
@@ -708,7 +715,7 @@ const chunkedOscLiveEnvironmentBlockedFresh =
   chunkedOscLiveEnvironmentBlocked?.preservesPrimaryArtifact === true &&
   Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) &&
   chunkedOscLiveEnvironmentBlocked.errors.some((error) =>
-    /CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM|No running debug\/release Aether\.exe/i.test(
+    /CDP|ECONNREFUSED|Cannot attach to WebView2|browserType\.launch|spawn EPERM|No running debug\/release Aelyris\.exe/i.test(
       String(error),
     ),
   ) &&
@@ -1001,8 +1008,8 @@ const nativeBoundaryFresh =
       mtimeMs(join(ROOT, "src", "styles", "global.css")),
       mtimeMs(join(ROOT, "src-tauri", "Cargo.toml")),
       mtimeMs(join(ROOT, "src-tauri", "src", "api", "mod.rs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "bin", "aetherctl.rs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "bin", "aether_native.rs")),
+      mtimeMs(join(ROOT, "src-tauri", "src", "bin", "aelys.rs")),
+      mtimeMs(join(ROOT, "src-tauri", "src", "bin", "aelyris_native.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "term", "mod.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "term", "render_frame.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "term", "render_pipeline.rs")),
@@ -1061,14 +1068,14 @@ const nativeBoundarySourcePass =
   nativeBoundaryContractScriptSource.includes("terminal-core-policy-machine-readable") &&
   nativeBoundaryContractScriptSource.includes("terminal-core-policy-stable-after-restart") &&
   nativeBoundaryContractScriptSource.includes("terminalCorePolicy") &&
-  nativeBoundaryContractScriptSource.includes("aetherctl-daemon-contract-parity") &&
-  nativeBoundaryContractScriptSource.includes("aetherctl-scrollback-search-parity") &&
-  nativeBoundaryContractScriptSource.includes("aetherctl-mux-export-parity") &&
-  nativeBoundaryContractScriptSource.includes("aetherctl-mux-import-parity") &&
+  nativeBoundaryContractScriptSource.includes("aelys-daemon-contract-parity") &&
+  nativeBoundaryContractScriptSource.includes("aelys-scrollback-search-parity") &&
+  nativeBoundaryContractScriptSource.includes("aelys-mux-export-parity") &&
+  nativeBoundaryContractScriptSource.includes("aelys-mux-import-parity") &&
   nativeBoundaryContractScriptSource.includes("mux-import-restore-pending") &&
   nativeBoundaryContractScriptSource.includes("mux-import-replace-closes-live-pty") &&
   nativeBoundaryContractScriptSource.includes("native-client-spike") &&
-  nativeBoundaryContractScriptSource.includes("aether-native exists as a Rust-native, no-WebView attaching client") &&
+  nativeBoundaryContractScriptSource.includes("aelyris-native exists as a Rust-native, no-WebView attaching client") &&
   nativeBoundaryContractScriptSource.includes("native-render-pipeline-contract") &&
   nativeBoundaryContractScriptSource.includes("native-render-commit-series-contract") &&
   nativeClientSpikeScriptSource.includes("native-client-no-webview-boundary") &&
@@ -1095,56 +1102,56 @@ const nativeBoundarySourcePass =
   apiSource.includes("fn terminal_core_policy()") &&
   apiSource.includes('native_input_owner: "rust-native-input-host"') &&
   apiSource.includes('renderer_truth_source: "rust-term-engine-render-pipeline"') &&
-  apiSource.includes('render_frame_schema: "aether.native.render-frame.v1"') &&
-  apiSource.includes('render_diff_schema: "aether.native.render-diff.v1"') &&
-  apiSource.includes('render_commit_schema: "aether.native.render-commit.v1"') &&
+  apiSource.includes('render_frame_schema: "aelyris.native.render-frame.v1"') &&
+  apiSource.includes('render_diff_schema: "aelyris.native.render-diff.v1"') &&
+  apiSource.includes('render_commit_schema: "aelyris.native.render-commit.v1"') &&
   apiSource.includes('render_pipeline_boundary: "rust-native-render-pipeline"') &&
   apiSource.includes('current_presentation_surface: "react-canvas-presentation-with-rust-term-engine-truth"') &&
   apiSource.includes("native_renderer_status:") &&
-  apiSource.includes('"aether-native-no-webview-spike-proved-full-product-renderer-pending"') &&
+  apiSource.includes('"aelyris-native-no-webview-spike-proved-full-product-renderer-pending"') &&
   apiSource.includes("renderer_claim_policy:") &&
   apiSource.includes('"do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded"') &&
   apiSource.includes('webview_terminal_renderer_policy: "fallback-contained-not-source-of-truth"') &&
   apiSource.includes('react_terminal_renderer_policy: "control-plane-only-not-terminal-core"') &&
   apiSource.includes('fallback_visibility_policy: "release-blocking-telemetry"') &&
-  aetherctlSource.includes('"daemon" | "contract"') &&
-  aetherctlSource.includes('"search" | "scrollback-search"') &&
-  aetherctlSource.includes('"mux-export"') &&
-  aetherctlSource.includes('"mux-import"') &&
-  aetherctlSource.includes("/mux/workspaces/{workspace_id}/export") &&
-  aetherctlSource.includes("/mux/workspaces/import?replace={replace}") &&
-  aetherctlSource.includes("/sessions/{id}/search?query={}") &&
-  aetherctlSource.includes("query_component(&query)") &&
-  cargoTomlSource.includes('name = "aether-native"') &&
+  aelysSource.includes('"daemon" | "contract"') &&
+  aelysSource.includes('"search" | "scrollback-search"') &&
+  aelysSource.includes('"mux-export"') &&
+  aelysSource.includes('"mux-import"') &&
+  aelysSource.includes("/mux/workspaces/{workspace_id}/export") &&
+  aelysSource.includes("/mux/workspaces/import?replace={replace}") &&
+  aelysSource.includes("/sessions/{id}/search?query={}") &&
+  aelysSource.includes("query_component(&query)") &&
+  cargoTomlSource.includes('name = "aelyris-native"') &&
   packageJsonSource.includes('"verify:terminal:native-client"') &&
-  aetherNativeSource.includes('"aether.native.client.v1"') &&
-  aetherNativeSource.includes('"uiBoundary": "no-webview"') &&
-  aetherNativeSource.includes('"muxTruthSource": "daemon-api"') &&
-  aetherNativeSource.includes('"pending-native-terminal-renderer-after-window-proof"') &&
-  aetherNativeSource.includes('"native-window-proof"') &&
-  aetherNativeSource.includes('"native-text-render-proof"') &&
-  aetherNativeSource.includes('"native-grid-render-proof"') &&
-  aetherNativeSource.includes("CreateWindowExW") &&
-  aetherNativeSource.includes("SetLayeredWindowAttributes") &&
-  aetherNativeSource.includes("TextOutW") &&
-  aetherNativeSource.includes("native-gdi-text-proof") &&
-  aetherNativeSource.includes("native-gdi-grid-proof") &&
-  aetherNativeSource.includes("TermEngine::new") &&
-  aetherNativeSource.includes("NativeRenderFrame::from_snapshot") &&
-  aetherNativeSource.includes("NativeRenderPipeline::new") &&
-  aetherNativeSource.includes("commit_snapshot") &&
-  aetherNativeSource.includes("renderCommitSeries") &&
+  aelyrisNativeSource.includes('"aelyris.native.client.v1"') &&
+  aelyrisNativeSource.includes('"uiBoundary": "no-webview"') &&
+  aelyrisNativeSource.includes('"muxTruthSource": "daemon-api"') &&
+  aelyrisNativeSource.includes('"pending-native-terminal-renderer-after-window-proof"') &&
+  aelyrisNativeSource.includes('"native-window-proof"') &&
+  aelyrisNativeSource.includes('"native-text-render-proof"') &&
+  aelyrisNativeSource.includes('"native-grid-render-proof"') &&
+  aelyrisNativeSource.includes("CreateWindowExW") &&
+  aelyrisNativeSource.includes("SetLayeredWindowAttributes") &&
+  aelyrisNativeSource.includes("TextOutW") &&
+  aelyrisNativeSource.includes("native-gdi-text-proof") &&
+  aelyrisNativeSource.includes("native-gdi-grid-proof") &&
+  aelyrisNativeSource.includes("TermEngine::new") &&
+  aelyrisNativeSource.includes("NativeRenderFrame::from_snapshot") &&
+  aelyrisNativeSource.includes("NativeRenderPipeline::new") &&
+  aelyrisNativeSource.includes("commit_snapshot") &&
+  aelyrisNativeSource.includes("renderCommitSeries") &&
   termModSource.includes("NativeRenderFrame") &&
   termModSource.includes("NativeRenderFrameDiff") &&
   termModSource.includes("NativeRenderPipeline") &&
-  termRenderFrameSource.includes("aether.native.render-frame.v1") &&
-  termRenderFrameSource.includes("aether.native.render-diff.v1") &&
-  termRenderPipelineSource.includes("aether.native.render-commit.v1") &&
+  termRenderFrameSource.includes("aelyris.native.render-frame.v1") &&
+  termRenderFrameSource.includes("aelyris.native.render-diff.v1") &&
+  termRenderPipelineSource.includes("aelyris.native.render-commit.v1") &&
   termRenderPipelineSource.includes("rust-native-render-pipeline") &&
   termRenderPipelineSource.includes("winit-wgpu-present-loop") &&
-  aetherNativeSource.includes("/mux/workspaces/{workspace_id}/attach") &&
+  aelyrisNativeSource.includes("/mux/workspaces/{workspace_id}/attach") &&
   nativeClientSpike?.status === "passed" &&
-  nativeClientSpike?.nativeContract?.client?.process === "aether-native" &&
+  nativeClientSpike?.nativeContract?.client?.process === "aelyris-native" &&
   nativeClientSpike?.nativeContract?.client?.uiBoundary === "no-webview" &&
   nativeClientSpike?.nativeContract?.claims?.webviewUsed === false &&
   nativeClientSpike?.nativeContract?.claims?.muxTruthSource === "daemon-api" &&
@@ -1169,12 +1176,12 @@ const nativeBoundarySourcePass =
   nativeClientSpike?.nativeGridRender?.grid?.cols === 100 &&
   nativeClientSpike?.nativeGridRender?.grid?.rows === 24 &&
   nativeClientSpike?.nativeGridRender?.grid?.nonBlankCells > 0 &&
-  nativeClientSpike?.nativeGridRender?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+  nativeClientSpike?.nativeGridRender?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
   nativeClientSpike?.nativeGridRender?.renderFrame?.rendererBoundary === "rust-native-render-frame" &&
   nativeClientSpike?.nativeGridRender?.renderFrame?.webviewUsed === false &&
   nativeClientSpike?.nativeGridRender?.renderFrame?.reactUsed === false &&
   nativeClientSpike?.nativeGridRender?.renderFrame?.frameSha256?.length === 64 &&
-  nativeClientSpike?.nativeGridRender?.renderDiff?.schema === "aether.native.render-diff.v1" &&
+  nativeClientSpike?.nativeGridRender?.renderDiff?.schema === "aelyris.native.render-diff.v1" &&
   nativeClientSpike?.nativeGridRender?.renderDiff?.currentFrameSha256 ===
     nativeClientSpike?.nativeGridRender?.renderFrame?.frameSha256 &&
   nativeClientSpike?.nativeGridRender?.renderDiff?.rendererBoundary === "rust-native-render-frame-diff" &&
@@ -1182,7 +1189,7 @@ const nativeBoundarySourcePass =
   nativeClientSpike?.nativeGridRender?.renderDiff?.reactUsed === false &&
   nativeClientSpike?.nativeGridRender?.renderDiff?.dirtyCells > 0 &&
   nativeClientSpike?.nativeGridRender?.renderDiff?.dirtyRects?.length > 0 &&
-  nativeClientSpike?.nativeGridRender?.renderCommit?.schema === "aether.native.render-commit.v1" &&
+  nativeClientSpike?.nativeGridRender?.renderCommit?.schema === "aelyris.native.render-commit.v1" &&
   nativeClientSpike?.nativeGridRender?.renderCommit?.rendererBoundary === "rust-native-render-pipeline" &&
   nativeClientSpike?.nativeGridRender?.renderCommit?.webviewUsed === false &&
   nativeClientSpike?.nativeGridRender?.renderCommit?.reactUsed === false &&
@@ -1321,14 +1328,14 @@ const worldClassArtifactCurrent =
       mtimeMs(join(ROOT, "scripts", "verify-native-daily-driver-terminal.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-native-text-shaping-fallback.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-native-visual-regression.mjs")),
-      mtimeMs(join(ROOT, "docs", "specs", "QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md")),
+      mtimeMs(join(ROOT, "docs", "specs", "AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md")),
     );
 const worldClassFresh =
   worldClassArtifactCurrent && worldClassTerminalAiOs?.ok === true && worldClassTerminalAiOs?.status === "pass";
 const worldClassClaims = worldClassTerminalAiOs?.claims ?? {};
 const worldClassSourcePass =
   packageJsonSource.includes('"verify:world-class-terminal-ai-os"') &&
-  worldClassTerminalAiOsScriptSource.includes('schema: "aether.world-class-terminal-ai-os/v1"') &&
+  worldClassTerminalAiOsScriptSource.includes('schema: "aelyris.world-class-terminal-ai-os/v1"') &&
   worldClassTerminalAiOsScriptSource.includes("noGhosttyClaimWithoutSystemShaping") &&
   worldClassTerminalAiOsScriptSource.includes("noWorldClassClaimWhileReleaseBlocked") &&
   worldClassTerminalAiOsScriptSource.includes("nativeTextShaping") &&
@@ -1720,7 +1727,7 @@ const rightRailTestsCoverRunLoopSummary =
   globalStylesSource.includes(".right-panel-run-loop") &&
   globalStylesSource.includes(".right-panel-orchestra-command") &&
   globalStylesSource.includes(".right-panel-run-loop-action") &&
-  globalStylesSource.includes(':root[data-mood="aether-sakura"] .right-panel-run-loop') &&
+  globalStylesSource.includes(':root[data-mood="aelyris-sakura"] .right-panel-run-loop') &&
   appSilentBugsTestSource.includes(">Orchestra Command</span>") &&
   appSilentBugsTestSource.includes('className="right-panel-run-loop right-panel-orchestra-command"');
 const rightRailTestsCoverRunLoopTrace =
@@ -1733,7 +1740,7 @@ const rightRailTestsCoverRunLoopTrace =
   appSource.includes('label: "Recovery"') &&
   appSource.includes('data-operation={rightRailPrimaryAction?.execution.operation ?? "none"}') &&
   globalStylesSource.includes(".right-panel-run-loop-trace") &&
-  globalStylesSource.includes(':root[data-mood="aether-sakura"] .right-panel-run-loop-trace div') &&
+  globalStylesSource.includes(':root[data-mood="aelyris-sakura"] .right-panel-run-loop-trace div') &&
   appSilentBugsTestSource.includes("rightRailTestsCoverRunLoopTrace") &&
   appSilentBugsTestSource.includes('aria-label="Primary action trace"');
 const rightRailTestsCoverActionOwnership =
@@ -1747,7 +1754,7 @@ const rightRailTestsCoverActionOwnership =
   appSource.includes("Owner:") &&
   globalStylesSource.includes(".right-panel-action-owner") &&
   globalStylesSource.includes('.right-panel-action[data-owner-kind="session"] .right-panel-action-owner') &&
-  globalStylesSource.includes(':root[data-mood="aether-sakura"] .right-panel-action-owner') &&
+  globalStylesSource.includes(':root[data-mood="aelyris-sakura"] .right-panel-action-owner') &&
   appSilentBugsTestSource.includes("rightRailTestsCoverActionOwnership") &&
   appSilentBugsTestSource.includes('className="right-panel-action-owner"');
 const rightRailVisualFresh =
@@ -1965,7 +1972,7 @@ add(
 
 const commandEvidenceVisual = join(ROOT, ".codex-auto", "visual", "right-rail-review-fixture-command-evidence.png");
 const commandEvidenceHasContract =
-  terminalEvidenceSource.includes("aether:terminal-command-evidence") &&
+  terminalEvidenceSource.includes("aelyris:terminal-command-evidence") &&
   terminalEvidenceSource.includes("TerminalCommandEvidenceDetail");
 const commandEvidenceHasRuntimePath =
   appSource.includes("createDevVisualQaCommandBlocks") &&
@@ -2073,7 +2080,7 @@ function commandProofEnvironmentBlockedFresh(artifact, artifactPath, verifierPat
     artifact?.preservesPrimaryArtifact === true &&
     Array.isArray(artifact?.errors) &&
     artifact.errors.some((error) =>
-      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aether\.exe process found|Debug app executable missing|Vite dev server/i.test(
+      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
         String(error),
       ),
     ) &&
@@ -2333,7 +2340,7 @@ add(
   processReconnectEvidencePass ? 8 : 0,
   8,
   processReconnectEvidencePass
-    ? "base and split sidecar terminals survived Aether restart, were adopted, and accepted new anchored input"
+    ? "base and split sidecar terminals survived Aelyris restart, were adopted, and accepted new anchored input"
     : processReconnectEvidenceEnvironmentBlockedPass
       ? `environment-blocked (${processReconnectEvidenceEnvironmentBlockedReason})`
       : "missing or stale",
@@ -2349,16 +2356,16 @@ add(
             : ["process reconnect command evidence artifact is missing, stale, or failing"]),
           ...(processReconnectCommandEvidence?.checks?.sidecarRetainedTerminal === true
             ? []
-            : ["sidecar did not retain the terminal after Aether stopped"]),
+            : ["sidecar did not retain the terminal after Aelyris stopped"]),
           ...(processReconnectCommandEvidence?.checks?.sidecarRetainedSplitTerminal === true
             ? []
-            : ["sidecar did not retain the split terminal after Aether stopped"]),
+            : ["sidecar did not retain the split terminal after Aelyris stopped"]),
           ...(processReconnectCommandEvidence?.checks?.terminalAdoptedAfterRestart === true
             ? []
-            : ["restarted Aether did not adopt the sidecar terminal"]),
+            : ["restarted Aelyris did not adopt the sidecar terminal"]),
           ...(processReconnectCommandEvidence?.checks?.splitTerminalAdoptedAfterRestart === true
             ? []
-            : ["restarted Aether did not adopt the split sidecar terminal"]),
+            : ["restarted Aelyris did not adopt the split sidecar terminal"]),
           ...(processRecoveredBlock?.status === "passed"
             ? []
             : ["pre-restart command evidence did not recover after process restart"]),
@@ -2599,8 +2606,8 @@ const nativeAiCliPostLaunchFresh =
 const nativeAiCliPostLaunchChecks = nativeAiCliPostLaunchChaos?.checks ?? {};
 const nativeAiCliPostLaunchSourcePass =
   packageJsonSource.includes('"verify:terminal:native-ai-cli-post-launch-chaos"') &&
-  nativeAiCliPostLaunchChaosSource.includes("AETHER_NATIVE_AI_READY") &&
-  nativeAiCliPostLaunchChaosSource.includes("AETHER_NATIVE_AI_INPUT") &&
+  nativeAiCliPostLaunchChaosSource.includes("AELYRIS_NATIVE_AI_READY") &&
+  nativeAiCliPostLaunchChaosSource.includes("AELYRIS_NATIVE_AI_INPUT") &&
   nativeAiCliPostLaunchChaosSource.includes("sameIdRespawned") &&
   nativeAiCliPostLaunchChaosSource.includes("noSessionResidue") &&
   nativeAiCliPostLaunchChaosSource.includes("webviewRequiredForToolCalls");
@@ -2745,10 +2752,10 @@ const tauriRuntimeHygieneSourcePass =
   ptySidecarSource.includes("stdout(std::process::Stdio::null())") &&
   ptySidecarSource.includes("stderr(std::process::Stdio::null())") &&
   tauriLibSource.includes("apply_windows_app_identity();") &&
-  tauriLibSource.includes("QUORUM_DISABLE_DWM_CHROME") &&
+  tauriLibSource.includes("AELYRIS_DISABLE_DWM_CHROME") &&
   tauriLibSource.includes("direct DWM chrome disabled by env; using Tauri windowEffects") &&
   tauriGoalTrackScriptSource.includes("browser.disconnect") &&
-  tauriGoalTrackScriptSource.includes("AETHER_TAURI_GOAL_TRACK_CLOSE_BROWSER") &&
+  tauriGoalTrackScriptSource.includes("AELYRIS_TAURI_GOAL_TRACK_CLOSE_BROWSER") &&
   liveAiCliPostLaunchChaosSource.includes("browser.disconnect") &&
   liveTauriWorkstationSurfacesSource.includes("browser.disconnect") &&
   performanceObservatorySource.includes("browser.disconnect") &&
@@ -2794,7 +2801,7 @@ add(
         ...(tauriRuntimeHygieneChecks.portsClosed === true ? [] : ["Tauri dev or CDP ports are still open"]),
         ...(tauriRuntimeHygieneChecks.workspaceProcessesClear === true
           ? []
-          : ["workspace Aether or aether-pty-server processes are still running"]),
+          : ["workspace Aelyris or aelyris-pty-server processes are still running"]),
         ...(tauriRuntimeHygieneChecks.noStalePidFiles === true ? [] : ["Tauri dev pid files were left behind"]),
         ...(tauriRuntimeHygieneChecks.historicalIncidentsClassified === true
           ? []
@@ -2901,7 +2908,7 @@ const authenticatedAiCliConsentPacketPass =
   authenticatedAiCliConsentPacket?.checks?.noRawPromptTextPersisted === true &&
   authenticatedAiCliConsentPacket?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
   authenticatedAiCliConsentPacket?.packet?.requiredEnv ===
-    "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
   authenticatedAiCliConsentPacket?.packet?.tokenGate === "explicit consent" &&
   authenticatedAiCliConsentPacket?.packet?.wouldSpendTokens === true &&
   typeof authenticatedAiCliConsentPacket?.consentPacketSha256 === "string" &&
@@ -2912,7 +2919,7 @@ const authenticatedAiCliConsentPacketPass =
         entry?.provider === provider &&
         entry?.status === "ready" &&
         entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-        String(entry?.requiredEnv ?? "").includes(`QUORUM_AUTH_PROMPT_PROVIDER=${provider}`),
+        String(entry?.requiredEnv ?? "").includes(`AELYRIS_AUTH_PROMPT_PROVIDER=${provider}`),
     ),
   );
 const authenticatedAiCliPromptPass =
@@ -3007,7 +3014,7 @@ const authenticatedAiCliPromptPreflightGuardPass =
   authenticatedAiCliPromptVerifierSource.includes("cleanupAfterFailure") &&
   authenticatedAiCliPromptVerifierSource.includes("sessionBaseline") &&
   authenticatedAiCliPromptVerifierSource.includes("unexpectedNewSessions") &&
-  authenticatedAiCliPromptVerifierSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
+  authenticatedAiCliPromptVerifierSource.includes("AELYRIS_AUTH_PROMPT_CLOSE_BROWSER") &&
   authenticatedAiCliPromptVerifierSource.includes("browser.disconnect") &&
   authenticatedAiCliPromptVerifierSource.includes("browserCloseRequested") &&
   authenticatedAiCliPromptOutputEvidencePrivacy &&
@@ -3015,7 +3022,7 @@ const authenticatedAiCliPromptPreflightGuardPass =
   authenticatedPromptConsentTestSource.includes("consented but preflight-blocked") &&
   authenticatedPromptConsentTestSource.includes("consented but provider-missing") &&
   appSilentBugsTestSource.includes("cleanupAfterFailure") &&
-  appSilentBugsTestSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
+  appSilentBugsTestSource.includes("AELYRIS_AUTH_PROMPT_CLOSE_BROWSER") &&
   appSilentBugsTestSource.includes("unexpectedNewSessions") &&
   appSilentBugsTestSource.includes("browser.disconnect") &&
   authenticatedPromptConsentTestSource.includes("safe and incomplete") &&
@@ -3079,7 +3086,7 @@ add(
         authenticatedAiCliPromptVerifierSource.includes("unexpectedNewSessions")
           ? []
           : ["authenticated prompt verifier does not prove baseline-aware cleanup after prompt-path failures"]),
-        ...(authenticatedAiCliPromptVerifierSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
+        ...(authenticatedAiCliPromptVerifierSource.includes("AELYRIS_AUTH_PROMPT_CLOSE_BROWSER") &&
         authenticatedAiCliPromptVerifierSource.includes("browser.disconnect") &&
         authenticatedAiCliPromptVerifierSource.includes("browserCloseRequested") &&
         authenticatedAiCliPromptVerifierSource.includes("process.exit(report.ok ? 0 : process.exitCode || 1)")
@@ -3092,7 +3099,7 @@ add(
         authenticatedPromptConsentTestSource.includes("consented but provider-missing") &&
         authenticatedPromptConsentTestSource.includes("safe and incomplete") &&
         appSilentBugsTestSource.includes("cleanupAfterFailure") &&
-        appSilentBugsTestSource.includes("QUORUM_AUTH_PROMPT_CLOSE_BROWSER") &&
+        appSilentBugsTestSource.includes("AELYRIS_AUTH_PROMPT_CLOSE_BROWSER") &&
         appSilentBugsTestSource.includes("unexpectedNewSessions") &&
         appSilentBugsTestSource.includes("browser.disconnect")
           ? []
@@ -3416,7 +3423,7 @@ const commandCenterScenarioPhases = new Set(
 );
 const commandCenterScenarioChecks = commandCenterScenario?.checks ?? {};
 const commandCenterScenarioSourcePass =
-  commandCenterScenarioScriptSource.includes("AETHER_COMMAND_CENTER_SCENARIO_OUT") &&
+  commandCenterScenarioScriptSource.includes("AELYRIS_COMMAND_CENTER_SCENARIO_OUT") &&
   commandCenterScenarioScriptSource.includes("commandCenterScenario.test.ts") &&
   commandCenterScenarioTestSource.includes("buildWorkstationGraph") &&
   commandCenterScenarioTestSource.includes("deriveRightRailActions") &&
@@ -3425,7 +3432,7 @@ const commandCenterScenarioSourcePass =
   commandCenterScenarioTestSource.includes("traceAgentImpact") &&
   commandCenterScenarioTestSource.includes("buildContextPack") &&
   commandCenterScenarioTestSource.includes("buildRightRailActionAuditPayload") &&
-  commandCenterScenarioTestSource.includes("AETHER_COMMAND_CENTER_SCENARIO_OUT") &&
+  commandCenterScenarioTestSource.includes("AELYRIS_COMMAND_CENTER_SCENARIO_OUT") &&
   agentFileChangesSource.includes("parseFileChangeEvent") &&
   agentFileChangesSource.includes("malformed-agent-structured-output-is-auditable") &&
   agentFileChangesTestSource.includes("surfaces malformed structured agent output as auditable parser_error") &&
@@ -3673,10 +3680,10 @@ const tauriGoalTrackSmokePass =
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.command ===
     "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.requiredEnv ?? "").includes(
-    "QUORUM_AUTH_PROMPT_CONSENT=",
+    "AELYRIS_AUTH_PROMPT_CONSENT=",
   ) &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.providerEnvRequirement ?? "").includes(
-    "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+    "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   ) &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.tokenGate === "explicit consent" &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.artifactFreshness?.status === "green" &&
@@ -3728,7 +3735,7 @@ const _tauriGoalTrackBootstrapPass =
   packageJsonSource.includes('"verify:right-rail-goal-track-tauri"') &&
   tauriGoalTrackScriptSource.includes("right-rail-goal-track-tauri.json") &&
   tauriGoalTrackScriptSource.includes("final-goal-safe-summary.json") &&
-  finalGoalSafeVerifierSource.includes("AETHER_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL") &&
+  finalGoalSafeVerifierSource.includes("AELYRIS_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL") &&
   finalGoalSafeVerifierSource.includes("right-rail-safe-gate-mutual-proof");
 const rightRailGoalTrackBrowserEnvironmentContractPass =
   commandEvidenceSmokeEnvironmentBlockedPass &&
@@ -3833,7 +3840,7 @@ const goalTrackSignals = [
       appSource.includes("data-non-consent-blocker-count") &&
       appSource.includes("data-no-token-prompt-sent") &&
       appSource.includes("data-provider-env") &&
-      appSource.includes("QUORUM_AUTH_PROMPT_PROVIDER=") &&
+      appSource.includes("AELYRIS_AUTH_PROMPT_PROVIDER=") &&
       appSource.includes('className="right-panel-goal-track-consent-command"') &&
       appSource.includes('aria-label="Authenticated prompt consent command"') &&
       appSource.includes('className="right-panel-goal-track-residual"') &&
@@ -3891,7 +3898,7 @@ const goalTrackSignals = [
       globalStylesSource.includes(".right-panel-goal-track-risks") &&
       globalStylesSource.includes('.right-panel-goal-track-risks[data-source="runtime-fallback"]') &&
       globalStylesSource.includes('.right-panel-goal-track-risks[data-source="qa-fixture"]') &&
-      globalStylesSource.includes(':root[data-mood="aether-sakura"] .right-panel-goal-track'),
+      globalStylesSource.includes(':root[data-mood="aelyris-sakura"] .right-panel-goal-track'),
     blocker: "right rail goal track lacks base or Sakura-aware styling",
   },
   {
@@ -4159,7 +4166,7 @@ add(
 
 const glassLegibilitySourceMtime = Math.max(
   mtimeMs(join(ROOT, "src", "styles", "global.css")),
-  mtimeMs(join(ROOT, "src", "shared", "themes", "moods.ts")),
+  ...themeMoodSourcePaths.map((path) => mtimeMs(path)),
   mtimeMs(join(ROOT, "src", "shared", "hooks", "useTheme.ts")),
   mtimeMs(join(ROOT, "src", "__tests__", "themePalette.test.ts")),
   mtimeMs(join(ROOT, "src", "__tests__", "useThemeApplier.test.tsx")),
@@ -4213,12 +4220,12 @@ const themeCustomizationSignals = [
   },
   {
     ok:
-      themeApplierSource.includes("--aether-wallpaper-image") &&
-      themeApplierSource.includes("--aether-wallpaper-opacity") &&
-      themeApplierSource.includes("--aether-wallpaper-position-x") &&
-      themeApplierSource.includes("--aether-wallpaper-position-y") &&
-      themeApplierSource.includes("--aether-wallpaper-size") &&
-      themeApplierSource.includes("--aether-window-opacity") &&
+      themeApplierSource.includes("--aelyris-wallpaper-image") &&
+      themeApplierSource.includes("--aelyris-wallpaper-opacity") &&
+      themeApplierSource.includes("--aelyris-wallpaper-position-x") &&
+      themeApplierSource.includes("--aelyris-wallpaper-position-y") &&
+      themeApplierSource.includes("--aelyris-wallpaper-size") &&
+      themeApplierSource.includes("--aelyris-window-opacity") &&
       themeApplierSource.includes('source: "theme-customization"') &&
       themeApplierSource.includes('"persist_theme_preferences"'),
     blocker: "theme applier does not expose wallpaper placement, opacity, and window-opacity CSS variables",
@@ -4281,7 +4288,7 @@ const themeCustomizationSignals = [
   {
     ok:
       themePaletteTestSource.includes("does not let Sakura surface colors bleed into darker mood presets") &&
-      themePaletteTestSource.includes("keeps Aether Sakura rails as white-peach material instead of grey glass") &&
+      themePaletteTestSource.includes("keeps Aelyris Sakura rails as white-peach material instead of grey glass") &&
       themePaletteTestSource.includes("keeps core chrome text contrast readable across every mood") &&
       themePaletteTestSource.includes("keeps mood glass presets translucent while preserving pane hierarchy") &&
       themePaletteTestSource.includes("keeps chrome text tokens solid instead of opacity-dimming glyphs") &&
@@ -4444,10 +4451,10 @@ const testRuntimeHygieneChecks = [
   {
     ok:
       packageJsonSource.includes('"test":') &&
-      packageJsonSource.includes("AETHER_VITE_NO_ESBUILD_SPAWN=1") &&
+      packageJsonSource.includes("AELYRIS_VITE_NO_ESBUILD_SPAWN=1") &&
       packageJsonSource.includes("vitest run --configLoader native") &&
       vitestConfigSource.includes('setupFiles: ["src/__tests__/setup.ts"]') &&
-      vitestConfigSource.includes("aether:vitest-typescript-transpile-no-esbuild-spawn") &&
+      vitestConfigSource.includes("aelyris:vitest-typescript-transpile-no-esbuild-spawn") &&
       vitestConfigSource.includes("esbuild: noEsbuildSpawn ? false : undefined") &&
       vitestConfigSource.includes('pool: noEsbuildSpawn ? "threads" : "forks"'),
     blocker: "Vitest does not load the shared React test setup through the Windows spawn-safe no-esbuild test path",
@@ -4518,7 +4525,7 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("pass-current-native-hwnd-paste-contract") &&
   finalGoalAuditScriptSource.includes("scripts/verify-native-hwnd-paste-live.mjs") &&
   finalGoalAuditScriptSource.includes("docs/specs/README.md") &&
-  finalGoalAuditScriptSource.includes("docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
+  finalGoalAuditScriptSource.includes("docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
   finalGoalAuditScriptSource.includes("src/features/terminal/keymap.ts") &&
   finalGoalAuditScriptSource.includes("src/features/terminal/hooks/useAICliDetection.ts") &&
   finalGoalAuditScriptSource.includes("src/shared/hooks/useKeyboardShortcuts.ts") &&
@@ -4595,7 +4602,7 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("consentPacketArtifact") &&
   finalGoalAuditScriptSource.includes("readyToRunAfterConsent") &&
   finalGoalAuditScriptSource.includes("providerReadiness") &&
-  finalGoalAuditScriptSource.includes("QUORUM_AUTH_PROMPT_CONSENT") &&
+  finalGoalAuditScriptSource.includes("AELYRIS_AUTH_PROMPT_CONSENT") &&
   finalGoalAuditScriptSource.includes("tauri-runtime-hygiene") &&
   finalGoalAuditScriptSource.includes("authenticated-ai-cli-provider-required-smoke") &&
   finalGoalAuditScriptSource.includes("authenticated-ai-cli-preflight-matrix") &&
@@ -4732,8 +4739,8 @@ const finalGoalAuditSourcePass =
   goalOperatorFinishSource.includes("goal-operator-finish.json") &&
   goalOperatorFinishSource.includes("I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
   goalOperatorFinishSource.includes("I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS") &&
-  goalOperatorFinishSource.includes("delete env.QUORUM_AUTH_PROMPT_CONSENT") &&
-  goalOperatorFinishSource.includes("delete env.QUORUM_ALLOW_OS_SLEEP") &&
+  goalOperatorFinishSource.includes("delete env.AELYRIS_AUTH_PROMPT_CONSENT") &&
+  goalOperatorFinishSource.includes("delete env.AELYRIS_ALLOW_OS_SLEEP") &&
   goalDocumentationFreshnessSource.includes("goal-documentation-freshness.json") &&
   goalDocumentationFreshnessSource.includes("CURRENT_STATE_DOCS") &&
   goalDocumentationFreshnessSource.includes("currentLocalDate") &&
@@ -4929,17 +4936,17 @@ const finalGoalAuditNextAction = String(finalGoalAudit?.nextRequiredAction ?? ""
 const finalGoalAuditNextActionPass =
   finalGoalAuditComplete ||
   (finalGoalAuditNextAction.includes("pnpm verify:terminal:authenticated-ai-cli-prompt") &&
-    finalGoalAuditNextAction.includes("QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
-    finalGoalAuditNextAction.includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini"));
+    finalGoalAuditNextAction.includes("AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+    finalGoalAuditNextAction.includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini"));
 const finalGoalAuditConsentGatePass =
   finalGoalAuditComplete ||
   (finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.command ===
     "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
     String(
       finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.requiredEnv ?? "",
-    ).includes("QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+    ).includes("AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.requiredProviderEnv ===
-      "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
+      "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.wouldSpendTokens === true &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.tokenGate ===
       "explicit consent" &&

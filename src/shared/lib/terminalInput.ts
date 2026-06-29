@@ -29,7 +29,7 @@ export function countTerminalPasteLineEndings(text: string): number {
   return text.match(/\r\n|\n|\r/g)?.length ?? 0;
 }
 
-export const TERMINAL_PASTE_GUARD_EVENT = "aether:terminal-paste-guard";
+export const TERMINAL_PASTE_GUARD_EVENT = "aelyris:terminal-paste-guard";
 
 export interface TerminalPasteGuard {
   originalText: string;

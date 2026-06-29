@@ -5,7 +5,7 @@ import process from "node:process";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "final-goal-safe-summary.json");
-const BOOTSTRAP_RIGHT_RAIL = process.env.AETHER_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL === "1";
+const BOOTSTRAP_RIGHT_RAIL = process.env.AELYRIS_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL === "1";
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const SAFE_NO_TOKEN_PROMPT_SENTINEL = "tokenSpendingPromptExecuted: false";
 const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
@@ -289,8 +289,8 @@ function authenticatedPreflightMatrixVerdict(data) {
         row?.ready === true &&
         everyCheckPassed(row.checks) &&
         row.optInCommand?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-        row.optInCommand?.env?.QUORUM_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-        row.optInCommand?.env?.QUORUM_AUTH_PROMPT_PROVIDER === provider
+        row.optInCommand?.env?.AELYRIS_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+        row.optInCommand?.env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider
       );
     });
   return {
@@ -324,7 +324,7 @@ function authenticatedConsentPacketVerdict(data) {
     data?.checks?.allProviderOptInCommandsReady === true &&
     data?.checks?.sourceArtifactsFresh === true &&
     data?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-    data?.packet?.requiredEnv === "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    data?.packet?.requiredEnv === "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
     data?.packet?.tokenGate === "explicit consent" &&
     data?.packet?.wouldSpendTokens === true &&
     typeof data?.consentPacketSha256 === "string" &&
@@ -335,7 +335,7 @@ function authenticatedConsentPacketVerdict(data) {
           entry?.provider === provider &&
           entry?.status === "ready" &&
           entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-          String(entry?.requiredEnv ?? "").includes(`QUORUM_AUTH_PROMPT_PROVIDER=${provider}`),
+          String(entry?.requiredEnv ?? "").includes(`AELYRIS_AUTH_PROMPT_PROVIDER=${provider}`),
       ),
     );
   return {
@@ -386,7 +386,7 @@ function externalGateReadinessVerdict(data) {
     data?.runbook?.realSleepResume?.command === "pnpm verify:production:suspend:native-user-cycle" &&
     data?.runbook?.realSleepResume?.handoff === "pnpm verify:goal:sleep-handoff" &&
     data?.runbook?.realSleepResume?.safety ===
-      "This readiness verifier does not set QUORUM_ALLOW_OS_SLEEP and does not invoke Windows sleep." &&
+      "This readiness verifier does not set AELYRIS_ALLOW_OS_SLEEP and does not invoke Windows sleep." &&
     data?.runbook?.finalizeClosure?.command === "pnpm verify:goal:finalize" &&
     data?.runbook?.closeoutSnapshot?.command === "pnpm verify:goal:closeout" &&
     afterEitherGateClosesViaFinalizer &&
@@ -395,8 +395,8 @@ function externalGateReadinessVerdict(data) {
         (entry) =>
           entry?.provider === provider &&
           entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-          entry?.env?.QUORUM_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-          entry?.env?.QUORUM_AUTH_PROMPT_PROVIDER === provider &&
+          entry?.env?.AELYRIS_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+          entry?.env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider &&
           entry?.costClass === "token-spending-explicit-consent",
       ),
     );
@@ -482,7 +482,7 @@ function realOsSleepOperatorHandoffVerdict(data) {
     data?.checks?.verifierWaitsForManualSleep === true &&
     data?.runbook?.manualSleepCycle?.command === "pnpm verify:production:suspend:native-user-cycle" &&
     data?.runbook?.manualSleepCycle?.safety ===
-      "Does not set QUORUM_ALLOW_OS_SLEEP and does not call SetSuspendState." &&
+      "Does not set AELYRIS_ALLOW_OS_SLEEP and does not call SetSuspendState." &&
     data?.runbook?.operatorFinish?.command === "pnpm verify:goal:operator-finish" &&
     afterManualGate.includes("pnpm verify:goal:operator-finish") &&
     afterManualGate.includes("pnpm verify:goal:finalize") &&
@@ -511,15 +511,15 @@ function operatorFinishVerdict(data) {
     data?.implementationFixableCount === 0 &&
     data?.envGuard?.tokenEnvPresent === false &&
     data?.envGuard?.sleepEnvPresent === false &&
-    data?.envGuard?.noAetherAllowOsSleep === true &&
+    data?.envGuard?.noAelyrisAllowOsSleep === true &&
     data?.envGuard?.invalidOperatorEnv === false &&
     externalReadinessStep?.ok === true &&
     data?.runbook?.readinessOnly?.command === "pnpm verify:goal:operator-finish" &&
     data?.runbook?.tokenPrompt?.command === "pnpm verify:goal:operator-finish" &&
-    data?.runbook?.tokenPrompt?.env?.QUORUM_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    data?.runbook?.tokenPrompt?.env?.AELYRIS_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
     Array.isArray(data?.runbook?.tokenPrompt?.providerChoices) &&
     ["codex", "claude", "gemini"].every((provider) => data.runbook.tokenPrompt.providerChoices.includes(provider)) &&
-    data?.runbook?.sleepResume?.env?.AETHER_GOAL_OPERATOR_RUN_SLEEP ===
+    data?.runbook?.sleepResume?.env?.AELYRIS_GOAL_OPERATOR_RUN_SLEEP ===
       "I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS" &&
     Array.isArray(data?.runbook?.afterManualGate) &&
     data.runbook.afterManualGate.includes("pnpm verify:goal:safe") &&
@@ -1058,7 +1058,7 @@ const REQUIRED_GOAL_DOCUMENT_PATHS = [
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
-  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
 
 function goalDocumentationFreshnessVerdict(data) {
@@ -1238,8 +1238,8 @@ function terminalChunkedOscLiveVerdict(data) {
     mtimeMs(artifactPath) + 5_000 >=
     Math.max(
       mtimeMs("scripts/verify-chunked-osc-live.mjs"),
-      mtimeMs("scripts/aether-imgcat.ps1"),
-      mtimeMs("scripts/aether-imgcat.sh"),
+      mtimeMs("scripts/aelyris-imgcat.ps1"),
+      mtimeMs("scripts/aelyris-imgcat.sh"),
       mtimeMs("e2e/fixtures/inline-image-1x1.png"),
       mtimeMs("e2e/fixtures/inline-image-32x32.png"),
     );
@@ -1368,7 +1368,7 @@ function nativeHwndPasteLiveVerdict(data) {
     checks.windowsHost === true &&
     (checks.tauriPageAttached === true ||
       (checks.nativeNoCdpProof === true &&
-        checks.aetherNativePasteGuardProof === true &&
+        checks.aelyrisNativePasteGuardProof === true &&
         checks.noWebView === true &&
         checks.noReact === true &&
         checks.noCdp === true)) &&
@@ -1429,7 +1429,7 @@ function sanitizeStepOutput(value) {
     .replace(/"line"\s*:\s*"[^"]*"/g, '"line":"<redacted-log-line>"')
     .replace(/C:\\\\Users\\\\[^\\\\\r\n"]+/gi, "%USERPROFILE%")
     .replace(/C:\\Users\\[^\\\r\n"]+/gi, "%USERPROFILE%")
-    .replace(/[^\s"']*aether-pty-server\.token/gi, "<aether-pty-token-path>");
+    .replace(/[^\s"']*aelyris-pty-server\.token/gi, "<aelyris-pty-token-path>");
 }
 
 function outputTail(value) {
@@ -1482,14 +1482,14 @@ function classifyBuildStderr(value) {
 function safeStepEnv(id) {
   const env = {
     ...process.env,
-    AETHER_FINAL_GOAL_SAFE_GATE: "1",
-    ...(BOOTSTRAP_RIGHT_RAIL ? { AETHER_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP: "1" } : {}),
+    AELYRIS_FINAL_GOAL_SAFE_GATE: "1",
+    ...(BOOTSTRAP_RIGHT_RAIL ? { AELYRIS_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP: "1" } : {}),
   };
   if (id === "operator-finish-handoff" || id === "git-finalization-readiness") {
-    delete env.QUORUM_AUTH_PROMPT_CONSENT;
-    delete env.QUORUM_AUTH_PROMPT_PROVIDER;
-    delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP;
-    delete env.QUORUM_ALLOW_OS_SLEEP;
+    delete env.AELYRIS_AUTH_PROMPT_CONSENT;
+    delete env.AELYRIS_AUTH_PROMPT_PROVIDER;
+    delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP;
+    delete env.AELYRIS_ALLOW_OS_SLEEP;
   }
   return env;
 }
@@ -1521,8 +1521,8 @@ function runPnpmStep(id, label, scriptName) {
     cwd: ROOT,
     env: {
       ...process.env,
-      AETHER_FINAL_GOAL_SAFE_GATE: "1",
-      ...(BOOTSTRAP_RIGHT_RAIL ? { AETHER_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP: "1" } : {}),
+      AELYRIS_FINAL_GOAL_SAFE_GATE: "1",
+      ...(BOOTSTRAP_RIGHT_RAIL ? { AELYRIS_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP: "1" } : {}),
     },
     encoding: "utf8",
   });
@@ -1935,8 +1935,8 @@ function rightRailGoalTrackVerdict(data) {
     (expectedPercent == null || goalTrack.percent === expectedPercent) &&
     consentPacket.status === "ready" &&
     consentPacket.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-    String(consentPacket.requiredEnv ?? "").includes("QUORUM_AUTH_PROMPT_CONSENT=") &&
-    String(consentPacket.providerEnvRequirement ?? "").includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini") &&
+    String(consentPacket.requiredEnv ?? "").includes("AELYRIS_AUTH_PROMPT_CONSENT=") &&
+    String(consentPacket.providerEnvRequirement ?? "").includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") &&
     consentPacket.tokenGate === "explicit consent" &&
     ["codex", "claude", "gemini"].every((provider) => readyProviders.includes(provider)) &&
     countAuthenticatedPromptBlockers(remaining) === (coreGoalComplete ? 0 : 1) &&
@@ -2127,7 +2127,7 @@ const report = {
         : "blocked",
   tokenSpendingPromptExecuted,
   safetyNote: BOOTSTRAP_RIGHT_RAIL
-    ? "Bootstrap mode projects the right-rail mutual-proof safe summary so the Tauri Goal Track smoke can refresh its DOM artifact; rerun without AETHER_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL for strict proof."
+    ? "Bootstrap mode projects the right-rail mutual-proof safe summary so the Tauri Goal Track smoke can refresh its DOM artifact; rerun without AELYRIS_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL for strict proof."
     : tokenSpendingPromptExecuted
       ? "This gate includes a consented authenticated AI CLI prompt smoke and still requires provider guard, runtime hygiene, score, and final audit proof."
       : "This gate intentionally does not execute the authenticated AI CLI prompt smoke; it only proves the no-token preflight, guard, runtime hygiene, score, and final audit chain.",

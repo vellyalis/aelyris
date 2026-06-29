@@ -31,7 +31,7 @@ const lib = read("src-tauri/src/lib.rs");
 
 const mergeBody = sliceBetween(loopPorts, "fn merge(&mut self, task_id: &str)", ["fn symbol_blocking("]);
 const mergeBodyN = compact(mergeBody);
-const approveBody = sliceBetween(mcp, '"aether.review.approve" => {', ['"aether.review.reject" => {']);
+const approveBody = sliceBetween(mcp, '"aelyris.review.approve" => {', ['"aelyris.review.reject" => {']);
 const approveBodyN = compact(approveBody);
 const runStepBody = sliceBetween(loopPorts, "pub fn run_step(", ["pub fn run_step_visible("]);
 const runStepVisibleBody = sliceBetween(loopPorts, "pub fn run_step_visible(", ["fn publish_escalations("]);
@@ -97,7 +97,7 @@ const checks = [
       mcp.includes("state.merge_store.clone()") &&
       runStepBody.includes("merge_store: Option<Arc<MergeIntentStore>>") &&
       runStepBody.includes(".with_durable_merge_store(merge_store.clone())"),
-    detail: "aether.orchestrator.step passes the durable store into the headless autonomy adapter.",
+    detail: "aelyris.orchestrator.step passes the durable store into the headless autonomy adapter.",
   },
   {
     id: "visible-ipc-orchestrator-step-injects-store",
@@ -131,14 +131,14 @@ const checks = [
   {
     id: "direct-mcp-merge-tools-remain-durable",
     ok:
-      mcp.includes('"aether.request_merge" => {') &&
+      mcp.includes('"aelyris.request_merge" => {') &&
       mcp.includes("store.create_or_get(&intent)") &&
       approveBody.includes("crate::control::merge::approve_durable_intent(") &&
       !approveBodyN.includes(".claim_for_merge(") &&
       !approveBodyN.includes("perform_merge_bound(") &&
       mergeControl.includes(".claim_for_merge(intent_id, now)") &&
       mergeControl.includes("crate::git::perform_merge_bound(") &&
-      mcp.includes('"aether.review.reject" => {') &&
+      mcp.includes('"aelyris.review.reject" => {') &&
       mcp.includes("store.reject(&intent_id, now)") &&
       mcp.includes("store.list_unresolved()"),
     detail:
@@ -163,7 +163,7 @@ const knownGaps = [
 
 const failed = checks.filter((check) => !check.ok);
 const report = {
-  schema: "aether.durable-merge-unification/v1",
+  schema: "aelyris.durable-merge-unification/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,

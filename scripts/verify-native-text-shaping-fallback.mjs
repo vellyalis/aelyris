@@ -12,16 +12,16 @@ const NATIVE_BIN = join(
   "src-tauri",
   "target",
   "debug",
-  process.platform === "win32" ? "aether-native.exe" : "aether-native",
+  process.platform === "win32" ? "aelyris-native.exe" : "aelyris-native",
 );
 
 const SOURCE_PATHS = [
   "package.json",
   "src-tauri/src/term/mod.rs",
   "src-tauri/src/term/text_shaping.rs",
-  "src-tauri/src/bin/aether_native.rs",
+  "src-tauri/src/bin/aelyris_native.rs",
   "src-tauri/Cargo.toml",
-  "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
 ];
 
 function source(path) {
@@ -58,7 +58,7 @@ function runTextShapingFixture() {
     return {
       status: null,
       ok: false,
-      error: `native binary missing: ${NATIVE_BIN}; run cargo build --manifest-path src-tauri/Cargo.toml --bin aether-native`,
+      error: `native binary missing: ${NATIVE_BIN}; run cargo build --manifest-path src-tauri/Cargo.toml --bin aelyris-native`,
       stdoutTail: "",
       stderrTail: "",
     };
@@ -94,13 +94,13 @@ function check(id, passed, detail, evidence = {}) {
 const packageJson = source("package.json");
 const termMod = source("src-tauri/src/term/mod.rs");
 const textShaping = source("src-tauri/src/term/text_shaping.rs");
-const nativeClient = source("src-tauri/src/bin/aether_native.rs");
+const nativeClient = source("src-tauri/src/bin/aelyris_native.rs");
 const cargoToml = source("src-tauri/Cargo.toml");
-const g5Design = source("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const g5Design = source("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
 const sourceCutoffMs = Math.max(mtime("scripts/verify-native-text-shaping-fallback.mjs"), ...SOURCE_PATHS.map(mtime));
 const visualFixtureSourceCutoffMs = Math.max(
   mtime("src-tauri/src/term/text_shaping.rs"),
-  mtime("src-tauri/src/bin/aether_native.rs"),
+  mtime("src-tauri/src/bin/aelyris_native.rs"),
   mtime("src-tauri/Cargo.toml"),
 );
 const fixtureRun = runTextShapingFixture();
@@ -198,7 +198,7 @@ const checks = [
     ]) &&
       !nativeClient.includes("or_else(|| atlas_glyphs.get(&'?'))") &&
       !nativeClient.includes("let fallback = font.rasterize('?', font_px)"),
-    "aether-native artifacts disclose DirectWrite run consumption separately from pending fallback glyph rasterization",
+    "aelyris-native artifacts disclose DirectWrite run consumption separately from pending fallback glyph rasterization",
   ),
   check(
     "tests-cover-policy-contract",
@@ -334,7 +334,7 @@ const report = {
       : `${failed.length} native text-shaping/fallback contract checks failed`,
   externalBlockers: visualFixtureEnvironmentBlocked
     ? [
-        `fresh aether-native text-shaping fixture proof is environment-blocked: ${fixtureRun.error ?? (fixtureRun.stderrTail || "host process policy unavailable")}`,
+        `fresh aelyris-native text-shaping fixture proof is environment-blocked: ${fixtureRun.error ?? (fixtureRun.stderrTail || "host process policy unavailable")}`,
       ]
     : [],
   blockers: [
@@ -351,7 +351,7 @@ const report = {
       : [
           visualFixtureFresh
             ? "produce native visual regression artifacts for ligature/no-ligature and fallback glyph cases"
-            : `produce a fresh aether-native text-shaping-fixture-proof JSON/PNG artifact (${fixtureRun.error ?? (fixtureRun.stderrTail || "no current fixture artifact")})`,
+            : `produce a fresh aelyris-native text-shaping-fixture-proof JSON/PNG artifact (${fixtureRun.error ?? (fixtureRun.stderrTail || "no current fixture artifact")})`,
         ]),
   ],
   checks,

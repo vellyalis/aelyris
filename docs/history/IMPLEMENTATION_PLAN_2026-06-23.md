@@ -1,4 +1,4 @@
-# Aether — Audit-Driven Implementation Plan (2026-06-23)
+# Aelyris — Audit-Driven Implementation Plan (2026-06-23)
 
 Status: **DRAFT for Codex review** (then implement). Author: Claude.
 
@@ -9,7 +9,7 @@ runtime claim surface, live-map block, same-file disjoint co-dispatch / overlap
 serialize — proven on the running app).
 
 Inputs: `CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23.md`,
-`AETHER_FUSION_COORDINATOR_AUDIT_2026-06-23.md`,
+`AELYRIS_FUSION_COORDINATOR_AUDIT_2026-06-23.md`,
 `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md §6`, and the 4-agent spec-conformance audit.
 
 Every step keeps all gates green (`cargo test` / `clippy -D` / `fmt` / `tsc` /
@@ -106,12 +106,12 @@ mux/upper-compat refresh). Remaining:
 ### B1 — Current-date live MCP + visible-pane evidence with the bearer token  *(P1)*
 - Re-run `verify-mcp-task-surface-live` / `verify-shared-brain-live` /
   `verify-autonomy-loop-live` and the pane proofs with the CURRENT
-  `QUORUM_API_TOKEN` (read from the dev log) + explicit AI-token consent. Needs
+  `AELYRIS_API_TOKEN` (read from the dev log) + explicit AI-token consent. Needs
   the app running. Effort: **small** (operational), **requires user consent** for
   token spend.
 
 ### B2 — Two newly-surfaced REAL gate failures  *(investigate)*
-- `aether.mcp.server.v1` (upper-compat 5/6 — one gate fails) and
+- `aelyris.mcp.server.v1` (upper-compat 5/6 — one gate fails) and
   `native-workspace-agent-identity-boundary` (orchestration-readiness). These
   surfaced once artifacts were refreshed; they are product gates, not staleness.
   Diagnose each (read the gate's assertion + the code path) and fix or document.
@@ -119,7 +119,7 @@ mux/upper-compat refresh). Remaining:
 
 ---
 
-## Workstream C — Fusion Coordinator  *(new feature, AETHER_FUSION_COORDINATOR_AUDIT, Codex PASS-conditional)*
+## Workstream C — Fusion Coordinator  *(new feature, AELYRIS_FUSION_COORDINATOR_AUDIT, Codex PASS-conditional)*
 
 A runtime multi-agent/model composition layer (advisor fan-out → judge synthesis
 → gated apply to the Task Graph) as a THIN composition layer over the existing
@@ -139,14 +139,14 @@ path** (not PaneFleet — pure-advisory has no declared outputs and would hang).
   `AgentManager` path (NOT visible PaneFleet; `-p` allowed for headless advisors).
 - **C4** Cost reservation / active-agent cap enforcement via `CostManager`.
 - **C5** Judge synthesis with self-review / same-identity rejection.
-- **C6** MCP tools under `aether.fusion.*` (plan/deliberate/status/consensus/
+- **C6** MCP tools under `aelyris.fusion.*` (plan/deliberate/status/consensus/
   cancel/apply_as_tasks) — typed, `additionalProperties:false`, through the
   governance choke point; `apply_as_tasks` creates tasks, never merges.
 - **C7** Typed event records for the deliberation lifecycle (started/finished/
   failed/candidate/verdict/confidence/dissent/evidence — compact, not raw logs).
 - **C8** Cockpit UI READ surface folded into Orchestrator / Fleet HUD / Agent
   Inspector (NOT a new chat surface).
-- **C9** `gated_apply`: consensus → `aether.task.create` items → normal dispatch/
+- **C9** `gated_apply`: consensus → `aelyris.task.create` items → normal dispatch/
   review/gate/merge flow.
 - **C10** Verification scripts: cost cap, no visible `-p`, no direct merge,
   advisor timeout behavior, restart-safe event history.
@@ -201,7 +201,7 @@ Revisions folded in:
   `releaseCandidateReady=false` and reconcile the live-evidence + the two real
   gate fails (B2) before any "production" claim.
 - **Fusion first increment narrowed (Codex)**: C2-C5 + advisory MCP
-  `aether.fusion.plan/deliberate/status/cancel` + internal judge consensus.
+  `aelyris.fusion.plan/deliberate/status/cancel` + internal judge consensus.
   **Defer `apply_as_tasks` and ALL UI** to a later Fusion increment. A pure C2
   design spike is allowed after A1-A3, but NO Fusion runtime/MCP rollout before
   the symbol extractors (A4) and gate drift are stable.
@@ -234,13 +234,13 @@ BACKEND `documentSymbol` extractor needs new request-correlation plumbing + a he
 
 - **A4.0** `6632fde` — diff-hunk extractor (`symbol_ownership/extract.rs`:
   `parse_diff_hunks` / `intents_from_diff`, `Confidence::DiffHunk`) + MCP verb
-  `aether.symbol.claim_from_diff` (records into the live ownership map). Untrusted input clamped.
+  `aelyris.symbol.claim_from_diff` (records into the live ownership map). Untrusted input clamped.
 - **A4.1 + A4.2** `bc5fb13` — tree-sitter parser tier (Rust + TS/TSX, `Confidence::Parser`,
   exact 1-based ranges for fn/method/class/struct/enum/trait/arrow-component; unsupported
   language or an unclean parse → file-level fallback, never a guessed range) +
   `SymbolOwnership::release_for_prefix` (origin-scoped parser reconcile — `parse:`/`dh:`
   reserved id prefixes so source-reconcile keeps diff-hunk + hand-made claims) + MCP verb
-  `aether.symbol.claim_from_source`. Deps: `tree-sitter` 0.26 / `tree-sitter-rust` 0.24 /
+  `aelyris.symbol.claim_from_source`. Deps: `tree-sitter` 0.26 / `tree-sitter-rust` 0.24 /
   `tree-sitter-typescript` 0.23 (`cargo audit`: 0 new advisories).
 - **A4.3** `4fb34d6` — dispatch-gate matrix fully pinned: Parser disjoint symbols UNLOCK
   same-file co-dispatch on a normal source file; shared-config Parser / DiffHunk / overlapping
@@ -261,7 +261,7 @@ NOT leak into A6 / A5 / Fusion.
   MCP verbs; the lease + `refresh`/`release` keep claims live; the `fs:changed` watcher event is
   frontend-facing only).
 - **B1 (live)** — exercise the extractor MCP verbs (`claim_from_diff` / `claim_from_source` over
-  HTTP with the current `QUORUM_API_TOKEN`) on the running app. NOTE: `verify-symbol-ownership-live.mjs`
+  HTTP with the current `AELYRIS_API_TOKEN`) on the running app. NOTE: `verify-symbol-ownership-live.mjs`
   drives the **Tauri IPC** surface (`symbol_claims`/`symbol_conflicts`/`symbol_release`), not the
   MCP verbs — a live MCP harness + token consent is the operator step.
 - **A6 / A5 / Fusion** — unchanged, still sequenced after A4 per the order above.

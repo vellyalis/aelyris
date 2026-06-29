@@ -1,7 +1,7 @@
 # Visible Agent Pane Runtime Spec
 
 作成: 2026-06-23
-対象: Quorum を可視エージェント作業台にするための runtime 境界仕様（tmux / BridgeSpace を参照点とする）。
+対象: Aelyris を可視エージェント作業台にするための runtime 境界仕様（tmux / BridgeSpace を参照点とする）。
 
 ## 0. 結論
 
@@ -27,7 +27,7 @@
 - Codex/Gemini: `-p <prompt>`
 - `src-tauri/src/ipc/commands.rs` の `start_agent` がこの経路を呼ぶ。
 - `src-tauri/src/control/agent.rs` の `start_headless` は stdout/stderr を drain して OS pipe deadlock を避ける。
-- `src-tauri/src/api/mcp.rs` の `aether.spawn_agent` も現在は headless を明示している。
+- `src-tauri/src/api/mcp.rs` の `aelyris.spawn_agent` も現在は headless を明示している。
 
 この経路は UI 表示用ではない。プロセス終了を completion signal にできる batch runtime であり、stream-json / stdout 解析向き。
 
@@ -41,7 +41,7 @@
   - `-p` は付けない。
 - `agent_shell_command_spec(model, prompt, autonomous)`:
   - visible pane の PowerShell 内で CLI を呼ぶ。
-  - prompt は `QUORUM_AGENT_PROMPT` env var。
+  - prompt は `AELYRIS_AGENT_PROMPT` env var。
   - `-p` は付けない。
   - `; exit $LASTEXITCODE` は crash/backstop 用で、正常完了検出の主経路ではない。
 
@@ -94,7 +94,7 @@ Frontend 側:
 
 ### 1.5 仕様矛盾
 
-`docs/specs/MCP_TOOL_SURFACE_SPEC.md` の `aether.spawn_agent` 行は、`task -> initial_prompt` が `-p` で渡されると書いている。これは現在の interactive runtime と矛盾し、今後の実装者を誤誘導する。
+`docs/specs/MCP_TOOL_SURFACE_SPEC.md` の `aelyris.spawn_agent` 行は、`task -> initial_prompt` が `-p` で渡されると書いている。これは現在の interactive runtime と矛盾し、今後の実装者を誤誘導する。
 
 修正方針:
 
@@ -104,16 +104,16 @@ Frontend 側:
 
 ## 2. Product Target
 
-Quorum の方向性は、BridgeSpace の「賑やかな multi-pane ADE」を正面から真似ることではない。
+Aelyris の方向性は、BridgeSpace の「賑やかな multi-pane ADE」を正面から真似ることではない。
 
 目標は:
 
-> tmux-grade durable panes + BridgeSpace-style agent workspace + Quorum の worktree / review / audit / merge control を一体化した、可視で監査できる AI 開発ワークスペース。
+> tmux-grade durable panes + BridgeSpace-style agent workspace + Aelyris の worktree / review / audit / merge control を一体化した、可視で監査できる AI 開発ワークスペース。
 
 よって最重要体験は次の 1 画面である。
 
 1. Operator が一つの goal を投入する。
-2. Quorum が N 個の work unit に分ける。
+2. Aelyris が N 個の work unit に分ける。
 3. 各 agent が独立 worktree の interactive TUI として、中央の terminal pane tree / shell workspace に 1 agent = 1 pane で表示される。
 4. Operator は tmux 的に pane を移動・拡大・送信・broadcast できる。
 5. 完了、詰まり、承認待ち、差分、merge readiness が同じ cockpit で見える。
@@ -147,7 +147,7 @@ Rules:
 Visible TUI prompt delivery:
 
 - Direct spawn (`spawn_interactive_agent`): prompt as CLI positional arg where supported.
-- Pane shell spawn (`PaneFleet`): prompt via `QUORUM_AGENT_PROMPT`, referenced inside PowerShell command.
+- Pane shell spawn (`PaneFleet`): prompt via `AELYRIS_AGENT_PROMPT`, referenced inside PowerShell command.
 - No prompt shell interpolation.
 - No `-p`.
 
@@ -278,7 +278,7 @@ Implementation:
 Recommended marker:
 
 ```text
-.aether/tasks/<task_id>/done.json
+.aelyris/tasks/<task_id>/done.json
 ```
 
 Marker shape:
@@ -303,23 +303,23 @@ Acceptance:
 
 Problem:
 
-- Current MCP implementation says `aether.spawn_agent` is headless.
-- Older spec text says `aether.spawn_agent` maps to `spawn_interactive_agent`.
+- Current MCP implementation says `aelyris.spawn_agent` is headless.
+- Older spec text says `aelyris.spawn_agent` maps to `spawn_interactive_agent`.
 - Generic naming hides the most important product boundary.
 
 Implementation:
 
 For MCP v1 compatibility:
 
-- Keep `aether.spawn_agent` as deprecated alias for headless, because current implementation already behaves that way.
-- Add `aether.spawn_headless_agent` with identical schema.
-- Add `aether.spawn_visible_agent` only when the API state has a visible PTY runtime attached. It returns `{ sessionId, ptyId, presentation }`.
+- Keep `aelyris.spawn_agent` as deprecated alias for headless, because current implementation already behaves that way.
+- Add `aelyris.spawn_headless_agent` with identical schema.
+- Add `aelyris.spawn_visible_agent` only when the API state has a visible PTY runtime attached. It returns `{ sessionId, ptyId, presentation }`.
 
 For MCP v2:
 
 ```json
 {
-  "tool": "aether.spawn_agent",
+  "tool": "aelyris.spawn_agent",
   "input": {
     "runMode": "visible_pty",
     "presentation": "pane",
@@ -396,7 +396,7 @@ New / updated gates:
 
 ## 6. Live Shared Awareness
 
-This is the speed multiplier. Quorum must not be "N AI CLIs open at once"; it must be a shared live workspace where every agent can see what the other agents are doing and which code surface they are touching.
+This is the speed multiplier. Aelyris must not be "N AI CLIs open at once"; it must be a shared live workspace where every agent can see what the other agents are doing and which code surface they are touching.
 
 Current foundation:
 
@@ -503,7 +503,7 @@ Agent-to-agent context:
 
 ### 6.5 Speed claim boundary
 
-This makes Quorum parallel and fast only if the scheduler respects the live ownership map.
+This makes Aelyris parallel and fast only if the scheduler respects the live ownership map.
 
 Fast path:
 
@@ -525,7 +525,7 @@ The product should say "parallel-safe" only on the fast path. Otherwise it shoul
 
 ### 6.6 Shared brain without log flood
 
-The shared brain is not the raw terminal log. Raw logs are evidence and replay material; they are too noisy to be the live coordination state. Quorum must turn high-volume streams into small, durable, queryable brain records.
+The shared brain is not the raw terminal log. Raw logs are evidence and replay material; they are too noisy to be the live coordination state. Aelyris must turn high-volume streams into small, durable, queryable brain records.
 
 Pipeline:
 
@@ -621,7 +621,7 @@ This order gives an immediate visible product improvement before the deeper tmux
 Paste this to Claude when assigning implementation work:
 
 ```text
-You are implementing Quorum in <repo>.
+You are implementing Aelyris in <repo>.
 
 First read:
 1. docs/specs/CODEX_HANDOFF.md
@@ -629,7 +629,7 @@ First read:
 3. Only the specific source files named by the work unit you choose.
 
 Goal:
-Make Quorum's multi-agent experience center-terminal-first: every GUI-visible AI agent must run as a real visible PTY / interactive TUI in the central terminal pane tree, with 1 agent = 1 pane. Do not render headless stdout as a fake terminal. Do not use `-p` / `--print` for anything shown in a GUI pane.
+Make Aelyris's multi-agent experience center-terminal-first: every GUI-visible AI agent must run as a real visible PTY / interactive TUI in the central terminal pane tree, with 1 agent = 1 pane. Do not render headless stdout as a fake terminal. Do not use `-p` / `--print` for anything shown in a GUI pane.
 
 Runtime invariant:
 - visible agents: interactive CLI, no `-p`, PTY-backed `TerminalCanvas`

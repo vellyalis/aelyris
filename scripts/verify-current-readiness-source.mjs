@@ -155,7 +155,7 @@ const checks = {
 
 const ok = Object.values(checks).every(Boolean);
 const report = {
-  schema: "aether.current-readiness-source/v1",
+  schema: "aelyris.current-readiness-source/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   localDate: currentLocalDate(),

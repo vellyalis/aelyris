@@ -1,26 +1,26 @@
 [package]
-name = "aether-terminal"
+name = "aelyris"
 version = "0.2.3"
-description = "Windows-native AI workspace terminal"
+description = "Windows-first AI development workspace"
 authors = ["vellyalis"]
 edition = "2021"
-default-run = "Aether"
+default-run = "Aelyris"
 autobins = false
 
 [[bin]]
-name = "Aether"
+name = "Aelyris"
 path = "src/main.rs"
 
 [[bin]]
-name = "aetherctl"
-path = "src/bin/aetherctl.rs"
+name = "aelys"
+path = "src/bin/aelys.rs"
 
 [[bin]]
-name = "aether-native"
-path = "src/bin/aether_native.rs"
+name = "aelyris-native"
+path = "src/bin/aelyris_native.rs"
 
 [lib]
-name = "aether_terminal_lib"
+name = "aelyris_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

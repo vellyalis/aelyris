@@ -140,7 +140,7 @@ describe("installGhostPaint", () => {
     expect(added).toHaveLength(1);
     const dec = added[0];
     expect(dec.options.isWholeLine).toBe(true);
-    expect(dec.options.className).toBe("aether-ghost-delete-line");
+    expect(dec.options.className).toBe("aelyris-ghost-delete-line");
     expect(dec.range.startLineNumber).toBe(5);
     expect(dec.range.endLineNumber).toBe(7);
     expect(handle.paintedIndices).toEqual([0]);
@@ -155,7 +155,7 @@ describe("installGhostPaint", () => {
     });
     expect(zonesAdded).toHaveLength(0);
     expect(added).toHaveLength(1);
-    expect(added[0].options.linesDecorationsClassName).toBe("aether-ghost-modify-gutter");
+    expect(added[0].options.linesDecorationsClassName).toBe("aelyris-ghost-modify-gutter");
     expect(handle.deferredIndices).toEqual([0]);
     expect(handle.paintedIndices).toEqual([]);
   });
@@ -181,8 +181,8 @@ describe("installGhostPaint", () => {
       layerId: "layer-e",
     });
     const node = zonesAdded[0].domNode;
-    expect(node.style.getPropertyValue("--aether-ghost-tint")).toBe("#ff5555");
-    expect(node.dataset.aetherLayer).toBe("layer-e");
+    expect(node.style.getPropertyValue("--aelyris-ghost-tint")).toBe("#ff5555");
+    expect(node.dataset.aelyrisLayer).toBe("layer-e");
     expect(node.textContent).toContain("hello");
   });
 

@@ -176,7 +176,7 @@ add(
     app.includes('className="right-panel-orchestra-primary"') &&
     styles.includes(".right-panel-orchestra-lanes") &&
     styles.includes(".right-panel-orchestra-primary") &&
-    styles.includes(':root[data-mood="aether-sakura"] .right-panel-orchestra-command'),
+    styles.includes(':root[data-mood="aelyris-sakura"] .right-panel-orchestra-command'),
   "right rail exposes role lanes and a first-class Orchestra dispatch action without expanding telemetry",
 );
 add(

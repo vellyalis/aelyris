@@ -23,17 +23,17 @@ import { test, expect } from "@playwright/test";
  * tolerance.
  */
 
-const PROJECT_PATH = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+const PROJECT_PATH = process.env.AELYRIS_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 
 test.describe("Phase 1 visual regression — chrome cluster", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+    await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
       waitUntil: "domcontentloaded",
     });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", path);
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", path);
+      localStorage.setItem("aelyris:onboarding-done", "true");
     }, PROJECT_PATH);
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
@@ -43,7 +43,7 @@ test.describe("Phase 1 visual regression — chrome cluster", () => {
     // Reset to welcome state for this single test.
     await page.evaluate(() => localStorage.clear());
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText("Quorum")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Aelyris")).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveScreenshot("welcome.png", {
       maxDiffPixelRatio: 0.02,
       fullPage: true,
@@ -78,13 +78,13 @@ test.describe("Phase 1 visual regression — chrome cluster", () => {
 
 test.describe("Phase 1 visual regression — left panel surfaces", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+    await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
       waitUntil: "domcontentloaded",
     });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", path);
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", path);
+      localStorage.setItem("aelyris:onboarding-done", "true");
     }, PROJECT_PATH);
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
@@ -101,13 +101,13 @@ test.describe("Phase 1 visual regression — left panel surfaces", () => {
 
 test.describe("Phase 1 visual regression — right panel surfaces", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+    await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
       waitUntil: "domcontentloaded",
     });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", path);
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", path);
+      localStorage.setItem("aelyris:onboarding-done", "true");
     }, PROJECT_PATH);
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
@@ -124,13 +124,13 @@ test.describe("Phase 1 visual regression — right panel surfaces", () => {
 
 test.describe("Phase 1 visual regression — overlays", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+    await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
       waitUntil: "domcontentloaded",
     });
     await page.evaluate((path) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", path);
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", path);
+      localStorage.setItem("aelyris:onboarding-done", "true");
     }, PROJECT_PATH);
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });

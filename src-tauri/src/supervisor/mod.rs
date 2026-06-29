@@ -7,9 +7,9 @@
 //! (or a human) — acts on. The orchestrator drives the loop; the supervisor
 //! watches the orchestrator so a run can proceed unattended and still surface
 //! when it needs a higher-level decision. Pure -> 100% unit-testable; exposed
-//! read-only via the `aether.supervisor.health` MCP verb.
+//! read-only via the `aelyris.supervisor.health` MCP verb.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy).
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy).
 
 pub mod escalation_sink;
 

@@ -1,9 +1,9 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use aether_terminal_lib::{api, command_risk, db, logging, pty::PtyManager};
+use aelyris_lib::{api, command_risk, db, logging, pty::PtyManager};
 
 fn parse_port() -> u16 {
-    std::env::var("QUORUM_PTY_SERVER_PORT")
+    std::env::var("AELYRIS_PTY_SERVER_PORT")
         .ok()
         .and_then(|raw| raw.parse::<u16>().ok())
         .unwrap_or(api::DEFAULT_PORT)
@@ -29,9 +29,9 @@ async fn main() {
         .with_command_risk_gate(Some(command_risk_gate))
         .with_env_mux_store();
 
-    log::info!("aether pty server starting on 127.0.0.1:{port}");
+    log::info!("aelyris pty server starting on 127.0.0.1:{port}");
     if let Err(err) = api::serve(state, port).await {
-        log::error!("aether pty server failed: {err}");
+        log::error!("aelyris pty server failed: {err}");
         std::process::exit(1);
     }
 }

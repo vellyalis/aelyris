@@ -1,6 +1,6 @@
 import type { AgentFinalReportInfo, AgentLog, AgentSession, FileChangeDetail } from "../types/agent";
 
-export const AGENT_TELEMETRY_STORAGE_KEY = "aether:agentTelemetry:v1";
+export const AGENT_TELEMETRY_STORAGE_KEY = "aelyris:agentTelemetry:v1";
 
 type AgentLogMetadata = NonNullable<AgentLog["metadata"]>;
 

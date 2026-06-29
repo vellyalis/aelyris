@@ -1,8 +1,8 @@
 //! Session management tests — DB CRUD, split, save/restore, cleanup
 
-use aether_terminal_lib::db::Database;
-use aether_terminal_lib::pty::{PtyManager, ShellType};
-use aether_terminal_lib::session::SessionManager;
+use aelyris_lib::db::Database;
+use aelyris_lib::pty::{PtyManager, ShellType};
+use aelyris_lib::session::SessionManager;
 
 // --- Database-only tests (no PTY needed) ---
 
@@ -149,7 +149,7 @@ fn test_split_pane() {
     let (pane2, tid2) = sm
         .split_pane(
             &w.id,
-            aether_terminal_lib::session::manager::SplitDirection::Horizontal,
+            aelyris_lib::session::manager::SplitDirection::Horizontal,
             &ShellType::Cmd,
             ".",
             80,
@@ -184,7 +184,7 @@ fn test_session_manager_restores_typed_mux_graph() {
     let (pane2, tid2) = sm
         .split_pane(
             &w.id,
-            aether_terminal_lib::session::manager::SplitDirection::Vertical,
+            aelyris_lib::session::manager::SplitDirection::Vertical,
             &ShellType::Cmd,
             ".",
             80,

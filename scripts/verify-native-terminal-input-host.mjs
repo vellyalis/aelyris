@@ -4,7 +4,7 @@ import process from "node:process";
 
 const ROOT = resolve(process.cwd());
 const OUT =
-  process.env.AETHER_NATIVE_INPUT_OUT ??
+  process.env.AELYRIS_NATIVE_INPUT_OUT ??
   join(ROOT, ".codex-auto", "production-smoke", "native-terminal-input-host.json");
 
 function source(path) {
@@ -39,14 +39,14 @@ const nativeClientFresh =
   mtime(nativeClientArtifactPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
-      mtime("src-tauri/src/bin/aether_native.rs"),
+      mtime("src-tauri/src/bin/aelyris_native.rs"),
       mtime("src-tauri/src/term/native_input.rs"),
       mtime("src-tauri/src/ipc/commands.rs"),
     );
 const nativePasteGuard = nativeClient?.nativePasteGuard?.pasteGuard;
 const nativePasteGuardFresh =
   nativeClientFresh &&
-  nativePasteGuard?.schema === "aether.native.paste-guard-proof.v1" &&
+  nativePasteGuard?.schema === "aelyris.native.paste-guard-proof.v1" &&
   nativePasteGuard?.nativePasteGuardProof === true &&
   nativePasteGuard?.nativeHwndWmPaste === true &&
   nativePasteGuard?.nativeSurfaceHwnd &&
@@ -150,7 +150,7 @@ const checks = [
   check(
     "surface-custom-hwnd-runway",
     nativeInput.includes("caret_inset") &&
-      nativeInput.includes("AetherNativeTerminalInputSurface") &&
+      nativeInput.includes("AelyrisNativeTerminalInputSurface") &&
       nativeInput.includes("RegisterClassW") &&
       nativeInput.includes("native_input_surface_paint_rect") &&
       nativeInput.includes("apply_native_surface_ime_position") &&
@@ -159,7 +159,7 @@ const checks = [
       nativeInput.includes("ValidateRect") &&
       nativeInput.includes("sanitize_native_input_rect") &&
       !nativeInput.includes('w!("EDIT")'),
-    "native input uses an Aether-owned no-paint HWND with a full-width IME runway, preventing the white vertical Japanese preedit strip without relying on EDIT painting",
+    "native input uses an Aelyris-owned no-paint HWND with a full-width IME runway, preventing the white vertical Japanese preedit strip without relying on EDIT painting",
   ),
   check(
     "surface-ime-preedit-hidden",
@@ -221,7 +221,7 @@ const checks = [
       nativeHwndPasteLive?.checks?.destructivePasteBlockedBeforePty === true &&
       nativeHwndPasteLive?.checks?.multilinePasteBlockedBeforePty === true) ||
       nativePasteGuardFresh,
-    "live Windows WM_PASTE proof behaviorally verifies native HWND focus, allowed paste execution, and blocked paste no-PTY-write paths through either the CDP smoke or the Rust aether-native paste-guard proof",
+    "live Windows WM_PASTE proof behaviorally verifies native HWND focus, allowed paste execution, and blocked paste no-PTY-write paths through either the CDP smoke or the Rust aelyris-native paste-guard proof",
   ),
   check(
     "composition-surface",

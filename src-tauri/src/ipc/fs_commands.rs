@@ -191,7 +191,7 @@ pub fn open_git_file_diff_in_vscode(repo_path: String, file_path: String) -> Res
         String::new()
     };
 
-    let temp_dir = std::env::temp_dir().join("aether-vscode-diff");
+    let temp_dir = std::env::temp_dir().join("aelyris-vscode-diff");
     std::fs::create_dir_all(&temp_dir)
         .map_err(|e| format!("Create temp diff dir failed: {}", e))?;
     let safe_name = safe_temp_diff_name(&relative);

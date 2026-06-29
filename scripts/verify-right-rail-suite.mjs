@@ -11,9 +11,9 @@ import net from "node:net";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 
-const OUT = process.env.AETHER_RIGHT_RAIL_SUITE_OUT ?? ".codex-auto/production-smoke/right-rail-suite.json";
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const REQUIRE_CDP = process.env.AETHER_RIGHT_RAIL_REQUIRE_CDP === "1";
+const OUT = process.env.AELYRIS_RIGHT_RAIL_SUITE_OUT ?? ".codex-auto/production-smoke/right-rail-suite.json";
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const REQUIRE_CDP = process.env.AELYRIS_RIGHT_RAIL_REQUIRE_CDP === "1";
 const NODE = process.execPath;
 const IAB_PROOF = ".codex-auto/production-smoke/right-rail-iab-proof.json";
 const SCALE_PROOF = ".codex-auto/performance/right-rail-scale-contract.json";
@@ -116,7 +116,7 @@ function passCheck(id, label, passed, evidence = {}, reason = "") {
 }
 
 function tryNoSpawnIabSuite() {
-  if (process.env.AETHER_RIGHT_RAIL_REQUIRE_CHILD_SMOKES === "1") return false;
+  if (process.env.AELYRIS_RIGHT_RAIL_REQUIRE_CHILD_SMOKES === "1") return false;
   const iab = readJson(IAB_PROOF);
   if (iab?.ok !== true) return false;
   const scale = readJson(SCALE_PROOF);
@@ -248,7 +248,7 @@ async function main() {
 
     if (cdpProbe.ok) {
       for (const check of CDP_CHECKS) {
-        report.checks.push(await runCheck(check, { AETHER_TAURI_CDP: CDP }));
+        report.checks.push(await runCheck(check, { AELYRIS_TAURI_CDP: CDP }));
       }
     } else if (REQUIRE_CDP) {
       for (const check of CDP_CHECKS) {

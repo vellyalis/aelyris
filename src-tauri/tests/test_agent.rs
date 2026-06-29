@@ -1,9 +1,9 @@
 //! Agent integration tests — mock agent spawn, stream-json parsing, watchdog evaluation
 
-use aether_terminal_lib::agent::parser::{StreamEvent, StreamParser};
-use aether_terminal_lib::agent::AgentSessionInfo;
-use aether_terminal_lib::watchdog::engine::{WatchdogDecision, WatchdogEngine};
-use aether_terminal_lib::watchdog::{AutoApproveRule, WatchdogRules};
+use aelyris_lib::agent::parser::{StreamEvent, StreamParser};
+use aelyris_lib::agent::AgentSessionInfo;
+use aelyris_lib::watchdog::engine::{WatchdogDecision, WatchdogEngine};
+use aelyris_lib::watchdog::{AutoApproveRule, WatchdogRules};
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 

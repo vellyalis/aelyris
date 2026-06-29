@@ -10,10 +10,10 @@
 
 use std::path::{Path, PathBuf};
 
-use aether_terminal_lib::agent::claude_oneshot;
-use aether_terminal_lib::git::diff_three_dot;
-use aether_terminal_lib::process::hidden_command;
-use aether_terminal_lib::review::{detect_gate_commands, review_branch, spawn_run, ReviewInputs};
+use aelyris_lib::agent::claude_oneshot;
+use aelyris_lib::git::diff_three_dot;
+use aelyris_lib::process::hidden_command;
+use aelyris_lib::review::{detect_gate_commands, review_branch, spawn_run, ReviewInputs};
 
 fn git(cwd: &Path, args: &[&str]) {
     let out = hidden_command("git")
@@ -39,7 +39,7 @@ fn write(path: &Path, contents: &str) {
 
 fn main() {
     // A unique scratch dir (no Date/random needed — the process id is enough).
-    let root = std::env::temp_dir().join(format!("aether-review-demo-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("aelyris-review-demo-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let repo = root.join("crate");
     std::fs::create_dir_all(&repo).unwrap();
@@ -51,7 +51,7 @@ fn main() {
     );
     write(&repo.join("src/lib.rs"), "//! greeting demo crate\n");
     git(&repo, &["init", "-b", "main"]);
-    git(&repo, &["config", "user.email", "demo@aether.test"]);
+    git(&repo, &["config", "user.email", "demo@aelyris.test"]);
     git(&repo, &["config", "user.name", "Demo"]);
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-m", "init crate"]);
@@ -123,7 +123,7 @@ assert!(!g.is_empty());\n    assert!(g.contains(\"friend\"));\n}\n",
     let _ = std::fs::remove_dir_all(&root);
 
     match result.verdict {
-        aether_terminal_lib::review::ReviewVerdict::Merge => {
+        aelyris_lib::review::ReviewVerdict::Merge => {
             println!(
                 "\nEND-TO-END: real gates green + judge green + reviewer != implementer -> MERGE."
             );

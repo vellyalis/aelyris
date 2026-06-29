@@ -93,7 +93,7 @@ function isValidAction(value: unknown): value is ToolkitAction {
 
 function loadActions(projectName: string): ToolkitAction[] {
   try {
-    const saved = localStorage.getItem(`aether:toolkit:${projectName}`);
+    const saved = localStorage.getItem(`aelyris:toolkit:${projectName}`);
     if (!saved) return DEFAULT_ACTIONS;
     const parsed = JSON.parse(saved);
     if (!Array.isArray(parsed)) return DEFAULT_ACTIONS;
@@ -126,7 +126,7 @@ function makeActionId(prefix: string): string {
 
 function saveActions(projectName: string, actions: ToolkitAction[]) {
   try {
-    localStorage.setItem(`aether:toolkit:${projectName}`, JSON.stringify(actions));
+    localStorage.setItem(`aelyris:toolkit:${projectName}`, JSON.stringify(actions));
   } catch {
     /* ignore */
   }

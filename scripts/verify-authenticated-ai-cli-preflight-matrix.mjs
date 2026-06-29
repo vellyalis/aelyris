@@ -5,7 +5,7 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "production-smoke", "authenticated-ai-cli-preflight-matrix.json");
 const PROVIDERS = ["codex", "claude", "gemini"];
 const MAX_ARTIFACT_AGE_MS = Number.parseInt(
-  process.env.AETHER_AUTH_PREFLIGHT_MATRIX_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
+  process.env.AELYRIS_AUTH_PREFLIGHT_MATRIX_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
   10,
 );
 const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
@@ -114,8 +114,8 @@ function optInCommand(provider) {
   return {
     command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
     env: {
-      QUORUM_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
-      QUORUM_AUTH_PROMPT_PROVIDER: provider,
+      AELYRIS_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
+      AELYRIS_AUTH_PROMPT_PROVIDER: provider,
     },
   };
 }

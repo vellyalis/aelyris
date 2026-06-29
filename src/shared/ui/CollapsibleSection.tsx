@@ -27,7 +27,7 @@ export interface CollapsibleSectionProps {
  * Warp / VS Code "fold panels you don't currently need" pattern.
  *
  * Persists open/closed state under
- * `aether:section:<storageKey>` so reloads remember which
+ * `aelyris:section:<storageKey>` so reloads remember which
  * section the user had collapsed (the FileTree might still be
  * open when SCM is folded away, etc.).
  */
@@ -39,7 +39,7 @@ export function CollapsibleSection({
   children,
   bodyClassName,
 }: CollapsibleSectionProps) {
-  const fullKey = `aether:section:${storageKey}`;
+  const fullKey = `aelyris:section:${storageKey}`;
   const [open, setOpen] = useState<boolean>(() => {
     try {
       const persisted = localStorage.getItem(fullKey);

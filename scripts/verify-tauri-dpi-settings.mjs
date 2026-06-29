@@ -5,13 +5,13 @@
 // using Chromium device emulation as DPI proof.
 //
 // Prerequisite:
-//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
+//   AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_TAURI_SMOKE_OUT=.codex-auto/visual-qa/p2-05/tauri-dpi-settings-smoke.json
-//   AETHER_TAURI_SMOKE_WAIT_MS=60000
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_TAURI_SMOKE_OUT=.codex-auto/visual-qa/p2-05/tauri-dpi-settings-smoke.json
+//   AELYRIS_TAURI_SMOKE_WAIT_MS=60000
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -19,14 +19,14 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_TAURI_SMOKE_OUT ?? ".codex-auto/visual-qa/p2-05/tauri-dpi-settings-smoke.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_TAURI_SMOKE_WAIT_MS ?? "60000", 10);
-const APP_READY_WAIT_MS = Number.parseInt(process.env.AETHER_TAURI_APP_READY_WAIT_MS ?? "60000", 10);
+const CDP = process.env.AELYRIS_TAURI_CDP ?? process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_TAURI_SMOKE_OUT ?? ".codex-auto/visual-qa/p2-05/tauri-dpi-settings-smoke.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_TAURI_SMOKE_WAIT_MS ?? "60000", 10);
+const APP_READY_WAIT_MS = Number.parseInt(process.env.AELYRIS_TAURI_APP_READY_WAIT_MS ?? "60000", 10);
 const DENSITIES = ["focus", "balanced", "dense"];
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.includes("localhost:1420") ||
@@ -46,7 +46,7 @@ function writeArtifact(report) {
 function withVisualQaParams(rawUrl) {
   try {
     const url = new URL(rawUrl);
-    url.searchParams.set("aetherVisualQa", "1");
+    url.searchParams.set("aelyrisVisualQa", "1");
     url.searchParams.set("rail", "observe");
     url.searchParams.set("projectPath", PROJECT_PATH);
     return url.toString();
@@ -98,12 +98,12 @@ async function seedDensity(page, density) {
   await page.evaluate(
     ({ density: nextDensity, projectPath }) => {
       const workspaceKey = projectPath.toLowerCase();
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", projectPath);
-      localStorage.setItem("aether:lastProject", projectPath);
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", projectPath);
+      localStorage.setItem("aelyris:lastProject", projectPath);
+      localStorage.setItem("aelyris:onboarding-done", "true");
       localStorage.setItem(
-        "aether:workspaceProfiles",
+        "aelyris:workspaceProfiles",
         JSON.stringify({
           version: 1,
           workspaceOverrides: {
@@ -264,11 +264,11 @@ async function main() {
 
     const pages = browser.contexts().flatMap((context) => context.pages());
     report.pages = pages.map((page) => page.url());
-    const page = pages.find(isAetherPage);
+    const page = pages.find(isAelyrisPage);
     if (!page) {
       report.status = "external_dependency";
-      report.dependency = "Aether Tauri WebView2 page";
-      report.error = `CDP attached, but no Aether page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
+      report.dependency = "Aelyris Tauri WebView2 page";
+      report.error = `CDP attached, but no Aelyris page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
       writeArtifact(report);
       console.error(`[tauri-smoke] ${report.error}`);
       process.exit(2);

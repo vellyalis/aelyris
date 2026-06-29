@@ -12,7 +12,7 @@
 
 mod pty_harness;
 
-use aether_terminal_lib::pty::{ExitInfo, PtyManager, ShellType};
+use aelyris_lib::pty::{ExitInfo, PtyManager, ShellType};
 use std::time::Duration;
 
 /// `cmd /c exit 0` runs to completion fast enough that the harness can

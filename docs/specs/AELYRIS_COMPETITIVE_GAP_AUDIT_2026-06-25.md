@@ -1,4 +1,4 @@
-# Quorum tmux / BridgeSpace / Ghostty Gap Audit
+# Aelyris tmux / BridgeSpace / Ghostty Gap Audit
 
 Date: 2026-06-25 JST
 Status: REVIEW / BLOCK for world-class positioning
@@ -6,14 +6,14 @@ Scope: current local checkout, current source, current `.codex-auto` evidence, a
 
 ## Executive Verdict
 
-Quorum is not "just chat tabs" anymore. The repo contains a substantial Rust/Tauri
+Aelyris is not "just chat tabs" anymore. The repo contains a substantial Rust/Tauri
 terminal and AI-team control plane:
 
 - Rust-owned terminal engine, mux graph, pane layouts, sidecar PTY daemon, durable scrollback, and mux APIs.
 - Visible PTY agent runtime, sidecar-first interactive AI CLI spawning, and loop-dispatched visible panes.
 - A broad local MCP surface for worktrees, tasks, events, ownership, context, intents, knowledge graph, review, and merge.
 - Durable merge-intent security checks and OID-bound reviewer approval paths.
-- Native-first proof path through `aether-native`, native input/IME/paste guard, and winit/wgpu proof harnesses.
+- Native-first proof path through `aelyris-native`, native input/IME/paste guard, and winit/wgpu proof harnesses.
 
 But the current evidence does not support an unqualified claim of:
 
@@ -32,11 +32,11 @@ Current hard truth from `node scripts/score-release-quality.mjs`:
 
 Defensible public/internal claim today:
 
-> Quorum has a local daemon-backed Windows mux and an implemented AI-team control-plane prototype with visible PTY agent panes, MCP orchestration APIs, and native-first terminal proof paths.
+> Aelyris has a local daemon-backed Windows mux and an implemented AI-team control-plane prototype with visible PTY agent panes, MCP orchestration APIs, and native-first terminal proof paths.
 
 Not yet defensible:
 
-> Quorum is tmux-equivalent, BridgeSpace-plus complete, or Ghostty-class as a daily driver on Windows.
+> Aelyris is tmux-equivalent, BridgeSpace-plus complete, or Ghostty-class as a daily driver on Windows.
 
 ## Subagent Coverage
 
@@ -87,7 +87,7 @@ Implemented:
 
 Meaning:
 
-- Quorum has a serious local daemon-backed Windows mux core.
+- Aelyris has a serious local daemon-backed Windows mux core.
 - It is not merely a React pane layout.
 
 ### Visible Agent Runtime
@@ -112,13 +112,13 @@ Implemented:
 - Worktree validation/create/remove and routing.
 - Task Graph, Event Bus, Context Store, Intent Bus, Knowledge Graph.
 - File ownership and symbol ownership APIs.
-- `aether.request_merge` creates durable merge intents.
-- `aether.review.approve` approves by intent id, rejects unknown branch overrides, and performs OID-bound merge.
+- `aelyris.request_merge` creates durable merge intents.
+- `aelyris.review.approve` approves by intent id, rejects unknown branch overrides, and performs OID-bound merge.
 - Merge-intent security gate passes: `.codex-auto/quality/security-merge-intent-binding.json`.
 
 Meaning:
 
-- Quorum is already above "N terminals running N AI CLIs" at the control-plane level.
+- Aelyris is already above "N terminals running N AI CLIs" at the control-plane level.
 - However, durable AI-team OS semantics are incomplete where state is split or in-memory.
 
 ### Native / Ghostty-Class Direction
@@ -128,7 +128,7 @@ Implemented:
 - Rust terminal engine and renderer-neutral frame contracts: `src-tauri/src/term/engine.rs`, `src-tauri/src/term/render_frame.rs`.
 - Canvas2D production renderer without xterm dependency: `src/features/terminal/TerminalCanvas.tsx`.
 - Native input/IME/paste guard: `src-tauri/src/term/native_input.rs`.
-- `aether-native` proof binary with Win32/GDI, winit/wgpu, and font-atlas proof paths: `src-tauri/src/bin/aether_native.rs`.
+- `aelyris-native` proof binary with Win32/GDI, winit/wgpu, and font-atlas proof paths: `src-tauri/src/bin/aelyris_native.rs`.
 - Clipboard image intake and terminal image protocol ingestion exist.
 
 Meaning:
@@ -509,11 +509,11 @@ Required:
 Current restart replay evidence:
 
 - `pnpm verify:shared-brain-restart-replay` now writes an
-  `environment-blocked` artifact when no authenticated live Quorum API token is
+  `environment-blocked` artifact when no authenticated live Aelyris API token is
   available. This keeps the BridgeSpace claim red without pretending the replay
   path passed.
-- To turn it green, run the seed phase against a live authenticated Quorum API,
-  restart Quorum, then run the verify phase with the printed id.
+- To turn it green, run the seed phase against a live authenticated Aelyris API,
+  restart Aelyris, then run the verify phase with the printed id.
 
 ### To Claim "Ghostty/WezTerm-Class Windows Terminal"
 
@@ -567,7 +567,7 @@ Required:
 
 ## Final Assessment
 
-Quorum has the right architecture to grow into a strong Windows AI terminal/workspace:
+Aelyris has the right architecture to grow into a strong Windows AI terminal/workspace:
 
 - local daemon mux
 - AI-team control plane
@@ -584,4 +584,4 @@ The missing work is no longer "invent the idea." It is:
 - harden native renderer/input quality into daily-driver proof
 - stop stale artifacts and docs from overstating readiness
 
-Until those gates are green, position Quorum as an implemented prototype/platform with strong foundations, not as completed tmux/Ghostty/BridgeSpace replacement.
+Until those gates are green, position Aelyris as an implemented prototype/platform with strong foundations, not as completed tmux/Ghostty/BridgeSpace replacement.

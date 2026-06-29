@@ -1,6 +1,6 @@
 # Historical Documents
 
-This folder contains archived Aether planning, audit, and progress snapshots.
+This folder contains archived Aelyris planning, audit, and progress snapshots.
 They are retained for traceability, but they are not the current release truth.
 
 For current public status, read these first:

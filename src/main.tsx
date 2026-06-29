@@ -12,7 +12,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import { App } from "./App";
-import { getAetherHost, isTauriRuntime } from "./shared/lib/tauriRuntime";
+import { getAelyrisHost, isTauriRuntime } from "./shared/lib/tauriRuntime";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import "./styles/global.css";
 
@@ -21,31 +21,31 @@ document.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
-const setAetherHost = (host: "tauri" | "browser") => {
-  document.documentElement.setAttribute("data-aether-host", host);
+const setAelyrisHost = (host: "tauri" | "browser") => {
+  document.documentElement.setAttribute("data-aelyris-host", host);
 };
-setAetherHost(getAetherHost());
+setAelyrisHost(getAelyrisHost());
 
 // Default body to focused so the very first frame uses the
 // "active" glass alphas. Rust `setup` then emits real focus
-// changes via `aether:window-focused` — see `body[data-window-
+// changes via `aelyris:window-focused` — see `body[data-window-
 // focused="false"]` in global.css for the inactive override that
 // keeps the panels readable as glass instead of solid slabs when
 // the user Alt-Tabs away.
 document.body.setAttribute("data-window-focused", "true");
 void (async () => {
   if (!isTauriRuntime()) {
-    setAetherHost("browser");
+    setAelyrisHost("browser");
     return;
   }
   try {
     const { listen } = await Promise.resolve({ listen: tauriListen });
-    setAetherHost("tauri");
-    await listen<boolean>("aether:window-focused", (event) => {
+    setAelyrisHost("tauri");
+    await listen<boolean>("aelyris:window-focused", (event) => {
       document.body.setAttribute("data-window-focused", event.payload ? "true" : "false");
     });
   } catch {
-    setAetherHost("browser");
+    setAelyrisHost("browser");
     // Outside Tauri (vitest / vite preview) we just stay in the
     // "focused" state — nothing emits the event.
   }

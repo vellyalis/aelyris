@@ -1,11 +1,11 @@
 ---
 name: Bug report
-about: Report a reproducible problem in Quorum
+about: Report a reproducible problem in Aelyris
 title: "[bug] "
 labels: bug
 ---
 
-> Quorum is alpha / not release-ready. Bug reports that include exact
+> Aelyris is alpha / not release-ready. Bug reports that include exact
 > reproduction steps and machine-checked evidence are the most actionable.
 
 ## What happened
@@ -25,7 +25,7 @@ What you expected to happen instead.
 ## Environment
 
 - OS / version (e.g. Windows 11 26200):
-- Quorum version / commit:
+- Aelyris version / commit:
 - Node / pnpm version:
 - Rust / cargo version:
 

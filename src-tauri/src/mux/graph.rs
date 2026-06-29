@@ -726,7 +726,7 @@ mod tests {
     fn sample_graph() -> MuxGraph {
         graph_from_single_pane(
             "workspace-a",
-            "Aether",
+            "Aelyris",
             "window-a",
             "tab-a",
             PaneRecord::new("pane-a", "PowerShell", "powershell", "C:/repo"),

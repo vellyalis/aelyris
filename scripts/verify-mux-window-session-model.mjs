@@ -12,7 +12,7 @@ const SOURCE_PATHS = [
   "src-tauri/src/api/mux.rs",
   "src-tauri/src/ipc/mux_commands.rs",
   "scripts/verify-mux-window-session-model.mjs",
-  "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
 ];
 
 function read(rel) {
@@ -48,7 +48,7 @@ const manager = read("src-tauri/src/mux/manager.rs");
 const store = read("src-tauri/src/mux/store.rs");
 const apiMux = read("src-tauri/src/api/mux.rs");
 const ipcMux = read("src-tauri/src/ipc/mux_commands.rs");
-const design = read("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const design = read("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
 
 const router = between(apiMux, "pub(super) fn router()", ["#[derive(Deserialize)]"]);
 const deleteWorkspace = between(apiMux, "async fn delete_mux_workspace(", ["async fn list_mux_windows("]);
@@ -249,7 +249,7 @@ const checks = [
 
 const failed = checks.filter((item) => !item.ok);
 const report = {
-  schema: "aether.mux-window-session-model/v1",
+  schema: "aelyris.mux-window-session-model/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,

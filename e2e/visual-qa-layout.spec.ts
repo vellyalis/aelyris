@@ -4,8 +4,8 @@ import { expect, type Page, test } from "@playwright/test";
 const railModes = ["command", "review", "observe"] as const;
 const matrixWidths = [584, 960, 1440, 1920] as const;
 const densityModes = ["focus", "balanced", "dense"] as const;
-const projectPath = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
-const workspaceProfileStorageKey = "aether:workspaceProfiles";
+const projectPath = process.env.AELYRIS_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+const workspaceProfileStorageKey = "aelyris:workspaceProfiles";
 const visualQaArtifactDir = ".codex-auto/visual-qa/p2-05";
 
 type RailMode = (typeof railModes)[number];
@@ -15,10 +15,10 @@ async function seedVisualQaStorage(page: Page, density: DensityMode = "balanced"
   await page.evaluate(
     ({ density, projectPath, workspaceProfileStorageKey }) => {
       const workspaceKey = projectPath.toLowerCase();
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", projectPath);
-      localStorage.setItem("aether:lastProject", projectPath);
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", projectPath);
+      localStorage.setItem("aelyris:lastProject", projectPath);
+      localStorage.setItem("aelyris:onboarding-done", "true");
       localStorage.setItem(
         workspaceProfileStorageKey,
         JSON.stringify({
@@ -49,7 +49,7 @@ async function openVisualQaApp(
   } = {},
 ) {
   const params = new URLSearchParams({
-    aetherVisualQa: "1",
+    aelyrisVisualQa: "1",
     rail: options.rail ?? "observe",
     projectPath,
   });
@@ -434,11 +434,11 @@ test.describe("Visual QA layout guard", () => {
     });
     await expect(evidenceButton).toBeVisible({ timeout: 10_000 });
     await page.evaluate(() => {
-      (window as Window & { __aetherCommandEvidenceEvents?: unknown[] }).__aetherCommandEvidenceEvents = [];
+      (window as Window & { __aelyrisCommandEvidenceEvents?: unknown[] }).__aelyrisCommandEvidenceEvents = [];
       window.addEventListener(
-        "aether:terminal-command-evidence",
+        "aelyris:terminal-command-evidence",
         (event) => {
-          (window as Window & { __aetherCommandEvidenceEvents?: unknown[] }).__aetherCommandEvidenceEvents?.push(
+          (window as Window & { __aelyrisCommandEvidenceEvents?: unknown[] }).__aelyrisCommandEvidenceEvents?.push(
             (event as CustomEvent).detail,
           );
         },
@@ -450,8 +450,8 @@ test.describe("Visual QA layout guard", () => {
       .poll(() =>
         page.evaluate(
           () =>
-            (window as Window & { __aetherCommandEvidenceEvents?: Array<{ terminalId?: string }> })
-              .__aetherCommandEvidenceEvents?.[0]?.terminalId,
+            (window as Window & { __aelyrisCommandEvidenceEvents?: Array<{ terminalId?: string }> })
+              .__aelyrisCommandEvidenceEvents?.[0]?.terminalId,
         ),
       )
       .toBe("qa-review-shell");
@@ -806,14 +806,14 @@ test.describe("Visual QA layout guard", () => {
   test("keeps the welcome screen centered without horizontal overflow", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.removeItem("aether:visualQa");
-      localStorage.removeItem("aether:visualQaProject");
-      localStorage.removeItem("aether:lastProject");
-      localStorage.setItem("aether:onboarding-done", "true");
+      localStorage.removeItem("aelyris:visualQa");
+      localStorage.removeItem("aelyris:visualQaProject");
+      localStorage.removeItem("aelyris:lastProject");
+      localStorage.setItem("aelyris:onboarding-done", "true");
     });
     await page.reload();
     await page.setViewportSize({ width: 584, height: 800 });
-    await expect(page.getByRole("heading", { name: "Quorum" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Aelyris" })).toBeVisible({ timeout: 10_000 });
 
     const layout = await readSurfaceLayout(page, "body");
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);

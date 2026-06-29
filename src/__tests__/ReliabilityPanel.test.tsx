@@ -46,13 +46,13 @@ function pane(overrides: Partial<TerminalPaneTarget> = {}): TerminalPaneTarget {
     terminalId: "pty-a",
     index: 0,
     shell: "powershell",
-    cwd: "C:/repo/aether-terminal",
+    cwd: "C:/repo/aelyris",
     title: "PowerShell",
     role: "work",
     tabId: "tab-a",
-    tabLabel: "Aether",
+    tabLabel: "Aelyris",
     tabShell: "powershell",
-    tabCwd: "C:/repo/aether-terminal",
+    tabCwd: "C:/repo/aelyris",
     ...overrides,
   };
 }
@@ -128,7 +128,7 @@ describe("ReliabilityPanel", () => {
     expect(screen.getByText("Restart the referenced pane if it no longer accepts input.")).toBeTruthy();
     expect(screen.getByText("Recorded")).toBeTruthy();
     expect(screen.getByText("No recovery action is required.")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Focus Aether/PowerShell" }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: "Focus Aelyris/PowerShell" }).length).toBe(2);
   });
 
   it("focuses the pane that matches an incident terminal id", async () => {
@@ -142,7 +142,7 @@ describe("ReliabilityPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Focus Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Focus Aelyris/PowerShell" }));
 
     expect(onFocusPane).toHaveBeenCalledWith("tab-a", "pane-a");
   });
@@ -248,7 +248,7 @@ describe("ReliabilityPanel", () => {
     );
 
     expect(screen.getByText("Inspect target")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Restart Aether/PowerShell" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restart Aelyris/PowerShell" })).toBeNull();
   });
 
   it("keeps restart available for a recoverable pane after its terminal id is cleared", async () => {
@@ -262,7 +262,7 @@ describe("ReliabilityPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Aelyris/PowerShell" }));
     expect(useConfirmStore.getState().title).toBe("Restart terminal shell");
 
     await act(async () => {
@@ -283,7 +283,7 @@ describe("ReliabilityPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Aelyris/PowerShell" }));
     rerender(
       <ReliabilityPanel
         sessions={[session("a")]}

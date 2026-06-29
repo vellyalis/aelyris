@@ -1,17 +1,17 @@
 ---
-name: aether-orchestrate
-description: Drive Aether's experimental local MCP orchestration workflow over the aether.* verbs. Use for current Aether runtime orchestration when the local MCP server is available: decompose a goal, set shared ADR, create task graph/worktrees, observe agent activity, and run review gates with machine evidence. This is not release-readiness proof; aether-fleet is the legacy PowerShell fallback.
+name: aelyris-orchestrate
+description: Drive Aelyris's experimental local MCP orchestration workflow over the aelyris.* verbs. Use for current Aelyris runtime orchestration when the local MCP server is available: decompose a goal, set shared ADR, create task graph/worktrees, observe agent activity, and run review gates with machine evidence. This is not release-readiness proof; aelyris-fleet is the legacy PowerShell fallback.
 ---
 
-# Aether orchestration (MCP runtime)
+# Aelyris orchestration (MCP runtime)
 
-You are the **orchestrator (the brain)**. Aether is the **capability layer (the hands)**.
-You do not edit files yourself; you drive the runtime by calling `aether.*` MCP verbs,
+You are the **orchestrator (the brain)**. Aelyris is the **capability layer (the hands)**.
+You do not edit files yourself; you drive the runtime by calling `aelyris.*` MCP verbs,
 and the worker agents (real `claude`/`codex`/`gemini` CLIs in isolated worktrees) do the
 implementation. Keep decomposition, coordination, review judgment, and integration in
-yourself. Aether is local-only — never push or open PRs.
+yourself. Aelyris is local-only — never push or open PRs.
 
-Claim-safety note: this skill drives an experimental local operator workflow. It does not make Aether release-ready, world-class, tmux-equivalent, or BridgeSpace-plus complete. Public claims still require the verifier gates in `AGENTS.md`, `docs/requirements.md`, and `docs/AGENT_WORKFLOWS.md`.
+Claim-safety note: this skill drives an experimental local operator workflow. It does not make Aelyris release-ready, world-class, tmux-equivalent, or BridgeSpace-plus complete. Public claims still require the verifier gates in `AGENTS.md`, `docs/requirements.md`, and `docs/AGENT_WORKFLOWS.md`.
 
 ## How to call verbs
 
@@ -19,27 +19,27 @@ The runtime is a local HTTP server (`127.0.0.1:9333`, bearer auth). Two faces, s
 verb surface:
 
 **Native MCP (preferred — register once, call as native tools).** `POST /mcp` speaks
-JSON-RPC 2.0 (Streamable HTTP), so register Aether as a standard MCP server and the
-`aether.*` verbs become native tools (no HTTP boilerplate). Set a *fixed*
-`QUORUM_API_TOKEN` before `pnpm tauri:dev` (otherwise the token rotates each launch), then:
+JSON-RPC 2.0 (Streamable HTTP), so register Aelyris as a standard MCP server and the
+`aelyris.*` verbs become native tools (no HTTP boilerplate). Set a *fixed*
+`AELYRIS_API_TOKEN` before `pnpm tauri:dev` (otherwise the token rotates each launch), then:
 ```json
 // .mcp.json
-{ "mcpServers": { "aether": {
+{ "mcpServers": { "aelyris": {
   "type": "http", "url": "http://127.0.0.1:9333/mcp",
-  "headers": { "Authorization": "Bearer ${QUORUM_API_TOKEN}" } } } }
+  "headers": { "Authorization": "Bearer ${AELYRIS_API_TOKEN}" } } } }
 ```
 
 **Direct REST (no registration — call from Bash/node).**
 ```
 POST http://127.0.0.1:9333/mcp/tools/call
   Authorization: Bearer <token>
-  { "name": "aether.<verb>", "arguments": { ... } }
+  { "name": "aelyris.<verb>", "arguments": { ... } }
 → { "ok": true, "result": { ... } }
 ```
-- **Token:** `$env:QUORUM_API_TOKEN`, or grep the dev log for `ephemeral token: <uuid>`
+- **Token:** `$env:AELYRIS_API_TOKEN`, or grep the dev log for `ephemeral token: <uuid>`
   (printed at startup when the env var is unset). Port is `9333`.
 - **Catalog:** `GET /mcp/tools/list` (REST) or the `tools/list` JSON-RPC method returns
-  every verb with its JSON schema — read it to confirm arguments. ~54 `aether.*` verbs.
+  every verb with its JSON schema — read it to confirm arguments. ~54 `aelyris.*` verbs.
 - Call them with the Bash tool (`curl`) or a tiny `node`/`fetch` snippet. See
   `scripts/verify-*-live.mjs` for working examples of every group (incl.
   `verify-mcp-jsonrpc-live.mjs` for the native endpoint).
@@ -143,5 +143,5 @@ between steps: watch agent.activity / event.recent; context.set on new decisions
 - Live, runnable examples per group: `scripts/verify-mcp-task-surface-live.mjs`,
   `verify-autonomy-loop-live.mjs`, `verify-coordination-stream-live.mjs`,
   `verify-shared-brain-live.mjs`, `verify-knowledge-graph-live.mjs`.
-- Spec: `docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md` (BR4–BR9).
-- Older manual model (worktree scripts + send_keys, not MCP): `aether-fleet`.
+- Spec: `docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md` (BR4–BR9).
+- Older manual model (worktree scripts + send_keys, not MCP): `aelyris-fleet`.

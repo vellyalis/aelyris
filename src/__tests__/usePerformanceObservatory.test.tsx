@@ -57,7 +57,7 @@ describe("usePerformanceObservatory", () => {
   });
 
   it("discovers a local dashboard state URL from workspace configuration", async () => {
-    localStorage.setItem("aether:dashboardStateUrl", "http://localhost:48371/state");
+    localStorage.setItem("aelyris:dashboardStateUrl", "http://localhost:48371/state");
     const invoke = vi.fn(async () => backend) as unknown as Invoke;
     const fetchDashboardState = vi.fn(async () => ({
       health: {
@@ -84,7 +84,7 @@ describe("usePerformanceObservatory", () => {
       expect(result.current.runtime.dashboardProcessMemoryBytes).toBe(96 * MiB);
       expect(result.current.runtime.dashboardCpuPct).toBe(8);
     } finally {
-      localStorage.removeItem("aether:dashboardStateUrl");
+      localStorage.removeItem("aelyris:dashboardStateUrl");
     }
   });
 });

@@ -14,7 +14,7 @@ use super::render_frame::{
 };
 use super::snapshot::GridSnapshot;
 
-const RENDER_COMMIT_SCHEMA: &str = "aether.native.render-commit.v1";
+const RENDER_COMMIT_SCHEMA: &str = "aelyris.native.render-commit.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,7 +107,7 @@ mod tests {
         let mut pipeline = NativeRenderPipeline::new(metrics());
         let commit = pipeline.commit_snapshot(&engine.snapshot());
 
-        assert_eq!(commit.schema, "aether.native.render-commit.v1");
+        assert_eq!(commit.schema, "aelyris.native.render-commit.v1");
         assert_eq!(commit.sequence, 1);
         assert_eq!(commit.repaint_mode, "full");
         assert!(commit.diff.full_repaint);

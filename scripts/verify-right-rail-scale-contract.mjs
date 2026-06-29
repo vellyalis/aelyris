@@ -26,7 +26,7 @@ function writeReport(report) {
 
 function parseChecks(output) {
   const checks = {};
-  const pattern = /AETHER_RIGHT_RAIL_SCALE_CHECK\s+({.*})/g;
+  const pattern = /AELYRIS_RIGHT_RAIL_SCALE_CHECK\s+({.*})/g;
   let match = pattern.exec(output);
   while (match) {
     const parsed = JSON.parse(match[1]);
@@ -182,7 +182,7 @@ function main() {
   const result = spawnSync(`pnpm exec vitest run ${TEST} --reporter=dot`, {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, AETHER_RIGHT_RAIL_SCALE_OUT: OUT },
+    env: { ...process.env, AELYRIS_RIGHT_RAIL_SCALE_OUT: OUT },
     shell: true,
   });
 

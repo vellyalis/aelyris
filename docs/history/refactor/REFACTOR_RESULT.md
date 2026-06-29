@@ -28,7 +28,7 @@ Branch: `refactor/debt-reduction-tierA`（base `codex/release-hardening-quality-
 | A-3 | `refactor(workflow): make mod re-exports explicit instead of glob` | `pub use *::*` を消費 8 シンボルの明示 re-export へ | cargo build が consumer の import 欠落を検出 → 緑 |
 | B-3 | `refactor(db): converge already-clamped LIMITs on clamp_limit helper` | inline `limit.clamp(1,N)` 3箇所を `clamp_limit` へ（usize で等価証明済み）。未bound メソッドは意図的に不変 | cargo test（clamp 系）緑 |
 | B-2 | `refactor(term): extract stash_pending for the 3 Incomplete branches` | `TermEngine::advance` の同一 Incomplete 分岐3つを `&mut self` helper へ。precedence/partial 処理不変 | split-across-advance テスト緑 |
-| B-4 | (commit pending) | MCP `maxLength`(`mux.workspace.safeInput`/`aether.pane_send_input`) を `WS_MAX_INPUT_FRAME_BYTES` に束縛するドリフト防止テストを追加 | 新テスト green |
+| B-4 | (commit pending) | MCP `maxLength`(`mux.workspace.safeInput`/`aelyris.pane_send_input`) を `WS_MAX_INPUT_FRAME_BYTES` に束縛するドリフト防止テストを追加 | 新テスト green |
 | B-5 | (commit pending) | `package.json` に check-only `lint:scripts: biome check scripts/` を追加（未 lint の scripts/ を可視化） | 既存 script キー不変・vitest 緑 |
 
 **Post 検証**: 各 Phase 後に Baseline を再実行し、全 gate が baseline と同等（cargo lib 788 passed・vitest 1765 passed・biome 34 のまま増やさず）であることを確認。
@@ -51,7 +51,7 @@ Branch: `refactor/debt-reduction-tierA`（base `codex/release-hardening-quality-
 - 移すとこのリリースハードニング gate が赤化。安全に行うには gate 側（4794行・C-26/C-27 で owner 領域）の lockstep 改修が必要。→ god-file 分割（PHASE_0_1 §2.1）は Codex 所有のため、gate 移行方針と併せて owner 判断。
 
 ### 🔴 その他 Tier C（`docs/history/refactor/refactor-instructions.md` Debt Map 参照、要 owner 判断）
-- **god-file 分割**: `App.tsx`(App() 4640行)・`commands.rs`(4231)・`queries.rs`(3073)・api 3file・`NativeTerminalArea`(1485)・`useCanvasIME`(1433)・`aether_native.rs`(8212 spike)。PHASE_0_1/spec 所有・brittle source-substring gate（`AppSilentBugs.test.ts`・`score-release-quality.mjs`）が pure-move でも赤化する。
+- **god-file 分割**: `App.tsx`(App() 4640行)・`commands.rs`(4231)・`queries.rs`(3073)・api 3file・`NativeTerminalArea`(1485)・`useCanvasIME`(1433)・`aelyris_native.rs`(8212 spike)。PHASE_0_1/spec 所有・brittle source-substring gate（`AppSilentBugs.test.ts`・`score-release-quality.mjs`）が pure-move でも赤化する。
 - **dead/unwired**: 48/191 IPC コマンド FE 未配線・`agent/watchdog.rs`・`agent/parser.rs(StreamParser)`・`watchdog/monitor.rs`・`pane_watcher` rule-engine 半分・`cost/over_budget`・event kinds `AgentSpawned/WorktreeCreated`・FE `useAgentFleet.backendFleetSessions`/`Sidebar` slice/`useGitStatus._refreshKey`。**cockpit 計画済みか真の死コードか不明 → 削除前に owner 確認**。
 - **型契約**: `invoke<T>` 無検証(35file)・status `"failed"` が enum 外・agent 形状3重 mirror・TS が `repoPath`/`crash_attempts`/`rework_attempts` 欠落 → TYPE_BRIDGE codegen 方向。
 - **security（document/owner）**: MCP `safety` は advisory のみ（enforcement 無）・ephemeral token log 出力・`validate_path` 空=Ok・validator が god-file 内。

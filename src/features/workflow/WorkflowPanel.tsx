@@ -220,7 +220,7 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent, onDest
 
   const handleExportYaml = useCallback(
     async (yaml: string, opts?: { runAfterSave?: boolean }) => {
-      const filePath = `${projectPath}/.aether/workflows/custom-${Date.now()}.yaml`;
+      const filePath = `${projectPath}/.aelyris/workflows/custom-${Date.now()}.yaml`;
       let saved = false;
       try {
         await invoke("write_file", { path: filePath, content: yaml });

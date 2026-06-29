@@ -12,29 +12,29 @@ import ts from "typescript";
 const ROOT = resolve(process.cwd());
 const SOURCE = join(ROOT, "src", "shared", "lib", "aiCliLaunchPlanner.ts");
 const REAL_PROBE =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_REAL_PROBE ??
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_REAL_PROBE ??
   join(ROOT, ".codex-auto", "production-smoke", "real-ai-cli-binary-probe.json");
 const NATIVE_INPUT_HOST =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_NATIVE_INPUT_HOST ??
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_NATIVE_INPUT_HOST ??
   join(ROOT, ".codex-auto", "production-smoke", "native-terminal-input-host.json");
 const IME_PROOF =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_IME ?? join(ROOT, ".codex-auto", "production-smoke", "verify-ime.json");
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_IME ?? join(ROOT, ".codex-auto", "production-smoke", "verify-ime.json");
 const PROCESS_RECONNECT =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_PROCESS_RECONNECT ??
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_PROCESS_RECONNECT ??
   join(ROOT, ".codex-auto", "production-smoke", "process-reconnect-command-evidence.json");
 const MUX_LIVE_PROCESS_PRESERVATION =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_MUX_LIVE_PROCESS_PRESERVATION ??
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_MUX_LIVE_PROCESS_PRESERVATION ??
   join(ROOT, ".codex-auto", "quality", "mux-live-process-preservation.json");
 const INTERACTIVE_BOUNDARY =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_INTERACTIVE_BOUNDARY ??
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_INTERACTIVE_BOUNDARY ??
   join(ROOT, ".codex-auto", "production-smoke", "interactive-ai-cli-boundary.json");
 const OUT =
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_OUT ??
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_OUT ??
   join(ROOT, ".codex-auto", "production-smoke", "ai-cli-launch-planner.json");
 const TMP = join(ROOT, ".codex-auto", "tmp", "aiCliLaunchPlanner.mjs");
-const PREFERRED_PROVIDER = process.env.AETHER_AI_CLI_LAUNCH_PLANNER_PROVIDER ?? "claude";
+const PREFERRED_PROVIDER = process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_PROVIDER ?? "claude";
 const MAX_EVIDENCE_AGE_MS = Number.parseInt(
-  process.env.AETHER_AI_CLI_LAUNCH_PLANNER_MAX_EVIDENCE_AGE_MS ?? String(24 * 60 * 60 * 1000),
+  process.env.AELYRIS_AI_CLI_LAUNCH_PLANNER_MAX_EVIDENCE_AGE_MS ?? String(24 * 60 * 60 * 1000),
   10,
 );
 

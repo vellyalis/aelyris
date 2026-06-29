@@ -18,9 +18,9 @@
 //! We deliberately do NOT benchmark the full PTY pipeline (spawn → read →
 //! feed → render) here — that sits under portable-pty's OS thread and
 //! alacritty, neither of which is worth re-benchmarking. The bottleneck
-//! Aether owns is the engine wrapper, so that's what these benches cover.
+//! Aelyris owns is the engine wrapper, so that's what these benches cover.
 
-use aether_terminal_lib::term::{DiffTracker, TermEngine};
+use aelyris_lib::term::{DiffTracker, TermEngine};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 fn make_ascii_chunk(bytes: usize) -> Vec<u8> {
@@ -55,7 +55,7 @@ fn make_osc133_chunk(prompts: usize) -> Vec<u8> {
         out.extend_from_slice(b"cargo build --release --timings\n");
         out.extend_from_slice(b"\x1b]133;C\x07");
         for _ in 0..4 {
-            out.extend_from_slice(b"   Compiling aether-terminal v0.2.2\n");
+            out.extend_from_slice(b"   Compiling aelyris v0.2.2\n");
         }
         if i % 4 == 0 {
             out.extend_from_slice(b"\x1b]133;D;1\x07");

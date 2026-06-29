@@ -13,7 +13,7 @@ use rusqlite::{params, Connection};
 use super::embedding::{cosine, Embedder};
 use super::types::{HistoryEntry, SearchFilters, SearchHit};
 
-/// Thread-safe wrapper over a dedicated connection to the Aether DB. A
+/// Thread-safe wrapper over a dedicated connection to the Aelyris DB. A
 /// separate connection (pointing at the same file) keeps embedding writes
 /// off the main `ManagedDb` lock so PTY save paths stay non-blocking.
 pub struct HistoryStore<E: Embedder> {

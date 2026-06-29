@@ -2,7 +2,7 @@
 
 mod pty_harness;
 
-use aether_terminal_lib::pty::{PtyManager, ShellType};
+use aelyris_lib::pty::{PtyManager, ShellType};
 use pty_harness::*;
 
 #[test]

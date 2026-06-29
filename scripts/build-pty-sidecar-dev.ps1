@@ -4,12 +4,12 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $TauriDir = Join-Path $Root "src-tauri"
 $IsWindowsPlatform = ($env:OS -eq "Windows_NT") -or [bool](Get-Variable -Name IsWindows -ValueOnly -ErrorAction SilentlyContinue)
 $Retries = 5
-if ($env:AETHER_DEV_SIDECAR_REPLACE_RETRIES) {
-  $Retries = [int]$env:AETHER_DEV_SIDECAR_REPLACE_RETRIES
+if ($env:AELYRIS_DEV_SIDECAR_REPLACE_RETRIES) {
+  $Retries = [int]$env:AELYRIS_DEV_SIDECAR_REPLACE_RETRIES
 }
 $RetryDelayMs = 250
-if ($env:AETHER_DEV_SIDECAR_REPLACE_RETRY_DELAY_MS) {
-  $RetryDelayMs = [int]$env:AETHER_DEV_SIDECAR_REPLACE_RETRY_DELAY_MS
+if ($env:AELYRIS_DEV_SIDECAR_REPLACE_RETRY_DELAY_MS) {
+  $RetryDelayMs = [int]$env:AELYRIS_DEV_SIDECAR_REPLACE_RETRY_DELAY_MS
 }
 
 function Stop-ProcessesUsingPath {
@@ -61,8 +61,8 @@ try {
   }
 
   $Extension = if ($IsWindowsPlatform) { ".exe" } else { "" }
-  $Built = Join-Path $TauriDir "pty-server/target/debug/aether-pty-server$Extension"
-  $Sibling = Join-Path $TauriDir "target/debug/aether-pty-server$Extension"
+  $Built = Join-Path $TauriDir "pty-server/target/debug/aelyris-pty-server$Extension"
+  $Sibling = Join-Path $TauriDir "target/debug/aelyris-pty-server$Extension"
   Replace-DevSidecarExecutable -Source $Built -Destination $Sibling
   Write-Host "Prepared dev PTY sidecar: $Sibling"
 }

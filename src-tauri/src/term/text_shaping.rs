@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
 use windows_core::{implement, ComObject, Interface};
 
-const TEXT_SHAPING_SCHEMA: &str = "aether.native.text-shaping.v1";
+const TEXT_SHAPING_SCHEMA: &str = "aelyris.native.text-shaping.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

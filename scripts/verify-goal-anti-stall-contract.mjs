@@ -62,7 +62,7 @@ function hasAll(source, needles) {
 }
 
 function parseDefaultNativeAiChaosWait(source) {
-  const match = source.match(/AETHER_NATIVE_AI_CHAOS_WAIT_MS\s*\?\?\s*"(\d+)"/);
+  const match = source.match(/AELYRIS_NATIVE_AI_CHAOS_WAIT_MS\s*\?\?\s*"(\d+)"/);
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
@@ -124,16 +124,16 @@ const checks = {
   ),
   buildAvoidsWindowsSpawnDeadEnds:
     packageJson.includes('"build":') &&
-    packageJson.includes("AETHER_VITE_NO_ESBUILD_SPAWN=1") &&
+    packageJson.includes("AELYRIS_VITE_NO_ESBUILD_SPAWN=1") &&
     packageJson.includes("NODE_OPTIONS=--require ./scripts/vite-windows-net-use-shim.cjs") &&
     packageJson.includes("vite build --configLoader native"),
   testAvoidsWindowsSpawnDeadEnds:
     packageJson.includes('"test":') &&
-    packageJson.includes("AETHER_VITE_NO_ESBUILD_SPAWN=1") &&
+    packageJson.includes("AELYRIS_VITE_NO_ESBUILD_SPAWN=1") &&
     packageJson.includes("vitest run --configLoader native") &&
     packageJson.includes('"test:watch":') &&
     packageJson.includes("vitest --configLoader native") &&
-    vitestConfig.includes("aether:vitest-typescript-transpile-no-esbuild-spawn") &&
+    vitestConfig.includes("aelyris:vitest-typescript-transpile-no-esbuild-spawn") &&
     vitestConfig.includes("esbuild: noEsbuildSpawn ? false : undefined") &&
     vitestConfig.includes('pool: noEsbuildSpawn ? "threads" : "forks"') &&
     vitestConfig.includes("isolate: true"),
@@ -161,10 +161,10 @@ const checks = {
   operatorFinishRequiresExactHumanOptIn: hasAll(operatorFinish, [
     "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
     "I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS",
-    "delete env.QUORUM_AUTH_PROMPT_CONSENT",
-    "delete env.QUORUM_AUTH_PROMPT_PROVIDER",
-    "delete env.QUORUM_ALLOW_OS_SLEEP",
-    "delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP",
+    "delete env.AELYRIS_AUTH_PROMPT_CONSENT",
+    "delete env.AELYRIS_AUTH_PROMPT_PROVIDER",
+    "delete env.AELYRIS_ALLOW_OS_SLEEP",
+    "delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP",
   ]),
   operatorFinishHasReplayFallback: hasAll(operatorFinish, [
     "spawnBlocked",
@@ -208,13 +208,13 @@ const checks = {
     ]),
   goalFinalizeSkipsGitUnlessRequested: hasAll(goalFinalize, [
     "INCLUDE_GIT_FINALIZATION",
-    'process.env.AETHER_GOAL_FINALIZE_INCLUDE_GIT === "1"',
+    'process.env.AELYRIS_GOAL_FINALIZE_INCLUDE_GIT === "1"',
     "...(INCLUDE_GIT_FINALIZATION",
     "includeGitFinalization",
   ]),
   operatorFinishStreamsLongExternalSteps: hasAll(operatorFinish, [
     "runNodeStepStreaming",
-    "AETHER_GOAL_OPERATOR_HEARTBEAT_MS",
+    "AELYRIS_GOAL_OPERATOR_HEARTBEAT_MS",
     "[goal-operator] start",
     "[goal-operator] waiting",
     "progressHeartbeatMs",
@@ -267,9 +267,9 @@ const checks = {
   nonTokenRefreshNeverSpendsTokensOrSleeps: hasAll(nonTokenRefresh, [
     "tokenSpendingPromptExecuted: false",
     "realOsSleepInvoked: false",
-    "delete env.QUORUM_AUTH_PROMPT_CONSENT",
-    "delete env.QUORUM_AUTH_PROMPT_PROVIDER",
-    "delete env.QUORUM_ALLOW_OS_SLEEP",
+    "delete env.AELYRIS_AUTH_PROMPT_CONSENT",
+    "delete env.AELYRIS_AUTH_PROMPT_PROVIDER",
+    "delete env.AELYRIS_ALLOW_OS_SLEEP",
   ]),
   nonTokenRefreshCoversCurrentContracts: hasAll(nonTokenRefresh, [
     "chunked-osc-live",
@@ -296,11 +296,11 @@ const checks = {
       "git-finalization-shell-diagnostics",
       "git-finalization-readiness",
       "goal-safe",
-      "AETHER_GOAL_FINALIZE_SKIP_OPERATOR",
-      "docs/history/AETHER_COMMAND_CENTER_EDGE_PROGRESS.md",
+      "AELYRIS_GOAL_FINALIZE_SKIP_OPERATOR",
+      "docs/history/AELYRIS_COMMAND_CENTER_EDGE_PROGRESS.md",
       "scripts/verify-goal-external-gate-readiness.mjs",
-      "delete env.QUORUM_AUTH_PROMPT_CONSENT",
-      "delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP",
+      "delete env.AELYRIS_AUTH_PROMPT_CONSENT",
+      "delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP",
       "tokenSpendingPromptExecuted: false",
       "realOsSleepInvoked: false",
       "nextRequiredAction",
@@ -316,8 +316,8 @@ const checks = {
     hasAll(finalGoalArtifactLock, [
       "acquireFinalGoalArtifactLock",
       "final-goal-evidence.lock",
-      "AETHER_FINAL_GOAL_LOCK_TIMEOUT_MS",
-      "AETHER_FINAL_GOAL_LOCK_STALE_MS",
+      "AELYRIS_FINAL_GOAL_LOCK_TIMEOUT_MS",
+      "AELYRIS_FINAL_GOAL_LOCK_STALE_MS",
     ]) &&
     hasAll(score, [
       "acquireFinalGoalArtifactLock",
@@ -384,7 +384,7 @@ const checks = {
       "ready-for-manual-sleep-cycle",
       "hostBlockerClassified",
       "evidenceDoesNotFakePass",
-      "Does not set QUORUM_ALLOW_OS_SLEEP and does not call SetSuspendState.",
+      "Does not set AELYRIS_ALLOW_OS_SLEEP and does not call SetSuspendState.",
       "pnpm verify:production:suspend:native-user-cycle",
       "pnpm verify:goal:operator-finish",
       "pnpm verify:goal:finalize",

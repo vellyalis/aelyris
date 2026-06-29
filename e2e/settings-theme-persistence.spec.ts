@@ -1,18 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-const projectPath = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+const projectPath = process.env.AELYRIS_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 
 async function setupProject(page: import("@playwright/test").Page) {
-  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
+  await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
     waitUntil: "domcontentloaded",
   });
   await page.evaluate((path) => {
-    localStorage.setItem("aether:visualQa", "1");
-    localStorage.setItem("aether:visualQaProject", path);
-    localStorage.setItem("aether:onboarding-done", "1");
-    localStorage.setItem("aether:moodPreset", "aether-sky");
-    localStorage.setItem("aether:theme", "aether-dark");
-    localStorage.removeItem("aether:themeOverrides");
+    localStorage.setItem("aelyris:visualQa", "1");
+    localStorage.setItem("aelyris:visualQaProject", path);
+    localStorage.setItem("aelyris:onboarding-done", "1");
+    localStorage.setItem("aelyris:moodPreset", "aelyris-sky");
+    localStorage.setItem("aelyris:theme", "aelyris-dark");
+    localStorage.removeItem("aelyris:themeOverrides");
   }, projectPath);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
@@ -31,16 +31,16 @@ test.describe("Settings theme controls", () => {
   test("mood preset changes from Settings and survives reload", async ({ page }) => {
     await openSettings(page);
 
-    await page.getByRole("radio", { name: /Aether Sakura/i }).click();
-    await expect(page.locator("html")).toHaveAttribute("data-mood", "aether-sakura");
-    await expect(page.getByRole("radio", { name: /Aether Sakura/i })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radio", { name: /Aelyris Sakura/i }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-mood", "aelyris-sakura");
+    await expect(page.getByRole("radio", { name: /Aelyris Sakura/i })).toHaveAttribute("aria-checked", "true");
 
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("heading", { name: "Settings" })).not.toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem("aether:moodPreset"))).toBe("aether-sakura");
+    expect(await page.evaluate(() => localStorage.getItem("aelyris:moodPreset"))).toBe("aelyris-sakura");
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.locator("html")).toHaveAttribute("data-mood", "aether-sakura");
+    await expect(page.locator("html")).toHaveAttribute("data-mood", "aelyris-sakura");
   });
 
   test("palette override applies and persisted overrides are sanitized", async ({ page }) => {
@@ -51,14 +51,14 @@ test.describe("Settings theme controls", () => {
     await input.fill("#abc");
     await input.press("Enter");
 
-    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("aether:themeOverrides") ?? "{}"));
-    expect(stored).toEqual({ "aether-dark": { sapphire: "#aabbcc" } });
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("aelyris:themeOverrides") ?? "{}"));
+    expect(stored).toEqual({ "aelyris-dark": { sapphire: "#aabbcc" } });
 
     await page.evaluate(() => {
       localStorage.setItem(
-        "aether:themeOverrides",
+        "aelyris:themeOverrides",
         JSON.stringify({
-          "aether-dark": {
+          "aelyris-dark": {
             sapphire: "#def",
             red: "url(javascript:alert(1))",
             unknown: "#ffffff",

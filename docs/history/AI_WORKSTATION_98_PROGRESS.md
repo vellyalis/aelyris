@@ -1,4 +1,4 @@
-# Aether Terminal 9.8 Progress
+# Aelyris 9.8 Progress
 
 Updated: 2026-05-06T02:32:37.108Z
 Source plan: `docs/history/AI_WORKSTATION_98_IMPLEMENTATION_PLAN_2026-05-02.md`
@@ -380,7 +380,7 @@ Validation ledger: p1-01-live-panes-process-truth-1777969976970. Current next ca
 - Status: blocked, needs_attention. Evidence: `p1-04-code-conflict-concurrent-writers-1777970962254`.
 - Blocker kind: `code_conflict`.
 - Cause: multiple active same-workspace auto-loop writers are mutating `.codex-auto/current-progress.json`, producing stale embedded activeRoadmap objects after reconciliation.
-- Next step: resolve duplicate Aether_Terminal auto-loop writers, reconcile current-progress to P1-04, then start Unified workstation graph schema validation.
+- Next step: resolve duplicate Aelyris auto-loop writers, reconcile current-progress to P1-04, then start Unified workstation graph schema validation.
 
 ## P1-04 Unified Workstation Graph Schema
 

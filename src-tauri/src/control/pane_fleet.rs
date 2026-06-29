@@ -18,7 +18,7 @@
 //! `succeeded` task (-> review), a **non-zero exit** is a `failed` task (->
 //! recovery), and a pane that never exits past the wall-clock budget is
 //! `timed_out` (-> killed + recovery). See
-//! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9).
+//! docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn outputs_present_requires_every_declared_output() {
-        let dir = std::env::temp_dir().join(format!("aether-outputs-{}", now_secs()));
+        let dir = std::env::temp_dir().join(format!("aelyris-outputs-{}", now_secs()));
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.to_string_lossy().to_string();
         std::fs::write(dir.join("A.md"), "a").unwrap();
@@ -480,7 +480,7 @@ mod tests {
     fn poll_reports_interactive_pane_done_when_outputs_appear() {
         use std::time::{Duration, Instant};
 
-        let work = std::env::temp_dir().join(format!("aether-interactive-{}", now_secs()));
+        let work = std::env::temp_dir().join(format!("aelyris-interactive-{}", now_secs()));
         std::fs::create_dir_all(&work).unwrap();
         let cwd = work.to_string_lossy().to_string();
 

@@ -69,7 +69,7 @@ function nearlyEqual(actual, expected, epsilon = 0.001) {
 
 const packageJson = source("package.json");
 const cargoToml = source("src-tauri/Cargo.toml");
-const aetherNative = source("src-tauri/src/bin/aether_native.rs");
+const aelyrisNative = source("src-tauri/src/bin/aelyris_native.rs");
 const renderFrame = source("src-tauri/src/term/render_frame.rs");
 const renderPipeline = source("src-tauri/src/term/render_pipeline.rs");
 const nativeInput = source("src-tauri/src/term/native_input.rs");
@@ -180,7 +180,7 @@ function exactNativeSleepResumeRunbook(commandCenter) {
     action("run-native-user-sleep-cycle")?.requiresUserSleepAction === true &&
     action("run-native-user-sleep-cycle")?.doesNotInvokeSleepApi === true &&
     action("run-native-sleep-cycle")?.requiresExplicitOptIn === true &&
-    action("run-native-sleep-cycle")?.explicitOptInEnv === "QUORUM_ALLOW_OS_SLEEP=1"
+    action("run-native-sleep-cycle")?.explicitOptInEnv === "AELYRIS_ALLOW_OS_SLEEP=1"
   );
 }
 
@@ -202,8 +202,8 @@ function exactModeShellProof(container) {
   const commandCenter = container?.commandCenter;
   const modeShell = container?.modeShell;
   return (
-    commandCenter?.schema === "aether.native.command-center-proof.v1" &&
-    modeShell?.schema === "aether.native.mode-shell.v1" &&
+    commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
+    modeShell?.schema === "aelyris.native.mode-shell.v1" &&
     modeShell?.nativeModeShell === true &&
     modeShell?.webviewUsed === false &&
     modeShell?.reactUsed === false &&
@@ -211,14 +211,14 @@ function exactModeShellProof(container) {
     modeShell?.selectedMode === "terminal" &&
     routeMatches(modeShell?.selectedEntityRoute, "pane", "mux-daemon", "pane:active") &&
     exactModeShellRoutes(modeShell) &&
-    modeShell?.modeRail?.schema === "aether.native.mode-rail.v1" &&
+    modeShell?.modeRail?.schema === "aelyris.native.mode-rail.v1" &&
     modeShell?.modeRail?.modeCount === 8 &&
     modeShell?.modeRail?.shortcuts?.join?.("|") === expectedModeShellShortcuts.join("|") &&
     modeShell?.modeRail?.keyboardFirst === true &&
     modeShell?.modeRail?.shortcutsStable === true &&
     modeShell?.modeRail?.webviewUsed === false &&
     modeShell?.modeRail?.reactUsed === false &&
-    modeShell?.inspector?.schema === "aether.native.inspector.v1" &&
+    modeShell?.inspector?.schema === "aelyris.native.inspector.v1" &&
     modeShell?.inspector?.contextualInspector === true &&
     modeShell?.inspector?.commandCenterBacked === true &&
     modeShell?.inspector?.evidenceRows === commandCenter?.evidence?.length &&
@@ -226,7 +226,7 @@ function exactModeShellProof(container) {
     modeShell?.inspector?.blockerCount === commandCenter?.blockerCount &&
     modeShell?.inspector?.webviewUsed === false &&
     modeShell?.inspector?.reactUsed === false &&
-    modeShell?.rightInspectorContractId === "aether.native.inspector.v1:command-center" &&
+    modeShell?.rightInspectorContractId === "aelyris.native.inspector.v1:command-center" &&
     modeShell?.guardrails?.modeCountAtLeastEight === true &&
     modeShell?.guardrails?.selectedIndexInBounds === true &&
     modeShell?.guardrails?.noReactDependency === true &&
@@ -240,8 +240,8 @@ function exactModeRailWindowProof(container) {
   const window = container?.window;
   return (
     container?.operation === "mode-rail-window-proof" &&
-    container?.modeShell?.schema === "aether.native.mode-shell.v1" &&
-    window?.schema === "aether.native.mode-rail-window-proof.v1" &&
+    container?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
+    window?.schema === "aelyris.native.mode-rail-window-proof.v1" &&
     window?.nativeModeRailWindow === true &&
     window?.nativeModeRail === true &&
     window?.windowUi === true &&
@@ -270,9 +270,9 @@ function exactInspectorWindowProof(container) {
   const window = container?.window;
   return (
     container?.operation === "inspector-window-proof" &&
-    commandCenter?.schema === "aether.native.command-center-proof.v1" &&
-    container?.modeShell?.schema === "aether.native.mode-shell.v1" &&
-    window?.schema === "aether.native.inspector-window-proof.v1" &&
+    commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
+    container?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
+    window?.schema === "aelyris.native.inspector-window-proof.v1" &&
     window?.nativeInspectorWindow === true &&
     window?.nativeContextualInspector === true &&
     window?.windowUi === true &&
@@ -281,8 +281,8 @@ function exactInspectorWindowProof(container) {
     window?.webviewUsed === false &&
     window?.reactUsed === false &&
     window?.selectedMode === "terminal" &&
-    window?.rightInspectorContractId === "aether.native.inspector.v1:command-center" &&
-    window?.inspector?.schema === "aether.native.inspector.v1" &&
+    window?.rightInspectorContractId === "aelyris.native.inspector.v1:command-center" &&
+    window?.inspector?.schema === "aelyris.native.inspector.v1" &&
     window?.commandCenterBacked === true &&
     window?.contextualInspector === true &&
     window?.evidenceRowsTotal === commandCenter?.evidence?.length &&
@@ -307,9 +307,9 @@ function exactRightRailDemotionProof(container) {
   const demotion = container?.rightRailDemotion;
   return (
     container?.operation === "right-rail-demotion-proof" &&
-    container?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
-    container?.modeShell?.schema === "aether.native.mode-shell.v1" &&
-    demotion?.schema === "aether.native.right-rail-demotion-proof.v1" &&
+    container?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
+    container?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
+    demotion?.schema === "aelyris.native.right-rail-demotion-proof.v1" &&
     demotion?.nativeRightRailDemotionProof === true &&
     demotion?.sourceOfTruth === "rust-native-command-center-mode-shell-inspector" &&
     demotion?.webviewUsed === false &&
@@ -338,7 +338,7 @@ function exactRightRailDemotionProof(container) {
     demotion?.reactDemotionComplete === true &&
     demotion?.readyForReactDemotion === false &&
     demotion?.readyForFullNativeClaim === false &&
-    demotion?.nextProof === "aether-native-primary-daily-driver-promotion"
+    demotion?.nextProof === "aelyris-native-primary-daily-driver-promotion"
   );
 }
 
@@ -346,12 +346,12 @@ function exactSettingsWindowProof(container) {
   const window = container?.window;
   return (
     container?.operation === "settings-window-proof" &&
-    container?.settings?.schema === "aether.native.settings-proof.v1" &&
+    container?.settings?.schema === "aelyris.native.settings-proof.v1" &&
     container?.settings?.nativeSettings === true &&
     container?.settings?.webviewUsed === false &&
     container?.settings?.reactUsed === false &&
     container?.settings?.hotReloadProof?.changedWithoutReact === true &&
-    window?.schema === "aether.native.settings-window-proof.v1" &&
+    window?.schema === "aelyris.native.settings-window-proof.v1" &&
     window?.nativeSettingsWindow === true &&
     window?.nativeSettingsCustomization === true &&
     window?.windowUi === true &&
@@ -379,7 +379,7 @@ function exactImeHwndDogfoodProof(container) {
   const dogfood = container?.imeDogfood;
   return (
     container?.operation === "ime-dogfood-proof" &&
-    dogfood?.schema === "aether.native.ime-dogfood-proof.v1" &&
+    dogfood?.schema === "aelyris.native.ime-dogfood-proof.v1" &&
     dogfood?.mode === "native-hwnd-message-loop-dogfood" &&
     dogfood?.nativeHwndImeDogfood === true &&
     dogfood?.nativeCompositionSurfaceReady === true &&
@@ -404,7 +404,7 @@ function exactImeOsDogfoodProof(container) {
   const dogfood = container?.imeOsDogfood;
   return (
     container?.operation === "ime-os-dogfood-proof" &&
-    dogfood?.schema === "aether.native.ime-os-dogfood-proof.v1" &&
+    dogfood?.schema === "aelyris.native.ime-os-dogfood-proof.v1" &&
     dogfood?.mode === "win32-imm32-composition-dogfood" &&
     dogfood?.nativeOsImeDogfood === true &&
     dogfood?.imeApi === "Imm32" &&
@@ -440,7 +440,7 @@ function exactAccessibilityTreeProof(container) {
   const accessibility = container?.accessibility;
   return (
     container?.operation === "accessibility-proof" &&
-    accessibility?.schema === "aether.native.accessibility-proof.v1" &&
+    accessibility?.schema === "aelyris.native.accessibility-proof.v1" &&
     accessibility?.nativeAccessibilityTreeProof === true &&
     accessibility?.mode === "semantic-tree-proof" &&
     accessibility?.webviewUsed === false &&
@@ -469,14 +469,14 @@ function exactUiaProviderProof(container) {
   const provider = container?.uiaProvider;
   return (
     container?.operation === "uia-provider-proof" &&
-    provider?.schema === "aether.native.uia-provider-proof.v1" &&
+    provider?.schema === "aelyris.native.uia-provider-proof.v1" &&
     provider?.nativeUiaProviderDogfood === true &&
     provider?.mode === "win32-uia-client-dogfood" &&
     provider?.webviewUsed === false &&
     provider?.reactUsed === false &&
     provider?.uiaProviderBound === true &&
     provider?.elementFromHandle === true &&
-    provider?.root?.name === "Aether Native Accessibility Dogfood" &&
+    provider?.root?.name === "Aelyris Native Accessibility Dogfood" &&
     provider?.descendantCount >= 3 &&
     provider?.dogfoodChecks?.rootNameReadable === true &&
     provider?.dogfoodChecks?.terminalNameReadable === true &&
@@ -499,7 +499,7 @@ function exactVisualQaHarnessProof(container) {
   const visualQa = container?.visualQa;
   return (
     container?.operation === "visual-qa-proof" &&
-    visualQa?.schema === "aether.native.visual-qa-proof.v1" &&
+    visualQa?.schema === "aelyris.native.visual-qa-proof.v1" &&
     visualQa?.nativeVisualQaHarness === true &&
     visualQa?.mode === "native-pixel-contrast-harness" &&
     visualQa?.webviewUsed === false &&
@@ -512,12 +512,12 @@ function exactVisualQaHarnessProof(container) {
     visualQa?.contrastPairs?.length >= 4 &&
     visualQa?.contrastPairs?.every?.((pair) => pair.wcagAaText === true && pair.ratio >= 4.5) &&
     visualQa?.pixelProbePass === true &&
-    visualQa?.pixelProbe?.schema === "aether.native.visual-pixel-probe.v1" &&
+    visualQa?.pixelProbe?.schema === "aelyris.native.visual-pixel-probe.v1" &&
     visualQa?.pixelProbe?.webviewCdpUsed === false &&
     visualQa?.pixelProbe?.nonBlank === true &&
     visualQa?.resizeProbePass === true &&
     visualQa?.focusCoveragePass === true &&
-    visualQa?.sleepResumeRecoveryProbe?.schema === "aether.native.sleep-resume-recovery-probe.v1" &&
+    visualQa?.sleepResumeRecoveryProbe?.schema === "aelyris.native.sleep-resume-recovery-probe.v1" &&
     visualQa?.sleepResumeRecoveryProbe?.syntheticPowerBroadcastDogfood === true &&
     visualQa?.sleepResumeRecoveryProbe?.realWindowsSleepResumeDogfood === false &&
     visualQa?.sleepResumeRecoveryProbe?.doesNotClaimMachineSleep === true &&
@@ -536,9 +536,9 @@ function exactPrimaryShellProof(container) {
   const primary = container?.primaryShell;
   return (
     container?.operation === "primary-shell-proof" &&
-    primary?.schema === "aether.native.primary-shell-proof.v1" &&
+    primary?.schema === "aelyris.native.primary-shell-proof.v1" &&
     primary?.nativePrimaryShellPromotion === true &&
-    primary?.primarySurface === "aether-native" &&
+    primary?.primarySurface === "aelyris-native" &&
     primary?.launchProfile === "native-primary" &&
     primary?.productTruthOwner === "rust-native-shell" &&
     primary?.reactWebViewCompatibilityOnly === true &&
@@ -549,7 +549,7 @@ function exactPrimaryShellProof(container) {
     primary?.promotionReady === true &&
     primary?.prerequisites?.length >= 8 &&
     primary?.prerequisites?.every?.((entry) => entry.complete === true) &&
-    primary?.primaryShellWindow?.schema === "aether.native.primary-shell-window-proof.v1" &&
+    primary?.primaryShellWindow?.schema === "aelyris.native.primary-shell-window-proof.v1" &&
     primary?.primaryShellWindow?.nativePrimaryShellWindow === true &&
     primary?.primaryShellWindow?.nonBlank === true &&
     primary?.primaryShellWindow?.modeRowsRendered >= 8 &&
@@ -574,10 +574,10 @@ function exactRealOsNativeSleepResumeDogfood(evidence) {
   const windowsPowerEvents = evidence?.validation?.windowsPowerEvents;
   return (
     evidence?.status === "pass" &&
-    appPath.includes("aether-native") &&
-    evidence?.app?.processName === "aether-native" &&
-    evidence?.app?.targetKind === "aether-native-primary-shell" &&
-    evidence?.validation?.suspendTarget?.targetKind === "aether-native-primary-shell" &&
+    appPath.includes("aelyris-native") &&
+    evidence?.app?.processName === "aelyris-native" &&
+    evidence?.app?.targetKind === "aelyris-native-primary-shell" &&
+    evidence?.validation?.suspendTarget?.targetKind === "aelyris-native-primary-shell" &&
     evidence?.validation?.suspendTarget?.nativePrimaryRequested === true &&
     evidence?.validation?.suspendTarget?.launchNativePrimaryRequested === true &&
     evidence?.validation?.nativePrimaryLaunch?.requested === true &&
@@ -589,13 +589,13 @@ function exactRealOsNativeSleepResumeDogfood(evidence) {
     evidence?.checks?.terminalResponsive === true &&
     evidence?.checks?.sqliteWritable === true &&
     evidence?.checks?.paneStatePreserved === true &&
-    windowsPowerEvents?.source === "aether-native-power-events-proof" &&
+    windowsPowerEvents?.source === "aelyris-native-power-events-proof" &&
     windowsPowerEvents?.nativeWindowsEventLog === true &&
     windowsPowerEvents?.powershellUsed === false &&
     windowsPowerEvents?.suspendEventFound === true &&
     windowsPowerEvents?.resumeEventFound === true &&
     processProbe?.ok === true &&
-    processProbe?.expectedProcessName === "aether-native" &&
+    processProbe?.expectedProcessName === "aelyris-native" &&
     Number(processProbe?.matchingProcessCount ?? 0) >= 1 &&
     processProbe?.processes?.some?.((entry) => entry.matchesExecutable === true) === true &&
     postResume?.apiHealth?.ok === true &&
@@ -622,7 +622,7 @@ const nativeClientFresh =
   mtime(nativeClientPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
-      mtime("src-tauri/src/bin/aether_native.rs"),
+      mtime("src-tauri/src/bin/aelyris_native.rs"),
       mtime("src-tauri/src/term/render_frame.rs"),
       mtime("src-tauri/src/term/render_pipeline.rs"),
     );
@@ -630,7 +630,7 @@ const nativeClientFresh =
 const nativeBoundaryFresh =
   (nativeBoundary?.status === "passed" || nativeBoundary?.status === "pass") &&
   mtime(nativeBoundaryPath) + 5_000 >=
-    Math.max(mtime("scripts/verify-native-boundary-contract.mjs"), mtime("src-tauri/src/bin/aether_native.rs"));
+    Math.max(mtime("scripts/verify-native-boundary-contract.mjs"), mtime("src-tauri/src/bin/aelyris_native.rs"));
 
 const nativeInputFresh =
   nativeInputArtifact?.status === "pass" &&
@@ -643,19 +643,19 @@ const hasReactWebViewShell =
   packageJson.includes('"@monaco-editor/react"');
 
 const hasNativeClientContract =
-  cargoToml.includes('name = "aether-native"') &&
-  aetherNative.includes("full_native_readiness_contract") &&
-  aetherNative.includes("aether.full-native-readiness.v1") &&
-  aetherNative.includes('"daily-driver no-WebView Rust client"');
+  cargoToml.includes('name = "aelyris-native"') &&
+  aelyrisNative.includes("full_native_readiness_contract") &&
+  aelyrisNative.includes("aelyris.full-native-readiness.v1") &&
+  aelyrisNative.includes('"daily-driver no-WebView Rust client"');
 
 const hasRenderFrameContract =
-  renderFrame.includes("aether.native.render-frame.v1") &&
+  renderFrame.includes("aelyris.native.render-frame.v1") &&
   renderPipeline.includes("winit-wgpu-present-loop") &&
-  nativeClient?.nativeGridRender?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+  nativeClient?.nativeGridRender?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
   nativeClient?.nativeGridRender?.renderer?.renderFrameSha256 === nativeClient?.nativeGridRender?.renderFrame?.frameSha256;
 
 const hasNoWebViewNativeProof =
-  nativeClient?.nativeContract?.client?.process === "aether-native" &&
+  nativeClient?.nativeContract?.client?.process === "aelyris-native" &&
   nativeClient?.nativeWindow?.window?.webviewUsed === false &&
   nativeClient?.nativeGridRender?.renderer?.webviewUsed === false &&
   nativeClient?.checks?.includes?.("native-client-no-webview-boundary") &&
@@ -663,8 +663,8 @@ const hasNoWebViewNativeProof =
   nativeClient?.checks?.includes?.("native-grid-render-proof-uses-term-engine");
 
 const hasNativePresentLoop =
-  aetherNative.includes('"present-loop-proof"') &&
-  aetherNative.includes("native_present_loop_proof") &&
+  aelyrisNative.includes('"present-loop-proof"') &&
+  aelyrisNative.includes("native_present_loop_proof") &&
   nativeClient?.nativePresentLoop?.operation === "present-loop-proof" &&
   nativeClient?.nativePresentLoop?.presentLoop?.terminalRenderer === "native-win32-present-loop-proof" &&
   nativeClient?.nativePresentLoop?.presentLoop?.presentLoop === true &&
@@ -686,10 +686,10 @@ const hasNativeInputProof =
 
 const hasGpuRenderProof =
   /\bwgpu\b/.test(cargoToml) &&
-  aetherNative.includes('"gpu-render-proof"') &&
-  aetherNative.includes("native_gpu_render_proof") &&
+  aelyrisNative.includes('"gpu-render-proof"') &&
+  aelyrisNative.includes("native_gpu_render_proof") &&
   nativeClient?.nativeGpuRender?.operation === "gpu-render-proof" &&
-  nativeClient?.nativeGpuRender?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+  nativeClient?.nativeGpuRender?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
   nativeClient?.nativeGpuRender?.gpu?.terminalRenderer === "wgpu-offscreen-frame-proof" &&
   nativeClient?.nativeGpuRender?.gpu?.gpuRenderer === true &&
   nativeClient?.nativeGpuRender?.gpu?.renderFrameSha256 === nativeClient?.nativeGpuRender?.renderFrame?.frameSha256 &&
@@ -700,10 +700,10 @@ const hasGpuRenderProof =
 const hasWinitWgpuSurfaceProof =
   /\bwgpu\b/.test(cargoToml) &&
   /\bwinit\b/.test(cargoToml) &&
-  aetherNative.includes("winit-wgpu-surface-present-loop") &&
-  aetherNative.includes("native-winit-wgpu-terminal") &&
+  aelyrisNative.includes("winit-wgpu-surface-present-loop") &&
+  aelyrisNative.includes("native-winit-wgpu-terminal") &&
   nativeClient?.nativeWinitWgpu?.operation === "winit-wgpu-proof" &&
-  nativeClient?.nativeWinitWgpu?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+  nativeClient?.nativeWinitWgpu?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
   nativeClient?.nativeWinitWgpu?.winitWgpu?.terminalRenderer === "native-winit-wgpu-terminal" &&
   nativeClient?.nativeWinitWgpu?.winitWgpu?.renderer === "winit-wgpu-surface-present-loop" &&
   nativeClient?.nativeWinitWgpu?.winitWgpu?.gpuRenderer === true &&
@@ -731,7 +731,7 @@ const hasWinitWgpuFontAtlasTerminal =
   nativeClient?.checks?.includes?.("native-winit-wgpu-font-atlas-proof");
 const hasNativeImeStateProof =
   nativeClient?.nativeIme?.operation === "ime-proof" &&
-  nativeClient?.nativeIme?.ime?.schema === "aether.native.ime-proof.v1" &&
+  nativeClient?.nativeIme?.ime?.schema === "aelyris.native.ime-proof.v1" &&
   nativeClient?.nativeIme?.ime?.nativeImeStateMachine === true &&
   nativeClient?.nativeIme?.ime?.nativePreeditOverlay === true &&
   nativeClient?.nativeIme?.ime?.nativeCommitPath === true &&
@@ -754,7 +754,7 @@ const hasNativeImeHwndDogfoodClientProof =
 const hasNativeImeHwndDogfoodStandaloneProof =
   exactImeHwndDogfoodProof(nativeImeDogfoodArtifact) &&
   mtime(nativeImeDogfoodPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeImeHwndDogfood = hasNativeImeHwndDogfoodClientProof || hasNativeImeHwndDogfoodStandaloneProof;
 const hasNativeImeOsDogfoodClientProof =
   exactImeOsDogfoodProof(nativeClient?.nativeImeOsDogfood) &&
@@ -764,20 +764,20 @@ const hasNativeImeOsDogfoodClientProof =
 const hasNativeImeOsDogfoodStandaloneProof =
   exactImeOsDogfoodProof(nativeImeOsDogfoodArtifact) &&
   mtime(nativeImeOsDogfoodPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeImeDogfood = hasNativeImeOsDogfoodClientProof || hasNativeImeOsDogfoodStandaloneProof;
 const hasNativeSettingsProof =
   nativeClient?.nativeSettings?.operation === "settings-proof" &&
-  nativeClient?.nativeSettings?.settings?.schema === "aether.native.settings-proof.v1" &&
+  nativeClient?.nativeSettings?.settings?.schema === "aelyris.native.settings-proof.v1" &&
   nativeClient?.nativeSettings?.settings?.nativeSettings === true &&
   nativeClient?.nativeSettings?.settings?.webviewUsed === false &&
   nativeClient?.nativeSettings?.settings?.reactUsed === false &&
   nativeClient?.nativeSettings?.settings?.theme === "sakura-hub" &&
-  nativeClient?.nativeSettings?.settings?.mood === "aether-sakura" &&
+  nativeClient?.nativeSettings?.settings?.mood === "aelyris-sakura" &&
   nativeClient?.nativeSettings?.settings?.hotReloadProof?.changedWithoutReact === true &&
   nativeClient?.nativeSettings?.settings?.paletteProof?.accentCount >= 3 &&
   nativeClient?.nativeSettings?.settings?.materialProof?.panelColor === "#fff2f7" &&
-  nativeClient?.nativeSettings?.settings?.wallpaperProof?.imagePath === "C:\\Images\\aether-native-sakura.jpg" &&
+  nativeClient?.nativeSettings?.settings?.wallpaperProof?.imagePath === "C:\\Images\\aelyris-native-sakura.jpg" &&
   nearlyEqual(nativeClient?.nativeSettings?.settings?.wallpaperProof?.opacity, 0.31) &&
   nativeClient?.checks?.includes?.("native-settings-config-roundtrip-proof") &&
   nativeClient?.checks?.includes?.("native-settings-hot-reload-proof") &&
@@ -792,11 +792,11 @@ const hasNativeSettingsWindowClientProof =
 const hasNativeSettingsWindowStandaloneProof =
   exactSettingsWindowProof(nativeSettingsWindowArtifact) &&
   mtime(nativeSettingsWindowPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeSettings = hasNativeSettingsWindowClientProof || hasNativeSettingsWindowStandaloneProof;
 const hasNativeCommandCenterClientProof =
   nativeClient?.nativeCommandCenter?.operation === "command-center-proof" &&
-  nativeClient?.nativeCommandCenter?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
+  nativeClient?.nativeCommandCenter?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
   nativeClient?.nativeCommandCenter?.commandCenter?.nativeCommandCenter === true &&
   nativeClient?.nativeCommandCenter?.commandCenter?.mode === "data-contract-proof" &&
   nativeClient?.nativeCommandCenter?.commandCenter?.webviewUsed === false &&
@@ -813,7 +813,7 @@ const hasNativeCommandCenterClientProof =
   nativeClient?.checks?.includes?.("native-command-center-ai-cli-surface-proof");
 const hasNativeCommandCenterStandaloneProof =
   nativeCommandCenterArtifact?.operation === "command-center-proof" &&
-  nativeCommandCenterArtifact?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
+  nativeCommandCenterArtifact?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
   nativeCommandCenterArtifact?.commandCenter?.nativeCommandCenter === true &&
   nativeCommandCenterArtifact?.commandCenter?.mode === "data-contract-proof" &&
   nativeCommandCenterArtifact?.commandCenter?.webviewUsed === false &&
@@ -823,12 +823,12 @@ const hasNativeCommandCenterStandaloneProof =
   nativeCommandCenterArtifact?.commandCenter?.aiCliSurface?.operation === "open-ai-cli-launch-plan" &&
   exactNativeSleepResumeRunbook(nativeCommandCenterArtifact?.commandCenter) &&
   nativeCommandCenterArtifact?.commandCenter?.nextProof === "native-command-center-window-ui" &&
-  mtime(nativeCommandCenterPath) + 5_000 >= mtime("src-tauri/src/bin/aether_native.rs");
+  mtime(nativeCommandCenterPath) + 5_000 >= mtime("src-tauri/src/bin/aelyris_native.rs");
 const hasNativeCommandCenterProof = hasNativeCommandCenterClientProof || hasNativeCommandCenterStandaloneProof;
 const hasNativeCommandCenterClientWindowProof =
   nativeClient?.nativeCommandCenterWindow?.operation === "command-center-window-proof" &&
-  nativeClient?.nativeCommandCenterWindow?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
-  nativeClient?.nativeCommandCenterWindow?.window?.schema === "aether.native.command-center-window-proof.v1" &&
+  nativeClient?.nativeCommandCenterWindow?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
+  nativeClient?.nativeCommandCenterWindow?.window?.schema === "aelyris.native.command-center-window-proof.v1" &&
   nativeClient?.nativeCommandCenterWindow?.window?.nativeCommandCenterWindow === true &&
   nativeClient?.nativeCommandCenterWindow?.window?.nativeRightRailWindow === true &&
   nativeClient?.nativeCommandCenterWindow?.window?.windowUi === true &&
@@ -847,8 +847,8 @@ const hasNativeCommandCenterClientWindowProof =
   nativeClient?.checks?.includes?.("native-command-center-window-nonblank-proof");
 const hasNativeCommandCenterStandaloneWindowProof =
   nativeCommandCenterWindowArtifact?.operation === "command-center-window-proof" &&
-  nativeCommandCenterWindowArtifact?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
-  nativeCommandCenterWindowArtifact?.window?.schema === "aether.native.command-center-window-proof.v1" &&
+  nativeCommandCenterWindowArtifact?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
+  nativeCommandCenterWindowArtifact?.window?.schema === "aelyris.native.command-center-window-proof.v1" &&
   nativeCommandCenterWindowArtifact?.window?.nativeCommandCenterWindow === true &&
   nativeCommandCenterWindowArtifact?.window?.nativeRightRailWindow === true &&
   nativeCommandCenterWindowArtifact?.window?.windowUi === true &&
@@ -862,14 +862,14 @@ const hasNativeCommandCenterStandaloneWindowProof =
   nativeCommandCenterWindowArtifact?.window?.nonBlank === true &&
   nativeCommandCenterWindowArtifact?.window?.rightRailUiStatus === "native-command-center-window-ui-proof" &&
   nativeCommandCenterWindowArtifact?.window?.nextProof === "native-command-center-input-and-scroll" &&
-  mtime(nativeCommandCenterWindowPath) + 5_000 >= mtime("src-tauri/src/bin/aether_native.rs");
+  mtime(nativeCommandCenterWindowPath) + 5_000 >= mtime("src-tauri/src/bin/aelyris_native.rs");
 const hasNativeCommandCenterWindowProof =
   hasNativeCommandCenterClientWindowProof || hasNativeCommandCenterStandaloneWindowProof;
 const hasNativeCommandCenterClientInputScrollProof =
   nativeClient?.nativeCommandCenterInputScroll?.operation === "command-center-input-scroll-proof" &&
-  nativeClient?.nativeCommandCenterInputScroll?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
+  nativeClient?.nativeCommandCenterInputScroll?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
   nativeClient?.nativeCommandCenterInputScroll?.inputScroll?.schema ===
-    "aether.native.command-center-input-scroll-proof.v1" &&
+    "aelyris.native.command-center-input-scroll-proof.v1" &&
   nativeClient?.nativeCommandCenterInputScroll?.inputScroll?.nativeCommandCenterInput === true &&
   nativeClient?.nativeCommandCenterInputScroll?.inputScroll?.nativeCommandCenterScroll === true &&
   nativeClient?.nativeCommandCenterInputScroll?.inputScroll?.webviewUsed === false &&
@@ -890,9 +890,9 @@ const hasNativeCommandCenterClientInputScrollProof =
   nativeClient?.checks?.includes?.("native-command-center-action-dispatch-proof");
 const hasNativeCommandCenterStandaloneInputScrollProof =
   nativeCommandCenterInputScrollArtifact?.operation === "command-center-input-scroll-proof" &&
-  nativeCommandCenterInputScrollArtifact?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
+  nativeCommandCenterInputScrollArtifact?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.schema ===
-    "aether.native.command-center-input-scroll-proof.v1" &&
+    "aelyris.native.command-center-input-scroll-proof.v1" &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.nativeCommandCenterInput === true &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.nativeCommandCenterScroll === true &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.webviewUsed === false &&
@@ -908,7 +908,7 @@ const hasNativeCommandCenterStandaloneInputScrollProof =
   nativeCommandCenterInputScrollArtifact?.inputScroll?.guardrails?.dispatchDoesNotRequireReact === true &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.guardrails?.dispatchDoesNotRequireWebView === true &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.nextProof === "react-right-rail-compatibility-demotion" &&
-  mtime(nativeCommandCenterInputScrollPath) + 5_000 >= mtime("src-tauri/src/bin/aether_native.rs");
+  mtime(nativeCommandCenterInputScrollPath) + 5_000 >= mtime("src-tauri/src/bin/aelyris_native.rs");
 const hasNativeCommandCenterInputScrollProof =
   hasNativeCommandCenterClientInputScrollProof || hasNativeCommandCenterStandaloneInputScrollProof;
 const hasNativeModeShellClientProof =
@@ -921,7 +921,7 @@ const hasNativeModeShellStandaloneProof =
   nativeModeShellArtifact?.operation === "mode-shell-proof" &&
   exactModeShellProof(nativeModeShellArtifact) &&
   mtime(nativeModeShellPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeModeShellProof = hasNativeModeShellClientProof || hasNativeModeShellStandaloneProof;
 const hasNativeModeRailWindowClientProof =
   exactModeRailWindowProof(nativeClient?.nativeModeRailWindow) &&
@@ -932,7 +932,7 @@ const hasNativeModeRailWindowClientProof =
 const hasNativeModeRailWindowStandaloneProof =
   exactModeRailWindowProof(nativeModeRailWindowArtifact) &&
   mtime(nativeModeRailWindowPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeModeRailWindowProof = hasNativeModeRailWindowClientProof || hasNativeModeRailWindowStandaloneProof;
 const hasNativeInspectorWindowClientProof =
   exactInspectorWindowProof(nativeClient?.nativeInspectorWindow) &&
@@ -943,7 +943,7 @@ const hasNativeInspectorWindowClientProof =
 const hasNativeInspectorWindowStandaloneProof =
   exactInspectorWindowProof(nativeInspectorWindowArtifact) &&
   mtime(nativeInspectorWindowPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeInspectorWindowProof =
   hasNativeInspectorWindowClientProof || hasNativeInspectorWindowStandaloneProof;
 const hasNativeRightRailDemotionClientProof =
@@ -955,7 +955,7 @@ const hasNativeRightRailDemotionClientProof =
 const hasNativeRightRailDemotionStandaloneProof =
   exactRightRailDemotionProof(nativeRightRailDemotionArtifact) &&
   mtime(nativeRightRailDemotionPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeRightRailDemotionProof =
   hasNativeRightRailDemotionClientProof || hasNativeRightRailDemotionStandaloneProof;
 const hasNativeRightRail =
@@ -964,7 +964,7 @@ const hasNativeRightRail =
   hasNativeModeRailWindowProof &&
   hasNativeInspectorWindowProof &&
   hasNativeRightRailDemotionProof &&
-  rightRailSources.includes("aether.react.right-rail-compatibility-client.v1") &&
+  rightRailSources.includes("aelyris.react.right-rail-compatibility-client.v1") &&
   rightRailSources.includes("productTruthOwner: \"rust-native-command-center\"") &&
   rightRailSources.includes("reactOwnsProductTruth: false") &&
   rightRailSources.includes("webviewDispatchRequired: false");
@@ -976,7 +976,7 @@ const hasNativeAccessibilityTreeClientProof =
 const hasNativeAccessibilityTreeStandaloneProof =
   exactAccessibilityTreeProof(nativeAccessibilityArtifact) &&
   mtime(nativeAccessibilityPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeAccessibilityTreeProof =
   hasNativeAccessibilityTreeClientProof || hasNativeAccessibilityTreeStandaloneProof;
 const hasNativeUiaProviderClientProof =
@@ -987,7 +987,7 @@ const hasNativeUiaProviderClientProof =
 const hasNativeUiaProviderStandaloneProof =
   exactUiaProviderProof(nativeUiaProviderArtifact) &&
   mtime(nativeUiaProviderPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeUiaProviderProof = hasNativeUiaProviderClientProof || hasNativeUiaProviderStandaloneProof;
 const hasNativeAccessibility =
   hasNativeAccessibilityTreeProof && hasNativeUiaProviderProof;
@@ -1001,7 +1001,7 @@ const hasNativeVisualQaHarnessClientProof =
 const hasNativeVisualQaHarnessStandaloneProof =
   exactVisualQaHarnessProof(nativeVisualQaArtifact) &&
   mtime(nativeVisualQaPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeVisualQaHarness =
   hasNativeVisualQaHarnessClientProof || hasNativeVisualQaHarnessStandaloneProof;
 const hasNativeVisualQa =
@@ -1013,7 +1013,7 @@ const hasPrimaryNativeShellPromotion =
     nativeClient?.checks?.includes?.("react-webview-compatibility-only-proof")) ||
   (exactPrimaryShellProof(nativePrimaryShellArtifact) &&
     mtime(nativePrimaryShellPath) + 5_000 >=
-      Math.max(mtime("src-tauri/src/bin/aether_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs")));
+      Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs")));
 const hasCompatibilityOnlyShell = !hasReactWebViewShell || hasPrimaryNativeShellPromotion;
 
 const items = [
@@ -1023,8 +1023,8 @@ const items = [
     0,
     10,
     hasNativeClientContract && nativeClientFresh,
-    "aether-native must expose an honest full-native readiness contract and fresh native-client proof.",
-    hasNativeClientContract ? ["refresh pnpm verify:terminal:native-client"] : ["add/repair aether-native fullNativeReadiness contract"],
+    "aelyris-native must expose an honest full-native readiness contract and fresh native-client proof.",
+    hasNativeClientContract ? ["refresh pnpm verify:terminal:native-client"] : ["add/repair aelyris-native fullNativeReadiness contract"],
   ),
   item(
     "daemon-and-mux-boundary",
@@ -1050,7 +1050,7 @@ const items = [
     0,
     10,
     hasNoWebViewNativeProof,
-    "Current native proof must create a real aether-native window and render grid cells without React/WebView.",
+    "Current native proof must create a real aelyris-native window and render grid cells without React/WebView.",
     ["run pnpm verify:terminal:native-client"],
   ),
   item(
@@ -1068,8 +1068,8 @@ const items = [
     0,
     8,
     hasNativePresentLoop,
-    "aether-native must repeatedly present terminal frames into a native interactive window, not only render offscreen proof images.",
-    ["add present-loop-proof to aether-native", "prove multiple nonblank frames from NativeRenderFrame"],
+    "aelyris-native must repeatedly present terminal frames into a native interactive window, not only render offscreen proof images.",
+    ["add present-loop-proof to aelyris-native", "prove multiple nonblank frames from NativeRenderFrame"],
   ),
   item(
     "gpu-render-proof",
@@ -1077,8 +1077,8 @@ const items = [
     0,
     4,
     hasGpuRenderProof,
-    "aether-native must prove it can create a GPU device, compile WGSL, submit a draw, and consume NativeRenderFrame without WebView/React.",
-    ["add/refresh gpu-render-proof in aether-native", "prove GPU render frame hash parity"],
+    "aelyris-native must prove it can create a GPU device, compile WGSL, submit a draw, and consume NativeRenderFrame without WebView/React.",
+    ["add/refresh gpu-render-proof in aelyris-native", "prove GPU render frame hash parity"],
   ),
   item(
     "winit-wgpu-surface-proof",
@@ -1086,7 +1086,7 @@ const items = [
     0,
     4,
     hasWinitWgpuSurfaceProof,
-    "aether-native must create a winit window, configure a wgpu swapchain, present multiple frames, and keep NativeRenderFrame hash parity without React/WebView.",
+    "aelyris-native must create a winit window, configure a wgpu swapchain, present multiple frames, and keep NativeRenderFrame hash parity without React/WebView.",
     ["add/refresh visible winit/wgpu surface proof", "prove swapchain presentation from NativeRenderFrame"],
   ),
   item(
@@ -1095,7 +1095,7 @@ const items = [
     0,
     1,
     hasWinitWgpuDirtyRectCellProof,
-    "aether-native must consume dirty rects, cursor, and terminal cell quads on the visible GPU surface without React/WebView.",
+    "aelyris-native must consume dirty rects, cursor, and terminal cell quads on the visible GPU surface without React/WebView.",
     ["render terminal cell/cursor quads from NativeRenderFrame", "consume dirty rects in the winit/wgpu present loop"],
   ),
   item(
@@ -1113,8 +1113,8 @@ const items = [
     0,
     2,
     hasNativeImeStateProof,
-    "aether-native must own a renderer-neutral IME preedit anchor and commit state before live OS IME dogfood can be trusted.",
-    ["add/refresh aether-native ime-proof", "prove preedit anchor and committed Japanese text in NativeRenderFrame"],
+    "aelyris-native must own a renderer-neutral IME preedit anchor and commit state before live OS IME dogfood can be trusted.",
+    ["add/refresh aelyris-native ime-proof", "prove preedit anchor and committed Japanese text in NativeRenderFrame"],
   ),
   item(
     "native-ime-hwnd-dogfood-proof",
@@ -1122,8 +1122,8 @@ const items = [
     0,
     2,
     hasNativeImeHwndDogfood,
-    "aether-native must dogfood the native HWND input surface and prove Japanese commits are visible at Codex/Claude/Gemini prompt rows without React/WebView.",
-    ["add/refresh aether-native ime-dogfood-proof", "prove native HWND message-loop commit and AI CLI prompt-row visibility"],
+    "aelyris-native must dogfood the native HWND input surface and prove Japanese commits are visible at Codex/Claude/Gemini prompt rows without React/WebView.",
+    ["add/refresh aelyris-native ime-dogfood-proof", "prove native HWND message-loop commit and AI CLI prompt-row visibility"],
   ),
   item(
     "native-ime-dogfood",
@@ -1131,8 +1131,8 @@ const items = [
     0,
     6,
     hasNativeImeDogfood,
-    "Real Windows IME/TSF composition must be owned and rendered inside aether-native, including Codex/Claude/Gemini CLI prompts.",
-    ["refresh aether-native ime-os-dogfood-proof", "prove Imm32 preedit/result and Codex/Claude/Gemini prompt rows"],
+    "Real Windows IME/TSF composition must be owned and rendered inside aelyris-native, including Codex/Claude/Gemini CLI prompts.",
+    ["refresh aelyris-native ime-os-dogfood-proof", "prove Imm32 preedit/result and Codex/Claude/Gemini prompt rows"],
   ),
   item(
     "native-settings-config-proof",
@@ -1141,7 +1141,7 @@ const items = [
     2,
     hasNativeSettingsProof,
     "Theme, opacity, material, palette, and wallpaper customization must round-trip through Rust config without React/WebView.",
-    ["add/refresh aether-native settings-proof", "prove Rust config save/load and hot reload"],
+    ["add/refresh aelyris-native settings-proof", "prove Rust config save/load and hot reload"],
   ),
   item(
     "native-settings-customization",
@@ -1159,7 +1159,7 @@ const items = [
     2,
     hasNativeCommandCenterProof,
     "Command Center data, recovery surfaces, and next actions must be available through the Rust native client before UI parity can be trusted.",
-    ["add/refresh aether-native command-center-proof", "prove recovery and AI CLI actions without React/WebView"],
+    ["add/refresh aelyris-native command-center-proof", "prove recovery and AI CLI actions without React/WebView"],
   ),
   item(
     "native-command-center-window-proof",
@@ -1168,7 +1168,7 @@ const items = [
     2,
     hasNativeCommandCenterWindowProof,
     "Rust-owned Command Center data must render into a native window with evidence rows, action rows, and hit-target metadata before full native right-rail parity can be claimed.",
-    ["add/refresh aether-native command-center-window-proof", "prove native nonblank action/evidence rows without React/WebView"],
+    ["add/refresh aelyris-native command-center-window-proof", "prove native nonblank action/evidence rows without React/WebView"],
   ),
   item(
     "native-command-center-input-scroll-proof",
@@ -1177,7 +1177,7 @@ const items = [
     2,
     hasNativeCommandCenterInputScrollProof,
     "Native Command Center must own keyboard selection, scroll-window state, and action dispatch guardrails without React/WebView before React right-rail demotion can be trusted.",
-    ["add/refresh aether-native command-center-input-scroll-proof", "prove bounded selection, scrolling, and no-React dispatch"],
+    ["add/refresh aelyris-native command-center-input-scroll-proof", "prove bounded selection, scrolling, and no-React dispatch"],
   ),
   item(
     "native-mode-shell-contract",
@@ -1186,7 +1186,7 @@ const items = [
     2,
     hasNativeModeShellProof,
     "The native product shell must expose a mode rail, selected work-surface route, and Command Center-backed contextual inspector before it can replace the React right rail.",
-    ["add/refresh aether-native mode-shell-proof", "prove 8 modes, selected entity route, and native inspector contract"],
+    ["add/refresh aelyris-native mode-shell-proof", "prove 8 modes, selected entity route, and native inspector contract"],
   ),
   item(
     "native-mode-rail-window-proof",
@@ -1195,7 +1195,7 @@ const items = [
     2,
     hasNativeModeRailWindowProof,
     "The native mode rail must render as a real native window with all 8 modes, keyboard selection, hit targets, and nonblank pixels before the React shell can be demoted.",
-    ["add/refresh aether-native mode-rail-window-proof", "prove native rail rendering, hit targets, and keyboard navigation"],
+    ["add/refresh aelyris-native mode-rail-window-proof", "prove native rail rendering, hit targets, and keyboard navigation"],
   ),
   item(
     "native-inspector-window-proof",
@@ -1204,7 +1204,7 @@ const items = [
     2,
     hasNativeInspectorWindowProof,
     "The Command Center-backed contextual inspector must render as a real native window with evidence rows, action hit targets, scroll/keyboard selection, and no React/WebView dispatch before the React right rail can be demoted.",
-    ["add/refresh aether-native inspector-window-proof", "prove native inspector rendering, scroll, action targets, and dispatch guardrails"],
+    ["add/refresh aelyris-native inspector-window-proof", "prove native inspector rendering, scroll, action targets, and dispatch guardrails"],
   ),
   item(
     "native-right-rail-demotion-readiness",
@@ -1213,7 +1213,7 @@ const items = [
     2,
     hasNativeRightRailDemotionProof,
     "Native Command Center, mode rail, and inspector replacements must be complete and mapped to the remaining React right-rail compatibility surfaces before the React right rail is demoted.",
-    ["add/refresh aether-native right-rail-demotion-proof", "prove native replacements are ready while honestly reporting React compatibility surfaces still present"],
+    ["add/refresh aelyris-native right-rail-demotion-proof", "prove native replacements are ready while honestly reporting React compatibility surfaces still present"],
   ),
   item(
     "native-command-center",
@@ -1240,7 +1240,7 @@ const items = [
     2,
     hasNativeAccessibilityTreeProof,
     "The native shell must expose named roles, focus order, and keyboard traversal before UIA/accesskit binding can be trusted.",
-    ["add/refresh aether-native accessibility-proof", "prove names, roles, focus order, and no React/WebView dependency"],
+    ["add/refresh aelyris-native accessibility-proof", "prove names, roles, focus order, and no React/WebView dependency"],
   ),
   item(
     "native-visual-qa",
@@ -1258,7 +1258,7 @@ const items = [
     2,
     hasNativeVisualQaHarness,
     "Native shell needs screenshot/pixel/contrast/focus/resize evidence independent of WebView CDP.",
-    ["add/refresh aether-native visual-qa-proof", "prove native pixel probe, contrast, resize, and focus coverage"],
+    ["add/refresh aelyris-native visual-qa-proof", "prove native pixel probe, contrast, resize, and focus coverage"],
   ),
 ];
 
@@ -1270,7 +1270,7 @@ items.push(
     10,
     hasCompatibilityOnlyShell,
     "Full-native is not done while React/Tauri/WebView remains the primary shipping shell.",
-    ["keep React shell as compatibility during migration", "promote aether-native to primary daily-driver shell"],
+    ["keep React shell as compatibility during migration", "promote aelyris-native to primary daily-driver shell"],
   ),
 );
 
@@ -1291,7 +1291,7 @@ const report = {
   fullNativeReady: missing.length === 0,
   currentTruth: {
     currentArchitecture: hasPrimaryNativeShellPromotion
-      ? "aether-native primary shell with Tauri/React compatibility available"
+      ? "aelyris-native primary shell with Tauri/React compatibility available"
       : hasReactWebViewShell
         ? "Tauri/React shell with Rust terminal core and native-client spike"
         : "native shell candidate",

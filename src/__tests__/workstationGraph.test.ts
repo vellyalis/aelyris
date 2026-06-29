@@ -100,7 +100,7 @@ describe("buildRunGraph", () => {
       session("complete", {
         status: "done",
         owner: "review-lead",
-        workspaceScope: "C:/repo/aether-terminal",
+        workspaceScope: "C:/repo/aelyris",
         writeSet: ["src/App.tsx", "src/App.tsx", "src/shared/types/agent.ts"],
         finalReport: { status: "ready", title: "Agent report" },
         tokensUsed: 120_000,
@@ -112,7 +112,7 @@ describe("buildRunGraph", () => {
     expect(graph.finalReportCount).toBe(1);
     expect(graph.nodes[0]).toMatchObject({
       owner: "review-lead",
-      workspaceScope: "C:/repo/aether-terminal",
+      workspaceScope: "C:/repo/aelyris",
       writeSet: ["src/App.tsx", "src/shared/types/agent.ts"],
       finalReportStatus: "ready",
       closeState: "collectable",
@@ -274,7 +274,7 @@ describe("buildWorkstationGraph", () => {
           workspaceScope: "C:/repo",
           worktree: {
             name: "feature-a",
-            path: "C:/repo/.aether/worktrees/feature-a",
+            path: "C:/repo/.aelyris/worktrees/feature-a",
             branch: "feature/a",
             is_main: false,
             head_sha: "abc123",
@@ -294,7 +294,7 @@ describe("buildWorkstationGraph", () => {
       tools: [expect.objectContaining({ label: "Edit" })],
       tests: [{ id: "test:app-test", label: "App tests", status: "pass" }],
       risks: [{ id: "risk:app-risk", label: "App risk", status: "open", severity: "high" }],
-      worktrees: ["C:/repo/.aether/worktrees/feature-a"],
+      worktrees: ["C:/repo/.aelyris/worktrees/feature-a"],
       hasEvidence: true,
     });
   });

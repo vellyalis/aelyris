@@ -1,6 +1,6 @@
 /**
  * Cost Manager types — TS mirror of `src-tauri/src/cost/mod.rs`. See
- * docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 7.
+ * docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 7.
  */
 export interface CostCaps {
   max_agents: number | null;

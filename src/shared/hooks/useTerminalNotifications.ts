@@ -12,7 +12,7 @@ interface UseTerminalNotificationsOptions {
   onTabActivity: (tabId: string) => void;
 }
 
-const TERMINAL_BELL_NOTIFICATION_KEY = "aether:terminalBellNotifications";
+const TERMINAL_BELL_NOTIFICATION_KEY = "aelyris:terminalBellNotifications";
 const MIN_NOTIFICATION_INTERVAL_MS = 30_000;
 
 /**
@@ -44,7 +44,7 @@ export function useTerminalNotifications({ activeTabId, tabs, onTabActivity }: U
 
       // Native OS toasts are intentionally opt-in. AI CLIs and shell
       // integrations can emit BEL frequently; surfacing every bell as a
-      // bottom-right PowerShell/Aether popup is noisy and feels broken.
+      // bottom-right PowerShell/Aelyris popup is noisy and feels broken.
       if (!document.hasFocus() && terminalBellNotificationsEnabled()) {
         if (
           lastNotificationTime.current[terminalId] &&

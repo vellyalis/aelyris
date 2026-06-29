@@ -743,7 +743,7 @@ export function deriveAiCliLaunchPlan(input: AiCliLaunchPlanInput = {}): AiCliLa
     recommendedBackend,
     actionLabel,
     detail,
-    why: "Quorum should launch AI CLI work from an auditable plan instead of blind prompt-pasting.",
+    why: "Aelyris should launch AI CLI work from an auditable plan instead of blind prompt-pasting.",
     nextStep,
     evidence: evidenceText,
     guardrailLabel: status === "ready" ? "Launch proof" : "Launch guard",

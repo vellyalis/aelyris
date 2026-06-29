@@ -1,6 +1,6 @@
 # P0-4 — Backend command-risk enforcement (locked goal)
 
-Security WU from `AETHER_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md` §P0-4. Goal
+Security WU from `AELYRIS_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md` §P0-4. Goal
 locked with Codex (independent reviewer, different model) on 2026-06-24 via the
 `codex-guided-implementation` skill. This file is the drift fence for every increment.
 
@@ -54,7 +54,7 @@ replayable (command-hash match, no one-time token).
    binding, parallel double-consume) + `command_risk_decision` audit append (append-before-write,
    fail-closed, truncated redacted preview + hash).
 3. **REST/MCP guards** — `/sessions/{id}/input`, WS stream, `/mux/.../input`,
-   `mux.workspace.safeInput`, `aether.pane_send_input`: deny without approval, allow once with it,
+   `mux.workspace.safeInput`, `aelyris.pane_send_input`: deny without approval, allow once with it,
    reject replay AND the split-frame bypass (line accumulator).
 4. **Tauri/native/send-keys guards** — `write_terminal`, `native_terminal_input_commit`/`paste`,
    `send_keys` + broadcasts + by-{name,role,target}; guard BEFORE `terminal_write_async` (covers

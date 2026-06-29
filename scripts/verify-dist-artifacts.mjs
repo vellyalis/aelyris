@@ -76,7 +76,7 @@ const artifacts = [
       "release",
       "bundle",
       "nsis",
-      `Aether Terminal_${version}_x64-setup.exe`,
+      `Aelyris_${version}_x64-setup.exe`,
     ),
     minBytes: 4 * 1024 * 1024,
     provenanceInputs: releaseProvenanceInputs,
@@ -90,14 +90,14 @@ const artifacts = [
       "release",
       "bundle",
       "msi",
-      `Aether Terminal_${version}_x64_en-US.msi`,
+      `Aelyris_${version}_x64_en-US.msi`,
     ),
     minBytes: 4 * 1024 * 1024,
     provenanceInputs: releaseProvenanceInputs,
   },
 ];
 
-const sidecarName = process.platform === "win32" ? "aether-pty-server-x86_64-pc-windows-msvc.exe" : null;
+const sidecarName = process.platform === "win32" ? "aelyris-pty-server-x86_64-pc-windows-msvc.exe" : null;
 if (sidecarName) {
   artifacts.push({
     label: "PTY sidecar",
@@ -106,11 +106,11 @@ if (sidecarName) {
     provenanceInputs: sidecarProvenanceInputs,
   });
 }
-const aetherctlReleaseName = process.platform === "win32" ? "aetherctl.exe" : "aetherctl";
+const aelysReleaseName = process.platform === "win32" ? "aelys.exe" : "aelys";
 if (process.platform === "win32") {
   artifacts.push({
-    label: "aetherctl",
-    path: path.join(repoRoot, "src-tauri", "target", "release", aetherctlReleaseName),
+    label: "aelys",
+    path: path.join(repoRoot, "src-tauri", "target", "release", aelysReleaseName),
     minBytes: 1024 * 1024,
     provenanceInputs: [
       "scripts/build-dist-windows.ps1",
@@ -118,7 +118,7 @@ if (process.platform === "win32") {
       "scripts/build-pty-sidecar.mjs",
       "src-tauri/Cargo.toml",
       "src-tauri/Cargo.lock",
-      "src-tauri/src/bin/aetherctl.rs",
+      "src-tauri/src/bin/aelys.rs",
     ],
   });
 }
@@ -341,16 +341,16 @@ async function assertWindowsAppIdentity(artifact) {
   if (process.platform !== "win32" || artifact.label !== "App exe") return;
 
   const basename = path.basename(artifact.path);
-  if (basename !== "Aether.exe") {
-    recordFailure(`[dist] App exe must be named Aether.exe for Task Manager discoverability, got ${basename}`);
+  if (basename !== "Aelyris.exe") {
+    recordFailure(`[dist] App exe must be named Aelyris.exe for Task Manager discoverability, got ${basename}`);
   }
 
   try {
     const versionInfo = await readWindowsVersionInfo(artifact.path);
     const expected = {
-      ProductName: "Aether Terminal",
-      FileDescription: "Aether Terminal",
-      CompanyName: "Aether",
+      ProductName: "Aelyris",
+      FileDescription: "Aelyris",
+      CompanyName: "Aelyris",
     };
     for (const [key, value] of Object.entries(expected)) {
       if (versionInfo[key] !== value) {
@@ -401,20 +401,20 @@ async function latestMtimeMs(relativePaths) {
 
 async function assertSidecarBundleWiring() {
   const externalBin = tauriDistConfig.bundle?.externalBin ?? [];
-  if (!Array.isArray(externalBin) || !externalBin.includes("binaries/aether-pty-server")) {
+  if (!Array.isArray(externalBin) || !externalBin.includes("binaries/aelyris-pty-server")) {
     recordFailure(`[dist] PTY sidecar externalBin missing from tauri.dist.conf.json`);
   }
   if (process.platform !== "win32") return;
   const wxsPath = path.join(repoRoot, "src-tauri", "target", "release", "wix", "x64", "main.wxs");
   try {
     const wxs = await readFile(wxsPath, "utf8");
-    const sidecarMatches = wxs.match(/aether-pty-server\.exe/g) ?? [];
+    const sidecarMatches = wxs.match(/aelyris-pty-server\.exe/g) ?? [];
     if (sidecarMatches.length !== 1) {
       recordFailure(`[dist] MSI manifest should include exactly one PTY sidecar exe, found ${sidecarMatches.length}`);
     }
-    const ctlMatches = wxs.match(/aetherctl\.exe/g) ?? [];
+    const ctlMatches = wxs.match(/aelys\.exe/g) ?? [];
     if (ctlMatches.length !== 1) {
-      recordFailure(`[dist] MSI manifest should include exactly one aetherctl exe, found ${ctlMatches.length}`);
+      recordFailure(`[dist] MSI manifest should include exactly one aelys exe, found ${ctlMatches.length}`);
     }
   } catch {
     recordFailure(`[dist] Missing WiX manifest for sidecar verification: ${relativeArtifactPath(wxsPath)}`);
@@ -422,8 +422,8 @@ async function assertSidecarBundleWiring() {
 }
 
 assertEqual("package.json and tauri.conf.json version", tauriConfig.version, version);
-assertEqual("Tauri productName", tauriConfig.productName, "Aether Terminal");
-assertEqual("Tauri mainBinaryName", tauriConfig.mainBinaryName, "Aether");
+assertEqual("Tauri productName", tauriConfig.productName, "Aelyris");
+assertEqual("Tauri mainBinaryName", tauriConfig.mainBinaryName, "Aelyris");
 assertEqual("Tauri bundle.active", tauriConfig.bundle?.active, true);
 if (tauriDistConfig.bundle?.createUpdaterArtifacts === false) {
   recordFailure("[dist] Dist config must not disable updater artifacts; release builds need signed update payloads");

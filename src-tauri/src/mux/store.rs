@@ -23,7 +23,7 @@ impl VersionedMuxSnapshot {
     pub fn new(graph: MuxGraph) -> Result<Self, MuxStoreError> {
         graph.validate()?;
         Ok(Self {
-            schema: format!("aether.mux.v{MUX_GRAPH_VERSION}"),
+            schema: format!("aelyris.mux.v{MUX_GRAPH_VERSION}"),
             graph,
         })
     }
@@ -34,7 +34,7 @@ impl VersionedMuxSnapshot {
 
     pub fn from_json(json: &str) -> Result<Self, MuxStoreError> {
         let snapshot: Self = serde_json::from_str(json).map_err(MuxStoreError::Serde)?;
-        if snapshot.schema != format!("aether.mux.v{MUX_GRAPH_VERSION}") {
+        if snapshot.schema != format!("aelyris.mux.v{MUX_GRAPH_VERSION}") {
             return Err(MuxStoreError::UnsupportedSchema(snapshot.schema));
         }
         snapshot.graph.validate()?;
@@ -295,7 +295,7 @@ mod tests {
         RestoredSession {
             session: Session {
                 id: "session-a".to_string(),
-                name: "Aether".to_string(),
+                name: "Aelyris".to_string(),
                 created_at: "now".to_string(),
                 updated_at: "now".to_string(),
                 is_active: true,
@@ -353,7 +353,7 @@ mod tests {
         VersionedMuxSnapshot::from_json(&json).unwrap();
 
         let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
-        value["schema"] = serde_json::Value::String("aether.mux.v999".to_string());
+        value["schema"] = serde_json::Value::String("aelyris.mux.v999".to_string());
         let err = VersionedMuxSnapshot::from_json(&value.to_string()).unwrap_err();
         assert!(matches!(err, MuxStoreError::UnsupportedSchema(_)));
     }

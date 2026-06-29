@@ -16,9 +16,9 @@ const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).tri
 const fails = [];
 const ok = (c, m) => { console.log(`${c ? "PASS" : "FAIL"}  ${m}`); if (!c) fails.push(m); };
 
-const repo = mkdtempSync(join(tmpdir(), "aether-inspector-"));
+const repo = mkdtempSync(join(tmpdir(), "aelyris-inspector-"));
 git(repo, "init", "-b", "main");
-git(repo, "config", "user.email", "inspector@aether.test");
+git(repo, "config", "user.email", "inspector@aelyris.test");
 git(repo, "config", "user.name", "Inspector");
 writeFileSync(join(repo, "README.md"), "# inspector demo\n");
 git(repo, "add", ".");

@@ -38,12 +38,12 @@ describe("recentCommands localStorage", () => {
   });
 
   it("returns empty when stored value is malformed", () => {
-    localStorage.setItem("aether:recentCommands", "not-json");
+    localStorage.setItem("aelyris:recentCommands", "not-json");
     expect(loadRecentCommands()).toEqual([]);
   });
 
   it("filters non-string entries out", () => {
-    localStorage.setItem("aether:recentCommands", JSON.stringify(["a", 5, null, "b"]));
+    localStorage.setItem("aelyris:recentCommands", JSON.stringify(["a", 5, null, "b"]));
     expect(loadRecentCommands()).toEqual(["a", "b"]);
   });
 

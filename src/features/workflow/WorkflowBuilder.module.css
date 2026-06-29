@@ -254,7 +254,7 @@
 
 /* Custom phase node */
 .phaseNode {
-  background: var(--aether-bg-card);
+  background: var(--aelyris-bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   min-width: 160px;

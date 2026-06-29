@@ -1,8 +1,8 @@
-# Quorum Gap Closure Implementation Design
+# Aelyris Gap Closure Implementation Design
 
 Date: 2026-06-25
 Status: DESIGN READY FOR WORK-UNIT PLANNING
-Related audit: `docs/specs/QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
+Related audit: `docs/specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
 
 This document answers the re-audit question:
 
@@ -31,7 +31,7 @@ replace `CODEX_HANDOFF.md`; it narrows the next P0 execution plan.
 | MCP orchestrator surface | `MCP_TOOL_SURFACE_SPEC.md`, `CODEX_HANDOFF.md` | Strong. Tool surface, authority classes, and local orchestration loop are specified. | Needs end-to-end proof that UI, loop, MCP, merge, and restart replay all share one backend truth. |
 | Durable merge intent | `P0-3_DURABLE_MERGE_INTENT_PLAN.md` | Strong for MCP merge intent. | Explicitly excludes autonomy-loop self-merge. Split merge paths remain. |
 | Command-risk enforcement | `P0-4_BACKEND_COMMAND_RISK_PLAN.md` | Strong and security-focused. | Not the blocker for tmux/BridgeSpace/Ghostty positioning, but must stay in aggregate gates. |
-| Release hardening P0s | `AETHER_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md` | Broad and useful. | Lists P0s but does not sequence the tmux/BridgeSpace/Ghostty closure as one claim system. |
+| Release hardening P0s | `AELYRIS_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md` | Broad and useful. | Lists P0s but does not sequence the tmux/BridgeSpace/Ghostty closure as one claim system. |
 | tmux parity | `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`, mux source, sidecar source | Partial. Pane graph, layout, keymap, sidecar, durable scrollback exist. | No complete session/window/multi-client/attach/control-lock proof. Live restore proof currently red or blocked. |
 | BridgeSpace-plus AI team OS | specs plus implemented MCP/task/event/ownership pieces | Partial. Strong substrate exists. | Shared brain, ownership, merge, visible panes, and replay are not yet one durable product proof. |
 | Ghostty/WezTerm quality | terminal/native scripts and native Rust modules | Partial. Native direction exists. | Daily-driver proof, text shaping/fallback, IME/resume/resize/visual regression proof are not current enough. |
@@ -50,7 +50,7 @@ Do not claim any of the following until the matching gate is green:
 
 Allowed current positioning while these gates are red:
 
-> Quorum has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+> Aelyris has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
 > worktree, ownership, review, and merge substrate, but the world-class claim is
 > still blocked by durability, persistence, native-quality, and current-proof gates.
 
@@ -202,7 +202,7 @@ the relevant product claim in review/block.
 
 ## 3C. Modularity And Changeability Standard
 
-The implementation must keep Quorum easy to change while the product moves toward
+The implementation must keep Aelyris easy to change while the product moves toward
 tmux / BridgeSpace / Ghostty-class quality. The goal is not merely smaller files; it
 is stable ownership boundaries, narrow contracts, and low-risk replacement of
 terminal, mux, orchestration, persistence, and UI surfaces.
@@ -308,7 +308,7 @@ New world-class work must reduce, not increase, the long-term blast radius of:
 - `src/App.tsx`
 - `src-tauri/src/ipc/commands.rs`
 - `src-tauri/src/api/mcp.rs`
-- `src-tauri/src/bin/aether_native.rs`
+- `src-tauri/src/bin/aelyris_native.rs`
 
 Allowed changes to those files:
 
@@ -405,7 +405,7 @@ Create `.codex-auto/quality/current-readiness-source.json`:
 
 ```json
 {
-  "schema": "aether.current-readiness-source/v1",
+  "schema": "aelyris.current-readiness-source/v1",
   "generatedAt": "ISO-8601",
   "authoritativeSources": [
     "release-quality-score",
@@ -680,7 +680,7 @@ Implemented:
   legacy RAM `MergeQueue` can enqueue.
 - `run_step` and `run_step_visible` accept `Option<Arc<MergeIntentStore>>` and
   inject it into the concrete autonomy adapter.
-- MCP `aether.orchestrator.step` passes `state.merge_store.clone()` into
+- MCP `aelyris.orchestrator.step` passes `state.merge_store.clone()` into
   headless autonomy execution.
 - Tauri IPC `orchestrator_step` receives the managed
   `Option<Arc<MergeIntentStore>>` and passes it into visible-pane autonomy
@@ -693,7 +693,7 @@ Implemented:
   creates an immutable OID-bound intent, captures gate evidence as
   `gatesDigest`, CAS-claims the intent, runs `perform_merge_bound`, and records
   terminal state.
-- G2.1: direct MCP `aether.review.approve` now keeps only the MCP input boundary
+- G2.1: direct MCP `aelyris.review.approve` now keeps only the MCP input boundary
   checks (store attached, exact allowlist, strict `verdict`/`gatesDigest` typing)
   and delegates execution to `control::merge::approve_durable_intent`. That
   helper owns durable claim, approval metadata, idempotent already-merged
@@ -727,7 +727,7 @@ Current proof:
 - PASS `cargo test --manifest-path src-tauri\Cargo.toml control::merge --lib`
   - 5 passed.
 - BLOCK `pnpm verify:merge-idempotency`
-  - Requires a running API token: `QUORUM_API_TOKEN is required (start pnpm tauri:dev and export it)`.
+  - Requires a running API token: `AELYRIS_API_TOKEN is required (start pnpm tauri:dev and export it)`.
 
 Remaining REVIEW items:
 
@@ -853,7 +853,7 @@ interface SharedBrainSnapshot {
 Expose through:
 
 - Tauri IPC: `shared_brain_snapshot`
-- MCP: `aether.shared_brain.snapshot`
+- MCP: `aelyris.shared_brain.snapshot`
 - Optional HTTP API if sidecar/control API already owns the route.
 
 ### Scheduling Rules
@@ -875,7 +875,7 @@ Expose through:
 - `node scripts/verify-symbol-ownership-live.mjs`
 - `node scripts/verify-shared-brain-live.mjs`
 - `node scripts/verify-shared-brain-restart-replay.mjs --phase seed`
-- restart Quorum
+- restart Aelyris
 - `node scripts/verify-shared-brain-restart-replay.mjs --phase verify --id <seed-id>`
 
 ### Done Definition
@@ -892,7 +892,7 @@ Completed in this slice:
 - Added `src-tauri/src/shared_brain.rs` as the single backend formatter for
   agents, ownership, merge intents, blockers, and decisions.
 - Exposed the formatter through Tauri IPC `shared_brain_snapshot` and MCP
-  `aether.shared_brain.snapshot`.
+  `aelyris.shared_brain.snapshot`.
 - Added `file_ownership_claims` and `symbol_ownership_claims` migrations.
 - Added `src-tauri/src/persistence/ownership_repo.rs` with load/upsert/delete,
   expiry pruning, and transactional symbol-claim reconcile.
@@ -1059,7 +1059,7 @@ Completed in this slice:
 - Added REST owner checks for exclusive leases: `POST /sessions/{id}/input` and
   `POST /sessions/{id}/resize` remain compatible when no exclusive lease exists,
   but return `409` unless the request carries the lease owner's
-  `x-aether-client-id` when an exclusive controller is active.
+  `x-aelyris-client-id` when an exclusive controller is active.
 - Added opt-in atomic attach replay for WebSocket clients:
   `GET /sessions/{id}/stream?...&replayLines=N` uses
   `PtyManager::capture_and_subscribe` so the initial snapshot and future live
@@ -1161,7 +1161,7 @@ Remaining BLOCK/REVIEW items from subagent audit:
 - Existing live restore artifact is now machine-classified as
   `environment-blocked` on this machine because Node `child_process` cannot
   launch the PTY sidecar (`spawn EPERM`). The live gate must be refreshed on a
-  host where Node can spawn the sidecar and `cargo aetherctl` parity checks
+  host where Node can spawn the sidecar and `cargo aelys` parity checks
   before upgrading this from REVIEW/BLOCK.
 
 ## 9. Workstream G5 - Ghostty/WezTerm-Class Native Terminal Closure
@@ -1176,7 +1176,7 @@ proved by current evidence."
 - `src-tauri/src/term/native.rs`
 - `src-tauri/src/term/native_input.rs`
 - `src-tauri/src/term/text_shaping.rs`
-- `src-tauri/src/bin/aether_native.rs`
+- `src-tauri/src/bin/aelyris_native.rs`
 - `src-tauri/src/ipc/commands.rs`
 - `src/features/terminal/NativeTerminalArea.tsx`
 - `src/features/terminal/TerminalCanvas.tsx`
@@ -1258,7 +1258,7 @@ Implemented now:
   collection index metadata into the winit/wgpu atlas path; `fontdue` loads that
   DirectWrite-resolved font file for fallback glyph rasterization rather than
   guessing by family name or substituting `?`.
-- `aether-native` readiness and winit/wgpu artifacts now expose
+- `aelyris-native` readiness and winit/wgpu artifacts now expose
   `textShapingPolicy`, `systemTextShapingCapability`,
   `textShapingBackend` =
   `directwrite-shaped-run-consumed-fontdue-directwrite-fallback-atlas` when
@@ -1266,7 +1266,7 @@ Implemented now:
   `textShapingRendererIntegrationReady` from the live draw plan,
   `textShapingFallbackGlyphRasterizationReady` from atlas/fallback glyph
   evidence, and the remaining full-native blockers.
-- `aether-native text-shaping-fixture-proof` now writes a real native grayscale
+- `aelyris-native text-shaping-fixture-proof` now writes a real native grayscale
   PNG atlas fixture at
   `.codex-auto/production-smoke/native-text-shaping/fallback-glyph-atlas.png`
   plus `.codex-auto/quality/native-text-shaping-visual-fixture.json`; the fixture
@@ -1316,7 +1316,7 @@ Ghostty/WezTerm parity remains BLOCKED until:
 
 Create one command that answers the user's strategic question:
 
-> Can Quorum honestly claim tmux + BridgeSpace + Ghostty quality on Windows?
+> Can Aelyris honestly claim tmux + BridgeSpace + Ghostty quality on Windows?
 
 ### Target Files
 
@@ -1352,7 +1352,7 @@ The aggregate gate reads:
 
 ```json
 {
-  "schema": "aether.world-class-terminal-ai-os/v1",
+  "schema": "aelyris.world-class-terminal-ai-os/v1",
   "status": "pass | review | block",
   "claims": {
     "tmux": "pass | review | block",
@@ -1387,14 +1387,14 @@ Current output:
   claims remain blocked; it fails only when the documentation stack becomes
   stale, disconnected, or overclaiming.
 - Traceability source:
-  `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`.
+  `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`.
 
 Current blocking reasons:
 
 - `tmux`: live mux restore proof is `environment-blocked` or not green. The
   static mux contract passes but still has recorded review gaps.
 - `bridgespace`: shared brain restart replay now writes an
-  `environment-blocked` artifact when no authenticated live Quorum API token is
+  `environment-blocked` artifact when no authenticated live Aelyris API token is
   supplied, and agent-team orchestration readiness is still blocked by mux live
   restore plus upper-compat host proof gates.
 - `ghostty`: native boundary is blocked. The native text-shaping subclaim is now
@@ -1495,7 +1495,7 @@ Recommended work units:
 - Do not count static verifier success as live terminal, mux, restart, or renderer
   proof.
 - Do not add new domain logic to `App.tsx`, `commands.rs`, `api/mcp.rs`, or
-  `aether_native.rs` when a narrower module can own it.
+  `aelyris_native.rs` when a narrower module can own it.
 - Do not split work so finely that a contract cannot compile or a verifier cannot
   express the behavior; contract-threading patches may be lockstep.
 
@@ -1518,7 +1518,7 @@ Reason:
 - G0.2 prevents fallback debt and test-only greens from unlocking strategic claims.
 - G0.3 prevents the closure work from increasing god-file debt or mixing unrelated
   boundaries.
-- G4 is the point where Quorum's tmux-equivalence claim becomes evidence-backed
+- G4 is the point where Aelyris's tmux-equivalence claim becomes evidence-backed
   instead of architecture-only.
 
 ## 15. Final Re-Audit Statement

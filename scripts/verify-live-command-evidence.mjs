@@ -1,25 +1,25 @@
 // Live Tauri/WebView2 smoke for native command-block evidence.
 //
 // Prerequisite:
-//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
+//   AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
-//   AETHER_COMMAND_EVIDENCE_URL=http://localhost:1420/
-//   AETHER_COMMAND_EVIDENCE_PROJECT=C:/repo/aether-terminal
-//   AETHER_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/live-command-evidence.json
+//   AELYRIS_COMMAND_EVIDENCE_CDP=http://127.0.0.1:9222
+//   AELYRIS_COMMAND_EVIDENCE_URL=http://localhost:1420/
+//   AELYRIS_COMMAND_EVIDENCE_PROJECT=C:/repo/aelyris
+//   AELYRIS_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/live-command-evidence.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_COMMAND_EVIDENCE_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
+const CDP = process.env.AELYRIS_COMMAND_EVIDENCE_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
-const PROJECT_PATH = (process.env.AETHER_COMMAND_EVIDENCE_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/live-command-evidence.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_COMMAND_EVIDENCE_WAIT_MS ?? "90000", 10);
+const PROJECT_PATH = (process.env.AELYRIS_COMMAND_EVIDENCE_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/live-command-evidence.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_COMMAND_EVIDENCE_WAIT_MS ?? "90000", 10);
 
 const report = {
   ok: false,
@@ -67,7 +67,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.startsWith(APP_ORIGIN) ||
@@ -87,13 +87,13 @@ function describePages(context) {
 
 function targetQaUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "live-command-evidence");
   url.searchParams.delete("state");
   url.searchParams.delete("edgeLoop");
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -109,7 +109,7 @@ async function connectOverCdpWithRetry() {
     }
   }
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev. ${
+    `Cannot attach to WebView2 CDP at ${CDP}. Start Aelyris with AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev. ${
       lastError?.message ?? "CDP endpoint did not respond"
     }`,
   );
@@ -117,9 +117,9 @@ async function connectOverCdpWithRetry() {
 
 async function ensureCleanApp(page) {
   await page.evaluate((projectPath) => {
-    localStorage.setItem("aether:lastProject", projectPath);
-    localStorage.setItem("aether:onboarding-done", "1");
-    localStorage.removeItem("aether:dashboardStateUrl");
+    localStorage.setItem("aelyris:lastProject", projectPath);
+    localStorage.setItem("aelyris:onboarding-done", "1");
+    localStorage.removeItem("aelyris:dashboardStateUrl");
   }, PROJECT_PATH);
   await page.goto(targetQaUrl(), { waitUntil: "domcontentloaded", timeout: WAIT_MS });
   await page.waitForSelector(".app-container", { timeout: WAIT_MS });
@@ -211,9 +211,9 @@ async function main() {
   try {
     browser = await connectOverCdpWithRetry();
     const context = browser.contexts()[0];
-    const page = context?.pages().find(isAetherPage);
+    const page = context?.pages().find(isAelyrisPage);
     if (!page) {
-      throw new Error(`No Aether Tauri page found over CDP.\n${describePages(context)}`);
+      throw new Error(`No Aelyris Tauri page found over CDP.\n${describePages(context)}`);
     }
 
     const consoleErrors = [];
@@ -242,7 +242,7 @@ async function main() {
       throw new Error(`Spawned terminal ${terminalId} was not listed by the backend`);
     }
 
-    const marker = `AETHER_CMD_EVIDENCE_${Math.random().toString(36).slice(2, 8)}`;
+    const marker = `AELYRIS_CMD_EVIDENCE_${Math.random().toString(36).slice(2, 8)}`;
     report.checks.marker = marker;
 
     await page.evaluate(

@@ -20,12 +20,12 @@ beforeEach(() => {
   // Drop persisted theme overrides between tests so each block starts clean
   // — the appStore bootstraps `themeOverrides` from localStorage on load.
   try {
-    localStorage.removeItem("aether:themeOverrides");
-    localStorage.removeItem("aether:moodPreset");
-    localStorage.removeItem("aether:moodMaterialOverrides");
-    localStorage.removeItem("aether:wallpaperSettingsByMood");
-    localStorage.removeItem("aether:windowOpacity");
-    localStorage.removeItem("aether:workspaceProfiles");
+    localStorage.removeItem("aelyris:themeOverrides");
+    localStorage.removeItem("aelyris:moodPreset");
+    localStorage.removeItem("aelyris:moodMaterialOverrides");
+    localStorage.removeItem("aelyris:wallpaperSettingsByMood");
+    localStorage.removeItem("aelyris:windowOpacity");
+    localStorage.removeItem("aelyris:workspaceProfiles");
   } catch {
     /* ignore */
   }
@@ -47,14 +47,14 @@ beforeEach(() => {
     appWindowOpacity: 0.95,
     moodMaterialOverrides: {},
     wallpaperSettingsByMood: {
-      "aether-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-moonwater": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-crystal": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-dream": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-cute": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-sakura": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-obsidian": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
-      "aether-pro": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-moonwater": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-crystal": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-dream": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-cute": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-sakura": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-obsidian": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
+      "aelyris-pro": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
     },
     themeOverrides: {},
     workspaceProfiles: {
@@ -162,27 +162,27 @@ describe("appStore — appearance customization", () => {
   it("keeps material overrides isolated per mood", () => {
     const { setMoodMaterialOverride, resetMoodMaterialOverrides } = useAppStore.getState();
 
-    setMoodMaterialOverride("aether-sakura", "panelColor", "#fffafc");
-    setMoodMaterialOverride("aether-pro", "panelColor", "#050d16");
+    setMoodMaterialOverride("aelyris-sakura", "panelColor", "#fffafc");
+    setMoodMaterialOverride("aelyris-pro", "panelColor", "#050d16");
 
-    expect(useAppStore.getState().moodMaterialOverrides["aether-sakura"]?.panelColor).toBe("#fffafc");
-    expect(useAppStore.getState().moodMaterialOverrides["aether-pro"]?.panelColor).toBe("#050d16");
+    expect(useAppStore.getState().moodMaterialOverrides["aelyris-sakura"]?.panelColor).toBe("#fffafc");
+    expect(useAppStore.getState().moodMaterialOverrides["aelyris-pro"]?.panelColor).toBe("#050d16");
 
-    resetMoodMaterialOverrides("aether-sakura");
+    resetMoodMaterialOverrides("aelyris-sakura");
 
-    expect(useAppStore.getState().moodMaterialOverrides["aether-sakura"]).toBeUndefined();
-    expect(useAppStore.getState().moodMaterialOverrides["aether-pro"]?.panelColor).toBe("#050d16");
+    expect(useAppStore.getState().moodMaterialOverrides["aelyris-sakura"]).toBeUndefined();
+    expect(useAppStore.getState().moodMaterialOverrides["aelyris-pro"]?.panelColor).toBe("#050d16");
   });
 
   it("allows low opacity material overrides to make mood surfaces meaningfully translucent", () => {
     const { setMoodMaterialOverride } = useAppStore.getState();
 
-    setMoodMaterialOverride("aether-sakura", "backdropAlpha", 0.72);
-    setMoodMaterialOverride("aether-sakura", "panelAlpha", 0.18);
-    setMoodMaterialOverride("aether-sakura", "chromeAlpha", 0.16);
-    setMoodMaterialOverride("aether-sakura", "terminalAlpha", 0.08);
+    setMoodMaterialOverride("aelyris-sakura", "backdropAlpha", 0.72);
+    setMoodMaterialOverride("aelyris-sakura", "panelAlpha", 0.18);
+    setMoodMaterialOverride("aelyris-sakura", "chromeAlpha", 0.16);
+    setMoodMaterialOverride("aelyris-sakura", "terminalAlpha", 0.08);
 
-    expect(useAppStore.getState().moodMaterialOverrides["aether-sakura"]).toMatchObject({
+    expect(useAppStore.getState().moodMaterialOverrides["aelyris-sakura"]).toMatchObject({
       backdropAlpha: 0.72,
       panelAlpha: 0.18,
       chromeAlpha: 0.16,
@@ -193,14 +193,14 @@ describe("appStore — appearance customization", () => {
   it("keeps wallpaper image controls isolated per mood", () => {
     const { setMoodPresetId, setWallpaperSettingsForMood } = useAppStore.getState();
 
-    setWallpaperSettingsForMood("aether-sakura", {
+    setWallpaperSettingsForMood("aelyris-sakura", {
       imagePath: "C:/Users/example/Pictures/sakura.jpg",
       opacity: 0.45,
       positionX: 20,
       positionY: 80,
       scale: 160,
     });
-    setWallpaperSettingsForMood("aether-pro", {
+    setWallpaperSettingsForMood("aelyris-pro", {
       imagePath: "C:/Users/example/Pictures/pro.jpg",
       opacity: 0.12,
       positionX: 60,
@@ -208,15 +208,15 @@ describe("appStore — appearance customization", () => {
       scale: 90,
     });
 
-    setMoodPresetId("aether-sakura");
+    setMoodPresetId("aelyris-sakura");
     expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/example/Pictures/sakura.jpg");
     expect(useAppStore.getState().wallpaperOpacity).toBe(0.45);
-    expect(useAppStore.getState().wallpaperSettingsByMood["aether-sakura"].scale).toBe(160);
+    expect(useAppStore.getState().wallpaperSettingsByMood["aelyris-sakura"].scale).toBe(160);
 
-    setMoodPresetId("aether-pro");
+    setMoodPresetId("aelyris-pro");
     expect(useAppStore.getState().wallpaperImagePath).toBe("C:/Users/example/Pictures/pro.jpg");
     expect(useAppStore.getState().wallpaperOpacity).toBe(0.12);
-    expect(useAppStore.getState().wallpaperSettingsByMood["aether-pro"].positionX).toBe(60);
+    expect(useAppStore.getState().wallpaperSettingsByMood["aelyris-pro"].positionX).toBe(60);
   });
 
   it("persists global window opacity with readable clamp bounds", () => {
@@ -224,7 +224,7 @@ describe("appStore — appearance customization", () => {
 
     setAppWindowOpacity(0.42);
     expect(useAppStore.getState().appWindowOpacity).toBe(0.42);
-    expect(localStorage.getItem("aether:windowOpacity")).toBe("0.42");
+    expect(localStorage.getItem("aelyris:windowOpacity")).toBe("0.42");
 
     setAppWindowOpacity(0.1);
     expect(useAppStore.getState().appWindowOpacity).toBe(0.2);
@@ -454,8 +454,8 @@ describe("appStore — editor files", () => {
 describe("appStore — panel widths", () => {
   beforeEach(() => {
     try {
-      localStorage.removeItem("aether:sidebarWidth");
-      localStorage.removeItem("aether:rightPanelWidth");
+      localStorage.removeItem("aelyris:sidebarWidth");
+      localStorage.removeItem("aelyris:rightPanelWidth");
     } catch {
       /* ignore */
     }
@@ -475,7 +475,7 @@ describe("appStore — panel widths", () => {
   it("persists sidebarWidth to localStorage", () => {
     const { setSidebarWidth } = useAppStore.getState();
     setSidebarWidth(280);
-    expect(localStorage.getItem("aether:sidebarWidth")).toBe("280");
+    expect(localStorage.getItem("aelyris:sidebarWidth")).toBe("280");
   });
 
   it("clamps rightPanelWidth to [260, 480]", () => {
@@ -491,7 +491,7 @@ describe("appStore — panel widths", () => {
   it("persists rightPanelWidth to localStorage", () => {
     const { setRightPanelWidth } = useAppStore.getState();
     setRightPanelWidth(400);
-    expect(localStorage.getItem("aether:rightPanelWidth")).toBe("400");
+    expect(localStorage.getItem("aelyris:rightPanelWidth")).toBe("400");
   });
 
   it("rounds fractional widths to integers", () => {
@@ -539,52 +539,52 @@ describe("appStore — panel widths", () => {
 describe("appStore — theme overrides", () => {
   it("sets a single accent override", () => {
     const { setAccentOverride } = useAppStore.getState();
-    setAccentOverride("aether-dark", "sapphire", "#aabbcc");
-    expect(useAppStore.getState().themeOverrides["aether-dark"]).toEqual({
+    setAccentOverride("aelyris-dark", "sapphire", "#aabbcc");
+    expect(useAppStore.getState().themeOverrides["aelyris-dark"]).toEqual({
       sapphire: "#aabbcc",
     });
   });
 
   it("clears an override when value is undefined and removes the theme entry when empty", () => {
     const { setAccentOverride } = useAppStore.getState();
-    setAccentOverride("aether-dark", "sapphire", "#112233");
-    setAccentOverride("aether-dark", "sapphire", undefined);
+    setAccentOverride("aelyris-dark", "sapphire", "#112233");
+    setAccentOverride("aelyris-dark", "sapphire", undefined);
     expect(useAppStore.getState().themeOverrides).toEqual({});
   });
 
   it("keeps the theme entry when other overrides remain", () => {
     const { setAccentOverride } = useAppStore.getState();
-    setAccentOverride("aether-dark", "sapphire", "#112233");
-    setAccentOverride("aether-dark", "mauve", "#445566");
-    setAccentOverride("aether-dark", "sapphire", undefined);
-    expect(useAppStore.getState().themeOverrides["aether-dark"]).toEqual({
+    setAccentOverride("aelyris-dark", "sapphire", "#112233");
+    setAccentOverride("aelyris-dark", "mauve", "#445566");
+    setAccentOverride("aelyris-dark", "sapphire", undefined);
+    expect(useAppStore.getState().themeOverrides["aelyris-dark"]).toEqual({
       mauve: "#445566",
     });
   });
 
   it("isolates overrides per themeId", () => {
     const { setAccentOverride } = useAppStore.getState();
-    setAccentOverride("aether-dark", "sapphire", "#aaaaaa");
+    setAccentOverride("aelyris-dark", "sapphire", "#aaaaaa");
     setAccentOverride("catppuccin-latte", "sapphire", "#bbbbbb");
     const state = useAppStore.getState().themeOverrides;
-    expect(state["aether-dark"]?.sapphire).toBe("#aaaaaa");
+    expect(state["aelyris-dark"]?.sapphire).toBe("#aaaaaa");
     expect(state["catppuccin-latte"]?.sapphire).toBe("#bbbbbb");
   });
 
   it("resets all overrides for a theme", () => {
     const { setAccentOverride, resetThemeOverrides } = useAppStore.getState();
-    setAccentOverride("aether-dark", "sapphire", "#112233");
-    setAccentOverride("aether-dark", "mauve", "#445566");
-    resetThemeOverrides("aether-dark");
+    setAccentOverride("aelyris-dark", "sapphire", "#112233");
+    setAccentOverride("aelyris-dark", "mauve", "#445566");
+    resetThemeOverrides("aelyris-dark");
     expect(useAppStore.getState().themeOverrides).toEqual({});
   });
 
   it("persists overrides to localStorage", () => {
     const { setAccentOverride } = useAppStore.getState();
-    setAccentOverride("aether-dark", "sapphire", "#112233");
-    const raw = localStorage.getItem("aether:themeOverrides");
+    setAccentOverride("aelyris-dark", "sapphire", "#112233");
+    const raw = localStorage.getItem("aelyris:themeOverrides");
     expect(raw).toBeTruthy();
-    expect(JSON.parse(raw ?? "{}")).toEqual({ "aether-dark": { sapphire: "#112233" } });
+    expect(JSON.parse(raw ?? "{}")).toEqual({ "aelyris-dark": { sapphire: "#112233" } });
   });
 
   it("replaces theme overrides from config hydration and sanitizes them", () => {
@@ -599,7 +599,7 @@ describe("appStore — theme overrides", () => {
     expect(useAppStore.getState().themeOverrides).toEqual({
       "sakura-hub": { sapphire: "#74c7ec" },
     });
-    expect(JSON.parse(localStorage.getItem("aether:themeOverrides") ?? "{}")).toEqual({
+    expect(JSON.parse(localStorage.getItem("aelyris:themeOverrides") ?? "{}")).toEqual({
       "sakura-hub": { sapphire: "#74c7ec" },
     });
   });
@@ -607,7 +607,7 @@ describe("appStore — theme overrides", () => {
   it("sanitizes persisted overrides before applying them", () => {
     expect(
       sanitizeThemeOverrides({
-        "aether-dark": {
+        "aelyris-dark": {
           sapphire: "#abc",
           mauve: "not-a-color",
           unknown: "#ffffff",
@@ -617,7 +617,7 @@ describe("appStore — theme overrides", () => {
         invalid: ["#ffffff"],
       }),
     ).toEqual({
-      "aether-dark": { sapphire: "#aabbcc" },
+      "aelyris-dark": { sapphire: "#aabbcc" },
     });
   });
 });
@@ -625,16 +625,16 @@ describe("appStore — theme overrides", () => {
 describe("appStore — mood presets", () => {
   it("sets and persists a mood preset", () => {
     const { setMoodPresetId } = useAppStore.getState();
-    setMoodPresetId("aether-dream");
-    expect(useAppStore.getState().moodPresetId).toBe("aether-dream");
-    expect(localStorage.getItem("aether:moodPreset")).toBe("aether-dream");
+    setMoodPresetId("aelyris-dream");
+    expect(useAppStore.getState().moodPresetId).toBe("aelyris-dream");
+    expect(localStorage.getItem("aelyris:moodPreset")).toBe("aelyris-dream");
   });
 
   it("falls back to the default mood for unknown ids", () => {
     const { setMoodPresetId } = useAppStore.getState();
     setMoodPresetId("unknown");
     expect(useAppStore.getState().moodPresetId).toBe(DEFAULT_MOOD_PRESET);
-    expect(localStorage.getItem("aether:moodPreset")).toBe(DEFAULT_MOOD_PRESET);
+    expect(localStorage.getItem("aelyris:moodPreset")).toBe(DEFAULT_MOOD_PRESET);
   });
 });
 
@@ -642,21 +642,21 @@ describe("appStore — workspace profiles", () => {
   it("persists workspace overrides and resolves thread-specific run state", () => {
     const { setWorkspaceProfileOverride, setWorkspaceThreadRunState, resolveWorkspaceProfile } = useAppStore.getState();
 
-    setWorkspaceProfileOverride("C:/repo/Aether", {
+    setWorkspaceProfileOverride("C:/repo/Aelyris", {
       preferredModel: "gpt-5.2",
       visualDensity: "dense",
-      safePaths: ["C:/repo/Aether/scripts"],
+      safePaths: ["C:/repo/Aelyris/scripts"],
     });
-    setWorkspaceThreadRunState("C:/repo/Aether", "thread-a", {
+    setWorkspaceThreadRunState("C:/repo/Aelyris", "thread-a", {
       status: "active",
       activeRoadmapId: "P2-03",
     });
 
-    const profile = resolveWorkspaceProfile("C:/repo/Aether", "thread-a");
+    const profile = resolveWorkspaceProfile("C:/repo/Aelyris", "thread-a");
     expect(profile.preferredModel).toBe("gpt-5.2");
     expect(profile.visualDensity).toBe("dense");
-    expect(profile.safePaths).toEqual(["C:/repo/Aether", "C:/repo/Aether/scripts"]);
+    expect(profile.safePaths).toEqual(["C:/repo/Aelyris", "C:/repo/Aelyris/scripts"]);
     expect(profile.runState.activeRoadmapId).toBe("P2-03");
-    expect(JSON.parse(localStorage.getItem("aether:workspaceProfiles") ?? "{}").version).toBe(1);
+    expect(JSON.parse(localStorage.getItem("aelyris:workspaceProfiles") ?? "{}").version).toBe(1);
   });
 });

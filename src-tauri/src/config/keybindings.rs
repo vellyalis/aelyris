@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
-/// Customizable keybindings loaded from `~/.aether/keybindings.toml`.
+/// Customizable keybindings loaded from `~/.aelyris/keybindings.toml`.
 ///
 /// Users can override any default binding or add new ones.
 /// The TOML format:
@@ -41,12 +41,12 @@ fn keybindings_path() -> std::path::PathBuf {
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(home)
-        .join(".aether")
+        .join(".aelyris")
         .join("keybindings.toml")
 }
 
 impl KeybindingsConfig {
-    /// Load keybindings from `~/.aether/keybindings.toml`.
+    /// Load keybindings from `~/.aelyris/keybindings.toml`.
     ///
     /// User-defined bindings are merged on top of the built-in defaults,
     /// so users only need to specify the bindings they want to override or add.
@@ -191,7 +191,7 @@ mod tests {
     fn test_load_falls_back_to_defaults() {
         // When no config file exists, load() should return defaults.
         // We rely on the fact that the test environment likely doesn't have
-        // ~/.aether/keybindings.toml (or if it does, we still get at least defaults).
+        // ~/.aelyris/keybindings.toml (or if it does, we still get at least defaults).
         let config = KeybindingsConfig::load();
         assert_eq!(config.action_for("ctrl+shift+p"), Some("command_palette"));
         assert!(config.bindings.len() >= 15);

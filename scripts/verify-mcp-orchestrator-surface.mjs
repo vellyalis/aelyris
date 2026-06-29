@@ -28,66 +28,66 @@ const symbolOwnership = read("src-tauri/src/symbol_ownership/mod.rs");
 const planner = read("src-tauri/src/task/planner.rs");
 
 const requiredTools = [
-  "aether.worktree.validate",
-  "aether.worktree.predictPath",
-  "aether.worktree.list",
-  "aether.worktree.create",
-  "aether.worktree.remove",
-  "aether.fleet_status",
-  "aether.route_agent",
-  "aether.pane_send_input",
-  "aether.agent_diff",
-  "aether.request_approval",
-  "aether.list_pending_approvals",
-  "aether.request_merge",
-  "aether.spawn_agent",
-  "aether.stop_agent",
-  "aether.review.approve",
-  "aether.review.reject",
-  "aether.task.create",
-  "aether.task.list",
-  "aether.task.transition",
-  "aether.orchestrator.plan",
-  "aether.orchestrator.step",
-  "aether.supervisor.health",
-  "aether.event.recent",
-  "aether.event.by_channel",
-  "aether.ownership.assign",
-  "aether.ownership.owner_of",
-  "aether.ownership.claims",
-  "aether.ownership.conflicts",
-  "aether.context.set",
-  "aether.context.get",
-  "aether.context.all",
-  "aether.context.remove",
-  "aether.agent.report_activity",
-  "aether.agent.report_blocker",
-  "aether.agent.activity",
-  "aether.intent.propose",
-  "aether.intent.list",
-  "aether.intent.all",
-  "aether.intent.resolve",
-  "aether.knowledge.add_node",
-  "aether.knowledge.add_edge",
-  "aether.knowledge.remove_node",
-  "aether.knowledge.remove_edge",
-  "aether.knowledge.dependencies",
-  "aether.knowledge.dependents",
-  "aether.knowledge.impact",
-  "aether.knowledge.graph",
+  "aelyris.worktree.validate",
+  "aelyris.worktree.predictPath",
+  "aelyris.worktree.list",
+  "aelyris.worktree.create",
+  "aelyris.worktree.remove",
+  "aelyris.fleet_status",
+  "aelyris.route_agent",
+  "aelyris.pane_send_input",
+  "aelyris.agent_diff",
+  "aelyris.request_approval",
+  "aelyris.list_pending_approvals",
+  "aelyris.request_merge",
+  "aelyris.spawn_agent",
+  "aelyris.stop_agent",
+  "aelyris.review.approve",
+  "aelyris.review.reject",
+  "aelyris.task.create",
+  "aelyris.task.list",
+  "aelyris.task.transition",
+  "aelyris.orchestrator.plan",
+  "aelyris.orchestrator.step",
+  "aelyris.supervisor.health",
+  "aelyris.event.recent",
+  "aelyris.event.by_channel",
+  "aelyris.ownership.assign",
+  "aelyris.ownership.owner_of",
+  "aelyris.ownership.claims",
+  "aelyris.ownership.conflicts",
+  "aelyris.context.set",
+  "aelyris.context.get",
+  "aelyris.context.all",
+  "aelyris.context.remove",
+  "aelyris.agent.report_activity",
+  "aelyris.agent.report_blocker",
+  "aelyris.agent.activity",
+  "aelyris.intent.propose",
+  "aelyris.intent.list",
+  "aelyris.intent.all",
+  "aelyris.intent.resolve",
+  "aelyris.knowledge.add_node",
+  "aelyris.knowledge.add_edge",
+  "aelyris.knowledge.remove_node",
+  "aelyris.knowledge.remove_edge",
+  "aelyris.knowledge.dependencies",
+  "aelyris.knowledge.dependents",
+  "aelyris.knowledge.impact",
+  "aelyris.knowledge.graph",
 ];
 
 const checks = [
   {
-    id: "required-aether-tool-catalog",
+    id: "required-aelyris-tool-catalog",
     ok: requiredTools.every((tool) => apiMcp.includes(`"${tool}"`)),
-    detail: "all aether.mcp.v1 orchestration tools are listed",
+    detail: "all aelyris.mcp.v1 orchestration tools are listed",
   },
   {
     id: "no-grant-or-merge-to-main-tools",
     ok:
-      !apiMcp.includes('"aether.grant_approval"') &&
-      !apiMcp.includes('"aether.merge_to_main"') &&
+      !apiMcp.includes('"aelyris.grant_approval"') &&
+      !apiMcp.includes('"aelyris.merge_to_main"') &&
       !apiMcp.includes('"grant_approval"') &&
       !apiMcp.includes('"merge_to_main"'),
     detail: "MCP catalog exposes request/observe only for gated operations",
@@ -95,7 +95,7 @@ const checks = [
   {
     id: "request-approval-queues-pending",
     ok:
-      apiMcp.includes('"aether.request_approval"') &&
+      apiMcp.includes('"aelyris.request_approval"') &&
       apiMcp.includes('kind: "permission_required".to_string()') &&
       apiMcp.includes('status: "pending".to_string()'),
     detail: "approval requests create pending inbox items instead of grants",
@@ -103,7 +103,7 @@ const checks = [
   {
     id: "request-merge-binds-durable-intent",
     ok:
-      apiMcp.includes('"aether.request_merge"') &&
+      apiMcp.includes('"aelyris.request_merge"') &&
       // P0-3: request_merge mints a DURABLE immutable intent (not a RAM queue),
       // capturing the canonical repo + the resolved branch OIDs at request time.
       apiMcp.includes("state.merge_store.as_ref()") &&
@@ -112,7 +112,7 @@ const checks = [
       apiMcp.includes("crate::merge_intent::MergeIntent {") &&
       apiMcp.includes("store.create_or_get(&intent)") &&
       // ...and never merges to main at request time.
-      !apiMcp.includes('"aether.merge_to_main"'),
+      !apiMcp.includes('"aelyris.merge_to_main"'),
     detail:
       "request_merge captures repo/branch/OIDs into a durable, immutable intent; it never merges",
   },
@@ -131,15 +131,15 @@ const checks = [
   {
     id: "pending-observe-only-contract",
     ok:
-      apiMcp.includes('"aether.list_pending_approvals"') &&
+      apiMcp.includes('"aelyris.list_pending_approvals"') &&
       apiMcp.includes('"grantToolExposed": false'),
     detail: "pending approval polling explicitly reports no grant tool exposure",
   },
   {
     id: "reviewer-approve-binds-to-stored-intent",
     ok:
-      apiMcp.includes('"aether.review.approve"') &&
-      apiMcp.includes('"aether.review.reject"') &&
+      apiMcp.includes('"aelyris.review.approve"') &&
+      apiMcp.includes('"aelyris.review.reject"') &&
       // P0-3 boundary #1/#4: approve NEVER takes caller repo/source/target; the
       // old override call is gone, replaced by an OID-bound merge of the stored
       // intent, claimed via the DB compare-and-swap.
@@ -154,8 +154,8 @@ const checks = [
   {
     id: "mcp-spawn-enforces-cost-gate",
     ok:
-      apiMcp.includes('"aether.spawn_agent"') &&
-      apiMcp.includes('"aether.stop_agent"') &&
+      apiMcp.includes('"aelyris.spawn_agent"') &&
+      apiMcp.includes('"aelyris.stop_agent"') &&
       apiMcp.includes("cost.guard_spawn(active_agents)") &&
       api.includes("pub fn with_cost_manager") &&
       api.includes("pub cost_manager: Option<Arc<CostManager>>") &&
@@ -177,10 +177,10 @@ const checks = [
   {
     id: "mcp-task-graph-single-source",
     ok:
-      apiMcp.includes('"aether.task.create"') &&
-      apiMcp.includes('"aether.task.list"') &&
-      apiMcp.includes('"aether.task.transition"') &&
-      apiMcp.includes('"aether.orchestrator.plan"') &&
+      apiMcp.includes('"aelyris.task.create"') &&
+      apiMcp.includes('"aelyris.task.list"') &&
+      apiMcp.includes('"aelyris.task.transition"') &&
+      apiMcp.includes('"aelyris.orchestrator.plan"') &&
       apiMcp.includes("state.task_manager.as_ref()") &&
       api.includes("pub task_manager: Option<Arc<crate::task::TaskManager>>") &&
       api.includes("pub fn with_task_manager") &&
@@ -192,7 +192,7 @@ const checks = [
   {
     id: "mcp-orchestrator-step-drives-real-loop",
     ok:
-      apiMcp.includes('"aether.orchestrator.step"') &&
+      apiMcp.includes('"aelyris.orchestrator.step"') &&
       apiMcp.includes("crate::control::loop_ports::run_step(") &&
       loopPorts.includes("pub fn run_step(") &&
       loopPorts.includes("fn poll_completions(&self) -> Completions {") &&
@@ -311,9 +311,9 @@ const checks = [
   {
     id: "mcp-coordination-stream-shared",
     ok:
-      apiMcp.includes('"aether.event.recent"') &&
-      apiMcp.includes('"aether.ownership.assign"') &&
-      apiMcp.includes('"aether.ownership.conflicts"') &&
+      apiMcp.includes('"aelyris.event.recent"') &&
+      apiMcp.includes('"aelyris.ownership.assign"') &&
+      apiMcp.includes('"aelyris.ownership.conflicts"') &&
       api.includes("pub event_bus: Option<Arc<crate::event_bus::EventBus>>") &&
       api.includes("pub file_ownership: Option<Arc<Mutex<crate::file_ownership::FileOwnership>>>") &&
       lib.includes(".with_event_bus(event_bus)") &&
@@ -327,8 +327,8 @@ const checks = [
   {
     id: "mcp-shared-adr-world-model",
     ok:
-      apiMcp.includes('"aether.context.set"') &&
-      apiMcp.includes('"aether.context.all"') &&
+      apiMcp.includes('"aelyris.context.set"') &&
+      apiMcp.includes('"aelyris.context.all"') &&
       apiMcp.includes("AgentEventKind::DecisionChanged") &&
       api.includes("pub context_store: Option<Arc<crate::context_store::ContextStoreManager>>") &&
       lib.includes(".with_context_store(context_store)") &&
@@ -341,11 +341,11 @@ const checks = [
   {
     id: "mcp-realtime-activity-and-intent",
     ok:
-      apiMcp.includes('"aether.agent.report_activity"') &&
-      apiMcp.includes('"aether.agent.report_blocker"') &&
-      apiMcp.includes('"aether.agent.activity"') &&
-      apiMcp.includes('"aether.intent.propose"') &&
-      apiMcp.includes('"aether.intent.list"') &&
+      apiMcp.includes('"aelyris.agent.report_activity"') &&
+      apiMcp.includes('"aelyris.agent.report_blocker"') &&
+      apiMcp.includes('"aelyris.agent.activity"') &&
+      apiMcp.includes('"aelyris.intent.propose"') &&
+      apiMcp.includes('"aelyris.intent.list"') &&
       agentClaude.includes("pub fn set_activity(") &&
       agentClaude.includes("pub struct AgentActivity") &&
       eventBus.includes("AgentActivity") &&
@@ -359,9 +359,9 @@ const checks = [
   {
     id: "mcp-knowledge-graph-impact",
     ok:
-      apiMcp.includes('"aether.knowledge.add_edge"') &&
-      apiMcp.includes('"aether.knowledge.impact"') &&
-      apiMcp.includes('"aether.knowledge.graph"') &&
+      apiMcp.includes('"aelyris.knowledge.add_edge"') &&
+      apiMcp.includes('"aelyris.knowledge.impact"') &&
+      apiMcp.includes('"aelyris.knowledge.graph"') &&
       knowledgeGraph.includes("pub fn impact_of(") &&
       knowledgeGraph.includes("pub fn dependents_of(") &&
       api.includes("pub knowledge_graph: Option<Arc<crate::knowledge_graph::KnowledgeGraphManager>>") &&
@@ -373,7 +373,7 @@ const checks = [
 
 const ok = checks.every((check) => check.ok);
 const artifact = {
-  schema: "aether.mcp-orchestrator-surface.v1",
+  schema: "aelyris.mcp-orchestrator-surface.v1",
   status: ok ? "passed" : "failed",
   ok,
   checkedAt: new Date().toISOString(),

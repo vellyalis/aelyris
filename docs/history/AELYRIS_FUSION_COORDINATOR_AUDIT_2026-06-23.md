@@ -1,13 +1,13 @@
-# Aether Fusion Coordinator Audit
+# Aelyris Fusion Coordinator Audit
 
 作成: 2026-06-23
-対象: Aether Terminal に inference-time multi-agent / multi-model composition API を追加する判断。
+対象: Aelyris に inference-time multi-agent / multi-model composition API を追加する判断。
 
 ## 0. Verdict
 
 **PASS, conditional.**
 
-Aether に "Fusion Coordinator" を組み込む価値は高い。ただし、これは LLM の重みを混ぜる model merging ではなく、既存の Aether control plane 上で複数 agent / model / reviewer / judge を合成する runtime coordination layer として実装する。
+Aelyris に "Fusion Coordinator" を組み込む価値は高い。ただし、これは LLM の重みを混ぜる model merging ではなく、既存の Aelyris control plane 上で複数 agent / model / reviewer / judge を合成する runtime coordination layer として実装する。
 
 この機能は新しい chat panel や新しい agent runtime ではない。`TaskGraph`、`ContextStore`、`EventBus`、`CostManager`、file / symbol ownership、review gate、merge control を束ねる薄い composition layer である。
 
@@ -16,7 +16,7 @@ Aether に "Fusion Coordinator" を組み込む価値は高い。ただし、こ
 実行:
 
 ```powershell
-claude -p "<read-only Aether Fusion Coordinator audit prompt>"
+claude -p "<read-only Aelyris Fusion Coordinator audit prompt>"
 ```
 
 初回は `HTTP_PROXY` / `HTTPS_PROXY` が `http://127.0.0.1:9` を指していたため `API Error: Unable to connect to API (ConnectionRefused)` で失敗した。恒久設定は変更せず、同プロセス内だけ proxy env を外して再実行し、Claude Code 2.1.186 の headless audit が完了した。
@@ -24,7 +24,7 @@ claude -p "<read-only Aether Fusion Coordinator audit prompt>"
 Claude の結論:
 
 - Verdict: **PASS**, with safety boundaries.
-- Product fit: Aether の AI team OS positioning を強化する。
+- Product fit: Aelyris の AI team OS positioning を強化する。
 - Architecture fit: 新 runtime ではなく、既存 `LoopPorts` / review / cost / intent / event substrate の composition layer として実装する。
 - Critical warning: Fusion advisor fan-out は visible pane に載せない。advisor はファイルを書かない推論専用なので、`PaneFleet` の outputs-based completion と相性が悪い。headless batch path を使い、process exit で完了収集する。
 
@@ -39,7 +39,7 @@ Claude が指摘した hard boundary:
 
 ## 2. Product Fit
 
-Aether の勝ち筋は、単に複数 LLM を呼ぶことではない。勝ち筋は、複数 AI worker が同じ workspace truth を共有し、衝突を避け、差分を review / merge まで持っていく AI team OS である。
+Aelyris の勝ち筋は、単に複数 LLM を呼ぶことではない。勝ち筋は、複数 AI worker が同じ workspace truth を共有し、衝突を避け、差分を review / merge まで持っていく AI team OS である。
 
 Fusion Coordinator はこの positioning と整合する:
 
@@ -62,7 +62,7 @@ Fusion Coordinator はこの positioning と整合する:
   - visible interactive TUI agent を pane に出す。
   - completion は process exit / declared outputs / timeout。
 - `src-tauri/src/api/mcp.rs`
-  - `aether.task.create`、`aether.orchestrator.step`、`aether.event.*`、`aether.symbol.*`、`aether.context.*`、`aether.intent.*` が既に coordination substrate を提供している。
+  - `aelyris.task.create`、`aelyris.orchestrator.step`、`aelyris.event.*`、`aelyris.symbol.*`、`aelyris.context.*`、`aelyris.intent.*` が既に coordination substrate を提供している。
 - `src-tauri/src/agent/interactive.rs`
   - GUI-visible path は interactive PTY / no `-p`。
 - `src-tauri/src/agent/claude.rs`
@@ -107,18 +107,18 @@ Keep this pure and unit-testable, following the `LoopPorts` pattern in `autonomy
 
 ## 4. API Shape
 
-Do not overload current `aether.spawn_agent`. It is currently headless in `src-tauri/src/api/mcp.rs`, while visible GUI agents must remain explicit PTY sessions. Fusion should get its own tool namespace.
+Do not overload current `aelyris.spawn_agent`. It is currently headless in `src-tauri/src/api/mcp.rs`, while visible GUI agents must remain explicit PTY sessions. Fusion should get its own tool namespace.
 
 Recommended MCP tools:
 
 | Tool | Safety | Purpose |
 |---|---|---|
-| `aether.fusion.plan` | FREE | Side-effect-free preview. Returns advisor roles, model allocation, cost estimate, lane plan, and judge plan. |
-| `aether.fusion.deliberate` | FREE | Starts headless advisor fan-out for an advisory-only decision. |
-| `aether.fusion.status` | FREE | Reads advisor status, partial outputs, cost, blockers, and events for a run. |
-| `aether.fusion.consensus` | FREE | Runs or reads judge synthesis. Produces a verdict, not a merge. |
-| `aether.fusion.cancel` | FREE | Cancels all headless advisor sessions for the fusion run. |
-| `aether.fusion.apply_as_tasks` | GATED or REVIEWER_AUTHORITY-adjacent | Converts a consensus into `aether.task.create` items. It must not merge directly. |
+| `aelyris.fusion.plan` | FREE | Side-effect-free preview. Returns advisor roles, model allocation, cost estimate, lane plan, and judge plan. |
+| `aelyris.fusion.deliberate` | FREE | Starts headless advisor fan-out for an advisory-only decision. |
+| `aelyris.fusion.status` | FREE | Reads advisor status, partial outputs, cost, blockers, and events for a run. |
+| `aelyris.fusion.consensus` | FREE | Runs or reads judge synthesis. Produces a verdict, not a merge. |
+| `aelyris.fusion.cancel` | FREE | Cancels all headless advisor sessions for the fusion run. |
+| `aelyris.fusion.apply_as_tasks` | GATED or REVIEWER_AUTHORITY-adjacent | Converts a consensus into `aelyris.task.create` items. It must not merge directly. |
 
 Run modes:
 
@@ -179,7 +179,7 @@ Only explicit accepted decisions should enter `ContextStore`.
 3. Add headless advisor adapter using existing `start_headless` / `AgentManager` path.
 4. Add cost reservation / active-agent cap enforcement.
 5. Add judge synthesis, with self-review / same-identity rejection.
-6. Add MCP tools under `aether.fusion.*` with JSON schemas and `additionalProperties:false`.
+6. Add MCP tools under `aelyris.fusion.*` with JSON schemas and `additionalProperties:false`.
 7. Add event records for deliberation lifecycle.
 8. Add cockpit UI read surface, not a new chat surface: fold into Orchestrator / Fleet HUD / Agent Inspector.
 9. Add `gated_apply` path that creates Task Graph nodes and delegates execution to existing orchestrator flow.
@@ -192,7 +192,7 @@ Commands run during this audit:
 ```powershell
 cargo test --manifest-path src-tauri\Cargo.toml symbol_ownership --lib
 pnpm test -- src/__tests__/agentFleet.test.ts src/__tests__/orchestraDispatch.test.ts
-claude -p "<read-only Aether Fusion Coordinator audit prompt>"
+claude -p "<read-only Aelyris Fusion Coordinator audit prompt>"
 ```
 
 Results:
@@ -209,11 +209,11 @@ Working tree note:
 
 Safe claim:
 
-> Aether can compose multiple agents and models at runtime, compare their reasoning, and route the accepted result through the same visible workspace, ownership, review, and merge controls as normal autonomous work.
+> Aelyris can compose multiple agents and models at runtime, compare their reasoning, and route the accepted result through the same visible workspace, ownership, review, and merge controls as normal autonomous work.
 
 Unsafe claim until implemented and tested:
 
-> Aether fuses LLMs into one model.
+> Aelyris fuses LLMs into one model.
 
 Unsafe claim unless sidecar recovery and pane attach are proven:
 

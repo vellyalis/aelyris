@@ -10,10 +10,10 @@
 
 use std::sync::Arc;
 
-use aether_terminal_lib::context_store::ContextStoreManager;
-use aether_terminal_lib::db::{Database, ManagedDb};
-use aether_terminal_lib::event_bus::{AgentEvent, AgentEventKind, EventBus};
-use aether_terminal_lib::task::{Task, TaskManager, TaskStatus};
+use aelyris_lib::context_store::ContextStoreManager;
+use aelyris_lib::db::{Database, ManagedDb};
+use aelyris_lib::event_bus::{AgentEvent, AgentEventKind, EventBus};
+use aelyris_lib::task::{Task, TaskManager, TaskStatus};
 use tempfile::tempdir;
 
 fn open(db_path: &std::path::Path) -> Arc<ManagedDb> {
@@ -23,7 +23,7 @@ fn open(db_path: &std::path::Path) -> Arc<ManagedDb> {
 #[test]
 fn runtime_core_state_survives_a_real_file_restart() {
     let dir = tempdir().unwrap();
-    let db_path = dir.path().join("aether_runtime.db");
+    let db_path = dir.path().join("aelyris_runtime.db");
 
     // --- Session 1: write decisions + tasks, then drop (process "exit"). ---
     {
@@ -74,7 +74,7 @@ fn runtime_core_state_survives_a_real_file_restart() {
 #[test]
 fn mutations_after_restore_persist_through_a_second_restart() {
     let dir = tempdir().unwrap();
-    let db_path = dir.path().join("aether_runtime2.db");
+    let db_path = dir.path().join("aelyris_runtime2.db");
 
     // Session 1: seed one task.
     {
@@ -102,7 +102,7 @@ fn event_log_survives_a_real_file_restart_with_no_loss() {
     // P3: the durable Event Bus log must keep EVERY notification across a restart
     // — even past the 256 in-memory ring cap that would have evicted ~44 of these.
     let dir = tempdir().unwrap();
-    let db_path = dir.path().join("aether_events.db");
+    let db_path = dir.path().join("aelyris_events.db");
 
     // Session 1: publish 300 events through a db-backed bus, then drop it.
     {

@@ -13,11 +13,11 @@ const CURRENT_STATE_DOCS = [
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
-  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
 const DETAILED_CURRENT_STATE_DOCS = new Set([
   "docs/PUBLICATION_READINESS.md",
-  "docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
+  "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ]);
 
 function currentLocalDate() {
@@ -82,7 +82,7 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
     safeProofArtifactRegistryCount > 0 ? `${safeProofArtifactRegistryCount}/${safeProofArtifactRegistryCount}` : "";
   const staleRightRailCurrentClaims = [
     /The right rail still reads as a dashboard, not an action surface\./,
-    /The rail does not yet prove that Aether is better than running tmux plus AI CLIs manually\./,
+    /The rail does not yet prove that Aelyris is better than running tmux plus AI CLIs manually\./,
     /The right rail still has too many surfaces that require the user to infer purpose from labels/,
     /Right rail edge: smoke\/action gates pass, but the rail still needs provenance-first actions/,
   ];
@@ -111,9 +111,9 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
     currentSafeProofArtifactCount: proofArtifactCount.length > 0 && text?.includes(proofArtifactCount) === true,
     consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
     consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
-    consentProviderRequired: text?.includes("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
+    consentProviderRequired: text?.includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
     defaultFinalizeNoGit: text?.includes("`pnpm verify:goal:finalize` excludes git finalization by default") === true,
-    optionalGitFinalizeEnvNamed: text?.includes("AETHER_GOAL_FINALIZE_INCLUDE_GIT=1") === true,
+    optionalGitFinalizeEnvNamed: text?.includes("AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1") === true,
     gitNotRequiredForProductEvidence: text?.includes("not required for product/safe/finalize evidence") === true,
     noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
     noStaleReleaseReadyClaim:

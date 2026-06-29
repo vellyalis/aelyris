@@ -63,7 +63,7 @@
 /* Secondary — ghost with visible border */
 .secondary {
   background: transparent;
-  border: 1px solid var(--aether-border-strong);
+  border: 1px solid var(--aelyris-border-strong);
   color: var(--text-secondary);
 }
 .secondary:hover {

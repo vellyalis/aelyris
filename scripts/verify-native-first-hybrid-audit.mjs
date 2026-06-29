@@ -303,11 +303,11 @@ addItem(
     nativeFirstDoc.includes("Terminal, Agents, Workspace, Review, Git, Context, History, Settings") &&
     nativeFirstDoc.includes("should not expand into broad REST/SQL/NoSQL/S3 scope") &&
     claugeSourceAuditDoc.includes("Commit inspected: `1aceff9f014eb997ba5b21eabf93f23c0da2b71c`") &&
-    claugeSourceAuditDoc.includes("upper compatibility inside Aether's terminal-first domain") &&
+    claugeSourceAuditDoc.includes("upper compatibility inside Aelyris's terminal-first domain") &&
     claugeSourceAuditDoc.includes("Mode state preservation") &&
     claugeSourceAuditDoc.includes("Per-mode AI") &&
     claugeSourceAuditDoc.includes("Cross-mode history"),
-  "Aether adopts source-audited Clauge information architecture: mode rail, dominant work surface, contextual inspector, per-mode AI, mode state preservation, and purpose-focused agents without copying REST/SQL/NoSQL/S3 scope.",
+  "Aelyris adopts source-audited Clauge information architecture: mode rail, dominant work surface, contextual inspector, per-mode AI, mode state preservation, and purpose-focused agents without copying REST/SQL/NoSQL/S3 scope.",
   {
     artifact: nativeClientPath,
     sourceAuditDoc: "docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md",
@@ -324,13 +324,13 @@ addItem(
     upperCompat?.score === 100 &&
     freshArtifact(upperCompatPath, [
       "scripts/verify-upper-compat-gates.mjs",
-      "src-tauri/src/bin/aether_native.rs",
+      "src-tauri/src/bin/aelyris_native.rs",
       "src-tauri/src/api/mod.rs",
       "src-tauri/src/db/queries.rs",
       "src-tauri/src/db/migrations.rs",
       "package.json",
     ]),
-  "Aether MCP server, workspace data, mode preservation, cross-mode history search, and agent identity are backed by Rust API/SQLite proof instead of frontend-only state.",
+  "Aelyris MCP server, workspace data, mode preservation, cross-mode history search, and agent identity are backed by Rust API/SQLite proof instead of frontend-only state.",
   {
     artifact: upperCompatPath,
     checks: upperCompat?.checks?.map((check) => ({ id: check.id, status: check.status })) ?? [],
@@ -434,7 +434,7 @@ const status = blockers.length === 0 ? "passed" : "blocked";
 
 const report = {
   version: 1,
-  schema: "aether.native-first-hybrid-audit.v1",
+  schema: "aelyris.native-first-hybrid-audit.v1",
   generatedAt: new Date().toISOString(),
   status,
   percent,
@@ -449,7 +449,7 @@ const report = {
     realMachineSleepExecuted: false,
     requiredForNativeFirstImplementationConfidence: false,
     requiredForStrictFullNativeClaim: true,
-    explicitOptInEnv: "QUORUM_ALLOW_OS_SLEEP=1",
+    explicitOptInEnv: "AELYRIS_ALLOW_OS_SLEEP=1",
   },
   currentTruth: {
     releaseGoal: "native-first hybrid",

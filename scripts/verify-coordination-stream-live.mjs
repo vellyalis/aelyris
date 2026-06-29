@@ -3,11 +3,11 @@
 // assigns/inspects File Ownership so parallel lanes never collide — no SQL, no
 // shared file, no screen-scraping. Deterministic (no agent / no auth).
 //
-// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token.
-const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.QUORUM_API_TOKEN;
+// Prereq: `pnpm tauri:dev` running; AELYRIS_API_TOKEN set to the API bearer token.
+const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.AELYRIS_API_TOKEN;
 if (!TOKEN) {
-  console.error("QUORUM_API_TOKEN is required");
+  console.error("AELYRIS_API_TOKEN is required");
   process.exit(2);
 }
 
@@ -37,8 +37,8 @@ async function main() {
   const nested = `src/${ns}/login.ts`;
 
   // 1. File Ownership: assign two overlapping lanes to different agents.
-  await call("aether.ownership.assign", { agentId: agentA, pattern: recursive });
-  const assigned = await call("aether.ownership.assign", { agentId: agentB, pattern: nested });
+  await call("aelyris.ownership.assign", { agentId: agentA, pattern: recursive });
+  const assigned = await call("aelyris.ownership.assign", { agentId: agentB, pattern: nested });
   const myConflict = assigned.conflicts.find(
     (c) => c.pattern_a === recursive && c.pattern_b === nested,
   );
@@ -46,23 +46,23 @@ async function main() {
   ok(myConflict?.agent_a === agentA && myConflict?.agent_b === agentB, "conflict names both agents");
 
   // 2. owner_of resolves the lane.
-  const ownerOf = await call("aether.ownership.owner_of", { path: nested });
+  const ownerOf = await call("aelyris.ownership.owner_of", { path: nested });
   ok(ownerOf.owner === agentA, `ownership.owner_of(${nested}) = ${agentA} (got ${ownerOf.owner})`);
 
   // 3. claims includes both lanes.
-  const claims = await call("aether.ownership.claims");
+  const claims = await call("aelyris.ownership.claims");
   const mine = claims.claims.filter((c) => c.agent_id === agentA || c.agent_id === agentB);
   ok(mine.length >= 2, "ownership.claims lists the assigned lanes");
 
   // 4. Event stream: a task.create publishes task_created; the orchestrator reads it back.
   const taskId = `${ns}-task`;
-  await call("aether.task.create", { id: taskId, title: "coordination probe" });
-  const recent = await call("aether.event.recent");
+  await call("aelyris.task.create", { id: taskId, title: "coordination probe" });
+  const recent = await call("aelyris.event.recent");
   const created = recent.events.find((e) => e.kind === "task_created" && e.payload?.id === taskId);
   ok(!!created, "event.recent surfaces the task_created event (shared coordination stream)");
   ok(created?.channel === "planning", `task_created routed to the planning channel (got ${created?.channel})`);
 
-  const planning = await call("aether.event.by_channel", { channel: "planning" });
+  const planning = await call("aelyris.event.by_channel", { channel: "planning" });
   ok(
     planning.events.some((e) => e.kind === "task_created" && e.payload?.id === taskId),
     "event.by_channel(planning) filters the stream",

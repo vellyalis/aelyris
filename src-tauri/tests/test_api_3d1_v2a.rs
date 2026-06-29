@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aether_terminal_lib::api::{self, ApiState, AuthConfig, RateLimiter};
-use aether_terminal_lib::pty::PtyManager;
+use aelyris_lib::api::{self, ApiState, AuthConfig, RateLimiter};
+use aelyris_lib::pty::PtyManager;
 use axum::http::HeaderValue;
 use reqwest::header::{
     ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS, ACCESS_CONTROL_REQUEST_METHOD,
@@ -44,7 +44,7 @@ fn base_state() -> ApiState {
         // Keep most tests off the global rate limiter so assertions don't
         // accidentally trip the 60-req/min REST default.
         .with_rate_limiter(Arc::new(RateLimiter::unlimited()))
-        // Explicit CORS list avoids leaking from QUORUM_API_CORS_ORIGIN env
+        // Explicit CORS list avoids leaking from AELYRIS_API_CORS_ORIGIN env
         // set in the surrounding process.
         .with_cors_origins(vec![HeaderValue::from_static("http://127.0.0.1:1420")])
 }

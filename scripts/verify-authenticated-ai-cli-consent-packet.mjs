@@ -8,7 +8,7 @@ const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
 const REQUIRED_COMMAND = "pnpm verify:terminal:authenticated-ai-cli-prompt";
 const PROVIDERS = ["codex", "claude", "gemini"];
 const MAX_ARTIFACT_AGE_MS = Number.parseInt(
-  process.env.AETHER_AUTH_CONSENT_PACKET_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
+  process.env.AELYRIS_AUTH_CONSENT_PACKET_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
   10,
 );
 
@@ -97,8 +97,8 @@ const providerReadiness = PROVIDERS.map((provider) => {
   const checks = {
     rowReady: row?.ready === true,
     commandExact: command === REQUIRED_COMMAND,
-    consentExact: env?.QUORUM_AUTH_PROMPT_CONSENT === CONSENT_PHRASE,
-    providerExact: env?.QUORUM_AUTH_PROMPT_PROVIDER === provider,
+    consentExact: env?.AELYRIS_AUTH_PROMPT_CONSENT === CONSENT_PHRASE,
+    providerExact: env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider,
   };
   return {
     provider,
@@ -120,7 +120,7 @@ const sourceArtifactsFresh =
   (artifacts.authenticatedPrompt.fresh || providerGuardBlocksPrompt);
 const packetCore = {
   command: REQUIRED_COMMAND,
-  requiredEnv: `QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
+  requiredEnv: `AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
   tokenGate: "explicit consent",
   wouldSpendTokens: true,
   promptState: promptExecutedWithConsent ? "executed_with_consent" : "blocked_without_consent",
@@ -175,7 +175,7 @@ const report = {
   packet: packetCore,
   providerReadiness,
   artifacts: packetCore.sourceArtifacts,
-  nextRequiredAction: `Set QUORUM_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} and QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run ${REQUIRED_COMMAND} only if token-spend validation is desired.`,
+  nextRequiredAction: `Set AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} and AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run ${REQUIRED_COMMAND} only if token-spend validation is desired.`,
 };
 
 writeReport(report);

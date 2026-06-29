@@ -1,8 +1,8 @@
-use aether_terminal_lib::audit::{
+use aelyris_lib::audit::{
     append_audit_event_with_emitter, AuditEventEmitter, AUDIT_EVENT_BUS_EVENT,
     AUDIT_EVENT_BUS_INCIDENT,
 };
-use aether_terminal_lib::db::{
+use aelyris_lib::db::{
     AuditJournalAppend, AuditJournalEventRecord, AuditJournalFilter, Database, ManagedDb,
 };
 use serde::Serialize;
@@ -334,7 +334,7 @@ fn test_audit_write_failure_emits_explicit_incident() {
 #[test]
 fn test_audit_sqlite_db_lock_emits_explicit_incident() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let db_path = temp.path().join("aether-audit-lock.db");
+    let db_path = temp.path().join("aelyris-audit-lock.db");
     let db = ManagedDb::new(Database::open(&db_path).expect("file db"));
     let emitter = RecordingEmitter::default();
 

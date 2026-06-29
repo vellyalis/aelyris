@@ -1,4 +1,4 @@
-# Claude Code Guide For Quorum
+# Claude Code Guide For Aelyris
 
 Claude Code should treat `AGENTS.md` as the shared source of truth for this repo.
 Read it first, then use this file only for Claude-specific operating notes.
@@ -23,7 +23,7 @@ If this file conflicts with `AGENTS.md` or the current claim policy, follow
 - Keep `package.json` as `"private": true` unless npm publication is explicitly planned.
 - Do not run token-spending authenticated AI prompt smoke tests without the documented explicit consent environment variables.
 - Do not run `cargo test` and `pnpm test` in parallel on Windows.
-- Treat `.claude/skills` as Aether-specific workflow helpers, not product capability proof. Use verifier commands for claims.
+- Treat `.claude/skills` as Aelyris-specific workflow helpers, not product capability proof. Use verifier commands for claims.
 
 ## Extra Quality Bar
 

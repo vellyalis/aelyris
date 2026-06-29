@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const extension = process.platform === "win32" ? ".exe" : "";
 const sidecar =
-  process.env.AETHER_MUX_LIVE_SIDECAR ??
-  join(root, "src-tauri", "pty-server", "target", "release", `aether-pty-server${extension}`);
-const out = process.env.AETHER_MUX_LIVE_OUT ?? join(root, ".codex-auto", "performance", "mux-live-restore-smoke.json");
-const token = process.env.AETHER_MUX_LIVE_TOKEN ?? "mux-live-restore-smoke-token";
+  process.env.AELYRIS_MUX_LIVE_SIDECAR ??
+  join(root, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${extension}`);
+const out = process.env.AELYRIS_MUX_LIVE_OUT ?? join(root, ".codex-auto", "performance", "mux-live-restore-smoke.json");
+const token = process.env.AELYRIS_MUX_LIVE_TOKEN ?? "mux-live-restore-smoke-token";
 const cargoManifest = join(root, "src-tauri", "Cargo.toml");
 
 class HostCapabilityBlockedError extends Error {
@@ -124,10 +124,10 @@ function startSidecar(port, muxDir, scrollbackDir, phase) {
       cwd: root,
       env: {
         ...process.env,
-        QUORUM_API_TOKEN: token,
-        QUORUM_PTY_SERVER_PORT: String(port),
-        QUORUM_MUX_SNAPSHOT_DIR: muxDir,
-        QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
+        AELYRIS_API_TOKEN: token,
+        AELYRIS_PTY_SERVER_PORT: String(port),
+        AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
+        AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
       },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
@@ -165,17 +165,17 @@ function killProcess(child) {
   }
 }
 
-function runAetherctl(base, args) {
-  const phase = `aetherctl-${args[0] ?? "command"}`;
+function runAelys(base, args) {
+  const phase = `aelys-${args[0] ?? "command"}`;
   const result = spawnSync(
     "cargo",
-    ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aetherctl", "--", ...args],
+    ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aelys", "--", ...args],
     {
       cwd: root,
       env: {
         ...process.env,
-        QUORUM_API_URL: base,
-        QUORUM_API_TOKEN: token,
+        AELYRIS_API_URL: base,
+        AELYRIS_API_TOKEN: token,
       },
       encoding: "utf8",
       shell: false,
@@ -187,12 +187,12 @@ function runAetherctl(base, args) {
     const reason = classifySpawnBlock(result.error);
     if (reason) {
       throw new HostCapabilityBlockedError(
-        "aetherctl-spawn",
-        `aetherctl child process launch is blocked: ${result.error.message}`,
+        "aelys-spawn",
+        `aelys child process launch is blocked: ${result.error.message}`,
         {
           phase,
           command: "cargo",
-          args: ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aetherctl", "--", ...args],
+          args: ["run", "--quiet", "--manifest-path", cargoManifest, "--bin", "aelys", "--", ...args],
           code: result.error.code ?? null,
           reason,
         },
@@ -202,13 +202,13 @@ function runAetherctl(base, args) {
   }
   if (result.status !== 0) {
     throw new Error(
-      `aetherctl ${args.join(" ")} failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      `aelys ${args.join(" ")} failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   }
   try {
     return JSON.parse(result.stdout);
   } catch (error) {
-    throw new Error(`aetherctl ${args.join(" ")} returned invalid JSON: ${error.message}\n${result.stdout}`);
+    throw new Error(`aelys ${args.join(" ")} returned invalid JSON: ${error.message}\n${result.stdout}`);
   }
 }
 
@@ -315,12 +315,12 @@ function assertDaemonContract(contract, phase) {
     `${phase} renderer truth source missing`,
   );
   assert(
-    terminalCorePolicy.renderFrameSchema === "aether.native.render-frame.v1",
+    terminalCorePolicy.renderFrameSchema === "aelyris.native.render-frame.v1",
     `${phase} render frame schema missing`,
   );
-  assert(terminalCorePolicy.renderDiffSchema === "aether.native.render-diff.v1", `${phase} render diff schema missing`);
+  assert(terminalCorePolicy.renderDiffSchema === "aelyris.native.render-diff.v1", `${phase} render diff schema missing`);
   assert(
-    terminalCorePolicy.renderCommitSchema === "aether.native.render-commit.v1",
+    terminalCorePolicy.renderCommitSchema === "aelyris.native.render-commit.v1",
     `${phase} render commit schema missing`,
   );
   assert(
@@ -388,7 +388,7 @@ async function main() {
     base,
     hostRequirements: [
       "Node child_process must be allowed to spawn the PTY daemon.",
-      "Node child_process must be allowed to run cargo aetherctl parity checks.",
+      "Node child_process must be allowed to run cargo aelys parity checks.",
       "The verifier must be allowed to terminate its own short-lived sidecar process.",
     ],
     hostBlocked: false,
@@ -399,10 +399,10 @@ async function main() {
     secondRunOutput: null,
     firstContract: null,
     secondContract: null,
-    aetherctlContract: null,
-    aetherctlSearch: null,
-    aetherctlExport: null,
-    aetherctlImport: null,
+    aelysContract: null,
+    aelysSearch: null,
+    aelysExport: null,
+    aelysImport: null,
   };
   let first = null;
   let second = null;
@@ -425,14 +425,14 @@ async function main() {
     report.checks.push("daemon-ready");
     report.checks.push("daemon-contract-policies-machine-readable");
     report.checks.push("terminal-core-policy-machine-readable");
-    const aetherctlContract = runAetherctl(base, ["daemon"]);
-    assertDaemonContract(aetherctlContract, "aetherctl");
+    const aelysContract = runAelys(base, ["daemon"]);
+    assertDaemonContract(aelysContract, "aelys");
     assert(
-      aetherctlContract.instanceId === firstContract.instanceId,
-      "aetherctl daemon contract should target the same live daemon instance",
+      aelysContract.instanceId === firstContract.instanceId,
+      "aelys daemon contract should target the same live daemon instance",
     );
-    report.aetherctlContract = aetherctlContract;
-    report.checks.push("aetherctl-daemon-contract-parity");
+    report.aelysContract = aelysContract;
+    report.checks.push("aelys-daemon-contract-parity");
 
     const created = await request(base, "/sessions", {
       method: "POST",
@@ -503,7 +503,7 @@ async function main() {
       body: JSON.stringify({ enabled: true }),
     });
     assert(activeTab(graph)?.synchronizedPanes === true, "synchronized panes should be enabled on active tab");
-    const syncMarker = `aether-mux-sync-${Date.now()}`;
+    const syncMarker = `aelyris-mux-sync-${Date.now()}`;
     report.syncMarker = syncMarker;
     await request(base, `/sessions/${workspaceId}/input`, {
       method: "POST",
@@ -518,7 +518,7 @@ async function main() {
     assert(activeTab(graph)?.synchronizedPanes === false, "synchronized panes should be disabled on active tab");
     report.checks.push("synchronized-pane-mode-mirrors-single-pane-input");
 
-    const broadcastMarker = `aether-mux-broadcast-${Date.now()}`;
+    const broadcastMarker = `aelyris-mux-broadcast-${Date.now()}`;
     report.broadcastMarker = broadcastMarker;
     const broadcast = await request(base, `/mux/workspaces/${workspaceId}/input`, {
       method: "POST",
@@ -529,7 +529,7 @@ async function main() {
     await waitForCapture(base, workspaceId, broadcastMarker);
     await waitForCapture(base, childId, broadcastMarker);
     report.checks.push("broadcast-input-reaches-all-live-panes");
-    const aetherctlSearch = runAetherctl(base, [
+    const aelysSearch = runAelys(base, [
       "search",
       workspaceId,
       broadcastMarker,
@@ -538,31 +538,31 @@ async function main() {
       "--limit",
       "5",
     ]);
-    assert(aetherctlSearch.query === broadcastMarker, "aetherctl search should echo the searched marker");
+    assert(aelysSearch.query === broadcastMarker, "aelys search should echo the searched marker");
     assert(
-      Array.isArray(aetherctlSearch.matches) &&
-        aetherctlSearch.matches.some((match) => String(match.text ?? "").includes(broadcastMarker)),
-      "aetherctl search should find the broadcast marker in durable scrollback",
+      Array.isArray(aelysSearch.matches) &&
+        aelysSearch.matches.some((match) => String(match.text ?? "").includes(broadcastMarker)),
+      "aelys search should find the broadcast marker in durable scrollback",
     );
-    report.aetherctlSearch = aetherctlSearch;
-    report.checks.push("aetherctl-scrollback-search-parity");
+    report.aelysSearch = aelysSearch;
+    report.checks.push("aelys-scrollback-search-parity");
 
-    const aetherctlExport = runAetherctl(base, ["mux-export", workspaceId]);
-    assert(aetherctlExport.schema === "aether.mux.v1", "aetherctl mux-export should return a versioned snapshot");
+    const aelysExport = runAelys(base, ["mux-export", workspaceId]);
+    assert(aelysExport.schema === "aelyris.mux.v1", "aelys mux-export should return a versioned snapshot");
     assert(
-      aetherctlExport.graph?.activeWorkspaceId === workspaceId,
-      "aetherctl mux-export should export the requested workspace",
+      aelysExport.graph?.activeWorkspaceId === workspaceId,
+      "aelys mux-export should export the requested workspace",
     );
     assert(
-      paneIds(aetherctlExport.graph).join("|") === [childId, workspaceId].sort().join("|"),
-      "aetherctl mux-export should preserve the active mux pane set",
+      paneIds(aelysExport.graph).join("|") === [childId, workspaceId].sort().join("|"),
+      "aelys mux-export should preserve the active mux pane set",
     );
-    report.aetherctlExport = {
-      schema: aetherctlExport.schema,
-      workspaceId: aetherctlExport.graph?.activeWorkspaceId,
-      paneCount: paneIds(aetherctlExport.graph).length,
+    report.aelysExport = {
+      schema: aelysExport.schema,
+      workspaceId: aelysExport.graph?.activeWorkspaceId,
+      paneCount: paneIds(aelysExport.graph).length,
     };
-    report.checks.push("aetherctl-mux-export-parity");
+    report.checks.push("aelys-mux-export-parity");
 
     graph = await request(base, `/mux/workspaces/${workspaceId}/panes/${childId}/zoom`, {
       method: "POST",
@@ -576,7 +576,7 @@ async function main() {
     assert(!activeTab(graph)?.layout?.zoomedPaneId, "unzoom should clear mux zoomed pane");
     report.checks.push("zoom-unzoom-round-trips-through-mux-layout");
 
-    const detachedMarker = `aether-live-detached-${Date.now()}`;
+    const detachedMarker = `aelyris-live-detached-${Date.now()}`;
     report.detachedMarker = detachedMarker;
 
     await request(base, `/mux/workspaces/${workspaceId}/detach`, { method: "POST" });
@@ -623,8 +623,8 @@ async function main() {
     assert(new Set(attachedPtyIds).size === 2, "attach should not duplicate PTY ids");
     report.checks.push("attach-respawns-live-pty-without-duplicates");
 
-    const reattachedBaseMarker = `aether-reattached-base-${Date.now()}`;
-    const reattachedChildMarker = `aether-reattached-child-${Date.now()}`;
+    const reattachedBaseMarker = `aelyris-reattached-base-${Date.now()}`;
+    const reattachedChildMarker = `aelyris-reattached-child-${Date.now()}`;
     report.reattachedInputMarkers = {
       [workspaceId]: reattachedBaseMarker,
       [childId]: reattachedChildMarker,
@@ -639,41 +639,41 @@ async function main() {
     report.checks.push("close-pane-updates-mux-graph");
 
     const exportPath = join(tempRoot, "mux-import-parity.json");
-    const exportToFile = runAetherctl(base, ["mux-export", workspaceId, "--out", exportPath]);
-    assert(exportToFile.status === "exported", "aetherctl mux-export --out should acknowledge the export");
-    assert(existsSync(exportPath), "aetherctl mux-export --out should create a snapshot file");
+    const exportToFile = runAelys(base, ["mux-export", workspaceId, "--out", exportPath]);
+    assert(exportToFile.status === "exported", "aelys mux-export --out should acknowledge the export");
+    assert(existsSync(exportPath), "aelys mux-export --out should create a snapshot file");
     const exportedSnapshot = JSON.parse(readFileSync(exportPath, "utf8"));
-    assert(exportedSnapshot.schema === "aether.mux.v1", "exported snapshot file should be versioned");
+    assert(exportedSnapshot.schema === "aelyris.mux.v1", "exported snapshot file should be versioned");
     assert(
       exportedSnapshot.graph?.activeWorkspaceId === workspaceId,
       "exported snapshot file should contain the requested workspace",
     );
 
-    const importedGraph = runAetherctl(base, ["mux-import", exportPath, "--replace"]);
+    const importedGraph = runAelys(base, ["mux-import", exportPath, "--replace"]);
     assert(
       importedGraph.activeWorkspaceId === workspaceId,
-      "aetherctl mux-import should restore the same workspace id",
+      "aelys mux-import should restore the same workspace id",
     );
     const importedPanes = allPaneRecords(importedGraph);
-    assert(importedPanes.length === 1, "aetherctl mux-import should restore the exported one-pane graph");
+    assert(importedPanes.length === 1, "aelys mux-import should restore the exported one-pane graph");
     assert(
       importedPanes.every(
         (pane) => pane.lifecycle === "detached" && String(pane.pty?.terminalId ?? "").startsWith("restore-pending:"),
       ),
-      "aetherctl mux-import should force imported panes into restore-pending detached state",
+      "aelys mux-import should force imported panes into restore-pending detached state",
     );
     const sessionsAfterImport = await request(base, "/sessions");
     assert(
       Array.isArray(sessionsAfterImport) && !sessionsAfterImport.some((session) => session.id === workspaceId),
       "replace import should close the replaced live PTY instead of leaving stale live sessions",
     );
-    report.aetherctlImport = {
+    report.aelysImport = {
       workspaceId: importedGraph.activeWorkspaceId,
       paneCount: importedPanes.length,
       restoredTerminalIds: importedPanes.map((pane) => pane.pty?.terminalId).sort(),
       replacedLivePtyClosed: true,
     };
-    report.checks.push("aetherctl-mux-import-parity");
+    report.checks.push("aelys-mux-import-parity");
     report.checks.push("mux-import-restore-pending");
     report.checks.push("mux-import-replace-closes-live-pty");
 

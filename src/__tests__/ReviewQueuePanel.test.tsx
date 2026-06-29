@@ -183,7 +183,7 @@ describe("ReviewQueuePanel", () => {
         role: "implementer",
         worktree: {
           name: "feature-a",
-          path: "C:/repo/.aether/worktrees/feature-a",
+          path: "C:/repo/.aelyris/worktrees/feature-a",
           branch: "feature/a",
           is_main: false,
           head_sha: "abc123",

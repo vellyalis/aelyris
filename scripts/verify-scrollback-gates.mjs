@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const extension = process.platform === "win32" ? ".exe" : "";
 const sidecar =
-  process.env.AETHER_SCROLLBACK_SIDECAR ??
-  join(root, "src-tauri", "pty-server", "target", "release", `aether-pty-server${extension}`);
+  process.env.AELYRIS_SCROLLBACK_SIDECAR ??
+  join(root, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${extension}`);
 const out =
-  process.env.AETHER_SCROLLBACK_OUT ?? join(root, ".codex-auto", "performance", "scrollback-gates.json");
-const token = process.env.AETHER_SCROLLBACK_TOKEN ?? "scrollback-gate-token";
+  process.env.AELYRIS_SCROLLBACK_OUT ?? join(root, ".codex-auto", "performance", "scrollback-gates.json");
+const token = process.env.AELYRIS_SCROLLBACK_TOKEN ?? "scrollback-gate-token";
 
 if (!existsSync(sidecar)) {
   throw new Error(`PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
@@ -68,10 +68,10 @@ function startSidecar(port, muxDir, scrollbackDir) {
     cwd: root,
     env: {
       ...process.env,
-      QUORUM_API_TOKEN: token,
-      QUORUM_PTY_SERVER_PORT: String(port),
-      QUORUM_MUX_SNAPSHOT_DIR: muxDir,
-      QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
+      AELYRIS_API_TOKEN: token,
+      AELYRIS_PTY_SERVER_PORT: String(port),
+      AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
+      AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
     },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
@@ -126,7 +126,7 @@ async function main() {
   const burstLines = 3000;
   writeFileSync(
     inputFile,
-    Array.from({ length: burstLines }, (_, index) => `AETHER_SCROLLBACK_${index + 1}`).join("\r\n") +
+    Array.from({ length: burstLines }, (_, index) => `AELYRIS_SCROLLBACK_${index + 1}`).join("\r\n") +
       "\r\n",
   );
 
@@ -151,7 +151,7 @@ async function main() {
       body: JSON.stringify({ shell: "cmd", cols: 120, rows: 30, cwd: root }),
     });
     const id = created.id;
-    const marker = `AETHER_SCROLLBACK_TAIL_${Date.now()}`;
+    const marker = `AELYRIS_SCROLLBACK_TAIL_${Date.now()}`;
     const quote = process.platform === "win32" ? `"` : "'";
     const printCommand = process.platform === "win32" ? "type" : "cat";
     const command = `${printCommand} ${quote}${inputFile}${quote}\r\necho ${marker}\r\n`;
@@ -161,9 +161,9 @@ async function main() {
     });
 
     const captured = await waitForCapture(base, id, marker, 10_000);
-    assert(captured.includes("AETHER_SCROLLBACK_1"), "capture should include the beginning of the large burst");
+    assert(captured.includes("AELYRIS_SCROLLBACK_1"), "capture should include the beginning of the large burst");
     assert(
-      captured.includes(`AETHER_SCROLLBACK_${burstLines}`),
+      captured.includes(`AELYRIS_SCROLLBACK_${burstLines}`),
       "capture should include the end of the large burst",
     );
     assert(captured.includes(marker), "capture should include the final tail marker");
@@ -173,11 +173,11 @@ async function main() {
 
     const searched = await request(
       base,
-      `/sessions/${id}/search?query=${encodeURIComponent(`AETHER_SCROLLBACK_${burstLines}`)}&lines=10000&limit=5`,
+      `/sessions/${id}/search?query=${encodeURIComponent(`AELYRIS_SCROLLBACK_${burstLines}`)}&lines=10000&limit=5`,
     );
     assert(searched.matches?.length >= 1, "scrollback search should find the final burst line");
     assert(
-      searched.matches.some((match) => match.text?.includes(`AETHER_SCROLLBACK_${burstLines}`)),
+      searched.matches.some((match) => match.text?.includes(`AELYRIS_SCROLLBACK_${burstLines}`)),
       "scrollback search result should include the matching line text",
     );
     report.checks.push("large-search-finds-final-burst-line");
@@ -198,7 +198,7 @@ async function main() {
       killProcess(proc.child);
     }
     writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
-    if (process.env.AETHER_KEEP_SCROLLBACK_TEMP !== "1") {
+    if (process.env.AELYRIS_KEEP_SCROLLBACK_TEMP !== "1") {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   }

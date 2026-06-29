@@ -31,8 +31,8 @@ system **renders too timid**. Three quantifiable symptoms:
    to `--text-2xs` = 9px (`global.css:434`). Card titles, rail section heads,
    and the densest metadata labels are therefore all whisper-quiet.
 
-2. **The chrome borders are nearly invisible.** `--aether-border` is
-   `rgba(121, 202, 226, 0.052)` (`global.css:38`) and `--aether-border-strong`
+2. **The chrome borders are nearly invisible.** `--aelyris-border` is
+   `rgba(121, 202, 226, 0.052)` (`global.css:38`) and `--aelyris-border-strong`
    is `rgba(146, 221, 239, 0.096)` (`global.css:39`). At 5.2% / 9.6% alpha the
    panel and card edges read as a suggestion, not a boundary.
 
@@ -102,13 +102,13 @@ helpers. These are alpha-only edits — the single-blur rule is untouched.
 
 | Token | Current value (file:line) | Proposed value | Rationale | Risk |
 |---|---|---|---|---|
-| `--aether-border` | `rgba(121, 202, 226, 0.052)` — `global.css:38` | `rgba(121, 202, 226, 0.10)` | 5.2% alpha makes panel hairlines disappear on bright Mica wallpapers. ~10% is the lowest alpha that still reads as a deliberate edge over Acrylic. Hue/RGB unchanged, so the cool-glass character is preserved. | LOW. `--aether-border` feeds `--border` (216); a brighter hairline cannot break layout. |
-| `--aether-border-strong` | `rgba(146, 221, 239, 0.096)` — `global.css:39` | `rgba(146, 221, 239, 0.16)` | The "strong" variant must out-read the base by a clear margin; at 9.6% vs 5.2% the two are nearly indistinguishable. 16% restores a legible base→strong step used on emphasized rails/cards. | LOW. Alpha only. |
+| `--aelyris-border` | `rgba(121, 202, 226, 0.052)` — `global.css:38` | `rgba(121, 202, 226, 0.10)` | 5.2% alpha makes panel hairlines disappear on bright Mica wallpapers. ~10% is the lowest alpha that still reads as a deliberate edge over Acrylic. Hue/RGB unchanged, so the cool-glass character is preserved. | LOW. `--aelyris-border` feeds `--border` (216); a brighter hairline cannot break layout. |
+| `--aelyris-border-strong` | `rgba(146, 221, 239, 0.096)` — `global.css:39` | `rgba(146, 221, 239, 0.16)` | The "strong" variant must out-read the base by a clear margin; at 9.6% vs 5.2% the two are nearly indistinguishable. 16% restores a legible base→strong step used on emphasized rails/cards. | LOW. Alpha only. |
 | Nested card fill delta | `.bento-card .bento-card` relies on `--rim-hairline` + parent alpha only, no own fill (`global.css:603-610`); `.card` fill `rgba(1,6,13,0.054)` (`AgentInspector.module.css:175`) | Ensure any **nested/active** card fill carries a **≥ 0.12 alpha delta** over its parent surface (was effectively ~0.05). Concretely: route the selected state through the new `--surface-selected` token in §4 (which bakes a +0.12 fill delta), rather than nudging base `.card` alpha. | Gives nested + selected cards a real "lifted off the parent" read instead of a 5% whisper, while staying under the 0.74 combined-alpha ceiling. | MEDIUM. Delta must be validated against `--glass-dense` (right-panel parent). §5 + §6 cover the check. Keep child `backdrop-filter:none`. |
 
 > Note: `--rim-hairline` (`global.css:501`, `rgba(128,218,238,0.048)`) is the
 > shadow-as-border for nested cards. It may be lifted to ~0.09 in the same pass
-> for parity with `--aether-border`, but that is OPTIONAL and lower priority than
+> for parity with `--aelyris-border`, but that is OPTIONAL and lower priority than
 > the two named border tokens above. Flagged, not required.
 
 ---
@@ -308,7 +308,7 @@ Run after applying, in this order. All are existing gates.
    selection must stay cyan. No gold bleed into the center panel.
 4. **Border lift looks deliberate, not heavy.** On a bright wallpaper (Mica),
    panel and card hairlines should now be visible but still hairline — not a
-   chunky 1px slab. Compare `--aether-border` panels against the terminal edge.
+   chunky 1px slab. Compare `--aelyris-border` panels against the terminal edge.
 5. **Nested-card lift.** A selected/active card should look genuinely *lifted*
    off its parent (≥ 0.12 fill delta), but the parent must not have gained a
    second blur — confirm the glass still reads as a single frosted layer

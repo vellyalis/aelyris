@@ -4,21 +4,21 @@
 //   pnpm.cmd dev -- --host 127.0.0.1 --port 1420
 //
 // Optional env:
-//   AETHER_RIGHT_RAIL_STALE_URL_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_RIGHT_RAIL_STALE_URL_OUT=.codex-auto/production-smoke/right-rail-stale-url-truth.json
+//   AELYRIS_RIGHT_RAIL_STALE_URL_URL=http://localhost:1420/
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_RIGHT_RAIL_STALE_URL_OUT=.codex-auto/production-smoke/right-rail-stale-url-truth.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const APP_URL = process.env.AETHER_RIGHT_RAIL_STALE_URL_URL ?? "http://localhost:1420/";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const APP_URL = process.env.AELYRIS_RIGHT_RAIL_STALE_URL_URL ?? "http://localhost:1420/";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT =
-  process.env.AETHER_RIGHT_RAIL_STALE_URL_OUT ?? ".codex-auto/production-smoke/right-rail-stale-url-truth.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_STALE_URL_WAIT_MS ?? "30000", 10);
-const EDGE_STORAGE_PREFIX = "aether:right-rail-edge-feedback:";
+  process.env.AELYRIS_RIGHT_RAIL_STALE_URL_OUT ?? ".codex-auto/production-smoke/right-rail-stale-url-truth.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_STALE_URL_WAIT_MS ?? "30000", 10);
+const EDGE_STORAGE_PREFIX = "aelyris:right-rail-edge-feedback:";
 
 const report = {
   ok: false,
@@ -80,9 +80,9 @@ function targetUrl({ visualQa }) {
   url.searchParams.set("edgeLoop", JSON.stringify(staleEdgeLoopPayload()));
   url.searchParams.set("v", visualQa ? "stale-url-truth-qa" : "stale-url-truth-normal");
   if (visualQa) {
-    url.searchParams.set("aetherVisualQa", "1");
+    url.searchParams.set("aelyrisVisualQa", "1");
   } else {
-    url.searchParams.delete("aetherVisualQa");
+    url.searchParams.delete("aelyrisVisualQa");
     url.searchParams.delete("visualQa");
   }
   return url.toString();
@@ -90,7 +90,7 @@ function targetUrl({ visualQa }) {
 
 function cleanVisualQaUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "observe");
   url.searchParams.set("v", "stale-url-truth-clean-qa");
@@ -119,10 +119,10 @@ async function seedProjectStorage(page) {
   await page.goto(APP_URL, { waitUntil: "domcontentloaded", timeout: WAIT_MS });
   await page.evaluate(
     ({ projectPath, storagePrefix }) => {
-      window.localStorage.setItem("aether:lastProject", projectPath);
-      window.localStorage.setItem("aether:onboarding-done", "true");
-      window.localStorage.removeItem("aether:visualQa");
-      window.localStorage.removeItem("aether:dashboardStateUrl");
+      window.localStorage.setItem("aelyris:lastProject", projectPath);
+      window.localStorage.setItem("aelyris:onboarding-done", "true");
+      window.localStorage.removeItem("aelyris:visualQa");
+      window.localStorage.removeItem("aelyris:dashboardStateUrl");
       for (const key of Object.keys(window.localStorage)) {
         if (key.startsWith(storagePrefix)) {
           window.localStorage.removeItem(key);

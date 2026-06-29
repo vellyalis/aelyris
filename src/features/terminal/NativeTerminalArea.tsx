@@ -166,7 +166,7 @@ function writePreviewLine(row: CellSnapshot[], line: string, attrs = 0) {
 }
 
 function previewPath(cwd?: string): string {
-  if (!cwd) return "~/work/aether-terminal";
+  if (!cwd) return "~/work/aelyris";
   const normalized = cwd.replace(/\\/g, "/");
   const homeMatch = normalized.match(/^[A-Z]:\/Users\/[^/]+\/(.+)$/i);
   return homeMatch ? `~/${homeMatch[1]}` : normalized;
@@ -181,7 +181,7 @@ function previewPrompt(shell: ShellType, cwd?: string): string {
       return `${path}> git diff --stat`;
     case "gitbash":
     case "wsl":
-      return `aether:${path}$ git diff --stat`;
+      return `aelyris:${path}$ git diff --stat`;
   }
 }
 

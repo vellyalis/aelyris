@@ -7,12 +7,12 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const sourcePaths = {
   handoff: "docs/specs/CODEX_HANDOFF.md",
-  worldClassDesign: "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  worldClassDesign: "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
   controlMod: "src-tauri/src/control/mod.rs",
   app: "src/App.tsx",
   ipcCommands: "src-tauri/src/ipc/commands.rs",
   mcpApi: "src-tauri/src/api/mcp.rs",
-  nativeBin: "src-tauri/src/bin/aether_native.rs",
+  nativeBin: "src-tauri/src/bin/aelyris_native.rs",
 };
 
 const godFileBaselines = [
@@ -146,7 +146,7 @@ const warnings = [
 ];
 const ok = blockingFailures.length === 0;
 const report = {
-  schema: "aether.modularity-boundary-contract/v1",
+  schema: "aelyris.modularity-boundary-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   localDate: currentLocalDate(),

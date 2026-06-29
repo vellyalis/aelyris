@@ -416,7 +416,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             ON symbol_ownership_claims(lease_expires_at);
 
         -- P0-3 world-release hardening: durable, IMMUTABLE merge intents. The MCP
-        -- merge approval path (aether.request_merge -> aether.review.approve) kept
+        -- merge approval path (aelyris.request_merge -> aelyris.review.approve) kept
         -- intents in a RAM Vec and let the approver supply repo/source/target, so
         -- an intent id was a mere token a caller could re-point at any merge. These
         -- rows are the source of truth: the merge-defining columns are captured at

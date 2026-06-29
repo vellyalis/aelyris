@@ -24,7 +24,7 @@ export const SAKURA_MATERIAL_DEFAULTS: MoodMaterialDefaults = {
 };
 
 export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> = {
-  "aether-sky": {
+  "aelyris-sky": {
     backdropColor: "#020812",
     panelColor: "#061424",
     chromeColor: "#020812",
@@ -34,7 +34,7 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeAlpha: 0.38,
     terminalAlpha: 0.48,
   },
-  "aether-moonwater": {
+  "aelyris-moonwater": {
     backdropColor: "#00112a",
     panelColor: "#021930",
     chromeColor: "#00102a",
@@ -44,7 +44,7 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeAlpha: 0.38,
     terminalAlpha: 0.5,
   },
-  "aether-crystal": {
+  "aelyris-crystal": {
     backdropColor: "#020914",
     panelColor: "#041827",
     chromeColor: "#03101d",
@@ -54,7 +54,7 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeAlpha: 0.28,
     terminalAlpha: 0.36,
   },
-  "aether-dream": {
+  "aelyris-dream": {
     backdropColor: "#120d20",
     panelColor: "#221932",
     chromeColor: "#10091e",
@@ -64,7 +64,7 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeAlpha: 0.4,
     terminalAlpha: 0.48,
   },
-  "aether-cute": {
+  "aelyris-cute": {
     backdropColor: "#071916",
     panelColor: "#12302c",
     chromeColor: "#031313",
@@ -74,8 +74,8 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeAlpha: 0.4,
     terminalAlpha: 0.48,
   },
-  "aether-sakura": SAKURA_MATERIAL_DEFAULTS,
-  "aether-obsidian": {
+  "aelyris-sakura": SAKURA_MATERIAL_DEFAULTS,
+  "aelyris-obsidian": {
     backdropColor: "#090b13",
     panelColor: "#1b1920",
     chromeColor: "#111017",
@@ -85,7 +85,7 @@ export const MOOD_MATERIAL_DEFAULTS: Record<MoodPresetId, MoodMaterialDefaults> 
     chromeAlpha: 0.42,
     terminalAlpha: 0.52,
   },
-  "aether-pro": {
+  "aelyris-pro": {
     backdropColor: "#040d17",
     panelColor: "#05121f",
     chromeColor: "#030a12",
@@ -365,7 +365,7 @@ export function withMinimumAlpha(value: string | undefined, minimum: number): st
 }
 
 export function applyReadableDarkGlassFloor(mood: MoodPresetId, vars: Record<string, string>): Record<string, string> {
-  if (mood === "aether-sakura" || mood === "aether-crystal") return vars;
+  if (mood === "aelyris-sakura" || mood === "aelyris-crystal") return vars;
   return {
     ...vars,
     "--glass-ground": withMinimumAlpha(vars["--glass-ground"], GLASS_TIER_ALPHA_FLOOR.ground) ?? vars["--glass-ground"],

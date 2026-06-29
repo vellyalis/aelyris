@@ -18,19 +18,19 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 
 | Need | Use | Output |
 | --- | --- | --- |
-| Public readiness or release claim check | `aether-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
-| Current proof and gate classification | `aether-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
-| Previous-turn Claude stop gate | `aether-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
+| Public readiness or release claim check | `aelyris-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
+| Current proof and gate classification | `aelyris-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
+| Previous-turn Claude stop gate | `aelyris-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
 | One scoped Work Unit or vertical slice | `docs/specs/CODEX_HANDOFF.md` plus owner module verifier | implementation plan and focused checks |
 | Large drift-prone implementation | `codex-guided-implementation` | increment plan, read-only review gates, explicit boundaries |
-| MCP runtime orchestration | `aether-orchestrate` | local-only runtime loop; no public release claim |
-| Legacy worktree fleet path | `aether-fleet` | fallback/manual workflow only; prefer MCP runtime when available |
+| MCP runtime orchestration | `aelyris-orchestrate` | local-only runtime loop; no public release claim |
+| Legacy worktree fleet path | `aelyris-fleet` | fallback/manual workflow only; prefer MCP runtime when available |
 
 ## Public Hygiene Rules
 
 - Do not import external skill packs, hooks, slash commands, or personas wholesale.
 - Do not enable hooks that rewrite files or inject hidden session behavior.
-- Keep `.claude/skills` as Quorum-specific workflows. They are not product capability proof.
+- Keep `.claude/skills` as Aelyris-specific workflows. They are not product capability proof.
 - Machine gates and local verifier outputs outrank reviewer-agent opinions.
 - Token-spending AI prompt smoke requires explicit operator consent.
 

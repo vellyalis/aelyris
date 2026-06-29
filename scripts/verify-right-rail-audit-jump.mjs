@@ -1,12 +1,12 @@
 // Live Tauri/WebView2 smoke for the right-rail Last action -> Audit Timeline path.
 //
 // Prerequisite:
-//   set QUORUM_API_TOKEN=dev && pnpm.cmd tauri:dev
+//   set AELYRIS_API_TOKEN=dev && pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_RIGHT_RAIL_AUDIT_OUT=.codex-auto/production-smoke/right-rail-audit-jump.json
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_RIGHT_RAIL_AUDIT_OUT=.codex-auto/production-smoke/right-rail-audit-jump.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -14,10 +14,10 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_RIGHT_RAIL_AUDIT_OUT ?? ".codex-auto/production-smoke/right-rail-audit-jump.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_AUDIT_WAIT_MS ?? "90000", 10);
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_RIGHT_RAIL_AUDIT_OUT ?? ".codex-auto/production-smoke/right-rail-audit-jump.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_AUDIT_WAIT_MS ?? "90000", 10);
 
 const report = {
   ok: false,
@@ -74,7 +74,7 @@ async function connectWithWait() {
 
 function targetQaUrl(rawUrl) {
   const url = new URL(rawUrl);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   return url.toString();
@@ -107,11 +107,11 @@ async function assertTauriInternals(page) {
 async function seedQaStorage(page) {
   await page
     .evaluate((projectPath) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", projectPath);
-      localStorage.setItem("aether:lastProject", projectPath);
-      localStorage.setItem("aether:onboarding-done", "true");
-      localStorage.removeItem("aether:dashboardStateUrl");
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", projectPath);
+      localStorage.setItem("aelyris:lastProject", projectPath);
+      localStorage.setItem("aelyris:onboarding-done", "true");
+      localStorage.removeItem("aelyris:dashboardStateUrl");
     }, PROJECT_PATH)
     .catch(() => {});
 }

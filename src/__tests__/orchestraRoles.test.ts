@@ -46,7 +46,7 @@ describe("buildOrchestraPrompts", () => {
     expect(out[0].roleId).toBe("implementer");
     expect(out[0].model).toBe("sonnet");
     expect(out[0].prompt).toContain("add login");
-    expect(out[0].prompt).toContain("Aether Orchestra Contract:");
+    expect(out[0].prompt).toContain("Aelyris Orchestra Contract:");
     expect(out[0].prompt).toContain("Handoff:");
     expect(out[1].roleId).toBe("reviewer");
     expect(out[1].model).toBe("opus");

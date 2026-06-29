@@ -131,7 +131,7 @@ const checks = [
 
 const ok = checks.every((item) => item.ok);
 const artifact = {
-  schema: "aether.visible-agent-pane-binding-contract/v1",
+  schema: "aelyris.visible-agent-pane-binding-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok,

@@ -1,4 +1,4 @@
-# Claude Handoff - Aether Cockpit Requirements Audit
+# Claude Handoff - Aelyris Cockpit Requirements Audit
 
 Date: 2026-06-23 12:30 JST
 
@@ -25,7 +25,7 @@ It is not just "split terminals". The intended system is:
 
 ## Current Verdict
 
-The product is partially satisfying the Aether Cockpit / AI Agent OS v1.0
+The product is partially satisfying the Aelyris Cockpit / AI Agent OS v1.0
 requirements:
 
 - PASS: capability layer scaffold, Task Graph, Event Bus, Context Store, Cost
@@ -217,13 +217,13 @@ Current failed/blocked checks:
   - Result: true.
 - `Test-NetConnection 127.0.0.1 -Port 9333`
   - Result: true.
-- `QUORUM_API_TOKEN=dev node scripts/verify-mcp-task-surface-live.mjs`
+- `AELYRIS_API_TOKEN=dev node scripts/verify-mcp-task-surface-live.mjs`
   - Result: HTTP 401. Current bearer token is not available in this shell.
 
 Visual artifacts inspected:
 
-- `C:\tmp\aether-demo-shots\fleet-working.png`
-- `C:\tmp\aether-demo-shots\fleet-split.png`
+- `C:\tmp\aelyris-demo-shots\fleet-working.png`
+- `C:\tmp\aelyris-demo-shots\fleet-split.png`
 - `.codex-auto/production-smoke/fleet-hud.png`
 - `.codex-auto/production-smoke/shell-dispatch.png`
 
@@ -244,7 +244,7 @@ These are real in code now:
     `PaneDispatcher` path: interactive TUI in a visible PTY pane, not headless
     `-p`.
 - Reviewer merge:
-  - `src-tauri/src/api/mcp.rs:417-419` exposes `aether.review.approve` as
+  - `src-tauri/src/api/mcp.rs:417-419` exposes `aelyris.review.approve` as
     Reviewer authority.
   - `src-tauri/src/api/mcp.rs:1113-1160` performs the real merge after claiming
     the queued intent.
@@ -284,7 +284,7 @@ These are real in code now:
 ### Resolved candidate - Review the Cost Manager cap fix
 
 Requirement says default worker batch is 3-4 and `max_agents` default is 4
-(`docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md:96-132`).
+(`docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md:96-132`).
 
 Earlier code defaulted to 8:
 
@@ -397,12 +397,12 @@ Ports were open:
 - CDP: `127.0.0.1:9222` true.
 - API: `127.0.0.1:9333` true.
 
-But the shell did not have the current `QUORUM_API_TOKEN`; old `dev` token
+But the shell did not have the current `AELYRIS_API_TOKEN`; old `dev` token
 returned HTTP 401. Claude should get the current token from the dev log or start
 Tauri with an explicit token, then run:
 
 ```powershell
-$env:QUORUM_API_TOKEN='<current-token>'
+$env:AELYRIS_API_TOKEN='<current-token>'
 node scripts/verify-mcp-task-surface-live.mjs
 node scripts/verify-shared-brain-live.mjs
 node scripts/verify-autonomy-loop-live.mjs
@@ -443,7 +443,7 @@ Use this prompt directly:
 ```text
 You are Claude working in <repo>.
 
-Read docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md,
+Read docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md,
 docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md, and
 docs/specs/CLAUDE_HANDOFF_COCKPIT_REQUIREMENTS_AUDIT_2026-06-23.md.
 

@@ -13,16 +13,16 @@ and historical score snapshots.
 Read in this order:
 
 1. `../README.md` - public project overview and current alpha status.
-2. `GITHUB_INTRODUCTION.md` - public GitHub introduction draft and Quorum naming copy.
+2. `GITHUB_INTRODUCTION.md` - public GitHub introduction draft and Aelyris naming copy.
 3. `PUBLICATION_READINESS.md` - public-release checklist and current blockers.
 4. `requirements.md` - stable requirements entrypoint referenced by `AGENTS.md`.
 5. `specs/README.md` - active spec index and work-unit map.
 6. `AGENT_WORKFLOWS.md` - agent/skill workflow routing and closeout rules.
 7. Verifier commands such as `pnpm verify:quality-score` and `pnpm verify:goal:safe` - generate local `.codex-auto/quality/*.json` evidence.
 
-Latest documented release evidence as of the 2026-06-28 JST public-doc refresh. Regenerate locally before release decisions:
+Latest documented release evidence as of the 2026-06-29 JST public-doc refresh. Regenerate locally before release decisions:
 
-- `release-quality-score`: `43/100`, `150/351`, grade `D`
+- `release-quality-score`: `35/100`, `124/351`, grade `D`
 - `releaseCandidateReady`: `false`
 - Machine field: `releaseCandidateReady=false`
 - `final-goal-safe`: `ok=false`, `status=blocked`
@@ -47,10 +47,10 @@ These files are active entrypoints:
 - `specs/README.md`
 - `specs/CODEX_HANDOFF.md`
 - `specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
-- `specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
-- `specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
-- `specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md`
-- `specs/QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
+- `specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+- `specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+- `specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md`
+- `specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
 - `AGENT_WORKFLOWS.md`
 
 These documents define what can be claimed, what is still gated, and which
@@ -65,8 +65,8 @@ such as old `S`, `A`, `95/100`, or `96/100` release snapshots.
 Treat these as historical unless they explicitly point back to `requirements.md`,
 `specs/README.md`, or freshly generated local `.codex-auto/quality` artifacts:
 
-- `AETHER_COMMAND_CENTER_EDGE_PROGRESS.md`
-- `AETHER_COMMAND_CENTER_EDGE_PLAN.md`
+- `AELYRIS_COMMAND_CENTER_EDGE_PROGRESS.md`
+- `AELYRIS_COMMAND_CENTER_EDGE_PLAN.md`
 - `RUST_CORE_WEZTERM_TMUX_WIZARD_GOALS.md`
 - `NATIVE_RUST_WEZTERM_PLUS_MIGRATION_PLAN.md`
 - `TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md`
@@ -91,7 +91,7 @@ is green:
 - release-ready,
 - strict `agmsg` superset or completed agent-message-bus coordination.
 
-The safe public claim is narrower: Quorum has a real terminal, mux, sidecar,
+The safe public claim is narrower: Aelyris has a real terminal, mux, sidecar,
 visible-agent, MCP, worktree, ownership, review, and merge substrate, while the
 world-class product claim remains gated.
 

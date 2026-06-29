@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Fleet dispatcher for Aether worktree-based parallel development.
+  Fleet dispatcher for Aelyris worktree-based parallel development.
 
 .DESCRIPTION
   Turns a CODEX_HANDOFF Work Unit id into a ready-to-run agent task:
@@ -10,7 +10,7 @@
   drives the sequential-merge tail.
 
   This script ONLY orchestrates git worktrees and briefs. It never edits
-  Aether source — the agent you launch does the implementation.
+  Aelyris source — the agent you launch does the implementation.
 
 .EXAMPLE
   ./fleet-dispatch.ps1 list

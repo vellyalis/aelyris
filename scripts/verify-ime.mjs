@@ -18,25 +18,25 @@
 //      multi-terminal scoping are checked when the live WebView exposes the
 //      needed DOM/CDP surfaces.
 //
-// Requires `QUORUM_API_TOKEN=dev pnpm tauri:dev` running with CDP on 9222.
+// Requires `AELYRIS_API_TOKEN=dev pnpm tauri:dev` running with CDP on 9222.
 // Run: pnpm node scripts/verify-ime.mjs
 //
 // Optional env:
-//   AETHER_IME_CDP=http://127.0.0.1:9222
-//   AETHER_IME_URL=http://localhost:1420/
-//   AETHER_IME_PROJECT=C:/repo/aether-terminal
-//   AETHER_IME_OUT=.codex-auto/production-smoke/verify-ime.json
+//   AELYRIS_IME_CDP=http://127.0.0.1:9222
+//   AELYRIS_IME_URL=http://localhost:1420/
+//   AELYRIS_IME_PROJECT=C:/repo/aelyris
+//   AELYRIS_IME_OUT=.codex-auto/production-smoke/verify-ime.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_IME_URL ?? "http://localhost:1420/";
+const CDP = process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_IME_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
-const PROJECT_PATH = process.env.AETHER_IME_PROJECT ?? process.cwd().replaceAll("\\", "/");
-const OUT = process.env.AETHER_IME_OUT ?? ".codex-auto/production-smoke/verify-ime.json";
+const PROJECT_PATH = process.env.AELYRIS_IME_PROJECT ?? process.cwd().replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_IME_OUT ?? ".codex-auto/production-smoke/verify-ime.json";
 const report = {
   version: 1,
   taskId: "verify-ime",
@@ -85,7 +85,7 @@ function writeEnvironmentBlockedArtifact() {
   return path;
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.startsWith(APP_ORIGIN) ||
@@ -118,7 +118,7 @@ function sleep(ms) {
 }
 
 async function connectOverCdpWithRetry() {
-  const timeoutMs = Number(process.env.AETHER_IME_CDP_TIMEOUT_MS ?? 90000);
+  const timeoutMs = Number(process.env.AELYRIS_IME_CDP_TIMEOUT_MS ?? 90000);
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
 
@@ -132,19 +132,19 @@ async function connectOverCdpWithRetry() {
   }
 
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP} within ${timeoutMs}ms. Start Aether with "QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${lastError?.message ?? "CDP endpoint did not respond"}`,
+    `Cannot attach to WebView2 CDP at ${CDP} within ${timeoutMs}ms. Start Aelyris with "AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev" first.\n${lastError?.message ?? "CDP endpoint did not respond"}`,
   );
 }
 
 function targetImeUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "verify-ime-clean");
   url.searchParams.delete("state");
   url.searchParams.delete("edgeLoop");
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -485,7 +485,7 @@ async function runNativeSurfaceCompositionChecks(page) {
   }
 
   console.log("\n[ime] Section 5 — Native commit / long preedit handoff");
-  const longMarker = `AETHER_IME_LONG_${Math.random().toString(36).slice(2, 8)}`;
+  const longMarker = `AELYRIS_IME_LONG_${Math.random().toString(36).slice(2, 8)}`;
   await page.evaluate(
     async ({ terminalId, marker }) => {
       await window.__TAURI_INTERNALS__.invoke("native_terminal_input_commit", {
@@ -506,7 +506,7 @@ async function runNativeSurfaceCompositionChecks(page) {
   }
 
   console.log("\n[ime] Section 6 — Native LF paste line ending");
-  const pasteMarker = `AETHER_IME_PS_${Math.random().toString(36).slice(2, 8)}`;
+  const pasteMarker = `AELYRIS_IME_PS_${Math.random().toString(36).slice(2, 8)}`;
   await page.evaluate(
     async ({ terminalId, marker }) => {
       await window.__TAURI_INTERNALS__.invoke("native_terminal_input_commit", {
@@ -528,19 +528,19 @@ async function runNativeSurfaceCompositionChecks(page) {
 async function main() {
   const browser = await connectOverCdpWithRetry();
   const ctx = browser.contexts()[0];
-  const page = ctx.pages().find(isAetherPage);
+  const page = ctx.pages().find(isAelyrisPage);
   if (!page) {
     throw new Error(
-      `no Aether Tauri page found in CDP context. Expected localhost:1420, 127.0.0.1:1420, or tauri://localhost.\n${describePages(
+      `no Aelyris Tauri page found in CDP context. Expected localhost:1420, 127.0.0.1:1420, or tauri://localhost.\n${describePages(
         ctx,
       )}`,
     );
   }
   await page.evaluate(
     ([project]) => {
-      localStorage.setItem("aether:lastProject", project);
-      localStorage.setItem("aether:onboarding-done", "1");
-      localStorage.removeItem("aether:dashboardStateUrl");
+      localStorage.setItem("aelyris:lastProject", project);
+      localStorage.setItem("aelyris:onboarding-done", "1");
+      localStorage.removeItem("aelyris:dashboardStateUrl");
     },
     [PROJECT_PATH],
   );
@@ -613,7 +613,7 @@ async function main() {
   }
   await waitForTerminalIds(page);
 
-  const barMarker = `AETHER_IME_BAR_${Math.random().toString(36).slice(2, 8)}`;
+  const barMarker = `AELYRIS_IME_BAR_${Math.random().toString(36).slice(2, 8)}`;
   await ta.first().click();
   await ta.first().focus();
   await page.keyboard.type(`echo ${barMarker}`);
@@ -659,7 +659,7 @@ async function main() {
     // Use ASCII only so grid snapshot (which stores `ch: char`) shows it
     // cleanly without worrying about wide-char cells or half-width
     // continuation columns.
-    const overlayMarker = `AETHER_IME_OVR_${Math.random().toString(36).slice(2, 8)}`;
+    const overlayMarker = `AELYRIS_IME_OVR_${Math.random().toString(36).slice(2, 8)}`;
     const r = await dispatchOverlayComposition(page, [
       { type: "compositionstart" },
       {
@@ -771,7 +771,7 @@ async function main() {
     console.log("\n[ime] Section 6 — Long Japanese preedit regression");
 
     const longPreedit = "あ".repeat(48);
-    const lateMarker = `AETHER_IME_LONG_${Math.random().toString(36).slice(2, 8)}`;
+    const lateMarker = `AELYRIS_IME_LONG_${Math.random().toString(36).slice(2, 8)}`;
     const command = `echo ${lateMarker}`;
     const longR = await dispatchOverlayComposition(page, [
       { type: "compositionstart" },
@@ -834,7 +834,7 @@ async function main() {
       pass("blur preserves preedit without committing it");
     else fail(`blur did not preserve preedit as expected: ${JSON.stringify(blurState)}`);
 
-    const pasteMarker = `AETHER_IME_PASTE_${Math.random().toString(36).slice(2, 8)}`;
+    const pasteMarker = `AELYRIS_IME_PASTE_${Math.random().toString(36).slice(2, 8)}`;
     const pasteResult = await dispatchOverlayPaste(page, `echo ${pasteMarker}`);
     if (pasteResult.sent && pasteResult.defaultPrevented) pass("paste while composing was intercepted by the overlay");
     else fail(`paste while composing was not handled: ${JSON.stringify(pasteResult)}`);
@@ -843,7 +843,7 @@ async function main() {
     if (pasteHit.hits.length === 1) pass(`paste marker executed in terminal ${pasteHit.hits[0].id.slice(0, 8)}…`);
     else fail(`paste marker hit ${pasteHit.hits.length} terminal grids (expected exactly one)`);
 
-    const deleteMarker = `AETHER_IME_DEL_${Math.random().toString(36).slice(2, 8)}`;
+    const deleteMarker = `AELYRIS_IME_DEL_${Math.random().toString(36).slice(2, 8)}`;
     const deletedSuffix = `${deleteMarker}X`;
     await dispatchOverlayComposition(page, [
       { type: "compositionstart" },
@@ -877,7 +877,7 @@ async function main() {
     // --- Section 8: PowerShell direct paste line ending -----------------
     console.log("\n[ime] Section 8 — PowerShell direct paste line ending");
 
-    const directPasteMarker = `AETHER_IME_PS_${Math.random().toString(36).slice(2, 8)}`;
+    const directPasteMarker = `AELYRIS_IME_PS_${Math.random().toString(36).slice(2, 8)}`;
     const directPasteResult = await dispatchOverlayPaste(page, `echo ${directPasteMarker}\n`);
     if (directPasteResult.sent && directPasteResult.defaultPrevented) {
       pass("direct overlay paste with LF was intercepted");

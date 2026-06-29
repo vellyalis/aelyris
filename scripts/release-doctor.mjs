@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
-const strictSigning = args.has("--strict-signing") || process.env.AETHER_RELEASE_STRICT_SIGNING === "1";
-const failOnWarning = args.has("--fail-on-warn") || process.env.AETHER_RELEASE_FAIL_ON_WARN === "1";
+const strictSigning = args.has("--strict-signing") || process.env.AELYRIS_RELEASE_STRICT_SIGNING === "1";
+const failOnWarning = args.has("--fail-on-warn") || process.env.AELYRIS_RELEASE_FAIL_ON_WARN === "1";
 const failAcceptedReleaseRisk =
-  args.has("--fail-accepted-release-risk") || process.env.AETHER_RELEASE_FAIL_ACCEPTED_RELEASE_RISK === "1";
+  args.has("--fail-accepted-release-risk") || process.env.AELYRIS_RELEASE_FAIL_ACCEPTED_RELEASE_RISK === "1";
 const outputDir = path.join(repoRoot, ".codex-auto", "release-doctor");
 const outputBasename = failAcceptedReleaseRisk ? "p2-08-production-release-doctor" : "p2-08-release-doctor";
 const outputJson = path.join(outputDir, `${outputBasename}.json`);
@@ -143,7 +143,7 @@ async function checkIconIntegrity(tauriConfig) {
 }
 
 function appBinaryName(tauriConfig) {
-  return tauriConfig?.mainBinaryName ?? "aether-terminal";
+  return tauriConfig?.mainBinaryName ?? "aelyris";
 }
 
 function artifactPaths(version, tauriConfig) {
@@ -156,7 +156,7 @@ function artifactPaths(version, tauriConfig) {
       "release",
       "bundle",
       "nsis",
-      `Aether Terminal_${version}_x64-setup.exe`,
+      `Aelyris_${version}_x64-setup.exe`,
     ),
     msi: path.join(
       repoRoot,
@@ -165,7 +165,7 @@ function artifactPaths(version, tauriConfig) {
       "release",
       "bundle",
       "msi",
-      `Aether Terminal_${version}_x64_en-US.msi`,
+      `Aelyris_${version}_x64_en-US.msi`,
     ),
     latestJson: path.join(repoRoot, "src-tauri", "target", "release", "bundle", "latest.json"),
   };
@@ -230,7 +230,7 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
     tauriConfig.bundle?.active === true &&
     hasWindowsInstallerTarget(tauriConfig.bundle?.targets) &&
     Array.isArray(tauriDistConfig.bundle?.externalBin) &&
-    tauriDistConfig.bundle.externalBin.includes("binaries/aether-pty-server") &&
+    tauriDistConfig.bundle.externalBin.includes("binaries/aelyris-pty-server") &&
     tauriDistConfig.bundle?.createUpdaterArtifacts !== false;
   return section(
     "tauri-build",
@@ -459,7 +459,7 @@ async function listFilesSafe(dir, extensions) {
 }
 
 async function checkCrashLogs() {
-  const localAppData = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Aether Terminal") : null;
+  const localAppData = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Aelyris") : null;
   const candidates = [
     path.join(repoRoot, ".codex-auto", "crash-reports"),
     path.join(repoRoot, ".codex-auto", "logs"),
@@ -490,7 +490,7 @@ async function checkCrashLogs() {
 }
 
 function parseVersionFromArtifact(name) {
-  return name.match(/Aether Terminal_([^_]+)_x64/)?.[1] ?? null;
+  return name.match(/Aelyris_([^_]+)_x64/)?.[1] ?? null;
 }
 
 async function checkRollback(version) {

@@ -4,11 +4,11 @@ import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
 // @ts-expect-error process is a nodejs global
-const noEsbuildSpawn = process.env.AETHER_VITE_NO_ESBUILD_SPAWN === "1";
+const noEsbuildSpawn = process.env.AELYRIS_VITE_NO_ESBUILD_SPAWN === "1";
 
 function typescriptTranspilePlugin(): Plugin {
   return {
-    name: "aether:vitest-typescript-transpile-no-esbuild-spawn",
+    name: "aelyris:vitest-typescript-transpile-no-esbuild-spawn",
     enforce: "pre",
     transform(code, id) {
       if (id.includes("?raw")) return null;

@@ -46,7 +46,7 @@ const READY_CONSENT_PACKET = {
   detail: "codex preflight green · prompt blocked until explicit consent",
   provider: "codex",
   command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-  requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+  requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
   preflightReady: true,
   safeNoPromptSent: true,
   wouldSpendTokens: true,
@@ -56,21 +56,21 @@ const READY_CONSENT_PACKET = {
       status: "ready" as const,
       failedChecks: [],
       command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS QUORUM_AUTH_PROMPT_PROVIDER=codex",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS AELYRIS_AUTH_PROMPT_PROVIDER=codex",
     },
     {
       provider: "claude",
       status: "ready" as const,
       failedChecks: [],
       command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS QUORUM_AUTH_PROMPT_PROVIDER=claude",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS AELYRIS_AUTH_PROMPT_PROVIDER=claude",
     },
     {
       provider: "gemini",
       status: "ready" as const,
       failedChecks: [],
       command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS QUORUM_AUTH_PROMPT_PROVIDER=gemini",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS AELYRIS_AUTH_PROMPT_PROVIDER=gemini",
     },
   ],
   artifactReadiness: [
@@ -130,7 +130,7 @@ const READY_SAFE_GATE = {
   localDate: "2026-05-21",
   timeZone: "Asia/Tokyo",
   nextRequiredAction:
-    "Set QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS and QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run pnpm verify:terminal:authenticated-ai-cli-prompt if token-spend validation is desired.",
+    "Set AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS and AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run pnpm verify:terminal:authenticated-ai-cli-prompt if token-spend validation is desired.",
 };
 
 const READY_REQUIREMENT_PROOFS = [
@@ -209,15 +209,15 @@ describe("deriveRightRailGoalTrack", () => {
       label: "Copy verified run command",
       provider: "codex",
       command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
-      providerEnv: "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+      providerEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       defaultProvider: "codex",
       requiresExplicitConsent: true,
     });
     expect(track.consentRunAction?.powershellSnippet).toBe(
       [
-        '$env:QUORUM_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
-        '$env:QUORUM_AUTH_PROMPT_PROVIDER="codex"',
+        '$env:AELYRIS_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
+        '$env:AELYRIS_AUTH_PROMPT_PROVIDER="codex"',
         "pnpm verify:terminal:authenticated-ai-cli-prompt",
       ].join("\n"),
     );
@@ -229,8 +229,8 @@ describe("deriveRightRailGoalTrack", () => {
       defaultProvider: "codex",
       requiresExplicitConsent: true,
     });
-    expect(track.consentRunActions[1]?.powershellSnippet).toContain('$env:QUORUM_AUTH_PROMPT_PROVIDER="claude"');
-    expect(track.consentRunActions[2]?.powershellSnippet).toContain('$env:QUORUM_AUTH_PROMPT_PROVIDER="gemini"');
+    expect(track.consentRunActions[1]?.powershellSnippet).toContain('$env:AELYRIS_AUTH_PROMPT_PROVIDER="claude"');
+    expect(track.consentRunActions[2]?.powershellSnippet).toContain('$env:AELYRIS_AUTH_PROMPT_PROVIDER="gemini"');
     expect(track.consentPacket).toMatchObject({
       status: "ready",
       provider: "codex",
@@ -539,7 +539,7 @@ describe("deriveRightRailGoalTrack", () => {
 
   it("surfaces the user-initiated native sleep cycle as the next external gate action", () => {
     const sleepBlocker =
-      "real OS sleep/resume could not complete on this host (aether-native: SetSuspendState returned false; GetLastError=50); rerun native sleep/resume on a Windows host or user-initiated sleep cycle that emits power events";
+      "real OS sleep/resume could not complete on this host (aelyris-native: SetSuspendState returned false; GetLastError=50); rerun native sleep/resume on a Windows host or user-initiated sleep cycle that emits power events";
     const track = deriveRightRailGoalTrack({
       edgeScore: 96,
       edgeGrade: "A",

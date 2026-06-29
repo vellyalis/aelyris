@@ -5,7 +5,7 @@ import process from "node:process";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "git-finalization-readiness.json");
-const TARGET_BRANCH = process.env.AETHER_GIT_FINALIZATION_TARGET ?? "master";
+const TARGET_BRANCH = process.env.AELYRIS_GIT_FINALIZATION_TARGET ?? "master";
 const ACL_DIAGNOSTIC_COMMANDS = [
   "pnpm verify:goal:git-finalization:shell",
   "whoami /user",

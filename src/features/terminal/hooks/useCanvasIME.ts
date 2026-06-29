@@ -35,14 +35,14 @@ const FALLBACK_COMPOSITION_COMMIT_DELAY_MS = 32;
 const NATIVE_PREEDIT_POLL_MS = 32;
 const MAX_IME_DIAGNOSTIC_EVENTS = 80;
 
-export const IME_DIAGNOSTIC_EVENT = "aether:ime-diagnostic";
-export const IME_DIAGNOSTIC_TOGGLE_EVENT = "aether:ime-diagnostic-toggle";
-export const IME_DIAGNOSTIC_STORAGE_KEY = "aether:debug:ime";
-export const IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY = "aether:debug:imeOverlay";
-export const NATIVE_INPUT_SURFACE_STORAGE_KEY = "aether:terminal:nativeInputSurface";
+export const IME_DIAGNOSTIC_EVENT = "aelyris:ime-diagnostic";
+export const IME_DIAGNOSTIC_TOGGLE_EVENT = "aelyris:ime-diagnostic-toggle";
+export const IME_DIAGNOSTIC_STORAGE_KEY = "aelyris:debug:ime";
+export const IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY = "aelyris:debug:imeOverlay";
+export const NATIVE_INPUT_SURFACE_STORAGE_KEY = "aelyris:terminal:nativeInputSurface";
 export const NATIVE_INPUT_SURFACE_DEFAULT_ENABLED = true;
-export const TERMINAL_PREFIX_COMMAND_EVENT = "aether:terminal-prefix-command";
-export const TERMINAL_CLIPBOARD_PASTE_EVENT = "aether:terminal-clipboard-paste";
+export const TERMINAL_PREFIX_COMMAND_EVENT = "aelyris:terminal-prefix-command";
+export const TERMINAL_CLIPBOARD_PASTE_EVENT = "aelyris:terminal-clipboard-paste";
 
 function isTerminalPasteShortcut(e: KeyboardEvent): boolean {
   const key = e.key.toLowerCase();
@@ -158,15 +158,15 @@ export interface ImeDiagnosticDetail {
 
 declare global {
   interface Window {
-    __AETHER_IME_DEBUG__?: boolean;
-    __AETHER_IME_DEBUG_OVERLAY__?: boolean;
-    __AETHER_IME_EVENTS__?: ImeDiagnosticDetail[];
-    __AETHER_ENABLE_IME_DEBUG__?: () => void;
-    __AETHER_DISABLE_IME_DEBUG__?: () => void;
-    __AETHER_COPY_IME_EVENTS__?: () => Promise<boolean>;
-    __AETHER_SHOW_IME_DEBUG_OVERLAY__?: () => void;
-    __AETHER_HIDE_IME_DEBUG_OVERLAY__?: () => void;
-    __AETHER_NATIVE_INPUT_SURFACE__?: boolean;
+    __AELYRIS_IME_DEBUG__?: boolean;
+    __AELYRIS_IME_DEBUG_OVERLAY__?: boolean;
+    __AELYRIS_IME_EVENTS__?: ImeDiagnosticDetail[];
+    __AELYRIS_ENABLE_IME_DEBUG__?: () => void;
+    __AELYRIS_DISABLE_IME_DEBUG__?: () => void;
+    __AELYRIS_COPY_IME_EVENTS__?: () => Promise<boolean>;
+    __AELYRIS_SHOW_IME_DEBUG_OVERLAY__?: () => void;
+    __AELYRIS_HIDE_IME_DEBUG_OVERLAY__?: () => void;
+    __AELYRIS_NATIVE_INPUT_SURFACE__?: boolean;
   }
 }
 
@@ -179,7 +179,7 @@ function eventTimestamp(): number {
 
 export function imeDiagnosticsEnabled(win: Window | null | undefined = typeof window !== "undefined" ? window : null) {
   if (!win) return false;
-  if (win.__AETHER_IME_DEBUG__ === true) return true;
+  if (win.__AELYRIS_IME_DEBUG__ === true) return true;
   try {
     const value = win.localStorage.getItem(IME_DIAGNOSTIC_STORAGE_KEY);
     return value === "1" || value === "true";
@@ -192,7 +192,7 @@ export function imeDiagnosticsOverlayEnabled(
   win: Window | null | undefined = typeof window !== "undefined" ? window : null,
 ) {
   if (!win) return false;
-  if (win.__AETHER_IME_DEBUG_OVERLAY__ === true) return true;
+  if (win.__AELYRIS_IME_DEBUG_OVERLAY__ === true) return true;
   try {
     const value = win.localStorage.getItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY);
     return value === "1" || value === "true";
@@ -205,8 +205,8 @@ export function nativeTerminalInputSurfaceEnabled(
   win: Window | null | undefined = typeof window !== "undefined" ? window : null,
 ) {
   if (!win) return false;
-  if (win.__AETHER_NATIVE_INPUT_SURFACE__ === true) return true;
-  if (win.__AETHER_NATIVE_INPUT_SURFACE__ === false) return false;
+  if (win.__AELYRIS_NATIVE_INPUT_SURFACE__ === true) return true;
+  if (win.__AELYRIS_NATIVE_INPUT_SURFACE__ === false) return false;
   try {
     const value = win.localStorage.getItem(NATIVE_INPUT_SURFACE_STORAGE_KEY);
     if (value === "1" || value === "true") return true;
@@ -219,7 +219,7 @@ export function nativeTerminalInputSurfaceEnabled(
 }
 
 export function setImeDiagnosticsOverlayVisible(win: Window = window, visible: boolean) {
-  win.__AETHER_IME_DEBUG_OVERLAY__ = visible;
+  win.__AELYRIS_IME_DEBUG_OVERLAY__ = visible;
   try {
     if (visible) {
       win.localStorage.setItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY, "1");
@@ -233,7 +233,7 @@ export function setImeDiagnosticsOverlayVisible(win: Window = window, visible: b
 }
 
 export function enableImeDiagnostics(win: Window = window, options?: { showOverlay?: boolean }) {
-  win.__AETHER_IME_DEBUG__ = true;
+  win.__AELYRIS_IME_DEBUG__ = true;
   try {
     win.localStorage.setItem(IME_DIAGNOSTIC_STORAGE_KEY, "1");
   } catch {
@@ -246,8 +246,8 @@ export function enableImeDiagnostics(win: Window = window, options?: { showOverl
 }
 
 export function disableImeDiagnostics(win: Window = window) {
-  win.__AETHER_IME_DEBUG__ = false;
-  win.__AETHER_IME_DEBUG_OVERLAY__ = false;
+  win.__AELYRIS_IME_DEBUG__ = false;
+  win.__AELYRIS_IME_DEBUG_OVERLAY__ = false;
   try {
     win.localStorage.removeItem(IME_DIAGNOSTIC_STORAGE_KEY);
     win.localStorage.removeItem(IME_DIAGNOSTIC_OVERLAY_STORAGE_KEY);
@@ -258,7 +258,7 @@ export function disableImeDiagnostics(win: Window = window) {
 }
 
 export async function copyImeDiagnostics(win: Window = window): Promise<boolean> {
-  const events = win.__AETHER_IME_EVENTS__ ?? [];
+  const events = win.__AELYRIS_IME_EVENTS__ ?? [];
   if (events.length === 0) return false;
   const payload = JSON.stringify(events, null, 2);
   try {
@@ -274,11 +274,11 @@ export async function copyImeDiagnostics(win: Window = window): Promise<boolean>
 }
 
 export function installImeDiagnosticHelpers(win: Window = window) {
-  win.__AETHER_ENABLE_IME_DEBUG__ = () => enableImeDiagnostics(win);
-  win.__AETHER_DISABLE_IME_DEBUG__ = () => disableImeDiagnostics(win);
-  win.__AETHER_COPY_IME_EVENTS__ = () => copyImeDiagnostics(win);
-  win.__AETHER_SHOW_IME_DEBUG_OVERLAY__ = () => setImeDiagnosticsOverlayVisible(win, true);
-  win.__AETHER_HIDE_IME_DEBUG_OVERLAY__ = () => setImeDiagnosticsOverlayVisible(win, false);
+  win.__AELYRIS_ENABLE_IME_DEBUG__ = () => enableImeDiagnostics(win);
+  win.__AELYRIS_DISABLE_IME_DEBUG__ = () => disableImeDiagnostics(win);
+  win.__AELYRIS_COPY_IME_EVENTS__ = () => copyImeDiagnostics(win);
+  win.__AELYRIS_SHOW_IME_DEBUG_OVERLAY__ = () => setImeDiagnosticsOverlayVisible(win, true);
+  win.__AELYRIS_HIDE_IME_DEBUG_OVERLAY__ = () => setImeDiagnosticsOverlayVisible(win, false);
 }
 
 function imeDataLength(value: string | null | undefined): number | null {
@@ -335,16 +335,16 @@ function recordImeDiagnostic(
     anchorMode: textarea.dataset.imeAnchorMode ?? null,
   };
 
-  const ring = win.__AETHER_IME_EVENTS__ ?? [];
+  const ring = win.__AELYRIS_IME_EVENTS__ ?? [];
   ring.push(entry);
   if (ring.length > MAX_IME_DIAGNOSTIC_EVENTS) {
     ring.splice(0, ring.length - MAX_IME_DIAGNOSTIC_EVENTS);
   }
-  win.__AETHER_IME_EVENTS__ = ring;
+  win.__AELYRIS_IME_EVENTS__ = ring;
   win.dispatchEvent(new CustomEvent<ImeDiagnosticDetail>(IME_DIAGNOSTIC_EVENT, { detail: entry }));
   // Keep console output opt-in with the same flag so dogfood sessions can
   // capture a precise event trace without polluting normal terminal use.
-  console.debug?.("[Aether IME]", entry);
+  console.debug?.("[Aelyris IME]", entry);
 }
 
 const defaultWriteBytes: WriteBytesFn = (id, data) => {

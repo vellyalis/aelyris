@@ -19,64 +19,64 @@ fn tool_names() -> Vec<&'static str> {
         "mux.workspaces.list",
         "mux.workspace.get",
         "mux.workspace.safeInput",
-        "aether.worktree.validate",
-        "aether.worktree.predictPath",
-        "aether.worktree.list",
-        "aether.worktree.create",
-        "aether.worktree.remove",
-        "aether.fleet_status",
-        "aether.route_agent",
-        "aether.pane_send_input",
-        "aether.agent_diff",
-        "aether.request_approval",
-        "aether.list_pending_approvals",
-        "aether.request_merge",
-        "aether.spawn_agent",
-        "aether.stop_agent",
-        "aether.review.approve",
-        "aether.review.reject",
-        "aether.task.create",
-        "aether.task.list",
-        "aether.task.transition",
-        "aether.orchestrator.plan",
-        "aether.orchestrator.step",
-        "aether.supervisor.health",
-        "aether.event.recent",
-        "aether.event.by_channel",
-        "aether.event.since",
-        "aether.shared_brain.snapshot",
-        "aether.ownership.assign",
-        "aether.ownership.owner_of",
-        "aether.ownership.claims",
-        "aether.ownership.conflicts",
-        "aether.symbol.claim",
-        "aether.symbol.refresh",
-        "aether.symbol.release",
-        "aether.symbol.release_task",
-        "aether.symbol.claims",
-        "aether.symbol.conflicts",
-        "aether.symbol.claim_from_diff",
-        "aether.symbol.claim_from_source",
-        "aether.context.set",
-        "aether.context.get",
-        "aether.context.all",
-        "aether.context.remove",
-        "aether.agent.report_activity",
-        "aether.agent.report_blocker",
-        "aether.agent.steer_avoid",
-        "aether.agent.activity",
-        "aether.intent.propose",
-        "aether.intent.list",
-        "aether.intent.all",
-        "aether.intent.resolve",
-        "aether.knowledge.add_node",
-        "aether.knowledge.add_edge",
-        "aether.knowledge.remove_node",
-        "aether.knowledge.remove_edge",
-        "aether.knowledge.dependencies",
-        "aether.knowledge.dependents",
-        "aether.knowledge.impact",
-        "aether.knowledge.graph",
+        "aelyris.worktree.validate",
+        "aelyris.worktree.predictPath",
+        "aelyris.worktree.list",
+        "aelyris.worktree.create",
+        "aelyris.worktree.remove",
+        "aelyris.fleet_status",
+        "aelyris.route_agent",
+        "aelyris.pane_send_input",
+        "aelyris.agent_diff",
+        "aelyris.request_approval",
+        "aelyris.list_pending_approvals",
+        "aelyris.request_merge",
+        "aelyris.spawn_agent",
+        "aelyris.stop_agent",
+        "aelyris.review.approve",
+        "aelyris.review.reject",
+        "aelyris.task.create",
+        "aelyris.task.list",
+        "aelyris.task.transition",
+        "aelyris.orchestrator.plan",
+        "aelyris.orchestrator.step",
+        "aelyris.supervisor.health",
+        "aelyris.event.recent",
+        "aelyris.event.by_channel",
+        "aelyris.event.since",
+        "aelyris.shared_brain.snapshot",
+        "aelyris.ownership.assign",
+        "aelyris.ownership.owner_of",
+        "aelyris.ownership.claims",
+        "aelyris.ownership.conflicts",
+        "aelyris.symbol.claim",
+        "aelyris.symbol.refresh",
+        "aelyris.symbol.release",
+        "aelyris.symbol.release_task",
+        "aelyris.symbol.claims",
+        "aelyris.symbol.conflicts",
+        "aelyris.symbol.claim_from_diff",
+        "aelyris.symbol.claim_from_source",
+        "aelyris.context.set",
+        "aelyris.context.get",
+        "aelyris.context.all",
+        "aelyris.context.remove",
+        "aelyris.agent.report_activity",
+        "aelyris.agent.report_blocker",
+        "aelyris.agent.steer_avoid",
+        "aelyris.agent.activity",
+        "aelyris.intent.propose",
+        "aelyris.intent.list",
+        "aelyris.intent.all",
+        "aelyris.intent.resolve",
+        "aelyris.knowledge.add_node",
+        "aelyris.knowledge.add_edge",
+        "aelyris.knowledge.remove_node",
+        "aelyris.knowledge.remove_edge",
+        "aelyris.knowledge.dependencies",
+        "aelyris.knowledge.dependents",
+        "aelyris.knowledge.impact",
+        "aelyris.knowledge.graph",
     ]
 }
 
@@ -197,19 +197,19 @@ fn push_pending(state: &ApiState, item: McpPendingDecision) -> ApiResult<McpPend
 
 pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "schema": "aether.mcp.server.v1",
-        "server": "aether-terminal",
+        "schema": "aelyris.mcp.server.v1",
+        "server": "aelyris",
         "transport": "local-http-json",
         "auth": "bearer-token",
         "instanceId": state.instance_id,
         "processKind": state.process_kind,
         "tools": tool_names(),
         "nativeOwnedContracts": [
-            "aether.mcp.server.v1",
-            "aether.workspace.data.v1",
-            "aether.mode-preservation.v1",
-            "aether.history.search.v1",
-            "aether.agent-identity.v1"
+            "aelyris.mcp.server.v1",
+            "aelyris.workspace.data.v1",
+            "aelyris.mode-preservation.v1",
+            "aelyris.history.search.v1",
+            "aelyris.agent-identity.v1"
         ],
         "claims": {
             "sessionTruthSource": "rust-pty-manager",
@@ -222,8 +222,8 @@ pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::
 
 pub(super) async fn tools_list() -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "schema": "aether.mcp.server.v1",
-        "server": "aether-terminal",
+        "schema": "aelyris.mcp.server.v1",
+        "server": "aelyris",
         "tools": [
             {
                 "name": "terminal.list",
@@ -274,7 +274,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.worktree.validate",
+                "name": "aelyris.worktree.validate",
                 "description": "Validate an orchestrator worktree branch name.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -285,7 +285,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.worktree.predictPath",
+                "name": "aelyris.worktree.predictPath",
                 "description": "Predict the isolated worktree path for a branch.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -299,7 +299,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.worktree.list",
+                "name": "aelyris.worktree.list",
                 "description": "List git worktrees for a repository.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -310,7 +310,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.worktree.create",
+                "name": "aelyris.worktree.create",
                 "description": "Create an isolated agent worktree.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -324,7 +324,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.worktree.remove",
+                "name": "aelyris.worktree.remove",
                 "description": "Remove an isolated agent worktree.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -339,13 +339,13 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.fleet_status",
+                "name": "aelyris.fleet_status",
                 "description": "Read the unified native-owned agent fleet snapshot.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.route_agent",
+                "name": "aelyris.route_agent",
                 "description": "Route a prompt to the recommended coding model profile.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -359,7 +359,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.pane_send_input",
+                "name": "aelyris.pane_send_input",
                 "description": "Send bounded input to a live pane/terminal id. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + terminal is supplied; `deny` (destructive) is always refused — this is the agent-injection path the gate exists to catch.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -374,7 +374,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.agent_diff",
+                "name": "aelyris.agent_diff",
                 "description": "Read an agent-owned GhostDiff layer without mutating files.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -390,7 +390,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.request_approval",
+                "name": "aelyris.request_approval",
                 "description": "Request policy/human approval for a held agent tool call. This never grants approval.",
                 "safety": "GATED",
                 "inputSchema": {
@@ -406,13 +406,13 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.list_pending_approvals",
+                "name": "aelyris.list_pending_approvals",
                 "description": "Observe pending approval requests and unresolved DURABLE merge intents (everything not yet merged/rejected). Read-only — it cannot resolve them. Returns { pending:[permission items], mergeIntents:[durable merge intents] }.",
                 "safety": "GATED_OBSERVE_ONLY",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.request_merge",
+                "name": "aelyris.request_merge",
                 "description": "Queue a DURABLE merge intent (never merges to main). The repo/source/target and their branch-tip OIDs are captured and stored at request time, so the merge is bound to specific commits. Idempotent per (taskId, source commit, target commit): a duplicate request returns the original intent. Returns { intentId, status, intent }.",
                 "safety": "GATED",
                 "inputSchema": {
@@ -429,7 +429,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.spawn_agent",
+                "name": "aelyris.spawn_agent",
                 "description": "Spawn a headless implementer agent. Enforces the live cost cap (BR7); refuses when the fleet is at the agent cap.",
                 "safety": "GATED",
                 "inputSchema": {
@@ -446,7 +446,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.stop_agent",
+                "name": "aelyris.stop_agent",
                 "description": "Stop a running headless agent session by id.",
                 "safety": "GATED",
                 "inputSchema": {
@@ -457,7 +457,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.review.approve",
+                "name": "aelyris.review.approve",
                 "description": "Reviewer authority: approve a DURABLE merge intent BY ID and perform the real git merge (fast-forward/3-way) into its BOUND target. The repo/source/target are read from the stored immutable intent — this verb does NOT accept repo/source/target (a caller can never re-point the merge), and rejects any unknown field. Operator-authority: the verb IS the verdict (an optional `verdict` must equal \"approve\"); `gatesDigest` records approval evidence. The bound branch tips are re-validated first: an already-merged target is idempotent; a moved tip becomes needs_reconcile. Returns { intentId, status, outcome }.",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
@@ -472,7 +472,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.review.reject",
+                "name": "aelyris.review.reject",
                 "description": "Reviewer authority: reject a DURABLE merge intent BY ID, resolving it without merging. Cannot reject an in-flight (merging) or already-resolved intent. Optional `reason`. Returns { intentId, status, reason }.",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
@@ -486,7 +486,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.task.create",
+                "name": "aelyris.task.create",
                 "description": "Create a Task Graph node (BR4): a unit of work the orchestrator AI assigns (owner = implementer identity, used by the reviewer-!=-implementer merge gate) and the autonomy loop schedules. Optionally route to a specific model (claude/codex/gemini) via `model`; when omitted the loop falls back to `owner`. Binds source/target branches for the merge wiring. Re-runs the dependency gate.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -508,13 +508,13 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.task.list",
+                "name": "aelyris.task.list",
                 "description": "List every Task Graph node with its lifecycle status, owner, dependencies, and branch bindings.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.task.transition",
+                "name": "aelyris.task.transition",
                 "description": "Transition a task to a new lifecycle state (lifecycle-validated) and re-run the dependency gate.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -531,7 +531,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.orchestrator.plan",
+                "name": "aelyris.orchestrator.plan",
                 "description": "Read the orchestrator's next scheduling decision for the live Task Graph: which tasks to dispatch now (priority-ordered, concurrency-capped) and the loop state (active/complete/stalled/halted_by_budget). Read-only.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -541,7 +541,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.supervisor.health",
+                "name": "aelyris.supervisor.health",
                 "description": "Read the Architect's health assessment of the live autonomy loop, one level above the orchestrator: a verdict (healthy/degraded/stuck), task-status counts, budget pressure, and machine-readable directives (re_decompose a given-up task, unblock a blocked one, halt on budget) for the super-supervisor to act on. Read-only.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -551,7 +551,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.orchestrator.step",
+                "name": "aelyris.orchestrator.step",
                 "description": "Drive one autonomy step over the live Task Graph (BR9): a finished agent's task moves Running->Review on a clean exit or is REASSIGNED on a crash (bounded retries, then left Failed — never lost); tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task's model (its `model`, or `owner` by default). Pass gateCommands to decide the objective gates (tests/lint/types) MECHANICALLY in each worktree so a red branch cannot merge. Call repeatedly to run the loop to quiescence (agents run between calls).",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
@@ -590,13 +590,13 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.event.recent",
+                "name": "aelyris.event.recent",
                 "description": "Subscribe to the fleet coordination stream (BR5): recent events across all channels, oldest first. The orchestrator reads this to see who is doing what — task_created/completed, decision_changed, review_required, agent_spawned, worktree_created, file_locked/released — without screen-scraping.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.event.by_channel",
+                "name": "aelyris.event.by_channel",
                 "description": "Recent events on one coordination channel.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -612,7 +612,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.event.since",
+                "name": "aelyris.event.since",
                 "description": "No-loss subscribe to the fleet coordination stream (BR5/P3): every event with seq > afterSeq, oldest first, up to limit, each tagged with its monotonic seq. Poll with afterSeq=0, then advance afterSeq to the last seq returned — unlike event.recent (a bounded ring that evicts), this never skips an event and survives restart. Use this for reliable orchestration.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -625,7 +625,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.shared_brain.snapshot",
+                "name": "aelyris.shared_brain.snapshot",
                 "description": "Read the unified shared-brain snapshot: live agents, pane/event activity, file and symbol ownership, unresolved durable merge intents, blockers, and project decisions from one backend formatter.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -637,7 +637,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.ownership.assign",
+                "name": "aelyris.ownership.assign",
                 "description": "Claim a path pattern for an agent (BR8) so parallel lanes never write the same files; returns the resulting cross-agent conflicts. Patterns: exact (src/main.rs), direct children (src/auth/*), recursive (src/auth/**).",
                 "safety": "FREE",
                 "inputSchema": {
@@ -648,7 +648,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.ownership.owner_of",
+                "name": "aelyris.ownership.owner_of",
                 "description": "The agent that owns a path (first matching claim), if any.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -659,19 +659,19 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.ownership.claims",
+                "name": "aelyris.ownership.claims",
                 "description": "All current file-ownership claims.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.ownership.conflicts",
+                "name": "aelyris.ownership.conflicts",
                 "description": "All current cross-agent ownership conflicts (overlapping claims by different agents) — the collisions to resolve before dispatching parallel lanes.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.symbol.claim",
+                "name": "aelyris.symbol.claim",
                 "description": "Claim a SYMBOL range inside a file (finer than file ownership): two agents may write the same file on disjoint ranges, but overlapping writes conflict. Returns { outcome: granted|warned|blocked, conflicts? }. blocked = NOT recorded (pick a disjoint range or wait). confidence lsp/parser is exact (overlap blocks); diff-hunk is inferred (overlap only warns).",
                 "safety": "FREE",
                 "inputSchema": {
@@ -693,7 +693,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.symbol.refresh",
+                "name": "aelyris.symbol.refresh",
                 "description": "Extend a live symbol claim's lease (the heartbeat that keeps a claim alive; an unrefreshed claim expires and frees its range). Returns { refreshed }.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -707,7 +707,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.symbol.release",
+                "name": "aelyris.symbol.release",
                 "description": "Release a symbol claim by id (call when done editing the symbol). Returns { released }.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -718,7 +718,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.symbol.release_task",
+                "name": "aelyris.symbol.release_task",
                 "description": "Release ALL symbol claims a task held (call on merge/fail) — frees every range that task's worker claimed. Returns { released } (count).",
                 "safety": "FREE",
                 "inputSchema": {
@@ -729,19 +729,19 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.symbol.claims",
+                "name": "aelyris.symbol.claims",
                 "description": "All live symbol claims (expired leases swept first) — who owns which symbol range right now.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.symbol.conflicts",
+                "name": "aelyris.symbol.conflicts",
                 "description": "All live cross-agent symbol overlaps (block + warn) — the function-level collisions to coordinate before co-editing a file.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.symbol.claim_from_diff",
+                "name": "aelyris.symbol.claim_from_diff",
                 "description": "DERIVE symbol claims from your worktree's `git diff` instead of hand-specifying ranges: parses each hunk's NEW-side line span into a claim at confidence diff-hunk (inferred — overlaps WARN, never hard-block; can't prove disjointness so they serialize overlapping ready tasks). Idempotent per span (re-running with an updated diff replaces that span's claim). Returns { recorded, claims: [{ claimId, outcome }] }. Call after editing, refresh()/release() as the work proceeds.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -758,7 +758,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.symbol.claim_from_source",
+                "name": "aelyris.symbol.claim_from_source",
                 "description": "DERIVE symbol claims by PARSING file source (tree-sitter: Rust / TS / TSX) into exact function/method/class/struct/enum/trait/component ranges at confidence parser (EXACT — overlapping writes hard-block, and disjoint symbols UNLOCK same-file co-editing on normal source files). Reconciles: re-running for the same agent+path replaces that file's prior derived claims (renamed/removed symbols are freed). Unsupported language or an unparseable file yields NO claims (fallback:true -> file-level exclusivity; never a guessed range). Returns { recorded, fallback, claims: [{ claimId, outcome }] }.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -776,7 +776,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.context.set",
+                "name": "aelyris.context.set",
                 "description": "Set a project decision in the shared Context Store / ADR (BR6) — e.g. auth_method=jwt, database=postgresql, framework=nextjs — the world-model every agent aligns to. Publishes decision_changed to the fleet stream on a real change. This ADR is injected into every dispatched agent's prompt.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -787,7 +787,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.context.get",
+                "name": "aelyris.context.get",
                 "description": "Read one project decision from the shared ADR.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -798,13 +798,13 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.context.all",
+                "name": "aelyris.context.all",
                 "description": "The full shared ADR (every project decision) — the world-model snapshot.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.context.remove",
+                "name": "aelyris.context.remove",
                 "description": "Remove a project decision from the shared ADR. Publishes decision_changed.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -815,7 +815,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.agent.report_activity",
+                "name": "aelyris.agent.report_activity",
                 "description": "Report what an agent is doing right now (BR5): the file/symbol it is touching and the action (editing/reading/running tests/...). Updates the agent's live activity + publishes agent_activity to the fleet stream so peers see who is touching what, down to the function, in real time.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -831,7 +831,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.agent.report_blocker",
+                "name": "aelyris.agent.report_blocker",
                 "description": "Report that an agent is stuck (BR5): a summary of the blocker and optionally what it needs (a decision, another agent's output, ...). Marks the agent blocked + publishes blocker_raised so a peer/orchestrator can unblock it rather than it stalling silently.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -846,7 +846,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.agent.steer_avoid",
+                "name": "aelyris.agent.steer_avoid",
                 "description": "TYPED steer (§6.4): tell a LIVE agent to AVOID the symbols OTHER agents currently own in the files it is working on. DERIVES the avoidance list from the live symbol-ownership map (the same source as the dispatch prompt) — NOT raw pane text — so the directive is auditable and structured. Errors if the target sessionId is not a live agent (retained done/failed sessions do NOT count). Publishes steer_avoid to the fleet stream; returns { sessionId, steered, avoidCount, directive (the same human-readable ownership header the dispatch prompt uses, or null when nothing is owned), avoid:[{agent,symbol,path,startLine,endLine,confidence}] }.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -860,13 +860,13 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.agent.activity",
+                "name": "aelyris.agent.activity",
                 "description": "Read the whole fleet's live activity: each agent's session id, task, status, model, and current activity (file/symbol/action). The real-time 'who is doing what, where' snapshot.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.intent.propose",
+                "name": "aelyris.intent.propose",
                 "description": "Declare an intent BEFORE acting (the Intent Bus, the Event Bus' pre-fact half): a proposal like 'switch auth_method to JWT' or 'extract AuthService', with optional file/domain targets. Peers react (align/object/defer) so conflicts and design disagreements surface in discussion, not at merge. Publishes intent_declared to the stream. This is the substrate for 'meetings'.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -881,19 +881,19 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.intent.list",
+                "name": "aelyris.intent.list",
                 "description": "Open (still-deliberating) intents — the live proposal queue peers read before acting.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.intent.all",
+                "name": "aelyris.intent.all",
                 "description": "Every intent with its status (open/accepted/rejected/superseded).",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
-                "name": "aether.intent.resolve",
+                "name": "aelyris.intent.resolve",
                 "description": "Resolve an intent to a terminal status (accepted/rejected/superseded) — the convergence step of a deliberation.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -907,7 +907,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.add_node",
+                "name": "aelyris.knowledge.add_node",
                 "description": "Add a node to the code Knowledge Graph (a symbol/module the fleet reasons about) — id, kind (module/service/function/class/component/other), and the file it lives in. Agents reason over structure (User -> AuthService -> JWTProvider -> Redis), not files.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -922,7 +922,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.add_edge",
+                "name": "aelyris.knowledge.add_edge",
                 "description": "Record a dependency edge: `dependent` depends on `dependency` (e.g. AuthService -> JWTProvider). Unknown endpoints are auto-created.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -933,7 +933,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.remove_node",
+                "name": "aelyris.knowledge.remove_node",
                 "description": "Remove a node + every edge touching it (a symbol was deleted/renamed), so its blast radius never routes through a node that no longer exists. Keeps a long-lived graph from accumulating ghost symbols.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -944,7 +944,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.remove_edge",
+                "name": "aelyris.knowledge.remove_edge",
                 "description": "Remove a single dependency edge (a dependency was dropped).",
                 "safety": "FREE",
                 "inputSchema": {
@@ -955,7 +955,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.dependencies",
+                "name": "aelyris.knowledge.dependencies",
                 "description": "Direct dependencies of a node (what it needs).",
                 "safety": "FREE",
                 "inputSchema": {
@@ -966,7 +966,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.dependents",
+                "name": "aelyris.knowledge.dependents",
                 "description": "Direct dependents of a node (who needs it).",
                 "safety": "FREE",
                 "inputSchema": {
@@ -977,7 +977,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.impact",
+                "name": "aelyris.knowledge.impact",
                 "description": "The blast radius of changing a node: the transitive set of everything that depends on it. Query this before/after a decision or intent to know exactly which other symbols (and their owners) are affected.",
                 "safety": "FREE",
                 "inputSchema": {
@@ -988,7 +988,7 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 }
             },
             {
-                "name": "aether.knowledge.graph",
+                "name": "aelyris.knowledge.graph",
                 "description": "The whole code Knowledge Graph: every node + dependency edge.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
@@ -1073,13 +1073,13 @@ pub(super) async fn tools_call(
                 crate::command_risk::gate::GateMode::Atomic,
             )?
         }
-        "aether.worktree.validate" => {
+        "aelyris.worktree.validate" => {
             let branch_name = arg_string(&args, "branchName")?;
             crate::control::worktree::validate_branch(&branch_name)
                 .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "branchName": branch_name, "valid": true })
         }
-        "aether.worktree.predictPath" => {
+        "aelyris.worktree.predictPath" => {
             let repo_path = arg_string(&args, "repoPath")?;
             let branch_name = arg_string(&args, "branchName")?;
             crate::control::worktree::validate_branch(&branch_name)
@@ -1091,20 +1091,20 @@ pub(super) async fn tools_call(
                 "path": path,
             })
         }
-        "aether.worktree.list" => {
+        "aelyris.worktree.list" => {
             let repo_path = arg_string(&args, "repoPath")?;
             let worktrees =
                 crate::control::worktree::list(&repo_path).map_err(ApiError::BadRequest)?;
             serde_json::json!({ "repoPath": repo_path, "worktrees": worktrees })
         }
-        "aether.worktree.create" => {
+        "aelyris.worktree.create" => {
             let repo_path = arg_string(&args, "repoPath")?;
             let branch_name = arg_string(&args, "branchName")?;
             let worktree = crate::control::worktree::create(&repo_path, &branch_name)
                 .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "repoPath": repo_path, "branchName": branch_name, "worktree": worktree })
         }
-        "aether.worktree.remove" => {
+        "aelyris.worktree.remove" => {
             let repo_path = arg_string(&args, "repoPath")?;
             let worktree_name = arg_string(&args, "worktreeName")?;
             let delete_branch = arg_bool(&args, "deleteBranch", false);
@@ -1112,7 +1112,7 @@ pub(super) async fn tools_call(
                 .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "repoPath": repo_path, "worktreeName": worktree_name, "removed": true, "deleteBranch": delete_branch })
         }
-        "aether.fleet_status" => {
+        "aelyris.fleet_status" => {
             let sessions = state
                 .agent_manager
                 .as_ref()
@@ -1124,13 +1124,13 @@ pub(super) async fn tools_call(
                 "sessions": sessions,
             })
         }
-        "aether.route_agent" => {
+        "aelyris.route_agent" => {
             let prompt = arg_string(&args, "prompt")?;
             let budget_remaining = arg_optional_f64(&args, "budgetRemaining")?;
             let decision = crate::control::agent::route(&prompt, budget_remaining);
             serde_json::json!({ "prompt": prompt, "decision": decision })
         }
-        "aether.pane_send_input" => {
+        "aelyris.pane_send_input" => {
             let terminal_id = arg_string(&args, "terminalId")?;
             let text = arg_string(&args, "text")?;
             let approval_id = arg_optional_string(&args, "approvalId");
@@ -1160,7 +1160,7 @@ pub(super) async fn tools_call(
                 .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "terminalId": terminal_id, "accepted": true })
         }
-        "aether.agent_diff" => {
+        "aelyris.agent_diff" => {
             let session_id = arg_string(&args, "sessionId")?;
             let against =
                 arg_optional_string(&args, "against").unwrap_or_else(|| "base".to_string());
@@ -1176,7 +1176,7 @@ pub(super) async fn tools_call(
 
             let Some(layers) = state.ghost_layers.as_ref() else {
                 return Ok(Json(serde_json::json!({
-                    "schema": "aether.mcp.server.v1",
+                    "schema": "aelyris.mcp.server.v1",
                     "tool": body.name,
                     "ok": true,
                     "result": {
@@ -1199,7 +1199,7 @@ pub(super) async fn tools_call(
                 "file": file,
             })
         }
-        "aether.request_approval" => {
+        "aelyris.request_approval" => {
             let session_id = arg_string(&args, "sessionId")?;
             let tool = arg_string(&args, "tool")?;
             let summary = arg_optional_string(&args, "summary");
@@ -1230,7 +1230,7 @@ pub(super) async fn tools_call(
                 }
             }
         }
-        "aether.list_pending_approvals" => {
+        "aelyris.list_pending_approvals" => {
             let pending = state
                 .mcp_pending
                 .lock()
@@ -1252,7 +1252,7 @@ pub(super) async fn tools_call(
                 "grantToolExposed": false,
             })
         }
-        "aether.request_merge" => {
+        "aelyris.request_merge" => {
             // Fail closed: a merge intent MUST be durable. Without the store we do
             // not fall back to a RAM queue a restart would lose (P0-3).
             let store = state.merge_store.as_ref().ok_or_else(|| {
@@ -1307,7 +1307,7 @@ pub(super) async fn tools_call(
                 "intent": stored,
             })
         }
-        "aether.spawn_agent" => {
+        "aelyris.spawn_agent" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
@@ -1337,7 +1337,7 @@ pub(super) async fn tools_call(
             .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "sessionId": session_id, "spawned": true })
         }
-        "aether.stop_agent" => {
+        "aelyris.stop_agent" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
@@ -1346,7 +1346,7 @@ pub(super) async fn tools_call(
                 .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "sessionId": session_id, "stopped": true })
         }
-        "aether.review.approve" => {
+        "aelyris.review.approve" => {
             let store = state.merge_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("merge persistence is not attached to this process".to_string())
             })?;
@@ -1358,7 +1358,7 @@ pub(super) async fn tools_call(
             const APPROVE_ALLOWED: &[&str] = &["intentId", "verdict", "gatesDigest"];
             if let Some(bad) = args.keys().find(|k| !APPROVE_ALLOWED.contains(&k.as_str())) {
                 return Err(ApiError::BadRequest(format!(
-                    "aether.review.approve does not accept `{bad}`: it approves a stored intent by \
+                    "aelyris.review.approve does not accept `{bad}`: it approves a stored intent by \
                      intentId only — repo/source/target come from the immutable intent, never the caller"
                 )));
             }
@@ -1371,7 +1371,7 @@ pub(super) async fn tools_call(
             if let Some(v) = args.get("verdict") {
                 if v.as_str() != Some("approve") {
                     return Err(ApiError::BadRequest(
-                        "verdict must be the string \"approve\"; use aether.review.reject to reject"
+                        "verdict must be the string \"approve\"; use aelyris.review.reject to reject"
                             .to_string(),
                     ));
                 }
@@ -1408,7 +1408,7 @@ pub(super) async fn tools_call(
                 "outcome": execution.outcome,
             })
         }
-        "aether.review.reject" => {
+        "aelyris.review.reject" => {
             // Fail closed: rejection is a durable state transition on the stored
             // intent, never a RAM-queue edit.
             let store = state.merge_store.as_ref().ok_or_else(|| {
@@ -1417,7 +1417,7 @@ pub(super) async fn tools_call(
             const REJECT_ALLOWED: &[&str] = &["intentId", "reason"];
             if let Some(bad) = args.keys().find(|k| !REJECT_ALLOWED.contains(&k.as_str())) {
                 return Err(ApiError::BadRequest(format!(
-                    "aether.review.reject does not accept `{bad}`"
+                    "aelyris.review.reject does not accept `{bad}`"
                 )));
             }
             let intent_id = arg_string(&args, "intentId")?;
@@ -1442,7 +1442,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason })
         }
-        "aether.task.create" => {
+        "aelyris.task.create" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
@@ -1501,13 +1501,13 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "id": id, "created": true, "changed": changed })
         }
-        "aether.task.list" => {
+        "aelyris.task.list" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
             serde_json::json!({ "tasks": tasks.list() })
         }
-        "aether.task.transition" => {
+        "aelyris.task.transition" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
@@ -1540,7 +1540,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "id": id, "to": to_raw, "changed": changed })
         }
-        "aether.orchestrator.plan" => {
+        "aelyris.orchestrator.plan" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
@@ -1556,7 +1556,7 @@ pub(super) async fn tools_call(
             let plan = tasks.read(|graph| crate::orchestrator::plan(graph, &caps, &usage));
             serde_json::json!({ "plan": plan })
         }
-        "aether.supervisor.health" => {
+        "aelyris.supervisor.health" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
@@ -1572,7 +1572,7 @@ pub(super) async fn tools_call(
             let health = tasks.read(|graph| crate::supervisor::assess(graph, &caps, &usage));
             serde_json::json!({ "health": health })
         }
-        "aether.orchestrator.step" => {
+        "aelyris.orchestrator.step" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
@@ -1633,13 +1633,13 @@ pub(super) async fn tools_call(
             );
             serde_json::json!({ "report": report })
         }
-        "aether.event.recent" => {
+        "aelyris.event.recent" => {
             let bus = state.event_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("event bus is not attached to this process".to_string())
             })?;
             serde_json::json!({ "events": bus.recent() })
         }
-        "aether.event.by_channel" => {
+        "aelyris.event.by_channel" => {
             let bus = state.event_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("event bus is not attached to this process".to_string())
             })?;
@@ -1650,7 +1650,7 @@ pub(super) async fn tools_call(
             .map_err(|_| ApiError::BadRequest(format!("invalid channel `{channel_raw}`")))?;
             serde_json::json!({ "channel": channel_raw, "events": bus.by_channel(channel) })
         }
-        "aether.event.since" => {
+        "aelyris.event.since" => {
             let bus = state.event_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("event bus is not attached to this process".to_string())
             })?;
@@ -1673,7 +1673,7 @@ pub(super) async fn tools_call(
             let next_seq = events.last().map(|e| e.seq).unwrap_or(after_seq);
             serde_json::json!({ "events": events, "nextSeq": next_seq })
         }
-        "aether.shared_brain.snapshot" => {
+        "aelyris.shared_brain.snapshot" => {
             let workspace_id =
                 arg_optional_string(&args, "workspaceId").unwrap_or_else(|| "mcp".to_string());
             let agents = state
@@ -1695,7 +1695,7 @@ pub(super) async fn tools_call(
             serde_json::to_value(snapshot)
                 .map_err(|err| ApiError::Internal(format!("serialize shared brain: {err}")))?
         }
-        "aether.ownership.assign" => {
+        "aelyris.ownership.assign" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
@@ -1717,7 +1717,7 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "agentId": agent_id, "pattern": pattern, "conflicts": conflicts })
         }
-        "aether.ownership.owner_of" => {
+        "aelyris.ownership.owner_of" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
@@ -1729,7 +1729,7 @@ pub(super) async fn tools_call(
                 .map(str::to_string);
             serde_json::json!({ "path": path, "owner": owner })
         }
-        "aether.ownership.claims" => {
+        "aelyris.ownership.claims" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
@@ -1746,7 +1746,7 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "claims": claims })
         }
-        "aether.ownership.conflicts" => {
+        "aelyris.ownership.conflicts" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())
             })?;
@@ -1763,7 +1763,7 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "conflicts": conflicts })
         }
-        "aether.symbol.claim" => {
+        "aelyris.symbol.claim" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -1839,7 +1839,7 @@ pub(super) async fn tools_call(
             serde_json::to_value(outcome)
                 .map_err(|err| ApiError::Internal(format!("serialize symbol outcome: {err}")))?
         }
-        "aether.symbol.refresh" => {
+        "aelyris.symbol.refresh" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -1871,7 +1871,7 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "refreshed": refreshed })
         }
-        "aether.symbol.release" => {
+        "aelyris.symbol.release" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -1885,7 +1885,7 @@ pub(super) async fn tools_call(
                 .release(&claim_id);
             serde_json::json!({ "released": released })
         }
-        "aether.symbol.release_task" => {
+        "aelyris.symbol.release_task" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -1901,7 +1901,7 @@ pub(super) async fn tools_call(
                 .release_for_task(&task_id);
             serde_json::json!({ "released": released })
         }
-        "aether.symbol.claims" => {
+        "aelyris.symbol.claims" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -1918,7 +1918,7 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "claims": claims })
         }
-        "aether.symbol.conflicts" => {
+        "aelyris.symbol.conflicts" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -1935,7 +1935,7 @@ pub(super) async fn tools_call(
             };
             serde_json::json!({ "conflicts": conflicts })
         }
-        "aether.symbol.claim_from_diff" => {
+        "aelyris.symbol.claim_from_diff" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -2027,7 +2027,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "recorded": recorded, "claims": claims })
         }
-        "aether.symbol.claim_from_source" => {
+        "aelyris.symbol.claim_from_source" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())
             })?;
@@ -2121,7 +2121,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "recorded": recorded, "fallback": fallback, "claims": claims })
         }
-        "aether.context.set" => {
+        "aelyris.context.set" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
             })?;
@@ -2138,20 +2138,20 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "change": change })
         }
-        "aether.context.get" => {
+        "aelyris.context.get" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
             })?;
             let key = arg_string(&args, "key")?;
             serde_json::json!({ "key": key, "value": store.get(&key) })
         }
-        "aether.context.all" => {
+        "aelyris.context.all" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
             })?;
             serde_json::json!({ "decisions": store.all() })
         }
-        "aether.context.remove" => {
+        "aelyris.context.remove" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
             })?;
@@ -2165,7 +2165,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "change": change })
         }
-        "aether.agent.report_activity" => {
+        "aelyris.agent.report_activity" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
@@ -2191,7 +2191,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "sessionId": session_id, "reported": true })
         }
-        "aether.agent.report_blocker" => {
+        "aelyris.agent.report_blocker" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
@@ -2214,7 +2214,7 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "sessionId": session_id, "raised": true })
         }
-        "aether.agent.steer_avoid" => {
+        "aelyris.agent.steer_avoid" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
@@ -2294,7 +2294,7 @@ pub(super) async fn tools_call(
                 "avoid": avoid,
             })
         }
-        "aether.agent.activity" => {
+        "aelyris.agent.activity" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
             })?;
@@ -2313,7 +2313,7 @@ pub(super) async fn tools_call(
                 .collect();
             serde_json::json!({ "fleet": fleet })
         }
-        "aether.intent.propose" => {
+        "aelyris.intent.propose" => {
             let bus = state.intent_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("intent bus is not attached to this process".to_string())
             })?;
@@ -2335,19 +2335,19 @@ pub(super) async fn tools_call(
             }
             serde_json::json!({ "intent": intent })
         }
-        "aether.intent.list" => {
+        "aelyris.intent.list" => {
             let bus = state.intent_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("intent bus is not attached to this process".to_string())
             })?;
             serde_json::json!({ "intents": bus.open() })
         }
-        "aether.intent.all" => {
+        "aelyris.intent.all" => {
             let bus = state.intent_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("intent bus is not attached to this process".to_string())
             })?;
             serde_json::json!({ "intents": bus.all() })
         }
-        "aether.intent.resolve" => {
+        "aelyris.intent.resolve" => {
             let bus = state.intent_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("intent bus is not attached to this process".to_string())
             })?;
@@ -2360,7 +2360,7 @@ pub(super) async fn tools_call(
             let intent = bus.resolve(&id, status);
             serde_json::json!({ "intent": intent })
         }
-        "aether.knowledge.add_node" => {
+        "aelyris.knowledge.add_node" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
@@ -2380,7 +2380,7 @@ pub(super) async fn tools_call(
             });
             serde_json::json!({ "id": id, "added": true })
         }
-        "aether.knowledge.add_edge" => {
+        "aelyris.knowledge.add_edge" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
@@ -2389,7 +2389,7 @@ pub(super) async fn tools_call(
             kg.add_edge(&dependent, &dependency);
             serde_json::json!({ "dependent": dependent, "dependency": dependency, "added": true })
         }
-        "aether.knowledge.remove_node" => {
+        "aelyris.knowledge.remove_node" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
@@ -2399,7 +2399,7 @@ pub(super) async fn tools_call(
             let removed = kg.remove_node(&id);
             serde_json::json!({ "id": id, "removed": removed })
         }
-        "aether.knowledge.remove_edge" => {
+        "aelyris.knowledge.remove_edge" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
@@ -2408,21 +2408,21 @@ pub(super) async fn tools_call(
             let removed = kg.remove_edge(&dependent, &dependency);
             serde_json::json!({ "dependent": dependent, "dependency": dependency, "removed": removed })
         }
-        "aether.knowledge.dependencies" => {
+        "aelyris.knowledge.dependencies" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
             let id = arg_string(&args, "id")?;
             serde_json::json!({ "id": id, "dependencies": kg.dependencies_of(&id) })
         }
-        "aether.knowledge.dependents" => {
+        "aelyris.knowledge.dependents" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
             let id = arg_string(&args, "id")?;
             serde_json::json!({ "id": id, "dependents": kg.dependents_of(&id) })
         }
-        "aether.knowledge.impact" => {
+        "aelyris.knowledge.impact" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
@@ -2430,7 +2430,7 @@ pub(super) async fn tools_call(
             // Transitive blast radius: everything that depends on `id`.
             serde_json::json!({ "id": id, "impact": kg.impact_of(&id) })
         }
-        "aether.knowledge.graph" => {
+        "aelyris.knowledge.graph" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
             })?;
@@ -2448,7 +2448,7 @@ pub(super) async fn tools_call(
         }
     };
     Ok(Json(serde_json::json!({
-        "schema": "aether.mcp.server.v1",
+        "schema": "aelyris.mcp.server.v1",
         "tool": body.name,
         "ok": true,
         "result": result,
@@ -2457,8 +2457,8 @@ pub(super) async fn tools_call(
 
 // ---- Native MCP: JSON-RPC 2.0 over Streamable HTTP ----
 //
-// Lets a standard MCP client (e.g. Claude Code via .mcp.json) register Aether as
-// a native server, so the aether.* verbs appear as native tools instead of being
+// Lets a standard MCP client (e.g. Claude Code via .mcp.json) register Aelyris as
+// a native server, so the aelyris.* verbs appear as native tools instead of being
 // driven over the bespoke REST shape. Reuses `tools_list`/`tools_call` verbatim —
 // only the JSON-RPC envelope differs, so the verb surface is identical across the
 // two faces (one source of truth).
@@ -2475,7 +2475,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aether is an autonomous build runtime you (the orchestrator) drive via these aether.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity> (reviewer must differ from it to merge), model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, reviewerId(!=owner), activeAgents, gates}: finished agents -> review, all-green verdict -> real git merge, ready tasks -> spawned; agents run between calls, so pace them. (5) Coordinate between steps via event.recent / agent.activity (who edits what), knowledge.impact (blast radius), intent.propose/list (pre-fact proposals), ownership.conflicts, blocker_raised. You are the reviewer; supply each task's gates from your own inspection. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity> (reviewer must differ from it to merge), model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, reviewerId(!=owner), activeAgents, gates}: finished agents -> review, all-green verdict -> real git merge, ready tasks -> spawned; agents run between calls, so pace them. (5) Coordinate between steps via event.recent / agent.activity (who edits what), knowledge.impact (blast radius), intent.propose/list (pre-fact proposals), ownership.conflicts, blocker_raised. You are the reviewer; supply each task's gates from your own inspection. Local-only; concurrency cap 4.";
 
 /// Native MCP JSON-RPC endpoint. Handles initialize / tools.list / tools.call /
 /// ping; everything else is method-not-found.
@@ -2501,7 +2501,7 @@ pub(super) async fn mcp_rpc(
             Ok(serde_json::json!({
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "aether-terminal", "version": env!("CARGO_PKG_VERSION") },
+                "serverInfo": { "name": "aelyris", "version": env!("CARGO_PKG_VERSION") },
                 "instructions": MCP_INSTRUCTIONS,
             }))
         }
@@ -2612,7 +2612,7 @@ mod tests {
             .expect("tokio runtime")
             .block_on(tools_list());
         let tools = listed["tools"].as_array().expect("tools is an array");
-        for verb in ["mux.workspace.safeInput", "aether.pane_send_input"] {
+        for verb in ["mux.workspace.safeInput", "aelyris.pane_send_input"] {
             let tool = tools
                 .iter()
                 .find(|tool| tool["name"].as_str() == Some(verb))
@@ -2690,7 +2690,7 @@ mod tests {
             .with_governance(Arc::new(Governance::with_access(Box::new(DenyAll))))
             .with_db(Some(db.clone()));
         let body = ToolCallBody {
-            name: "aether.spawn_agent".to_string(),
+            name: "aelyris.spawn_agent".to_string(),
             arguments: serde_json::json!({}),
         };
         let result = rt.block_on(tools_call(State(state), Json(body)));
@@ -2726,7 +2726,7 @@ mod tests {
             .with_db(Some(db));
         let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,3 @@\n a\n+b\n+c\n";
         let body = ToolCallBody {
-            name: "aether.symbol.claim_from_diff".to_string(),
+            name: "aelyris.symbol.claim_from_diff".to_string(),
             arguments: serde_json::json!({ "agentId": "agent-a", "taskId": "t1", "diff": diff }),
         };
         let Json(value) = rt
@@ -2762,7 +2762,7 @@ mod tests {
             .with_db(Some(db));
         let source = "fn alpha() {\n    let _ = 1;\n}\n\nfn beta() {\n    let _ = 2;\n}\n";
         let body = ToolCallBody {
-            name: "aether.symbol.claim_from_source".to_string(),
+            name: "aelyris.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "agent-a", "taskId": "t1", "path": "src/x.rs", "source": source }),
         };
         let Json(value) = rt
@@ -2794,7 +2794,7 @@ mod tests {
             .with_symbol_ownership(owner.clone())
             .with_db(Some(db));
         let body = ToolCallBody {
-            name: "aether.symbol.claim_from_source".to_string(),
+            name: "aelyris.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "notes.md", "source": "# hi" }),
         };
         let Json(value) = rt
@@ -2821,7 +2821,7 @@ mod tests {
             .with_db(Some(db.clone()));
         // Leading blank lines must NOT shift the range (raw, untrimmed source).
         let body = ToolCallBody {
-            name: "aether.symbol.claim_from_source".to_string(),
+            name: "aelyris.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": "\n\nfn f() {\n}\n" }),
         };
         let Json(value) = rt
@@ -2840,7 +2840,7 @@ mod tests {
             .with_symbol_ownership(owner.clone())
             .with_db(Some(db));
         let body2 = ToolCallBody {
-            name: "aether.symbol.claim_from_source".to_string(),
+            name: "aelyris.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": "" }),
         };
         let Json(v2) = rt
@@ -2872,7 +2872,7 @@ mod tests {
         // 1. A diff-hunk claim on src/x.rs (an import-region edit the parser won't model).
         let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,2 @@\n use a;\n+use b;\n";
         let dbody = ToolCallBody {
-            name: "aether.symbol.claim_from_diff".to_string(),
+            name: "aelyris.symbol.claim_from_diff".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "diff": diff }),
         };
         let Json(_) = rt
@@ -2881,7 +2881,7 @@ mod tests {
 
         // 2. A hand-made claim (even at parser confidence) on the same file.
         let mbody = ToolCallBody {
-            name: "aether.symbol.claim".to_string(),
+            name: "aelyris.symbol.claim".to_string(),
             arguments: serde_json::json!({ "claimId": "manual-1", "agentId": "a", "path": "src/x.rs",
                 "symbol": "hand", "startLine": 90, "endLine": 95, "mode": "write", "confidence": "parser" }),
         };
@@ -2892,7 +2892,7 @@ mod tests {
         // 3. Parse the source -> reconciles ONLY parse: claims; diff + manual survive.
         let src = "fn alpha() {\n    let _ = 1;\n}\n";
         let sbody = ToolCallBody {
-            name: "aether.symbol.claim_from_source".to_string(),
+            name: "aelyris.symbol.claim_from_source".to_string(),
             arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "source": src }),
         };
         let Json(_) = rt
@@ -2933,7 +2933,7 @@ mod tests {
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
             .with_symbol_ownership(owner);
         let body = ToolCallBody {
-            name: "aether.symbol.claim".to_string(),
+            name: "aelyris.symbol.claim".to_string(),
             arguments: serde_json::json!({ "claimId": "parse:a:src/x.rs:foo@1-3", "agentId": "a",
                 "path": "src/x.rs", "symbol": "foo", "startLine": 1, "endLine": 3,
                 "mode": "write", "confidence": "parser" }),
@@ -2956,7 +2956,7 @@ mod tests {
             .as_array()
             .expect("tools array")
             .iter()
-            .find(|t| t["name"] == "aether.task.create")
+            .find(|t| t["name"] == "aelyris.task.create")
             .expect("task.create present");
         assert!(
             create["inputSchema"]["properties"].get("symbols").is_none(),
@@ -2983,14 +2983,14 @@ mod tests {
             .with_agent_manager(AgentManager::new())
             .with_symbol_ownership(Arc::new(Mutex::new(SymbolOwnership::new())));
         let body = ToolCallBody {
-            name: "aether.agent.steer_avoid".to_string(),
+            name: "aelyris.agent.steer_avoid".to_string(),
             arguments: serde_json::json!({ "sessionId": "ghost", "files": ["src/x.rs"] }),
         };
         let result = rt.block_on(tools_call(State(state), Json(body)));
         assert!(matches!(result, Err(ApiError::NotFound(_))), "{result:?}");
     }
 
-    /// P0-3 inc3: `aether.request_merge` binds the repo/branch/OIDs into a durable
+    /// P0-3 inc3: `aelyris.request_merge` binds the repo/branch/OIDs into a durable
     /// intent at request time, and is idempotent per (taskId, source_oid,
     /// target_oid) — a duplicate request returns the ORIGINAL intent, not a new one.
     #[test]
@@ -3042,7 +3042,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let call = |args: serde_json::Value| -> serde_json::Value {
             let body = ToolCallBody {
-                name: "aether.request_merge".to_string(),
+                name: "aelyris.request_merge".to_string(),
                 arguments: args,
             };
             let Json(v) = rt
@@ -3081,7 +3081,7 @@ mod tests {
         // request-shape error.
         let no_store = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
         let body = ToolCallBody {
-            name: "aether.request_merge".to_string(),
+            name: "aelyris.request_merge".to_string(),
             arguments: serde_json::json!({
                 "taskId": "t", "repoPath": repo_path, "sourceBranch": "feature", "targetBranch": "main"
             }),
@@ -3092,7 +3092,7 @@ mod tests {
         assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
     }
 
-    /// P0-3 inc4/5 (the security headline): `aether.review.approve` binds ONLY to a
+    /// P0-3 inc4/5 (the security headline): `aelyris.review.approve` binds ONLY to a
     /// stored intent. It must REJECT caller-supplied repo/source/target and any
     /// unknown field BEFORE merging (boundaries #1+#2), merge using ONLY the stored
     /// branches (boundary #4), and not be re-claimable once merged.
@@ -3153,7 +3153,7 @@ mod tests {
 
         // Request a durable intent for feature -> main.
         let Json(req) = call(
-            "aether.request_merge",
+            "aelyris.request_merge",
             serde_json::json!({
                 "taskId": "task-1", "repoPath": repo_path,
                 "sourceBranch": "feature", "targetBranch": "main",
@@ -3165,7 +3165,7 @@ mod tests {
         // BOUNDARY #1: a caller-supplied repo/source/target is rejected (it tries to
         // re-point the merge) — BEFORE any merge, so the intent stays claimable.
         let override_err = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({
                 "intentId": intent_id, "repoPath": "C:/evil",
                 "sourceBranch": "evil", "targetBranch": "main",
@@ -3179,7 +3179,7 @@ mod tests {
 
         // BOUNDARY #2: any OTHER unknown field is rejected too.
         let unknown_err = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "smuggle": 1 }),
         )
         .expect_err("unknown field must be rejected");
@@ -3190,7 +3190,7 @@ mod tests {
 
         // The real approve (intentId only) merges using the STORED branches.
         let Json(ok) = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "verdict": "approve" }),
         )
         .expect("approve ok");
@@ -3200,7 +3200,7 @@ mod tests {
 
         // A merged intent is no longer claimable — a re-approve loses the CAS.
         let reapprove = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id }),
         )
         .expect_err("re-approve of a merged intent must fail");
@@ -3211,7 +3211,7 @@ mod tests {
 
         // An unknown intent id is NotFound.
         let missing = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": "ghost" }),
         )
         .expect_err("unknown intent");
@@ -3279,7 +3279,7 @@ mod tests {
         };
 
         let Json(req) = call(
-            "aether.request_merge",
+            "aelyris.request_merge",
             serde_json::json!({
                 "taskId": "task-1", "repoPath": repo_path,
                 "sourceBranch": "feature", "targetBranch": "main",
@@ -3291,7 +3291,7 @@ mod tests {
         // Type confusion: a NON-string verdict / gatesDigest is rejected, not
         // treated as absent (the intent stays claimable).
         let bad_verdict = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "verdict": { "repoPath": "evil" } }),
         )
         .expect_err("object verdict rejected");
@@ -3300,7 +3300,7 @@ mod tests {
             "{bad_verdict:?}"
         );
         let bad_digest = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "gatesDigest": 5 }),
         )
         .expect_err("non-string gatesDigest rejected");
@@ -3320,7 +3320,7 @@ mod tests {
         // The OID-bound approve must NOT merge an unreviewed state — it flags
         // needs_reconcile.
         let stale = call(
-            "aether.review.approve",
+            "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id }),
         )
         .expect_err("stale tips rejected");
@@ -3332,8 +3332,8 @@ mod tests {
         );
     }
 
-    /// P0-3 inc6: `aether.review.reject` is a durable, store-backed transition, and
-    /// `aether.list_pending_approvals` synthesizes its merge view from the store
+    /// P0-3 inc6: `aelyris.review.reject` is a durable, store-backed transition, and
+    /// `aelyris.list_pending_approvals` synthesizes its merge view from the store
     /// (not mcp_pending) — a rejected intent leaves the unresolved view.
     #[test]
     fn review_reject_is_durable_and_pending_view_comes_from_the_store() {
@@ -3390,7 +3390,7 @@ mod tests {
         };
 
         let Json(req) = call(
-            "aether.request_merge",
+            "aelyris.request_merge",
             serde_json::json!({
                 "taskId": "task-1", "repoPath": repo_path,
                 "sourceBranch": "feature", "targetBranch": "main",
@@ -3401,7 +3401,7 @@ mod tests {
 
         // The pending view comes from the store and shows the queued intent.
         let Json(view) =
-            call("aether.list_pending_approvals", serde_json::json!({})).expect("list ok");
+            call("aelyris.list_pending_approvals", serde_json::json!({})).expect("list ok");
         let intents = view["result"]["mergeIntents"].as_array().unwrap();
         assert_eq!(intents.len(), 1);
         assert_eq!(intents[0]["intentId"].as_str().unwrap(), intent_id);
@@ -3409,7 +3409,7 @@ mod tests {
         // reject rejects the unknown field and the non-string reason.
         assert!(matches!(
             call(
-                "aether.review.reject",
+                "aelyris.review.reject",
                 serde_json::json!({ "intentId": intent_id, "evil": 1 })
             )
             .unwrap_err(),
@@ -3417,7 +3417,7 @@ mod tests {
         ));
         assert!(matches!(
             call(
-                "aether.review.reject",
+                "aelyris.review.reject",
                 serde_json::json!({ "intentId": intent_id, "reason": 5 })
             )
             .unwrap_err(),
@@ -3426,7 +3426,7 @@ mod tests {
 
         // A real reject durably transitions the intent.
         let Json(rej) = call(
-            "aether.review.reject",
+            "aelyris.review.reject",
             serde_json::json!({ "intentId": intent_id, "reason": "not needed" }),
         )
         .expect("reject ok");
@@ -3438,14 +3438,14 @@ mod tests {
 
         // It is gone from the unresolved view, and cannot be rejected again.
         let Json(view2) =
-            call("aether.list_pending_approvals", serde_json::json!({})).expect("list ok");
+            call("aelyris.list_pending_approvals", serde_json::json!({})).expect("list ok");
         assert!(view2["result"]["mergeIntents"]
             .as_array()
             .unwrap()
             .is_empty());
         assert!(matches!(
             call(
-                "aether.review.reject",
+                "aelyris.review.reject",
                 serde_json::json!({ "intentId": intent_id })
             )
             .unwrap_err(),
@@ -3454,7 +3454,7 @@ mod tests {
         // An unknown id is NotFound.
         assert!(matches!(
             call(
-                "aether.review.reject",
+                "aelyris.review.reject",
                 serde_json::json!({ "intentId": "ghost" })
             )
             .unwrap_err(),
@@ -3462,7 +3462,7 @@ mod tests {
         ));
     }
 
-    /// P0-4 inc3: the MCP agent-injection write path (`aether.pane_send_input`) is gated by
+    /// P0-4 inc3: the MCP agent-injection write path (`aelyris.pane_send_input`) is gated by
     /// the command-risk policy — a destructive command is refused (catastrophic) and a
     /// review command is refused without an approval id, BOTH before any byte reaches a PTY.
     #[test]
@@ -3480,7 +3480,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let call = |text: &str| {
             let body = ToolCallBody {
-                name: "aether.pane_send_input".to_string(),
+                name: "aelyris.pane_send_input".to_string(),
                 arguments: serde_json::json!({ "terminalId": "term-1", "text": text }),
             };
             rt.block_on(tools_call(State(state.clone()), Json(body)))

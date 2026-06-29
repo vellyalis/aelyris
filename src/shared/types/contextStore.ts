@@ -1,7 +1,7 @@
 /**
  * Context Store decision change — TS mirror of the Rust `DecisionChange`
  * (`src-tauri/src/context_store/mod.rs`), the `DECISION_CHANGED` payload.
- * See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+ * See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
  * Requirement 6.
  */
 export interface DecisionChange {

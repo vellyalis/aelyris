@@ -31,7 +31,7 @@ const SNAPSHOT_TIMEOUT_MS = 10_000;
 
 const FIXTURE_TINY = "e2e/fixtures/inline-image-1x1.png";
 const FIXTURE_LARGE = "e2e/fixtures/inline-image-32x32.png";
-const EMITTER_PS1 = "scripts/aether-imgcat.ps1";
+const EMITTER_PS1 = "scripts/aelyris-imgcat.ps1";
 
 const REPO_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -156,7 +156,7 @@ test.describe("Chunked OSC 1338 inline-image flows", () => {
     );
   };
 
-  /** PowerShell command to drive aether-imgcat.ps1 against a fixture. */
+  /** PowerShell command to drive aelyris-imgcat.ps1 against a fixture. */
   const emitImage = (fixture: string, imageId?: number): string => {
     const fixturePath = resolvePath(REPO_ROOT, fixture);
     const emitterPath = resolvePath(REPO_ROOT, EMITTER_PS1);

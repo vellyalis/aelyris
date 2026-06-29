@@ -17,6 +17,6 @@ export function isTauriRuntime(): boolean {
   );
 }
 
-export function getAetherHost(): "tauri" | "browser" {
+export function getAelyrisHost(): "tauri" | "browser" {
   return isTauriRuntime() ? "tauri" : "browser";
 }

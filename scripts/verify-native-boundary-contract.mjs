@@ -59,8 +59,8 @@ const nativeInput = source("src-tauri/src/term/native_input.rs");
 const commands = source("src-tauri/src/ipc/commands.rs");
 const lib = source("src-tauri/src/lib.rs");
 const api = source("src-tauri/src/api/mod.rs");
-const aetherctl = source("src-tauri/src/bin/aetherctl.rs");
-const aetherNative = source("src-tauri/src/bin/aether_native.rs");
+const aelys = source("src-tauri/src/bin/aelys.rs");
+const aelyrisNative = source("src-tauri/src/bin/aelyris_native.rs");
 const termMod = source("src-tauri/src/term/mod.rs");
 const termRenderFrame = source("src-tauri/src/term/render_frame.rs");
 const termRenderPipeline = source("src-tauri/src/term/render_pipeline.rs");
@@ -160,7 +160,7 @@ const muxLiveFresh =
   mtime(muxLiveArtifactPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-mux-live-restore.mjs"),
-      mtime("src-tauri/src/bin/aetherctl.rs"),
+      mtime("src-tauri/src/bin/aelys.rs"),
       mtime("src-tauri/src/api/mod.rs"),
       mtime("src-tauri/src/pty_sidecar.rs"),
       mtime("src-tauri/src/mux/graph.rs"),
@@ -175,7 +175,7 @@ const nativeClientFresh =
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
       mtime("src-tauri/Cargo.toml"),
-      mtime("src-tauri/src/bin/aether_native.rs"),
+      mtime("src-tauri/src/bin/aelyris_native.rs"),
       mtime("src-tauri/src/term/mod.rs"),
       mtime("src-tauri/src/term/render_frame.rs"),
       mtime("src-tauri/src/term/render_pipeline.rs"),
@@ -231,7 +231,7 @@ const muxLiveProcessPreservationFresh =
       mtime("src-tauri/src/mux/store.rs"),
       mtime("src-tauri/src/mux/graph.rs"),
       mtime("src-tauri/tests/test_api_3d1.rs"),
-      mtime("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md"),
+      mtime("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md"),
     );
 
 const daemonRestartRestoreProofReady =
@@ -254,18 +254,18 @@ const daemonRestartRestoreProofReady =
   muxLiveArtifact?.secondContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
-  muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
+  muxLiveArtifact?.aelysContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
-  muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.rendererTruthSource ===
+  muxLiveArtifact?.aelysContract?.terminalCorePolicy?.rendererTruthSource ===
     "rust-term-engine-render-pipeline" &&
-  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderFrameSchema === "aether.native.render-frame.v1" &&
-  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderFrameSchema === "aether.native.render-frame.v1" &&
-  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderDiffSchema === "aether.native.render-diff.v1" &&
-  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderDiffSchema === "aether.native.render-diff.v1" &&
-  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
-  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
-  muxLiveArtifact?.aetherctlContract?.terminalCorePolicy?.renderCommitSchema === "aether.native.render-commit.v1" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderFrameSchema === "aelyris.native.render-frame.v1" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderFrameSchema === "aelyris.native.render-frame.v1" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderDiffSchema === "aelyris.native.render-diff.v1" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderDiffSchema === "aelyris.native.render-diff.v1" &&
+  muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderCommitSchema === "aelyris.native.render-commit.v1" &&
+  muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderCommitSchema === "aelyris.native.render-commit.v1" &&
+  muxLiveArtifact?.aelysContract?.terminalCorePolicy?.renderCommitSchema === "aelyris.native.render-commit.v1" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderPipelineBoundary === "rust-native-render-pipeline" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderPipelineBoundary === "rust-native-render-pipeline" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.currentPresentationSurface ===
@@ -273,9 +273,9 @@ const daemonRestartRestoreProofReady =
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.currentPresentationSurface ===
     "react-canvas-presentation-with-rust-term-engine-truth" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeRendererStatus ===
-    "aether-native-no-webview-spike-proved-full-product-renderer-pending" &&
+    "aelyris-native-no-webview-spike-proved-full-product-renderer-pending" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.nativeRendererStatus ===
-    "aether-native-no-webview-spike-proved-full-product-renderer-pending" &&
+    "aelyris-native-no-webview-spike-proved-full-product-renderer-pending" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererClaimPolicy ===
     "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererClaimPolicy ===
@@ -302,10 +302,10 @@ const daemonRestartRestoreProofReady =
   muxLiveArtifact?.checks?.includes?.("terminal-core-policy-machine-readable") &&
   muxLiveArtifact?.checks?.includes?.("daemon-contract-stable-after-restart") &&
   muxLiveArtifact?.checks?.includes?.("terminal-core-policy-stable-after-restart") &&
-  muxLiveArtifact?.checks?.includes?.("aetherctl-daemon-contract-parity") &&
-  muxLiveArtifact?.checks?.includes?.("aetherctl-scrollback-search-parity") &&
-  muxLiveArtifact?.checks?.includes?.("aetherctl-mux-export-parity") &&
-  muxLiveArtifact?.checks?.includes?.("aetherctl-mux-import-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aelys-daemon-contract-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aelys-scrollback-search-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aelys-mux-export-parity") &&
+  muxLiveArtifact?.checks?.includes?.("aelys-mux-import-parity") &&
   muxLiveArtifact?.checks?.includes?.("mux-import-restore-pending") &&
   muxLiveArtifact?.checks?.includes?.("mux-import-replace-closes-live-pty");
 
@@ -351,7 +351,7 @@ const checks = [
       nativeInput.includes("state.webview_composition_bridge_required = false") &&
       nativeInput.includes("WM_IME_SETCONTEXT") &&
       nativeInput.includes("ISC_SHOWUICOMPOSITIONWINDOW") &&
-      nativeInput.includes("AetherNativeTerminalInputSurface") &&
+      nativeInput.includes("AelyrisNativeTerminalInputSurface") &&
       nativeInput.includes("WM_IME_COMPOSITION") &&
       nativeInput.includes("GCS_RESULTSTR") &&
       nativeInput.includes("RegisterClassW") &&
@@ -453,28 +453,28 @@ const checks = [
       api.includes("fn terminal_core_policy()") &&
       api.includes('native_input_owner: "rust-native-input-host"') &&
       api.includes('renderer_truth_source: "rust-term-engine-render-pipeline"') &&
-      api.includes('render_frame_schema: "aether.native.render-frame.v1"') &&
-      api.includes('render_diff_schema: "aether.native.render-diff.v1"') &&
-      api.includes('render_commit_schema: "aether.native.render-commit.v1"') &&
+      api.includes('render_frame_schema: "aelyris.native.render-frame.v1"') &&
+      api.includes('render_diff_schema: "aelyris.native.render-diff.v1"') &&
+      api.includes('render_commit_schema: "aelyris.native.render-commit.v1"') &&
       api.includes('render_pipeline_boundary: "rust-native-render-pipeline"') &&
       api.includes('current_presentation_surface: "react-canvas-presentation-with-rust-term-engine-truth"') &&
       api.includes("native_renderer_status:") &&
-      api.includes('"aether-native-no-webview-spike-proved-full-product-renderer-pending"') &&
+      api.includes('"aelyris-native-no-webview-spike-proved-full-product-renderer-pending"') &&
       api.includes("renderer_claim_policy:") &&
       api.includes('"do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded"') &&
       api.includes('webview_terminal_renderer_policy: "fallback-contained-not-source-of-truth"') &&
       api.includes('react_terminal_renderer_policy: "control-plane-only-not-terminal-core"') &&
       api.includes('fallback_visibility_policy: "release-blocking-telemetry"') &&
       (daemonRestartRestoreProofReady || daemonLiveProcessPreservationReady) &&
-      aetherctl.includes('"search" | "scrollback-search"') &&
-      aetherctl.includes('"mux-export"') &&
-      aetherctl.includes('"mux-import"') &&
-      aetherctl.includes("/mux/workspaces/{workspace_id}/export") &&
-      aetherctl.includes("/mux/workspaces/import?replace={replace}") &&
-      aetherctl.includes("/sessions/{id}/search?query={}") &&
-      aetherctl.includes("query_component(&query)") &&
-      aetherctl.includes('"daemon" | "contract"'),
-    "daemon contract exposes machine-readable detach, attach, restart-restore, shutdown, graph-version, transport, auth, honest terminal-core render/input/fallback policies, aetherctl parity source, and either restart-restore live proof or daemon-live same-process preservation proof",
+      aelys.includes('"search" | "scrollback-search"') &&
+      aelys.includes('"mux-export"') &&
+      aelys.includes('"mux-import"') &&
+      aelys.includes("/mux/workspaces/{workspace_id}/export") &&
+      aelys.includes("/mux/workspaces/import?replace={replace}") &&
+      aelys.includes("/sessions/{id}/search?query={}") &&
+      aelys.includes("query_component(&query)") &&
+      aelys.includes('"daemon" | "contract"'),
+    "daemon contract exposes machine-readable detach, attach, restart-restore, shutdown, graph-version, transport, auth, honest terminal-core render/input/fallback policies, aelys parity source, and either restart-restore live proof or daemon-live same-process preservation proof",
     {
       restartRestoreArtifact: muxLiveArtifactPath,
       restartRestoreFresh: muxLiveFresh,
@@ -486,88 +486,88 @@ const checks = [
   ),
   check(
     "native-client-spike",
-    cargoToml.includes('name = "aether-native"') &&
+    cargoToml.includes('name = "aelyris-native"') &&
       packageJson.includes('"verify:terminal:native-client"') &&
-      aetherNative.includes('"aether.native.client.v1"') &&
-      aetherNative.includes('"uiBoundary": "no-webview"') &&
-      aetherNative.includes('"muxTruthSource": "daemon-api"') &&
-      aetherNative.includes('"pending-native-terminal-renderer-after-window-proof"') &&
-      aetherNative.includes('"native-window-proof"') &&
-      aetherNative.includes('"native-text-render-proof"') &&
-      aetherNative.includes('"native-grid-render-proof"') &&
-      aetherNative.includes('"native-present-loop-proof"') &&
-      aetherNative.includes('"native-gpu-render-proof"') &&
-      aetherNative.includes('"native-winit-wgpu-surface-proof"') &&
-      aetherNative.includes('"native-ime-hwnd-dogfood-proof"') &&
-      aetherNative.includes('"native-ime-os-dogfood-proof"') &&
-      aetherNative.includes('"native-settings-window-ui"') &&
-      aetherNative.includes('"native-mode-shell-proof"') &&
-      aetherNative.includes('"native-mode-rail-window-ui-proof"') &&
-      aetherNative.includes('"native-inspector-window-ui-proof"') &&
-      aetherNative.includes('"native-right-rail-demotion-proof"') &&
-      aetherNative.includes('"native-accessibility-tree-proof"') &&
-      aetherNative.includes('"native-visual-qa-harness-proof"') &&
-      aetherNative.includes('"native-primary-shell-promotion-proof"') &&
-      aetherNative.includes('"aether.native.sleep-resume-recovery-probe.v1"') &&
-      aetherNative.includes('"present-loop-proof"') &&
-      aetherNative.includes('"gpu-render-proof"') &&
-      aetherNative.includes('"winit-wgpu-proof"') &&
-      aetherNative.includes('"ime-dogfood-proof"') &&
-      aetherNative.includes('"ime-os-dogfood-proof"') &&
-      aetherNative.includes('"settings-window-proof"') &&
-      aetherNative.includes('"mode-shell-proof"') &&
-      aetherNative.includes('"mode-rail-window-proof"') &&
-      aetherNative.includes('"inspector-window-proof"') &&
-      aetherNative.includes('"right-rail-demotion-proof"') &&
-      aetherNative.includes('"accessibility-proof"') &&
-      aetherNative.includes('"uia-provider-proof"') &&
-      aetherNative.includes('"visual-qa-proof"') &&
-      aetherNative.includes('"primary-shell-proof"') &&
-      aetherNative.includes('"aether.native.mode-shell.v1"') &&
-      aetherNative.includes('"aether.native.ime-dogfood-proof.v1"') &&
-      aetherNative.includes('"aether.native.ime-os-dogfood-proof.v1"') &&
-      aetherNative.includes('"aether.native.settings-window-proof.v1"') &&
-      aetherNative.includes('"aether.native.mode-rail.v1"') &&
-      aetherNative.includes('"aether.native.inspector.v1"') &&
-      aetherNative.includes('"aether.native.mode-rail-window-proof.v1"') &&
-      aetherNative.includes('"aether.native.inspector-window-proof.v1"') &&
-      aetherNative.includes('"aether.native.right-rail-demotion-proof.v1"') &&
-      aetherNative.includes('"aether.native.accessibility-proof.v1"') &&
-      aetherNative.includes('"aether.native.uia-provider-proof.v1"') &&
-      aetherNative.includes('"aether.native.visual-qa-proof.v1"') &&
-      aetherNative.includes('"aether.native.primary-shell-proof.v1"') &&
-      aetherNative.includes('"aether.native.primary-shell-window-proof.v1"') &&
-      aetherNative.includes("native-accessibility-manual-screen-reader-sweep") &&
-      aetherNative.includes("native-sleep-resume-visual-dogfood") &&
-      aetherNative.includes("UIAutomation") &&
-      aetherNative.includes("accesskit") &&
-      aetherNative.includes("native_gpu_render_proof") &&
-      aetherNative.includes("native_winit_wgpu_surface_proof") &&
-      aetherNative.includes("CreateWindowExW") &&
-      aetherNative.includes("SetLayeredWindowAttributes") &&
-      aetherNative.includes("TextOutW") &&
-      aetherNative.includes("native-gdi-text-proof") &&
-      aetherNative.includes("native-gdi-grid-proof") &&
-      aetherNative.includes("native-win32-present-loop-proof") &&
-      aetherNative.includes("wgpu-offscreen-frame-proof") &&
-      aetherNative.includes("native-winit-wgpu-terminal") &&
-      aetherNative.includes("TermEngine::new") &&
-      aetherNative.includes("NativeRenderFrame::from_snapshot") &&
-      aetherNative.includes("NativeRenderPipeline::new") &&
-      aetherNative.includes("commit_snapshot") &&
-      aetherNative.includes("renderCommitSeries") &&
+      aelyrisNative.includes('"aelyris.native.client.v1"') &&
+      aelyrisNative.includes('"uiBoundary": "no-webview"') &&
+      aelyrisNative.includes('"muxTruthSource": "daemon-api"') &&
+      aelyrisNative.includes('"pending-native-terminal-renderer-after-window-proof"') &&
+      aelyrisNative.includes('"native-window-proof"') &&
+      aelyrisNative.includes('"native-text-render-proof"') &&
+      aelyrisNative.includes('"native-grid-render-proof"') &&
+      aelyrisNative.includes('"native-present-loop-proof"') &&
+      aelyrisNative.includes('"native-gpu-render-proof"') &&
+      aelyrisNative.includes('"native-winit-wgpu-surface-proof"') &&
+      aelyrisNative.includes('"native-ime-hwnd-dogfood-proof"') &&
+      aelyrisNative.includes('"native-ime-os-dogfood-proof"') &&
+      aelyrisNative.includes('"native-settings-window-ui"') &&
+      aelyrisNative.includes('"native-mode-shell-proof"') &&
+      aelyrisNative.includes('"native-mode-rail-window-ui-proof"') &&
+      aelyrisNative.includes('"native-inspector-window-ui-proof"') &&
+      aelyrisNative.includes('"native-right-rail-demotion-proof"') &&
+      aelyrisNative.includes('"native-accessibility-tree-proof"') &&
+      aelyrisNative.includes('"native-visual-qa-harness-proof"') &&
+      aelyrisNative.includes('"native-primary-shell-promotion-proof"') &&
+      aelyrisNative.includes('"aelyris.native.sleep-resume-recovery-probe.v1"') &&
+      aelyrisNative.includes('"present-loop-proof"') &&
+      aelyrisNative.includes('"gpu-render-proof"') &&
+      aelyrisNative.includes('"winit-wgpu-proof"') &&
+      aelyrisNative.includes('"ime-dogfood-proof"') &&
+      aelyrisNative.includes('"ime-os-dogfood-proof"') &&
+      aelyrisNative.includes('"settings-window-proof"') &&
+      aelyrisNative.includes('"mode-shell-proof"') &&
+      aelyrisNative.includes('"mode-rail-window-proof"') &&
+      aelyrisNative.includes('"inspector-window-proof"') &&
+      aelyrisNative.includes('"right-rail-demotion-proof"') &&
+      aelyrisNative.includes('"accessibility-proof"') &&
+      aelyrisNative.includes('"uia-provider-proof"') &&
+      aelyrisNative.includes('"visual-qa-proof"') &&
+      aelyrisNative.includes('"primary-shell-proof"') &&
+      aelyrisNative.includes('"aelyris.native.mode-shell.v1"') &&
+      aelyrisNative.includes('"aelyris.native.ime-dogfood-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.ime-os-dogfood-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.settings-window-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.mode-rail.v1"') &&
+      aelyrisNative.includes('"aelyris.native.inspector.v1"') &&
+      aelyrisNative.includes('"aelyris.native.mode-rail-window-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.inspector-window-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.right-rail-demotion-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.accessibility-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.uia-provider-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.visual-qa-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.primary-shell-proof.v1"') &&
+      aelyrisNative.includes('"aelyris.native.primary-shell-window-proof.v1"') &&
+      aelyrisNative.includes("native-accessibility-manual-screen-reader-sweep") &&
+      aelyrisNative.includes("native-sleep-resume-visual-dogfood") &&
+      aelyrisNative.includes("UIAutomation") &&
+      aelyrisNative.includes("accesskit") &&
+      aelyrisNative.includes("native_gpu_render_proof") &&
+      aelyrisNative.includes("native_winit_wgpu_surface_proof") &&
+      aelyrisNative.includes("CreateWindowExW") &&
+      aelyrisNative.includes("SetLayeredWindowAttributes") &&
+      aelyrisNative.includes("TextOutW") &&
+      aelyrisNative.includes("native-gdi-text-proof") &&
+      aelyrisNative.includes("native-gdi-grid-proof") &&
+      aelyrisNative.includes("native-win32-present-loop-proof") &&
+      aelyrisNative.includes("wgpu-offscreen-frame-proof") &&
+      aelyrisNative.includes("native-winit-wgpu-terminal") &&
+      aelyrisNative.includes("TermEngine::new") &&
+      aelyrisNative.includes("NativeRenderFrame::from_snapshot") &&
+      aelyrisNative.includes("NativeRenderPipeline::new") &&
+      aelyrisNative.includes("commit_snapshot") &&
+      aelyrisNative.includes("renderCommitSeries") &&
       termMod.includes("NativeRenderFrame") &&
       termMod.includes("NativeRenderFrameDiff") &&
       termMod.includes("NativeRenderPipeline") &&
-      termRenderFrame.includes("aether.native.render-frame.v1") &&
-      termRenderFrame.includes("aether.native.render-diff.v1") &&
-      termRenderPipeline.includes("aether.native.render-commit.v1") &&
+      termRenderFrame.includes("aelyris.native.render-frame.v1") &&
+      termRenderFrame.includes("aelyris.native.render-diff.v1") &&
+      termRenderPipeline.includes("aelyris.native.render-commit.v1") &&
       termRenderPipeline.includes("rust-native-render-pipeline") &&
       termRenderPipeline.includes("winit-wgpu-present-loop") &&
-      aetherNative.includes("/mux/workspaces/{workspace_id}/attach") &&
-      aetherNative.includes("/sessions/{id}/capture?lines={lines}&clean={clean}") &&
+      aelyrisNative.includes("/mux/workspaces/{workspace_id}/attach") &&
+      aelyrisNative.includes("/sessions/{id}/capture?lines={lines}&clean={clean}") &&
       nativeClientFresh &&
-      nativeClientArtifact?.nativeContract?.client?.process === "aether-native" &&
+      nativeClientArtifact?.nativeContract?.client?.process === "aelyris-native" &&
       nativeClientArtifact?.nativeContract?.client?.uiBoundary === "no-webview" &&
       nativeClientArtifact?.nativeContract?.claims?.webviewUsed === false &&
       nativeClientArtifact?.nativeContract?.claims?.muxTruthSource === "daemon-api" &&
@@ -578,7 +578,7 @@ const checks = [
       nativeClientArtifact?.nativeWindow?.window?.reactUsed === false &&
       nativeClientArtifact?.nativeWindow?.window?.layered === true &&
       nativeClientArtifact?.nativeWindow?.window?.alpha === 218 &&
-      nativeClientArtifact?.nativeWindow?.window?.processIdentity?.process === "aether-native" &&
+      nativeClientArtifact?.nativeWindow?.window?.processIdentity?.process === "aelyris-native" &&
       nativeClientArtifact?.nativeRender?.daemonInstanceId === nativeClientArtifact?.directContract?.instanceId &&
       nativeClientArtifact?.nativeRender?.source?.expectedFound === true &&
       nativeClientArtifact?.nativeRender?.renderer?.terminalRenderer === "native-gdi-text-proof" &&
@@ -593,12 +593,12 @@ const checks = [
       nativeClientArtifact?.nativeGridRender?.grid?.cols === 100 &&
       nativeClientArtifact?.nativeGridRender?.grid?.rows === 24 &&
       nativeClientArtifact?.nativeGridRender?.grid?.nonBlankCells > 0 &&
-      nativeClientArtifact?.nativeGridRender?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+      nativeClientArtifact?.nativeGridRender?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
       nativeClientArtifact?.nativeGridRender?.renderFrame?.rendererBoundary === "rust-native-render-frame" &&
       nativeClientArtifact?.nativeGridRender?.renderFrame?.webviewUsed === false &&
       nativeClientArtifact?.nativeGridRender?.renderFrame?.reactUsed === false &&
       nativeClientArtifact?.nativeGridRender?.renderFrame?.frameSha256?.length === 64 &&
-      nativeClientArtifact?.nativeGridRender?.renderDiff?.schema === "aether.native.render-diff.v1" &&
+      nativeClientArtifact?.nativeGridRender?.renderDiff?.schema === "aelyris.native.render-diff.v1" &&
       nativeClientArtifact?.nativeGridRender?.renderDiff?.currentFrameSha256 ===
         nativeClientArtifact?.nativeGridRender?.renderFrame?.frameSha256 &&
       nativeClientArtifact?.nativeGridRender?.renderDiff?.rendererBoundary === "rust-native-render-frame-diff" &&
@@ -606,7 +606,7 @@ const checks = [
       nativeClientArtifact?.nativeGridRender?.renderDiff?.reactUsed === false &&
       nativeClientArtifact?.nativeGridRender?.renderDiff?.dirtyCells > 0 &&
       nativeClientArtifact?.nativeGridRender?.renderDiff?.dirtyRects?.length > 0 &&
-      nativeClientArtifact?.nativeGridRender?.renderCommit?.schema === "aether.native.render-commit.v1" &&
+      nativeClientArtifact?.nativeGridRender?.renderCommit?.schema === "aelyris.native.render-commit.v1" &&
       nativeClientArtifact?.nativeGridRender?.renderCommit?.rendererBoundary === "rust-native-render-pipeline" &&
       nativeClientArtifact?.nativeGridRender?.renderCommit?.webviewUsed === false &&
       nativeClientArtifact?.nativeGridRender?.renderCommit?.reactUsed === false &&
@@ -643,7 +643,7 @@ const checks = [
       nativeClientArtifact?.nativeGridRender?.window?.nativeWindowCreated === true &&
       nativeClientArtifact?.nativePresentLoop?.daemonInstanceId === nativeClientArtifact?.directContract?.instanceId &&
       nativeClientArtifact?.nativePresentLoop?.source?.expectedFound === true &&
-      nativeClientArtifact?.nativePresentLoop?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+      nativeClientArtifact?.nativePresentLoop?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
       nativeClientArtifact?.nativePresentLoop?.presentLoop?.terminalRenderer === "native-win32-present-loop-proof" &&
       nativeClientArtifact?.nativePresentLoop?.presentLoop?.presentLoop === true &&
       nativeClientArtifact?.nativePresentLoop?.presentLoop?.interactiveWindow === true &&
@@ -655,7 +655,7 @@ const checks = [
         nativeClientArtifact?.nativePresentLoop?.renderFrame?.frameSha256 &&
       nativeClientArtifact?.nativeGpuRender?.daemonInstanceId === nativeClientArtifact?.directContract?.instanceId &&
       nativeClientArtifact?.nativeGpuRender?.source?.expectedFound === true &&
-      nativeClientArtifact?.nativeGpuRender?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+      nativeClientArtifact?.nativeGpuRender?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
       nativeClientArtifact?.nativeGpuRender?.gpu?.terminalRenderer === "wgpu-offscreen-frame-proof" &&
       nativeClientArtifact?.nativeGpuRender?.gpu?.gpuRenderer === true &&
       nativeClientArtifact?.nativeGpuRender?.gpu?.drawCalls === 1 &&
@@ -667,7 +667,7 @@ const checks = [
       nativeClientArtifact?.nativeGpuRender?.gpu?.nextRenderer === "winit-wgpu-surface-present-loop" &&
       nativeClientArtifact?.nativeWinitWgpu?.daemonInstanceId === nativeClientArtifact?.directContract?.instanceId &&
       nativeClientArtifact?.nativeWinitWgpu?.source?.expectedFound === true &&
-      nativeClientArtifact?.nativeWinitWgpu?.renderFrame?.schema === "aether.native.render-frame.v1" &&
+      nativeClientArtifact?.nativeWinitWgpu?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
       nativeClientArtifact?.nativeWinitWgpu?.winitWgpu?.terminalRenderer === "native-winit-wgpu-terminal" &&
       nativeClientArtifact?.nativeWinitWgpu?.winitWgpu?.renderer === "winit-wgpu-surface-present-loop" &&
       nativeClientArtifact?.nativeWinitWgpu?.winitWgpu?.gpuRenderer === true &&
@@ -690,7 +690,7 @@ const checks = [
         nativeClientArtifact?.nativeWinitWgpu?.renderFrame?.frameSha256 &&
       nativeClientArtifact?.nativeWinitWgpu?.winitWgpu?.nextRenderer === "native-ime-dogfood-terminal-input" &&
       nativeClientArtifact?.nativeIme?.operation === "ime-proof" &&
-      nativeClientArtifact?.nativeIme?.ime?.schema === "aether.native.ime-proof.v1" &&
+      nativeClientArtifact?.nativeIme?.ime?.schema === "aelyris.native.ime-proof.v1" &&
       nativeClientArtifact?.nativeIme?.ime?.nativeImeStateMachine === true &&
       nativeClientArtifact?.nativeIme?.ime?.nativePreeditOverlay === true &&
       nativeClientArtifact?.nativeIme?.ime?.nativeCommitPath === true &&
@@ -703,7 +703,7 @@ const checks = [
       nativeClientArtifact?.nativeIme?.ime?.reactUsed === false &&
       nativeClientArtifact?.nativeIme?.ime?.realOsImeDogfood === false &&
       nativeClientArtifact?.nativeImeDogfood?.operation === "ime-dogfood-proof" &&
-      nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.schema === "aether.native.ime-dogfood-proof.v1" &&
+      nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.schema === "aelyris.native.ime-dogfood-proof.v1" &&
       nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.mode === "native-hwnd-message-loop-dogfood" &&
       nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.nativeHwndImeDogfood === true &&
       nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.nativeCompositionSurfaceReady === true &&
@@ -722,7 +722,7 @@ const checks = [
       nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.realOsImeDogfood === false &&
       nativeClientArtifact?.nativeImeDogfood?.imeDogfood?.nextProof === "real-os-ime-composition-dogfood" &&
       nativeClientArtifact?.nativeImeOsDogfood?.operation === "ime-os-dogfood-proof" &&
-      nativeClientArtifact?.nativeImeOsDogfood?.imeOsDogfood?.schema === "aether.native.ime-os-dogfood-proof.v1" &&
+      nativeClientArtifact?.nativeImeOsDogfood?.imeOsDogfood?.schema === "aelyris.native.ime-os-dogfood-proof.v1" &&
       nativeClientArtifact?.nativeImeOsDogfood?.imeOsDogfood?.mode === "win32-imm32-composition-dogfood" &&
       nativeClientArtifact?.nativeImeOsDogfood?.imeOsDogfood?.nativeOsImeDogfood === true &&
       nativeClientArtifact?.nativeImeOsDogfood?.imeOsDogfood?.imeApi === "Imm32" &&
@@ -754,21 +754,21 @@ const checks = [
       nativeClientArtifact?.nativeImeOsDogfood?.imeOsDogfood?.nextProof ===
         "native-ime-manual-japanese-candidate-sweep" &&
       nativeClientArtifact?.nativeSettings?.operation === "settings-proof" &&
-      nativeClientArtifact?.nativeSettings?.settings?.schema === "aether.native.settings-proof.v1" &&
+      nativeClientArtifact?.nativeSettings?.settings?.schema === "aelyris.native.settings-proof.v1" &&
       nativeClientArtifact?.nativeSettings?.settings?.nativeSettings === true &&
       nativeClientArtifact?.nativeSettings?.settings?.webviewUsed === false &&
       nativeClientArtifact?.nativeSettings?.settings?.reactUsed === false &&
       nativeClientArtifact?.nativeSettings?.settings?.theme === "sakura-hub" &&
-      nativeClientArtifact?.nativeSettings?.settings?.mood === "aether-sakura" &&
+      nativeClientArtifact?.nativeSettings?.settings?.mood === "aelyris-sakura" &&
       nativeClientArtifact?.nativeSettings?.settings?.hotReloadProof?.changedWithoutReact === true &&
       nativeClientArtifact?.nativeSettings?.settings?.paletteProof?.accentCount >= 3 &&
       nativeClientArtifact?.nativeSettings?.settings?.materialProof?.panelColor === "#fff2f7" &&
       nativeClientArtifact?.nativeSettings?.settings?.wallpaperProof?.imagePath ===
-        "C:\\Images\\aether-native-sakura.jpg" &&
+        "C:\\Images\\aelyris-native-sakura.jpg" &&
       nearlyEqual(nativeClientArtifact?.nativeSettings?.settings?.wallpaperProof?.opacity, 0.31) &&
       nativeClientArtifact?.nativeCommandCenter?.operation === "command-center-proof" &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.schema ===
-        "aether.native.command-center-proof.v1" &&
+        "aelyris.native.command-center-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.nativeCommandCenter === true &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.mode === "data-contract-proof" &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.webviewUsed === false &&
@@ -780,9 +780,9 @@ const checks = [
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.nextProof === "native-command-center-window-ui" &&
       nativeClientArtifact?.nativeCommandCenterWindow?.operation === "command-center-window-proof" &&
       nativeClientArtifact?.nativeCommandCenterWindow?.commandCenter?.schema ===
-        "aether.native.command-center-proof.v1" &&
+        "aelyris.native.command-center-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenterWindow?.window?.schema ===
-        "aether.native.command-center-window-proof.v1" &&
+        "aelyris.native.command-center-window-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenterWindow?.window?.nativeCommandCenterWindow === true &&
       nativeClientArtifact?.nativeCommandCenterWindow?.window?.nativeRightRailWindow === true &&
       nativeClientArtifact?.nativeCommandCenterWindow?.window?.windowUi === true &&
@@ -801,9 +801,9 @@ const checks = [
       nativeClientArtifact?.nativeCommandCenterInputScroll?.operation ===
         "command-center-input-scroll-proof" &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.commandCenter?.schema ===
-        "aether.native.command-center-proof.v1" &&
+        "aelyris.native.command-center-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.schema ===
-        "aether.native.command-center-input-scroll-proof.v1" &&
+        "aelyris.native.command-center-input-scroll-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.nativeCommandCenterInput === true &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.nativeCommandCenterScroll === true &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.webviewUsed === false &&
@@ -825,8 +825,8 @@ const checks = [
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.nextProof ===
         "react-right-rail-compatibility-demotion" &&
       nativeClientArtifact?.nativeModeShell?.operation === "mode-shell-proof" &&
-      nativeClientArtifact?.nativeModeShell?.commandCenter?.schema === "aether.native.command-center-proof.v1" &&
-      nativeClientArtifact?.nativeModeShell?.modeShell?.schema === "aether.native.mode-shell.v1" &&
+      nativeClientArtifact?.nativeModeShell?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
+      nativeClientArtifact?.nativeModeShell?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.nativeModeShell === true &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.webviewUsed === false &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.reactUsed === false &&
@@ -837,7 +837,7 @@ const checks = [
       nativeClientArtifact?.nativeModeShell?.modeShell?.selectedEntityRoute?.source === "mux-daemon" &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.selectedEntityRoute?.route === "pane:active" &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.selectedEntityRoute?.owner === "rust" &&
-      nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.schema === "aether.native.mode-rail.v1" &&
+      nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.schema === "aelyris.native.mode-rail.v1" &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.modeCount === 8 &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.keyboardFirst === true &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.shortcutsStable === true &&
@@ -845,7 +845,7 @@ const checks = [
         expectedModeShellShortcuts.join("|") &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.webviewUsed === false &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.modeRail?.reactUsed === false &&
-      nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.schema === "aether.native.inspector.v1" &&
+      nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.schema === "aelyris.native.inspector.v1" &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.contextualInspector === true &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.commandCenterBacked === true &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.evidenceRows ===
@@ -857,7 +857,7 @@ const checks = [
       nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.webviewUsed === false &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.inspector?.reactUsed === false &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.rightInspectorContractId ===
-        "aether.native.inspector.v1:command-center" &&
+        "aelyris.native.inspector.v1:command-center" &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.guardrails?.modeCountAtLeastEight === true &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.guardrails?.selectedIndexInBounds === true &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.guardrails?.noReactDependency === true &&
@@ -866,8 +866,8 @@ const checks = [
       nativeClientArtifact?.nativeModeShell?.modeShell?.readyForReactDemotion === false &&
       nativeClientArtifact?.nativeModeShell?.modeShell?.nextProof === "native-mode-rail-window-proof" &&
       nativeClientArtifact?.nativeModeRailWindow?.operation === "mode-rail-window-proof" &&
-      nativeClientArtifact?.nativeModeRailWindow?.modeShell?.schema === "aether.native.mode-shell.v1" &&
-      nativeClientArtifact?.nativeModeRailWindow?.window?.schema === "aether.native.mode-rail-window-proof.v1" &&
+      nativeClientArtifact?.nativeModeRailWindow?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
+      nativeClientArtifact?.nativeModeRailWindow?.window?.schema === "aelyris.native.mode-rail-window-proof.v1" &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.nativeModeRailWindow === true &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.nativeModeRail === true &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.windowUi === true &&
@@ -890,9 +890,9 @@ const checks = [
       nativeClientArtifact?.nativeModeRailWindow?.window?.nextProof === "native-inspector-window-proof" &&
       nativeClientArtifact?.nativeInspectorWindow?.operation === "inspector-window-proof" &&
       nativeClientArtifact?.nativeInspectorWindow?.commandCenter?.schema ===
-        "aether.native.command-center-proof.v1" &&
-      nativeClientArtifact?.nativeInspectorWindow?.modeShell?.schema === "aether.native.mode-shell.v1" &&
-      nativeClientArtifact?.nativeInspectorWindow?.window?.schema === "aether.native.inspector-window-proof.v1" &&
+        "aelyris.native.command-center-proof.v1" &&
+      nativeClientArtifact?.nativeInspectorWindow?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
+      nativeClientArtifact?.nativeInspectorWindow?.window?.schema === "aelyris.native.inspector-window-proof.v1" &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.nativeInspectorWindow === true &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.nativeContextualInspector === true &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.windowUi === true &&
@@ -902,8 +902,8 @@ const checks = [
       nativeClientArtifact?.nativeInspectorWindow?.window?.reactUsed === false &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.selectedMode === "terminal" &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.rightInspectorContractId ===
-        "aether.native.inspector.v1:command-center" &&
-      nativeClientArtifact?.nativeInspectorWindow?.window?.inspector?.schema === "aether.native.inspector.v1" &&
+        "aelyris.native.inspector.v1:command-center" &&
+      nativeClientArtifact?.nativeInspectorWindow?.window?.inspector?.schema === "aelyris.native.inspector.v1" &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.commandCenterBacked === true &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.contextualInspector === true &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.evidenceRowsTotal ===
@@ -930,7 +930,7 @@ const checks = [
       nativeClientArtifact?.nativeInspectorWindow?.window?.nextProof === "react-right-rail-compatibility-demotion" &&
       nativeClientArtifact?.nativeRightRailDemotion?.operation === "right-rail-demotion-proof" &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.schema ===
-        "aether.native.right-rail-demotion-proof.v1" &&
+        "aelyris.native.right-rail-demotion-proof.v1" &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.nativeRightRailDemotionProof === true &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.sourceOfTruth ===
         "rust-native-command-center-mode-shell-inspector" &&
@@ -969,9 +969,9 @@ const checks = [
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.readyForReactDemotion === false &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.readyForFullNativeClaim === false &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.nextProof ===
-        "aether-native-primary-daily-driver-promotion" &&
+        "aelyris-native-primary-daily-driver-promotion" &&
       nativeClientArtifact?.nativeAccessibility?.operation === "accessibility-proof" &&
-      nativeClientArtifact?.nativeAccessibility?.accessibility?.schema === "aether.native.accessibility-proof.v1" &&
+      nativeClientArtifact?.nativeAccessibility?.accessibility?.schema === "aelyris.native.accessibility-proof.v1" &&
       nativeClientArtifact?.nativeAccessibility?.accessibility?.nativeAccessibilityTreeProof === true &&
       nativeClientArtifact?.nativeAccessibility?.accessibility?.webviewUsed === false &&
       nativeClientArtifact?.nativeAccessibility?.accessibility?.reactUsed === false &&
@@ -989,14 +989,14 @@ const checks = [
       nativeClientArtifact?.nativeAccessibility?.accessibility?.readyForFullNativeClaim === false &&
       nativeClientArtifact?.nativeAccessibility?.accessibility?.nextProof === "native-uia-provider-dogfood" &&
       nativeClientArtifact?.nativeUiaProvider?.operation === "uia-provider-proof" &&
-      nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.schema === "aether.native.uia-provider-proof.v1" &&
+      nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.schema === "aelyris.native.uia-provider-proof.v1" &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.nativeUiaProviderDogfood === true &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.webviewUsed === false &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.reactUsed === false &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.uiaProviderBound === true &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.elementFromHandle === true &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.root?.name ===
-        "Aether Native Accessibility Dogfood" &&
+        "Aelyris Native Accessibility Dogfood" &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.descendantCount >= 3 &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.dogfoodChecks?.terminalNameReadable === true &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.dogfoodChecks?.actionNameReadable === true &&
@@ -1009,7 +1009,7 @@ const checks = [
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.nextProof ===
         "native-accessibility-manual-screen-reader-sweep" &&
       nativeClientArtifact?.nativeVisualQa?.operation === "visual-qa-proof" &&
-      nativeClientArtifact?.nativeVisualQa?.visualQa?.schema === "aether.native.visual-qa-proof.v1" &&
+      nativeClientArtifact?.nativeVisualQa?.visualQa?.schema === "aelyris.native.visual-qa-proof.v1" &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.nativeVisualQaHarness === true &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.webviewUsed === false &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.reactUsed === false &&
@@ -1021,7 +1021,7 @@ const checks = [
       nativeClientArtifact?.nativeVisualQa?.visualQa?.focusCoveragePass === true &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.pixelProbe?.webviewCdpUsed === false &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.sleepResumeRecoveryProbe?.schema ===
-        "aether.native.sleep-resume-recovery-probe.v1" &&
+        "aelyris.native.sleep-resume-recovery-probe.v1" &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.sleepResumeRecoveryProbe?.syntheticPowerBroadcastDogfood ===
         true &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.sleepResumeRecoveryProbe?.realWindowsSleepResumeDogfood ===
@@ -1036,9 +1036,9 @@ const checks = [
       nativeClientArtifact?.nativeVisualQa?.visualQa?.readyForFullNativeClaim === false &&
       nativeClientArtifact?.nativeVisualQa?.visualQa?.nextProof === "native-sleep-resume-visual-dogfood" &&
       nativeClientArtifact?.nativePrimaryShell?.operation === "primary-shell-proof" &&
-      nativeClientArtifact?.nativePrimaryShell?.primaryShell?.schema === "aether.native.primary-shell-proof.v1" &&
+      nativeClientArtifact?.nativePrimaryShell?.primaryShell?.schema === "aelyris.native.primary-shell-proof.v1" &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.nativePrimaryShellPromotion === true &&
-      nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primarySurface === "aether-native" &&
+      nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primarySurface === "aelyris-native" &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.reactWebViewCompatibilityOnly === true &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.reactOwnsProductTruth === false &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.webviewOwnsTerminal === false &&
@@ -1048,14 +1048,14 @@ const checks = [
         (entry) => entry.complete === true,
       ) &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primaryShellWindow?.schema ===
-        "aether.native.primary-shell-window-proof.v1" &&
+        "aelyris.native.primary-shell-window-proof.v1" &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primaryShellWindow?.nativePrimaryShellWindow === true &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primaryShellWindow?.nonBlank === true &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primaryShellWindow?.modeRowsRendered >= 8 &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.primaryShellWindow?.actionRowsRendered >= 4 &&
       nativeClientArtifact?.nativePrimaryShell?.primaryShell?.readyForFullNativeClaim === false &&
       nativeClientArtifact?.nativeSettingsWindow?.operation === "settings-window-proof" &&
-      nativeClientArtifact?.nativeSettingsWindow?.window?.schema === "aether.native.settings-window-proof.v1" &&
+      nativeClientArtifact?.nativeSettingsWindow?.window?.schema === "aelyris.native.settings-window-proof.v1" &&
       nativeClientArtifact?.nativeSettingsWindow?.window?.nativeSettingsWindow === true &&
       nativeClientArtifact?.nativeSettingsWindow?.window?.nativeSettingsCustomization === true &&
       nativeClientArtifact?.nativeSettingsWindow?.window?.windowUi === true &&
@@ -1151,7 +1151,7 @@ const checks = [
       nativeClientArtifact?.checks?.includes?.("native-send-and-capture-roundtrip") &&
       nativeClientArtifact?.checks?.includes?.("native-detach-updates-mux-graph") &&
       nativeClientArtifact?.checks?.includes?.("native-attach-updates-mux-graph"),
-    "aether-native exists as a Rust-native, no-WebView attaching client and live proof shows it uses the same mux daemon plus layered Win32 native window, native GDI text rendering, a Rust native render-frame contract, TermEngine-backed grid rendering, and a native present loop for list, send, capture, detach, and attach",
+    "aelyris-native exists as a Rust-native, no-WebView attaching client and live proof shows it uses the same mux daemon plus layered Win32 native window, native GDI text rendering, a Rust native render-frame contract, TermEngine-backed grid rendering, and a native present loop for list, send, capture, detach, and attach",
     { artifact: nativeClientArtifactPath, fresh: nativeClientFresh },
   ),
   check(

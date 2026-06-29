@@ -8,11 +8,11 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const CDP_URL = "http://127.0.0.1:9222";
-const SHOT_DIR = "C:/tmp/aether-demo-shots";
+const SHOT_DIR = "C:/tmp/aelyris-demo-shots";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function setupRepo() {
-  const dir = mkdtempSync(join(tmpdir(), "aether-work-"));
+  const dir = mkdtempSync(join(tmpdir(), "aelyris-work-"));
   for (const a of [["init", "-b", "main"], ["config", "user.email", "v@a.test"], ["config", "user.name", "V"]])
     execFileSync("git", a, { cwd: dir });
   writeFileSync(join(dir, "README.md"), "# w\n");

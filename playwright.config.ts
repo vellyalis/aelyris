@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * Playwright E2E config for Aether Terminal (Tauri + WebView2).
+ * Playwright E2E config for Aelyris (Tauri + WebView2).
  *
  * Connection strategy:
  * 1. Start `pnpm tauri dev` manually (or via webServer config)

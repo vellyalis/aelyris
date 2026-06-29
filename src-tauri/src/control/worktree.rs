@@ -56,9 +56,9 @@ mod tests {
     fn delegates_branch_validation_and_path_prediction() {
         assert!(validate_branch("agent/implementer-demo").is_ok());
         assert!(validate_branch("../main").is_err());
-        let predicted = predict_path("C:/repo/aether", "agent/demo")
+        let predicted = predict_path("C:/repo/aelyris", "agent/demo")
             .to_string_lossy()
             .replace('\\', "/");
-        assert!(predicted.ends_with("repo/aether-agent/demo"));
+        assert!(predicted.ends_with("repo/aelyris-agent/demo"));
     }
 }

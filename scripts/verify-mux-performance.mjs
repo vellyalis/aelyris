@@ -8,14 +8,14 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const extension = process.platform === "win32" ? ".exe" : "";
 const sidecar =
-  process.env.AETHER_MUX_PERF_SIDECAR ??
-  join(root, "src-tauri", "pty-server", "target", "release", `aether-pty-server${extension}`);
+  process.env.AELYRIS_MUX_PERF_SIDECAR ??
+  join(root, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${extension}`);
 const out =
-  process.env.AETHER_MUX_PERF_OUT ??
+  process.env.AELYRIS_MUX_PERF_OUT ??
   join(root, ".codex-auto", "performance", "mux-performance-smoke.json");
-const token = process.env.AETHER_MUX_PERF_TOKEN ?? "mux-performance-smoke-token";
-const iterations = Number.parseInt(process.env.AETHER_MUX_PERF_ITERATIONS ?? "5", 10);
-const strictSpawn = process.env.AETHER_MUX_PERF_STRICT === "1";
+const token = process.env.AELYRIS_MUX_PERF_TOKEN ?? "mux-performance-smoke-token";
+const iterations = Number.parseInt(process.env.AELYRIS_MUX_PERF_ITERATIONS ?? "5", 10);
+const strictSpawn = process.env.AELYRIS_MUX_PERF_STRICT === "1";
 const budgets = {
   readyMs: 5_000,
   createWarnMs: 2_500,
@@ -111,7 +111,7 @@ function killProcess(child) {
 
 async function main() {
   if (!Number.isFinite(iterations) || iterations < 1) {
-    throw new Error("AETHER_MUX_PERF_ITERATIONS must be a positive integer");
+    throw new Error("AELYRIS_MUX_PERF_ITERATIONS must be a positive integer");
   }
 
   const port = await freePort();
@@ -126,10 +126,10 @@ async function main() {
     cwd: root,
     env: {
       ...process.env,
-      QUORUM_API_TOKEN: token,
-      QUORUM_PTY_SERVER_PORT: String(port),
-      QUORUM_MUX_SNAPSHOT_DIR: muxDir,
-      QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
+      AELYRIS_API_TOKEN: token,
+      AELYRIS_PTY_SERVER_PORT: String(port),
+      AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
+      AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
     },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],

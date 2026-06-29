@@ -2,21 +2,21 @@
 
 Status: public-previewable, not release-ready.
 
-This file is the short public-release checklist for Quorum. It exists so
+This file is the short public-release checklist for Aelyris. It exists so
 GitHub readers do not need to infer readiness from scattered historical docs.
 
 ## Current Verdict
 
-Quorum can be published as an alpha / experimental project if the README keeps
+Aelyris can be published as an alpha / experimental project if the README keeps
 the current limitations visible. It should not be published as a stable release
 or advertised as tmux-equivalent, BridgeSpace-plus complete, Ghostty/WezTerm-class,
 world-class, release-ready, or a strict `agmsg` superset.
 
-Latest documented machine evidence, generated locally on 2026-06-28 JST. Regenerate before release decisions:
+Latest documented machine evidence, generated locally on 2026-06-29 JST. Regenerate before release decisions:
 
 | Gate | Current state |
 | --- | --- |
-| Release quality | `43/100`, `150/351`, grade `D` |
+| Release quality | `35/100`, `124/351`, grade `D` |
 | Release candidate | `false` |
 | Machine release flag | `releaseCandidateReady=false` |
 | Final safe gate | `ok=false`, `blocked` |
@@ -48,7 +48,7 @@ Remaining gate classes:
 - right-rail visual QA,
 - live command, multipane command, recovered command, and process reconnect
   evidence,
-- authenticated AI CLI prompt smoke, which requires explicit token-spend consent. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt execution requires `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
+- authenticated AI CLI prompt smoke, which requires explicit token-spend consent. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt execution requires `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
 
 ## Publish Checklist
 
@@ -77,7 +77,7 @@ Then confirm:
 
 ## Suggested GitHub Description
 
-Quorum — project-first AI development workspace for Windows. Alpha Tauri/Rust/React
+Aelyris — project-first AI development workspace for Windows. Alpha Tauri/Rust/React
 app with visible AI-agent panes, worktree/review/merge control, and machine-checked
 readiness gates.
 

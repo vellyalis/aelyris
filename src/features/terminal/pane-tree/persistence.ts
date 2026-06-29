@@ -20,7 +20,7 @@ import {
 } from "./types";
 
 const SNAPSHOT_VERSION = 1;
-const STORAGE_PREFIX = "aether:paneTree:";
+const STORAGE_PREFIX = "aelyris:paneTree:";
 const VALID_SHELLS: ShellType[] = ["powershell", "cmd", "gitbash", "wsl"];
 const MAX_DEPTH = 16;
 const CONTROL_CHAR_RANGE = "\\u0000-\\u001f\\u007f";

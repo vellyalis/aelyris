@@ -4,8 +4,8 @@
 //
 // What it does:
 //   1. Asserts the Tauri CLI is on PATH (or instructs how to install it).
-//   2. Runs `tauri signer generate -w <out>/aether-updater.key` to mint
-//      an Ed25519 keypair under `<repo>/.aether-updater/` (gitignored).
+//   2. Runs `tauri signer generate -w <out>/aelyris-updater.key` to mint
+//      an Ed25519 keypair under `<repo>/.aelyris-updater/` (gitignored).
 //   3. Prints the public key and shows the exact JSON edit needed in
 //      `src-tauri/tauri.conf.json` to swap the placeholder pubkey for
 //      the real one.
@@ -16,7 +16,7 @@
 // What it does NOT do:
 //   - Edit tauri.conf.json automatically. The user must apply the change
 //     themselves so they review the swap before committing.
-//   - Touch the `.aether-updater/` directory if the key already exists —
+//   - Touch the `.aelyris-updater/` directory if the key already exists —
 //     re-running with an existing key would invalidate every previously
 //     released update.
 
@@ -25,8 +25,8 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 
 const REPO_ROOT = resolve(new URL(".", import.meta.url).pathname, "..");
-const KEY_DIR = join(REPO_ROOT, ".aether-updater");
-const KEY_PATH = join(KEY_DIR, "aether-updater.key");
+const KEY_DIR = join(REPO_ROOT, ".aelyris-updater");
+const KEY_PATH = join(KEY_DIR, "aelyris-updater.key");
 const PUB_PATH = `${KEY_PATH}.pub`;
 
 function run(command, args) {
@@ -43,8 +43,8 @@ async function main() {
   if (existsSync(KEY_PATH)) {
     console.error(
       `error: ${KEY_PATH} already exists. Re-running would invalidate every previously\n` +
-        `signed update. If you really want a fresh key, delete the .aether-updater/ directory\n` +
-        `manually first and accept that all installed Aether builds will refuse new updates\n` +
+        `signed update. If you really want a fresh key, delete the .aelyris-updater/ directory\n` +
+        `manually first and accept that all installed Aelyris builds will refuse new updates\n` +
         `until they are reinstalled with the new pubkey.`,
     );
     process.exit(1);
@@ -63,7 +63,7 @@ async function main() {
   const pub = readFileSync(PUB_PATH, "utf8").trim();
 
   console.log("");
-  console.log("✓ keypair written to .aether-updater/ (gitignored)");
+  console.log("✓ keypair written to .aelyris-updater/ (gitignored)");
   console.log("");
   console.log("Next steps:");
   console.log("  1. Edit src-tauri/tauri.conf.json → plugins.updater.pubkey");

@@ -4,8 +4,8 @@ import { isTauriRuntime } from "./tauriRuntime";
 
 export type EditorOpenMode = "vscode" | "builtin";
 
-export const EDITOR_OPEN_MODE_STORAGE_KEY = "aether:editorOpenMode";
-export const EDITOR_OPEN_MODE_CHANGE_EVENT = "aether:editor-open-mode-change";
+export const EDITOR_OPEN_MODE_STORAGE_KEY = "aelyris:editorOpenMode";
+export const EDITOR_OPEN_MODE_CHANGE_EVENT = "aelyris:editor-open-mode-change";
 
 export interface ExternalEditorTarget {
   line?: number;

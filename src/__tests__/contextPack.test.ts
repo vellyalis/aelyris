@@ -70,7 +70,7 @@ function baseInput(overrides: Partial<ContextPackInput> = {}): ContextPackInput 
   });
   return {
     generatedAt: "2026-05-05T12:00:00.000Z",
-    workspace: { name: "Aether", path: "C:/repo", branch: "main", threadId: "thread-1" },
+    workspace: { name: "Aelyris", path: "C:/repo", branch: "main", threadId: "thread-1" },
     activeTask: {
       id: "P1-07",
       title: "Context Pack Builder",
@@ -95,7 +95,7 @@ function baseInput(overrides: Partial<ContextPackInput> = {}): ContextPackInput 
     diffSummary: "2 files changed, 120 insertions",
     finalReport: {
       title: "P1-06 final report",
-      summary: "Aether run completed with focused validation.",
+      summary: "Aelyris run completed with focused validation.",
       markdown: "Final report body",
     },
     dashboardState: { status: "running", token: REDACTION_TEST_DASHBOARD_TOKEN, fileContent: "raw source should not leak" },
@@ -110,13 +110,13 @@ describe("buildContextPack", () => {
 
     expect(pack.threadSummary).toContain("P1-07 Context Pack Builder");
     expect(pack.threadSummary).toContain("Final report included: yes");
-    expect(pack.markdown).toContain("# Context Pack: Aether");
+    expect(pack.markdown).toContain("# Context Pack: Aelyris");
     expect(pack.markdown).toContain("## Agent Transcripts");
-    expect(pack.markdown).toContain("Aether run completed with focused validation.");
+    expect(pack.markdown).toContain("Aelyris run completed with focused validation.");
     expect(pack.markdown).toContain("src/features/context/ContextPanel.tsx");
     expect(pack.markdown).toContain("pnpm exec vitest contextPack.test.ts");
     expect(pack.json.summary.nextActions).toContain("Run focused context pack validation.");
-    expect(pack.json.finalReport?.summary).toBe("Aether run completed with focused validation.");
+    expect(pack.json.finalReport?.summary).toBe("Aelyris run completed with focused validation.");
     expect(pack.json.workstationGraph.nodeCount).toBeGreaterThan(0);
   });
 

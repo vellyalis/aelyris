@@ -14,7 +14,7 @@ describe("authenticated prompt consent packet", () => {
         provider: "codex",
         wouldSpendTokens: true,
         checks: {
-          requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+          requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
           tokenSpendingExecutionBlocked: true,
           safeNoPromptSent: true,
           consentPacketReady: true,
@@ -34,8 +34,8 @@ describe("authenticated prompt consent packet", () => {
         nextCommand: {
           command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
           env: {
-            QUORUM_AUTH_PROMPT_CONSENT: "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
-            QUORUM_AUTH_PROMPT_PROVIDER: "codex",
+            AELYRIS_AUTH_PROMPT_CONSENT: "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+            AELYRIS_AUTH_PROMPT_PROVIDER: "codex",
           },
         },
       }),
@@ -49,7 +49,7 @@ describe("authenticated prompt consent packet", () => {
     expect(packet.preflightReady).toBe(true);
     expect(packet.safeNoPromptSent).toBe(true);
     expect(packet.wouldSpendTokens).toBe(true);
-    expect(packet.requiredEnv).toBe("QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS");
+    expect(packet.requiredEnv).toBe("AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS");
     expect(packet.checks.every((check) => check.status === "pass")).toBe(true);
   });
 
@@ -61,7 +61,7 @@ describe("authenticated prompt consent packet", () => {
         provider: "codex",
         wouldSpendTokens: true,
         checks: {
-          requiredEnv: "QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+          requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
           safeNoPromptSent: true,
           consentPacketReady: true,
           nonTokenPreflightReady: true,
@@ -101,8 +101,8 @@ describe("authenticated prompt consent packet", () => {
           optInCommand: {
             command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
             env: {
-              QUORUM_AUTH_PROMPT_CONSENT: "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
-              QUORUM_AUTH_PROMPT_PROVIDER: provider,
+              AELYRIS_AUTH_PROMPT_CONSENT: "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+              AELYRIS_AUTH_PROMPT_PROVIDER: provider,
             },
           },
         })),
@@ -131,7 +131,7 @@ describe("authenticated prompt consent packet", () => {
       ["claude", "ready"],
       ["gemini", "ready"],
     ]);
-    expect(packet.providerReadiness[1]?.requiredEnv).toContain("QUORUM_AUTH_PROMPT_PROVIDER=claude");
+    expect(packet.providerReadiness[1]?.requiredEnv).toContain("AELYRIS_AUTH_PROMPT_PROVIDER=claude");
     expect(packet.artifactReadiness).toEqual([
       expect.objectContaining({
         id: "ime",

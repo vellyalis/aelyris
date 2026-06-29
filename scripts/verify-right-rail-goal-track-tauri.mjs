@@ -4,12 +4,12 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_TAURI_APP_URL ?? "http://localhost:1420/";
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_TAURI_APP_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_TAURI_GOAL_TRACK_OUT ?? ".codex-auto/production-smoke/right-rail-goal-track-tauri.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_TAURI_GOAL_TRACK_WAIT_MS ?? "90000", 10);
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_TAURI_GOAL_TRACK_OUT ?? ".codex-auto/production-smoke/right-rail-goal-track-tauri.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_TAURI_GOAL_TRACK_WAIT_MS ?? "90000", 10);
 const RELEASE_QUALITY_PATH = resolve(".codex-auto/quality/release-quality-score.json");
 const FINAL_GOAL_AUDIT_PATH = resolve(".codex-auto/quality/final-goal-audit.json");
 const FINAL_GOAL_SAFE_PATH = resolve(".codex-auto/quality/final-goal-safe-summary.json");
@@ -244,7 +244,7 @@ async function connectWithWait() {
 
 function targetUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "tauri-goal-track-proof");
@@ -253,7 +253,7 @@ function targetUrl() {
   return url.toString();
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.startsWith(APP_ORIGIN) ||
@@ -264,16 +264,16 @@ function isAetherPage(page) {
   );
 }
 
-async function waitForAetherPage(browser) {
+async function waitForAelyrisPage(browser) {
   const deadline = Date.now() + WAIT_MS;
   let pages = [];
   while (Date.now() < deadline) {
     pages = browser.contexts().flatMap((context) => context.pages());
-    const page = pages.find(isAetherPage);
+    const page = pages.find(isAelyrisPage);
     if (page) return { page, pages };
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`CDP attached, but no Aether page was exposed. Pages: ${pages.map((page) => page.url()).join(", ")}`);
+  throw new Error(`CDP attached, but no Aelyris page was exposed. Pages: ${pages.map((page) => page.url()).join(", ")}`);
 }
 
 function isAuthenticatedPromptBlocker(value) {
@@ -507,7 +507,7 @@ async function main() {
     const connected = await connectWithWait();
     browser = connected.browser;
     report.cdpWaitedMs = connected.waitedMs;
-    const { page, pages } = await waitForAetherPage(browser);
+    const { page, pages } = await waitForAelyrisPage(browser);
     report.pages = pages.map((candidate) => candidate.url());
     await page.bringToFront().catch(() => {});
     await page.goto(targetUrl(), { waitUntil: "domcontentloaded", timeout: WAIT_MS });
@@ -547,12 +547,12 @@ async function main() {
     if (goalTrack.consentPacket.command !== "pnpm verify:terminal:authenticated-ai-cli-prompt") {
       failures.push("consent packet command is not visible in Tauri runtime");
     }
-    if (!String(goalTrack.consentPacket.requiredEnv ?? "").includes("QUORUM_AUTH_PROMPT_CONSENT=")) {
+    if (!String(goalTrack.consentPacket.requiredEnv ?? "").includes("AELYRIS_AUTH_PROMPT_CONSENT=")) {
       failures.push("consent packet required environment is not visible in Tauri runtime");
     }
     if (
       !String(goalTrack.consentPacket.providerEnvRequirement ?? "").includes(
-        "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+        "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       )
     ) {
       failures.push("consent packet provider environment is not visible in Tauri runtime");
@@ -571,7 +571,7 @@ async function main() {
     }
     if (
       !String(goalTrack.consentPacket.runAction.providerEnv ?? "").includes(
-        "QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+        "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       )
     ) {
       failures.push("consent packet verified run action does not expose provider selection");
@@ -581,7 +581,7 @@ async function main() {
     }
     if (
       !String(goalTrack.consentPacket.runAction.snippet ?? "").includes(
-        '$env:QUORUM_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
+        '$env:AELYRIS_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
       )
     ) {
       failures.push("consent packet verified run action does not expose a PowerShell consent snippet");
@@ -599,7 +599,7 @@ async function main() {
       if (action.requiresExplicitConsent !== "true") {
         failures.push(`consent packet ${provider} action does not mark explicit consent requirement`);
       }
-      if (!String(action.snippet ?? "").includes(`$env:QUORUM_AUTH_PROMPT_PROVIDER="${provider}"`)) {
+      if (!String(action.snippet ?? "").includes(`$env:AELYRIS_AUTH_PROMPT_PROVIDER="${provider}"`)) {
         failures.push(`consent packet ${provider} action does not expose a provider-specific PowerShell snippet`);
       }
     }
@@ -848,7 +848,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     const cdpShutdown = {
-      browserCloseRequested: process.env.AETHER_TAURI_GOAL_TRACK_CLOSE_BROWSER === "1",
+      browserCloseRequested: process.env.AELYRIS_TAURI_GOAL_TRACK_CLOSE_BROWSER === "1",
       cdpDetached: false,
       browserClosed: false,
       error: null,

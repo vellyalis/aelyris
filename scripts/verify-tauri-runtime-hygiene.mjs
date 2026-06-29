@@ -31,7 +31,7 @@ const CRASH_MARKERS = [
 ];
 const CRASH_PATTERN =
   /STATUS_(?:ACCESS_VIOLATION|HEAP_CORRUPTION|ILLEGAL_INSTRUCTION)|0xc0000005|0xc0000374|0xc000001d|Command failed with exit code 322122/i;
-const HELPER_OUTPUT_PATTERN = /aether-pty-server\.token|processed file|successfully processed|ファイル|�/i;
+const HELPER_OUTPUT_PATTERN = /aelyris-pty-server\.token|processed file|successfully processed|ファイル|�/i;
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 function discoverTauriDevLogRuns() {
@@ -92,7 +92,7 @@ function sanitizeLogLine(line) {
   const compact = printable
     .replace(/\[[0-9;]*m/g, "")
     .replace(/C:\\Users\\[^\\\r\n]+/gi, "%USERPROFILE%")
-    .replace(/[^\s"']*aether-pty-server\.token/gi, "<aether-pty-token-path>")
+    .replace(/[^\s"']*aelyris-pty-server\.token/gi, "<aelyris-pty-token-path>")
     .replace(/\s+/g, " ")
     .trim();
   return compact.length > 220 ? `${compact.slice(0, 217)}...` : compact;
@@ -289,7 +289,7 @@ function queryWorkspaceProcesses() {
   const command = [
     "$ErrorActionPreference='SilentlyContinue';",
     "$root = (Resolve-Path .).Path;",
-    "$items = Get-Process Aether,aether-pty-server -ErrorAction SilentlyContinue |",
+    "$items = Get-Process Aelyris,aelyris-pty-server -ErrorAction SilentlyContinue |",
     "Where-Object { $_.Path -and $_.Path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } |",
     "Select-Object Id,ProcessName,Path;",
     "if ($items) { $items | ConvertTo-Json -Compress }",
@@ -428,7 +428,7 @@ async function main() {
       (workspaceProcessQueryEnvironmentBlocked && portsClosed && stalePidFiles.length === 0),
     noStalePidFiles: stalePidFiles.length === 0,
     devSidecarBuilderHandlesLockedExe:
-      devSidecarBuildSource.includes("AETHER_DEV_SIDECAR_REPLACE_RETRIES") &&
+      devSidecarBuildSource.includes("AELYRIS_DEV_SIDECAR_REPLACE_RETRIES") &&
       devSidecarBuildSource.includes("Stop-ProcessesUsingPath") &&
       devSidecarBuildSource.includes("Get-CimInstance Win32_Process") &&
       devSidecarBuildSource.includes("Replace-DevSidecarExecutable") &&

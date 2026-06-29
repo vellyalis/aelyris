@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Quorum",
-  "mainBinaryName": "Quorum",
+  "productName": "Aelyris",
+  "mainBinaryName": "Aelyris",
   "version": "0.2.3",
-  "identifier": "com.aether.terminal",
+  "identifier": "com.vellyalis.aelyris",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Quorum",
+        "title": "Aelyris",
         "width": 1440,
         "height": 900,
         "minWidth": 960,
@@ -39,10 +39,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "publisher": "Aether",
-    "copyright": "Copyright (c) 2026 Aether",
-    "shortDescription": "Aether Terminal",
-    "longDescription": "Windows-native AI workspace terminal — project-first, Tauri + React, native Rust terminal engine.",
+    "publisher": "Aelyris",
+    "copyright": "Copyright (c) 2026 Aelyris",
+    "shortDescription": "Aelyris",
+    "longDescription": "Windows-first AI development workspace — project-first, Tauri + React, native Rust terminal engine.",
     "category": "DeveloperTool",
     "icon": [
       "icons/32x32.png",
@@ -56,7 +56,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://updates.aether-terminal.app/{{target}}/{{current_version}}"
+        "https://updates.aelyris.app/{{target}}/{{current_version}}"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1MTE0REZDREY1MDAzQ0QKUldUTkExRGYvRTBSdGJOc3BmMDkvcVZnallISkE4QTZUOEc5TE9RUXVJRWgxNVVoU1VwYi8zelYK",
       "windows": {

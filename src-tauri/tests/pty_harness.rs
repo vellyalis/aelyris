@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use aether_terminal_lib::pty::{PtyManager, ShellType};
+use aelyris_lib::pty::{PtyManager, ShellType};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 

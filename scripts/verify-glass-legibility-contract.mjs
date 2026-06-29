@@ -191,7 +191,7 @@ for (const token of rootTextTokens) {
 
 const appContainerRule = ruleBody(globalCss, ".app-container");
 const rootRule = ruleBody(globalCss, "html,\\s*body,\\s*#root");
-const tauriRootRule = ruleBody(globalCss, 'html[data-aether-host="tauri"] #root');
+const tauriRootRule = ruleBody(globalCss, 'html[data-aelyris-host="tauri"] #root');
 const exitBannerDisabledRule = ruleBody(terminalAreaCss, ".exitBannerBtn:disabled");
 const terminalOpacitySelectors = opacitySelectors(terminalAreaCss);
 const paneTreeOpacitySelectors = opacitySelectors(paneTreeCss);
@@ -238,7 +238,7 @@ const normalTextHierarchyRules = {
   kanbanItemActive: ruleBody(highImpactControlCss.kanbanCss, ".item:active"),
   decisionInboxDecided: ruleBody(decisionInboxCss, '.item[data-status="decided"]'),
   timelineEmptyLabel: ruleBody(timelineBarCss, '.root[data-empty="true"] .label'),
-  ghostDiffAddedLine: ruleBody(globalCss, ".aether-ghost-add-line"),
+  ghostDiffAddedLine: ruleBody(globalCss, ".aelyris-ghost-add-line"),
   agentMoreInfo: ruleBody(highImpactControlCss.agentInspectorCss, ".moreInfo"),
   agentMoreInfoRest:
     /\.card:not\(:hover\):not\(:focus-within\) \.moreInfo\s*\{([^}]*)\}/m.exec(
@@ -307,17 +307,17 @@ add(
 add(
   checks,
   "window-opacity-is-material-only",
-  globalCss.includes("--aether-window-opacity") &&
-    globalCss.includes("--aether-window-veil-opacity") &&
-    !/opacity\s*:\s*var\(--aether-window-opacity\)/.test(globalCss) &&
+  globalCss.includes("--aelyris-window-opacity") &&
+    globalCss.includes("--aelyris-window-veil-opacity") &&
+    !/opacity\s*:\s*var\(--aelyris-window-opacity\)/.test(globalCss) &&
     !/filter\s*:\s*opacity\(/.test(globalCss),
   "window opacity is routed to glow/veil strength, not CSS opacity on text-bearing containers",
 );
 add(
   checks,
   "theme-applier-never-sets-root-opacity",
-  themeApplier.includes("--aether-window-opacity") &&
-    themeApplier.includes("--aether-window-veil-opacity") &&
+  themeApplier.includes("--aelyris-window-opacity") &&
+    themeApplier.includes("--aelyris-window-veil-opacity") &&
     !/\.style\.opacity\s*=/.test(themeApplier) &&
     !/setProperty\(['"]opacity['"]/.test(themeApplier),
   "React theme application never applies root.style.opacity or an opacity property",

@@ -145,7 +145,7 @@ describe("classifyCommand", () => {
     expect(destructive.allowExecution).toBe(false);
 
     const scoped = classifyCommand("Remove-Item -Recurse -Force C:\\Windows\\Temp", {
-      workspaceRoot: "C:/repo/aether-terminal",
+      workspaceRoot: "C:/repo/aelyris",
     });
     expect(scoped.severity).toBe("deny");
     expect(scoped.pathScope.unsafePaths).toEqual(["C:\\Windows\\Temp"]);
@@ -162,7 +162,7 @@ describe("classifyCommand", () => {
     expect(chained.allowExecution).toBe(false);
 
     const psDelete = classifyCommand("Remove-Item -LiteralPath C:\\Windows\\Temp -Recurse -Force", {
-      workspaceRoot: "C:/repo/aether-terminal",
+      workspaceRoot: "C:/repo/aelyris",
     });
     expect(psDelete.classes).toContain("destructive");
     expect(psDelete.severity).toBe("deny");

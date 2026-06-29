@@ -36,7 +36,7 @@ describe("design token usage", () => {
     const offenders = Object.entries(cssSources)
       .map(([file, source]) => ({
         file,
-        matches: source.match(/color\s*:\s*var\(--aether-bg\)/g) ?? [],
+        matches: source.match(/color\s*:\s*var\(--aelyris-bg\)/g) ?? [],
       }))
       .filter((entry) => entry.matches.length > 0)
       .map((entry) => `${entry.file} (${entry.matches.length})`);
@@ -145,7 +145,7 @@ describe("design token usage", () => {
     const rootGlowRule = source.match(/#root::before\s*{[\s\S]*?}/)?.[0] ?? "";
 
     expect(appMainRule).toContain("background: transparent");
-    expect(rootGlowRule).toContain("opacity: calc(var(--mood-root-glow-opacity) * var(--aether-window-opacity))");
+    expect(rootGlowRule).toContain("opacity: calc(var(--mood-root-glow-opacity) * var(--aelyris-window-opacity))");
   });
 
   it("keeps localhost preview and native Tauri backplanes separated", () => {
@@ -153,12 +153,12 @@ describe("design token usage", () => {
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
 
-    expect(source).toContain('html[data-aether-host="browser"]');
-    expect(source).toContain('html[data-aether-host="browser"] body');
-    expect(source).toContain('html[data-aether-host="tauri"] #root');
+    expect(source).toContain('html[data-aelyris-host="browser"]');
+    expect(source).toContain('html[data-aelyris-host="browser"] body');
+    expect(source).toContain('html[data-aelyris-host="tauri"] #root');
     expect(source).toContain("--native-backdrop-veil");
     expect(source).toContain("background: var(--native-backdrop-veil), var(--mood-root-glow)");
-    expect(source).not.toContain('html[data-aether-host="tauri"] body');
+    expect(source).not.toContain('html[data-aelyris-host="tauri"] body');
   });
 
   it("keeps inactive-window glass translucent instead of turning into a slab", () => {
@@ -697,7 +697,7 @@ describe("design token usage", () => {
     expect(entry).toBeDefined();
     const source = entry?.[1] ?? "";
 
-    expect(source).toContain("--ctp-base: var(--aether-ink)");
+    expect(source).toContain("--ctp-base: var(--aelyris-ink)");
   });
 
   it("does not use negative tracking in UI chrome", () => {
@@ -882,7 +882,7 @@ describe("design token usage", () => {
 
   it("keeps the everyday workspace in a translucent native glass tone", () => {
     const global = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"))?.[1] ?? "";
-    const tauriRootRule = global.match(/html\[data-aether-host="tauri"\] #root\s*{[\s\S]*?}/)?.[0] ?? "";
+    const tauriRootRule = global.match(/html\[data-aelyris-host="tauri"\] #root\s*{[\s\S]*?}/)?.[0] ?? "";
     const leftPanelBg = global.match(/--mood-left-panel-bg:\s*[\s\S]*?;/)?.[0] ?? "";
     const rightPanelBg = global.match(/--mood-right-panel-bg:\s*[\s\S]*?;/)?.[0] ?? "";
     const bentoCardRule = global.match(/\.bento-card\s*{[\s\S]*?}/)?.[0] ?? "";
@@ -915,15 +915,15 @@ describe("design token usage", () => {
     const global = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"))?.[1] ?? "";
     const sakuraDecisionSurface =
       global.match(
-        /:root\[data-mood="aether-sakura"\] \.right-panel-now,[\s\S]*?\.right-panel-action-history\s*{[\s\S]*?}/,
+        /:root\[data-mood="aelyris-sakura"\] \.right-panel-now,[\s\S]*?\.right-panel-action-history\s*{[\s\S]*?}/,
       )?.[0] ?? "";
     const sakuraDecisionWarn =
       global.match(
-        /:root\[data-mood="aether-sakura"\] \.right-panel-now\[data-tone="warn"\],[\s\S]*?\.right-panel-action\[data-tone="warn"\]\s*{[\s\S]*?}/,
+        /:root\[data-mood="aelyris-sakura"\] \.right-panel-now\[data-tone="warn"\],[\s\S]*?\.right-panel-action\[data-tone="warn"\]\s*{[\s\S]*?}/,
       )?.[0] ?? "";
     const sakuraDecisionChip =
       global.match(
-        /:root\[data-mood="aether-sakura"\] \.right-panel-now-state,[\s\S]*?\.right-panel-action-guardrail\s*{[\s\S]*?}/,
+        /:root\[data-mood="aelyris-sakura"\] \.right-panel-now-state,[\s\S]*?\.right-panel-action-guardrail\s*{[\s\S]*?}/,
       )?.[0] ?? "";
 
     expect(sakuraDecisionSurface).toContain(".right-panel-decision-focus");
@@ -931,7 +931,7 @@ describe("design token usage", () => {
     expect(sakuraDecisionWarn).toContain('.right-panel-decision-focus[data-tone="warn"]');
     expect(sakuraDecisionChip).toContain(".right-panel-decision-kicker");
     expect(sakuraDecisionChip).toContain(".right-panel-decision-action");
-    expect(global).toContain(':root[data-mood="aether-sakura"] .right-panel-decision-detail');
+    expect(global).toContain(':root[data-mood="aelyris-sakura"] .right-panel-decision-detail');
   });
 
   it("keeps shared chrome from drifting into prismatic AI styling", () => {

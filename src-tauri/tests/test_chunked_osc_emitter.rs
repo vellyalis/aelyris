@@ -1,7 +1,7 @@
 //! Offline integration test for the chunked-OSC emitter scripts.
 //!
 //! Tauri-free verification that the Sprint-2 emitter wrappers
-//! (`scripts/aether-imgcat.{ps1,sh}`) produce wire bytes the Sprint-1
+//! (`scripts/aelyris-imgcat.{ps1,sh}`) produce wire bytes the Sprint-1
 //! engine assembler accepts. Drives each emitter as a child process,
 //! pipes its stdout into a fresh `TermEngine`, and asserts the
 //! `ImageStore` ends up with a fully-decoded PNG entry.
@@ -16,8 +16,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use aether_terminal_lib::term::images::DecodedPayload;
-use aether_terminal_lib::term::TermEngine;
+use aelyris_lib::term::images::DecodedPayload;
+use aelyris_lib::term::TermEngine;
 
 /// Repo root resolved from the Cargo manifest dir. The `tests/` directory
 /// is one level under `src-tauri/`, so the repo root is two levels up.
@@ -152,7 +152,7 @@ fn bash_emitter_single_chunk_round_trips_through_engine() {
         eprintln!("SKIP: Git Bash not found at any expected path");
         return;
     };
-    let script = repo_root().join("scripts").join("aether-imgcat.sh");
+    let script = repo_root().join("scripts").join("aelyris-imgcat.sh");
     let fixture = fixture_tiny();
     let engine = run_emitter_into_engine(
         bash.to_str().expect("bash path utf8"),
@@ -167,7 +167,7 @@ fn bash_emitter_multi_chunk_round_trips_through_engine() {
         eprintln!("SKIP: Git Bash not found at any expected path");
         return;
     };
-    let script = repo_root().join("scripts").join("aether-imgcat.sh");
+    let script = repo_root().join("scripts").join("aelyris-imgcat.sh");
     let fixture = fixture_large();
     let engine = run_emitter_into_engine(
         bash.to_str().expect("bash path utf8"),
@@ -184,7 +184,7 @@ fn powershell_emitter_single_chunk_round_trips_through_engine() {
         eprintln!("SKIP: powershell not available");
         return;
     }
-    let script = repo_root().join("scripts").join("aether-imgcat.ps1");
+    let script = repo_root().join("scripts").join("aelyris-imgcat.ps1");
     let fixture = fixture_tiny();
     let engine = run_emitter_into_engine(
         "powershell",
@@ -206,7 +206,7 @@ fn powershell_emitter_multi_chunk_round_trips_through_engine() {
         eprintln!("SKIP: powershell not available");
         return;
     }
-    let script = repo_root().join("scripts").join("aether-imgcat.ps1");
+    let script = repo_root().join("scripts").join("aelyris-imgcat.ps1");
     let fixture = fixture_large();
     let engine = run_emitter_into_engine(
         "powershell",

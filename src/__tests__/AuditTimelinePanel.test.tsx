@@ -59,13 +59,13 @@ function pane(overrides: Partial<TerminalPaneTarget> = {}): TerminalPaneTarget {
     terminalId: "term-1",
     index: 0,
     shell: "powershell",
-    cwd: "C:/repo/aether-terminal",
+    cwd: "C:/repo/aelyris",
     title: "PowerShell",
     role: "work",
     tabId: "tab-a",
-    tabLabel: "Aether",
+    tabLabel: "Aelyris",
     tabShell: "powershell",
-    tabCwd: "C:/repo/aether-terminal",
+    tabCwd: "C:/repo/aelyris",
     ...overrides,
   };
 }
@@ -306,7 +306,7 @@ describe("AuditTimelinePanel", () => {
     const onFocusPane = vi.fn();
     render(<AuditTimelinePanel auditEvents={[event(1)]} panes={[pane()]} onFocusPane={onFocusPane} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Focus Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Focus Aelyris/PowerShell" }));
 
     expect(onFocusPane).toHaveBeenCalledWith("tab-a", "pane-a");
   });
@@ -415,7 +415,7 @@ describe("AuditTimelinePanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Aelyris/PowerShell" }));
 
     expect(onSelectEvent).toHaveBeenCalledWith(
       expect.objectContaining({ id: 1 }),
@@ -498,7 +498,7 @@ describe("AuditTimelinePanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Aelyris/PowerShell" }));
     rerender(
       <AuditTimelinePanel
         auditEvents={[event(1, { action: "send_keys_failed", severity: "warn" })]}
@@ -522,7 +522,7 @@ describe("AuditTimelinePanel", () => {
 
     rerender(<AuditTimelinePanel auditEvents={[event(1)]} panes={[]} onFocusPane={onFocusPane} />);
 
-    expect(screen.queryByRole("button", { name: "Focus Aether/PowerShell" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Focus Aelyris/PowerShell" })).toBeNull();
   });
 
   it("keeps restart available for a recoverable audit event after the terminal id is cleared", async () => {
@@ -537,7 +537,7 @@ describe("AuditTimelinePanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart Aether/PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Aelyris/PowerShell" }));
     expect(onSelectEvent).toHaveBeenCalledWith(
       expect.objectContaining({ id: 1 }),
       expect.objectContaining({ paneId: "pane-a" }),
@@ -559,7 +559,7 @@ describe("AuditTimelinePanel", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Restart Aether/PowerShell" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restart Aelyris/PowerShell" })).toBeNull();
   });
 
   it("labels recoverable audit events with their recovery path", () => {

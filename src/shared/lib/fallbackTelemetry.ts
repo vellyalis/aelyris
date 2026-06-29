@@ -1,4 +1,4 @@
-export const FALLBACK_TELEMETRY_EVENT = "aether:fallback-telemetry";
+export const FALLBACK_TELEMETRY_EVENT = "aelyris:fallback-telemetry";
 
 export type FallbackSeverity = "info" | "warning" | "error";
 export type FallbackBoundary = "native" | "webview-fallback" | "local-fallback" | "unavailable";

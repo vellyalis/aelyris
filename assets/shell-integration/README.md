@@ -1,7 +1,7 @@
-# Shell integration for Aether Terminal
+# Shell integration for Aelyris
 
 These scripts teach your shell to emit the **OSC 133** escape sequences that
-Aether Terminal parses to:
+Aelyris parses to:
 
 - jump between prompts (previous / next command)
 - copy the output of just the last command
@@ -27,31 +27,31 @@ It works on any VT-compatible terminal that parses it. The scripts here
 are minimal wrappers around the standard `precmd` / `preexec` / prompt
 hooks each shell provides; they keep your existing theme intact.
 
-## PowerShell (`aether.ps1`)
+## PowerShell (`aelyris.ps1`)
 
 Dot-source from `$PROFILE`:
 
 ```powershell
-. "C:\Program Files\Aether Terminal\shell-integration\aether.ps1"
+. "C:\Program Files\Aelyris\shell-integration\aelyris.ps1"
 ```
 
 Works with PowerShell 5.1 and PowerShell 7+. Plays nicely with Oh-My-Posh,
 Starship, and the default PSReadLine prompt — we wrap the `prompt`
 function and add a PSReadLine `Enter` handler without replacing either.
 
-## Bash (`aether.bash`)
+## Bash (`aelyris.bash`)
 
 ```bash
-source /path/to/aether.bash
+source /path/to/aelyris.bash
 ```
 
 Requires Bash 4+ (for `PROMPT_COMMAND` support). Safe on Git Bash / WSL /
 macOS / Linux. Works with Starship / oh-my-bash prompts.
 
-## Zsh (`aether.zsh`)
+## Zsh (`aelyris.zsh`)
 
 ```zsh
-source /path/to/aether.zsh
+source /path/to/aelyris.zsh
 ```
 
 Works with powerlevel10k, spaceship, pure, and stock zsh themes. Uses the
@@ -68,11 +68,11 @@ false
 echo $?
 ```
 
-In Aether Terminal, the "last command" indicator should turn red after
+In Aelyris, the "last command" indicator should turn red after
 `false` (exit 1) and recover after `echo $?`. If you see no change, the
 OSC 133 emission is not reaching the terminal — the most common cause is
 that your prompt is already wrapping something else (tmux / screen) that
-swallows the sequences before they reach Aether.
+swallows the sequences before they reach Aelyris.
 
 ## Why the scripts are so small
 

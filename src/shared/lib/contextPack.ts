@@ -555,7 +555,7 @@ function redactText(value: string, redactions: { count: number }): RedactionResu
   const replacements: Array<[RegExp, string]> = [
     [/\b(authorization\s*:\s*bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[redacted]"],
     [
-      /\b(QUORUM_API_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|TOKEN|API_KEY|SECRET|PASSWORD)\s*=\s*("[^"]+"|'[^']+'|[^\s;&]+)/gi,
+      /\b(AELYRIS_API_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|TOKEN|API_KEY|SECRET|PASSWORD)\s*=\s*("[^"]+"|'[^']+'|[^\s;&]+)/gi,
       "$1=[redacted]",
     ],
     [/\b(sk-[A-Za-z0-9_-]{8,})\b/g, "[redacted:api_key]"],

@@ -1,4 +1,4 @@
-> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aether is alpha / not release-ready.
+> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aelyris is alpha / not release-ready.
 # Rust Core WezTerm/tmux Wizard Goals
 
 Date: 2026-05-12
@@ -12,27 +12,27 @@ Updated: 2026-06-28
 - The world-class claims remain blocked: tmux, BridgeSpace, Ghostty/WezTerm-class daily-driver quality, and release readiness must not be claimed until the current release-quality and world-class gates pass.
 - The required safe proof registry target is `27/27`, but current final-goal evidence is not complete; stale historical `27/27` phase notes below are retained only as history unless refreshed by the current gate chain.
 - Long external/operator gates persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so resumed work can distinguish a real stall from a sleep/token/signing handoff.
-- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Purpose
 
-This document locks the goal for making Aether's Rust core stronger than a normal terminal backend.
+This document locks the goal for making Aelyris's Rust core stronger than a normal terminal backend.
 
 The target is not "a prettier Tauri terminal." The target is a durable, project-aware terminal mux core that can be driven by any client: the current React/Tauri UI, a future full-native Rust shell, CLI automation, or remote control API.
 
 ## Product Standard
 
-Aether Rust core reaches Wizard grade only when these statements are true:
+Aelyris Rust core reaches Wizard grade only when these statements are true:
 
 - The terminal session graph is owned by Rust, not React state.
 - Panes, tabs, windows, workspaces, layouts, focus, cwd, shell, roles, command blocks, prompt marks, scrollback, and recovery metadata survive UI reloads.
 - A UI client can attach, detach, crash, reconnect, and recover without corrupting the session graph.
 - tmux-grade operations are first-class: split, close, select, resize, move, swap, break, join, rotate, zoom, broadcast, tiled layout, even layout, named sessions, and prefix/keymap control.
 - WezTerm-grade terminal expectations are met: robust PTY lifecycle, performant rendering feed, large scrollback, image protocol data, CLI/API control, and configuration reload path.
-- Aether exceeds both by adding project and AI context to the mux: repo, worktree, task, workflow, agent, permission state, failure state, and audit trail.
+- Aelyris exceeds both by adding project and AI context to the mux: repo, worktree, task, workflow, agent, permission state, failure state, and audit trail.
 
 ## Current Baseline
 
@@ -61,15 +61,15 @@ The "Known gaps" list above is the original 2026-05-12 baseline. The current imp
 
 - Prefix/keymap dispatch is Rust-owned through `mux_process_keymap_event`.
 - Layout operations now include split, close, move, swap, even, tiled, rotate, break, join, zoom, broadcast, and synchronized panes.
-- `aetherctl` and the mux HTTP API can operate and inspect sessions without the React UI for the core local workflow.
+- `aelys` and the mux HTTP API can operate and inspect sessions without the React UI for the core local workflow.
 - Durable scrollback capture and search are release-gated by `pnpm verify:scrollback-gates`.
 - Mux restore and performance are release-gated by `pnpm verify:mux-live` and `pnpm verify:mux-performance`.
 - Terminal parsing/grid state is Rust-owned through `alacritty_terminal` and `NativeTerminalRegistry`; xterm.js is not a product dependency.
 - Native terminal input has a Windows HWND-backed default surface in Tauri, with live IME evidence passing.
-- `aether-native` is now a Rust-native, no-WebView attaching client spike. `pnpm verify:terminal:native-client` proves it reaches the same daemon instance, creates a layered Win32 native window, renders daemon-captured terminal text through Win32/GDI with nonblank pixel evidence, feeds daemon capture into Rust `TermEngine`, materializes a renderer-neutral `NativeRenderFrame` with schema `aether.native.render-frame.v1`, renders a native 100x24 terminal grid with nonblank cell/pixel evidence, proves the renderer consumed the same frame hash, and can list, send, capture, detach, and attach through the mux API.
+- `aelyris-native` is now a Rust-native, no-WebView attaching client spike. `pnpm verify:terminal:native-client` proves it reaches the same daemon instance, creates a layered Win32 native window, renders daemon-captured terminal text through Win32/GDI with nonblank pixel evidence, feeds daemon capture into Rust `TermEngine`, materializes a renderer-neutral `NativeRenderFrame` with schema `aelyris.native.render-frame.v1`, renders a native 100x24 terminal grid with nonblank cell/pixel evidence, proves the renderer consumed the same frame hash, and can list, send, capture, detach, and attach through the mux API.
 - Production release evidence now passes for all implementation-fixable gates: `pnpm verify:release:production`, strict release doctor, supply-chain audit, mux restore/performance, scrollback, and quality score `96/100`, grade `A`, `321/335`, `releaseCandidateReady=false`.
 - `pnpm verify:goal:safe` reports `blocked-by-external-gates` with `27/27` proof artifacts passing and `0` implementation-fixable blockers, including the objective-level `goal-completion-matrix`, current supply-chain audit proof, `goal-external-gate-readiness`, optional git handoff artifacts, `glass-legibility-contract`, `right-rail-information-density-contract`, `agent-team-orchestration-readiness`, `release-signing-operator-handoff`, and `goal-anti-stall-contract`.
-- The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens. The opt-in artifact is `authenticated-ai-cli-consent-packet`, and the final smoke requires `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- The current state is `blocked-by-external-gates` because real OS sleep/resume is host-blocked and `authenticated-ai-cli-prompt-smoke` may spend tokens. The opt-in artifact is `authenticated-ai-cli-consent-packet`, and the final smoke requires `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
 Remaining Core Wizard gaps:
 
@@ -132,7 +132,7 @@ The UI should render this graph; it should not invent its own truth.
 | Keymap/prefix | Rust keymap engine with prefix mode, key tables, conflict detection, import/export, and tmux-like preset. | Key sequence tests prove prefix timeout, nested tables, remap, unbind, and conflict reporting. |
 | Scrollback | Durable bounded scrollback with fast viewport fetch and search. | 100k+ line sessions remain searchable and memory-bounded; reopen preserves searchable history. |
 | Command blocks | Prompt marks, command start/end, exit status, cwd, duration, and output range are journaled. | Reload can rebuild blocks from the journal and link failures to recovery actions. |
-| CLI/API | `aetherctl` or equivalent can operate sessions without UI. | CLI can list/create/attach/detach/split/select/send/resize/close/move/swap/layout/capture/search/export. |
+| CLI/API | `aelys` or equivalent can operate sessions without UI. | CLI can list/create/attach/detach/split/select/send/resize/close/move/swap/layout/capture/search/export. |
 | Remote/domain future | Local mux is designed so SSH/domain support can plug in later. | Local panes and future remote panes share the same `PtyEndpoint` abstraction. |
 | Security | API auth, stream tickets, path validation, shell command boundaries, audit logging. | No unauthenticated stream/control path; path and cwd handling are tested on Windows edge cases. |
 | Performance | Spawn, split, close, input, resize, scrollback, restore are benchmarked. | Release CI records budgets and fails on serious regressions. |
@@ -156,7 +156,7 @@ These are initial release budgets. They should be measured on a normal Windows 1
 | Scrollback viewport fetch | P50 <= 16 ms, P95 <= 50 ms |
 | 100k-line search start | P50 <= 150 ms, P95 <= 500 ms |
 
-If the machine is cold-starting PowerShell itself, the shell cost must be measured separately from Aether overhead.
+If the machine is cold-starting PowerShell itself, the shell cost must be measured separately from Aelyris overhead.
 
 ## Grade Ladder
 
@@ -183,7 +183,7 @@ If the machine is cold-starting PowerShell itself, the shell cost must be measur
 - Performance budgets are benchmarked.
 - Terminal image metadata and scrollback are part of restore semantics.
 
-### Core S++: Aether Edge
+### Core S++: Aelyris Edge
 
 - Pane roles, project/worktree/task/workflow/agent links are first-class.
 - Failure detection and recovery are core events.
@@ -241,7 +241,7 @@ Deliverables:
 
 - Add Rust keymap parser and resolver.
 - Support prefix key, key tables, pass-through, command dispatch, conflict detection, and import/export.
-- Add tmux-like default preset and Aether default preset.
+- Add tmux-like default preset and Aelyris default preset.
 - Add config reload hook.
 
 Exit criteria:
@@ -271,7 +271,7 @@ Duration: 1-2 weeks.
 
 Deliverables:
 
-- Add `aetherctl` command surface or equivalent executable mode.
+- Add `aelys` command surface or equivalent executable mode.
 - Expose list/create/attach/detach/split/select/send/resize/close/move/swap/layout/capture/search/export.
 - Keep HTTP/WebSocket and CLI behavior aligned.
 - Add auth and permission tests for every control path.
@@ -309,7 +309,7 @@ Deliverables:
 
 Exit criteria:
 
-- Aether can explain what each pane is doing, why it exists, and what action is safe next.
+- Aelyris can explain what each pane is doing, why it exists, and what action is safe next.
 - The right rail is not decorative; it controls and audits the running workspace.
 
 ## Validation Suite
@@ -383,7 +383,7 @@ Completed:
   - `GET /mux/workspaces`
   - `GET /mux/workspaces/:id`
 - Extended the API round-trip integration test so session create/resize/delete verifies the mux graph through HTTP as well as in-memory state.
-- Added `aetherctl` as a Cargo binary for UI-free control:
+- Added `aelys` as a Cargo binary for UI-free control:
   - `health`
   - `sessions`
   - `mux`
@@ -391,26 +391,26 @@ Completed:
   - `create`
   - `resize`
   - `close`
-- Kept `aether-pty-server` as the dedicated `src-tauri/pty-server` crate and Tauri externalBin sidecar so the PTY/API process can be built from source without being auto-bundled twice by the main app package.
+- Kept `aelyris-pty-server` as the dedicated `src-tauri/pty-server` crate and Tauri externalBin sidecar so the PTY/API process can be built from source without being auto-bundled twice by the main app package.
 - Kept the sidecar process kind explicit through `PROCESS_KIND_SIDE_CAR`.
 - Added REST input control:
   - `POST /sessions/:id/input`
-  - `aetherctl send <id> <text...> [--enter]`
+  - `aelys send <id> <text...> [--enter]`
 - Added daemon-side capture-pane control backed by a bounded PTY output ring:
   - `GET /sessions/:id/capture?lines=200&clean=true`
-  - `aetherctl capture <id> [--lines n] [--raw]`
+  - `aelys capture <id> [--lines n] [--raw]`
 - Added durable PTY scrollback for daemon/API capture:
   - `FilePtyScrollbackStore` appends PTY output to bounded per-terminal log files.
-  - `QUORUM_PTY_SCROLLBACK_DIR` enables durable scrollback for the source-built PTY server and embedded API fallback.
+  - `AELYRIS_PTY_SCROLLBACK_DIR` enables durable scrollback for the source-built PTY server and embedded API fallback.
   - `GET /sessions/:id/capture` can read durable scrollback after the live session has closed.
   - Scrollback paths percent-encode terminal ids and prune each terminal log to a bounded size.
 - Added explicit daemon contract and stricter sidecar validation:
   - `GET /daemon/contract` reports protocol version, package version, process identity, enabled persistence features, session counts, and capabilities.
-  - `aetherctl daemon` prints the contract for UI-free diagnosis.
+  - `aelys daemon` prints the contract for UI-free diagnosis.
   - Sidecar attach now rejects wrong process kind, mismatched daemon protocol, mismatched package version, empty instance id, zero pid, and unexpected executable path.
 - Added transactional mux graph snapshot persistence:
   - `FileMuxSnapshotStore` writes validated `VersionedMuxSnapshot` JSON through temp-file then rename.
-  - `QUORUM_MUX_SNAPSHOT_DIR` enables snapshot persistence for the source-built PTY server and embedded API fallback.
+  - `AELYRIS_MUX_SNAPSHOT_DIR` enables snapshot persistence for the source-built PTY server and embedded API fallback.
   - Snapshot restore marks panes as detached and PTY bindings as `restore-pending:<pane_id>` so stale process ids are not treated as live sessions.
   - API create, resize, split, pane close, swap, move, even/tiled layout, and workspace delete now sync snapshots when a store is configured.
 - Added mux-owned pane/layout control endpoints:
@@ -420,7 +420,7 @@ Completed:
   - `POST /mux/workspaces/:id/panes/move`
   - `POST /mux/workspaces/:id/layout/even`
   - `POST /mux/workspaces/:id/layout/tiled`
-- Extended `aetherctl` with matching mux commands:
+- Extended `aelys` with matching mux commands:
   - `mux-split`
   - `mux-close-pane`
   - `mux-swap`
@@ -433,7 +433,7 @@ Validation:
 
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml mux --lib` passed.
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `cargo build --manifest-path src-tauri\pty-server\Cargo.toml --release` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_process_spawn_hygiene` passed.
 - Full `cargo test --manifest-path src-tauri\Cargo.toml` passed after the CLI/API/sidecar entrypoint additions.
@@ -452,7 +452,7 @@ Completed:
 - `detach` now keeps the Rust-owned mux graph and preserves live PTYs when the daemon/API process is still alive; panes are marked `detached` while retaining their live `terminalId`, and `attach` returns them to `active` without respawn. Snapshot restore still marks stale panes as `restore-pending:<pane_id>` when only disk state remains.
 - `attach` now rehydrates restored `restore-pending` panes by spawning shells with the original pane ids, preserving layout identity for clients and snapshots, while live-detached panes reattach without respawn.
 - Added session-cap checks and spawn rollback for partial attach failure.
-- Added `mux-detach <workspace>` and `mux-attach <workspace>` to `aetherctl`.
+- Added `mux-detach <workspace>` and `mux-attach <workspace>` to `aelys`.
 - Added the `mux-attach-detach` and `mux-live-attach-detach` daemon capabilities.
 - Extended the Windows API round-trip integration test to prove detach preserves live sessions without deleting the graph, accepts input while detached, then attach returns both the root and split pane ids to active.
 - Hardened PTY close semantics so explicit close terminates the child process even after a waiter thread has taken the wait handle.
@@ -461,7 +461,7 @@ Completed:
 Validation:
 
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1` passed.
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml mux::manager --lib` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml mux::store --lib` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml pty::scrollback --lib` passed.
@@ -474,7 +474,7 @@ Latest validation on 2026-05-13:
 
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml mux:: --lib` passed.
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - Full `cargo test --manifest-path src-tauri\Cargo.toml` passed.
 - Full `pnpm test` passed when run without competing full Rust compilation.
 - `pnpm build` passed.
@@ -594,14 +594,14 @@ Completed:
   - attach replaces `restore-pending:*` bindings with distinct live PTYs;
   - pane close updates the Rust mux graph;
   - workspace close removes the mux graph.
-- Rebuilt the release PTY sidecar and copied it into `src-tauri\binaries\aether-pty-server-x86_64-pc-windows-msvc.exe` so the bundled sidecar includes the current mux layout/restore endpoints.
+- Rebuilt the release PTY sidecar and copied it into `src-tauri\binaries\aelyris-pty-server-x86_64-pc-windows-msvc.exe` so the bundled sidecar includes the current mux layout/restore endpoints.
 - Added mux-owned broadcast input:
   - `POST /mux/workspaces/:id/input`
-  - `aetherctl mux-broadcast <workspace> <text...> [--enter]`
+  - `aelys mux-broadcast <workspace> <text...> [--enter]`
   - daemon contract capability `mux-broadcast-input`
 - Added mux-owned pane zoom:
   - `POST /mux/workspaces/:id/panes/:pane_id/zoom`
-  - `aetherctl mux-zoom <workspace> <pane>` / `aetherctl mux-unzoom <workspace> <pane>`
+  - `aelys mux-zoom <workspace> <pane>` / `aelys mux-unzoom <workspace> <pane>`
   - Tauri IPC `mux_set_pane_zoom`
   - React pane maximize now updates Rust mux `zoomedPaneId` first, then mirrors the local display state.
   - daemon contract capability `mux-pane-zoom`
@@ -618,10 +618,10 @@ Validation:
   - resize: 9.4 ms
   - close: 5.8 ms
 - `pnpm exec vitest run src/__tests__/paneTreePersistence.test.ts src/__tests__/PaneTreeContainerActiveTerminal.test.tsx` passed: 2 files / 38 tests.
-- `AETHER_RELEASE_ALLOW_DIRTY=1 pnpm verify:release:preflight` passed after adding the mux scripts to the release contract. The dirty-worktree bypass was used only because this development session intentionally contains active changes.
+- `AELYRIS_RELEASE_ALLOW_DIRTY=1 pnpm verify:release:preflight` passed after adding the mux scripts to the release contract. The dirty-worktree bypass was used only because this development session intentionally contains active changes.
 - `cargo check --manifest-path src-tauri\Cargo.toml --lib` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1 create_list_resize_delete_roundtrip --quiet` passed.
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed. `cargo test --bin aetherctl` hit a Windows link/process timeout in this workstation session, so the bin compile contract was verified with `cargo check` instead.
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelys` passed. `cargo test --bin aelys` hit a Windows link/process timeout in this workstation session, so the bin compile contract was verified with `cargo check` instead.
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib mux:: --quiet` passed: 24 tests.
 - `pnpm exec tsc --noEmit` passed.
 - `pnpm exec vitest run src/__tests__/PaneTreeContainerActiveTerminal.test.tsx` passed: 30 tests.
@@ -645,7 +645,7 @@ Completed:
   - `MuxManager::rotate_active_tab`
 - Added REST/API/CLI control for rotation:
   - `POST /mux/workspaces/:id/layout/rotate`
-  - `aetherctl mux-rotate <workspace> [--direction next|previous]`
+  - `aelys mux-rotate <workspace> [--direction next|previous]`
   - daemon contract capability `mux-layout-rotate`
 - Added sidecar and Tauri IPC support so release mode and embedded fallback both drive the same mux graph.
 - Changed React pane commands so `rotate-next` / `rotate-previous` call Rust mux first, then mirror the local pane tree.
@@ -657,14 +657,14 @@ Completed:
   - pane set is preserved;
   - tree-order placement changes;
   - the rotated graph still survives detach, daemon restart, attach, close, and workspace delete.
-- Rebuilt the release PTY sidecar and copied it into `src-tauri\binaries\aether-pty-server-x86_64-pc-windows-msvc.exe` so packaged/dev sidecar runs include the new endpoint.
+- Rebuilt the release PTY sidecar and copied it into `src-tauri\binaries\aelyris-pty-server-x86_64-pc-windows-msvc.exe` so packaged/dev sidecar runs include the new endpoint.
 
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml` passed.
 - `pnpm exec tsc --noEmit` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib mux:: --quiet` passed: 25 tests.
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `pnpm exec vitest run src/__tests__/PaneTreeContainerActiveTerminal.test.tsx` passed: 31 tests.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1 create_list_resize_delete_roundtrip --quiet` passed.
 - `pnpm verify:mux-live` passed with rotate/broadcast/zoom/detach/restart/attach/close in the same smoke.
@@ -698,8 +698,8 @@ Completed:
 - Added REST/API/CLI control:
   - `POST /mux/workspaces/:id/panes/:pane_id/break`
   - `POST /mux/workspaces/:id/panes/join`
-  - `aetherctl mux-break-pane <workspace> <pane>`
-  - `aetherctl mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]`
+  - `aelys mux-break-pane <workspace> <pane>`
+  - `aelys mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]`
 - Added Tauri IPC and sidecar methods:
   - `mux_break_pane`
   - `mux_join_pane`
@@ -709,13 +709,13 @@ Completed:
   - join restores a two-pane active layout;
   - subsequent broadcast still reaches both live PTYs;
   - detach/restart/attach/close still passes after the transfer operations.
-- Rebuilt and copied the release sidecar to `src-tauri\binaries\aether-pty-server-x86_64-pc-windows-msvc.exe`.
+- Rebuilt and copied the release sidecar to `src-tauri\binaries\aelyris-pty-server-x86_64-pc-windows-msvc.exe`.
 
 Validation:
 
 - `pnpm exec tsc --noEmit` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib mux:: --quiet` passed: 26 tests.
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1 daemon_contract_exposes_versioned_capabilities --quiet` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1 create_list_resize_delete_roundtrip --quiet` passed.
 - `cargo build --manifest-path src-tauri\pty-server\Cargo.toml --release` passed.
@@ -748,17 +748,17 @@ Completed:
 - Added Tauri fallback support so direct embedded `write_terminal` also fans out through mux state when no sidecar is active.
 - Added REST/API/CLI/IPC/sidecar control:
   - `POST /mux/workspaces/:id/panes/synchronize`
-  - `aetherctl mux-sync-panes <workspace> --on|--off`
+  - `aelys mux-sync-panes <workspace> --on|--off`
   - `mux_set_panes_synchronized`
 - Added daemon contract capability `mux-synchronized-panes`.
 - Extended API integration and live mux smoke so synchronized input is tested as a stateful mode, separate from one-shot broadcast.
-- Rebuilt and copied the release sidecar to `src-tauri\binaries\aether-pty-server-x86_64-pc-windows-msvc.exe`.
+- Rebuilt and copied the release sidecar to `src-tauri\binaries\aelyris-pty-server-x86_64-pc-windows-msvc.exe`.
 
 Validation:
 
 - `pnpm exec tsc --noEmit` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib mux:: --quiet` passed: 26 tests.
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1 daemon_contract_exposes_versioned_capabilities --quiet` passed.
 - `cargo test --manifest-path src-tauri\Cargo.toml --test test_api_3d1 create_list_resize_delete_roundtrip --quiet` passed.
 - `cargo build --manifest-path src-tauri\pty-server\Cargo.toml --release` passed.
@@ -796,7 +796,7 @@ Validation:
 
 - `pnpm exec tsc --noEmit` passed.
 - `pnpm exec vitest run src\__tests__\PaneTreeContainerActiveTerminal.test.tsx` passed: 32 tests.
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `pnpm verify:mux-live` passed with synchronized-pane mode in the smoke sequence.
 - `pnpm build` passed.
 
@@ -842,7 +842,7 @@ Completed:
 
 - Promoted the existing Rust mux keymap engine into the Tauri runtime with `MuxKeymapRegistry`.
 - Added `mux_process_keymap_event` IPC so terminal keydown events resolve through Rust state instead of a frontend `switch(key)` table.
-- Added an Aether/tmux prefix table in Rust:
+- Added an Aelyris/tmux prefix table in Rust:
   - `Ctrl+B %` -> `split-right`
   - `Ctrl+B "` -> `split-down`
   - `Ctrl+B x` -> `close`
@@ -856,7 +856,7 @@ Completed:
 - Removed the frontend prefix command lookup table from `useCanvasIME`.
 - Kept only the minimum browser-side synchronous gate required to call `preventDefault()` during `keydown`; command lookup and prefix dispatch semantics are Rust-owned.
 - Cleans up per-terminal keymap state when a terminal is removed.
-- Added Rust keymap coverage for the Aether default prefix bindings.
+- Added Rust keymap coverage for the Aelyris default prefix bindings.
 - Updated frontend input tests so `Ctrl+B` flows through `mux_process_keymap_event`.
 
 Validation:
@@ -893,7 +893,7 @@ Validation:
 
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib pty::buffer -- --nocapture` passed: 15 tests.
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib pty::scrollback -- --nocapture` passed: 5 tests.
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aetherctl` passed.
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelys` passed.
 - `pnpm verify:scrollback-gates` passed with `large-capture-preserves-head-tail-and-final-marker` and `large-search-finds-final-burst-line`.
 
 Remaining before this can be called Core Wizard:
@@ -963,7 +963,7 @@ Remaining before this can be called Core Wizard:
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -977,4 +977,4 @@ Remaining before this can be called Core Wizard:
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Rust-core terminal, mux restore, native IME/clipboard, AI CLI sidecar, right rail workflow, and runtime hygiene gates are green in the non-token/non-real-sleep scope.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.

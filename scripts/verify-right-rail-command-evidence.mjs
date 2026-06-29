@@ -4,23 +4,23 @@
 //   pnpm.cmd dev -- --host 127.0.0.1 --port 1420
 //
 // Optional env:
-//   AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/right-rail-command-evidence.json
+//   AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_URL=http://localhost:1420/
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_OUT=.codex-auto/production-smoke/right-rail-command-evidence.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const APP_URL = process.env.AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const APP_URL = process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT =
-  process.env.AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/right-rail-command-evidence.json";
+  process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/right-rail-command-evidence.json";
 const SCREENSHOT =
-  process.env.AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_SCREENSHOT ??
+  process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_SCREENSHOT ??
   ".codex-auto/visual/right-rail-review-fixture-command-evidence.png";
-const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_COMMAND_EVIDENCE_WAIT_MS ?? "30000", 10);
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_WAIT_MS ?? "30000", 10);
 
 const report = {
   ok: false,
@@ -65,14 +65,14 @@ function writeDiagnosticArtifact() {
 
 function targetQaUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "review");
   url.searchParams.set("railState", "review");
   url.searchParams.set("v", "right-rail-command-evidence");
   url.searchParams.delete("state");
   url.searchParams.delete("edgeLoop");
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -93,11 +93,11 @@ function attachQualityCollectors(page) {
 
 async function seedQaStorage(page) {
   await page.evaluate((projectPath) => {
-    window.localStorage.setItem("aether:visualQa", "1");
-    window.localStorage.setItem("aether:visualQaProject", projectPath);
-    window.localStorage.setItem("aether:lastProject", projectPath);
-    window.localStorage.setItem("aether:onboarding-done", "true");
-    window.localStorage.removeItem("aether:dashboardStateUrl");
+    window.localStorage.setItem("aelyris:visualQa", "1");
+    window.localStorage.setItem("aelyris:visualQaProject", projectPath);
+    window.localStorage.setItem("aelyris:lastProject", projectPath);
+    window.localStorage.setItem("aelyris:onboarding-done", "true");
+    window.localStorage.removeItem("aelyris:dashboardStateUrl");
   }, PROJECT_PATH);
 }
 
@@ -221,11 +221,11 @@ async function main() {
 
     await page.evaluate(() => {
       const target = window;
-      target.__aetherCommandEvidenceEvents = [];
+      target.__aelyrisCommandEvidenceEvents = [];
       target.addEventListener(
-        "aether:terminal-command-evidence",
+        "aelyris:terminal-command-evidence",
         (event) => {
-          target.__aetherCommandEvidenceEvents.push(event.detail);
+          target.__aelyrisCommandEvidenceEvents.push(event.detail);
         },
         { once: true },
       );
@@ -235,11 +235,11 @@ async function main() {
     await evidenceButton.click();
 
     await page.waitForFunction(
-      () => window.__aetherCommandEvidenceEvents?.[0]?.terminalId === "qa-review-shell",
+      () => window.__aelyrisCommandEvidenceEvents?.[0]?.terminalId === "qa-review-shell",
       null,
       { timeout: WAIT_MS },
     );
-    report.checks.emittedEvidence = await page.evaluate(() => window.__aetherCommandEvidenceEvents?.[0] ?? null);
+    report.checks.emittedEvidence = await page.evaluate(() => window.__aelyrisCommandEvidenceEvents?.[0] ?? null);
 
     const screenshotPath = resolve(SCREENSHOT);
     mkdirSync(dirname(screenshotPath), { recursive: true });

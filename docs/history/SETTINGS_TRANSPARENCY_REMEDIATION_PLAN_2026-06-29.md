@@ -27,7 +27,7 @@ translucent over whichever backdrop is active.
 ## Phase 0 — HIGH correctness (blocking; land first)
 
 ### 0.1 Fix the broken test + release scorer (debt HIGH #1)
-My uncommitted `lib.rs` change renamed the env var to `QUORUM_DISABLE_DWM_CHROME`
+My uncommitted `lib.rs` change renamed the env var to `AELYRIS_DISABLE_DWM_CHROME`
 and changed the log message, breaking two pins of the OLD strings.
 - `src/__tests__/AppSilentBugs.test.ts:810-811` — update assertions to the new env var + message (assert the *intent*: "DWM chrome is env-gated", not the literal old string).
 - `scripts/score-release-quality.mjs:2748-2749` — same two substrings.
@@ -36,7 +36,7 @@ and changed the log message, breaking two pins of the OLD strings.
 ### 0.2 crystal & sakura render OPAQUE on the transparent window (debt HIGH #2)
 brightness/contrast removal was applied ONLY to `darkMoodSurfaces()`
 (`moods.ts:442-443`). Still opaque: `crystalMoodSurfaces()` (`481-482`), the
-`aether-sakura` literal (`563-564`), and the `:root` fallbacks (`global.css:120,127`).
+`aelyris-sakura` literal (`563-564`), and the `:root` fallbacks (`global.css:120,127`).
 - Done correctly as part of Phase 2 (single filter helper) so it can never re-drift.
 - Interim if Phase 2 slips: strip brightness/contrast/saturate from those 4 sites too.
 - Verify: switch mood to crystal/sakura in dev, confirm see-through.
@@ -82,7 +82,7 @@ Each currently persists to `config.toml` but has no runtime consumer.
 | Setting | Wire to | Files |
 |---|---|---|
 | **Line Height** | thread `lineHeight` into terminal cell metrics (height = round(fontSize × lineHeight)) | `terminalMetrics.ts:39-56`, `NativeTerminalArea.tsx:363`, `AgentTerminal.tsx:57`, store `appStore.ts`, `useTheme`/config |
-| **Font Ligatures** | thread `ligatures` to the shaper instead of hardcoded `allow_ligatures:false` | `src-tauri/src/bin/aether_native.rs:8283` (+ `text_shaping.rs:907`), config read, store, IPC |
+| **Font Ligatures** | thread `ligatures` to the shaper instead of hardcoded `allow_ligatures:false` | `src-tauri/src/bin/aelyris_native.rs:8283` (+ `text_shaping.rs:907`), config read, store, IPC |
 | **Cursor Style** | apply user pref to the rendered cursor (override/ә seed PTY) | `TerminalCanvas.tsx`, `snapshot.rs:367`, store, backend |
 | **Cursor Blink** | drive the blink-enable from config | `TerminalCanvas.tsx:716` path, store, backend |
 | **Default Shell** | `App.tsx:2652` `useTabManager("powershell")` → read `config.terminal.default_shell` | `App.tsx`, config load |

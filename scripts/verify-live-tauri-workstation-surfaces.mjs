@@ -1,14 +1,14 @@
 // Production live Tauri/WebView2 workstation surface smoke.
 //
 // Prerequisite:
-//   set QUORUM_API_TOKEN=dev && pnpm.cmd tauri:dev
+//   set AELYRIS_API_TOKEN=dev && pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
-//   AETHER_PRODUCTION_SMOKE_OUT=.codex-auto/production-smoke/live-tauri-workstation-surfaces.json
-//   AETHER_PRODUCTION_SMOKE_SCREENSHOT_DIR=.codex-auto/production-smoke/screenshots
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
+//   AELYRIS_PRODUCTION_SMOKE_OUT=.codex-auto/production-smoke/live-tauri-workstation-surfaces.json
+//   AELYRIS_PRODUCTION_SMOKE_SCREENSHOT_DIR=.codex-auto/production-smoke/screenshots
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import http from "node:http";
@@ -17,17 +17,17 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-let DASHBOARD_STATE_URL = process.env.AETHER_DASHBOARD_STATE_URL ?? "";
+const CDP = process.env.AELYRIS_TAURI_CDP ?? process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+let DASHBOARD_STATE_URL = process.env.AELYRIS_DASHBOARD_STATE_URL ?? "";
 const OUT =
-  process.env.AETHER_PRODUCTION_SMOKE_OUT ?? ".codex-auto/production-smoke/live-tauri-workstation-surfaces.json";
+  process.env.AELYRIS_PRODUCTION_SMOKE_OUT ?? ".codex-auto/production-smoke/live-tauri-workstation-surfaces.json";
 const SCREENSHOT_DIR = resolve(
-  process.env.AETHER_PRODUCTION_SMOKE_SCREENSHOT_DIR ?? ".codex-auto/production-smoke/screenshots",
+  process.env.AELYRIS_PRODUCTION_SMOKE_SCREENSHOT_DIR ?? ".codex-auto/production-smoke/screenshots",
 );
-const WAIT_MS = Number.parseInt(process.env.AETHER_PRODUCTION_SMOKE_WAIT_MS ?? "90000", 10);
-const APP_READY_WAIT_MS = Number.parseInt(process.env.AETHER_PRODUCTION_APP_READY_WAIT_MS ?? "90000", 10);
-const QUIET_WINDOW_MS = Number.parseInt(process.env.AETHER_PRODUCTION_SMOKE_QUIET_MS ?? "3500", 10);
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_PRODUCTION_SMOKE_WAIT_MS ?? "90000", 10);
+const APP_READY_WAIT_MS = Number.parseInt(process.env.AELYRIS_PRODUCTION_APP_READY_WAIT_MS ?? "90000", 10);
+const QUIET_WINDOW_MS = Number.parseInt(process.env.AELYRIS_PRODUCTION_SMOKE_QUIET_MS ?? "3500", 10);
 
 const COVERED_RISKS = [
   "1777959386787-browser-denied-visual-pass",
@@ -432,7 +432,7 @@ async function smokeVisualSurface(page) {
   };
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.includes("localhost:1420") ||
@@ -446,12 +446,12 @@ function isAetherPage(page) {
 function withQaParams(rawUrl, mode = "observe") {
   try {
     const url = new URL(rawUrl);
-    url.searchParams.set("aetherVisualQa", "1");
+    url.searchParams.set("aelyrisVisualQa", "1");
     url.searchParams.set("attachFixture", "1");
     url.searchParams.set("diagnostics", "1");
     url.searchParams.set("rail", mode);
     url.searchParams.set("projectPath", PROJECT_PATH);
-    url.searchParams.set("aetherDashboardStateUrl", DASHBOARD_STATE_URL);
+    url.searchParams.set("aelyrisDashboardStateUrl", DASHBOARD_STATE_URL);
     return url.toString();
   } catch {
     return rawUrl;
@@ -501,13 +501,13 @@ async function seedQa(page, density = "balanced") {
   await page.evaluate(
     ({ dashboardStateUrl, density: nextDensity, projectPath }) => {
       const key = projectPath.toLowerCase();
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", projectPath);
-      localStorage.setItem("aether:lastProject", projectPath);
-      localStorage.setItem("aether:onboarding-done", "true");
-      localStorage.setItem("aether:dashboardStateUrl", dashboardStateUrl);
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", projectPath);
+      localStorage.setItem("aelyris:lastProject", projectPath);
+      localStorage.setItem("aelyris:onboarding-done", "true");
+      localStorage.setItem("aelyris:dashboardStateUrl", dashboardStateUrl);
       localStorage.setItem(
-        "aether:workspaceProfiles",
+        "aelyris:workspaceProfiles",
         JSON.stringify({
           version: 1,
           globalDefaults: {
@@ -715,12 +715,12 @@ async function smokeContextAndRunGraph(page) {
 
 async function smokeImeDiagnostics(page) {
   await page.locator("canvas").first().waitFor({ state: "visible", timeout: 30000 });
-  await page.waitForFunction(() => typeof window.__AETHER_ENABLE_IME_DEBUG__ === "function", null, {
+  await page.waitForFunction(() => typeof window.__AELYRIS_ENABLE_IME_DEBUG__ === "function", null, {
     timeout: 30000,
   });
   await page.evaluate(() => {
-    window.__AETHER_ENABLE_IME_DEBUG__?.();
-    window.__AETHER_SHOW_IME_DEBUG_OVERLAY__?.();
+    window.__AELYRIS_ENABLE_IME_DEBUG__?.();
+    window.__AELYRIS_SHOW_IME_DEBUG_OVERLAY__?.();
   });
   await page
     .locator("canvas")
@@ -808,9 +808,9 @@ async function smokePaneSplitUi(page) {
 async function smokePaneRouting(page) {
   const terminals = [];
   const sentinels = {
-    build: `AETHER_ROUTE_BUILD_${Date.now()}`,
-    review: `AETHER_ROUTE_REVIEW_${Date.now()}`,
-    all: `AETHER_ROUTE_ALL_${Date.now()}`,
+    build: `AELYRIS_ROUTE_BUILD_${Date.now()}`,
+    review: `AELYRIS_ROUTE_REVIEW_${Date.now()}`,
+    all: `AELYRIS_ROUTE_ALL_${Date.now()}`,
   };
   try {
     for (const role of ["build", "review", "observe"]) {
@@ -851,10 +851,10 @@ async function smokePasteGuard(page) {
   });
   try {
     await page.evaluate(() => {
-      window.__aetherPasteGuardEvents = [];
+      window.__aelyrisPasteGuardEvents = [];
       window.confirm = () => false;
-      window.addEventListener("aether:terminal-paste-guard", (event) => {
-        window.__aetherPasteGuardEvents.push(event.detail);
+      window.addEventListener("aelyris:terminal-paste-guard", (event) => {
+        window.__aelyrisPasteGuardEvents.push(event.detail);
       });
     });
     await page
@@ -882,10 +882,10 @@ async function smokePasteGuard(page) {
         target: textarea ? "webview-overlay" : "native-input-surface",
       };
     }, "git reset --hard HEAD\nRemove-Item -Recurse -Force C:/Windows/Temp");
-    await page.waitForFunction(() => window.__aetherPasteGuardEvents?.length > 0, null, {
+    await page.waitForFunction(() => window.__aelyrisPasteGuardEvents?.length > 0, null, {
       timeout: 10000,
     });
-    const details = await page.evaluate(() => window.__aetherPasteGuardEvents ?? []);
+    const details = await page.evaluate(() => window.__aelyrisPasteGuardEvents ?? []);
     const blocked = details.some((detail) => detail.action === "blocked" || detail.action === "cancelled");
     if (!result.sent || !blocked)
       throw new Error(`Paste guard did not block/cancel destructive paste: ${JSON.stringify({ result, details })}`);
@@ -896,7 +896,7 @@ async function smokePasteGuard(page) {
 }
 
 async function smokeWorkflow(page) {
-  const workflowPath = `${PROJECT_PATH}/.aether/workflows/feature.yaml`;
+  const workflowPath = `${PROJECT_PATH}/.aelyris/workflows/feature.yaml`;
   const projectPath = `${PROJECT_PATH}/.codex-auto/production-smoke/workflow-project`;
   const started = await call(page, "start_workflow", {
     projectPath,
@@ -951,7 +951,7 @@ async function smokeProfileDensity(page) {
         appVisible: !!app,
         mainVisible: !!main,
         bodyOverflowX: document.body.scrollWidth - document.documentElement.clientWidth,
-        profileStoragePresent: !!localStorage.getItem("aether:workspaceProfiles"),
+        profileStoragePresent: !!localStorage.getItem("aelyris:workspaceProfiles"),
         expected,
       };
     }, density);
@@ -1023,11 +1023,11 @@ async function main() {
     report.cdpWaitedMs = connected.waitedMs;
     const pages = browser.contexts().flatMap((context) => context.pages());
     report.pages = pages.map((candidate) => candidate.url());
-    page = pages.find(isAetherPage);
+    page = pages.find(isAelyrisPage);
     if (!page) {
       report.status = "external_dependency";
-      report.dependency = "Aether Tauri WebView2 page";
-      report.error = `CDP attached, but no Aether page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
+      report.dependency = "Aelyris Tauri WebView2 page";
+      report.error = `CDP attached, but no Aelyris page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
       writeArtifact(report);
       process.exit(2);
     }

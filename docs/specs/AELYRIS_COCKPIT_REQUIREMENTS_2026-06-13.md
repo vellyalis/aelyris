@@ -1,4 +1,4 @@
-# Quorum Cockpit Requirements — AI Agent OS v1.0 superset
+# Aelyris Cockpit Requirements — AI Agent OS v1.0 superset
 
 Status: Active implementation requirements
 Version: 2.0 (AI Agent OS v1.0 superset)
@@ -37,7 +37,7 @@ names, and **reverses one load-bearing invariant** (user decision, 2026-06-15):
 
 ## Goal
 
-Quorum is an **agent-controllable workspace that runs a full
+Aelyris is an **agent-controllable workspace that runs a full
 single-instruction autonomous build loop**. The user gives one instruction
 (e.g. "build an authenticated e-commerce site"); the system autonomously
 decomposes it into a Task Graph, spawns a Planner + Worker + Reviewer fleet,
@@ -45,7 +45,7 @@ isolates each worker in a git worktree, delegates tasks, reviews, and integrates
 — producing the final artifact with the human supervising by exception.
 
 The human Cockpit UI and the Orchestrator AI consume the **same backend
-capability layer** (Quorum Control API); they are two faces over one set of
+capability layer** (Aelyris Control API); they are two faces over one set of
 domain functions, never separate ad hoc command paths. The product target is a
 native-first hybrid terminal running 3–4 coding agents in parallel by default.
 
@@ -73,10 +73,10 @@ catastrophic/irreversible operations. The loop never pauses to ask a human.
 
 ## Binding Requirements
 
-1. **Quorum Control API (capability layer, two faces).**
+1. **Aelyris Control API (capability layer, two faces).**
    - One backend capability layer for worktree, agent, pane, diff, task, event,
      context, merge, and review domains.
-   - Tauri IPC (Face 1, human Cockpit) and `aether.mcp.v1` (Face 2, orchestrator
+   - Tauri IPC (Face 1, human Cockpit) and `aelyris.mcp.v1` (Face 2, orchestrator
      AI) are thin adapters over the same domain functions.
    - Worktree, agent, pane, diff, task, event, and context operations are free
      for the orchestrator. Dangerous shell/FS operations are governed by the
@@ -178,7 +178,7 @@ catastrophic/irreversible operations. The loop never pauses to ask a human.
     - Task failure → notify the Reviewer and mark the Task `FAILED`.
     - Timeout → escalate to the Planner for re-plan or re-delegation.
 
-13. **MCP surface (`aether.mcp.v1`).**
+13. **MCP surface (`aelyris.mcp.v1`).**
     - Existing FREE: `spawn_agent`, `stop_agent`, `fleet_status`, `send_steer`,
       `create_worktree`, `list_worktrees`, `remove_worktree`, `split_pane`,
       `agent_diff`, `list_pending_approvals`.
@@ -244,7 +244,7 @@ below pinpoint what each rewrite must change:
 - **CODEX_HANDOFF.md §1 (North star) + §3 (Shared contract)** — "`merge-to-main`
   is GATED … never expose a merge tool" → reframe: merge is performed by the
   Reviewer agent on all-green gates; the human role becomes monitor + override.
-- **MCP_TOOL_SURFACE_SPEC §3.5 + §4.4** — `aether.request_merge` "Returns
+- **MCP_TOOL_SURFACE_SPEC §3.5 + §4.4** — `aelyris.request_merge` "Returns
   `queued`, never `done`; only a human grant merges" → the Reviewer executes the
   merge via the serialized queue; `request_merge` may resolve to `done` after the
   Reviewer's all-green verdict.

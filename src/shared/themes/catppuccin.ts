@@ -1,5 +1,5 @@
 /**
- * Catppuccin color palettes + Aether custom theme.
+ * Catppuccin color palettes + Aelyris custom theme.
  * Each palette maps semantic names to hex values.
  * Applied as CSS custom properties via useTheme hook.
  */
@@ -193,7 +193,7 @@ export const palettes: Record<string, ThemePalette> = {
 
 /** Theme IDs used in settings */
 export type ThemeId =
-  | "aether-dark"
+  | "aelyris-dark"
   | "catppuccin-mocha"
   | "catppuccin-frappe"
   | "catppuccin-macchiato"
@@ -316,15 +316,15 @@ export function themeToCSS(palette: ThemePalette, light: boolean): Record<string
   const textAlpha = light ? "rgba(0, 0, 0," : "rgba(255, 255, 255,";
   return {
     // Backgrounds
-    "--aether-bg": light ? palette.base : `${palette.crust}b3`,
-    "--aether-bg-sidebar": light ? palette.mantle : `${palette.mantle}99`,
-    "--aether-bg-elevated": light ? palette.surface0 : `${palette.base}bf`,
-    "--aether-bg-card": light ? palette.surface0 : `${palette.surface0}d9`,
-    "--aether-bg-surface": light ? palette.surface1 : `${palette.surface0}d9`,
+    "--aelyris-bg": light ? palette.base : `${palette.crust}b3`,
+    "--aelyris-bg-sidebar": light ? palette.mantle : `${palette.mantle}99`,
+    "--aelyris-bg-elevated": light ? palette.surface0 : `${palette.base}bf`,
+    "--aelyris-bg-card": light ? palette.surface0 : `${palette.surface0}d9`,
+    "--aelyris-bg-surface": light ? palette.surface1 : `${palette.surface0}d9`,
 
     // Borders
-    "--aether-border": light ? `${palette.surface2}80` : `rgba(255, 255, 255, 0.06)`,
-    "--aether-border-strong": light ? palette.surface2 : `rgba(255, 255, 255, 0.1)`,
+    "--aelyris-border": light ? `${palette.surface2}80` : `rgba(255, 255, 255, 0.06)`,
+    "--aelyris-border-strong": light ? palette.surface2 : `rgba(255, 255, 255, 0.1)`,
 
     // Text
     "--text-primary": light ? palette.text : `${textAlpha} 0.88)`,

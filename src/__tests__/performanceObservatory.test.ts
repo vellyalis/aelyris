@@ -153,7 +153,7 @@ describe("performance observatory", () => {
 
     const bundle = createPerformanceDiagnosticBundle(snapshot);
 
-    expect(bundle.kind).toBe("aether.performance.diagnostic");
+    expect(bundle.kind).toBe("aelyris.performance.diagnostic");
     expect(bundle.summary.terminalId).toBe("term-1");
     expect(bundle.summary.warningCount).toBe(snapshot.budgetWarnings.length);
     expect(bundle.summary.criticalCount).toBe(1);

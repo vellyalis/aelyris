@@ -441,7 +441,7 @@ mod tests {
     fn manager() -> MuxManager {
         let graph = graph_from_single_pane(
             "workspace-a",
-            "Aether",
+            "Aelyris",
             "window-a",
             "tab-a",
             PaneRecord::new("pane-a", "PowerShell", "powershell", "C:/repo"),
@@ -656,7 +656,7 @@ mod tests {
         let mut manager = manager();
         let graph = graph_from_single_pane(
             "workspace-a",
-            "Aether",
+            "Aelyris",
             "window-b",
             "tab-b",
             PaneRecord::new("pane-b", "PowerShell", "powershell", "C:/repo"),

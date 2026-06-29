@@ -52,7 +52,7 @@ fn resolve_branchish(repo: &git2::Repository, name: &str) -> Result<git2::Oid, S
 
 fn repo_signature(repo: &git2::Repository) -> Result<git2::Signature<'static>, String> {
     repo.signature()
-        .or_else(|_| git2::Signature::now("Aether", "aether@local"))
+        .or_else(|_| git2::Signature::now("Aelyris", "aelyris@local"))
         .map_err(|err| format!("signature: {err}"))
 }
 
@@ -173,7 +173,7 @@ pub fn perform_merge(
 /// the merge performed — against those exact commits, with no second name
 /// re-resolution. A tip that moved since review yields `StaleTips` instead of
 /// silently merging an unreviewed commit. This is what makes
-/// `aether.review.approve` merge only the reviewed change (hard boundary #4).
+/// `aelyris.review.approve` merge only the reviewed change (hard boundary #4).
 pub fn perform_merge_bound(
     repo_path: &str,
     source_branch: &str,
@@ -233,7 +233,7 @@ fn merge_resolved(
             source_oid,
             true,
             target_oid,
-            "aether fast-forward merge",
+            "aelyris fast-forward merge",
         )
         .map_err(|err| format!("fast-forward (target moved?): {err}"))?;
         if head_is_branch(repo, target_branch) {
@@ -299,7 +299,7 @@ fn merge_resolved(
         merge_commit,
         true,
         target_oid,
-        "aether merge",
+        "aelyris merge",
     )
     .map_err(|err| format!("advance target ref (moved?): {err}"))?;
     if head_is_branch(repo, target_branch) {

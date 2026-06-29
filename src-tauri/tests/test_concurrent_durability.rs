@@ -16,9 +16,9 @@
 use std::sync::Arc;
 use std::thread;
 
-use aether_terminal_lib::context_store::ContextStoreManager;
-use aether_terminal_lib::db::{AuditJournalAppend, AuditJournalFilter, Database, ManagedDb};
-use aether_terminal_lib::task::{Task, TaskManager};
+use aelyris_lib::context_store::ContextStoreManager;
+use aelyris_lib::db::{AuditJournalAppend, AuditJournalFilter, Database, ManagedDb};
+use aelyris_lib::task::{Task, TaskManager};
 use tempfile::tempdir;
 
 const N: usize = 100;
@@ -49,7 +49,7 @@ fn stress_audit_event(i: usize) -> AuditJournalAppend {
 #[test]
 fn concurrent_writers_on_one_db_file_lose_no_writes() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("aether_concurrent.db");
+    let path = dir.path().join("aelyris_concurrent.db");
 
     // Production topology: three independent writer connections to one file.
     let cs = ContextStoreManager::new();

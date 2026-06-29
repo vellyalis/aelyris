@@ -63,10 +63,10 @@ function isLocalDashboardStateUrl(value: string | null | undefined): value is st
 function readConfiguredDashboardStateUrl(): string | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
-  const fromQuery = params.get("aetherDashboardStateUrl") ?? params.get("dashboardStateUrl");
+  const fromQuery = params.get("aelyrisDashboardStateUrl") ?? params.get("dashboardStateUrl");
   if (isLocalDashboardStateUrl(fromQuery)) return fromQuery;
   try {
-    const fromStorage = window.localStorage.getItem("aether:dashboardStateUrl");
+    const fromStorage = window.localStorage.getItem("aelyris:dashboardStateUrl");
     return isLocalDashboardStateUrl(fromStorage) ? fromStorage : null;
   } catch {
     return null;

@@ -918,7 +918,7 @@ unsafe fn create_native_input_surface(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeTerminalInputSurface");
+    let class_name = w!("AelyrisNativeTerminalInputSurface");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(native_input_surface_window_proc),
@@ -976,7 +976,7 @@ unsafe fn position_native_input_surface(
     let hwnd = HWND(hwnd as *mut _);
     unsafe {
         // Keep a real focusable HWND for TSF/IME/candidate positioning, but
-        // use an Aether-owned no-paint window instead of EDIT. The full cell
+        // use an Aelyris-owned no-paint window instead of EDIT. The full cell
         // height and wide runway give IME a stable geometry while terminal
         // rendering stays entirely in the canvas.
         let paint_rect = native_input_surface_paint_rect(rect);

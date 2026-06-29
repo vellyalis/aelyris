@@ -1,9 +1,9 @@
 ---
-name: aether-stop-gate-review
+name: aelyris-stop-gate-review
 description: Review only the immediately previous Claude or agent turn as a lightweight stop gate. Use when the user asks whether the previous turn should be allowed, blocked, or reviewed before continuing. Non-edit turns should normally ALLOW; BLOCK requires current repo or tool evidence.
 ---
 
-# Aether Stop Gate Review
+# Aelyris Stop Gate Review
 
 Use this for fast previous-turn gating, not whole-repo audits.
 

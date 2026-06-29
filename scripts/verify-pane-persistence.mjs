@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const PROJECT = process.env.AETHER_FLEET_PROJECT ?? process.cwd().replaceAll("\\", "/");
+const PROJECT = process.env.AELYRIS_FLEET_PROJECT ?? process.cwd().replaceAll("\\", "/");
 function repo() {
   const d = mkdtempSync(join(tmpdir(), "flt-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: d });
@@ -40,8 +40,8 @@ const snap = async (tid) => {
 // 1) reset the saved 20-pane layout: clear localStorage, re-seed the workspace.
 await p.evaluate((proj) => {
   window.localStorage.clear();
-  window.localStorage.setItem("aether:lastProject", proj);
-  window.localStorage.setItem("aether:onboarding-done", "true");
+  window.localStorage.setItem("aelyris:lastProject", proj);
+  window.localStorage.setItem("aelyris:onboarding-done", "true");
 }, PROJECT);
 await p.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
 await sleep(6000);

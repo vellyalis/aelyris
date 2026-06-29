@@ -6,9 +6,9 @@ import process from "node:process";
 const ROOT = resolve(process.cwd());
 const LOCK_DIR = join(ROOT, ".codex-auto", "quality", "final-goal-evidence.lock");
 const OWNER_PATH = join(LOCK_DIR, "owner.json");
-const DEFAULT_TIMEOUT_MS = Number.parseInt(process.env.AETHER_FINAL_GOAL_LOCK_TIMEOUT_MS ?? "120000", 10);
-const DEFAULT_STALE_MS = Number.parseInt(process.env.AETHER_FINAL_GOAL_LOCK_STALE_MS ?? "600000", 10);
-const DEFAULT_POLL_MS = Number.parseInt(process.env.AETHER_FINAL_GOAL_LOCK_POLL_MS ?? "250", 10);
+const DEFAULT_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_FINAL_GOAL_LOCK_TIMEOUT_MS ?? "120000", 10);
+const DEFAULT_STALE_MS = Number.parseInt(process.env.AELYRIS_FINAL_GOAL_LOCK_STALE_MS ?? "600000", 10);
+const DEFAULT_POLL_MS = Number.parseInt(process.env.AELYRIS_FINAL_GOAL_LOCK_POLL_MS ?? "250", 10);
 
 function sleepSync(ms) {
   const buffer = new SharedArrayBuffer(4);

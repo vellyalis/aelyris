@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 
-const ROOT = resolve(process.env.AETHER_PRODUCTION_ROOT ?? process.cwd());
+const ROOT = resolve(process.env.AELYRIS_PRODUCTION_ROOT ?? process.cwd());
 const LOG_DIR = join(ROOT, ".codex-auto");
 const OUT_DIR = join(LOG_DIR, "production-smoke");
 const RELEASE_DIR = join(LOG_DIR, "release-doctor");
@@ -140,15 +140,15 @@ function verifyImeSmoke() {
 }
 
 function writeKeyCustodyEvidence() {
-  const keyPath = join(ROOT, ".aether-updater", "aether-updater.key");
-  const pubPath = join(ROOT, ".aether-updater", "aether-updater.key.pub");
-  const passwordPath = join(ROOT, ".aether-updater", "aether-updater.password.txt");
+  const keyPath = join(ROOT, ".aelyris-updater", "aelyris-updater.key");
+  const pubPath = join(ROOT, ".aelyris-updater", "aelyris-updater.key.pub");
+  const passwordPath = join(ROOT, ".aelyris-updater", "aelyris-updater.password.txt");
   const tauriConfig = join(ROOT, "src-tauri", "tauri.conf.json");
   for (const path of [keyPath, pubPath, passwordPath, tauriConfig]) {
     assertPass("key custody input exists", existsSync(path), path);
   }
-  const tracked = gitOutput(["ls-files", "--", ".aether-updater"]);
-  const ignored = gitOutput(["check-ignore", "-q", ".aether-updater/aether-updater.key"]);
+  const tracked = gitOutput(["ls-files", "--", ".aelyris-updater"]);
+  const ignored = gitOutput(["check-ignore", "-q", ".aelyris-updater/aelyris-updater.key"]);
   const config = readJson(tauriConfig);
   const pubkey = config?.plugins?.updater?.pubkey ?? "";
   const report = {
@@ -171,7 +171,7 @@ function writeKeyCustodyEvidence() {
       pubkeySha256: typeof pubkey === "string" ? createHash("sha256").update(pubkey).digest("hex") : null,
     },
     custodyControls: [
-      ".aether-updater is ignored and not tracked.",
+      ".aelyris-updater is ignored and not tracked.",
       "Only SHA-256 hashes are written to the evidence artifact.",
       "Before public release, rotate or escrow the updater key if the local key cannot be preserved.",
     ],

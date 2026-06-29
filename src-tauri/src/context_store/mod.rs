@@ -1,7 +1,7 @@
 //! Context Store — the shared architectural decision record (ADR) every agent
 //! aligns to.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 //! Requirement 6. Holds project-level decisions (e.g. `auth_method` -> `jwt`,
 //! `database` -> `postgresql`, `framework` -> `nextjs`). A change returns a
 //! `DecisionChange` so the caller can broadcast `DECISION_CHANGED` to the

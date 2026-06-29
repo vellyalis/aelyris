@@ -66,7 +66,7 @@ fn apply_windows_app_identity() {
 
     // Apply before Tauri creates the WebView/window. This keeps taskbar and
     // shell identity stable without mixing it into the HWND/DWM setup path.
-    let app_user_model_id = HSTRING::from("com.aether.terminal");
+    let app_user_model_id = HSTRING::from("com.aelyris.terminal");
     if let Err(e) = unsafe { SetCurrentProcessExplicitAppUserModelID(&app_user_model_id) } {
         log::debug!("windows app identity: AppUserModelID not applied: {e}");
     }
@@ -84,7 +84,7 @@ pub fn run() {
     // `logs_recent` / `logs_since` IPCs read from it directly.
     let log_ring = logging::init();
     let t0 = std::time::Instant::now();
-    log::info!("Aether Terminal starting...");
+    log::info!("Aelyris starting...");
     let (lsp_tx, lsp_rx) = std::sync::mpsc::channel::<lsp::LspMessage>();
 
     tauri::Builder::default()
@@ -457,7 +457,7 @@ pub fn run() {
                 // Direct DWM backdrop is the DEFAULT on Windows: Tauri's
                 // `windowEffects` acrylic silently fails to apply a real backdrop on Win11 25H2,
                 // so without this the transparent WebView2 client area has nothing to show through
-                // to and renders opaque. Opt out with QUORUM_DISABLE_DWM_CHROME=1 (falls back to
+                // to and renders opaque. Opt out with AELYRIS_DISABLE_DWM_CHROME=1 (falls back to
                 // Tauri windowEffects).
                 //
                 // The backdrop type follows config.appearance.window_effect:
@@ -466,7 +466,7 @@ pub fn run() {
                 // The other type is used as the fallback if the OS refuses the
                 // primary. Unknown/missing config defaults to acrylic.
                 let direct_dwm_disabled =
-                    std::env::var("QUORUM_DISABLE_DWM_CHROME").as_deref() == Ok("1");
+                    std::env::var("AELYRIS_DISABLE_DWM_CHROME").as_deref() == Ok("1");
                 if direct_dwm_disabled {
                     log::info!(
                         "window chrome: direct DWM chrome disabled by env; using Tauri windowEffects"
@@ -565,7 +565,7 @@ pub fn run() {
             // Notepad / Settings all do this), so without this bridge
             // the React panels read as suddenly opaque the moment the
             // user Alt-Tabs. The frontend listens for the
-            // `aether:window-focused` event and toggles
+            // `aelyris:window-focused` event and toggles
             // `<body data-window-focused>`; CSS in global.css keys off
             // that attribute to lower each glass token's alpha when
             // blurred.
@@ -624,7 +624,7 @@ pub fn run() {
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(focused) = event {
                         if let Err(e) =
-                            win_for_handler.emit("aether:window-focused", *focused)
+                            win_for_handler.emit("aelyris:window-focused", *focused)
                         {
                             log::debug!("focus-state emit failed: {e}");
                         }
@@ -1146,7 +1146,7 @@ pub fn run() {
             ipc::logs_since,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Aether Terminal")
+        .expect("error while building Aelyris")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 // Phase 3D-1: tell the API server to drain WS clients before

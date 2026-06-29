@@ -1,6 +1,6 @@
 //! Review verdict — the pure merge-eligibility decision.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 //! Requirement 9. Under full autonomy the Reviewer agent merges with no human
 //! gate, but only with the compensating controls: all quality gates green and
 //! reviewer != implementer (separation of duties). This module owns that

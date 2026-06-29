@@ -6,7 +6,7 @@
 //!
 //! Run: cargo run --example plan_demo -- "build a tiny todo CLI in Rust"
 
-use aether_terminal_lib::task::decompose_to_plan;
+use aelyris_lib::task::decompose_to_plan;
 
 fn main() {
     let goal = std::env::args()

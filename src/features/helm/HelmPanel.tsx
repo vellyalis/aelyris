@@ -13,7 +13,7 @@ interface Task {
 
 function loadTasks(): Task[] {
   try {
-    const parsed = JSON.parse(localStorage.getItem("aether:helm:tasks") ?? "[]") as unknown;
+    const parsed = JSON.parse(localStorage.getItem("aelyris:helm:tasks") ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
@@ -38,7 +38,7 @@ function loadTasks(): Task[] {
 }
 function saveTasks(tasks: Task[]) {
   try {
-    localStorage.setItem("aether:helm:tasks", JSON.stringify(tasks));
+    localStorage.setItem("aelyris:helm:tasks", JSON.stringify(tasks));
   } catch (err) {
     reportInvokeFailure({
       source: "helm-tasks",

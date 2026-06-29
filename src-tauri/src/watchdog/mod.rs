@@ -14,7 +14,7 @@ fn watchdog_path() -> PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".aether").join("watchdog.json")
+    PathBuf::from(home).join(".aelyris").join("watchdog.json")
 }
 
 pub fn load_watchdog_rules() -> WatchdogRules {

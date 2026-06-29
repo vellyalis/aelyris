@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Quorum (formerly Aether Terminal) are tracked here. Dates
+All notable changes to Aelyris (formerly Aelyris) are tracked here. Dates
 are listed in `YYYY-MM-DD`. Commit hashes reference `refactor/tauri-react-migration`.
 
 ## [Unreleased]
@@ -251,7 +251,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   - **`.exitBannerCrashed` only flipped text + bottom-border
     colour** — a SEGV looked almost identical to a clean
     `exit 0`. The whole strip now tints red via
-    `color-mix(in srgb, --ctp-red 14%, --aether-bg-elevated)`.
+    `color-mix(in srgb, --ctp-red 14%, --aelyris-bg-elevated)`.
     Replaced the non-existent `--danger` token (with hex
     fallback) with the actual `--ctp-red`.
   - **`.exitBannerBtn:disabled` had no visual treatment** —
@@ -352,9 +352,9 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     gesture).
 
 - **Windows resource metadata embedded into the dev .exe so Task
-  Manager actually shows "Aether Terminal".** Dogfood: trying to
+  Manager actually shows "Aelyris".** Dogfood: trying to
   end a hung process from Task Manager turned up nothing matching
-  "aether" because `cargo run` builds skip resource embedding —
+  "aelyris" because `cargo run` builds skip resource embedding —
   `tauri-build` only emits the metadata for release bundles. The
   user couldn't identify the process to kill. Fixed by adding a
   `tauri-winres` step in `build.rs` that runs unconditionally on
@@ -564,7 +564,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   doesn't ship." The right panel now uses the same JS pointer
   handle pattern as `.left-panel`:
   - **`rightPanelWidth` Zustand state**, persisted to
-    `localStorage["aether:rightPanelWidth"]`, clamped to `[260,
+    `localStorage["aelyris:rightPanelWidth"]`, clamped to `[260,
     480]` (max bumped from the legacy `400` so the widest agent /
     workflow / toolkit / logs stack has the same headroom as the
     sidebar). Default 320.
@@ -597,7 +597,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     1440 (was 240+880+320 before the shrink-fix); handle at
     `x=panel.x-2`, full panel height, `cursor=col-resize`. Drag
     test: `pointerdown→pointermove(-60)→pointerup` advanced
-    `localStorage["aether:rightPanelWidth"]` from 320 → 380 and
+    `localStorage["aelyris:rightPanelWidth"]` from 320 → 380 and
     rendered 380 px in the next frame.
   - `pnpm test`: **808** (was 803, +5 new clamp / round / persist
     tests covering both `sidebarWidth` and `rightPanelWidth`).
@@ -679,7 +679,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     chevron that rotates on open, Radix's
     `--radix-collapsible-content-height` keyframe for smooth
     height interpolation, and per-section open state persisted to
-    `localStorage["aether:section:<key>"]`. The chrome matches
+    `localStorage["aelyris:section:<key>"]`. The chrome matches
     the sidebar typography (uppercase 12 px headers, gold focus
     ring).
   - **Sidebar wrapped in three sections**: Files (FileTree,
@@ -697,7 +697,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     `resize: horizontal` with the browser-default triangular
     nubbin that read as a Win32 control.
   - **`sidebarWidth` Zustand state**, persisted to
-    `localStorage["aether:sidebarWidth"]`, clamped to
+    `localStorage["aelyris:sidebarWidth"]`, clamped to
     `[200, 480]`. Default bumped 180 → 240 px so the section
     headers and TODO labels in Kanban don't truncate.
   - **`@media (max-width: 700px) { .left-panel { display: none
@@ -710,11 +710,11 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     `html[data-react-mounted="true"]`. `main.tsx` flips the flag
     in a `requestAnimationFrame` after `createRoot` and removes
     the splash node on `transitionend`. The flicker between
-    "Aether Terminal Starting…" and the real chrome is gone.
+    "Aelyris Starting…" and the real chrome is gone.
   - Vite preview verify: `nav[aria-label='Project sidebar']`
     contains 3 `aria-expanded` triggers (Files / Tasks / Source
     Control). Toggling Tasks flipped `aria-expanded` false →
-    true and persisted `aether:section:tasks=1`. Sidebar inline
+    true and persisted `aelyris:section:tasks=1`. Sidebar inline
     style is `width: 240px`. `splash` removed from DOM after
     React mounts, `html[data-react-mounted="true"]` set.
     Screenshot confirms 240-px sidebar with 3 sections + chevron
@@ -750,7 +750,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     `role="switch"` toggles render in Settings; toggling the
     first switch flipped `data-state` checked → unchecked
     cleanly; opening the Theme select listed all 7 themes
-    (Aether Dark / Catppuccin Mocha / Frappé / Macchiato / Latte /
+    (Aelyris Dark / Catppuccin Mocha / Frappé / Macchiato / Latte /
     Tokyo Night / Dracula). Screenshot shows the OS-default
     blue square `<select>` chrome is gone — replaced with a
     glass pill that matches the Save button rhythm.
@@ -788,7 +788,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
     stops rendering `<MenuBar />` separately.
   - **Sidebar collapsible (width 180 px ↔ 0 px).** `useAppStore`
     gains `sidebarCollapsed` + `setSidebarCollapsed`, persisted
-    to `localStorage["aether:sidebarCollapsed"]`. CSS in
+    to `localStorage["aelyris:sidebarCollapsed"]`. CSS in
     `global.css` adds `.left-panel-collapsed` (`width: 0
     !important; min-width: 0; border-right-color: transparent;
     resize: none`) and a `width 180 ms` transition so the rail
@@ -816,7 +816,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   Acrylic backdrop, the panels read as a solid dark slab the
   moment the user Alt-Tabs.
   Fix: Rust `setup` now subscribes to `WindowEvent::Focused(bool)`
-  and emits `aether:window-focused` over Tauri IPC; `main.tsx`
+  and emits `aelyris:window-focused` over Tauri IPC; `main.tsx`
   listens and toggles `<body data-window-focused="true|false">`.
   CSS keys off the attribute and bumps each glass token by ~10–
   15 % alpha (frame 0.28 → 0.40, standard 0.35 → 0.48, dense
@@ -898,7 +898,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   - StatusBar's hard-coded `rgba(15,15,15,0.42)` migrated to the
     shared `--glass-frame` token so all bars take the same alpha
     treatment.
-  - Aether stays Tauri + React — fully native is still ruled out
+  - Aelyris stays Tauri + React — fully native is still ruled out
     (`project_strategic_direction.md` 2026-04-17). The visual
     target is reachable from this stack; we just had to stop
     actively defeating Mica with overlapping CSS.
@@ -1121,7 +1121,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   - `e2e/image-flows.spec.ts` test 2 is no longer `test.fixme` — the
     Kitty APC escape it used to feed (which ConPTY silently dropped)
     has been replaced with a `powershell -ExecutionPolicy Bypass -File
-    scripts/aether-imgcat.ps1 …` shell-out against the
+    scripts/aelyris-imgcat.ps1 …` shell-out against the
     `e2e/fixtures/inline-image-1x1.png` fixture. The assertion shape
     is identical (`ImageRef.id`, PNG signature on the round-trip),
     only the vehicle changed.
@@ -1165,10 +1165,10 @@ Continuing the post-0.2.3 Tier 3 polish run started with
 
 - **Chunked OSC inline image protocol — emitter wrappers** (post-0.2.4
   Tier 🔴 #1, Sprint 2 of 3) — ships the emitter half of the protocol
-  the Sprint-1 engine assembler accepts. `scripts/aether-imgcat.ps1`
+  the Sprint-1 engine assembler accepts. `scripts/aelyris-imgcat.ps1`
   (PowerShell 5+/7+, uses `[char]27` for ESC so it runs on stock Win11
   PowerShell where `` `e `` is not yet a recognised escape) and
-  `scripts/aether-imgcat.sh` (Git Bash, GNU `od --endian=big` for
+  `scripts/aelyris-imgcat.sh` (Git Bash, GNU `od --endian=big` for
   IHDR + GNU `base64 -w0` for the body) both:
   - Verify the input is a PNG by signature (89 50 4E 47 0D 0A 1A 0A).
   - Read width / height from the IHDR chunk (big-endian u32 at offsets
@@ -1214,7 +1214,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   2026-04-30 with `scripts/diag-image-escape.mjs` and
   `scripts/diag-osc-size.mjs`), which leaves the Tier 🟡 #5 inline-
   image pipeline correct end-to-end but dark on Windows. Sprint 1
-  introduces the engine half of an Aether-specific chunked OSC
+  introduces the engine half of an Aelyris-specific chunked OSC
   protocol whose individual frames stay under ConPTY's cap:
   `\e]1338;B;<id>;<format>;<w>;<h>\a`,
   `\e]1338;D;<id>;<chunk-idx>;<base64>\a`,
@@ -1240,7 +1240,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   integration tests exercise the full advance() pipeline including
   terminator-split-across-advance and OSC 133 + chunked-OSC
   coexistence. Sprint 2 lands wrapper emitters
-  (`scripts/aether-imgcat.{ps1,sh}`) and Sprint 3 unblocks the
+  (`scripts/aelyris-imgcat.{ps1,sh}`) and Sprint 3 unblocks the
   `e2e/image-flows.spec.ts` test 2 fixme. Spec:
   `docs/chunked-osc-image-protocol.md`.
 
@@ -1353,7 +1353,7 @@ Continuing the post-0.2.3 Tier 3 polish run started with
   `aria-invalid` and silently dropped at the store layer). Overrides
   layer on top of the base palette via a new `applyAccentOverrides` in
   `src/shared/themes/catppuccin.ts`, are persisted under
-  `aether:themeOverrides` per-themeId in localStorage, and feed back
+  `aelyris:themeOverrides` per-themeId in localStorage, and feed back
   through `useThemeApplier` so the running window updates on the next
   React commit — there is no preview canvas, the live UI is the
   preview. A theme switch in the same dialog applies immediately so the
@@ -1384,7 +1384,7 @@ a new PTY-in-the-loop E2E suite.
 
 - **Shell integration installer** (`4ebdc5c`, Tier 1 #2) — Settings
   panel surfaces per-shell install state (PowerShell / Bash / Zsh).
-  Embedded scripts are written to `~/.aether/shell-integration/` and a
+  Embedded scripts are written to `~/.aelyris/shell-integration/` and a
   single `source` line is appended to the user's profile, gated by an
   install marker for idempotency. Risk hedge from the roadmap honoured:
   install fires only on explicit click, with a "Copy line" alternative
@@ -1401,13 +1401,13 @@ a new PTY-in-the-loop E2E suite.
 
 - **Auto-updater wiring** (`047de0f`, Tier 1 #3) —
   `tauri-plugin-updater` is registered with a placeholder pubkey +
-  `https://updates.aether.invalid/...` endpoint.
+  `https://updates.aelyris.invalid/...` endpoint.
   `bundle.createUpdaterArtifacts = true` so a signed `.sig` lands next
   to each NSIS / MSI installer when Tauri sees a private signing key in
   the environment. New surfaces: `<UpdateBanner>` at the top of the app
   (auto-check, silent on errors), Settings → Updates → "Check for
   updates" (surfaces errors verbatim), `scripts/setup-updater-keys.mjs`
-  (one-time keypair generation under gitignored `.aether-updater/`),
+  (one-time keypair generation under gitignored `.aelyris-updater/`),
   `scripts/generate-update-manifest.mjs` (writes `latest.json` next to
   the bundles). Local-only by default — see `docs/auto_updater_setup.md`
   for the full release flow.
@@ -1441,7 +1441,7 @@ a new PTY-in-the-loop E2E suite.
   sentinel), (2) scrollback growth (80 lines into 30 rows →
   `term_history_size > 0` + `term_history_rows` returns content), and
   (3) backend-emitted log capture during the spec (`logs_recent`
-  watermark + `logs_since` finds `aether_terminal_lib::*` entries —
+  watermark + `logs_since` finds `aelyris_lib::*` entries —
   doubles as a smoke test for #7). When port 9222 is unreachable the
   three specs `test.skip` cleanly so CI without a live Tauri build does
   not bleed red.
@@ -1733,7 +1733,7 @@ Async state contracts:
 - **QuickOpen** chrome made identical to CommandPalette (same surface, blur,
   border-radius, positioning, shadow, border token).
 - **MarkdownPreview iframe** — element background painted with
-  `var(--aether-bg)` so the iframe no longer flashes white between mount
+  `var(--aelyris-bg)` so the iframe no longer flashes white between mount
   and first paint.
 - **WorktreeManager** — header routed through `PanelHeader`; worktree
   delete actually deletes (was a no-op).

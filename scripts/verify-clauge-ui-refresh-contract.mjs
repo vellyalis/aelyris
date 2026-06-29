@@ -33,12 +33,12 @@ const checks = [
       sourceAudit.includes("Mode state preservation") &&
       sourceAudit.includes("Per-mode AI") &&
       sourceAudit.includes("Cross-mode history") &&
-      sourceAudit.includes("aether.mcp.server.v1") &&
-      sourceAudit.includes("aether.workspace.data.v1") &&
-      sourceAudit.includes("aether.mode-preservation.v1") &&
-      sourceAudit.includes("aether.history.search.v1") &&
-      sourceAudit.includes("aether.agent-identity.v1") &&
-      sourceAudit.includes("upper compatibility inside Aether's terminal-first domain"),
+      sourceAudit.includes("aelyris.mcp.server.v1") &&
+      sourceAudit.includes("aelyris.workspace.data.v1") &&
+      sourceAudit.includes("aelyris.mode-preservation.v1") &&
+      sourceAudit.includes("aelyris.history.search.v1") &&
+      sourceAudit.includes("aelyris.agent-identity.v1") &&
+      sourceAudit.includes("upper compatibility inside Aelyris's terminal-first domain"),
   },
   {
     id: "visible-mode-rail",
@@ -52,7 +52,7 @@ const checks = [
   },
   {
     id: "all-eight-modes",
-    label: "All 8 Clauge-inspired Aether modes exist",
+    label: "All 8 Clauge-inspired Aelyris modes exist",
     pass: requiredModes.every((mode) => app.includes(`id: "${mode}"`)),
   },
   {
@@ -101,21 +101,21 @@ const checks = [
       css.includes(".right-panel-inspector-hero") &&
       css.includes(".right-panel-inspector-grid") &&
       css.includes(".right-panel-inspector-open") &&
-      css.includes(':root[data-mood="aether-sakura"] .right-panel-inspector-hero'),
+      css.includes(':root[data-mood="aelyris-sakura"] .right-panel-inspector-hero'),
   },
   {
     id: "sakura-mode-rail",
     label: "Sakura mode rail avoids gray bleed",
     pass:
-      css.includes(':root[data-mood="aether-sakura"] .mode-rail') &&
+      css.includes(':root[data-mood="aelyris-sakura"] .mode-rail') &&
       css.includes("rgba(255, 246, 250, 0.88)") &&
-      css.includes(':root[data-mood="aether-sakura"] .mode-rail-button[data-active="true"]'),
+      css.includes(':root[data-mood="aelyris-sakura"] .mode-rail-button[data-active="true"]'),
   },
   {
     id: "accessibility-and-resize",
     label: "Mode rail has accessibility and responsive guardrails",
     pass:
-      app.includes('aria-label="Aether mode rail"') &&
+      app.includes('aria-label="Aelyris mode rail"') &&
       app.includes("aria-pressed={active}") &&
       css.includes(".mode-rail-button:focus-visible") &&
       css.includes("@media (max-width: 860px)") &&
@@ -128,7 +128,7 @@ const passed = checks.filter((check) => check.pass).length;
 const total = checks.length;
 const percent = Math.round((passed / total) * 100);
 const report = {
-  schema: "aether.clauge-ui-refresh-contract.v1",
+  schema: "aelyris.clauge-ui-refresh-contract.v1",
   status: passed === total ? "passed" : "failed",
   percent,
   passed,

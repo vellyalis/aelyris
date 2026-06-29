@@ -1,12 +1,12 @@
-// LIVE verification of P0-3 merge idempotency against a running Aether MCP server.
+// LIVE verification of P0-3 merge idempotency against a running Aelyris MCP server.
 // Proves, end-to-end over /mcp, that:
-//   (A) a duplicate aether.request_merge (same task + same source/target commits)
+//   (A) a duplicate aelyris.request_merge (same task + same source/target commits)
 //       returns the ORIGINAL intent id — no second row, no second merge; and
 //   (B) approving an intent whose target ALREADY contains the reviewed source
 //       commit is idempotent (status "merged", not an error).
 //
 // Operator-run (it needs a live server + creates a temp git repo it can reach):
-//   pnpm tauri:dev   # in another terminal; export QUORUM_API_TOKEN
+//   pnpm tauri:dev   # in another terminal; export AELYRIS_API_TOKEN
 //   node scripts/verify-merge-idempotency.mjs
 //
 // The headless regression guard for the same invariants is the STATIC
@@ -16,10 +16,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.QUORUM_API_TOKEN;
+const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.AELYRIS_API_TOKEN;
 if (!TOKEN) {
-  console.error("QUORUM_API_TOKEN is required (start `pnpm tauri:dev` and export it)");
+  console.error("AELYRIS_API_TOKEN is required (start `pnpm tauri:dev` and export it)");
   process.exit(2);
 }
 
@@ -55,7 +55,7 @@ const ok = (cond, msg) => {
 
 // Build a throwaway repo: main at base; feature one commit ahead.
 function makeRepo() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aether-merge-idem-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aelyris-merge-idem-"));
   git(dir, "init", "-b", "main");
   git(dir, "config", "user.email", "t@test");
   git(dir, "config", "user.name", "Test");
@@ -81,10 +81,10 @@ async function main() {
       sourceBranch: "feature",
       targetBranch: "main",
     };
-    const first = await toolCall("aether.request_merge", reqArgs);
+    const first = await toolCall("aelyris.request_merge", reqArgs);
     const id1 = first.data?.intentId;
     ok(first.ok && typeof id1 === "string" && id1.length > 0, "request_merge returns an intent id");
-    const second = await toolCall("aether.request_merge", reqArgs);
+    const second = await toolCall("aelyris.request_merge", reqArgs);
     ok(
       second.data?.intentId === id1,
       "a duplicate request_merge returns the SAME intent id (no second row)",
@@ -105,16 +105,16 @@ async function main() {
       sourceBranch: "feature",
       targetBranch: "main",
     };
-    const intent = await toolCall("aether.request_merge", reqArgs);
+    const intent = await toolCall("aelyris.request_merge", reqArgs);
     const id = intent.data?.intentId;
     ok(typeof id === "string", "request_merge on an already-merged pair still queues an intent");
-    const approved = await toolCall("aether.review.approve", { intentId: id });
+    const approved = await toolCall("aelyris.review.approve", { intentId: id });
     ok(
       approved.ok && approved.data?.status === "merged",
       "approving an intent whose target already contains the reviewed commit is idempotent (status: merged)",
     );
     // A second approve on the now-merged intent is rejected (no double-merge).
-    const reapprove = await toolCall("aether.review.approve", { intentId: id });
+    const reapprove = await toolCall("aelyris.review.approve", { intentId: id });
     ok(
       reapprove.ok === false,
       "a merged intent cannot be re-approved (the claim is single-winner)",

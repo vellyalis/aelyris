@@ -15,9 +15,9 @@ const CDP = "http://127.0.0.1:9222";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 
-const repo = mkdtempSync(join(tmpdir(), "aether-tui-"));
+const repo = mkdtempSync(join(tmpdir(), "aelyris-tui-"));
 git(repo, "init", "-b", "main");
-git(repo, "config", "user.email", "tui@aether.test");
+git(repo, "config", "user.email", "tui@aelyris.test");
 git(repo, "config", "user.name", "Tui");
 writeFileSync(join(repo, "README.md"), "# tui demo\n");
 git(repo, "add", ".");

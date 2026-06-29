@@ -1,9 +1,9 @@
 ---
-name: aether-release-review
-description: Audit Aether Terminal public docs, README text, GitHub positioning, and release-facing claims for public hygiene. Use before publishing to GitHub, editing README/docs, changing package metadata, or making claims about tmux, BridgeSpace, Ghostty, WezTerm, world-class status, release readiness, or production readiness.
+name: aelyris-release-review
+description: Audit Aelyris public docs, README text, GitHub positioning, and release-facing claims for public hygiene. Use before publishing to GitHub, editing README/docs, changing package metadata, or making claims about tmux, BridgeSpace, Ghostty, WezTerm, world-class status, release readiness, or production readiness.
 ---
 
-# Aether Release Review
+# Aelyris Release Review
 
 Use this skill to keep public text aligned with current machine truth.
 
@@ -11,7 +11,7 @@ Use this skill to keep public text aligned with current machine truth.
 
 Allowed narrow claim:
 
-> Aether has a Rust/Tauri terminal, mux, sidecar, visible-agent, MCP, worktree,
+> Aelyris has a Rust/Tauri terminal, mux, sidecar, visible-agent, MCP, worktree,
 > ownership, review, and merge substrate.
 
 Forbidden until gates are green:

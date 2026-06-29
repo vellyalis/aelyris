@@ -279,13 +279,13 @@ impl KeymapEngine {
 
     pub fn tmux_like_default() -> Result<Self, KeymapError> {
         let mut engine = Self::default();
-        bind_aether_prefix_defaults(&mut engine)?;
+        bind_aelyris_prefix_defaults(&mut engine)?;
         Ok(engine)
     }
 
-    pub fn aether_default() -> Result<Self, KeymapError> {
+    pub fn aelyris_default() -> Result<Self, KeymapError> {
         let mut engine = Self::default();
-        bind_aether_prefix_defaults(&mut engine)?;
+        bind_aelyris_prefix_defaults(&mut engine)?;
         Ok(engine)
     }
 
@@ -502,7 +502,7 @@ impl KeymapEngine {
     }
 }
 
-fn bind_aether_prefix_defaults(engine: &mut KeymapEngine) -> Result<(), KeymapError> {
+fn bind_aelyris_prefix_defaults(engine: &mut KeymapEngine) -> Result<(), KeymapError> {
     engine.bind_default_command(Key::char('c'), "new-window", "Create a new mux window")?;
     engine.bind_default_command(
         Key::char('%'),
@@ -604,7 +604,7 @@ mod tests {
     }
 
     #[test]
-    fn aether_default_maps_terminal_prefix_commands() {
+    fn aelyris_default_maps_terminal_prefix_commands() {
         let expected = [
             ('%', "split-right"),
             ('"', "split-down"),
@@ -621,7 +621,7 @@ mod tests {
         ];
 
         for (key, command_name) in expected {
-            let mut engine = KeymapEngine::aether_default().unwrap();
+            let mut engine = KeymapEngine::aelyris_default().unwrap();
             assert_eq!(
                 engine.process_key_at(Key::ctrl('b'), Instant::now()),
                 KeymapEvent::PrefixStarted
@@ -634,7 +634,7 @@ mod tests {
             }
         }
 
-        let mut engine = KeymapEngine::aether_default().unwrap();
+        let mut engine = KeymapEngine::aelyris_default().unwrap();
         assert_eq!(
             engine.process_key_at(Key::ctrl('b'), Instant::now()),
             KeymapEvent::PrefixStarted

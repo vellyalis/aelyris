@@ -408,14 +408,14 @@ impl Default for AppConfig {
 }
 
 fn config_path() -> std::path::PathBuf {
-    if let Ok(path) = std::env::var("QUORUM_CONFIG_HOME") {
+    if let Ok(path) = std::env::var("AELYRIS_CONFIG_HOME") {
         return std::path::PathBuf::from(path).join("config.toml");
     }
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(home)
-        .join(".aether")
+        .join(".aelyris")
         .join("config.toml")
 }
 
@@ -444,7 +444,7 @@ fn default_theme() -> String {
     "catppuccin-mocha".to_string()
 }
 fn default_mood_preset() -> String {
-    "aether-sky".to_string()
+    "aelyris-sky".to_string()
 }
 fn default_ui_font() -> String {
     "Geist, Inter, Source Han Sans JP, sans-serif".to_string()
@@ -537,7 +537,7 @@ mod tests {
         // Simulate an older config.toml that predates Phase 3C-1d.
         let legacy = r#"
 [appearance]
-theme = "aether-dark"
+theme = "aelyris-dark"
 ui_font_family = "Inter"
 terminal_font_family = "Cascadia Code"
 font_size = 14
@@ -555,7 +555,7 @@ cursor_blink = true
 "#;
         let cfg: AppConfig = toml::from_str(legacy).expect("parse legacy config");
         assert!(!cfg.ghost_diff.live_mode);
-        assert_eq!(cfg.appearance.mood_preset, "aether-sky");
+        assert_eq!(cfg.appearance.mood_preset, "aelyris-sky");
         assert_eq!(cfg.appearance.terminal_surface_opacity, 0.82);
     }
 
@@ -563,11 +563,11 @@ cursor_blink = true
     fn appearance_mood_preset_round_trips() {
         let mut cfg = AppConfig::default();
         cfg.appearance.theme = "sakura-hub".to_string();
-        cfg.appearance.mood_preset = "aether-sakura".to_string();
+        cfg.appearance.mood_preset = "aelyris-sakura".to_string();
         let serialized = toml::to_string(&cfg).expect("serialize");
         let back: AppConfig = toml::from_str(&serialized).expect("deserialize");
         assert_eq!(back.appearance.theme, "sakura-hub");
-        assert_eq!(back.appearance.mood_preset, "aether-sakura");
+        assert_eq!(back.appearance.mood_preset, "aelyris-sakura");
     }
 
     #[test]
@@ -583,7 +583,7 @@ cursor_blink = true
             ]),
         );
         cfg.appearance.mood_material_overrides.insert(
-            "aether-sakura".to_string(),
+            "aelyris-sakura".to_string(),
             MoodMaterialOverrideConfig {
                 backdrop_color: Some("#fff7fb".to_string()),
                 backdrop_alpha: Some(0.08),
@@ -596,7 +596,7 @@ cursor_blink = true
             },
         );
         cfg.appearance.wallpaper_settings_by_mood.insert(
-            "aether-sakura".to_string(),
+            "aelyris-sakura".to_string(),
             WallpaperConfig {
                 image_path: Some("C:\\Images\\sakura.jpg".to_string()),
                 opacity: Some(0.24),
@@ -611,12 +611,12 @@ cursor_blink = true
         let material = back
             .appearance
             .mood_material_overrides
-            .get("aether-sakura")
+            .get("aelyris-sakura")
             .expect("material overrides");
         let wallpaper = back
             .appearance
             .wallpaper_settings_by_mood
-            .get("aether-sakura")
+            .get("aelyris-sakura")
             .expect("wallpaper settings");
         let palette = back
             .appearance
@@ -668,10 +668,10 @@ cursor_blink = true
     fn workspace_profile_override_and_thread_state_round_trip() {
         let mut cfg = AppConfig::default();
         cfg.workspace_profile.workspace_overrides.insert(
-            "c:/repo/aether".to_string(),
+            "c:/repo/aelyris".to_string(),
             WorkspaceProfileOverrideConfig {
                 preferred_model: Some("gpt-5.2".to_string()),
-                safe_paths: Some(vec!["C:/repo/aether/scripts".to_string()]),
+                safe_paths: Some(vec!["C:/repo/aelyris/scripts".to_string()]),
                 dashboard_port_policy: Some(DashboardPortPolicyConfig {
                     mode: "explicit".to_string(),
                     base_port: 47820,
@@ -682,7 +682,7 @@ cursor_blink = true
             },
         );
         cfg.workspace_profile.thread_run_state.insert(
-            "c:/repo/aether".to_string(),
+            "c:/repo/aelyris".to_string(),
             std::collections::BTreeMap::from([(
                 "thread-a".to_string(),
                 ThreadRunStateConfig {
@@ -701,7 +701,7 @@ cursor_blink = true
         let override_cfg = back
             .workspace_profile
             .workspace_overrides
-            .get("c:/repo/aether")
+            .get("c:/repo/aelyris")
             .expect("workspace override");
         assert_eq!(override_cfg.preferred_model.as_deref(), Some("gpt-5.2"));
         assert_eq!(
@@ -712,7 +712,7 @@ cursor_blink = true
             Some(49231),
         );
         assert_eq!(
-            back.workspace_profile.thread_run_state["c:/repo/aether"]["thread-a"]
+            back.workspace_profile.thread_run_state["c:/repo/aelyris"]["thread-a"]
                 .active_roadmap_id
                 .as_deref(),
             Some("P2-03"),

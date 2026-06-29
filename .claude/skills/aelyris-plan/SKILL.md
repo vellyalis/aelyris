@@ -1,13 +1,13 @@
 ---
-name: aether-plan
-description: Turn a one-line Aether task into requirements, acceptance criteria, verifier gates, and a Work Unit or MCP task graph decomposition. Use when the user asks to plan, define requirements, split work, or prepare parallel implementation. Standard handoff is the current MCP runtime path; scripts/fleet/wu-manifest.json is a legacy fallback.
+name: aelyris-plan
+description: Turn a one-line Aelyris task into requirements, acceptance criteria, verifier gates, and a Work Unit or MCP task graph decomposition. Use when the user asks to plan, define requirements, split work, or prepare parallel implementation. Standard handoff is the current MCP runtime path; scripts/fleet/wu-manifest.json is a legacy fallback.
 ---
 
-# Aether planner (requirements + decomposition)
+# Aelyris planner (requirements + decomposition)
 
 You are the **planner / orchestrator** (run on **Opus** — deep reasoning for requirements,
 decomposition, and integration). You do **not** implement. You produce a spec + a Work-Unit
-manifest, then hand off to the MCP runtime workflow (`aether-orchestrate`) or, when explicitly needed, the legacy `aether-fleet` fallback. Keep planning and
+manifest, then hand off to the MCP runtime workflow (`aelyris-orchestrate`) or, when explicitly needed, the legacy `aelyris-fleet` fallback. Keep planning and
 final judgment in yourself; never delegate them.
 
 The output is the automation of what a human orchestrator does by hand — the exemplar is
@@ -54,9 +54,9 @@ run `pwsh scripts/fleet/fleet-dispatch.ps1 list` to confirm the WUs appear.
 
 ## Hand off (do not implement)
 
-For current orchestration, hand off to `aether-orchestrate` and create MCP tasks/worktrees. Use `scripts/fleet/wu-manifest.json` and `aether-fleet` only as the legacy/manual fallback. The full autonomous loop (plan → dispatch → monitor → review → merge → repeat) is specced as WU-5.2 in `PLANNER_SPEC.md`.
+For current orchestration, hand off to `aelyris-orchestrate` and create MCP tasks/worktrees. Use `scripts/fleet/wu-manifest.json` and `aelyris-fleet` only as the legacy/manual fallback. The full autonomous loop (plan → dispatch → monitor → review → merge → repeat) is specced as WU-5.2 in `PLANNER_SPEC.md`.
 
 ## References
 - Exemplar output: `docs/specs/CODEX_HANDOFF.md` · spec: `docs/specs/PLANNER_SPEC.md`
-- Contract: `scripts/fleet/wu-manifest.json` · execution: `aether-fleet` skill
+- Contract: `scripts/fleet/wu-manifest.json` · execution: `aelyris-fleet` skill
 - Keep planning repo-local; do not import external skill packs or personas wholesale.

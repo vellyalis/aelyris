@@ -1,5 +1,5 @@
 // CONDUCTOR demo: an external Claude (this script standing in for the orchestrator
-// LLM) drives the Aether runtime end-to-end over the IPC face — decomposes a
+// LLM) drives the Aelyris runtime end-to-end over the IPC face — decomposes a
 // one-line goal into worktree-backed tasks, dispatches a worker fleet (real
 // claude CLIs, visible in split panes, auto-accepting edits), then reviews and
 // merges their work to main. Proves: human -> conductor -> Agent Runtime -> AI fleet.
@@ -14,9 +14,9 @@ const CDP = "http://127.0.0.1:9222";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 
-const repo = mkdtempSync(join(tmpdir(), "aether-build-"));
+const repo = mkdtempSync(join(tmpdir(), "aelyris-build-"));
 git(repo, "init", "-b", "main");
-git(repo, "config", "user.email", "conductor@aether.test");
+git(repo, "config", "user.email", "conductor@aelyris.test");
 git(repo, "config", "user.name", "Conductor");
 // A tiny Rust crate so the REAL reviewer's gates (cargo test/clippy/check) can
 // actually run and pass — a markdown file has no quality gate to prove, and the

@@ -6,12 +6,12 @@
    * Keep text fully painted and make only the material layers translucent.
    * The window should read like a dark glass instrument sitting on native
    * Mica/Acrylic, not like a dimmed bitmap where text lost opacity too. */
-  --aether-ink: #090b13;
-  --aether-obsidian: #111017;
-  --aether-graphite: #1b1920;
-  --aether-smoke-mauve: #28232a;
-  --aether-moon: #c7d2ee;
-  --aether-champagne: #d8b766;
+  --aelyris-ink: #090b13;
+  --aelyris-obsidian: #111017;
+  --aelyris-graphite: #1b1920;
+  --aelyris-smoke-mauve: #28232a;
+  --aelyris-moon: #c7d2ee;
+  --aelyris-champagne: #d8b766;
 
   /* Level 0: Terminal center, clear dark water passthrough */
   --glass-clear: rgba(5, 9, 15, 0.026);
@@ -30,13 +30,13 @@
   --glass-solid: rgba(26, 26, 26, 0.72);
 
   /* Legacy aliases (used by existing components) */
-  --aether-bg: var(--glass-clear);
-  --aether-bg-sidebar: var(--glass-standard);
-  --aether-bg-elevated: var(--glass-dense);
-  --aether-bg-card: var(--glass-thick);
-  --aether-bg-surface: var(--glass-dense);
-  --aether-border: rgba(121, 202, 226, 0.1);
-  --aether-border-strong: rgba(146, 221, 239, 0.16);
+  --aelyris-bg: var(--glass-clear);
+  --aelyris-bg-sidebar: var(--glass-standard);
+  --aelyris-bg-elevated: var(--glass-dense);
+  --aelyris-bg-card: var(--glass-thick);
+  --aelyris-bg-surface: var(--glass-dense);
+  --aelyris-border: rgba(121, 202, 226, 0.1);
+  --aelyris-border-strong: rgba(146, 221, 239, 0.16);
 
   /* Wallpaper + window defaults. These MUST live only on :root (i.e. <html>)
    * — the same element useTheme.ts writes its inline override to. Declaring
@@ -45,13 +45,13 @@
    * and forcing the wallpaper back to `none`/`0` (the cause of the wallpaper
    * not rendering). Keep them here so the inline override on <html> wins and
    * descendants simply inherit the resolved value. */
-  --aether-wallpaper-image: none;
-  --aether-wallpaper-opacity: 0;
-  --aether-wallpaper-position-x: 50%;
-  --aether-wallpaper-position-y: 50%;
-  --aether-wallpaper-size: cover;
-  --aether-window-opacity: 0.95;
-  --aether-window-veil-opacity: 0.006;
+  --aelyris-wallpaper-image: none;
+  --aelyris-wallpaper-opacity: 0;
+  --aelyris-wallpaper-position-x: 50%;
+  --aelyris-wallpaper-position-y: 50%;
+  --aelyris-wallpaper-size: cover;
+  --aelyris-window-opacity: 0.95;
+  --aelyris-window-veil-opacity: 0.006;
 
   --terminal-canvas-bg: rgba(3, 10, 22, 0.5);
   /* Terminal backing slab. Lowered 0.7 -> 0.5 so the center pane is not a heavy
@@ -105,7 +105,7 @@
    * single bright petal dominates behind the text. Dark moods use a dark wash;
    * sakura (light) uses a WHITE wash so the light theme is lifted, never
    * darkened. Per-mood values live in moods/surfaces.ts; these :root defaults
-   * back aether-dark / browser preview. */
+   * back aelyris-dark / browser preview. */
   --chrome-legibility-scrim:
     linear-gradient(180deg, rgba(3, 9, 16, 0.46), rgba(3, 9, 16, 0.4) 60%, rgba(3, 9, 16, 0.5));
   --statusbar-legibility-scrim: linear-gradient(180deg, rgba(3, 9, 16, 0.5), rgba(3, 9, 16, 0.56));
@@ -143,7 +143,7 @@
   --toolkit-tile-hover-bg:
     linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--gold)) 10%, transparent), transparent 58%),
     rgba(0, 10, 22, 0.52);
-  --toolkit-tile-text: color-mix(in srgb, var(--text-secondary) 84%, var(--aether-ink));
+  --toolkit-tile-text: color-mix(in srgb, var(--text-secondary) 84%, var(--aelyris-ink));
   --toolkit-icon-bg:
     linear-gradient(180deg, rgba(142, 226, 241, 0.028), rgba(0, 0, 0, 0.08)),
     color-mix(in srgb, var(--tone, var(--accent)) 6%, rgba(0, 7, 16, 0.42));
@@ -209,7 +209,7 @@
   --mood-left-panel-bg:
     linear-gradient(180deg, rgba(104, 214, 238, 0.018), transparent 26%),
     linear-gradient(145deg, rgba(0, 126, 190, 0.042), transparent 48%), rgba(4, 13, 23, 0.4);
-  --mood-center-panel-bg: linear-gradient(180deg, rgba(4, 13, 23, 0.14), rgba(1, 6, 12, 0.12)), var(--aether-bg);
+  --mood-center-panel-bg: linear-gradient(180deg, rgba(4, 13, 23, 0.14), rgba(1, 6, 12, 0.12)), var(--aelyris-bg);
   --mood-right-panel-bg:
     linear-gradient(180deg, rgba(104, 214, 238, 0.02), transparent 28%),
     linear-gradient(145deg, rgba(0, 126, 190, 0.05), transparent 48%), rgba(4, 13, 23, 0.46);
@@ -226,7 +226,7 @@
   --mood-selection-bg: rgba(200, 160, 80, 0.25);
 
   /* Gold accent — 18K gold warmth */
-  --gold: var(--aether-champagne);
+  --gold: var(--aelyris-champagne);
   --gold-dim: rgba(216, 183, 102, 0.42);
   --gold-subtle: rgba(216, 183, 102, 0.18);
   --gold-surface: linear-gradient(180deg, #f4df9a 0%, #dfc27c 24%, #d8b766 52%, #b78c3f 82%, #8f682f 100%);
@@ -267,19 +267,19 @@
   --ctp-peach: #fab387;
   --ctp-mauve: #cba6f7;
   --ctp-sky: #89dceb;
-  --ctp-base: var(--aether-ink);
+  --ctp-base: var(--aelyris-ink);
 
   /* Text hierarchy */
   --text-primary: #faf6eb;
   --text-secondary: #d7d2c6;
   --text-muted: #bdb6ab;
-  --text-on-accent: var(--aether-ink);
+  --text-on-accent: var(--aelyris-ink);
 
   /* Semantic tokens */
-  --bg-primary: var(--aether-bg);
-  --bg-secondary: var(--aether-bg-elevated);
-  --bg-surface: var(--aether-bg-surface);
-  --border: var(--aether-border);
+  --bg-primary: var(--aelyris-bg);
+  --bg-secondary: var(--aelyris-bg-elevated);
+  --bg-surface: var(--aelyris-bg-surface);
+  --border: var(--aelyris-border);
   --accent: #4fc1ff;
 
   /* State tokens — use these for interactive element states */
@@ -557,7 +557,7 @@
      Larger cells are integer multiples (160 / 240 / 320 …). */
   --bento-cell: 80px;
 
-  /* Bento wide cell aspect ratio. 3:2 fits Aether's information
+  /* Bento wide cell aspect ratio. 3:2 fits Aelyris's information
      density better than 16:9 (video) or 4:3 (photo). The square
      (1:1) variant uses CSS native `aspect-ratio: 1` directly. */
   --aspect-wide: 3 / 2;
@@ -717,23 +717,23 @@ body,
  * localhost screenshots do not have an OS backdrop behind transparent
  * pixels; without this guard they render as a white page and falsely look
  * "not designed". Keep the app stage itself transparent either way. */
-html[data-aether-host="browser"],
-html[data-aether-host="browser"] body {
+html[data-aelyris-host="browser"],
+html[data-aelyris-host="browser"] body {
   background:
     linear-gradient(115deg, rgba(42, 24, 86, 0.2), transparent 32%),
     linear-gradient(245deg, rgba(10, 49, 70, 0.16), transparent 42%),
     linear-gradient(180deg, #0a0814 0%, #070b12 58%, #061018 100%);
 }
 
-html[data-aether-host="browser"][data-mood="aether-sakura"],
-html[data-aether-host="browser"][data-mood="aether-sakura"] body {
+html[data-aelyris-host="browser"][data-mood="aelyris-sakura"],
+html[data-aelyris-host="browser"][data-mood="aelyris-sakura"] body {
   background:
     radial-gradient(ellipse at 28% -10%, rgba(255, 218, 228, 0.72), transparent 44%),
     radial-gradient(ellipse at 86% 12%, rgba(252, 201, 185, 0.34), transparent 38%),
     linear-gradient(180deg, #fff8fb 0%, #ffeef5 56%, #f7dfe8 100%);
 }
 
-html[data-aether-host="browser"][data-mood="aether-sakura"] #root {
+html[data-aelyris-host="browser"][data-mood="aelyris-sakura"] #root {
   background:
     linear-gradient(125deg, rgba(252, 201, 185, 0.08), transparent 42%),
     linear-gradient(300deg, rgba(207, 95, 125, 0.035), transparent 44%),
@@ -741,9 +741,9 @@ html[data-aether-host="browser"][data-mood="aether-sakura"] #root {
 }
 
 /* Native Tauri runs on real Acrylic/Mica. Keep the root plane transparent so
- * Windows can show the windows behind Aether; only the pseudo-element below
+ * Windows can show the windows behind Aelyris; only the pseudo-element below
  * adds a very thin lens tint. */
-html[data-aether-host="tauri"] #root {
+html[data-aelyris-host="tauri"] #root {
   --native-backdrop-veil:
     radial-gradient(ellipse at 38% -8%, rgba(75, 181, 220, 0.035), transparent 46%),
     radial-gradient(ellipse at 86% 12%, rgba(154, 224, 238, 0.018), transparent 36%),
@@ -751,7 +751,7 @@ html[data-aether-host="tauri"] #root {
   background: transparent;
 }
 
-html[data-aether-host="tauri"][data-mood="aether-sakura"] #root {
+html[data-aelyris-host="tauri"][data-mood="aelyris-sakura"] #root {
   --native-backdrop-veil:
     radial-gradient(ellipse at 30% -8%, rgba(255, 218, 228, 0.12), transparent 46%),
     radial-gradient(ellipse at 86% 12%, rgba(252, 201, 185, 0.06), transparent 36%),
@@ -796,7 +796,7 @@ body[data-window-focused="false"] {
   --glass-ground: rgba(2, 7, 13, 0.22);
 }
 
-html[data-mood="aether-sakura"] body[data-window-focused="false"] {
+html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   --glass-frame: rgba(255, 241, 248, 0.38);
   --glass-standard: rgba(255, 240, 248, 0.46);
   --glass-dense: rgba(255, 237, 246, 0.54);
@@ -810,7 +810,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   position: fixed;
   inset: 0;
   background: var(--native-backdrop-veil), var(--mood-root-glow);
-  opacity: calc(var(--mood-root-glow-opacity) * var(--aether-window-opacity));
+  opacity: calc(var(--mood-root-glow-opacity) * var(--aelyris-window-opacity));
   pointer-events: none;
   z-index: 0;
 }
@@ -875,12 +875,12 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
    * letterboxed / has alpha). useTheme sets the backstop to an opaque mood colour when
    * an image is present and to `transparent` when none, so a wallpaper-less window stays
    * see-through to the desktop. */
-  background-color: var(--aether-wallpaper-backstop, transparent);
-  background-image: var(--aether-wallpaper-image);
-  background-position: var(--aether-wallpaper-position-x) var(--aether-wallpaper-position-y);
-  background-size: var(--aether-wallpaper-size);
+  background-color: var(--aelyris-wallpaper-backstop, transparent);
+  background-image: var(--aelyris-wallpaper-image);
+  background-position: var(--aelyris-wallpaper-position-x) var(--aelyris-wallpaper-position-y);
+  background-size: var(--aelyris-wallpaper-size);
   background-repeat: no-repeat;
-  opacity: var(--aether-wallpaper-opacity);
+  opacity: var(--aelyris-wallpaper-opacity);
   transform: translateZ(0);
 }
 
@@ -890,7 +890,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: rgba(0, 0, 0, var(--aether-window-veil-opacity));
+  background: rgba(0, 0, 0, var(--aelyris-window-veil-opacity));
 }
 
 .app-container[data-density="focus"] {
@@ -1096,30 +1096,30 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   line-height: 1;
 }
 
-:root[data-mood="aether-sakura"] .mode-rail {
+:root[data-mood="aelyris-sakura"] .mode-rail {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent 60%), rgba(255, 246, 250, 0.88);
   box-shadow:
     var(--rim-top),
     inset 0 0 0 1px rgba(130, 49, 73, 0.1);
 }
 
-:root[data-mood="aether-sakura"] .mode-rail-brand,
-:root[data-mood="aether-sakura"] .mode-rail-button[data-active="true"] {
+:root[data-mood="aelyris-sakura"] .mode-rail-brand,
+:root[data-mood="aelyris-sakura"] .mode-rail-button[data-active="true"] {
   background: color-mix(in srgb, var(--accent) 12%, rgba(255, 248, 251, 0.9));
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
   color: #24121b;
 }
 
-:root[data-mood="aether-sakura"] .mode-rail-button {
+:root[data-mood="aelyris-sakura"] .mode-rail-button {
   color: rgba(74, 34, 49, 0.76);
 }
 
-:root[data-mood="aether-sakura"] .mode-rail-button:hover {
+:root[data-mood="aelyris-sakura"] .mode-rail-button:hover {
   background: color-mix(in srgb, var(--accent) 10%, rgba(255, 250, 252, 0.88));
   color: #24121b;
 }
 
-:root[data-mood="aether-sakura"] .mode-rail-shortcut {
+:root[data-mood="aelyris-sakura"] .mode-rail-shortcut {
   background: rgba(130, 49, 73, 0.1);
   color: rgba(74, 34, 49, 0.78);
 }
@@ -3832,7 +3832,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 .right-panel-workforce-detail,
 .right-panel-workforce-guardrail,
 .right-panel-workforce-tools {
-  color: color-mix(in srgb, var(--text-secondary) 86%, var(--aether-ink));
+  color: color-mix(in srgb, var(--text-secondary) 86%, var(--aelyris-ink));
   font-size: var(--type-metadata-label);
 }
 
@@ -3927,7 +3927,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 
 .right-panel-workforce-agent-next {
   grid-column: 1 / 3;
-  color: color-mix(in srgb, var(--text-secondary) 86%, var(--aether-ink));
+  color: color-mix(in srgb, var(--text-secondary) 86%, var(--aelyris-ink));
   font-size: var(--type-metadata-label);
 }
 
@@ -4020,12 +4020,12 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 }
 
 .right-panel-action-why {
-  color: color-mix(in srgb, var(--text-muted) 82%, var(--aether-ink));
+  color: color-mix(in srgb, var(--text-muted) 82%, var(--aelyris-ink));
   font-size: var(--type-metadata-label);
 }
 
 .right-panel-action-outcome {
-  color: color-mix(in srgb, var(--text-secondary) 88%, var(--aether-ink));
+  color: color-mix(in srgb, var(--text-secondary) 88%, var(--aelyris-ink));
   font-size: var(--type-metadata-label);
 }
 
@@ -4152,7 +4152,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 
 .right-panel-action-result-detail {
   grid-column: 1 / 3;
-  color: color-mix(in srgb, var(--text-secondary) 88%, var(--aether-ink));
+  color: color-mix(in srgb, var(--text-secondary) 88%, var(--aelyris-ink));
   font-size: var(--type-metadata-label);
 }
 
@@ -4263,7 +4263,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
 }
 
 .right-panel-action-history-detail {
-  color: color-mix(in srgb, var(--text-secondary) 90%, var(--aether-ink));
+  color: color-mix(in srgb, var(--text-secondary) 90%, var(--aelyris-ink));
   font-size: var(--type-metadata-label);
 }
 
@@ -4287,7 +4287,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   outline: none;
 }
 
-:root[data-mood="aether-sakura"] {
+:root[data-mood="aelyris-sakura"] {
   --rail-accent-wash: color-mix(in srgb, var(--accent) 12%, rgba(255, 248, 252, 0.42));
   --rail-control-bg: rgba(255, 247, 251, 0.88);
   --rail-control-hover-bg: color-mix(in srgb, var(--accent) 10%, rgba(255, 244, 249, 0.72));
@@ -4300,7 +4300,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   --rail-focus-ring: color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
-:root[data-mood="aether-sakura"] .right-panel::before {
+:root[data-mood="aelyris-sakura"] .right-panel::before {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 20%),
     linear-gradient(135deg, rgba(189, 63, 104, 0.07), transparent 48%);
@@ -4310,7 +4310,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   opacity: 0.36;
 }
 
-:root[data-mood="aether-sakura"] .right-panel-mode-switch {
+:root[data-mood="aelyris-sakura"] .right-panel-mode-switch {
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 72%),
@@ -4376,18 +4376,18 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   white-space: nowrap;
 }
 
-:root[data-mood="aether-sakura"] .right-panel-mode-tab {
+:root[data-mood="aelyris-sakura"] .right-panel-mode-tab {
   color: var(--text-primary);
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
   background: rgba(255, 249, 252, 0.72);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-mode-tab:hover {
+:root[data-mood="aelyris-sakura"] .right-panel-mode-tab:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--accent) 11%, rgba(255, 244, 249, 0.44));
 }
 
-:root[data-mood="aether-sakura"] .right-panel-mode-tab[data-active="true"] {
+:root[data-mood="aelyris-sakura"] .right-panel-mode-tab[data-active="true"] {
   color: var(--text-primary);
   border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   background:
@@ -4398,13 +4398,13 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-mode-badge {
+:root[data-mood="aelyris-sakura"] .right-panel-mode-badge {
   background: color-mix(in srgb, var(--accent) 18%, rgba(255, 238, 246, 0.72));
   color: var(--text-primary);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-inspector-hero {
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-hero {
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(255, 250, 253, 0.82)), transparent 62%),
@@ -4415,35 +4415,35 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     inset 0 0 0 1px rgba(130, 49, 73, 0.08);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-inspector-grid div,
-:root[data-mood="aether-sakura"] .right-panel-inspector-hero-head span:last-child {
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-grid div,
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-hero-head span:last-child {
   background: rgba(255, 250, 253, 0.74);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-inspector-grid dt {
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-grid dt {
   color: color-mix(in srgb, var(--text-primary) 58%, var(--text-muted));
 }
 
-:root[data-mood="aether-sakura"] .right-panel-inspector-grid dd,
-:root[data-mood="aether-sakura"] .right-panel-inspector-description {
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-grid dd,
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-description {
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-inspector-open {
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-open {
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   background: rgba(255, 248, 252, 0.76);
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-inspector-open:hover,
-:root[data-mood="aether-sakura"] .right-panel-inspector-open:focus-visible {
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-open:hover,
+:root[data-mood="aelyris-sakura"] .right-panel-inspector-open:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 34%, transparent);
   background: rgba(255, 240, 247, 0.84);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop,
-:root[data-mood="aether-sakura"] .right-panel-orchestra-command {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop,
+:root[data-mood="aelyris-sakura"] .right-panel-orchestra-command {
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, rgba(255, 248, 252, 0.76)), transparent 66%),
@@ -4454,30 +4454,30 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     inset 0 0 0 1px rgba(130, 49, 73, 0.08);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-strip li {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-strip li {
   background: color-mix(in srgb, var(--accent) 9%, rgba(255, 238, 246, 0.64));
   color: color-mix(in srgb, var(--text-primary) 72%, var(--text-muted));
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-strip li[data-active="true"] {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-strip li[data-active="true"] {
   background: color-mix(in srgb, var(--accent) 20%, rgba(255, 238, 246, 0.78));
   color: var(--text-primary);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-orchestra-lanes li,
-:root[data-mood="aether-sakura"] .right-panel-orchestra-secondary {
+:root[data-mood="aelyris-sakura"] .right-panel-orchestra-lanes li,
+:root[data-mood="aelyris-sakura"] .right-panel-orchestra-secondary {
   border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   background: rgba(255, 250, 253, 0.68);
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-orchestra-lanes span {
+:root[data-mood="aelyris-sakura"] .right-panel-orchestra-lanes span {
   background: color-mix(in srgb, var(--accent) 15%, rgba(255, 238, 246, 0.7));
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-orchestra-primary {
+:root[data-mood="aelyris-sakura"] .right-panel-orchestra-primary {
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, rgba(255, 248, 252, 0.78)), transparent 68%),
@@ -4485,32 +4485,32 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-trace div {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-trace div {
   background: rgba(255, 250, 253, 0.72);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-trace dt {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-trace dt {
   color: color-mix(in srgb, var(--text-primary) 58%, var(--text-muted));
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-trace dd {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-trace dd {
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-action {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-action {
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   background: rgba(255, 248, 252, 0.74);
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-run-loop-action:hover,
-:root[data-mood="aether-sakura"] .right-panel-run-loop-action:focus-visible {
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-action:hover,
+:root[data-mood="aelyris-sakura"] .right-panel-run-loop-action:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 34%, transparent);
   background: rgba(255, 240, 247, 0.84);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-advisor {
+:root[data-mood="aelyris-sakura"] .right-panel-advisor {
   border-color: color-mix(in srgb, var(--accent) 28%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, rgba(255, 248, 252, 0.76)), transparent 64%),
@@ -4521,21 +4521,21 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     inset 0 0 0 1px rgba(130, 49, 73, 0.08);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-advisor[data-tone="warn"] {
+:root[data-mood="aelyris-sakura"] .right-panel-advisor[data-tone="warn"] {
   border-color: color-mix(in srgb, var(--ctp-yellow) 28%, var(--accent));
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--ctp-yellow) 10%, rgba(255, 248, 252, 0.78)), transparent 64%),
     rgba(255, 246, 250, 0.88);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-advisor[data-tone="review"] {
+:root[data-mood="aelyris-sakura"] .right-panel-advisor[data-tone="review"] {
   border-color: color-mix(in srgb, var(--ctp-blue) 18%, var(--accent));
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--ctp-blue) 8%, rgba(255, 248, 252, 0.78)), transparent 64%),
     rgba(255, 246, 250, 0.86);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-advisor:hover {
+:root[data-mood="aelyris-sakura"] .right-panel-advisor:hover {
   color: var(--text-primary);
   border-color: color-mix(in srgb, var(--accent) 38%, transparent);
   background:
@@ -4543,32 +4543,32 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     rgba(255, 240, 247, 0.64);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-advisor-icon,
-:root[data-mood="aether-sakura"] .right-panel-advisor-target {
+:root[data-mood="aelyris-sakura"] .right-panel-advisor-icon,
+:root[data-mood="aelyris-sakura"] .right-panel-advisor-target {
   background: color-mix(in srgb, var(--accent) 14%, rgba(255, 238, 246, 0.64));
   color: var(--gold);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-advisor-detail,
-:root[data-mood="aether-sakura"] .right-panel-advisor-kicker,
-:root[data-mood="aether-sakura"] .right-panel-advisor-target,
-:root[data-mood="aether-sakura"] .right-panel-mode-tab svg {
+:root[data-mood="aelyris-sakura"] .right-panel-advisor-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-advisor-kicker,
+:root[data-mood="aelyris-sakura"] .right-panel-advisor-target,
+:root[data-mood="aelyris-sakura"] .right-panel-mode-tab svg {
   color: var(--text-secondary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-now,
-:root[data-mood="aether-sakura"] .right-panel-decision-focus,
-:root[data-mood="aether-sakura"] .right-panel-truth-notice,
-:root[data-mood="aether-sakura"] .right-panel-edge-score,
-:root[data-mood="aether-sakura"] .right-panel-goal-track,
-:root[data-mood="aether-sakura"] .right-panel-edge-next-action,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-reset,
-:root[data-mood="aether-sakura"] .right-panel-destination-prompt,
-:root[data-mood="aether-sakura"] .right-panel-workforce,
-:root[data-mood="aether-sakura"] .right-panel-action,
-:root[data-mood="aether-sakura"] .right-panel-action-result,
-:root[data-mood="aether-sakura"] .right-panel-action-history {
+:root[data-mood="aelyris-sakura"] .right-panel-now,
+:root[data-mood="aelyris-sakura"] .right-panel-decision-focus,
+:root[data-mood="aelyris-sakura"] .right-panel-truth-notice,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-score,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-next-action,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-reset,
+:root[data-mood="aelyris-sakura"] .right-panel-destination-prompt,
+:root[data-mood="aelyris-sakura"] .right-panel-workforce,
+:root[data-mood="aelyris-sakura"] .right-panel-action,
+:root[data-mood="aelyris-sakura"] .right-panel-action-result,
+:root[data-mood="aelyris-sakura"] .right-panel-action-history {
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, rgba(255, 248, 252, 0.72)), transparent 68%),
@@ -4579,98 +4579,98 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     inset 0 0 0 1px rgba(130, 49, 73, 0.07);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-now[data-tone="warn"],
-:root[data-mood="aether-sakura"] .right-panel-decision-focus[data-tone="warn"],
-:root[data-mood="aether-sakura"] .right-panel-workforce[data-tone="blocked"],
-:root[data-mood="aether-sakura"] .right-panel-action[data-tone="warn"] {
+:root[data-mood="aelyris-sakura"] .right-panel-now[data-tone="warn"],
+:root[data-mood="aelyris-sakura"] .right-panel-decision-focus[data-tone="warn"],
+:root[data-mood="aelyris-sakura"] .right-panel-workforce[data-tone="blocked"],
+:root[data-mood="aelyris-sakura"] .right-panel-action[data-tone="warn"] {
   border-color: color-mix(in srgb, var(--ctp-yellow) 26%, var(--accent));
 }
 
-:root[data-mood="aether-sakura"] .right-panel-now[data-tone="review"],
-:root[data-mood="aether-sakura"] .right-panel-workforce[data-tone="review"],
-:root[data-mood="aether-sakura"] .right-panel-action[data-tone="review"] {
+:root[data-mood="aelyris-sakura"] .right-panel-now[data-tone="review"],
+:root[data-mood="aelyris-sakura"] .right-panel-workforce[data-tone="review"],
+:root[data-mood="aelyris-sakura"] .right-panel-action[data-tone="review"] {
   border-color: color-mix(in srgb, var(--ctp-blue) 18%, var(--accent));
 }
 
-:root[data-mood="aether-sakura"] .right-panel-now-state,
-:root[data-mood="aether-sakura"] .right-panel-decision-kicker,
-:root[data-mood="aether-sakura"] .right-panel-decision-action,
-:root[data-mood="aether-sakura"] .right-panel-truth-notice-kicker,
-:root[data-mood="aether-sakura"] .right-panel-edge-score-head > span:last-child,
-:root[data-mood="aether-sakura"] .right-panel-edge-score-item,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-head > span:last-child,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-milestone,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-source,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-residual,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-safe,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-consent,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-consent-copy,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-external-copy,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-consent-command dd,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-freshness-radar,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-artifact-refresh-action,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-boundaries li,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-boundary-copy,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-requirements li,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-risks li,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-item,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-summary,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-stale-group,
-:root[data-mood="aether-sakura"] .right-panel-workforce-profile,
-:root[data-mood="aether-sakura"] .right-panel-workforce-metrics span,
-:root[data-mood="aether-sakura"] .right-panel-action-icon,
-:root[data-mood="aether-sakura"] .right-panel-action-phase,
-:root[data-mood="aether-sakura"] .right-panel-action-owner,
-:root[data-mood="aether-sakura"] .right-panel-action-target,
-:root[data-mood="aether-sakura"] .right-panel-action-execution,
-:root[data-mood="aether-sakura"] .right-panel-action-guardrail {
+:root[data-mood="aelyris-sakura"] .right-panel-now-state,
+:root[data-mood="aelyris-sakura"] .right-panel-decision-kicker,
+:root[data-mood="aelyris-sakura"] .right-panel-decision-action,
+:root[data-mood="aelyris-sakura"] .right-panel-truth-notice-kicker,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-score-head > span:last-child,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-score-item,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-head > span:last-child,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-milestone,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-source,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-residual,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-safe,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-consent,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-consent-copy,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-external-copy,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-consent-command dd,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-freshness-radar,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-artifact-refresh-action,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-boundaries li,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-boundary-copy,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-requirements li,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-risks li,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-item,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-summary,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-stale-group,
+:root[data-mood="aelyris-sakura"] .right-panel-workforce-profile,
+:root[data-mood="aelyris-sakura"] .right-panel-workforce-metrics span,
+:root[data-mood="aelyris-sakura"] .right-panel-action-icon,
+:root[data-mood="aelyris-sakura"] .right-panel-action-phase,
+:root[data-mood="aelyris-sakura"] .right-panel-action-owner,
+:root[data-mood="aelyris-sakura"] .right-panel-action-target,
+:root[data-mood="aelyris-sakura"] .right-panel-action-execution,
+:root[data-mood="aelyris-sakura"] .right-panel-action-guardrail {
   background: color-mix(in srgb, var(--accent) 13%, rgba(255, 238, 246, 0.66));
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-now-detail,
-:root[data-mood="aether-sakura"] .right-panel-decision-detail,
-:root[data-mood="aether-sakura"] .right-panel-truth-notice span:not(.right-panel-truth-notice-kicker),
-:root[data-mood="aether-sakura"] .right-panel-edge-score-detail,
-:root[data-mood="aether-sakura"] .right-panel-edge-score-item small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-detail,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-milestone small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-source small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-residual small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-safe small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-consent small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-consent-copy small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-external-copy small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-freshness-radar small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-artifact-refresh small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-boundaries small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-requirements small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-risks small,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-remaining li,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-target,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-score,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-summary small,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-reset span,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-filter,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-stale-count,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-stale-group small,
-:root[data-mood="aether-sakura"] .right-panel-edge-feedback-stale,
-:root[data-mood="aether-sakura"] .right-panel-edge-next-action small,
-:root[data-mood="aether-sakura"] .right-panel-edge-next-action em,
-:root[data-mood="aether-sakura"] .right-panel-destination-prompt span:not(.right-panel-destination-prompt-kicker),
-:root[data-mood="aether-sakura"] .right-panel-action-detail,
-:root[data-mood="aether-sakura"] .right-panel-action-outcome,
-:root[data-mood="aether-sakura"] .right-panel-action-result-detail,
-:root[data-mood="aether-sakura"] .right-panel-action-history-detail,
-:root[data-mood="aether-sakura"] .right-panel-workforce-tools,
-:root[data-mood="aether-sakura"] .right-panel-action-target,
-:root[data-mood="aether-sakura"] .right-panel-action-guardrail {
+:root[data-mood="aelyris-sakura"] .right-panel-now-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-decision-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-truth-notice span:not(.right-panel-truth-notice-kicker),
+:root[data-mood="aelyris-sakura"] .right-panel-edge-score-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-score-item small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-milestone small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-source small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-residual small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-safe small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-consent small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-consent-copy small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-external-copy small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-freshness-radar small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-artifact-refresh small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-boundaries small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-requirements small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-risks small,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-remaining li,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-target,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-score,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-summary small,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-reset span,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-filter,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-stale-count,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-stale-group small,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-feedback-stale,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-next-action small,
+:root[data-mood="aelyris-sakura"] .right-panel-edge-next-action em,
+:root[data-mood="aelyris-sakura"] .right-panel-destination-prompt span:not(.right-panel-destination-prompt-kicker),
+:root[data-mood="aelyris-sakura"] .right-panel-action-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-action-outcome,
+:root[data-mood="aelyris-sakura"] .right-panel-action-result-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-action-history-detail,
+:root[data-mood="aelyris-sakura"] .right-panel-workforce-tools,
+:root[data-mood="aelyris-sakura"] .right-panel-action-target,
+:root[data-mood="aelyris-sakura"] .right-panel-action-guardrail {
   color: var(--text-secondary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-edge-score-action,
-:root[data-mood="aether-sakura"] .right-panel-goal-track-kicker,
-:root[data-mood="aether-sakura"] .right-panel-destination-prompt small {
+:root[data-mood="aelyris-sakura"] .right-panel-edge-score-action,
+:root[data-mood="aelyris-sakura"] .right-panel-goal-track-kicker,
+:root[data-mood="aelyris-sakura"] .right-panel-destination-prompt small {
   color: var(--accent);
 }
 
@@ -4950,7 +4950,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   font-weight: var(--weight-semibold);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-widget-frame {
+:root[data-mood="aelyris-sakura"] .right-panel-widget-frame {
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, rgba(255, 248, 252, 0.72)), transparent 68%),
@@ -4961,17 +4961,17 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
     inset 0 0 0 1px rgba(130, 49, 73, 0.07);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-widget-frame-header {
+:root[data-mood="aelyris-sakura"] .right-panel-widget-frame-header {
   background: rgba(255, 249, 252, 0.72);
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-widget-frame-pin {
+:root[data-mood="aelyris-sakura"] .right-panel-widget-frame-pin {
   background: color-mix(in srgb, var(--accent) 13%, rgba(255, 238, 246, 0.66));
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-widget-focus-confirmation {
+:root[data-mood="aelyris-sakura"] .right-panel-widget-focus-confirmation {
   border-color: color-mix(in srgb, var(--accent) 28%, transparent);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 11%, rgba(255, 248, 252, 0.78)), transparent 68%),
@@ -4979,7 +4979,7 @@ html[data-mood="aether-sakura"] body[data-window-focused="false"] {
   color: var(--text-primary);
 }
 
-:root[data-mood="aether-sakura"] .right-panel-widget-frame-subtitle {
+:root[data-mood="aelyris-sakura"] .right-panel-widget-frame-subtitle {
   color: var(--text-secondary);
 }
 
@@ -5391,19 +5391,19 @@ button:disabled,
 /* ─── Ghost Diff Overlay (Phase 3C-1b) ─── */
 
 /* Phantom view-zone holding added lines from a ghost layer. */
-.aether-ghost-add-zone {
-  --aether-ghost-tint: #cba6f7;
+.aelyris-ghost-add-zone {
+  --aelyris-ghost-tint: #cba6f7;
   display: flex;
   flex-direction: column;
   padding: 1px 0;
-  background: color-mix(in srgb, var(--aether-ghost-tint) 8%, transparent);
-  border-left: 2px solid var(--aether-ghost-tint);
+  background: color-mix(in srgb, var(--aelyris-ghost-tint) 8%, transparent);
+  border-left: 2px solid var(--aelyris-ghost-tint);
   box-sizing: border-box;
   pointer-events: none;
 }
 
-.aether-ghost-add-line {
-  color: color-mix(in srgb, var(--aether-ghost-tint) 62%, var(--text-secondary));
+.aelyris-ghost-add-line {
+  color: color-mix(in srgb, var(--aelyris-ghost-tint) 62%, var(--text-secondary));
   font-family: var(--font-mono);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
@@ -5414,21 +5414,21 @@ button:disabled,
 }
 
 /* Strikethrough overlay for a pure-delete ghost hunk. */
-.aether-ghost-delete-line {
+.aelyris-ghost-delete-line {
   background: rgba(243, 139, 168, 0.08); /* catppuccin red, faint */
   text-decoration: line-through;
   text-decoration-color: rgba(243, 139, 168, 0.55);
   text-decoration-thickness: 1px;
 }
 
-.aether-ghost-delete-gutter {
+.aelyris-ghost-delete-gutter {
   background: rgba(243, 139, 168, 0.45);
   width: 2px !important;
   margin-left: 2px;
 }
 
 /* Gutter marker for mixed-kind hunks that retreat from inline paint. */
-.aether-ghost-modify-gutter {
+.aelyris-ghost-modify-gutter {
   background: rgba(249, 226, 175, 0.6); /* catppuccin yellow */
   width: 2px !important;
   margin-left: 2px;

@@ -324,7 +324,7 @@ describe("IMEInputBar", () => {
   });
 
   it("saves pasted clipboard images and inserts the temp image path", async () => {
-    const saveClipboardImage = vi.fn().mockResolvedValue("C:\\Temp\\aether-chat-images\\clip.png");
+    const saveClipboardImage = vi.fn().mockResolvedValue("C:\\Temp\\aelyris-chat-images\\clip.png");
     const { textarea } = renderBar({ saveClipboardImage });
     const image = new File(["png"], "clip.png", { type: "image/png" });
 
@@ -337,12 +337,12 @@ describe("IMEInputBar", () => {
 
     await waitFor(() => {
       expect(saveClipboardImage).toHaveBeenCalledWith(expect.stringContaining("data:image/png"));
-      expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\clip.png"');
+      expect(textarea.value).toBe('"C:\\Temp\\aelyris-chat-images\\clip.png"');
     });
   });
 
   it("uses native clipboard image IPC for the explicit clipboard button", async () => {
-    const readNativeClipboardImage = vi.fn().mockResolvedValue("C:\\Temp\\aether-chat-images\\native.bmp");
+    const readNativeClipboardImage = vi.fn().mockResolvedValue("C:\\Temp\\aelyris-chat-images\\native.bmp");
     const saveClipboardImage = vi.fn();
     const { textarea, getByLabelText } = renderBar({ readNativeClipboardImage, saveClipboardImage });
 
@@ -350,7 +350,7 @@ describe("IMEInputBar", () => {
 
     await waitFor(() => {
       expect(readNativeClipboardImage).toHaveBeenCalledTimes(1);
-      expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\native.bmp"');
+      expect(textarea.value).toBe('"C:\\Temp\\aelyris-chat-images\\native.bmp"');
     });
     expect(saveClipboardImage).not.toHaveBeenCalled();
   });
@@ -376,8 +376,8 @@ describe("IMEInputBar", () => {
     fireEvent.paste(textarea, paste);
 
     await waitFor(() => expect(saveClipboardImage).toHaveBeenCalledTimes(1));
-    resolveSave("C:\\Temp\\aether-chat-images\\clip.png");
-    await waitFor(() => expect(textarea.value).toBe('"C:\\Temp\\aether-chat-images\\clip.png"'));
+    resolveSave("C:\\Temp\\aelyris-chat-images\\clip.png");
+    await waitFor(() => expect(textarea.value).toBe('"C:\\Temp\\aelyris-chat-images\\clip.png"'));
   });
 
   it("reports clipboard image save failures without leaving stale chips", async () => {

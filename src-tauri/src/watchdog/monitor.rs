@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-/// Represents the state of a Claude Code session as seen by Aether
+/// Represents the state of a Claude Code session as seen by Aelyris
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {
     pub pid: u32,
@@ -24,7 +24,7 @@ pub struct SessionMonitor {
 impl SessionMonitor {
     pub fn new() -> Self {
         let home = dirs_home().unwrap_or_else(|| PathBuf::from("."));
-        let state_dir = home.join(".claude").join("aether").join("sessions");
+        let state_dir = home.join(".claude").join("aelyris").join("sessions");
         let _ = std::fs::create_dir_all(&state_dir);
 
         Self {

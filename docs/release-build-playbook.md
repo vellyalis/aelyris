@@ -1,4 +1,4 @@
-# Quorum Release Build Playbook
+# Aelyris Release Build Playbook
 
 This playbook is the human smoke path paired with `pnpm.cmd verify:release:doctor`.
 It deliberately separates local unsigned artifact checks from signed updater releases.
@@ -11,7 +11,7 @@ Do not rerun P2-08 release validation unless source or distribution artifacts ha
 Use this path before handing a build to a tester on the same Windows machine.
 
 `pnpm.cmd build` is intentionally Windows spawn-safe: the script sets
-`AETHER_VITE_NO_ESBUILD_SPAWN=1`, loads `scripts/vite-windows-net-use-shim.cjs`,
+`AELYRIS_VITE_NO_ESBUILD_SPAWN=1`, loads `scripts/vite-windows-net-use-shim.cjs`,
 and runs Vite with `--configLoader native` so endpoint-protected hosts do not
 stall on esbuild or `net use` process creation before the bundle is produced.
 
@@ -25,9 +25,9 @@ Expected local artifacts for the current version (bundle and binary names follow
 the app `productName` / binary config in `tauri.conf.json`; they update when the
 app-config rename lands):
 
-- `src-tauri/target/release/Aether.exe`
-- `src-tauri/target/release/bundle/nsis/Aether Terminal_<version>_x64-setup.exe`
-- `src-tauri/target/release/bundle/msi/Aether Terminal_<version>_x64_en-US.msi`
+- `src-tauri/target/release/Aelyris.exe`
+- `src-tauri/target/release/bundle/nsis/Aelyris_<version>_x64-setup.exe`
+- `src-tauri/target/release/bundle/msi/Aelyris_<version>_x64_en-US.msi`
 
 ## Signed Updater Release Gate
 
@@ -73,7 +73,7 @@ Run it only on a test machine or after explicit approval.
 
 1. Install the NSIS setup exe for the current version.
 2. Confirm Start menu and application shortcut creation when the installer offers it.
-3. Launch Aether Terminal from the installed location.
+3. Launch Aelyris from the installed location.
 4. Confirm no crash dialog, blank WebView, or missing icon appears.
 
 ## First Launch Smoke
@@ -92,7 +92,7 @@ On first launch after install:
 Use the MSI when enterprise packaging behavior matters.
 
 1. Install the MSI for the current version.
-2. Launch Aether Terminal from the installed application entry.
+2. Launch Aelyris from the installed application entry.
 3. Repeat the First Launch Smoke.
 4. Confirm the MSI appears in Windows installed apps inventory.
 
@@ -102,7 +102,7 @@ P2-08 local evidence used Windows Installer COM metadata for MSI ProductName/Pro
 
 The uninstall smoke is also manual because it removes installed software.
 
-1. Uninstall Aether Terminal through Windows installed apps or the installer uninstall path.
+1. Uninstall Aelyris through Windows installed apps or the installer uninstall path.
 2. Confirm the installed executable and shortcuts are removed.
 3. Confirm user workspace files are not removed.
 4. Reinstall the current artifact if continuing release validation.
@@ -119,7 +119,7 @@ Rollback path:
 
 1. Uninstall the current version.
 2. Install the previous known-good installer artifact.
-3. Launch Aether Terminal and repeat First Launch Smoke.
+3. Launch Aelyris and repeat First Launch Smoke.
 4. Keep the current failed artifact and Release Doctor report for investigation.
 
 ## Crash Log Review

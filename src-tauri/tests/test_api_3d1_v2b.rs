@@ -15,11 +15,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aether_terminal_lib::api::{
+use aelyris_lib::api::{
     self, ApiState, AuthConfig, RateLimiter, StreamControl, StreamControllerLeases, StreamMode,
     TicketRegistry, TICKET_TTL_SECS,
 };
-use aether_terminal_lib::pty::PtyManager;
+use aelyris_lib::pty::PtyManager;
 use reqwest::header::AUTHORIZATION;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -146,7 +146,7 @@ fn registry_rejects_session_mismatch() {
 fn registry_rejects_unknown_ticket() {
     let reg = TicketRegistry::new();
     reg.issue("sess-a");
-    let bogus = aether_terminal_lib::api::TicketId::from("unknown-ticket".to_string());
+    let bogus = aelyris_lib::api::TicketId::from("unknown-ticket".to_string());
     assert!(!reg.redeem_for_session(&bogus, "sess-a"));
 }
 

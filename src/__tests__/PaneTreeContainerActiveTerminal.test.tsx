@@ -287,7 +287,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("rebinds stale saved mux workspace ids to the live terminal workspace before local split recovery", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "pane-left", shell: "powershell" },
@@ -306,7 +306,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       return Promise.resolve(undefined);
     });
 
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
     let c = captured as unknown as CapturedProps;
     const firstId = firstLeafId(c.tree);
     act(() => {
@@ -331,7 +331,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("preserves the target pane cwd when mux split falls back to local recovery", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -349,7 +349,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       if (command === "mux_split_pane") return Promise.reject(new Error("mux unavailable"));
       return Promise.resolve(undefined);
     });
-    render(<PaneTreeContainer shell="powershell" cwd="C:/fallback-root" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" cwd="C:/fallback-root" layoutStorageKey="aelyris:paneTree:tab-test" />);
     let c = captured as unknown as CapturedProps;
     await waitFor(() => {
       c = captured as unknown as CapturedProps;
@@ -550,7 +550,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("rebinds stale saved mux workspace ids to the live terminal workspace before local close recovery", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -576,7 +576,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       return Promise.resolve(undefined);
     });
 
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
     let c = captured as unknown as CapturedProps;
     act(() => {
       c.onTerminalReady("pane-left", "pty-A");
@@ -770,7 +770,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("restores a saved pane layout for the tab storage key", () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -785,7 +785,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       }),
     );
 
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
     expect(leafIds(c.tree)).toEqual(["pane-left", "pane-right"]);
@@ -793,7 +793,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
   });
 
   it("persists pane name and role edits for the tab storage key", async () => {
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
     const paneId = firstLeafId(c.tree);
@@ -803,7 +803,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
 
     await waitFor(() => {
-      const saved = JSON.parse(localStorage.getItem("aether:paneTree:tab-test") ?? "null");
+      const saved = JSON.parse(localStorage.getItem("aelyris:paneTree:tab-test") ?? "null");
       expect(saved?.tree).toMatchObject({
         id: paneId,
         title: "frontend",
@@ -823,7 +823,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       if (command === "list_terminals") return Promise.resolve(["pty-durable-1"]);
       return Promise.resolve(undefined);
     });
-    render(<PaneTreeContainer shell="powershell" cwd="C:/repo" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" cwd="C:/repo" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
     const paneId = firstLeafId(c.tree);
@@ -834,13 +834,13 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
 
     await waitFor(() => {
-      const saved = JSON.parse(localStorage.getItem("aether:paneTree:tab-test") ?? "null");
-      expect(saved?.sessionId).toBe("aether:paneTree:tab-test");
-      expect(saved?.layoutId).toBe("aether:paneTree:tab-test");
+      const saved = JSON.parse(localStorage.getItem("aelyris:paneTree:tab-test") ?? "null");
+      expect(saved?.sessionId).toBe("aelyris:paneTree:tab-test");
+      expect(saved?.layoutId).toBe("aelyris:paneTree:tab-test");
       expect(saved?.paneIntents?.[paneId]).toMatchObject({
         paneId,
-        sessionId: "aether:paneTree:tab-test",
-        layoutId: "aether:paneTree:tab-test",
+        sessionId: "aelyris:paneTree:tab-test",
+        layoutId: "aelyris:paneTree:tab-test",
         terminalId: "pty-durable-1",
         cwd: "C:/repo",
         name: "build",
@@ -856,7 +856,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     vi.useFakeTimers();
     try {
       localStorage.setItem(
-        "aether:paneTree:tab-test",
+        "aelyris:paneTree:tab-test",
         JSON.stringify({
           version: 1,
           tree: { type: "terminal", id: "pane-fast", shell: "powershell" },
@@ -865,7 +865,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       );
 
       const { unmount } = render(
-        <PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" projectPath="C:/repo" />,
+        <PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" projectPath="C:/repo" />,
       );
       await act(async () => {
         await Promise.resolve();
@@ -887,7 +887,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       const saveCall = invokeMock.mock.calls.find(([command]) => command === "save_pane_tree_layout");
       expect(saveCall).toBeDefined();
       expect(saveCall?.[1]).toMatchObject({
-        storageKey: "aether:paneTree:tab-test",
+        storageKey: "aelyris:paneTree:tab-test",
         projectPath: "C:/repo",
       });
       expect(JSON.parse(saveCall?.[1].layoutJson)).toMatchObject({
@@ -900,7 +900,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
   });
 
   it("syncs pane names and roles to the backend registry", async () => {
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
     const paneId = firstLeafId(c.tree);
@@ -932,7 +932,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
     const telemetry = collectFallbackEvents();
     try {
-      render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+      render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
       const c = captured as unknown as CapturedProps;
       const paneId = firstLeafId(c.tree);
@@ -972,7 +972,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
     const telemetry = collectFallbackEvents();
     try {
-      render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+      render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
       await waitFor(() => {
         expect(telemetry.events).toEqual(
@@ -1015,7 +1015,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === "get_pane_tree_layout") {
         return Promise.resolve({
-          storageKey: "aether:paneTree:tab-test",
+          storageKey: "aelyris:paneTree:tab-test",
           projectPath: "C:/repo",
           updatedAt: "2026-05-01 00:00:00",
           layoutJson: JSON.stringify({
@@ -1035,7 +1035,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       return Promise.resolve(undefined);
     });
 
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     await waitFor(() => {
       const c = captured as unknown as CapturedProps;
@@ -1046,7 +1046,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("prefers a Rust mux graph over the legacy local pane-tree snapshot during hydration", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "legacy-pane", shell: "powershell" },
@@ -1117,7 +1117,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       return Promise.resolve(undefined);
     });
 
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     await waitFor(() => {
       const c = captured as unknown as CapturedProps;
@@ -1129,7 +1129,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("marks restored layout panes detached and surfaces unmatched backend PTYs as orphaned", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -1152,7 +1152,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1172,7 +1172,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("attaches uniquely matched backend pane metadata to the restored layout", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -1200,7 +1200,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1219,7 +1219,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("does not bind the same backend PTY to duplicate restored pane matches", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -1244,7 +1244,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1262,7 +1262,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("prefers saved backend binding fingerprints over duplicate restored pane titles", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -1294,7 +1294,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1311,7 +1311,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
   });
 
   it("persists backend binding fingerprints with the pane layout", async () => {
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     const c = captured as unknown as CapturedProps;
     const paneId = firstLeafId(c.tree);
@@ -1320,7 +1320,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     });
 
     await waitFor(() => {
-      const saved = JSON.parse(localStorage.getItem("aether:paneTree:tab-test") ?? "null");
+      const saved = JSON.parse(localStorage.getItem("aelyris:paneTree:tab-test") ?? "null");
       expect(saved?.backendBindings).toEqual({
         [paneId]: { terminalId: "pty-stable-main" },
       });
@@ -1329,7 +1329,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("marks restored degraded agent panes exited instead of spawning a fresh shell when the PTY is gone", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: {
@@ -1362,7 +1362,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       return Promise.resolve(undefined);
     });
 
-    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     await waitFor(() => {
       const c = captured as unknown as CapturedProps;
@@ -1375,7 +1375,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("manually attaches an active orphaned PTY to a detached restored pane", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "pane-restored", shell: "powershell", title: "restored" },
@@ -1391,7 +1391,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const { rerender } = render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1410,7 +1410,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     rerender(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
         attachPaneRequest={{
           paneId: "pane-restored",
@@ -1434,7 +1434,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("keeps unrelated orphaned backend PTYs visible after manual attach", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "pane-restored", shell: "powershell", title: "restored" },
@@ -1450,7 +1450,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     const { rerender } = render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1466,7 +1466,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     rerender(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
         attachPaneRequest={{
           paneId: "pane-restored",
@@ -1491,7 +1491,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("rejects manual attach when the backend PTY disappeared", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "pane-restored", shell: "powershell", title: "restored" },
@@ -1503,7 +1503,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       return Promise.resolve(undefined);
     });
     const onComplete = vi.fn();
-    const { rerender } = render(<PaneTreeContainer shell="powershell" layoutStorageKey="aether:paneTree:tab-test" />);
+    const { rerender } = render(<PaneTreeContainer shell="powershell" layoutStorageKey="aelyris:paneTree:tab-test" />);
 
     await waitFor(() => {
       const c = captured as unknown as CapturedProps;
@@ -1513,7 +1513,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     rerender(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         attachPaneRequest={{
           paneId: "pane-restored",
           terminalId: "pty-gone",
@@ -1532,7 +1532,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("revalidates pane truth on window focus and marks disappeared backend PTYs exited", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "pane-restored", shell: "powershell", title: "restored" },
@@ -1551,7 +1551,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );
@@ -1577,7 +1577,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
   it("revalidates pane truth on reconnect and surfaces newly orphaned backend PTYs", async () => {
     localStorage.setItem(
-      "aether:paneTree:tab-test",
+      "aelyris:paneTree:tab-test",
       JSON.stringify({
         version: 1,
         tree: { type: "terminal", id: "pane-restored", shell: "powershell", title: "restored" },
@@ -1595,7 +1595,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     render(
       <PaneTreeContainer
         shell="powershell"
-        layoutStorageKey="aether:paneTree:tab-test"
+        layoutStorageKey="aelyris:paneTree:tab-test"
         onPaneRegistryChange={onRegistryChange}
       />,
     );

@@ -19,15 +19,15 @@ import { fileURLToPath } from "node:url";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const EXTENSION = process.platform === "win32" ? ".exe" : "";
 const SIDECAR =
-  process.env.AETHER_NATIVE_AI_CHAOS_SIDECAR ??
-  join(ROOT, "src-tauri", "pty-server", "target", "release", `aether-pty-server${EXTENSION}`);
+  process.env.AELYRIS_NATIVE_AI_CHAOS_SIDECAR ??
+  join(ROOT, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${EXTENSION}`);
 const OUT =
-  process.env.AETHER_NATIVE_AI_CHAOS_OUT ??
+  process.env.AELYRIS_NATIVE_AI_CHAOS_OUT ??
   join(ROOT, ".codex-auto", "chaos-recovery", "native-ai-cli-post-launch-chaos.json");
-const TOKEN = process.env.AETHER_NATIVE_AI_CHAOS_TOKEN ?? "native-ai-cli-chaos-token";
-const WAIT_MS = Number.parseInt(process.env.AETHER_NATIVE_AI_CHAOS_WAIT_MS ?? "120000", 10);
+const TOKEN = process.env.AELYRIS_NATIVE_AI_CHAOS_TOKEN ?? "native-ai-cli-chaos-token";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_NATIVE_AI_CHAOS_WAIT_MS ?? "120000", 10);
 const CLIS = ["codex", "claude", "gemini"];
-const EXISTING_BASE = process.env.AETHER_NATIVE_AI_CHAOS_BASE?.replace(/\/+$/, "") ?? null;
+const EXISTING_BASE = process.env.AELYRIS_NATIVE_AI_CHAOS_BASE?.replace(/\/+$/, "") ?? null;
 
 if (!existsSync(SIDECAR)) {
   throw new Error(
@@ -84,15 +84,15 @@ function writeEnvironmentBlockedArtifact(report) {
 }
 
 function startSidecar(port, tempRoot) {
-  const pipeStdio = process.env.AETHER_NATIVE_AI_CHAOS_PIPE_STDIO === "1";
+  const pipeStdio = process.env.AELYRIS_NATIVE_AI_CHAOS_PIPE_STDIO === "1";
   const child = spawn(SIDECAR, [], {
     cwd: ROOT,
     env: {
       ...process.env,
-      QUORUM_API_TOKEN: TOKEN,
-      QUORUM_PTY_SERVER_PORT: String(port),
-      QUORUM_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
-      QUORUM_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
+      AELYRIS_API_TOKEN: TOKEN,
+      AELYRIS_PTY_SERVER_PORT: String(port),
+      AELYRIS_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
+      AELYRIS_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
     },
     shell: false,
     stdio: pipeStdio ? ["ignore", "pipe", "pipe"] : "ignore",
@@ -221,8 +221,8 @@ async function sendInput(base, id, text) {
 
 async function smokeSameIdPtyRestart(base) {
   const id = "11111111-2222-4333-8444-555555555555";
-  const beforeSentinel = `AETHER_NATIVE_CHAOS_BEFORE_${Date.now()}`;
-  const afterSentinel = `AETHER_NATIVE_CHAOS_AFTER_${Date.now()}`;
+  const beforeSentinel = `AELYRIS_NATIVE_CHAOS_BEFORE_${Date.now()}`;
+  const afterSentinel = `AELYRIS_NATIVE_CHAOS_AFTER_${Date.now()}`;
   await closeSession(base, id).catch(() => {});
 
   const beforeCreate = await spawnShellWithId(base, id, ROOT);
@@ -256,16 +256,16 @@ async function smokeSameIdPtyRestart(base) {
 function writeShimFiles(binDir) {
   mkdirSync(binDir, { recursive: true });
   writeFileSync(
-    join(binDir, "aether-ai-cli-chaos-shim.mjs"),
+    join(binDir, "aelyris-ai-cli-chaos-shim.mjs"),
     [
       'import readline from "node:readline";',
       'const cli = process.argv[2] || "unknown";',
-      'const marker = process.env.AETHER_NATIVE_AI_CHAOS_MARKER || "NO_MARKER";',
-      'process.stdout.write("[" + cli + "] AETHER_NATIVE_AI_READY " + marker + "\\r\\n");',
+      'const marker = process.env.AELYRIS_NATIVE_AI_CHAOS_MARKER || "NO_MARKER";',
+      'process.stdout.write("[" + cli + "] AELYRIS_NATIVE_AI_READY " + marker + "\\r\\n");',
       'process.stdout.write(cli + "> ");',
       "const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });",
       'rl.on("line", (line) => {',
-      '  console.log("[" + cli + "] AETHER_NATIVE_AI_INPUT " + marker + " " + line.trim());',
+      '  console.log("[" + cli + "] AELYRIS_NATIVE_AI_INPUT " + marker + " " + line.trim());',
       '  process.stdout.write(cli + "> ");',
       "});",
       "setInterval(() => {}, 1000).unref();",
@@ -274,11 +274,11 @@ function writeShimFiles(binDir) {
   );
   for (const cli of CLIS) {
     if (process.platform === "win32") {
-      writeFileSync(join(binDir, `${cli}.cmd`), `@echo off\r\nnode "%~dp0aether-ai-cli-chaos-shim.mjs" ${cli} %*\r\n`);
+      writeFileSync(join(binDir, `${cli}.cmd`), `@echo off\r\nnode "%~dp0aelyris-ai-cli-chaos-shim.mjs" ${cli} %*\r\n`);
     } else {
       writeFileSync(
         join(binDir, cli),
-        `#!/usr/bin/env sh\nnode "$(dirname "$0")/aether-ai-cli-chaos-shim.mjs" ${cli} "$@"\n`,
+        `#!/usr/bin/env sh\nnode "$(dirname "$0")/aelyris-ai-cli-chaos-shim.mjs" ${cli} "$@"\n`,
         { mode: 0o755 },
       );
     }
@@ -286,7 +286,7 @@ function writeShimFiles(binDir) {
 }
 
 async function smokeCliKillCleanup(base, cli, binDir) {
-  const marker = `AETHER_NATIVE_AI_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+  const marker = `AELYRIS_NATIVE_AI_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
   const program = process.platform === "win32" ? `${cli}.cmd` : cli;
   const pathValue = `${binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`;
   const created = await request(base, "/commands", {
@@ -299,16 +299,16 @@ async function smokeCliKillCleanup(base, cli, binDir) {
       cwd: ROOT,
       env: {
         PATH: pathValue,
-        AETHER_NATIVE_AI_CHAOS_MARKER: marker,
+        AELYRIS_NATIVE_AI_CHAOS_MARKER: marker,
       },
     }),
   });
   const id = created.id;
   try {
-    const readyText = await waitForCapture(base, id, `AETHER_NATIVE_AI_READY ${marker}`);
+    const readyText = await waitForCapture(base, id, `AELYRIS_NATIVE_AI_READY ${marker}`);
     const input = `INPUT_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     await sendInput(base, id, `${input}\r`);
-    const inputText = await waitForCapture(base, id, `AETHER_NATIVE_AI_INPUT ${marker} ${input}`);
+    const inputText = await waitForCapture(base, id, `AELYRIS_NATIVE_AI_INPUT ${marker} ${input}`);
     const beforeClose = await listSessions(base);
     await closeSession(base, id);
     const afterClose = await listSessions(base);
@@ -413,7 +413,7 @@ async function main() {
     } else {
       writeArtifact(report);
     }
-    if (process.env.AETHER_KEEP_NATIVE_AI_CHAOS_TEMP !== "1") {
+    if (process.env.AELYRIS_KEEP_NATIVE_AI_CHAOS_TEMP !== "1") {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   }

@@ -1,15 +1,15 @@
 # P0-3 — Durable merge queue & immutable merge intent (locked goal)
 
-Security-first WU from `AETHER_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md` §P0-3.
+Security-first WU from `AELYRIS_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md` §P0-3.
 Goal locked with Codex (independent reviewer, different model) on 2026-06-24 — see
 `codex-guided-implementation` skill. This file is the drift fence for every increment.
 
 ## Scope ruling (Codex A)
-- IN: the **operator/MCP-facing** merge intent — `aether.request_merge` → `aether.review.approve` / `aether.review.reject`. This is where the caller-altered-params vulnerability lives.
+- IN: the **operator/MCP-facing** merge intent — `aelyris.request_merge` → `aelyris.review.approve` / `aelyris.review.reject`. This is where the caller-altered-params vulnerability lives.
 - OUT (→ P0-1 durable orchestration follow-up): the autonomy-loop self-merge path (`control::loop_ports::merge` + its per-step in-memory `MergeQueue`). We must NOT claim global "durable merge queue" closure, and MUST NOT build the new store in a shape the loop cannot later reuse.
 
 ## The vulnerability being closed
-`aether.review.approve` (mcp.rs) currently takes caller-supplied `repoPath`/`sourceBranch`/`targetBranch` and passes them straight to `perform_merge` — the intent id is a mere token. A local MCP caller can approve an existing intent id while merging a DIFFERENT source→target in a DIFFERENT repo.
+`aelyris.review.approve` (mcp.rs) currently takes caller-supplied `repoPath`/`sourceBranch`/`targetBranch` and passes them straight to `perform_merge` — the intent id is a mere token. A local MCP caller can approve an existing intent id while merging a DIFFERENT source→target in a DIFFERENT repo.
 
 ## Design (Codex B/C + robustness)
 - Dedicated SSOT: `persistence/merge_repo.rs` (`merge_intents` table) + a thin `MergeIntentStore` wrapping `Arc<ManagedDb>`. The **SQLite row is the arbiter**; any in-memory cache is for reads only. `mcp_pending` is NOT the SoT for merge state (permission approvals stay there).
@@ -21,8 +21,8 @@ Goal locked with Codex (independent reviewer, different model) on 2026-06-24 —
 - OID reconciliation: at approve, re-resolve current branch tips. If they still match stored OIDs → proceed. If target already contains stored source OID → idempotent `merged`. Otherwise (branch moved) → `needs_reconcile`, refuse. On restart, reconcile dangling `merging` the same way.
 
 ## HARD BOUNDARIES (verbatim — non-negotiable, mechanically checkable)
-1. `aether.review.approve` MUST NOT accept, parse, read, or forward `repoPath`, `sourceBranch`, or `targetBranch` from caller arguments.
-2. Any `aether.review.approve` call containing unknown fields, including `repoPath`, `sourceBranch`, or `targetBranch`, MUST fail server-side before merge execution.
+1. `aelyris.review.approve` MUST NOT accept, parse, read, or forward `repoPath`, `sourceBranch`, or `targetBranch` from caller arguments.
+2. Any `aelyris.review.approve` call containing unknown fields, including `repoPath`, `sourceBranch`, or `targetBranch`, MUST fail server-side before merge execution.
 3. MCP merge state MUST be persisted in `merge_intents`; `mcp_pending` MUST NOT be the source of truth for merge intents.
 4. `perform_merge` MUST use only the repo/branches loaded from the stored immutable intent, after current OIDs are reconciled against stored OIDs.
 5. No mutex or DB lock protecting merge-intent state may be held while git merge execution runs.
@@ -34,7 +34,7 @@ Goal locked with Codex (independent reviewer, different model) on 2026-06-24 —
 4. Approval shape — schema + handler to `intentId` + approval evidence only; explicit server-side rejection of `repoPath`/`sourceBranch`/`targetBranch` + all unknown fields (NOT relying on `additionalProperties`).
 5. Merge execution — approve loads stored intent, revalidates OIDs, CAS-claims `merging`, runs `perform_merge` outside locks, maps `AlreadyMerged`→`merged`, handles `conflict`/`needs_reconcile`.
 6. Pending view + reject — `list_pending_approvals` synthesizes a thin merge view from the store; `review.reject` moves to the store.
-7. Verifiers — `scripts/verify-security-mcp-merge-intent-binding.mjs` (static/live binding) + `scripts/verify-merge-idempotency.mjs` (live), using the existing `QUORUM_API_URL`/`QUORUM_API_TOKEN` `/mcp/tools/call` harness.
+7. Verifiers — `scripts/verify-security-mcp-merge-intent-binding.mjs` (static/live binding) + `scripts/verify-merge-idempotency.mjs` (live), using the existing `AELYRIS_API_URL`/`AELYRIS_API_TOKEN` `/mcp/tools/call` harness.
 8. Regression — focused cargo tests + new verifiers + existing `pnpm verify:mcp-orchestrator`; whole-WU Codex review; merge `--no-ff`.
 
 ## Follow-ups (explicitly deferred, NOT silently absorbed)

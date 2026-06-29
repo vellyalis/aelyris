@@ -9,17 +9,17 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const CDP_URL = "http://127.0.0.1:9222";
-const SHOT_DIR = "C:/tmp/aether-demo-shots";
+const SHOT_DIR = "C:/tmp/aelyris-demo-shots";
 
 function git(cwd, ...args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
 function setupRepo() {
-  const dir = mkdtempSync(join(tmpdir(), "aether-pane-"));
+  const dir = mkdtempSync(join(tmpdir(), "aelyris-pane-"));
   git(dir, "init", "-b", "main");
-  git(dir, "config", "user.email", "verify@aether.test");
-  git(dir, "config", "user.name", "Aether Verify");
+  git(dir, "config", "user.email", "verify@aelyris.test");
+  git(dir, "config", "user.name", "Aelyris Verify");
   writeFileSync(join(dir, "README.md"), "# pane verify\n");
   git(dir, "add", "README.md");
   git(dir, "commit", "-m", "base");
@@ -59,7 +59,7 @@ async function main() {
     // mounts (RightRailWidgetFrame only renders children when open).
     await page.evaluate(() => {
       window.dispatchEvent(
-        new CustomEvent("aether:right-rail-widget-sync", { detail: { widget: "orchestrator", open: true } }),
+        new CustomEvent("aelyris:right-rail-widget-sync", { detail: { widget: "orchestrator", open: true } }),
       );
     });
     await sleep(500);

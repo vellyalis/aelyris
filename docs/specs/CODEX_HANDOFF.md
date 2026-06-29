@@ -1,7 +1,7 @@
-# Quorum Cockpit — Codex Implementation Handoff
+# Aelyris Cockpit — Codex Implementation Handoff
 
 > ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
-> requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
+> requirements ([AELYRIS_COCKPIT_REQUIREMENTS](./AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md),
 > v2.0) now specify **full autonomy with no human gate in the critical path**: the
 > **Reviewer agent merges to `main` automatically** once all quality gates are green,
 > and the **watchdog auto-decides** tool-approval (auto-approve / auto-deny, keeping
@@ -32,12 +32,12 @@ Implementer: **Codex** (GPT-5.x). Orchestration/integration owner: human + Opus.
 
 ## 1. North star
 
-Quorum becomes an **agent-controllable workspace**, not just an IDE. Its capabilities
+Aelyris becomes an **agent-controllable workspace**, not just an IDE. Its capabilities
 (worktree · agent · pane · diff · merge · approval) become **one backend capability
-layer** ("Quorum Control API"). Two clients project onto it:
+layer** ("Aelyris Control API"). Two clients project onto it:
 
 - **Face 1 — Cockpit UI** (human operator, via Tauri IPC) — supervises by exception.
-- **Face 2 — Orchestrator AI** (Opus 4.8, via an `aether` MCP server) — drives the mechanics.
+- **Face 2 — Orchestrator AI** (Opus 4.8, via an `aelyris` MCP server) — drives the mechanics.
 
 Build the layer **once**; both faces consume it. The orchestrator runs 3–4 worker agents
 (Claude/Codex CLIs), each in its own git worktree, and the human supervises through the
@@ -52,7 +52,7 @@ request/observe but the **watchdog policy engine + human** grant. Never expose a
 | [PHASE_0_1_ARCHITECTURE_SPEC.md](./PHASE_0_1_ARCHITECTURE_SPEC.md) | Capability layer (§0.5), runtime unification, god-file split, worktree auto-wiring, **gate model (§5)** | 0, 1 |
 | [UI_TOKEN_DIAL_SPEC.md](./UI_TOKEN_DIAL_SPEC.md) | `global.css` token dial-up change list, new tokens, accent unification, motion | 1 |
 | [COCKPIT_UX_SPEC.md](./COCKPIT_UX_SPEC.md) | 6 cockpit surfaces as projections of `useAgentFleet().sessions` | 2, 4 |
-| [MCP_TOOL_SURFACE_SPEC.md](./MCP_TOOL_SURFACE_SPEC.md) | `aether.mcp.v1` tool catalog, transport, gate enforcement | 2.5 |
+| [MCP_TOOL_SURFACE_SPEC.md](./MCP_TOOL_SURFACE_SPEC.md) | `aelyris.mcp.v1` tool catalog, transport, gate enforcement | 2.5 |
 | [VISIBLE_AGENT_PANE_RUNTIME_SPEC.md](./VISIBLE_AGENT_PANE_RUNTIME_SPEC.md) | visible agent pane runtime boundary: GUI-visible agents are PTY/interactive TUI/no `-p`; headless `-p` is batch/planner/MCP-only; Orchestra dispatch must mount 1 agent = 1 pane in the central terminal pane tree; live symbol/function ownership makes parallel work collision-aware | cross-cutting |
 | **CODEX_HANDOFF.md** (this) | Work breakdown, dependency DAG, acceptance gates, paste-ready prompts | all |
 
@@ -105,7 +105,7 @@ Effort: **S** ≈ <½ day · **M** ≈ 1–2 days · **L** ≈ 3+ days. "⚠" = 
 
 | WU | Title | Eff | Deps | Notes |
 |---|---|---|---|---|
-| **2.5.1** | `aether` MCP server scaffold (stdio) over the control layer — FREE tools only | M | 0.4 | MCP_TOOL_SURFACE_SPEC §2–3. Precedent: `/mcp/*` routes at `api/mod.rs:964-966`. |
+| **2.5.1** | `aelyris` MCP server scaffold (stdio) over the control layer — FREE tools only | M | 0.4 | MCP_TOOL_SURFACE_SPEC §2–3. Precedent: `/mcp/*` routes at `api/mod.rs:964-966`. |
 | **2.5.2** | Gate enforcement for GATED tools (`request_approval`/`list_pending_approvals`/`request_merge`) — enqueue+observe, watchdog/human resolves | M | 0.4, 3.1 | MCP_TOOL_SURFACE_SPEC §4. No self-grant invariant. |
 | **2.5.3** | Streamable HTTP transport option (reuse daemon bearer-token auth) | S | 2.5.1 | MCP_TOOL_SURFACE_SPEC §2.2. |
 
@@ -133,7 +133,7 @@ The **only missing layer** of the autonomous team-dev vision; everything below i
 
 | WU | Title | Eff | Deps | Notes |
 |---|---|---|---|---|
-| **5.1** | **Autonomous planner**: one-line task → requirements spec + WU decomposition emitted as `scripts/fleet/wu-manifest.json`. Planning pass (LLM stream-json → manifest) prepended to the Orchestra dispatch. | L | 0.1, 0.2, 0.3 | PLANNER_SPEC §1. The `aether-plan` skill does this **manually today**. Model = Opus. The manifest is the planner↔fleet contract. |
+| **5.1** | **Autonomous planner**: one-line task → requirements spec + WU decomposition emitted as `scripts/fleet/wu-manifest.json`. Planning pass (LLM stream-json → manifest) prepended to the Orchestra dispatch. | L | 0.1, 0.2, 0.3 | PLANNER_SPEC §1. The `aelyris-plan` skill does this **manually today**. Model = Opus. The manifest is the planner↔fleet contract. |
 | **5.2** | **Autonomous loop**: plan → dispatch (worktree per WU) → monitor → impl/test/review roles → sequential **gated** merge → repeat, until WUs done or round/budget cap. Human supervises by exception. | L | 5.1, 3.2, 2.2 | PLANNER_SPEC §2. Star comms only. `approval`/`merge-to-main` stay GATED (`control/approval.rs`) — never self-grant. Runaway guard required. |
 
 ## 5. Dependency DAG & execution order
@@ -162,7 +162,7 @@ The **only missing layer** of the autonomous team-dev vision; everything below i
 4. **Batch D (cockpit):** `2.1`, `2.2`, `2.3`, `2.4`, `2.5.1` in parallel.
 5. **Batch E (merge tail):** `3.1` → `3.2` → `3.3`, then `2.5.2`.
 6. **Batch F (finish):** `0.6`, `4.1`, `4.2`, `4.3`, `4.4`.
-7. **Batch G (capstone — autonomous):** `5.1` (planner) → `5.2` (autonomous loop). Assembles the whole stack; build last. Usable manually before then via the `aether-plan` + `aether-fleet` skills.
+7. **Batch G (capstone — autonomous):** `5.1` (planner) → `5.2` (autonomous loop). Assembles the whole stack; build last. Usable manually before then via the `aelyris-plan` + `aelyris-fleet` skills.
 
 ## 6. Do-not-break list & test gates
 

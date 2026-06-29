@@ -1,19 +1,19 @@
 // Live Tauri/WebView2 smoke for app-process reconnect to a long-lived sidecar.
 //
 // Prerequisite:
-//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
+//   AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev
 //
-// This smoke intentionally stops the current Aether.exe process, verifies the
-// PTY sidecar still owns the test terminal, starts the debug Aether.exe again,
+// This smoke intentionally stops the current Aelyris.exe process, verifies the
+// PTY sidecar still owns the test terminal, starts the debug Aelyris.exe again,
 // and proves the restarted app adopts the same terminal id with persisted
 // command evidence plus fresh post-reconnect input.
 //
 // Optional env:
-//   AETHER_PROCESS_RECONNECT_CDP=http://127.0.0.1:9222
-//   AETHER_PROCESS_RECONNECT_URL=http://localhost:1420/
-//   AETHER_PROCESS_RECONNECT_PROJECT=C:/repo/aether-terminal
-//   AETHER_PROCESS_RECONNECT_TOKEN=dev
-//   AETHER_PROCESS_RECONNECT_OUT=.codex-auto/production-smoke/process-reconnect-command-evidence.json
+//   AELYRIS_PROCESS_RECONNECT_CDP=http://127.0.0.1:9222
+//   AELYRIS_PROCESS_RECONNECT_URL=http://localhost:1420/
+//   AELYRIS_PROCESS_RECONNECT_PROJECT=C:/repo/aelyris
+//   AELYRIS_PROCESS_RECONNECT_TOKEN=dev
+//   AELYRIS_PROCESS_RECONNECT_OUT=.codex-auto/production-smoke/process-reconnect-command-evidence.json
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -22,16 +22,16 @@ import process from "node:process";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(process.cwd());
-const CDP = process.env.AETHER_PROCESS_RECONNECT_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_PROCESS_RECONNECT_URL ?? "http://localhost:1420/";
+const CDP = process.env.AELYRIS_PROCESS_RECONNECT_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_PROCESS_RECONNECT_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
-const PROJECT_PATH = (process.env.AETHER_PROCESS_RECONNECT_PROJECT ?? ROOT).replaceAll("\\", "/");
-const TOKEN = process.env.AETHER_PROCESS_RECONNECT_TOKEN ?? readSidecarToken() ?? process.env.QUORUM_API_TOKEN ?? "dev";
+const PROJECT_PATH = (process.env.AELYRIS_PROCESS_RECONNECT_PROJECT ?? ROOT).replaceAll("\\", "/");
+const TOKEN = process.env.AELYRIS_PROCESS_RECONNECT_TOKEN ?? readSidecarToken() ?? process.env.AELYRIS_API_TOKEN ?? "dev";
 const OUT =
-  process.env.AETHER_PROCESS_RECONNECT_OUT ?? ".codex-auto/production-smoke/process-reconnect-command-evidence.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_PROCESS_RECONNECT_WAIT_MS ?? "90000", 10);
-const DEBUG_APP_EXE = join(ROOT, "src-tauri", "target", "debug", "Aether.exe");
-const SIDECAR_URL = process.env.AETHER_PROCESS_RECONNECT_SIDECAR_URL ?? "http://127.0.0.1:9334";
+  process.env.AELYRIS_PROCESS_RECONNECT_OUT ?? ".codex-auto/production-smoke/process-reconnect-command-evidence.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_PROCESS_RECONNECT_WAIT_MS ?? "90000", 10);
+const DEBUG_APP_EXE = join(ROOT, "src-tauri", "target", "debug", "Aelyris.exe");
+const SIDECAR_URL = process.env.AELYRIS_PROCESS_RECONNECT_SIDECAR_URL ?? "http://127.0.0.1:9334";
 
 const report = {
   ok: false,
@@ -53,7 +53,7 @@ function writeArtifact() {
 
 function isEnvironmentUnavailable() {
   return report.errors.some((error) =>
-    /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aether\.exe process found|Debug app executable missing|Vite dev server/i.test(
+    /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
       String(error),
     ),
   );
@@ -104,7 +104,7 @@ async function ensureDevServer() {
   if (!appUrlNeedsDevServer() || (await devServerReady())) return null;
   const child = spawn("pnpm.cmd", ["dev"], {
     cwd: ROOT,
-    env: { ...process.env, QUORUM_API_TOKEN: TOKEN },
+    env: { ...process.env, AELYRIS_API_TOKEN: TOKEN },
     stdio: "ignore",
     windowsHide: true,
   });
@@ -122,9 +122,9 @@ async function ensureDevServer() {
 
 function readSidecarToken() {
   const candidates = [
-    process.env.QUORUM_PTY_SERVER_TOKEN_FILE,
-    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Aether Terminal", "aether-pty-server.token") : null,
-    process.env.USERPROFILE ? join(process.env.USERPROFILE, ".aether", "aether-pty-server.token") : null,
+    process.env.AELYRIS_PTY_SERVER_TOKEN_FILE,
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Aelyris", "aelyris-pty-server.token") : null,
+    process.env.USERPROFILE ? join(process.env.USERPROFILE, ".aelyris", "aelyris-pty-server.token") : null,
   ].filter(Boolean);
   for (const candidate of candidates) {
     try {
@@ -137,17 +137,17 @@ function readSidecarToken() {
 
 function targetQaUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("v", "process-reconnect-command-evidence");
   url.searchParams.delete("state");
   url.searchParams.delete("edgeLoop");
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.startsWith(APP_ORIGIN) ||
@@ -159,9 +159,9 @@ function isAetherPage(page) {
   );
 }
 
-function pickAetherPage(context) {
+function pickAelyrisPage(context) {
   const pages = context?.pages() ?? [];
-  return pages.find(isAetherPage) ?? pages.find((page) => page.url() === "about:blank") ?? pages[0] ?? null;
+  return pages.find(isAelyrisPage) ?? pages.find((page) => page.url() === "about:blank") ?? pages[0] ?? null;
 }
 
 function describePages(context) {
@@ -185,10 +185,10 @@ function powershell(command) {
   return result.stdout.trim();
 }
 
-function findAetherPids() {
+function findAelyrisPids() {
   const output = powershell(`
-    Get-Process Aether -ErrorAction SilentlyContinue |
-      Where-Object { $_.Path -and ($_.Path -like '*Aether_Terminal*target*debug*Aether.exe' -or $_.Path -like '*Aether_Terminal*target*release*Aether.exe') } |
+    Get-Process Aelyris -ErrorAction SilentlyContinue |
+      Where-Object { $_.Path -and ($_.Path -like '*Aelyris*target*debug*Aelyris.exe' -or $_.Path -like '*Aelyris*target*release*Aelyris.exe') } |
       Select-Object -ExpandProperty Id
   `);
   return output
@@ -197,7 +197,7 @@ function findAetherPids() {
     .filter(Number.isFinite);
 }
 
-function stopAetherPids(pids) {
+function stopAelyrisPids(pids) {
   if (pids.length === 0) return;
   powershell(`Stop-Process -Id ${pids.join(",")} -Force -ErrorAction SilentlyContinue`);
 }
@@ -214,7 +214,7 @@ async function connectOverCdpWithRetry() {
     }
   }
   throw new Error(
-    `Cannot attach to WebView2 CDP at ${CDP}. Start Aether with QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev. ${
+    `Cannot attach to WebView2 CDP at ${CDP}. Start Aelyris with AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev. ${
       lastError?.message ?? "CDP endpoint did not respond"
     }`,
   );
@@ -238,9 +238,9 @@ async function ensureCleanApp(page) {
     try {
       await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
       await page.evaluate((projectPath) => {
-        localStorage.setItem("aether:lastProject", projectPath);
-        localStorage.setItem("aether:onboarding-done", "1");
-        localStorage.removeItem("aether:dashboardStateUrl");
+        localStorage.setItem("aelyris:lastProject", projectPath);
+        localStorage.setItem("aelyris:onboarding-done", "1");
+        localStorage.removeItem("aelyris:dashboardStateUrl");
       }, PROJECT_PATH);
       break;
     } catch (error) {
@@ -373,7 +373,7 @@ function startDebugApp() {
   }
   return spawn(DEBUG_APP_EXE, [], {
     cwd: join(ROOT, "src-tauri"),
-    env: { ...process.env, QUORUM_API_TOKEN: TOKEN },
+    env: { ...process.env, AELYRIS_API_TOKEN: TOKEN },
     stdio: "ignore",
     windowsHide: true,
   });
@@ -382,9 +382,9 @@ function startDebugApp() {
 async function attachPage() {
   const browser = await connectOverCdpWithRetry();
   const context = browser.contexts()[0];
-  const page = pickAetherPage(context);
+  const page = pickAelyrisPage(context);
   if (!page) {
-    throw new Error(`No Aether Tauri page found over CDP.\n${describePages(context)}`);
+    throw new Error(`No Aelyris Tauri page found over CDP.\n${describePages(context)}`);
   }
   return { browser, page };
 }
@@ -397,11 +397,11 @@ async function main() {
   let terminalId = null;
   let splitTerminalId = null;
   try {
-    const initialPids = findAetherPids();
+    const initialPids = findAelyrisPids();
     if (initialPids.length === 0) {
-      throw new Error("No running debug/release Aether.exe process found. Start pnpm tauri:dev first.");
+      throw new Error("No running debug/release Aelyris.exe process found. Start pnpm tauri:dev first.");
     }
-    report.checks.initialAetherPids = initialPids;
+    report.checks.initialAelyrisPids = initialPids;
 
     const first = await attachPage();
     firstBrowser = first.browser;
@@ -417,7 +417,7 @@ async function main() {
     await waitForShellReady(first.page, terminalId);
     report.checks.terminalId = terminalId;
 
-    const firstMarker = `AETHER_PROCESS_RECONNECT_BEFORE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+    const firstMarker = `AELYRIS_PROCESS_RECONNECT_BEFORE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
     const firstCommand = `Write-Output "${firstMarker}"`;
     await call(first.page, "send_keys", { terminalId, data: `${firstCommand}\r` });
     await waitForGridText(first.page, terminalId, firstMarker);
@@ -443,7 +443,7 @@ async function main() {
     report.checks.splitTerminalId = splitTerminalId;
 
     const splitBeforeMarker =
-      `AETHER_PROCESS_RECONNECT_SPLIT_BEFORE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+      `AELYRIS_PROCESS_RECONNECT_SPLIT_BEFORE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
     const splitBeforeCommand = `Write-Output "${splitBeforeMarker}"`;
     await call(first.page, "send_keys", { terminalId: splitTerminalId, data: `${splitBeforeCommand}\r` });
     await waitForGridText(first.page, splitTerminalId, splitBeforeMarker);
@@ -463,7 +463,7 @@ async function main() {
     else await firstBrowser.close().catch(() => {});
     firstBrowser = null;
 
-    stopAetherPids(initialPids);
+    stopAelyrisPids(initialPids);
     report.checks.cdpStopped = await waitForCdpDown();
     const sidecarAfterStop = await waitForSidecarTerminal(terminalId);
     const retainedIds = new Set(sidecarAfterStop.map((session) => session?.id).filter(Boolean));
@@ -492,7 +492,7 @@ async function main() {
     assertAnchoredPassed(splitRecovered.block, "split after-process-restart recovered");
     report.checks.splitRecoveredBlock = splitRecovered.block;
 
-    const secondMarker = `AETHER_PROCESS_RECONNECT_AFTER_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+    const secondMarker = `AELYRIS_PROCESS_RECONNECT_AFTER_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
     const secondCommand = `Write-Output "${secondMarker}"`;
     await call(second.page, "send_keys", { terminalId, data: `${secondCommand}\r` });
     await waitForGridText(second.page, terminalId, secondMarker);
@@ -509,7 +509,7 @@ async function main() {
     report.checks.afterRestartPersistedBlock = afterRestartPersisted.block;
 
     const splitAfterMarker =
-      `AETHER_PROCESS_RECONNECT_SPLIT_AFTER_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+      `AELYRIS_PROCESS_RECONNECT_SPLIT_AFTER_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
     const splitAfterCommand = `Write-Output "${splitAfterMarker}"`;
     await call(second.page, "send_keys", { terminalId: splitTerminalId, data: `${splitAfterCommand}\r` });
     await waitForGridText(second.page, splitTerminalId, splitAfterMarker);
@@ -546,7 +546,7 @@ async function main() {
       }).catch(() => {});
     }
     if (restartedApp?.pid) {
-      stopAetherPids([restartedApp.pid]);
+      stopAelyrisPids([restartedApp.pid]);
     }
     if (devServer?.pid) {
       devServer.kill();

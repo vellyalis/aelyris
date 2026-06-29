@@ -282,7 +282,7 @@ mod tests {
             .unwrap();
 
         // Normal output with no permission prompt indicators
-        let result = manager.evaluate("pty-1", "Compiling aether-terminal v0.1.0");
+        let result = manager.evaluate("pty-1", "Compiling aelyris v0.1.0");
         assert_eq!(result, Some((0, WatchdogAction::Ignore)));
     }
 

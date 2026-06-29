@@ -8,9 +8,9 @@ pub fn parse_workflow(yaml_path: &str) -> Result<Workflow, String> {
     serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse workflow YAML: {}", e))
 }
 
-/// List all workflow files in a project's .aether/workflows/ directory
+/// List all workflow files in a project's .aelyris/workflows/ directory
 pub fn list_workflow_files(project_path: &str) -> Vec<WorkflowSummary> {
-    let dir = Path::new(project_path).join(".aether").join("workflows");
+    let dir = Path::new(project_path).join(".aelyris").join("workflows");
     if !dir.exists() {
         return Vec::new();
     }

@@ -2,7 +2,7 @@
 //! realistic multi-task feature build with faults injected (a crashed worker, a
 //! review-rejected branch, two tasks contending for one file lane), and checks
 //! the loop's coordination/safety guarantees hold to completion with zero human
-//! intervention. See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md
+//! intervention. See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md
 //! (Acceptance: end-to-end autonomy).
 //!
 //! Scope — be precise about what this proves and what it does NOT:

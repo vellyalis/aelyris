@@ -362,7 +362,7 @@ where
     {
         match node {
             LayoutNode::Pane { pane_id: id } if id == pane_id => {
-                let old = std::mem::replace(node, LayoutNode::single("__aether_pending__"));
+                let old = std::mem::replace(node, LayoutNode::single("__aelyris_pending__"));
                 let maker = make_node
                     .take()
                     .ok_or(LayoutError::PaneNotFound(pane_id.to_string()))?;

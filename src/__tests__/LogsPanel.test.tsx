@@ -21,7 +21,7 @@ function entry(seq: number, overrides: Partial<LogEntry> = {}): LogEntry {
     seq,
     timestamp_ms: 1_700_000_000_000 + seq,
     level: "INFO",
-    target: "aether::test",
+    target: "aelyris::test",
     message: `m${seq}`,
     fields: {},
     ...overrides,

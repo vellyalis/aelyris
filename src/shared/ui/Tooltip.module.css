@@ -28,7 +28,7 @@
 }
 
 .arrow {
-  fill: var(--aether-bg-card);
+  fill: var(--aelyris-bg-card);
 }
 
 @media (prefers-reduced-motion: reduce) {

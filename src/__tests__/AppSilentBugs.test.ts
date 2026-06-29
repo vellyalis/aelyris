@@ -161,13 +161,13 @@ describe("Release evidence gates", () => {
     expect(script).toContain('readFileSync(join(ROOT, "package.json"), "utf8")');
     expect(script).toContain("function sha256");
     expect(script).toContain("function appExecutableInfo");
-    expect(script).toContain("function probeAetherProcesses");
+    expect(script).toContain("function probeAelyrisProcesses");
     expect(script).toContain("function probeApiHealth");
     expect(script).toContain("function probeTerminalRoundtrip");
-    expect(script).toContain("AETHER_POST_RESUME_TERMINAL_OK_");
+    expect(script).toContain("AELYRIS_POST_RESUME_TERMINAL_OK_");
     expect(script).toContain("function probeDbPaneLayout");
-    expect(script).toContain('runAetherCtl(["db-smoke"]');
-    expect(script).toContain('"cargo-run-aetherctl db-smoke"');
+    expect(script).toContain('runAelys(["db-smoke"]');
+    expect(script).toContain('"cargo-run-aelys db-smoke"');
     expect(script).toContain("function writePostResumeProbe");
     expect(script).toContain("function writeAppExecutableRefresh");
     expect(script).toContain("binaryIdentityChanged");
@@ -181,7 +181,7 @@ describe("Release evidence gates", () => {
     expect(script).toContain("--help, -h");
     expect(script).toContain("Show this message and exit without touching evidence or sleeping.");
     expect(script).toContain("function assertWindowsSleepCycleAllowed");
-    expect(script).toContain("QUORUM_ALLOW_OS_SLEEP");
+    expect(script).toContain("AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("refusing to put Windows to sleep without explicit opt-in");
     expect(script).toContain("SetSuspendState");
     expect(script).toContain('if (args.has("--cycle"))');
@@ -200,7 +200,7 @@ describe("Release evidence gates", () => {
     expect(script).toContain("sqliteWritable: dbPaneLayout.ok === true");
     expect(script).toContain("paneStatePreserved: dbPaneLayout.ok === true");
     expect(script).toContain("Run pnpm verify:production:suspend:postcheck after the app is running post-resume.");
-    expect(script).toContain("Launch the release Aether.exe and rerun pnpm verify:production:suspend:postcheck.");
+    expect(script).toContain("Launch the release Aelyris.exe and rerun pnpm verify:production:suspend:postcheck.");
     expect(script).toContain("Ensure the PTY API is reachable and rerun pnpm verify:production:suspend:postcheck.");
     expect(script).toContain(
       "Ensure SQLite pane layout persistence is writable and rerun pnpm verify:production:suspend:postcheck.",
@@ -387,7 +387,7 @@ describe("Release evidence gates", () => {
     expect(nativeInput).toContain("composition_text");
     expect(nativeInput).toContain("read_native_ime_composition_text");
     expect(canvasIme).toContain("native_terminal_input_preedit");
-    expect(nativeInput).toContain("AetherNativeTerminalInputSurface");
+    expect(nativeInput).toContain("AelyrisNativeTerminalInputSurface");
     expect(nativeInput).toContain("RegisterClassW");
     expect(nativeInput).toContain("apply_native_surface_ime_position");
     expect(nativeInput).toContain("CFS_RECT");
@@ -439,7 +439,7 @@ describe("Release evidence gates", () => {
     expect(nativeHwndPasteVerify).toContain("multilinePasteBlockedBeforePty");
     expect(nativeHwndPasteVerify).toContain("native-input-hwnd-wm-paste");
     expect(nativeHwndPasteVerify).toContain("nativeNoCdpProof");
-    expect(nativeHwndPasteVerify).toContain("aether-native-paste-guard-proof");
+    expect(nativeHwndPasteVerify).toContain("aelyris-native-paste-guard-proof");
     expect(score).toContain("real-os-soak postcheck is missing; run pnpm verify:production:suspend:postcheck");
     expect(score).toContain("real-os-soak app process probe is not passing");
     expect(score).toContain("real-os-soak PTY API health probe is not passing");
@@ -456,7 +456,7 @@ describe("Release evidence gates", () => {
     expect(productionGate).toContain('"verify:production:suspend:diagnose"');
     expect(productionGate).toContain("Real OS sleep/resume evidence");
     expect(productionGate).toContain('"verify:production:suspend"');
-    expect(productionGate).toContain("AETHER_RELEASE_SLEEP_CYCLE");
+    expect(productionGate).toContain("AELYRIS_RELEASE_SLEEP_CYCLE");
     expect(productionGate).toContain("Guarded real OS sleep/resume cycle");
     expect(productionGate).toContain('"verify:production:suspend:cycle"');
     expect(productionGate.indexOf("Real OS sleep/resume evidence")).toBeLessThan(
@@ -470,9 +470,9 @@ describe("Release evidence gates", () => {
 
     expect(packageJson).toContain('"verify:goal:refresh-safe": "node scripts/verify-goal-non-token-refresh.mjs"');
     expect(script).toContain("goal-non-token-refresh.json");
-    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_CONSENT");
-    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_PROVIDER");
-    expect(script).toContain("delete env.QUORUM_ALLOW_OS_SLEEP");
+    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_CONSENT");
+    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_PROVIDER");
+    expect(script).toContain("delete env.AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("verify-terminal-font-render-contract.mjs");
     expect(script).toContain("verify-glass-legibility-contract.mjs");
     expect(script).toContain("verify-native-terminal-input-host.mjs");
@@ -481,7 +481,7 @@ describe("Release evidence gates", () => {
     expect(script).toContain("verify-authenticated-ai-cli-consent-packet.mjs");
     expect(script).toContain("verify-goal-external-gate-readiness.mjs");
     expect(script).toContain("verify-right-rail-goal-track-tauri.mjs");
-    expect(script).toContain("AETHER_TAURI_GOAL_TRACK_WAIT_MS");
+    expect(script).toContain("AELYRIS_TAURI_GOAL_TRACK_WAIT_MS");
     expect(script).toContain("environment-blocked-current-contract");
     expect(script).toContain("tokenSpendingPromptExecuted: false");
     expect(script).toContain("realOsSleepInvoked: false");
@@ -503,13 +503,13 @@ describe("Release evidence gates", () => {
     expect(script).toContain("realOsSleepInvoked: false");
     expect(script).toContain("noUnsafeConsentEnvPresent");
     expect(script).toContain("noOsSleepEnvPresent");
-    expect(script).toContain("QUORUM_ALLOW_OS_SLEEP");
-    expect(script).toContain("QUORUM_AUTH_PROMPT_CONSENT");
+    expect(script).toContain("AELYRIS_ALLOW_OS_SLEEP");
+    expect(script).toContain("AELYRIS_AUTH_PROMPT_CONSENT");
     expect(script).toContain("pnpm verify:production:suspend:native-user-cycle");
     expect(script).toContain("pnpm verify:terminal:authenticated-ai-cli-prompt");
     expect(script).toContain("pnpm verify:goal:operator-finish");
     expect(script).toContain("token-spending-explicit-consent");
-    expect(script).toContain("This readiness verifier does not set QUORUM_ALLOW_OS_SLEEP");
+    expect(script).toContain("This readiness verifier does not set AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("external-operator-gates-complete");
     expect(script).toContain("completeExternalGatesProved");
     expect(finalAudit).toContain("externalGateReadinessPath");
@@ -535,10 +535,10 @@ describe("Release evidence gates", () => {
     expect(script).toContain("--user-sleep-cycle");
     expect(script).toContain("verify-goal-non-token-refresh.mjs");
     expect(script).toContain("verify-final-goal-safe.mjs");
-    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_CONSENT");
-    expect(script).toContain("delete env.QUORUM_AUTH_PROMPT_PROVIDER");
-    expect(script).toContain("delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP");
-    expect(script).toContain("delete env.QUORUM_ALLOW_OS_SLEEP");
+    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_CONSENT");
+    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_PROVIDER");
+    expect(script).toContain("delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP");
+    expect(script).toContain("delete env.AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("externalReadinessArtifactReady");
     expect(script).toContain("spawnBlocked");
     expect(script).toContain("pass-current-artifact-replay");
@@ -567,9 +567,9 @@ describe("Release evidence gates", () => {
   it("keeps the live IME smoke on a clean visual QA URL", () => {
     const script = readFileSync(join(process.cwd(), "scripts/verify-ime.mjs"), "utf8");
 
-    expect(script).toContain("AETHER_IME_URL");
+    expect(script).toContain("AELYRIS_IME_URL");
     expect(script).toContain("targetImeUrl");
-    expect(script).toContain('url.searchParams.set("aetherVisualQa", "1")');
+    expect(script).toContain('url.searchParams.set("aelyrisVisualQa", "1")');
     expect(script).toContain('url.searchParams.set("v", "verify-ime-clean")');
     expect(script).toContain('url.searchParams.delete("state")');
     expect(script).toContain('url.searchParams.delete("edgeLoop")');
@@ -587,7 +587,7 @@ describe("Release evidence gates", () => {
       '"verify:terminal:command-evidence": "node scripts/verify-live-command-evidence.mjs"',
     );
     expect(script).toContain("term_command_blocks");
-    expect(script).toContain("AETHER_CMD_EVIDENCE_");
+    expect(script).toContain("AELYRIS_CMD_EVIDENCE_");
     expect(script).toContain('url.searchParams.delete("state")');
     expect(script).toContain('url.searchParams.delete("edgeLoop")');
     expect(score).toContain("live-command-evidence.json");
@@ -613,7 +613,7 @@ describe("Release evidence gates", () => {
     expect(script).toContain("mux_close_pane");
     expect(script).toContain("term_history_rows");
     expect(script).toContain("term_command_blocks");
-    expect(script).toContain("AETHER_MULTIPANE_COMMAND_EVIDENCE");
+    expect(script).toContain("AELYRIS_MULTIPANE_COMMAND_EVIDENCE");
     expect(score).toContain("multipane-command-evidence.json");
     expect(score).toContain('"multipane-command-evidence"');
     expect(score).toContain("Multi-pane scrollback command evidence");
@@ -634,7 +634,7 @@ describe("Release evidence gates", () => {
     );
     expect(script).toContain("term_persisted_command_blocks");
     expect(script).toContain("term_command_blocks");
-    expect(script).toContain("AETHER_RECOVERED_EVIDENCE_");
+    expect(script).toContain("AELYRIS_RECOVERED_EVIDENCE_");
     expect(script).toContain('url.searchParams.set("v", "recovered-command-evidence")');
     expect(score).toContain("recovered-command-evidence.json");
     expect(score).toContain('"recovered-command-evidence"');
@@ -664,14 +664,14 @@ describe("Release evidence gates", () => {
     expect(script).toContain("splitTerminalAdoptedAfterRestart");
     expect(script).toContain("term_persisted_command_blocks");
     expect(script).toContain("mux_split_pane");
-    expect(script).toContain("AETHER_PROCESS_RECONNECT_BEFORE_");
-    expect(script).toContain("AETHER_PROCESS_RECONNECT_AFTER_");
-    expect(script).toContain("AETHER_PROCESS_RECONNECT_SPLIT_AFTER_");
+    expect(script).toContain("AELYRIS_PROCESS_RECONNECT_BEFORE_");
+    expect(script).toContain("AELYRIS_PROCESS_RECONNECT_AFTER_");
+    expect(script).toContain("AELYRIS_PROCESS_RECONNECT_SPLIT_AFTER_");
     expect(score).toContain("process-reconnect-command-evidence.json");
     expect(score).toContain('"process-reconnect-command-evidence"');
     expect(score).toContain("Process reconnect terminal evidence");
-    expect(score).toContain("restarted Aether did not adopt the sidecar terminal");
-    expect(score).toContain("restarted Aether did not adopt the split sidecar terminal");
+    expect(score).toContain("restarted Aelyris did not adopt the sidecar terminal");
+    expect(score).toContain("restarted Aelyris did not adopt the split sidecar terminal");
   });
 
   it("keeps live AI CLI post-launch chaos wired into release confidence", () => {
@@ -699,7 +699,7 @@ describe("Release evidence gates", () => {
     );
     const devSidecarBuild = readFileSync(join(process.cwd(), "scripts/build-pty-sidecar-dev.ps1"), "utf8");
     expect(devSidecarBuild).toContain("src-tauri/pty-server/Cargo.toml");
-    expect(devSidecarBuild).toContain("AETHER_DEV_SIDECAR_REPLACE_RETRIES");
+    expect(devSidecarBuild).toContain("AELYRIS_DEV_SIDECAR_REPLACE_RETRIES");
     expect(devSidecarBuild).toContain("Stop-ProcessesUsingPath");
     expect(devSidecarBuild).toContain("Get-CimInstance Win32_Process");
     expect(devSidecarBuild).toContain("Replace-DevSidecarExecutable");
@@ -745,7 +745,7 @@ describe("Release evidence gates", () => {
       'ACCEPTED_AGENT_BACKENDS = new Set(["native", "sidecar", "sidecar-command-session"])',
     );
     expect(promptSmoke).toContain("browser.disconnect");
-    expect(promptSmoke).toContain("QUORUM_AUTH_PROMPT_CLOSE_BROWSER");
+    expect(promptSmoke).toContain("AELYRIS_AUTH_PROMPT_CLOSE_BROWSER");
     expect(promptSmoke).toContain("browserCloseRequested");
     expect(promptSmoke).toContain("createHash");
     expect(promptSmoke).toContain("outputEvidence");
@@ -807,7 +807,7 @@ describe("Release evidence gates", () => {
     expect(ptySidecar).toContain("stdout(std::process::Stdio::null())");
     expect(ptySidecar).toContain("stderr(std::process::Stdio::null())");
     expect(lib).toContain("apply_windows_app_identity();");
-    expect(lib).toContain("QUORUM_DISABLE_DWM_CHROME");
+    expect(lib).toContain("AELYRIS_DISABLE_DWM_CHROME");
     expect(lib).toContain("direct DWM chrome disabled by env; using Tauri windowEffects");
     expect(score).toContain("p2-07-live-tauri-pty-ai-cli-chaos.json");
     expect(score).toContain('"live-ai-cli-post-launch-chaos"');
@@ -909,10 +909,10 @@ describe("Release evidence gates", () => {
     expect(moods).toContain("materialOverridesToCSS");
     expect(themeApplier).toContain("for (const key of MOOD_CSS_KEYS)");
     expect(themeApplier).toContain("root.style.removeProperty(key)");
-    expect(themeApplier).toContain("--aether-wallpaper-image");
-    expect(themeApplier).toContain("--aether-wallpaper-opacity");
-    expect(themeApplier).toContain("--aether-wallpaper-position-x");
-    expect(themeApplier).toContain("--aether-wallpaper-size");
+    expect(themeApplier).toContain("--aelyris-wallpaper-image");
+    expect(themeApplier).toContain("--aelyris-wallpaper-opacity");
+    expect(themeApplier).toContain("--aelyris-wallpaper-position-x");
+    expect(themeApplier).toContain("--aelyris-wallpaper-size");
     expect(themeApplier).toContain('source: "theme-customization"');
     expect(themeApplier).toContain('"persist_theme_preferences"');
     expect(settings).toContain("chooseWallpaperImage");
@@ -970,7 +970,7 @@ describe("Release evidence gates", () => {
     expect(packageJson).toContain(
       '"verify:command-center-scenario": "node scripts/verify-command-center-scenario.mjs"',
     );
-    expect(script).toContain("AETHER_COMMAND_CENTER_SCENARIO_OUT");
+    expect(script).toContain("AELYRIS_COMMAND_CENTER_SCENARIO_OUT");
     expect(script).toContain("commandCenterScenario.test.ts");
     expect(score).toContain("command-center-scenario.json");
     expect(score).toContain('"command-center-scenario"');
@@ -1081,7 +1081,7 @@ describe("Release evidence gates", () => {
     expect(src).toContain('aria-label="Authenticated prompt consent command"');
     expect(src).toContain("rightRailGoalTrackConsentProviderEnv");
     expect(src).toContain("data-provider-env");
-    expect(src).toContain("QUORUM_AUTH_PROMPT_PROVIDER=");
+    expect(src).toContain("AELYRIS_AUTH_PROMPT_PROVIDER=");
     expect(src).toContain('className="right-panel-goal-track-risks"');
     expect(src).toContain('data-source="runtime-fallback"');
     expect(src).toContain('data-source="qa-fixture"');
@@ -1113,7 +1113,7 @@ describe("Release evidence gates", () => {
     expect(styles).toContain('.right-panel-goal-track-risks[data-source="qa-fixture"]');
     expect(styles).toContain('.right-panel-goal-track-risks[data-source="runtime-fallback"]');
     expect(styles).toContain(".right-panel-goal-track-milestone");
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .right-panel-goal-track');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-goal-track');
     expect(score).toContain('"right-rail-goal-track"');
     expect(score).toContain("Right rail final goal visibility");
     expect(score).toContain("providerEnvRequirement");
@@ -1184,7 +1184,7 @@ describe("Release evidence gates", () => {
     expect(tauriGoalTrackScript).toContain("risk blockers are listed without visible risk evidence labels");
     expect(tauriGoalTrackScript).toContain("QA fixture risks leaked into release blockers");
     expect(tauriGoalTrackScript).toContain("browser.disconnect");
-    expect(tauriGoalTrackScript).toContain("AETHER_TAURI_GOAL_TRACK_CLOSE_BROWSER");
+    expect(tauriGoalTrackScript).toContain("AELYRIS_TAURI_GOAL_TRACK_CLOSE_BROWSER");
     expect(goalTrack).toContain("RightRailGoalMilestone");
     expect(goalTrack).toContain("RightRailGoalConsentPacket");
     expect(goalTrack).toContain("RightRailGoalRiskSummary");
@@ -1318,7 +1318,7 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain("docs/README.md");
     expect(finalGoalAuditScript).toContain("docs/PUBLICATION_READINESS.md");
     expect(finalGoalAuditScript).toContain("docs/specs/README.md");
-    expect(finalGoalAuditScript).toContain("docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
+    expect(finalGoalAuditScript).toContain("docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
     expect(finalGoalAuditScript).toContain("src/features/terminal/keymap.ts");
     expect(finalGoalAuditScript).toContain("src/features/terminal/hooks/useAICliDetection.ts");
     expect(finalGoalAuditScript).toContain("src/shared/hooks/useKeyboardShortcuts.ts");
@@ -1365,7 +1365,7 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain("consentPacketArtifact");
     expect(finalGoalAuditScript).toContain("readyToRunAfterConsent");
     expect(finalGoalAuditScript).toContain("providerReadiness");
-    expect(finalGoalAuditScript).toContain("QUORUM_AUTH_PROMPT_CONSENT");
+    expect(finalGoalAuditScript).toContain("AELYRIS_AUTH_PROMPT_CONSENT");
     expect(finalGoalAuditScript).toContain("Set $" + "{promptExecutionGate.requiredEnv} and $");
     expect(finalGoalAuditScript).toContain("{promptExecutionGate.requiredProviderEnv}, then run");
     expect(finalGoalAuditScript).toContain("authenticated-ai-cli-provider-required-smoke.json");
@@ -1382,7 +1382,7 @@ describe("Release evidence gates", () => {
     expect(score).toContain("goal-documentation-freshness");
     expect(goalDocumentationFreshnessScript).toContain("consentPacketNamed");
     expect(goalDocumentationFreshnessScript).toContain("consentProviderRequired");
-    expect(goalDocumentationFreshnessScript).toContain("QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
+    expect(goalDocumentationFreshnessScript).toContain("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
     expect(goalDocumentationFreshnessScript).toContain("requiredDocPaths");
     expect(goalDocumentationFreshnessScript).toContain("checkedDocCount");
     expect(score).toContain("REQUIRED_GOAL_DOCUMENT_PATHS");
@@ -1391,7 +1391,7 @@ describe("Release evidence gates", () => {
     expect(score).toContain("final-goal-audit-after-goal-docs");
     expect(score).toContain("quality-score-final");
     expect(score).toContain("docs/specs/README.md");
-    expect(score).toContain("docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
+    expect(score).toContain("docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md");
     expect(goalDocumentationFreshnessScript).toContain("README.md");
     expect(goalDocumentationFreshnessScript).toContain("docs/README.md");
     expect(goalDocumentationFreshnessScript).toContain("docs/PUBLICATION_READINESS.md");
@@ -1507,7 +1507,7 @@ describe("Release evidence gates", () => {
     expect(finalGoalSafeVerifier).toContain("provider-required-safe");
     expect(finalGoalSafeVerifier).toContain("proofArtifactPassCount");
     expect(finalGoalSafeVerifier).toContain("proofArtifactsPassed");
-    expect(finalGoalSafeVerifier).toContain("delete env.AETHER_GOAL_OPERATOR_RUN_SLEEP");
+    expect(finalGoalSafeVerifier).toContain("delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP");
     expect(finalGoalSafeVerifier).toContain("localDate: currentLocalDate()");
     expect(finalGoalSafeVerifier).toContain("timeZone: LOCAL_TIME_ZONE");
     expect(finalGoalSafeVerifier).toContain("const tokenSpendingPromptExecuted");
@@ -1515,7 +1515,7 @@ describe("Release evidence gates", () => {
     expect(tauriGoalTrackScript).toContain("sourceArtifacts");
     expect(tauriGoalTrackScript).toContain("sourceContract");
     expect(tauriGoalTrackScript).toContain("SOURCE_CONTRACT_PATHS");
-    expect(finalGoalSafeVerifier).not.toContain("QUORUM_AUTH_PROMPT_CONSENT:");
+    expect(finalGoalSafeVerifier).not.toContain("AELYRIS_AUTH_PROMPT_CONSENT:");
     expect(goalDocumentationFreshnessScript).toContain("CURRENT_STATE_DOCS");
     expect(goalDocumentationFreshnessScript).toContain("FINAL_GOAL_SAFE_VERIFIER_PATH");
     expect(goalDocumentationFreshnessScript).toContain("expectedSafeProofArtifactCount");
@@ -1579,12 +1579,12 @@ describe("App right rail composition", () => {
     expect(styles).toContain(".right-panel-inspector-hero");
     expect(styles).toContain(".right-panel-inspector-grid");
     expect(styles).toContain(".right-panel-inspector-open");
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .mode-rail');
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .right-panel-inspector-hero');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .mode-rail');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-inspector-hero');
     expect(plan).toContain("Left Mode Rail -> Center Work Surface -> Right Contextual Inspector");
     expect(plan).toContain("Phase 1: Visible Shell Recomposition");
     expect(plan).toContain("Phase 2: Inspector Simplification");
-    expect(verifier).toContain("aether.clauge-ui-refresh-contract.v1");
+    expect(verifier).toContain("aelyris.clauge-ui-refresh-contract.v1");
     expect(verifier).toContain("inspector-summary");
     expect(packageJson).toContain('"verify:clauge-ui-refresh"');
   });
@@ -1685,13 +1685,13 @@ describe("App right rail composition", () => {
     expect(styles).toContain(".right-panel-run-loop");
     expect(styles).toContain(".right-panel-run-loop-trace");
     expect(styles).toContain(".right-panel-run-loop-action");
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .right-panel-run-loop');
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .right-panel-run-loop-trace div');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-run-loop');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-run-loop-trace div');
     expect(styles).toContain(".right-panel-action-phase");
     expect(styles).toContain(".right-panel-action-owner");
     expect(styles).toContain('.right-panel-action[data-owner-kind="session"] .right-panel-action-owner');
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .right-panel-action-owner');
-    expect(styles).toContain(':root[data-mood="aether-sakura"] .right-panel-action-phase');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-action-owner');
+    expect(styles).toContain(':root[data-mood="aelyris-sakura"] .right-panel-action-phase');
     expect(advisor).toContain("recentFallbackEvents");
     expect(advisor).toContain("fallbackTelemetryCount");
     expect(advisor).toContain("Runtime fallbacks are routed to Reliability");
@@ -1764,7 +1764,7 @@ describe("App right rail composition", () => {
     );
     expect(packageJson).toContain('"verify:right-rail:strict"');
     expect(script).toContain("right-rail Edge score feedback");
-    expect(script).toContain("AETHER_RIGHT_RAIL_EDGE_URL");
+    expect(script).toContain("AELYRIS_RIGHT_RAIL_EDGE_URL");
     expect(script).toContain("edgeLoop");
     expect(script).toContain("legacy_axis");
     expect(script).toContain("Removed Guardrail");
@@ -1779,7 +1779,7 @@ describe("App right rail composition", () => {
     expect(suite).toContain("CONTRACT_CHECKS");
     expect(suite).toContain("LOCALHOST_CHECKS");
     expect(suite).toContain("CDP_CHECKS");
-    expect(suite).toContain("AETHER_RIGHT_RAIL_REQUIRE_CDP");
+    expect(suite).toContain("AELYRIS_RIGHT_RAIL_REQUIRE_CDP");
     expect(suite).toContain("CDP endpoint required but unavailable");
     expect(suite).toContain("scripts/verify-right-rail-scale-contract.mjs");
     expect(suite).toContain("scripts/verify-right-rail-information-density.mjs");
@@ -2184,7 +2184,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("const [rightRailGuardrailSelection, setRightRailGuardrailSelection]");
     expect(src).toContain("RIGHT_RAIL_GUARDRAIL_OPTIONS");
     expect(src).toContain("RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY");
-    expect(src).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aether:right-rail-guardrail-sync"');
+    expect(src).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync"');
     expect(src).toContain("loadRightRailGuardrailSelection");
     expect(src).toContain("saveRightRailGuardrailSelection");
     expect(src).toContain("saveRightRailGuardrailSelectionToNativeConfig");
@@ -2253,8 +2253,8 @@ describe("App right rail composition", () => {
     expect(src).toContain("function RightRailWidgetFrame");
     expect(src).toContain("loadRightRailWidgetOpen");
     expect(src).toContain("saveRightRailWidgetOpen");
-    expect(src).toContain('const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aether:right-rail-widget:"');
-    expect(src).toContain('const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aether:right-rail-widget-sync"');
+    expect(src).toContain('const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:"');
+    expect(src).toContain('const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync"');
     expect(src).toContain("hydrateRightRailWidgetOpenFromConfig");
     expect(src).toContain("saveRightRailWidgetOpenToNativeConfig");
     expect(src).toContain("right_rail_widgets");
@@ -2375,8 +2375,8 @@ describe("App visual QA bootstrap", () => {
     expect(src).toContain("function readDevVisualQaState()");
     expect(src).toContain("function isExplicitDevVisualQaRequest()");
     expect(src).toContain("import.meta.env.DEV");
-    expect(src).toContain('params.get("aetherVisualQa") === "1"');
-    expect(src).not.toContain('window.localStorage.getItem("aether:visualQa") === "1"');
+    expect(src).toContain('params.get("aelyrisVisualQa") === "1"');
+    expect(src).not.toContain('window.localStorage.getItem("aelyris:visualQa") === "1"');
     expect(src).toContain('params.get("diagnostics") === "1"');
     expect(src).toContain("railScenarioParam");
     expect(src).toContain("usesDeprecatedStateAlias");
@@ -2390,7 +2390,7 @@ describe("App visual QA bootstrap", () => {
     expect(src).toContain("createDevVisualQaPanes");
     expect(src).toContain("visualTerminalPaneTargets");
     expect(src).toContain("setRightRailMode(devVisualQa.railMode)");
-    expect(src).toContain('window.localStorage.setItem("aether:onboarding-done", "true")');
+    expect(src).toContain('window.localStorage.setItem("aelyris:onboarding-done", "true")');
     expect(src).toContain("setRootProjectPath(devVisualQa.projectPath)");
   });
 

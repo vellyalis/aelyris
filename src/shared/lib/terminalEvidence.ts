@@ -1,4 +1,4 @@
-export const TERMINAL_COMMAND_EVIDENCE_EVENT = "aether:terminal-command-evidence";
+export const TERMINAL_COMMAND_EVIDENCE_EVENT = "aelyris:terminal-command-evidence";
 
 export interface TerminalCommandEvidenceDetail {
   terminalId: string;

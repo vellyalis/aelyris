@@ -16,11 +16,11 @@ Clauge's useful reference point is not visual skinning. The useful reference is 
 - cross-mode history and MCP exposure;
 - destructive actions gated by clear approvals.
 
-Aether should not become a broad REST/SQL/NoSQL/S3 super-app before its terminal core is done. Aether's edge remains native terminal-first: Rust mux/session durability, AI CLI reliability, Command Center evidence, recovery, and project-aware automation.
+Aelyris should not become a broad REST/SQL/NoSQL/S3 super-app before its terminal core is done. Aelyris's edge remains native terminal-first: Rust mux/session durability, AI CLI reliability, Command Center evidence, recovery, and project-aware automation.
 
 ## Product Direction
 
-Adopt the Clauge-style mode architecture while keeping Aether's native Rust terminal as the center of gravity.
+Adopt the Clauge-style mode architecture while keeping Aelyris's native Rust terminal as the center of gravity.
 
 The primary native shell should become:
 
@@ -43,7 +43,7 @@ Initial native modes:
 7. History
 8. Settings
 
-These replace vague panel discovery with explicit mode identity. The mode rail must be keyboard-first and should map cleanly to `Alt+1` through `Alt+8` or the eventual Aether keymap engine.
+These replace vague panel discovery with explicit mode identity. The mode rail must be keyboard-first and should map cleanly to `Alt+1` through `Alt+8` or the eventual Aelyris keymap engine.
 
 ## Center Surface
 
@@ -79,13 +79,13 @@ This plan is now part of the native-first hybrid product goal, not a requirement
 
 Every mode must have a Rust-owned data contract before it is considered native-ready:
 
-- `aether.native.mode-shell.v1`
-- `aether.native.mode-rail.v1`
-- `aether.native.inspector.v1`
-- `aether.native.agent-session.v1`
-- `aether.native.context-pack.v1`
-- `aether.native.workspace-item.v1`
-- `aether.native.history-index.v1`
+- `aelyris.native.mode-shell.v1`
+- `aelyris.native.mode-rail.v1`
+- `aelyris.native.inspector.v1`
+- `aelyris.native.agent-session.v1`
+- `aelyris.native.context-pack.v1`
+- `aelyris.native.workspace-item.v1`
+- `aelyris.native.history-index.v1`
 
 React/Tauri can preview these during migration, but React must not become the source of truth.
 
@@ -97,7 +97,7 @@ Goal: define the mode rail and inspector model in Rust.
 
 Deliverables:
 
-- `aether-native mode-shell-proof`
+- `aelyris-native mode-shell-proof`
 - mode list with ids, labels, shortcuts, and source contracts;
 - selected mode state;
 - selected entity route;
@@ -107,7 +107,7 @@ Deliverables:
 Exit criteria:
 
 - the native-first release audit keeps a mode shell contract item; the older `pnpm verify:full-native:audit` remains a strict stretch signal.
-- Mode shell proof can be emitted by `aether-native`.
+- Mode shell proof can be emitted by `aelyris-native`.
 
 ### Phase C2: Native Mode Rail Window Proof
 
@@ -124,7 +124,7 @@ Deliverables:
 
 Exit criteria:
 
-- `aether-native mode-rail-window-proof` reports nonblank native rendering and keyboard selection state.
+- `aelyris-native mode-rail-window-proof` reports nonblank native rendering and keyboard selection state.
 
 ### Phase C3: Right Inspector Unification
 
@@ -132,7 +132,7 @@ Goal: replace the old right rail dashboard concept with a contextual inspector.
 
 Deliverables:
 
-- `aether-native inspector-proof`;
+- `aelyris-native inspector-proof`;
 - selected pane/session/agent/task/risk inspector payloads;
 - evidence and next-action rows;
 - bounded input/scroll/action dispatch model;
@@ -220,7 +220,7 @@ The native-first hybrid goal in `docs/history/NATIVE_FIRST_HYBRID_PRODUCT_GOAL.m
 
 After the current Command Center input/scroll proof, the next high-leverage slice is:
 
-1. Add `aether-native mode-shell-proof`.
+1. Add `aelyris-native mode-shell-proof`.
 2. Add `mode-shell-contract` to `scripts/verify-full-native-rust-gap-audit.mjs`.
 3. Make `mode-shell-proof` expose:
    - 8 modes;
@@ -237,10 +237,10 @@ Status: done.
 
 Implemented:
 
-- `aether-native mode-shell-proof`
-- `aether.native.mode-shell.v1`
-- `aether.native.mode-rail.v1`
-- `aether.native.inspector.v1`
+- `aelyris-native mode-shell-proof`
+- `aelyris.native.mode-shell.v1`
+- `aelyris.native.mode-rail.v1`
+- `aelyris.native.inspector.v1`
 - fixed 8-mode list: Terminal, Agents, Workspace, Review, Git, Context, History, Settings
 - exact `Alt+1` through `Alt+8` shortcuts
 - Rust-owned selected entity routes for all modes
@@ -251,9 +251,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -268,7 +268,7 @@ Result:
 
 Next:
 
-1. Add `aether-native mode-rail-window-proof`.
+1. Add `aelyris-native mode-rail-window-proof`.
 2. Render the 8-mode rail in a native window with focus/selected state.
 3. Add hit-target and keyboard-selection evidence.
 4. Keep `readyForReactDemotion=false` until the native rail and inspector are actually rendered and actionable.
@@ -279,7 +279,7 @@ Status: done.
 
 Implemented:
 
-- `aether-native mode-rail-window-proof`
+- `aelyris-native mode-rail-window-proof`
 - native Win32 layered mode rail window
 - all 8 mode rows rendered from the Rust mode shell contract
 - exact hit targets for Terminal, Agents, Workspace, Review, Git, Context, History, and Settings
@@ -292,9 +292,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -309,7 +309,7 @@ Result:
 
 Next:
 
-1. Add `aether-native inspector-window-proof`.
+1. Add `aelyris-native inspector-window-proof`.
 2. Render Command Center-backed contextual inspector data in a native window.
 3. Prove action row hit targets, keyboard selection, scroll, and dispatch metadata.
 4. Keep React right rail as compatibility until the native inspector can replace it.
@@ -320,7 +320,7 @@ Status: done for the native inspector window proof; React right-rail demotion re
 
 Implemented:
 
-- `aether-native inspector-window-proof`
+- `aelyris-native inspector-window-proof`
 - native Win32 layered contextual inspector window
 - Command Center-backed inspector data
 - evidence row rendering
@@ -336,9 +336,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -363,8 +363,8 @@ Status: done for demotion readiness; actual React demotion remains open.
 
 Implemented:
 
-- `aether-native right-rail-demotion-proof`
-- `aether.native.right-rail-demotion-proof.v1`
+- `aelyris-native right-rail-demotion-proof`
+- `aelyris.native.right-rail-demotion-proof.v1`
 - native replacement map for Command Center data, Command Center window, Command Center input/scroll, mode shell, mode rail window, contextual inspector window, and inspector dispatch guardrails
 - readiness state `nativeProductPathReady=true`
 - honest compatibility state `reactRightRailSourcesPresent=true`
@@ -375,9 +375,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -403,8 +403,8 @@ Status: done for native settings window proof; React compatibility cleanup remai
 
 Implemented:
 
-- `aether-native settings-window-proof`
-- `aether.native.settings-window-proof.v1`
+- `aelyris-native settings-window-proof`
+- `aelyris.native.settings-window-proof.v1`
 - native settings window backed by the Rust settings config proof
 - controls for theme, mood, window opacity, wallpaper path, wallpaper opacity, wallpaper position, wallpaper scale, material colors, and palette accents
 - hit-target metadata
@@ -416,9 +416,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -433,7 +433,7 @@ Result:
 
 Next:
 
-1. Process live native OS IME events inside `aether-native`.
+1. Process live native OS IME events inside `aelyris-native`.
 2. Run Codex CLI, Claude Code CLI, and Gemini CLI prompt-row dogfood against that native input path.
 3. Demote the React right rail/settings surfaces to compatibility-only once native daily-driver routing is ready.
 4. Add native accessibility/UIA and visual QA proofs.
@@ -444,8 +444,8 @@ Status: done for native HWND commit and AI CLI prompt-row dogfood; real OS IME/T
 
 Implemented:
 
-- `aether-native ime-dogfood-proof`
-- `aether.native.ime-dogfood-proof.v1`
+- `aelyris-native ime-dogfood-proof`
+- `aelyris.native.ime-dogfood-proof.v1`
 - native Win32 parent HWND creation
 - Rust `NativeTerminalInputHost` child HWND focus
 - `WM_IME_STARTCOMPOSITION` observation
@@ -457,9 +457,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -484,8 +484,8 @@ Status: done for semantic tree proof; real UIA/accesskit provider dogfood remain
 
 Implemented:
 
-- `aether-native accessibility-proof`
-- `aether.native.accessibility-proof.v1`
+- `aelyris-native accessibility-proof`
+- `aelyris.native.accessibility-proof.v1`
 - named semantic nodes for window, mode rail, tabs, terminal, inspector, evidence, actions, and settings controls
 - focus order and keyboard traversal proof
 - no unnamed focusable nodes
@@ -495,9 +495,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
@@ -522,8 +522,8 @@ Status: done for native pixel/contrast/resize/focus harness; real Windows sleep/
 
 Implemented:
 
-- `aether-native visual-qa-proof`
-- `aether.native.visual-qa-proof.v1`
+- `aelyris-native visual-qa-proof`
+- `aelyris.native.visual-qa-proof.v1`
 - WebView/CDP-free native visual QA harness
 - Win32 compatible bitmap pixel probe
 - required native surface aggregation
@@ -536,9 +536,9 @@ Implemented:
 Verification:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml --check`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `node --check scripts\verify-native-client-spike.mjs`
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`

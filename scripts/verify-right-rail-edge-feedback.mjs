@@ -4,9 +4,9 @@
 //   pnpm.cmd dev -- --host 127.0.0.1 --port 1420
 //
 // Optional env:
-//   AETHER_RIGHT_RAIL_EDGE_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_RIGHT_RAIL_EDGE_OUT=.codex-auto/production-smoke/right-rail-edge-feedback.json
+//   AELYRIS_RIGHT_RAIL_EDGE_URL=http://localhost:1420/
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_RIGHT_RAIL_EDGE_OUT=.codex-auto/production-smoke/right-rail-edge-feedback.json
 
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import http from "node:http";
@@ -14,19 +14,19 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const STATIC_DIST = process.env.AETHER_RIGHT_RAIL_EDGE_STATIC_DIST === "1";
-const STATIC_PORT = Number.parseInt(process.env.AETHER_RIGHT_RAIL_EDGE_STATIC_PORT ?? "1420", 10);
+const STATIC_DIST = process.env.AELYRIS_RIGHT_RAIL_EDGE_STATIC_DIST === "1";
+const STATIC_PORT = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_EDGE_STATIC_PORT ?? "1420", 10);
 let APP_URL =
-  process.env.AETHER_RIGHT_RAIL_EDGE_URL ??
+  process.env.AELYRIS_RIGHT_RAIL_EDGE_URL ??
   (STATIC_DIST ? `http://127.0.0.1:${STATIC_PORT}/` : "http://localhost:1420/");
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_RIGHT_RAIL_EDGE_OUT ?? ".codex-auto/production-smoke/right-rail-edge-feedback.json";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_RIGHT_RAIL_EDGE_OUT ?? ".codex-auto/production-smoke/right-rail-edge-feedback.json";
 const ENV_BLOCKED_OUT =
-  process.env.AETHER_RIGHT_RAIL_EDGE_ENV_BLOCKED_OUT ??
+  process.env.AELYRIS_RIGHT_RAIL_EDGE_ENV_BLOCKED_OUT ??
   ".codex-auto/production-smoke/right-rail-edge-feedback.environment-blocked.json";
-const SCREENSHOT = process.env.AETHER_RIGHT_RAIL_EDGE_SCREENSHOT ?? ".codex-auto/visual/right-rail-next-action-qa.png";
-const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_EDGE_WAIT_MS ?? "30000", 10);
-const EDGE_STORAGE_PREFIX = "aether:right-rail-edge-feedback:";
+const SCREENSHOT = process.env.AELYRIS_RIGHT_RAIL_EDGE_SCREENSHOT ?? ".codex-auto/visual/right-rail-next-action-qa.png";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_EDGE_WAIT_MS ?? "30000", 10);
+const EDGE_STORAGE_PREFIX = "aelyris:right-rail-edge-feedback:";
 
 let artifactPathOverride = null;
 
@@ -186,13 +186,13 @@ function edgeLoopPayload() {
 
 function targetQaUrl() {
   const url = new URL(APP_URL);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("state", "blocked");
   url.searchParams.set("v", "right-rail-edge-feedback");
   url.searchParams.set("edgeLoop", JSON.stringify(edgeLoopPayload()));
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -213,11 +213,11 @@ function attachQualityCollectors(page) {
 
 async function seedQaStorage(page) {
   await page.evaluate((projectPath) => {
-    window.localStorage.setItem("aether:visualQa", "1");
-    window.localStorage.setItem("aether:visualQaProject", projectPath);
-    window.localStorage.setItem("aether:lastProject", projectPath);
-    window.localStorage.setItem("aether:onboarding-done", "true");
-    window.localStorage.removeItem("aether:dashboardStateUrl");
+    window.localStorage.setItem("aelyris:visualQa", "1");
+    window.localStorage.setItem("aelyris:visualQaProject", projectPath);
+    window.localStorage.setItem("aelyris:lastProject", projectPath);
+    window.localStorage.setItem("aelyris:onboarding-done", "true");
+    window.localStorage.removeItem("aelyris:dashboardStateUrl");
   }, PROJECT_PATH);
 }
 

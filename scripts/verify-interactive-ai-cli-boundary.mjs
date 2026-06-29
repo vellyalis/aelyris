@@ -13,15 +13,15 @@ import { fileURLToPath } from "node:url";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const EXTENSION = process.platform === "win32" ? ".exe" : "";
 const SIDECAR =
-  process.env.AETHER_AI_CLI_BOUNDARY_SIDECAR ??
-  join(ROOT, "src-tauri", "pty-server", "target", "release", `aether-pty-server${EXTENSION}`);
+  process.env.AELYRIS_AI_CLI_BOUNDARY_SIDECAR ??
+  join(ROOT, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${EXTENSION}`);
 const OUT =
-  process.env.AETHER_AI_CLI_BOUNDARY_OUT ??
+  process.env.AELYRIS_AI_CLI_BOUNDARY_OUT ??
   join(ROOT, ".codex-auto", "production-smoke", "interactive-ai-cli-boundary.json");
-const TOKEN = process.env.AETHER_AI_CLI_BOUNDARY_TOKEN ?? "ai-cli-boundary-token";
-const WAIT_MS = Number.parseInt(process.env.AETHER_AI_CLI_BOUNDARY_WAIT_MS ?? "30000", 10);
+const TOKEN = process.env.AELYRIS_AI_CLI_BOUNDARY_TOKEN ?? "ai-cli-boundary-token";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_AI_CLI_BOUNDARY_WAIT_MS ?? "30000", 10);
 const CLIS = ["codex", "claude", "gemini"];
-const EXISTING_BASE = process.env.AETHER_AI_CLI_BOUNDARY_BASE?.replace(/\/+$/, "") ?? null;
+const EXISTING_BASE = process.env.AELYRIS_AI_CLI_BOUNDARY_BASE?.replace(/\/+$/, "") ?? null;
 
 if (!existsSync(SIDECAR)) {
   throw new Error(`PTY sidecar not found: ${SIDECAR}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
@@ -48,10 +48,10 @@ function startSidecar(port, tempRoot) {
     cwd: ROOT,
     env: {
       ...process.env,
-      QUORUM_API_TOKEN: TOKEN,
-      QUORUM_PTY_SERVER_PORT: String(port),
-      QUORUM_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
-      QUORUM_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
+      AELYRIS_API_TOKEN: TOKEN,
+      AELYRIS_PTY_SERVER_PORT: String(port),
+      AELYRIS_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
+      AELYRIS_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
     },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
@@ -141,28 +141,28 @@ async function waitForReady(base) {
 function writeShimFiles(binDir) {
   mkdirSync(binDir, { recursive: true });
   writeFileSync(
-    join(binDir, "aether-ai-cli-shim.mjs"),
+    join(binDir, "aelyris-ai-cli-shim.mjs"),
     [
       'import readline from "node:readline";',
-      'const cli = process.argv[2] || process.env.QUORUM_AGENT_CLI || "unknown";',
-      'const marker = process.env.AETHER_CLI_BOUNDARY_MARKER || "NO_MARKER";',
-      'const model = process.env.QUORUM_AGENT_MODEL || "unknown";',
-      'process.stdout.write("[" + cli + "] AETHER_AI_CLI_READY " + marker + " model=" + model + "\\r\\n");',
+      'const cli = process.argv[2] || process.env.AELYRIS_AGENT_CLI || "unknown";',
+      'const marker = process.env.AELYRIS_CLI_BOUNDARY_MARKER || "NO_MARKER";',
+      'const model = process.env.AELYRIS_AGENT_MODEL || "unknown";',
+      'process.stdout.write("[" + cli + "] AELYRIS_AI_CLI_READY " + marker + " model=" + model + "\\r\\n");',
       'process.stdout.write(cli + "> ");',
       "const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });",
       "let seen = 0;",
       'rl.on("line", (line) => {',
       "  const trimmed = line.trim();",
-      '  console.log("[" + cli + "] AETHER_AI_CLI_INPUT " + marker + " " + trimmed);',
+      '  console.log("[" + cli + "] AELYRIS_AI_CLI_INPUT " + marker + " " + trimmed);',
       "  seen += 1;",
       '  if (trimmed === "/exit" || seen >= 2) {',
-      '    console.log("[" + cli + "] AETHER_AI_CLI_DONE " + marker);',
+      '    console.log("[" + cli + "] AELYRIS_AI_CLI_DONE " + marker);',
       "    process.exit(0);",
       "  }",
       '  process.stdout.write(cli + "> ");',
       "});",
       "setTimeout(() => {",
-      '  console.error("[" + cli + "] AETHER_AI_CLI_TIMEOUT " + marker);',
+      '  console.error("[" + cli + "] AELYRIS_AI_CLI_TIMEOUT " + marker);',
       "  process.exit(2);",
       "}, 30000).unref();",
       "",
@@ -171,11 +171,11 @@ function writeShimFiles(binDir) {
 
   for (const cli of CLIS) {
     if (process.platform === "win32") {
-      writeFileSync(join(binDir, `${cli}.cmd`), `@echo off\r\nnode "%~dp0aether-ai-cli-shim.mjs" ${cli} %*\r\n`);
+      writeFileSync(join(binDir, `${cli}.cmd`), `@echo off\r\nnode "%~dp0aelyris-ai-cli-shim.mjs" ${cli} %*\r\n`);
     } else {
       writeFileSync(
         join(binDir, cli),
-        `#!/usr/bin/env sh\nnode "$(dirname "$0")/aether-ai-cli-shim.mjs" ${cli} "$@"\n`,
+        `#!/usr/bin/env sh\nnode "$(dirname "$0")/aelyris-ai-cli-shim.mjs" ${cli} "$@"\n`,
         {
           mode: 0o755,
         },
@@ -268,21 +268,21 @@ async function assertSecurityGuards(base) {
 }
 
 async function runCliBoundary(base, cli, binDir) {
-  const marker = `AETHER_AI_CLI_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+  const marker = `AELYRIS_AI_CLI_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
   const program = process.platform === "win32" ? `${cli}.cmd` : cli;
   const created = await request(base, "/commands", {
     method: "POST",
     body: JSON.stringify({
       program,
-      args: ["--aether-boundary-smoke"],
+      args: ["--aelyris-boundary-smoke"],
       cols: 100,
       rows: 24,
       cwd: ROOT,
       env: {
         PATH: `${binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
-        QUORUM_AGENT_CLI: cli,
-        QUORUM_AGENT_MODEL: `${cli}-boundary-smoke`,
-        AETHER_CLI_BOUNDARY_MARKER: marker,
+        AELYRIS_AGENT_CLI: cli,
+        AELYRIS_AGENT_MODEL: `${cli}-boundary-smoke`,
+        AELYRIS_CLI_BOUNDARY_MARKER: marker,
       },
     }),
   });
@@ -290,18 +290,18 @@ async function runCliBoundary(base, cli, binDir) {
   let stream = null;
   try {
     stream = await waitForStreamMarker(base, id, marker);
-    const readyText = await waitForCapture(base, id, `AETHER_AI_CLI_READY ${marker}`);
+    const readyText = await waitForCapture(base, id, `AELYRIS_AI_CLI_READY ${marker}`);
     const input = `BOUNDARY_INPUT_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 6)}`;
     await request(base, `/sessions/${id}/input`, {
       method: "POST",
       body: JSON.stringify({ text: `${input}\r` }),
     });
-    const inputText = await waitForCapture(base, id, `AETHER_AI_CLI_INPUT ${marker} ${input}`);
+    const inputText = await waitForCapture(base, id, `AELYRIS_AI_CLI_INPUT ${marker} ${input}`);
     await request(base, `/sessions/${id}/input`, {
       method: "POST",
       body: JSON.stringify({ text: "/exit\r" }),
     });
-    const doneText = await waitForCapture(base, id, `AETHER_AI_CLI_DONE ${marker}`);
+    const doneText = await waitForCapture(base, id, `AELYRIS_AI_CLI_DONE ${marker}`);
     const closeState = await closeSessionIfPresent(base, id);
     const sessions = await request(base, "/sessions");
     return {
@@ -314,7 +314,7 @@ async function runCliBoundary(base, cli, binDir) {
       ticketExpiresInMs: stream.ticketExpiresInMs,
       readyVisible: readyText.includes(marker),
       inputRoundtrip: inputText.includes(input),
-      doneVisible: doneText.includes(`AETHER_AI_CLI_DONE ${marker}`),
+      doneVisible: doneText.includes(`AELYRIS_AI_CLI_DONE ${marker}`),
       closeState,
       closed: !sessions.some((session) => session?.id === id),
     };
@@ -395,7 +395,7 @@ async function main() {
     } else {
       writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
     }
-    if (process.env.AETHER_KEEP_AI_CLI_BOUNDARY_TEMP !== "1") {
+    if (process.env.AELYRIS_KEEP_AI_CLI_BOUNDARY_TEMP !== "1") {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   }

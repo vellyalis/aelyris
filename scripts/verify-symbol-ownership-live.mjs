@@ -20,9 +20,9 @@ const CDP = "http://127.0.0.1:9222";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const git = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
 
-const repo = mkdtempSync(join(tmpdir(), "aether-sym-"));
+const repo = mkdtempSync(join(tmpdir(), "aelyris-sym-"));
 git(repo, "init", "-b", "main");
-git(repo, "config", "user.email", "sym@aether.test");
+git(repo, "config", "user.email", "sym@aelyris.test");
 git(repo, "config", "user.name", "Sym");
 writeFileSync(join(repo, "README.md"), "# sym demo\n");
 git(repo, "add", ".");

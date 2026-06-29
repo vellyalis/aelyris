@@ -13,7 +13,7 @@ const ACTION_DERIVE_BUDGET_MS = 120;
 const REVIEW_RENDER_BUDGET_MS = 2500;
 
 function emitScaleCheck(name: string, value: Record<string, unknown>) {
-  console.log(`AETHER_RIGHT_RAIL_SCALE_CHECK ${JSON.stringify({ name, value })}`);
+  console.log(`AELYRIS_RIGHT_RAIL_SCALE_CHECK ${JSON.stringify({ name, value })}`);
 }
 
 function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {

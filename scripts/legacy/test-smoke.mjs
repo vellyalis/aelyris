@@ -9,12 +9,12 @@ async function fetchPage() {
   const res = await fetch(BASE);
   if (!res.ok) throw new Error(`Frontend not serving: ${res.status}`);
   const html = await res.text();
-  if (!html.includes("Aether Terminal")) throw new Error("Missing app title in HTML");
+  if (!html.includes("Aelyris")) throw new Error("Missing app title in HTML");
   console.log("✅ Frontend serving OK");
 }
 
 async function main() {
-  console.log("=== Aether Terminal Smoke Test ===\n");
+  console.log("=== Aelyris Smoke Test ===\n");
 
   // 1. Frontend serving
   try {

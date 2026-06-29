@@ -437,8 +437,8 @@ interface RightRailEdgeFeedbackResetNotice {
 
 const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
 const RIGHT_RAIL_EDGE_FEEDBACK_LIMIT = 4;
-const RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX = "aether:right-rail-edge-feedback:";
-const RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY = "aetherRightRailEdgeFeedback";
+const RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX = "aelyris:right-rail-edge-feedback:";
+const RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY = "aelyrisRightRailEdgeFeedback";
 const RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM = "edgeLoop";
 const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID = "right-panel-edge-feedback-list";
 const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID = "right-panel-edge-feedback-stale-count-description";
@@ -473,10 +473,10 @@ const RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS = new Set([
   "processes",
 ]);
 const RIGHT_RAIL_GUARDRAIL_OPTIONS: readonly RightRailGuardrailSelection[] = ["Auto", ...WORKFORCE_GUARDRAIL_PROFILES];
-const RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY = "aether:right-rail-guardrail-selection";
-const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aether:right-rail-guardrail-sync";
-const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aether:right-rail-widget:";
-const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aether:right-rail-widget-sync";
+const RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY = "aelyris:right-rail-guardrail-selection";
+const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync";
+const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:";
+const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync";
 
 type RightRailWidgetId =
   | "decision-inbox"
@@ -772,11 +772,11 @@ function readDevVisualQaState(): DevVisualQaState {
   const params = new URLSearchParams(window.location.search);
   let storedProject: string | null = null;
   try {
-    storedProject = window.localStorage.getItem("aether:visualQaProject");
+    storedProject = window.localStorage.getItem("aelyris:visualQaProject");
   } catch {
     /* storage may be unavailable in private/test contexts */
   }
-  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
+  const enabled = params.get("aelyrisVisualQa") === "1" || params.get("visualQa") === "1";
   if (!enabled)
     return {
       enabled: false,
@@ -848,7 +848,7 @@ function isExplicitDevVisualQaRequest(): boolean {
   if (!import.meta.env.DEV || typeof window === "undefined") return false;
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
+    return params.get("aelyrisVisualQa") === "1" || params.get("visualQa") === "1";
   } catch {
     return false;
   }
@@ -932,8 +932,8 @@ function createDevVisualQaSessions(
 ): AgentFleetSession[] {
   const now = Date.now();
   const worktree = {
-    name: "aether-command-center",
-    path: `${projectPath}/.aether/worktrees/command-center`,
+    name: "aelyris-command-center",
+    path: `${projectPath}/.aelyris/worktrees/command-center`,
     branch: "feature/command-center",
     is_main: false,
     head_sha: "qa12345",
@@ -945,7 +945,7 @@ function createDevVisualQaSessions(
       name: id,
       status: "coding",
       model: "claude-sonnet",
-      prompt: "Harden Quorum Command Center",
+      prompt: "Harden Aelyris Command Center",
       startedAt: now - 120_000,
       logs: [
         { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
@@ -3798,7 +3798,7 @@ export function App() {
   useEffect(() => {
     if (!devVisualQa.enabled) return;
     try {
-      window.localStorage.setItem("aether:onboarding-done", "true");
+      window.localStorage.setItem("aelyris:onboarding-done", "true");
     } catch {
       /* storage may be unavailable in private/test contexts */
     }
@@ -4369,7 +4369,7 @@ export function App() {
           .then((restored) => {
             if (!restored) return;
             // If localStorage had no saved tabs, use DB panes as fallback
-            const hasSavedTabs = localStorage.getItem("aether:tabs");
+            const hasSavedTabs = localStorage.getItem("aelyris:tabs");
             if (!hasSavedTabs && restored.windows.length > 0) {
               for (const win of restored.windows) {
                 for (const pane of win.panes) {
@@ -4398,7 +4398,7 @@ export function App() {
 
         // Restore window position/size
         try {
-          const saved = localStorage.getItem("aether:windowBounds");
+          const saved = localStorage.getItem("aelyris:windowBounds");
           if (saved) {
             const { x, y, width, height, maximized } = JSON.parse(saved);
             if (width > 0 && height > 0) {
@@ -4446,7 +4446,7 @@ export function App() {
               const size = await win.outerSize();
               const maximized = await win.isMaximized();
               localStorage.setItem(
-                "aether:windowBounds",
+                "aelyris:windowBounds",
                 JSON.stringify({
                   x: pos.x,
                   y: pos.y,
@@ -4907,7 +4907,7 @@ export function App() {
       )
     : [];
   const rightRailGoalTrackConsentProviderEnv = rightRailGoalTrack.consentPacket
-    ? `QUORUM_AUTH_PROMPT_PROVIDER=${(
+    ? `AELYRIS_AUTH_PROMPT_PROVIDER=${(
         rightRailGoalTrackConsentProviders.length > 0
           ? rightRailGoalTrackConsentProviders
           : ["codex", "claude", "gemini"]

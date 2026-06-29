@@ -6,10 +6,10 @@ import process from "node:process";
 const root = resolve(process.cwd());
 const extension = process.platform === "win32" ? ".exe" : "";
 const nativeBin = resolve(
-  process.env.AETHER_NATIVE_EXE ?? join(root, "src-tauri", "target", "debug", `aether-native${extension}`),
+  process.env.AELYRIS_NATIVE_EXE ?? join(root, "src-tauri", "target", "debug", `aelyris-native${extension}`),
 );
 const out = resolve(
-  process.env.AETHER_NATIVE_SLEEP_GUARD_OUT ??
+  process.env.AELYRIS_NATIVE_SLEEP_GUARD_OUT ??
     join(root, ".codex-auto", "production-smoke", "native-sleep-guard-refusal.json"),
 );
 
@@ -57,7 +57,7 @@ async function runNativeSleepWithoutOptIn() {
     };
 
     const env = { ...process.env };
-    delete env.QUORUM_ALLOW_OS_SLEEP;
+    delete env.AELYRIS_ALLOW_OS_SLEEP;
     let child;
     try {
       child = spawn(nativeBin, ["sleep-now"], {
@@ -89,16 +89,16 @@ async function runNativeSleepWithoutOptIn() {
 }
 
 if (!existsSync(nativeBin)) {
-  fail("aether-native binary is missing", nativeBin);
+  fail("aelyris-native binary is missing", nativeBin);
 } else {
   const result = await runNativeSleepWithoutOptIn();
   const refusalText = `${result.stderr}\n${result.stdout}`;
   const checks = {
     nativeBinaryExists: true,
-    optInEnvAbsent: process.env.QUORUM_ALLOW_OS_SLEEP !== "1",
+    optInEnvAbsent: process.env.AELYRIS_ALLOW_OS_SLEEP !== "1",
     exitedNonZero: Number(result.status) !== 0,
     returnedQuickly: Number(result.elapsedMs) < 10_000,
-    refusalMessagePresent: /refuses to suspend Windows without QUORUM_ALLOW_OS_SLEEP=1/i.test(refusalText),
+    refusalMessagePresent: /refuses to suspend Windows without AELYRIS_ALLOW_OS_SLEEP=1/i.test(refusalText),
     didNotEmitSleepSuccessJson: !/"operation"\s*:\s*"sleep-now"/.test(result.stdout),
     noRealSleepAttemptClaimed: !/"nativeWindowsSleepApi"\s*:\s*true/.test(result.stdout),
     noPowershellFallback: true,
@@ -108,7 +108,7 @@ if (!existsSync(nativeBin)) {
     .map(([key]) => key);
   const artifact = {
     version: 1,
-    schema: "aether.native.sleep-guard-refusal.v1",
+    schema: "aelyris.native.sleep-guard-refusal.v1",
     generatedAt: new Date().toISOString(),
     status: missing.length === 0 ? "pass" : "fail",
     command: `${nativeBin} sleep-now`,
@@ -125,7 +125,7 @@ if (!existsSync(nativeBin)) {
     },
     safetyBoundary: {
       requiresExplicitOptIn: true,
-      explicitOptInEnv: "QUORUM_ALLOW_OS_SLEEP=1",
+      explicitOptInEnv: "AELYRIS_ALLOW_OS_SLEEP=1",
       explicitOptInArg: "--i-understand-this-sleeps-windows",
       verifiedWithoutSleepingHost: true,
     },

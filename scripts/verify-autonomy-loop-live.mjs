@@ -1,19 +1,19 @@
 // Live verification of the MCP-driven autonomy step (Face 2, BR9) against the
-// running Aether API: an orchestrator AI drives one loop step over MCP and a
+// running Aelyris API: an orchestrator AI drives one loop step over MCP and a
 // task awaiting review with a green verdict (reviewer != owner) is MERGED into
 // its target branch by a REAL git merge — the same loop the cockpit runs.
 //
 // Deterministic (no real agent / no auth): the task is pre-placed in review.
-// Prereq: `pnpm tauri:dev` running; QUORUM_API_TOKEN set to the API bearer token.
+// Prereq: `pnpm tauri:dev` running; AELYRIS_API_TOKEN set to the API bearer token.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const BASE = process.env.QUORUM_API_URL ?? "http://127.0.0.1:9333";
-const TOKEN = process.env.QUORUM_API_TOKEN;
+const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
+const TOKEN = process.env.AELYRIS_API_TOKEN;
 if (!TOKEN) {
-  console.error("QUORUM_API_TOKEN is required");
+  console.error("AELYRIS_API_TOKEN is required");
   process.exit(2);
 }
 
@@ -32,10 +32,10 @@ async function call(name, args = {}) {
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
 function setupRepo() {
-  const dir = mkdtempSync(join(tmpdir(), "aether-loop-"));
+  const dir = mkdtempSync(join(tmpdir(), "aelyris-loop-"));
   git(dir, "init", "-b", "main");
-  git(dir, "config", "user.email", "verify@aether.test");
-  git(dir, "config", "user.name", "Aether Verify");
+  git(dir, "config", "user.email", "verify@aelyris.test");
+  git(dir, "config", "user.name", "Aelyris Verify");
   writeFileSync(join(dir, "a.txt"), "A");
   git(dir, "add", "a.txt");
   git(dir, "commit", "-m", "base");
@@ -60,18 +60,18 @@ async function main() {
 
   try {
     // Orchestrator assigns the task to an implementer, bound feature -> main.
-    await call("aether.task.create", {
+    await call("aelyris.task.create", {
       id,
       title: "loop merge",
       owner: "impl-agent",
       sourceBranch: "feature",
       targetBranch: "main",
     });
-    await call("aether.task.transition", { id, to: "running" });
-    await call("aether.task.transition", { id, to: "review" });
+    await call("aelyris.task.transition", { id, to: "running" });
+    await call("aelyris.task.transition", { id, to: "review" });
 
     // One autonomy step with a green verdict from a distinct reviewer.
-    const stepped = await call("aether.orchestrator.step", {
+    const stepped = await call("aelyris.orchestrator.step", {
       repoPath: repo.dir,
       reviewerId: "reviewer-agent",
       activeAgents: 0,
@@ -89,7 +89,7 @@ async function main() {
     ok(stepped.report.merged.includes(id), `step merged ${id} (got ${JSON.stringify(stepped.report.merged)})`);
     ok(stepped.report.state === "complete", `loop complete (got ${stepped.report.state})`);
 
-    const tasks = await call("aether.task.list");
+    const tasks = await call("aelyris.task.list");
     ok(tasks.tasks.find((t) => t.id === id)?.status === "done", "task is done in the shared graph");
 
     const mainAfter = git(repo.dir, "rev-parse", "main");

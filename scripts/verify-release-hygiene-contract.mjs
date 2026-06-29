@@ -31,7 +31,7 @@ const DISALLOWED_MARKERS = [
   },
   {
     id: "manual-osc-buffer-log-marker",
-    pattern: /\[aether-engine\]\s+OSC buffer/i,
+    pattern: /\[aelyris-engine\]\s+OSC buffer/i,
     reason: "Manual OSC buffer log probes are not release proof; use deterministic verifier artifacts.",
   },
   {

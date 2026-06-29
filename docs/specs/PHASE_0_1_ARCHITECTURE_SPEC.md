@@ -1,7 +1,7 @@
 # Phase 0 + Phase 1 Architecture Spec — Runtime Unification & Worktree Auto-Wiring
 
 > ⚠️ **v2.0 merge-model update (2026-06-15) — read first.** The authoritative
-> requirements ([AETHER_COCKPIT_REQUIREMENTS](./AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md),
+> requirements ([AELYRIS_COCKPIT_REQUIREMENTS](./AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md),
 > v2.0) now specify **full autonomy with no human gate in the critical path**: the
 > **Reviewer agent merges to `main` automatically** once all quality gates are green,
 > and the **watchdog auto-decides** tool-approval (auto-approve / auto-deny, keeping
@@ -23,10 +23,10 @@ reference. Shared names (`AgentSession`, `useAgentFleet`, the canonical status t
 the single branch validator and worktree-path fn) are used verbatim so the three Phase
 specs align.
 
-> **North star (binding design — all sibling specs must agree).** Quorum is an
-> agent-controllable workspace. Its capabilities are **one** backend *Quorum Control API*
+> **North star (binding design — all sibling specs must agree).** Aelyris is an
+> agent-controllable workspace. Its capabilities are **one** backend *Aelyris Control API*
 > (a capability/intent layer). **Two faces** project onto that layer: (1) the human
-> **Cockpit UI** via Tauri IPC, and (2) the **Orchestrator AI** (Opus 4.8) via an `aether`
+> **Cockpit UI** via Tauri IPC, and (2) the **Orchestrator AI** (Opus 4.8) via an `aelyris`
 > MCP server. We build the layer once; both faces are thin adapters over it. This spec
 > defines the layer and the Cockpit face; the MCP face is specified in the sibling
 > `MCP_TOOL_SURFACE_SPEC.md`. The capability domains are **worktree, agent, pane, diff,
@@ -38,7 +38,7 @@ specs align.
 
 ## 0. Current-state map (the problem)
 
-Quorum runs agents through **two fully parallel stacks** that never share a model:
+Aelyris runs agents through **two fully parallel stacks** that never share a model:
 
 | Concern | Headless stack | Interactive (PTY) stack |
 |---|---|---|
@@ -81,9 +81,9 @@ Quorum runs agents through **two fully parallel stacks** that never share a mode
 
 ---
 
-## 0.5 Capability layer (Quorum Control API)
+## 0.5 Capability layer (Aelyris Control API)
 
-Everything in §0 is a symptom of the same structural gap: **Quorum's capabilities exist
+Everything in §0 is a symptom of the same structural gap: **Aelyris's capabilities exist
 only as scattered `#[tauri::command]` functions that are reachable from exactly one caller —
 the webview.** `commands.rs` alone is 6795 lines / 140 commands
 (`src-tauri/src/ipc/commands.rs:1`, registered at `lib.rs:526`), with more in
@@ -91,7 +91,7 @@ the webview.** `commands.rs` alone is 6795 lines / 140 commands
 the command bodies mix IPC marshalling, `AppHandle` state lookups, and the actual capability
 logic. That makes a second face (the MCP server) impossible without copy-pasting logic.
 
-The **Quorum Control API** is the missing seam. It sits **UNDER** `useAgentFleet` (§1.3) and
+The **Aelyris Control API** is the missing seam. It sits **UNDER** `useAgentFleet` (§1.3) and
 **OVER** the runtimes (`PtyManager`, `AgentFleet`, `git2`, `LayerRegistry`, the watchdog
 engine). It is a typed, in-process Rust surface — *not* a network service — that both faces
 adapt onto:
@@ -99,11 +99,11 @@ adapt onto:
 ```
         Cockpit UI (React)            Orchestrator AI (Opus 4.8)
               │                                │
-        Tauri IPC adapter              'aether' MCP server adapter
+        Tauri IPC adapter              'aelyris' MCP server adapter
         (ipc/*_commands.rs)            (MCP_TOOL_SURFACE_SPEC.md)
               └───────────────┬────────────────┘
                               ▼
-                 Quorum Control API   ← THIS layer (src-tauri/src/control/)
+                 Aelyris Control API   ← THIS layer (src-tauri/src/control/)
             worktree · agent · pane · diff · merge · approval
                               ▼
         PtyManager · AgentFleet · git2/worktree · LayerRegistry · WatchdogEngine
@@ -254,7 +254,7 @@ pub enum AgentRuntime {
 
 ### 1.3 Target frontend hook: `useAgentFleet`
 
-`useAgentFleet` is the **UI-side client of the Quorum Control API** (§0.5) — specifically
+`useAgentFleet` is the **UI-side client of the Aelyris Control API** (§0.5) — specifically
 the Cockpit face's view of the `agent` domain. It does **not** call Tauri commands ad hoc;
 it calls the `agent`-domain commands (today `start_agent` / `spawn_interactive_agent` /
 `stop_agent` / `list_agents`, which §0.5.2 lifts into `control/agent.rs`) through the Tauri
@@ -301,7 +301,7 @@ Five ordered, individually shippable steps. Each step keeps the app green.
 |---|---|---|
 | M0 | Add `status.rs` + TS `agentStatus.ts` + contract tests. No behavior change; existing string statuses still flow. | yes |
 | M1 | Add `AgentSession`/`AgentFleet` (`session.rs`,`fleet.rs`) **alongside** existing managers. New `agent-fleet-updated` event emitted in parallel with the two legacy events. | yes |
-| M2 | Add `useAgentFleet` hook. App.tsx consumes it **read-only** behind a flag (`AETHER_FLEET=1`); legacy hooks still drive writes. Verify parity in dev. | yes |
+| M2 | Add `useAgentFleet` hook. App.tsx consumes it **read-only** behind a flag (`AELYRIS_FLEET=1`); legacy hooks still drive writes. Verify parity in dev. | yes |
 | M3 | Flip writes: `handleStartAgent`/`handleStartInteractiveSession` call `useAgentFleet.startAgent`. Legacy hooks become thin adapters that delegate to the fleet (so any un-migrated caller still works). | adapters only |
 | M4 | Delete `useAgentManager`, `useInteractiveAgent`, `AgentManager`, `InteractiveSessionManager`, legacy events, and the `AgentStatus` alias. | no |
 
@@ -480,7 +480,7 @@ are hard-coded per role in `ORCHESTRA_ROLES` (`orchestrator.ts:32-90`). Wire it:
 
 | # | Step | Gate before proceeding |
 |---|---|---|
-| 1 | **§3.1** unify branch validator + worktree-path (smallest, highest leverage). | `cargo test -p aether-terminal --lib` (interactive.rs validator tests `interactive.rs:268-418`), `cargo test --test test_agent`. |
+| 1 | **§3.1** unify branch validator + worktree-path (smallest, highest leverage). | `cargo test -p aelyris --lib` (interactive.rs validator tests `interactive.rs:268-418`), `cargo test --test test_agent`. |
 | 2 | **§2.1** decompose `commands.rs` (pure move, no rename). | `cargo build` + full `cargo test`; handler list `lib.rs:526` unchanged. |
 | 3 | **§2.2** extract `RightRailAgentsWidget` + `useOrchestraDispatch` from App.tsx. | `pnpm test` (App tests), `pnpm build`, `verify-right-rail-suite.mjs`. |
 | 4 | **§1.1** land `AgentRunStatus` + TS mirror (M0). | `cargo test status::` + `agentStatusContract.test.ts`. |
@@ -519,7 +519,7 @@ Existing gates to keep green throughout: `verify-interactive-ai-cli-boundary.mjs
 
 ## 5. Gate model (FREE vs GATED — the safety boundary)
 
-The Quorum Control API (§0.5) is consumed by two faces. The Cockpit face is driven by a
+The Aelyris Control API (§0.5) is consumed by two faces. The Cockpit face is driven by a
 human, so every capability is implicitly human-authorized. The **MCP face is driven by the
 Orchestrator AI**, which means the layer needs a hard, code-enforced boundary deciding what
 the AI may do unilaterally vs what requires human authority. This is **the** safety
@@ -544,7 +544,7 @@ invariant of the whole design.
 
 **The orchestrator MCP face MUST NOT expose a free `grant_approval` tool or a free
 `merge_to_main` tool.** The AI may *request*, *observe*, and *route* gated operations; it may
-never *grant* them. Concretely, the `aether` MCP server (§5.4, detailed in
+never *grant* them. Concretely, the `aelyris` MCP server (§5.4, detailed in
 `MCP_TOOL_SURFACE_SPEC.md`) surfaces:
 
 - FREE tools: full `worktree` / `agent` / `pane` / `diff` domains.
@@ -595,7 +595,7 @@ The capability layer has exactly two clients:
 1. **Cockpit UI (human face).** React + Tauri IPC. The `agent` domain is consumed via
    `useAgentFleet` (§1.3); other domains via their command clusters. Human presence is the
    authorization for gated ops (the human *is* the Decision Inbox).
-2. **Orchestrator AI (machine face).** Opus 4.8 via an `aether` **MCP server** — a thin
+2. **Orchestrator AI (machine face).** Opus 4.8 via an `aelyris` **MCP server** — a thin
    adapter over the same `control/*` fns (§0.5.2). It gets the FREE domains in full and a
    request/observe/route-only projection of the GATED domains, enforcing §5.2 by simply *not
    defining* grant/merge-to-main tools.

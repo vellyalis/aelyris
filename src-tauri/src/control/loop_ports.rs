@@ -7,7 +7,7 @@
 //! git merge, with gate results and agent spawning supplied by injectable
 //! adapters. Only the concrete gate-runner (shells out to test/lint) and
 //! dispatcher (spawns an agent) are runtime-gated. See
-//! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
+//! docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9, Acceptance:
 //! end-to-end autonomy).
 
 use std::collections::HashMap;
@@ -222,7 +222,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
                 crate::control::worktree::commit_for_branch(
                     &self.repo_path,
                     &source,
-                    &format!("aether: {task_id}"),
+                    &format!("aelyris: {task_id}"),
                 )
                 .map_err(|e| format!("commit worktree for {source} failed: {e}"))?;
             }
@@ -292,7 +292,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
                 if let Err(e) = crate::control::worktree::commit_for_branch(
                     &self.repo_path,
                     &source,
-                    &format!("aether: {task_id}"),
+                    &format!("aelyris: {task_id}"),
                 ) {
                     self.queue
                         .resolve(&intent.intent_id, MergeIntentStatus::Rejected)?;

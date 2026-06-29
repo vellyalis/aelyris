@@ -2,7 +2,7 @@
 
 mod pty_harness;
 
-use aether_terminal_lib::pty::{PtyManager, ShellType};
+use aelyris_lib::pty::{PtyManager, ShellType};
 use pty_harness::*;
 use std::collections::HashSet;
 
@@ -73,8 +73,8 @@ fn test_japanese_io() {
     assert_output_contains(
         &mgr,
         &ShellType::PowerShell,
-        "Write-Output \"JPTEST_aether\"\r\n",
-        "JPTEST_aether",
+        "Write-Output \"JPTEST_aelyris\"\r\n",
+        "JPTEST_aelyris",
     );
 }
 

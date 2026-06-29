@@ -7,7 +7,7 @@
 // gate or a Sprint-2 acceptance check.
 //
 // Companion of:
-//   - scripts/aether-imgcat.ps1 / .sh  (the emitter)
+//   - scripts/aelyris-imgcat.ps1 / .sh  (the emitter)
 //   - e2e/fixtures/inline-image-{1x1,32x32}.png  (the inputs)
 // This verifier supersedes the old Kitty-APC diagnostics; release proof
 // should flow through this deterministic chunked OSC path.
@@ -45,8 +45,8 @@ for (const f of [FIXTURE_TINY, FIXTURE_LARGE]) {
   }
 }
 
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AETHER_TAURI_PAGE_TIMEOUT_MS ?? "15000", 10);
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_TAURI_PAGE_TIMEOUT_MS ?? "15000", 10);
 
 const browser = await chromium.connectOverCDP(CDP);
 
@@ -174,8 +174,8 @@ async function runCase({ label, shell, command }) {
 // invoked with -ExecutionPolicy Bypass for an unsigned local file;
 // bash invokes the .sh through `bash` so chmod +x isn't required
 // (Windows git doesn't preserve the executable bit anyway).
-const psPath = resolve(REPO_ROOT, "scripts/aether-imgcat.ps1");
-const shPath = resolve(REPO_ROOT, "scripts/aether-imgcat.sh");
+const psPath = resolve(REPO_ROOT, "scripts/aelyris-imgcat.ps1");
+const shPath = resolve(REPO_ROOT, "scripts/aelyris-imgcat.sh");
 
 const cases = [
   {

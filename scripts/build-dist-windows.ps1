@@ -6,7 +6,7 @@ $TauriConfig = "src-tauri\tauri.dist.conf.json"
 $BundleRoot = Join-Path $Root "src-tauri\target\release\bundle"
 $WixDir = Join-Path $Root "src-tauri\target\release\wix\x64"
 $PackageJson = Get-Content -LiteralPath (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
-$MsiPath = Join-Path $BundleRoot "msi\Aether Terminal_$($PackageJson.version)_x64_en-US.msi"
+$MsiPath = Join-Path $BundleRoot "msi\Aelyris_$($PackageJson.version)_x64_en-US.msi"
 
 function Invoke-Checked {
   param(

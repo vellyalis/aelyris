@@ -42,10 +42,10 @@ const restartReplay = read("scripts/verify-shared-brain-restart-replay.mjs");
 const fileOwnership = read("src-tauri/src/file_ownership/mod.rs");
 const symbolOwnership = read("src-tauri/src/symbol_ownership/mod.rs");
 
-const mcpSnapshotArm = between(mcp, '"aether.shared_brain.snapshot" => {', ['"aether.ownership.assign" => {']);
-const mcpSymbolClaimArm = between(mcp, '"aether.symbol.claim" => {', ['"aether.symbol.refresh" => {']);
-const mcpDiffArm = between(mcp, '"aether.symbol.claim_from_diff" => {', ['"aether.symbol.claim_from_source" => {']);
-const mcpSourceArm = between(mcp, '"aether.symbol.claim_from_source" => {', ['"aether.context.set" => {']);
+const mcpSnapshotArm = between(mcp, '"aelyris.shared_brain.snapshot" => {', ['"aelyris.ownership.assign" => {']);
+const mcpSymbolClaimArm = between(mcp, '"aelyris.symbol.claim" => {', ['"aelyris.symbol.refresh" => {']);
+const mcpDiffArm = between(mcp, '"aelyris.symbol.claim_from_diff" => {', ['"aelyris.symbol.claim_from_source" => {']);
+const mcpSourceArm = between(mcp, '"aelyris.symbol.claim_from_source" => {', ['"aelyris.context.set" => {']);
 const ipcSymbolClaim = between(ipcSymbol, "pub fn symbol_claim(", ["/// Extend a live claim"]);
 const applyFileLanes = between(loopPorts, "fn apply_file_lanes(", ["/// Release a task's SYMBOL claims"]);
 const restoreOwnership = between(lib, "fn restore_ownership(", ["let db_path = db::db_path();"]);
@@ -74,12 +74,12 @@ const checks = [
   ),
   check(
     "shared-brain-mcp-is-registered-and-delegates",
-    mcp.includes('"aether.shared_brain.snapshot"') &&
+    mcp.includes('"aelyris.shared_brain.snapshot"') &&
       mcpSnapshotArm.includes("crate::shared_brain::snapshot") &&
       mcpSnapshotArm.includes("SharedBrainInputs") &&
       mcpSnapshotArm.includes("state.merge_store.as_ref()") &&
       mcpSnapshotArm.includes("state.context_store.as_ref()"),
-    "MCP advertises and executes aether.shared_brain.snapshot through the backend formatter.",
+    "MCP advertises and executes aelyris.shared_brain.snapshot through the backend formatter.",
   ),
   check(
     "ownership-core-supports-restore-without-io",
@@ -174,17 +174,17 @@ const checks = [
     "restart-replay-live-verifier-exists",
     restartReplay.includes("--phase seed") &&
       restartReplay.includes("--phase verify") &&
-      restartReplay.includes("aether.shared_brain.snapshot") &&
-      restartReplay.includes("aether.ownership.claims") &&
-      restartReplay.includes("aether.symbol.claims") &&
-      restartReplay.includes("aether.event.since"),
+      restartReplay.includes("aelyris.shared_brain.snapshot") &&
+      restartReplay.includes("aelyris.ownership.claims") &&
+      restartReplay.includes("aelyris.symbol.claims") &&
+      restartReplay.includes("aelyris.event.since"),
     "A two-phase live restart replay verifier exists for shared brain, ownership, and durable events.",
   ),
 ];
 
 const failed = checks.filter((item) => !item.ok);
 const report = {
-  schema: "aether.shared-brain-ownership-persistence-contract/v1",
+  schema: "aelyris.shared-brain-ownership-persistence-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,

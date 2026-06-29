@@ -128,7 +128,7 @@ const checks = [
       sendSessionInput.includes("headers: HeaderMap") &&
       sendSessionInput.includes("for target_id in &targets") &&
       sendSessionInput.includes("ensure_can_control(target_id, client_id.as_deref())"),
-    "REST input and resize remain compatible without a lease but require the lease owner's x-aether-client-id when an exclusive controller is active.",
+    "REST input and resize remain compatible without a lease but require the lease owner's x-aelyris-client-id when an exclusive controller is active.",
   ),
   check(
     "mux-client-record-is-backend-visible-and-persisted",
@@ -200,7 +200,7 @@ const checks = [
 
 const failed = checks.filter((item) => !item.ok);
 const report = {
-  schema: "aether.mux-multiclient-attach-contract/v1",
+  schema: "aelyris.mux-multiclient-attach-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,

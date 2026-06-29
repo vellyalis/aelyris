@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pipe a PNG file through the Aether chunked-OSC inline-image protocol.
+# Pipe a PNG file through the Aelyris chunked-OSC inline-image protocol.
 #
 # Win11 ConPTY strips Kitty APC and truncates any single OSC above
 # ~512 bytes. This wrapper slices a PNG into ConPTY-friendly OSC 1338
@@ -13,7 +13,7 @@
 #   - bash 4+ for `${var:offset:length}` substring expansion
 #
 # Usage:
-#   aether-imgcat.sh <path> [image-id]
+#   aelyris-imgcat.sh <path> [image-id]
 #
 # Exit codes:
 #   0   success
@@ -25,7 +25,7 @@
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-    echo "usage: aether-imgcat.sh <path> [image-id]" >&2
+    echo "usage: aelyris-imgcat.sh <path> [image-id]" >&2
     exit 1
 fi
 

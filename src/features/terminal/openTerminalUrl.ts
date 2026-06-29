@@ -73,7 +73,7 @@ export async function openTerminalUrlWith(
 /**
  * Best-effort `file://URL → absolute path` decoder.
  *
- * Handles the three shapes Aether is likely to see:
+ * Handles the three shapes Aelyris is likely to see:
  *   - `file:///C:/Users/x/foo.ts`    Windows drive (Tauri + most CLIs)
  *   - `file://localhost/C:/...`      legacy Windows
  *   - `file:///home/x/foo.ts`        POSIX

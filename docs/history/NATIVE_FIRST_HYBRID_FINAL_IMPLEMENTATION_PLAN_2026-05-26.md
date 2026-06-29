@@ -4,7 +4,7 @@ Date: 2026-05-26
 
 ## Final Goal
 
-Aether Terminal is implementation-complete for the current product goal when it is a native-first hybrid:
+Aelyris is implementation-complete for the current product goal when it is a native-first hybrid:
 
 - Rust/native owns terminal truth, PTY/mux/session state, scrollback, command history, recovery/provenance, AI CLI orchestration, settings data, Command Center data, and all input-sensitive terminal hot paths.
 - React/Tauri remains only as a contract-backed compatibility UI for non-hot-path surfaces.
@@ -138,7 +138,7 @@ This is the goal-complete implementation gate. It is intentionally stricter abou
 These are not implementation blockers, but they must remain visible before a public release claim:
 
 - signed distribution artifacts and installer;
-- actual Windows sleep/resume cycle with `QUORUM_ALLOW_OS_SLEEP=1`;
+- actual Windows sleep/resume cycle with `AELYRIS_ALLOW_OS_SLEEP=1`;
 - clean-shutdown Tauri runtime hygiene after closing dev/CDP processes;
 - final old release self-reference loop for `verify:final-goal-audit` / `verify:right-rail-goal-track-tauri`.
 

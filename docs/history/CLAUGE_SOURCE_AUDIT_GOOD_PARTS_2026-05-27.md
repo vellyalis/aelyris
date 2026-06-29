@@ -10,10 +10,10 @@ Date: 2026-05-27
 - License observed in the source tree: PolyForm Noncommercial 1.0.0
 
 This audit is source-informed, not a visual impression pass. Do not copy Clauge
-code into Aether. Use the source to identify product architecture and interaction
-patterns that Aether should exceed inside its own terminal-first scope.
+code into Aelyris. Use the source to identify product architecture and interaction
+patterns that Aelyris should exceed inside its own terminal-first scope.
 
-The claim being tracked is upper compatibility inside Aether's terminal-first domain.
+The claim being tracked is upper compatibility inside Aelyris's terminal-first domain.
 
 ## What Clauge Actually Does Well
 
@@ -41,12 +41,12 @@ style:
 - The README positions MCP and local-first persistence as core product
   primitives, not optional decoration.
 
-## Aether Equivalents Already Implemented
+## Aelyris Equivalents Already Implemented
 
-Aether has already adopted the useful information architecture while keeping a
+Aelyris has already adopted the useful information architecture while keeping a
 different product center of gravity:
 
-- Left mode rail with 8 Aether-specific modes:
+- Left mode rail with 8 Aelyris-specific modes:
   Terminal, Agents, Workspace, Review, Git, Context, History, Settings.
 - Center surface remains the terminal/workspace, not a marketing dashboard.
 - Right side is presented as `Contextual inspector`, not Mission Control.
@@ -61,16 +61,16 @@ different product center of gravity:
 
 ## Gaps Before Claiming Practical Upper Compatibility
 
-Upper compatibility should mean Aether is better at its chosen job: a
+Upper compatibility should mean Aelyris is better at its chosen job: a
 terminal-first AI workspace with native-grade terminal trust. It should not mean
 copying Clauge's broad REST/SQL/NoSQL/S3 scope before the terminal loop is
 excellent.
 
 Remaining gaps to track:
 
-1. Aether needs a real MCP surface.
+1. Aelyris needs a real MCP surface.
    Clauge exposes workspace/cards/notes/REST/coworker tools through an MCP
-   server. Aether should expose terminal sessions, pane evidence, command
+   server. Aelyris should expose terminal sessions, pane evidence, command
    history, review queue, tasks, context packs, handoff traces, and safe actions
    through Rust-owned MCP tools. A React-only helper is not enough.
 
@@ -80,18 +80,18 @@ Remaining gaps to track:
    do not qualify.
 
 3. Mode state preservation must stay explicit.
-   Clauge's always-mounted mode panels avoid state loss. Aether must keep the
+   Clauge's always-mounted mode panels avoid state loss. Aelyris must keep the
    equivalent guarantee for terminal panes, inspectors, settings, and workflow
    surfaces, especially after mode switches, split/close, and reload.
 
 4. Per-mode AI needs to be obvious.
-   Aether has agent and inspector actions, but the first-minute UX still needs a
+   Aelyris has agent and inspector actions, but the first-minute UX still needs a
    clearer explanation of what Terminal, Agents, Review, Git, Context, and
    History can ask or do.
 
 5. Agent sessions need a tighter identity row.
    Clauge exposes purpose, provider, worktree, context usage, activity, and time
-   in the session list. Aether should keep those concepts visible in the right
+   in the session list. Aelyris should keep those concepts visible in the right
    inspector and session surfaces without making the rail noisy.
 
 6. Workspace needs to be agent-readable and action-oriented.
@@ -99,34 +99,34 @@ Remaining gaps to track:
    connected to the running pane or agent session.
 
 7. Cross-mode history must become a core retrieval surface.
-   Aether should search commands, pane output, actions, reviews, risks, and
+   Aelyris should search commands, pane output, actions, reviews, risks, and
    handoffs from one History mode, with Rust-owned provenance.
 
 8. MCP-ready workspace actions must remain Rust-owned.
-   Any external-agent API should expose Aether's own terminal/agent/review data
+   Any external-agent API should expose Aelyris's own terminal/agent/review data
    contracts instead of React-only UI state.
 
 9. Broad dev-tool modes stay deferred by design.
-   REST, SQL, NoSQL, S3, FTP, and similar modes are not the immediate Aether
+   REST, SQL, NoSQL, S3, FTP, and similar modes are not the immediate Aelyris
    edge. Add them only when the terminal-agent-review loop is already
    release-grade and they can be Rust-contract-backed.
 
 ## New Acceptance Gates For True Upper Compatibility
 
-Before claiming Aether is practically upper-compatible with Clauge in the
+Before claiming Aelyris is practically upper-compatible with Clauge in the
 AI-terminal domain, add green proof for these gates:
 
-- `aether.mcp.server.v1`: Rust-owned MCP server exposes terminal, agent,
+- `aelyris.mcp.server.v1`: Rust-owned MCP server exposes terminal, agent,
   workspace, review, context, history, and safe-action tools.
-- `aether.workspace.data.v1`: tasks, notes, handoffs, review records, and
+- `aelyris.workspace.data.v1`: tasks, notes, handoffs, review records, and
   context packs are persisted in SQLite and queryable outside React state.
-- `aether.mode-preservation.v1`: switching every mode and reloading preserves
+- `aelyris.mode-preservation.v1`: switching every mode and reloading preserves
   terminal panes, agent sessions, selected inspector target, review filters,
   context packs, and history cursor.
-- `aether.history.search.v1`: one History mode searches command output,
+- `aelyris.history.search.v1`: one History mode searches command output,
   shell launches, pane actions, reviews, Git/worktree events, and handoffs with
   Rust-owned provenance ids.
-- `aether.agent-identity.v1`: every agent session exposes provider, purpose,
+- `aelyris.agent-identity.v1`: every agent session exposes provider, purpose,
   worktree, context usage, auth/install state, binary/profile source, usage
   limits, and guardrail profile.
 
@@ -136,7 +136,7 @@ having a visible right rail.
 
 ## Updated Product Target
 
-Aether should beat Clauge for users who live in AI CLIs and terminals:
+Aelyris should beat Clauge for users who live in AI CLIs and terminals:
 
 - native-first terminal hot path;
 - tmux/WezTerm-class mux, scrollback, and recovery;

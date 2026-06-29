@@ -8,13 +8,13 @@ const ROOT = resolve(process.cwd());
 const STRICT_SCRIPT = join(ROOT, "scripts", "verify-chunked-osc-live.mjs");
 const PRIMARY_ARTIFACT = join(ROOT, ".codex-auto", "production-smoke", "chunked-osc-live.json");
 const ENV_BLOCKED_ARTIFACT = join(ROOT, ".codex-auto", "production-smoke", "chunked-osc-live.environment-blocked.json");
-const DEFAULT_TIMEOUT_MS = Number(process.env.AETHER_CHUNKED_OSC_SAFE_TIMEOUT_MS ?? 45_000);
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
+const DEFAULT_TIMEOUT_MS = Number(process.env.AELYRIS_CHUNKED_OSC_SAFE_TIMEOUT_MS ?? 45_000);
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
 
 const sourceFiles = [
   "scripts/verify-chunked-osc-live.mjs",
-  "scripts/aether-imgcat.ps1",
-  "scripts/aether-imgcat.sh",
+  "scripts/aelyris-imgcat.ps1",
+  "scripts/aelyris-imgcat.sh",
   "e2e/fixtures/inline-image-1x1.png",
   "e2e/fixtures/inline-image-32x32.png",
 ].map((path) => {
@@ -137,7 +137,7 @@ function writeEnvironmentBlockedReport(child, combinedOutput) {
       parseError: primary?.parseError ?? null,
     },
     nextRequiredAction: environmentBlocked
-      ? "Start pnpm tauri dev with AETHER_TAURI_CDP reachable, then rerun pnpm verify:terminal:chunked-osc-live."
+      ? "Start pnpm tauri dev with AELYRIS_TAURI_CDP reachable, then rerun pnpm verify:terminal:chunked-osc-live."
       : "Inspect the strict verifier failure, fix the live inline-image path, and rerun pnpm verify:terminal:chunked-osc-live.",
   };
   mkdirSync(dirname(ENV_BLOCKED_ARTIFACT), { recursive: true });
@@ -145,7 +145,7 @@ function writeEnvironmentBlockedReport(child, combinedOutput) {
   return report;
 }
 
-if (process.env.AETHER_CHUNKED_OSC_SKIP_CDP_PREFLIGHT !== "1") {
+if (process.env.AELYRIS_CHUNKED_OSC_SKIP_CDP_PREFLIGHT !== "1") {
   const cdpPreflight = await checkCdpReachable();
   if (cdpPreflight.ok !== true) {
     const child = {

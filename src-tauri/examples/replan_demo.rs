@@ -7,8 +7,8 @@
 //!
 //! Run: cargo run --example replan_demo
 
-use aether_terminal_lib::agent::claude_oneshot;
-use aether_terminal_lib::task::{decompose_to_plan, replan_into, Task, TaskGraph, TaskStatus};
+use aelyris_lib::agent::claude_oneshot;
+use aelyris_lib::task::{decompose_to_plan, replan_into, Task, TaskGraph, TaskStatus};
 
 fn main() {
     // A graph where `build-api` FAILED and `wire-ui` is blocked waiting on it.

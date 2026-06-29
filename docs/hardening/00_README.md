@@ -1,4 +1,4 @@
-# Aether Runtime Hardening — ドキュメント一式
+# Aelyris Runtime Hardening — ドキュメント一式
 
 > **目的**: Agent Runtime Core（AI組織OSの心臓部）を「単一オペレータ・単一プロジェクト・ローカル専用」でも **再起動で会社が消えない / 連絡漏れゼロ / 詰まり自動エスカレーション** な堅牢基盤へ引き上げる。負債を残さず、理想粒度でモジュール化し、常に変更しやすい状態を保つ。
 >
@@ -90,7 +90,7 @@ cargo fmt --check
 | P1-5b | 実GUI(`pnpm tauri dev`)で dispatch→kill→再起動の手動確認 | P1 | ⬜ | 新binビルド+起動が要(現稼働は旧bin) |
 
 > **P1-5a**: `tests/test_runtime_persistence.rs` 2件PASS。実DBファイルに ContextStore + TaskGraph を**別々の専用接続**で書き(multi-writer+busy_timeout経路)、全接続drop(WALチェックポイント)→新Managerで再オープン→decisions/status/crash_attempts/依存/terminal状態を完全復元。プロセス再起動の決定的プロキシ。GUI不要・CI可能。
-> **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aether.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
+> **P1-5b(残)**: 実アプリでの最終目視確認。現在 Aelyris.exe は**旧バイナリ**稼働中なので、新binをビルド・起動してからの確認になる（任意・低リスク。ロジックは P1-5a で証明済）。
 
 ### P5 — governance choke point（✅ branch `feat/runtime-hardening`）
 
@@ -115,7 +115,7 @@ cargo fmt --check
 |---------|------|------|
 | P3-log | `agent_events` テーブル + `persistence/event_repo.rs`(append/since(seq)/by_channel_since)。seq単調(AUTOINCREMENT) | ✅ |
 | P3-bus | `EventBus` write-through publish + `since` カーソル。リングは表示用ホットキャッシュに降格。db後付けattach | ✅ |
-| P3-mcp | MCP `aether.event.since` verb(afterSeq/limit→nextSeq)。購読者は欠番なく全件取得 | ✅ |
+| P3-mcp | MCP `aelyris.event.since` verb(afterSeq/limit→nextSeq)。購読者は欠番なく全件取得 | ✅ |
 | P3-audit | 敵対レビュー→**H-1/M-1/L-1 全修正** | ✅ |
 
 > **no-loss の意味**: cap256リングは古いイベントをsilent evictし再起動で消える。durable log は全件を単調seqで保持し、`since(cursor)`で欠番なく取得＝再起動・evict耐性。ライブfeedは既存Tauri emit(push)で元々落ちない。

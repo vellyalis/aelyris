@@ -26,7 +26,7 @@ const CDP_URL = "http://localhost:9222";
 const VITE_HOST = "localhost:1420";
 /** Sentinel string we look for in the grid after `echo`. Picked to be
  *  highly unlikely to appear in shell prompt chrome. */
-const ECHO_SENTINEL = "aether-pty-e2e-marker";
+const ECHO_SENTINEL = "aelyris-pty-e2e-marker";
 /** Per-test timeout for "wait for snapshot to converge". 5 s is generous
  *  on Windows where ConPTY round-trip can take ~250 ms. */
 const SNAPSHOT_TIMEOUT_MS = 5_000;
@@ -242,7 +242,7 @@ test.describe("PTY round-trip via Tauri CDP", () => {
       expect(entry.level).toMatch(/^(TRACE|DEBUG|INFO|WARN|ERROR)$/);
     }
     // At least one entry should originate from the backend crate.
-    const fromBackend = tail.some((e) => e.target.startsWith("aether_terminal_lib"));
+    const fromBackend = tail.some((e) => e.target.startsWith("aelyris_lib"));
     expect(fromBackend).toBe(true);
   });
 });

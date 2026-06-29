@@ -4,7 +4,7 @@ Date: 2026-05-26
 
 ## Final Goal
 
-Aether does not need to become a 100% full-native Rust application to be product-grade.
+Aelyris does not need to become a 100% full-native Rust application to be product-grade.
 
 The release target is a native-first hybrid architecture:
 
@@ -106,7 +106,7 @@ This command does not force Windows to sleep. It arms native evidence, waits whi
 - Added package script `pnpm verify:native-first:audit`.
 - Current result: `100/100`, grade `S`, `nativeFirstHybridReady=true`, `implementationConfidence=high`.
 - This result does not claim strict full-native completion. It records `fullNativeRequiredForRelease=false`, `strictFullNativeStretchReady=false`, and `realMachineSleepExecuted=false`.
-- The remaining strict stretch item is still real Windows sleep/resume dogfood with `QUORUM_ALLOW_OS_SLEEP=1`.
+- The remaining strict stretch item is still real Windows sleep/resume dogfood with `AELYRIS_ALLOW_OS_SLEEP=1`.
 - The native-first release confidence is based on Rust product truth, native terminal hot path, mux/session performance, Clauge-inspired mode architecture, native visual/accessibility proof, host-power safety guard, and current hybrid release score.
 
 ## 2026-05-27 Final Implementation Goal

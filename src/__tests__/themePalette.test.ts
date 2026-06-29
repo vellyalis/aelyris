@@ -97,7 +97,7 @@ describe("themes/catppuccin — Sakura theme", () => {
 });
 
 describe("themes/catppuccin — applyAccentOverrides", () => {
-  const base = getPalette("aether-dark");
+  const base = getPalette("aelyris-dark");
 
   it("returns the same reference when overrides is undefined", () => {
     expect(applyAccentOverrides(base, undefined)).toBe(base);
@@ -144,28 +144,28 @@ describe("themes/catppuccin — applyAccentOverrides", () => {
 
 describe("themes/moods — preset metadata", () => {
   it("normalizes unknown mood ids to the default", () => {
-    expect(normalizeMoodPreset("aether-dream")).toBe("aether-dream");
+    expect(normalizeMoodPreset("aelyris-dream")).toBe("aelyris-dream");
     expect(normalizeMoodPreset("not-real")).toBe(DEFAULT_MOOD_PRESET);
     expect(normalizeMoodPreset(null)).toBe(DEFAULT_MOOD_PRESET);
   });
 
   it("defines every expected mood preset", () => {
     expect(MOOD_PRESETS.map((preset) => preset.id)).toEqual([
-      "aether-sky",
-      "aether-moonwater",
-      "aether-crystal",
-      "aether-dream",
-      "aether-cute",
-      "aether-sakura",
-      "aether-obsidian",
-      "aether-pro",
+      "aelyris-sky",
+      "aelyris-moonwater",
+      "aelyris-crystal",
+      "aelyris-dream",
+      "aelyris-cute",
+      "aelyris-sakura",
+      "aelyris-obsidian",
+      "aelyris-pro",
     ]);
   });
 
   it("returns a complete variable set for every mood", () => {
     const required = [
       "--glass-clear",
-      "--aether-bg",
+      "--aelyris-bg",
       "--accent",
       "--gold",
       "--terminal-canvas-bg",
@@ -190,7 +190,7 @@ describe("themes/moods — preset metadata", () => {
   it("does not let Sakura surface colors bleed into darker mood presets", () => {
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
-      if (preset.id === "aether-sakura") continue;
+      if (preset.id === "aelyris-sakura") continue;
 
       expect(vars["--statusbar-bg"], preset.id).not.toContain("255, 248, 251");
       expect(vars["--dialog-surface"], preset.id).not.toContain("255, 240, 247");
@@ -230,13 +230,13 @@ describe("themes/moods — preset metadata", () => {
 
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
-      if (preset.id === "aether-sakura") {
+      if (preset.id === "aelyris-sakura") {
         for (const [key, ceiling] of Object.entries(lightCeilings)) {
           expect(rgbaAlpha(vars[key]), `${preset.id} ${key}`).toBeLessThanOrEqual(ceiling);
         }
         continue;
       }
-      if (preset.id === "aether-crystal") {
+      if (preset.id === "aelyris-crystal") {
         expect(rgbaAlpha(vars["--glass-clear"]), `${preset.id} --glass-clear`).toBeLessThanOrEqual(
           darkRanges["--glass-clear"],
         );
@@ -265,8 +265,8 @@ describe("themes/moods — preset metadata", () => {
     }
   });
 
-  it("keeps Aether Sky clear-water dark instead of whitewashed", () => {
-    const vars = moodPresetToCSS("aether-sky");
+  it("keeps Aelyris Sky clear-water dark instead of whitewashed", () => {
+    const vars = moodPresetToCSS("aelyris-sky");
 
     expect(Number(vars["--mood-root-texture-opacity"])).toBeLessThanOrEqual(0.05);
     expect(vars["--mood-widget-veil"]).not.toContain("235, 248, 255");
@@ -274,10 +274,10 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--terminal-shadow-inset"]).not.toContain("235, 248, 255");
   });
 
-  it("defines Aether Moonwater as a clear cyan water preset without scanlines", () => {
-    const vars = moodPresetToCSS("aether-moonwater");
+  it("defines Aelyris Moonwater as a clear cyan water preset without scanlines", () => {
+    const vars = moodPresetToCSS("aelyris-moonwater");
 
-    expect(normalizeMoodPreset("aether-moonwater")).toBe("aether-moonwater");
+    expect(normalizeMoodPreset("aelyris-moonwater")).toBe("aelyris-moonwater");
     expect(vars["--accent"]).toBe("#52d7ff");
     expect(vars["--gold"]).toBe("#f5c7e3");
     expect(vars["--mood-root-texture"]).not.toContain("repeating-linear-gradient");
@@ -285,10 +285,10 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-root-glow"]).toContain("12, 113, 203");
   });
 
-  it("defines Aether Crystal as a clearer glass preset without dimming glyphs", () => {
-    const vars = moodPresetToCSS("aether-crystal");
+  it("defines Aelyris Crystal as a clearer glass preset without dimming glyphs", () => {
+    const vars = moodPresetToCSS("aelyris-crystal");
 
-    expect(normalizeMoodPreset("aether-crystal")).toBe("aether-crystal");
+    expect(normalizeMoodPreset("aelyris-crystal")).toBe("aelyris-crystal");
     expect(vars["--accent"]).toBe("#8be9ff");
     expect(vars["--gold"]).toBe("#d8f7ff");
     expect(vars["--text-primary"]).toBe("#f8fdff");
@@ -300,8 +300,8 @@ describe("themes/moods — preset metadata", () => {
     expect(Number(vars["--mood-root-texture-opacity"])).toBeLessThanOrEqual(0.03);
   });
 
-  it("keeps Aether Pro graphite deep instead of cloudy grey", () => {
-    const vars = moodPresetToCSS("aether-pro");
+  it("keeps Aelyris Pro graphite deep instead of cloudy grey", () => {
+    const vars = moodPresetToCSS("aelyris-pro");
 
     expect(vars["--chrome-frame-bg"]).toContain("rgba(2, 8, 16, 0.28)");
     expect(vars["--mood-left-panel-bg"]).toContain("rgba(4, 13, 23, 0.26)");
@@ -310,8 +310,8 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--mood-right-panel-bg"]).not.toContain("var(--glass-dense)");
   });
 
-  it("defines Aether Sakura as a warm blossom preset with readable ink contrast", () => {
-    const vars = moodPresetToCSS("aether-sakura");
+  it("defines Aelyris Sakura as a warm blossom preset with readable ink contrast", () => {
+    const vars = moodPresetToCSS("aelyris-sakura");
 
     expect(vars["--accent"]).toBe("#bd3f68");
     expect(vars["--gold"]).toBe("#823149");
@@ -325,8 +325,8 @@ describe("themes/moods — preset metadata", () => {
     expect(rgbaAlpha(vars["--settings-card-bg"])).toBeGreaterThanOrEqual(0.72);
   });
 
-  it("keeps Aether Sakura rails as white-peach material instead of grey glass", () => {
-    const vars = moodPresetToCSS("aether-sakura");
+  it("keeps Aelyris Sakura rails as white-peach material instead of grey glass", () => {
+    const vars = moodPresetToCSS("aelyris-sakura");
 
     expect(vars["--mood-left-panel-bg"]).toContain("255, 241, 248");
     expect(vars["--mood-right-panel-bg"]).toContain("255, 241, 248");
@@ -362,7 +362,7 @@ describe("themes/moods — preset metadata", () => {
   it("switches custom material text to dark ink when a dark preset is tuned to pale surfaces", () => {
     const vars = materialOverridesToCSS(
       { panelColor: "#fff1f8", chromeColor: "#ffeef7", panelAlpha: 0.88, chromeAlpha: 0.84 },
-      MOOD_MATERIAL_DEFAULTS["aether-sky"],
+      MOOD_MATERIAL_DEFAULTS["aelyris-sky"],
     );
 
     expect(vars["--text-primary"]).toBe("#24121b");
@@ -372,7 +372,7 @@ describe("themes/moods — preset metadata", () => {
 
   it("does not switch low-opacity pale material to light text mode", () => {
     expect(
-      isMoodMaterialLight("aether-sky", {
+      isMoodMaterialLight("aelyris-sky", {
         panelColor: "#fff1f8",
         chromeColor: "#ffeef7",
         panelAlpha: 0.18,
@@ -392,7 +392,7 @@ describe("themes/moods — preset metadata", () => {
   it("keeps mood canvas tokens aligned with the native terminal renderer, except Sakura's rose ink well", () => {
     for (const preset of MOOD_PRESETS) {
       const vars = moodPresetToCSS(preset.id);
-      if (preset.id === "aether-sakura") {
+      if (preset.id === "aelyris-sakura") {
         expect(vars["--terminal-canvas-bg"], preset.id).toContain("83, 33, 56");
         continue;
       }

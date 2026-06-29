@@ -6,7 +6,7 @@ const OUT = join(ROOT, ".codex-auto", "quality", "cockpit-batch-a-readiness.json
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const paths = {
-  requirements: "docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md",
+  requirements: "docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md",
   handoff: "docs/specs/CODEX_HANDOFF.md",
   rustStatus: "src-tauri/src/agent/status.rs",
   rustAgentMod: "src-tauri/src/agent/mod.rs",
@@ -66,7 +66,7 @@ const checks = [];
 add(
   checks,
   "requirements-doc-created",
-  source.requirements.includes("Aether Control API") &&
+  source.requirements.includes("Aelyris Control API") &&
     source.requirements.includes("Agent Runtime Unification") &&
     source.requirements.includes("Worktree Safety") &&
     source.requirements.includes("UI Token Dial") &&
@@ -131,8 +131,8 @@ add(
 add(
   checks,
   "ui-token-dial-applied",
-  source.globalCss.includes("--aether-border: rgba(121, 202, 226, 0.1)") &&
-    source.globalCss.includes("--aether-border-strong: rgba(146, 221, 239, 0.16)") &&
+  source.globalCss.includes("--aelyris-border: rgba(121, 202, 226, 0.1)") &&
+    source.globalCss.includes("--aelyris-border-strong: rgba(146, 221, 239, 0.16)") &&
     source.globalCss.includes("--type-card-title: var(--text-base)") &&
     source.globalCss.includes("--type-rail-section-title: var(--text-md)") &&
     source.globalCss.includes("--type-metadata-label: var(--text-xs)") &&

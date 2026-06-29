@@ -108,13 +108,13 @@ describe("RunGraphPanel", () => {
         name: "Collected Builder",
         status: "done",
         owner: "review-lead",
-        workspaceScope: "C:/repo/aether-terminal",
+        workspaceScope: "C:/repo/aelyris",
         writeSet: ["src/App.tsx", "src/shared/types/agent.ts"],
         finalReport: { status: "missing" },
       }),
     ];
     const graph = buildWorkstationGraph({
-      workspaceId: "C:/repo/aether-terminal",
+      workspaceId: "C:/repo/aelyris",
       sessions,
       finalReports: [{ id: "report-1", title: "Agent final report", status: "ready", agentId: "done-agent" }],
     });
@@ -131,7 +131,7 @@ describe("RunGraphPanel", () => {
     expect(screen.getByText("Collected Builder")).toBeTruthy();
     expect(screen.getAllByText("Collect").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("owner review-lead")).toBeTruthy();
-    expect(screen.getByText("scope .../repo/aether-terminal")).toBeTruthy();
+    expect(screen.getByText("scope .../repo/aelyris")).toBeTruthy();
     expect(screen.getByText("2 writes")).toBeTruthy();
     expect(screen.getByText("report ready")).toBeTruthy();
   });

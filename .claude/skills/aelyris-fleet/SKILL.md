@@ -1,9 +1,9 @@
 ---
-name: aether-fleet
-description: Legacy/manual fallback for worktree-isolated Aether cockpit Work Units from docs/specs/CODEX_HANDOFF.md. Prefer the MCP runtime orchestration skill when the local Aether MCP runtime is available. Use only for historical WU execution, manual PowerShell fleet dispatch, recovery of old fleet branches, or when the user explicitly asks for the legacy fleet path.
+name: aelyris-fleet
+description: Legacy/manual fallback for worktree-isolated Aelyris cockpit Work Units from docs/specs/CODEX_HANDOFF.md. Prefer the MCP runtime orchestration skill when the local Aelyris MCP runtime is available. Use only for historical WU execution, manual PowerShell fleet dispatch, recovery of old fleet branches, or when the user explicitly asks for the legacy fleet path.
 ---
 
-# Aether fleet orchestration
+# Aelyris fleet orchestration
 
 Legacy note: this is the older PowerShell/worktree/send-keys workflow. It is useful as a fallback and for historical WU recovery, but it is not the default public product path and does not prove release readiness. Prefer the MCP runtime workflow when available.
 
@@ -17,7 +17,7 @@ Keep planning, integration, and final judgment in yourself — never delegate th
   Codex session / autonomous loop). Run `git status --short -- src src-tauri` and check
   `wu-manifest.json` files: **never dispatch a WU whose target files are already being
   edited in main** — you would double-implement and collide. Dispatch only untouched WUs.
-- Aether is **local-only**: never push or open PRs.
+- Aelyris is **local-only**: never push or open PRs.
 
 ## The loop
 ```
@@ -45,8 +45,8 @@ usage-limited until 2026-07-01, so route backend to Opus until then). Each agent
 Workers never talk to each other. **You are the only bus.**
 - **Observe (agent → you):** `pwsh scripts/fleet/fleet-dispatch.ps1 status` (ahead/behind),
   per-worktree `git diff`, and any `.fleet/status.md` the agent writes.
-- **Steer (you → agent):** inject guidance with Aether's `send_keys_by_target`
-  (`@role` / `role:` / pty-id), or the MCP `aether.send_steer` tool, or `tmux send-keys`.
+- **Steer (you → agent):** inject guidance with Aelyris's `send_keys_by_target`
+  (`@role` / `role:` / pty-id), or the MCP `aelyris.send_steer` tool, or `tmux send-keys`.
   Relay cross-agent context yourself; do not let workers coordinate directly.
 
 ### ⑤ Sequential merge + gates

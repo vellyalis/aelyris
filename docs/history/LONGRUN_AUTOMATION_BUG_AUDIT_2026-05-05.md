@@ -2,7 +2,7 @@
 
 Scope: `<codex-home>` longrun automation and this workspace's `.codex-auto` artifacts.
 
-This is not primarily an Aether Terminal app bug. The next small bugs to crush are in the Codex longrun stack:
+This is not primarily an Aelyris app bug. The next small bugs to crush are in the Codex longrun stack:
 
 - `<codex-home>\codex-auto-loop.mjs`
 - `<codex-home>\codex-longrun-watchdog.mjs`
@@ -11,7 +11,7 @@ This is not primarily an Aether Terminal app bug. The next small bugs to crush a
 - `<codex-home>\codex-blocker-taxonomy.mjs`
 - `<repo>\.codex-auto\*`
 
-## Current Aether Longrun Snapshot
+## Current Aelyris Longrun Snapshot
 
 - Workspace: `<repo>`
 - Dashboard: `http://127.0.0.1:48371/`
@@ -122,7 +122,7 @@ Required fix:
 ### 7. Duplicate/orphan dashboards
 
 Observed:
-There are duplicate dashboard processes for `<user-home>` on ports `48653` and `48654`, separate from this Aether dashboard.
+There are duplicate dashboard processes for `<user-home>` on ports `48653` and `48654`, separate from this Aelyris dashboard.
 
 Required fix:
 

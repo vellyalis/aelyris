@@ -19,7 +19,7 @@ function writeReport(report) {
 }
 
 function emitRecoveryCheck(name, value) {
-  console.log(`AETHER_COMMAND_RECOVERY_CHECK ${JSON.stringify({ name, value })}`);
+  console.log(`AELYRIS_COMMAND_RECOVERY_CHECK ${JSON.stringify({ name, value })}`);
 }
 
 function assert(condition, message) {
@@ -233,7 +233,7 @@ function runFailedCommandRecovery({ deriveCommandRecoveryPlan, buildWorkstationG
     role: "implementer",
     worktree: {
       name: "native-edge",
-      path: "C:/repo/.aether/worktrees/native-edge",
+      path: "C:/repo/.aelyris/worktrees/native-edge",
       branch: "codex/native-edge",
       is_main: false,
       head_sha: "abc123",

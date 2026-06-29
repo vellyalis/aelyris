@@ -1,8 +1,9 @@
 # GitHub Introduction Draft
 
-This is a public-facing introduction draft for the project. It uses **Quorum**
-as the product name (formerly Aether Terminal); the repository may still contain
-older naming or code identifiers during the transition.
+This is a public-facing introduction draft for the project. It uses **Aelyris**
+as the product name. Aelyris is pronounced **Aelys** / **エイリス**. The CLI and
+short name is **aelys**. Product surfaces use **Aelyris Core**, **Aelyris Grid**,
+and **Aelyris Pane**. The coordination engine is **Qralis**.
 
 Use this text for the GitHub repository page, README opening section, social
 preview copy, or a launch post. Before publishing, confirm name availability and
@@ -10,7 +11,7 @@ keep the current release status aligned with `docs/PUBLICATION_READINESS.md`.
 
 ## Short GitHub Description
 
-Quorum is a Windows-first AI development workspace for coordinating agents,
+Aelyris is a Windows-first AI development workspace for coordinating agents,
 terminals, tasks, reviews, and evidence around one project.
 
 ## Tagline Options
@@ -19,34 +20,34 @@ terminals, tasks, reviews, and evidence around one project.
 - A calm cockpit for multi-agent development.
 - Bring agents, terminals, and review into one shared workspace.
 
-## Why The Name Quorum
+## Why The Name Aelyris
 
-**Quorum** is the minimum set of participants needed to make a decision.
+**Aelyris** is a coined name, pronounced **Aelys** / **エイリス**.
 
-The name reflects how the product is meant to work: multiple AI agents can take
-different roles, but nothing reaches the main branch on one voice alone. Work
-stays connected through shared context, visible progress, review, and evidence,
-and a human operator keeps the final call.
+The name is meant to feel light, celestial, and technical without sounding like
+only a terminal. It carries traces of airy, astral, iris, and Elysian imagery:
+space, light, sight, and a clear operating surface. That fits the product's
+long-term direction: a workspace where AI agents, panes, tasks, reviews, and
+proof are visible instead of hidden behind disconnected chats.
 
-The name also keeps the product from sounding like only a terminal. Quorum can
-still include a serious terminal foundation, but the larger aim is a place where
-human judgment and multiple AI agents can move together without losing track of
-what changed, why it changed, and whether it was actually checked.
+**Qralis** names the coordination engine: the layer that keeps agents, roles,
+messages, panes, reviews, and evidence connected. Aelyris is the workspace;
+Qralis is the coordination logic inside it.
 
 ## Main Introduction
 
-Quorum is a Windows-first development workspace for people who want to work with
-AI agents without losing sight of the project.
+Aelyris is a Windows-first development workspace for people who want to work
+with AI agents without losing sight of the project.
 
 It brings terminals, agent sessions, task lanes, Git worktrees, review flows,
 and verification evidence into one place. Instead of treating each AI agent as a
-separate chat window or a hidden background job, Quorum is designed to make the
+separate chat window or a hidden background job, Aelyris is designed to make the
 work visible: what each agent is doing, where it is working, what changed, what
 needs review, and what proof exists.
 
 The long-term goal is a calm, inspectable cockpit for multi-agent development.
 One agent can implement, another can test, another can review, while the human
-operator keeps the final judgment. Quorum is not here to replace that judgment.
+operator keeps the final judgment. Aelyris is not here to replace that judgment.
 It is here to make parallel AI work easier to guide, easier to trust, and easier
 to clean up before it reaches the main branch.
 
@@ -58,41 +59,40 @@ story can stay honest as the product matures.
 
 ## Japanese Introduction
 
-Quorum は、AI エージェントと人が同じプロジェクトを見ながら作業するための
-Windows 向け開発ワークスペースです。
+Aelyris（エイリス）は、AI エージェントと人が同じプロジェクトを見ながら作業する
+ための Windows 向け開発ワークスペースです。
 
 ターミナル、エージェントのセッション、作業レーン、Git worktree、レビュー、
 検証の証跡をひとつの場所に集めます。AI を別々のチャットや見えない裏側の処理
 として動かすのではなく、誰が何をしているのか、どのファイルに触れているのか、
 何が検証済みなのかを見える形にすることを目指しています。
 
-Quorum（定足数）という名前には、「ひとつの声だけで物事を決めない」という考え
-方を込めています。実装する AI、テストする AI、レビューする AI が役割を分担し、
-最後の判断は人間が持つ。レビューと証跡を通じて、複数の参加者の作業がつながった
-状態で前に進めるための場所です。
+Aelyris という名前は、air、astral、iris、Elysian のような響きを少しずつ
+残した造語です。軽さ、天体感、光、視界、そして AI らしい操作面を感じられる
+名前として選んでいます。
 
-Quorum は人間の判断を置き換える道具ではありません。複数の AI の力を整理し、導
-き、信頼できる形で使うための作業空間です。並列に進む作業を見えるようにし、レ
-ビューしやすくし、main ブランチに入る前にきちんと整えられることを大切にしてい
-ます。
+**Qralis** は協調エンジン名です。実装する AI、テストする AI、レビューする AI が
+役割を分担し、最後の判断は人間が持つ。Qralis はその役割、メッセージ、ペイン、
+レビュー、証跡をつなぐ層です。Aelyris はワークスペース、Qralis はその中の協調
+ロジックです。
 
 このプロジェクトは現在も開発中です。Rust/Tauri ベースのターミナル、見える
 エージェント実行、worktree を意識したプロジェクト操作、オーケストレーション、
 レビュー、ローカル検証ゲートの土台はあります。一方で、リリース品質や
-world-class といった大きな主張は、検証コマンドと証跡で確認できる状態になるま
-で控えめに扱います。
+world-class といった大きな主張は、検証コマンドと証跡で確認できる状態になるまで
+控えめに扱います。
 
 ## README Opening Variant
 
 ```markdown
-# Quorum
+# Aelyris
 
-Quorum is a Windows-first AI development workspace for coordinating agents,
+Aelyris is a Windows-first AI development workspace for coordinating agents,
 terminals, tasks, reviews, and evidence around one project.
 
 It is built for a workflow where multiple AI agents can work in visible lanes:
 one implementing, one testing, one reviewing, and the human operator keeping the
-final call. Quorum brings the terminal, project context, Git worktrees, review
+final call. Aelyris brings the terminal, project context, Git worktrees, review
 surfaces, and verification gates into one calm cockpit, so parallel AI work stays
 inspectable instead of becoming scattered background activity.
 
@@ -142,4 +142,3 @@ Avoid until the matching gates are green:
 - Ghostty-class or WezTerm-class terminal
 - BridgeSpace-plus complete
 - world-class terminal AI OS
-

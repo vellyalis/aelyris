@@ -1,10 +1,10 @@
 **English** | [日本語](README.ja.md)
 
-# Quorum
+# Aelyris
 
-Quorum — project-first AI development workspace for Windows (formerly Aether Terminal).
+Aelyris — project-first AI development workspace for Windows.
 
-![A fleet of AI coding agents working in parallel inside Quorum's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
+![A fleet of AI coding agents working in parallel inside Aelyris's visible split panes, with the project file tree on the left and the orchestrator rail on the right showing spawned and reviewed agents](docs/assets/hero-fleet.png)
 
 > Development screenshot of the alpha: visible agent panes, each an interactive
 > agent CLI in its own git worktree, with the orchestrator rail on the right.
@@ -12,10 +12,10 @@ Quorum — project-first AI development workspace for Windows (formerly Aether T
 > (`verify:agent-team-orchestration-readiness` is not yet green) — this shows the
 > substrate, not a proven parallel-fleet guarantee. See status and limitations below.
 
-Quorum is a Tauri desktop app that combines a real terminal workspace,
+Aelyris is a Tauri desktop app that combines a real terminal workspace,
 visible AI-agent panes, project/worktree context, review and merge controls, and
 machine-checked release gates. The long-term target is not just another terminal
-tab manager: Quorum is being built as an auditable operating surface for AI
+tab manager: Aelyris is being built as an auditable operating surface for AI
 development teams.
 
 ## Current Status
@@ -26,9 +26,9 @@ The repository is public-previewable, but the product must not yet claim
 tmux-equivalent, BridgeSpace-plus, Ghostty/WezTerm-class, world-class terminal AI
 OS, release-ready status, or strict `agmsg` superset behavior.
 
-Latest documented machine evidence, generated locally on 2026-06-28 JST. Regenerate with `pnpm verify:quality-score`, `pnpm verify:goal:safe`, and `pnpm verify:world-class-terminal-ai-os` before making release claims:
+Latest documented machine evidence, generated locally on 2026-06-29 JST. Regenerate with `pnpm verify:quality-score`, `pnpm verify:goal:safe`, and `pnpm verify:world-class-terminal-ai-os` before making release claims:
 
-- `release-quality-score`: `43/100`, `150/351`, grade `D`
+- `release-quality-score`: `35/100`, `124/351`, grade `D`
 - `releaseCandidateReady`: `false`
 - Machine field: `releaseCandidateReady=false`
 - `final-goal-safe`: `ok=false`, `status=blocked`
@@ -37,14 +37,14 @@ Latest documented machine evidence, generated locally on 2026-06-28 JST. Regener
 
 The current defensible claim is:
 
-> Quorum has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+> Aelyris has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
 > worktree, ownership, review, and merge substrate. The world-class product claim
 > is still blocked by live durability, restart/replay, native-quality,
 > signing/updater, and external operator-proof gates.
 
-## What Quorum Is
+## What Aelyris Is
 
-Quorum is designed around this target workflow:
+Aelyris is designed around this target workflow:
 
 1. Open a project, not just a shell.
 2. Split work into visible agent lanes.
@@ -168,11 +168,11 @@ pnpm verify:terminal:authenticated-ai-cli-consent-packet
 - Visible agent runtime boundary:
   `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
 - Requirements/spec/design traceability:
-  `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+  `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
 - Agent message bus superset spec:
-  `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+  `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 - World-class gap closure design:
-  `docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md`
+  `docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md`
 
 ## Repository Hygiene
 

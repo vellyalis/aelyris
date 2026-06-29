@@ -63,7 +63,7 @@
   background: var(--dialog-surface);
   backdrop-filter: var(--dialog-surface-blur);
   -webkit-backdrop-filter: var(--dialog-surface-blur);
-  border: 1px solid var(--aether-border-strong);
+  border: 1px solid var(--aelyris-border-strong);
   border-radius: var(--radius);
   box-shadow: var(--rim-top), var(--shadow-elevated);
   z-index: var(--z-dropdown);

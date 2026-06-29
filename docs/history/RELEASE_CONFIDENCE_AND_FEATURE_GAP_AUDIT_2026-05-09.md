@@ -21,7 +21,7 @@
 - cmux emphasizes native split panes, vertical tabs, notification rings, an embedded browser, socket automation, GPU acceleration, and configurable shortcuts.
 - Warp emphasizes multi-agent management, session-tied agent conversations, attachable context, task lists, profiles/permissions, code review, rich input, command history, blocks, session restoration, and remote steering.
 
-### Aether Strengths
+### Aelyris Strengths
 
 - Project-first workspace with file tree, source control, workflow, toolkit, right rail health/change/run views, agent inspector, and release/quality gates.
 - Existing pane split/close/resize/rebalance/maximize/move/rename/role targeting and scrollback/command history foundations.

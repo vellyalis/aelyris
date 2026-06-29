@@ -1,5 +1,5 @@
 # Mock Claude Code agent that outputs stream-json events
-# Used for testing Aether Terminal's agent integration
+# Used for testing Aelyris's agent integration
 
 $events = @(
     '{"type":"system","subtype":"init","session_id":"mock-session-001"}',

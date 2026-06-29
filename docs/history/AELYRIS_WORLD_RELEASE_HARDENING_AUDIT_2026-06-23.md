@@ -1,9 +1,9 @@
-# Quorum Release-Hardening Audit
+# Aelyris Release-Hardening Audit
 
 Date: 2026-06-23
 Status: BLOCK for release. REVIEW for product hardening.
 
-This is a strict multi-agent audit for turning Quorum from a strong
+This is a strict multi-agent audit for turning Aelyris from a strong
 autonomous-agent cockpit into a release-grade, robust, fault-tolerant product.
 
 The goal is not "make the foundation work". The goal is a system that can be
@@ -12,7 +12,7 @@ stale artifacts, interrupted merges, and non-engineer supervision.
 
 ## Executive Verdict
 
-Aether is no longer just a scaffold. It has real Task Graph, Event Bus, Context
+Aelyris is no longer just a scaffold. It has real Task Graph, Event Bus, Context
 Store, Cost Manager, visible PTY dispatch, worktree/merge plumbing, MCP tools,
 and a newly advanced symbol ownership layer.
 
@@ -144,7 +144,7 @@ Acceptance:
 
 Problem:
 
-The merge queue is in-memory, and `aether.review.approve` currently accepts
+The merge queue is in-memory, and `aelyris.review.approve` currently accepts
 repo/source/target at approval time. That is not strong enough for a world-facing
 autonomous merge claim.
 
@@ -648,12 +648,12 @@ Expected behavior:
 You are working in <repo>.
 
 Read:
-- docs/specs/AETHER_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md
+- docs/specs/AELYRIS_WORLD_RELEASE_HARDENING_AUDIT_2026-06-23.md
 - docs/specs/IMPLEMENTATION_PLAN_2026-06-23.md
 - docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md
-- docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md
+- docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md
 
-Do not treat Aether as a scaffold. It already has real orchestration,
+Do not treat Aelyris as a scaffold. It already has real orchestration,
 visible-pane, merge, event, context, cost, and symbol-ownership subsystems.
 Your task is world-release hardening.
 
@@ -678,18 +678,18 @@ Do not push or open PRs unless explicitly asked.
 
 Safe claim today:
 
-> Aether has a real AI-team cockpit substrate with visible PTY agents, task
+> Aelyris has a real AI-team cockpit substrate with visible PTY agents, task
 > graph orchestration, event/context sharing, worktree/review/merge plumbing,
 > and an advancing file/symbol ownership model.
 
 Unsafe claim today:
 
-> Aether is ready for world release as a fully durable, secure, autonomous
+> Aelyris is ready for world release as a fully durable, secure, autonomous
 > multi-agent engineering OS.
 
 Target claim after this hardening:
 
-> Aether can run multiple AI agents as a durable local engineering team, keep
+> Aelyris can run multiple AI agents as a durable local engineering team, keep
 > task/context/event/ownership state coherent across crashes and restarts,
 > prevent unsafe local control paths, prove function-level conflict behavior,
 > survive long-run/fault-injection tests, and produce auditable review/merge

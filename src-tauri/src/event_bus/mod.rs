@@ -1,6 +1,6 @@
 //! Event Bus — the typed event taxonomy the fleet coordinates over.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 //! Requirement 5. Named channels carry a fixed event taxonomy. The transport
 //! is **star-backed** (the loop controller publishes; agents subscribe via the
 //! controller — no peer-to-peer), so this module is the pure taxonomy +

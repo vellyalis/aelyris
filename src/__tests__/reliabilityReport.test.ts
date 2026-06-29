@@ -10,13 +10,13 @@ function pane(overrides: Partial<TerminalPaneTarget> = {}): TerminalPaneTarget {
     terminalId: "pty-a",
     index: 0,
     shell: "powershell",
-    cwd: "C:/repo/aether-terminal",
+    cwd: "C:/repo/aelyris",
     title: "PowerShell",
     role: "build",
     tabId: "tab-a",
-    tabLabel: "Aether",
+    tabLabel: "Aelyris",
     tabShell: "powershell",
-    tabCwd: "C:/repo/aether-terminal",
+    tabCwd: "C:/repo/aelyris",
     ...overrides,
   };
 }

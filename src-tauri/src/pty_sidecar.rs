@@ -14,7 +14,7 @@ use crate::mux::graph::MuxGraph;
 use crate::pty::{ShellType, TerminalInfo};
 
 const SIDE_CAR_PORT: u16 = 9334;
-const TOKEN_FILE_NAME: &str = "aether-pty-server.token";
+const TOKEN_FILE_NAME: &str = "aelyris-pty-server.token";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(3);
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_millis(750);
 const INPUT_QUEUE_CAPACITY: usize = 256;
@@ -1210,8 +1210,8 @@ fn spawn_server_process(token: &str) -> Result<(), String> {
     let exe = current_server_exe()?;
     let mut command = crate::process::hidden_command(exe);
     command
-        .env("QUORUM_API_TOKEN", token)
-        .env("QUORUM_PTY_SERVER_PORT", SIDE_CAR_PORT.to_string())
+        .env("AELYRIS_API_TOKEN", token)
+        .env("AELYRIS_PTY_SERVER_PORT", SIDE_CAR_PORT.to_string())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -1236,7 +1236,7 @@ fn spawn_server_process(token: &str) -> Result<(), String> {
     // the sidecar exits — cleanly, or terminated as stale on the next launch —
     // the OS kills every agent it hosts. A sidecar abandoned by a crashed app
     // that never relaunches is the one residual case; it is a single process
-    // (not accumulating) and the next Aether launch reaps it.
+    // (not accumulating) and the next Aelyris launch reaps it.
     command
         .spawn()
         .map(|_| ())
@@ -1246,9 +1246,9 @@ fn spawn_server_process(token: &str) -> Result<(), String> {
 fn current_server_exe() -> Result<PathBuf, String> {
     let current = std::env::current_exe().map_err(|err| err.to_string())?;
     let exe_name = if cfg!(windows) {
-        "aether-pty-server.exe"
+        "aelyris-pty-server.exe"
     } else {
-        "aether-pty-server"
+        "aelyris-pty-server"
     };
     let sibling = current.with_file_name(exe_name);
     if sibling.exists() {
@@ -1256,9 +1256,9 @@ fn current_server_exe() -> Result<PathBuf, String> {
     }
     let host = option_env!("TAURI_ENV_TARGET_TRIPLE").unwrap_or("x86_64-pc-windows-msvc");
     let bundled_name = if cfg!(windows) {
-        format!("aether-pty-server-{host}.exe")
+        format!("aelyris-pty-server-{host}.exe")
     } else {
-        format!("aether-pty-server-{host}")
+        format!("aelyris-pty-server-{host}")
     };
     if let Some(workspace_binary) = current
         .parent()
@@ -1373,11 +1373,11 @@ fn current_user_sid_for_icacls() -> Result<String, String> {
 fn token_path() -> Result<PathBuf, String> {
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
         return Ok(PathBuf::from(local_app_data)
-            .join("Aether Terminal")
+            .join("Aelyris")
             .join(TOKEN_FILE_NAME));
     }
     let home = std::env::home_dir().ok_or_else(|| "home directory unavailable".to_string())?;
-    Ok(home.join(".aether").join(TOKEN_FILE_NAME))
+    Ok(home.join(".aelyris").join(TOKEN_FILE_NAME))
 }
 
 fn shell_name(shell: &ShellType) -> &'static str {

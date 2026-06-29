@@ -43,7 +43,7 @@ describe("buildOrchestraPrompts", () => {
     expect(result).toHaveLength(2);
     expect(result[0].roleId).toBe("implementer");
     expect(result[0].prompt).toContain("Add user authentication");
-    expect(result[0].prompt).toContain("Aether Orchestra Contract:");
+    expect(result[0].prompt).toContain("Aelyris Orchestra Contract:");
     expect(result[0].prompt).toContain("Worktree branch:");
     expect(result[0].branchName).toMatch(/^agent\/implementer\/add-user-authentication-\d+$/);
     expect(result[0].prompt).toContain("Conflict policy:");

@@ -7,7 +7,7 @@
 //! the autonomous build loop (one instruction -> parallel impl -> review ->
 //! auto-merge) is implemented with 100% confidence in its logic, leaving only
 //! the I/O adapters for the live environment. See
-//! docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy, BR9,
+//! docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md (Agent Hierarchy, BR9,
 //! Acceptance: end-to-end autonomy).
 
 use serde::{Deserialize, Serialize};

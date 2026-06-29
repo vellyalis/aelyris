@@ -1,6 +1,6 @@
 // Attaches over CDP (port 9222) to the running Tauri webview, opens each
 // major surface, measures overflow, and captures screenshots into
-// C:/tmp/aether-lg/. Run with: pnpm node scripts/verify-liquid-glass.mjs
+// C:/tmp/aelyris-lg/. Run with: pnpm node scripts/verify-liquid-glass.mjs
 //
 // Prerequisite: `pnpm tauri:dev` must be running.
 
@@ -8,7 +8,7 @@ import { chromium } from "@playwright/test";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
 
 const CDP = "http://localhost:9222";
-const OUT = "C:/tmp/aether-lg";
+const OUT = "C:/tmp/aelyris-lg";
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
 async function measureOverflow(page) {
@@ -48,10 +48,10 @@ async function main() {
 
   await page.evaluate(
     ([project]) => {
-      localStorage.setItem("aether:lastProject", project);
-      localStorage.setItem("aether:onboarding-done", "1");
+      localStorage.setItem("aelyris:lastProject", project);
+      localStorage.setItem("aelyris:onboarding-done", "1");
     },
-    [process.env.AETHER_TAURI_PROJECT ?? process.cwd().replaceAll("\\", "/")],
+    [process.env.AELYRIS_TAURI_PROJECT ?? process.cwd().replaceAll("\\", "/")],
   );
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);

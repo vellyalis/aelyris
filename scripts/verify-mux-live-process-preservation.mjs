@@ -16,7 +16,7 @@ const SOURCE_PATHS = [
   "src-tauri/src/mux/store.rs",
   "src-tauri/src/mux/graph.rs",
   "src-tauri/tests/test_api_3d1.rs",
-  "docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md",
+  "docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md",
 ];
 
 function read(rel) {
@@ -41,7 +41,7 @@ const ipcMuxCommands = read("src-tauri/src/ipc/mux_commands.rs");
 const store = read("src-tauri/src/mux/store.rs");
 const graph = read("src-tauri/src/mux/graph.rs");
 const testApi = read("src-tauri/tests/test_api_3d1.rs");
-const design = read("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const design = read("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
 
 const checks = [
   check(
@@ -120,7 +120,7 @@ const checks = [
 const failedChecks = checks.filter((item) => !item.ok);
 const ok = failedChecks.length === 0;
 const report = {
-  schema: "aether.mux-live-process-preservation/v1",
+  schema: "aelyris.mux-live-process-preservation/v1",
   version: 2,
   generatedAt: new Date().toISOString(),
   sourceCutoffMs: Math.max(...SOURCE_PATHS.map(mtime)),

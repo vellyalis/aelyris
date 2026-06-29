@@ -5,71 +5,71 @@ import net from "node:net";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import process from "node:process";
 
-const ROOT = resolve(process.env.AETHER_PRODUCTION_ROOT ?? process.cwd());
+const ROOT = resolve(process.env.AELYRIS_PRODUCTION_ROOT ?? process.cwd());
 const PRODUCTION_SMOKE_DIR = resolve(
-  process.env.AETHER_PRODUCTION_SMOKE_DIR ?? join(ROOT, ".codex-auto", "production-smoke"),
+  process.env.AELYRIS_PRODUCTION_SMOKE_DIR ?? join(ROOT, ".codex-auto", "production-smoke"),
 );
 const EVIDENCE = resolve(
-  process.env.AETHER_SUSPEND_EVIDENCE_PATH ?? join(PRODUCTION_SMOKE_DIR, "real-os-suspend-resume.json"),
+  process.env.AELYRIS_SUSPEND_EVIDENCE_PATH ?? join(PRODUCTION_SMOKE_DIR, "real-os-suspend-resume.json"),
 );
 const DIAGNOSTIC = resolve(
-  process.env.AETHER_SUSPEND_DIAGNOSTIC_PATH ??
+  process.env.AELYRIS_SUSPEND_DIAGNOSTIC_PATH ??
     join(PRODUCTION_SMOKE_DIR, "real-os-suspend-resume.diagnostic.json"),
 );
 const SESSION = resolve(
-  process.env.AETHER_SUSPEND_SESSION_PATH ?? join(PRODUCTION_SMOKE_DIR, "real-os-suspend-session.json"),
+  process.env.AELYRIS_SUSPEND_SESSION_PATH ?? join(PRODUCTION_SMOKE_DIR, "real-os-suspend-session.json"),
 );
 const NATIVE_PREFLIGHT = resolve(
-  process.env.AETHER_SUSPEND_NATIVE_PREFLIGHT_PATH ??
+  process.env.AELYRIS_SUSPEND_NATIVE_PREFLIGHT_PATH ??
     join(PRODUCTION_SMOKE_DIR, "real-os-suspend-native-preflight.json"),
 );
 const NATIVE_POSTCHECK_PREFLIGHT = resolve(
-  process.env.AETHER_SUSPEND_NATIVE_POSTCHECK_PREFLIGHT_PATH ??
+  process.env.AELYRIS_SUSPEND_NATIVE_POSTCHECK_PREFLIGHT_PATH ??
     join(PRODUCTION_SMOKE_DIR, "real-os-suspend-native-postcheck-preflight.json"),
 );
 const NATIVE_POSTCHECK_WRITE_SMOKE = resolve(
-  process.env.AETHER_SUSPEND_NATIVE_POSTCHECK_WRITE_SMOKE_PATH ??
+  process.env.AELYRIS_SUSPEND_NATIVE_POSTCHECK_WRITE_SMOKE_PATH ??
     join(PRODUCTION_SMOKE_DIR, "real-os-suspend-native-postcheck-write-smoke.json"),
 );
 const PACKAGE_VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const args = new Set(process.argv.slice(2));
-const NATIVE_PRIMARY_REQUESTED = args.has("--native-primary") || process.env.AETHER_SUSPEND_NATIVE_PRIMARY === "1";
+const NATIVE_PRIMARY_REQUESTED = args.has("--native-primary") || process.env.AELYRIS_SUSPEND_NATIVE_PRIMARY === "1";
 const LAUNCH_NATIVE_PRIMARY =
-  args.has("--launch-native-primary") || process.env.AETHER_LAUNCH_NATIVE_PRIMARY_SHELL === "1";
+  args.has("--launch-native-primary") || process.env.AELYRIS_LAUNCH_NATIVE_PRIMARY_SHELL === "1";
 const USER_INITIATED_SLEEP_CYCLE = args.has("--user-sleep-cycle") || args.has("--manual-cycle");
-const USER_SLEEP_WAIT_TIMEOUT_MS = Number.parseInt(process.env.AETHER_USER_SLEEP_WAIT_TIMEOUT_MS ?? "1800000", 10);
-const USER_SLEEP_WAIT_POLL_MS = Number.parseInt(process.env.AETHER_USER_SLEEP_WAIT_POLL_MS ?? "5000", 10);
-const NATIVE_PRIMARY_HOLD_MS = Number.parseInt(process.env.AETHER_NATIVE_PRIMARY_HOLD_MS ?? "1200000", 10);
-const NATIVE_PREFLIGHT_HOLD_MS = Number.parseInt(process.env.AETHER_NATIVE_PREFLIGHT_HOLD_MS ?? "5000", 10);
+const USER_SLEEP_WAIT_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_USER_SLEEP_WAIT_TIMEOUT_MS ?? "1800000", 10);
+const USER_SLEEP_WAIT_POLL_MS = Number.parseInt(process.env.AELYRIS_USER_SLEEP_WAIT_POLL_MS ?? "5000", 10);
+const NATIVE_PRIMARY_HOLD_MS = Number.parseInt(process.env.AELYRIS_NATIVE_PRIMARY_HOLD_MS ?? "1200000", 10);
+const NATIVE_PREFLIGHT_HOLD_MS = Number.parseInt(process.env.AELYRIS_NATIVE_PREFLIGHT_HOLD_MS ?? "5000", 10);
 const NATIVE_POSTCHECK_PREFLIGHT_HOLD_MS = Number.parseInt(
-  process.env.AETHER_NATIVE_POSTCHECK_PREFLIGHT_HOLD_MS ?? "120000",
+  process.env.AELYRIS_NATIVE_POSTCHECK_PREFLIGHT_HOLD_MS ?? "120000",
   10,
 );
 const NATIVE_POSTCHECK_WRITE_SMOKE_HOLD_MS = Number.parseInt(
-  process.env.AETHER_NATIVE_POSTCHECK_WRITE_SMOKE_HOLD_MS ?? "120000",
+  process.env.AELYRIS_NATIVE_POSTCHECK_WRITE_SMOKE_HOLD_MS ?? "120000",
   10,
 );
-const NATIVE_PRIMARY_ALPHA = Number.parseInt(process.env.AETHER_NATIVE_PRIMARY_ALPHA ?? "232", 10);
+const NATIVE_PRIMARY_ALPHA = Number.parseInt(process.env.AELYRIS_NATIVE_PRIMARY_ALPHA ?? "232", 10);
 const NATIVE_PRIMARY_EXE = resolve(
-  process.env.AETHER_NATIVE_EXE ??
-    join(ROOT, "src-tauri", "target", "debug", process.platform === "win32" ? "aether-native.exe" : "aether-native"),
+  process.env.AELYRIS_NATIVE_EXE ??
+    join(ROOT, "src-tauri", "target", "debug", process.platform === "win32" ? "aelyris-native.exe" : "aelyris-native"),
 );
 const DEFAULT_APP_EXE = resolve(
-  process.env.AETHER_APP_EXE ??
-    (NATIVE_PRIMARY_REQUESTED ? NATIVE_PRIMARY_EXE : join(ROOT, "src-tauri", "target", "release", "Aether.exe")),
+  process.env.AELYRIS_APP_EXE ??
+    (NATIVE_PRIMARY_REQUESTED ? NATIVE_PRIMARY_EXE : join(ROOT, "src-tauri", "target", "release", "Aelyris.exe")),
 );
-const AETHERCTL_EXE = join(
+const AELYS_EXE = join(
   ROOT,
   "src-tauri",
   "target",
   "release",
-  process.platform === "win32" ? "aetherctl.exe" : "aetherctl",
+  process.platform === "win32" ? "aelys.exe" : "aelys",
 );
 const BUNDLED_SIDECAR_EXE = join(
   ROOT,
   "src-tauri",
   "binaries",
-  process.platform === "win32" ? "aether-pty-server-x86_64-pc-windows-msvc.exe" : "aether-pty-server",
+  process.platform === "win32" ? "aelyris-pty-server-x86_64-pc-windows-msvc.exe" : "aelyris-pty-server",
 );
 const REQUIRED_CHECKS = ["appResponsive", "terminalResponsive", "sqliteWritable", "paneStatePreserved"];
 // Automated probes verify app responsiveness, terminal roundtrip, SQLite write, and pane layout preservation.
@@ -77,7 +77,7 @@ const DEFAULT_API_BASE_URL = "http://127.0.0.1:9333";
 const SIDECAR_API_BASE_URL = "http://127.0.0.1:9334";
 
 function printUsage() {
-  console.log(`Aether real OS sleep/resume verifier
+  console.log(`Aelyris real OS sleep/resume verifier
 
 Usage:
   node scripts/verify-real-os-suspend-evidence.mjs [mode] [target]
@@ -102,21 +102,21 @@ Real sleep modes:
   --cycle                         Invoke the guarded Windows sleep API.
 
 Targets and safety:
-  --native-primary                Target aether-native.exe instead of the Tauri release shell.
+  --native-primary                Target aelyris-native.exe instead of the Tauri release shell.
   --launch-native-primary         Launch a short-lived native primary shell during the proof.
-  QUORUM_ALLOW_OS_SLEEP=1         Required before --cycle can invoke the sleep API.
+  AELYRIS_ALLOW_OS_SLEEP=1         Required before --cycle can invoke the sleep API.
 `);
 }
 
 function processNameForExecutable(executable) {
   return (
-    process.env.AETHER_APP_PROCESS_NAME ??
+    process.env.AELYRIS_APP_PROCESS_NAME ??
     basename(executable || DEFAULT_APP_EXE, extname(executable || DEFAULT_APP_EXE))
   );
 }
 
 function isNativePrimaryExecutable(executable) {
-  return basename(String(executable ?? "")).toLowerCase().startsWith("aether-native");
+  return basename(String(executable ?? "")).toLowerCase().startsWith("aelyris-native");
 }
 
 function minAppBytes(executable) {
@@ -133,7 +133,7 @@ function appExecutableInfo(executable = DEFAULT_APP_EXE) {
     return {
       path: executable || DEFAULT_APP_EXE,
       processName,
-      targetKind: isNativePrimaryExecutable(executable) ? "aether-native-primary-shell" : "tauri-release-shell",
+      targetKind: isNativePrimaryExecutable(executable) ? "aelyris-native-primary-shell" : "tauri-release-shell",
       exists: false,
       bytes: 0,
       modifiedAt: null,
@@ -144,7 +144,7 @@ function appExecutableInfo(executable = DEFAULT_APP_EXE) {
   return {
     path: executable,
     processName,
-    targetKind: isNativePrimaryExecutable(executable) ? "aether-native-primary-shell" : "tauri-release-shell",
+    targetKind: isNativePrimaryExecutable(executable) ? "aelyris-native-primary-shell" : "tauri-release-shell",
     exists: true,
     bytes: stat.size,
     modifiedAt: stat.mtime.toISOString(),
@@ -226,21 +226,21 @@ function readEvidence() {
 
 function tokenPath() {
   if (process.env.LOCALAPPDATA) {
-    return join(process.env.LOCALAPPDATA, "Aether Terminal", "aether-pty-server.token");
+    return join(process.env.LOCALAPPDATA, "Aelyris", "aelyris-pty-server.token");
   }
   const home = process.env.USERPROFILE || process.env.HOME;
-  return home ? join(home, ".aether", "aether-pty-server.token") : null;
+  return home ? join(home, ".aelyris", "aelyris-pty-server.token") : null;
 }
 
 function apiToken() {
-  if (process.env.QUORUM_API_TOKEN?.trim()) return process.env.QUORUM_API_TOKEN.trim();
+  if (process.env.AELYRIS_API_TOKEN?.trim()) return process.env.AELYRIS_API_TOKEN.trim();
   const path = tokenPath();
   if (!path || !existsSync(path)) return "";
   return readFileSync(path, "utf8").trim();
 }
 
 function apiBaseUrl() {
-  if (process.env.QUORUM_API_URL?.trim()) return process.env.QUORUM_API_URL.trim();
+  if (process.env.AELYRIS_API_URL?.trim()) return process.env.AELYRIS_API_URL.trim();
   const path = tokenPath();
   return path && existsSync(path) ? SIDECAR_API_BASE_URL : DEFAULT_API_BASE_URL;
 }
@@ -312,7 +312,7 @@ function nativePrimaryLaunchArgs(holdMs = NATIVE_PRIMARY_HOLD_MS) {
 function suspendTargetMetadata(executable = DEFAULT_APP_EXE) {
   const executableInfo = appExecutableInfo(executable);
   return {
-    schema: "aether.real-os-suspend.target.v1",
+    schema: "aelyris.real-os-suspend.target.v1",
     targetKind: executableInfo.targetKind,
     nativePrimaryRequested: NATIVE_PRIMARY_REQUESTED,
     launchNativePrimaryRequested: LAUNCH_NATIVE_PRIMARY,
@@ -347,7 +347,7 @@ function launchNativePrimaryShellForSuspend(options = {}) {
       ok: false,
       status: "missing-native-binary",
       executable,
-      reason: "build src-tauri target debug aether-native before arming native sleep/resume evidence",
+      reason: "build src-tauri target debug aelyris-native before arming native sleep/resume evidence",
     };
   }
   const commandArgs = nativePrimaryLaunchArgs(holdMs);
@@ -362,8 +362,8 @@ function launchNativePrimaryShellForSuspend(options = {}) {
       windowsHide: true,
       env: {
         ...process.env,
-        QUORUM_API_URL: apiBaseUrl(),
-        QUORUM_API_TOKEN: apiToken(),
+        AELYRIS_API_URL: apiBaseUrl(),
+        AELYRIS_API_TOKEN: apiToken(),
       },
     });
   } catch (error) {
@@ -394,7 +394,7 @@ function launchNativePrimaryShellForSuspend(options = {}) {
       reason: spawnError,
     };
   }
-  const processProbe = probeAetherProcesses(executable.path, executable.processName, child.pid);
+  const processProbe = probeAelyrisProcesses(executable.path, executable.processName, child.pid);
   let selfObserved = false;
   try {
     selfObserved = child.kill(0);
@@ -432,16 +432,16 @@ function stopNativePrimaryLaunch(launch) {
   } catch {}
 }
 
-function runAetherCtl(commandArgs, timeoutMs = 15000) {
-  if (!existsSync(AETHERCTL_EXE)) {
+function runAelys(commandArgs, timeoutMs = 15000) {
+  if (!existsSync(AELYS_EXE)) {
     return {
       ok: false,
       status: null,
       stdout: "",
-      stderr: `missing aetherctl executable: ${AETHERCTL_EXE}`,
+      stderr: `missing aelys executable: ${AELYS_EXE}`,
     };
   }
-  const result = spawnSync(AETHERCTL_EXE, commandArgs, {
+  const result = spawnSync(AELYS_EXE, commandArgs, {
     cwd: ROOT,
     encoding: "utf8",
     windowsHide: true,
@@ -462,13 +462,13 @@ async function runNativeJson(commandArgs, timeoutMs = 60000) {
       ok: false,
       status: null,
       stdout: "",
-      stderr: `missing aether-native executable: ${NATIVE_PRIMARY_EXE}`,
+      stderr: `missing aelyris-native executable: ${NATIVE_PRIMARY_EXE}`,
       json: null,
     };
   }
   const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const stdoutPath = join(ROOT, ".codex-auto", "production-smoke", `aether-native-stdout-${runId}.json`);
-  const stderrPath = join(ROOT, ".codex-auto", "production-smoke", `aether-native-stderr-${runId}.txt`);
+  const stdoutPath = join(ROOT, ".codex-auto", "production-smoke", `aelyris-native-stdout-${runId}.json`);
+  const stderrPath = join(ROOT, ".codex-auto", "production-smoke", `aelyris-native-stderr-${runId}.txt`);
   mkdirSync(dirname(stdoutPath), { recursive: true });
   const stdoutFd = openSync(stdoutPath, "w");
   const stderrFd = openSync(stderrPath, "w");
@@ -488,8 +488,8 @@ async function runNativeJson(commandArgs, timeoutMs = 60000) {
         windowsHide: true,
         env: {
           ...process.env,
-          QUORUM_API_URL: apiBaseUrl(),
-          QUORUM_API_TOKEN: apiToken(),
+          AELYRIS_API_URL: apiBaseUrl(),
+          AELYRIS_API_TOKEN: apiToken(),
         },
       });
     } catch (error) {
@@ -565,11 +565,11 @@ async function runNativeJson(commandArgs, timeoutMs = 60000) {
   });
 }
 
-function runCargoAetherCtl(commandArgs, timeoutMs = 240000) {
+function runCargoAelys(commandArgs, timeoutMs = 240000) {
   const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
   const result = spawnSync(
     cargo,
-    ["run", "--manifest-path", join(ROOT, "src-tauri", "Cargo.toml"), "--bin", "aetherctl", "--", ...commandArgs],
+    ["run", "--manifest-path", join(ROOT, "src-tauri", "Cargo.toml"), "--bin", "aelys", "--", ...commandArgs],
     {
       cwd: ROOT,
       encoding: "utf8",
@@ -586,7 +586,7 @@ function runCargoAetherCtl(commandArgs, timeoutMs = 240000) {
   };
 }
 
-function probeAetherProcesses(executable = DEFAULT_APP_EXE, processName = processNameForExecutable(executable), expectedPid = null) {
+function probeAelyrisProcesses(executable = DEFAULT_APP_EXE, processName = processNameForExecutable(executable), expectedPid = null) {
   const pid = Number(expectedPid);
   if (Number.isFinite(pid) && pid > 0) {
     try {
@@ -624,8 +624,8 @@ function probeAetherProcesses(executable = DEFAULT_APP_EXE, processName = proces
   }
   const ps = `
     $ErrorActionPreference = 'SilentlyContinue'
-    $target = [System.IO.Path]::GetFullPath($env:AETHER_APP_EXE)
-    $name = $env:AETHER_APP_PROCESS_NAME
+    $target = [System.IO.Path]::GetFullPath($env:AELYRIS_APP_EXE)
+    $name = $env:AELYRIS_APP_PROCESS_NAME
     $items = Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
       $path = $null
       try { $path = $_.Path } catch {}
@@ -639,7 +639,7 @@ function probeAetherProcesses(executable = DEFAULT_APP_EXE, processName = proces
     }
     $items | ConvertTo-Json -Depth 3 -Compress
   `;
-  const result = runPowerShell(ps, { AETHER_APP_EXE: executable, AETHER_APP_PROCESS_NAME: processName });
+  const result = runPowerShell(ps, { AELYRIS_APP_EXE: executable, AELYRIS_APP_PROCESS_NAME: processName });
   const parsed = parsePowerShellJson(result);
   const processes = parsed ? (Array.isArray(parsed) ? parsed : [parsed]) : [];
   return {
@@ -777,10 +777,10 @@ async function launchIsolatedSidecarForPreflight() {
       windowsHide: true,
       env: {
         ...process.env,
-        QUORUM_API_TOKEN: tokenValue,
-        QUORUM_PTY_SERVER_PORT: String(port),
-        QUORUM_MUX_SNAPSHOT_DIR: muxDir,
-        QUORUM_PTY_SCROLLBACK_DIR: scrollbackDir,
+        AELYRIS_API_TOKEN: tokenValue,
+        AELYRIS_PTY_SERVER_PORT: String(port),
+        AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
+        AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
       },
     });
   } catch (error) {
@@ -824,7 +824,7 @@ async function launchIsolatedSidecarForPreflight() {
 }
 
 async function probeTerminalRoundtripViaApi() {
-  const marker = `AETHER_POST_RESUME_TERMINAL_OK_${Date.now()}`;
+  const marker = `AELYRIS_POST_RESUME_TERMINAL_OK_${Date.now()}`;
   let sessionId = null;
   const created = await apiJson("/sessions", {
     method: "POST",
@@ -942,8 +942,8 @@ async function probeTerminalRoundtrip() {
   if (NATIVE_PRIMARY_REQUESTED) {
     return await probeTerminalRoundtripViaApi();
   }
-  const marker = `AETHER_POST_RESUME_TERMINAL_OK_${Date.now()}`;
-  const created = runAetherCtl(
+  const marker = `AELYRIS_POST_RESUME_TERMINAL_OK_${Date.now()}`;
+  const created = runAelys(
     ["create", "--shell", "powershell", "--cwd", ROOT, "--cols", "100", "--rows", "30"],
     20000,
   );
@@ -954,11 +954,11 @@ async function probeTerminalRoundtrip() {
     }
     const createdJson = JSON.parse(created.stdout);
     sessionId = String(createdJson.id ?? "");
-    if (!sessionId) throw new Error("aetherctl create did not return an id");
+    if (!sessionId) throw new Error("aelys create did not return an id");
     sleepMs(1500);
-    const send = runAetherCtl(["send", sessionId, `Write-Output ${marker}`, "--enter"], 15000);
+    const send = runAelys(["send", sessionId, `Write-Output ${marker}`, "--enter"], 15000);
     sleepMs(2000);
-    const capture = runAetherCtl(["capture", sessionId, "--lines", "80"], 15000);
+    const capture = runAelys(["capture", sessionId, "--lines", "80"], 15000);
     const capturedJson = capture.ok ? JSON.parse(capture.stdout) : null;
     const text = String(capturedJson?.text ?? "");
     return {
@@ -984,7 +984,7 @@ async function probeTerminalRoundtrip() {
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    if (sessionId) runAetherCtl(["close", sessionId], 10000);
+    if (sessionId) runAelys(["close", sessionId], 10000);
   }
 }
 
@@ -1002,12 +1002,12 @@ function spawnWasBlocked(result) {
 }
 
 async function probeDbPaneLayout() {
-  const release = runAetherCtl(["db-smoke"], 30000);
+  const release = runAelys(["db-smoke"], 30000);
   const releaseOutput = `${release.stdout}\n${release.stderr}`;
   const shouldFallback =
     !release.ok &&
     (/unknown command: db-smoke/i.test(releaseOutput) ||
-      /missing aetherctl executable/i.test(releaseOutput) ||
+      /missing aelys executable/i.test(releaseOutput) ||
       spawnWasBlocked(release));
   if (NATIVE_PRIMARY_REQUESTED && shouldFallback) {
     const native = await runNativeJson(["db-smoke-proof"], 60000);
@@ -1018,19 +1018,19 @@ async function probeDbPaneLayout() {
         parsed?.status === "pass" &&
         parsed?.sqliteWritable === true &&
         parsed?.paneStatePreserved === true,
-      command: "aether-native db-smoke-proof",
+      command: "aelyris-native db-smoke-proof",
       status: native.status,
       stderr: native.stderr.slice(0, 1000),
       result: parsed,
       fallbackFrom: {
-        command: "release-aetherctl db-smoke",
+        command: "release-aelys db-smoke",
         status: release.status,
         stderr: release.stderr.slice(0, 500),
       },
     };
   }
-  const command = shouldFallback ? "cargo-run-aetherctl db-smoke" : "release-aetherctl db-smoke";
-  const result = shouldFallback ? runCargoAetherCtl(["db-smoke"]) : release;
+  const command = shouldFallback ? "cargo-run-aelys db-smoke" : "release-aelys db-smoke";
+  const result = shouldFallback ? runCargoAelys(["db-smoke"]) : release;
   const parsed = parseJsonProbeOutput(result);
   return {
     ok:
@@ -1061,7 +1061,7 @@ async function probeNativePostResumeVisual() {
   const visualOk =
     visual.ok === true &&
     visual.json?.operation === "visual-qa-proof" &&
-    visualQa?.schema === "aether.native.visual-qa-proof.v1" &&
+    visualQa?.schema === "aelyris.native.visual-qa-proof.v1" &&
     visualQa?.nativeVisualQaHarness === true &&
     visualQa?.pixelProbePass === true &&
     visualQa?.contrastPass === true &&
@@ -1072,8 +1072,8 @@ async function probeNativePostResumeVisual() {
   const primaryOk =
     primary.ok === true &&
     primary.json?.operation === "primary-shell-proof" &&
-    primaryShell?.schema === "aether.native.primary-shell-proof.v1" &&
-    primaryShell?.primaryShellWindow?.schema === "aether.native.primary-shell-window-proof.v1" &&
+    primaryShell?.schema === "aelyris.native.primary-shell-proof.v1" &&
+    primaryShell?.primaryShellWindow?.schema === "aelyris.native.primary-shell-window-proof.v1" &&
     primaryWindow?.nativePrimaryShellWindow === true &&
     primaryWindow?.interactiveWindow === true &&
     primaryWindow?.nonBlank === true &&
@@ -1115,7 +1115,7 @@ async function probeNativePostResumeVisual() {
 
 async function collectPostResumeProbes(evidence) {
   const executable = appExecutableInfo(evidenceTargetExecutable(evidence));
-  const processProbe = probeAetherProcesses(
+  const processProbe = probeAelyrisProcesses(
     executable.path,
     evidence.app?.processName ?? executable.processName,
     evidence.validation?.nativePrimaryLaunch?.pid,
@@ -1206,7 +1206,7 @@ function writeSuspendBegin() {
   const template = createTemplate({
     capturedAt: session.startedAt,
     notes:
-      target.targetKind === "aether-native-primary-shell"
+      target.targetKind === "aelyris-native-primary-shell"
         ? "Native primary shell sleep/resume evidence armed by verify-real-os-suspend-evidence."
         : "Tauri release shell sleep/resume evidence armed by verify-real-os-suspend-evidence.",
   });
@@ -1318,10 +1318,10 @@ function assertWindowsSleepCycleAllowed() {
   if (process.platform !== "win32") {
     fail("guarded sleep cycle requires Windows", process.platform);
   }
-  if (process.env.QUORUM_ALLOW_OS_SLEEP !== "1") {
+  if (process.env.AELYRIS_ALLOW_OS_SLEEP !== "1") {
     fail(
       "refusing to put Windows to sleep without explicit opt-in",
-      `set QUORUM_ALLOW_OS_SLEEP=1 and run ${NATIVE_PRIMARY_REQUESTED ? "pnpm verify:production:suspend:native-cycle" : "pnpm verify:production:suspend:cycle"}`,
+      `set AELYRIS_ALLOW_OS_SLEEP=1 and run ${NATIVE_PRIMARY_REQUESTED ? "pnpm verify:production:suspend:native-cycle" : "pnpm verify:production:suspend:cycle"}`,
     );
   }
 }
@@ -1334,12 +1334,12 @@ function invokeWindowsSleep() {
       encoding: "utf8",
       env: {
         ...process.env,
-        QUORUM_ALLOW_OS_SLEEP: "1",
-        QUORUM_API_URL: apiBaseUrl(),
-        QUORUM_API_TOKEN: apiToken(),
+        AELYRIS_ALLOW_OS_SLEEP: "1",
+        AELYRIS_API_URL: apiBaseUrl(),
+        AELYRIS_API_TOKEN: apiToken(),
       },
       windowsHide: true,
-      timeout: Number.parseInt(process.env.AETHER_OS_SLEEP_TIMEOUT_MS ?? "1200000", 10),
+      timeout: Number.parseInt(process.env.AELYRIS_OS_SLEEP_TIMEOUT_MS ?? "1200000", 10),
       maxBuffer: 1024 * 1024,
     });
     if (result.error) {
@@ -1362,18 +1362,18 @@ function invokeWindowsSleep() {
     Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public static class AetherPowerState {
+public static class AelyrisPowerState {
   [DllImport("PowrProf.dll", SetLastError=true)]
   public static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
 }
 "@
-    $ok = [AetherPowerState]::SetSuspendState($false, $false, $false)
+    $ok = [AelyrisPowerState]::SetSuspendState($false, $false, $false)
     if (-not $ok) { throw "SetSuspendState returned false" }
   `;
   const result = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], {
     encoding: "utf8",
     windowsHide: true,
-    timeout: Number.parseInt(process.env.AETHER_OS_SLEEP_TIMEOUT_MS ?? "1200000", 10),
+    timeout: Number.parseInt(process.env.AELYRIS_OS_SLEEP_TIMEOUT_MS ?? "1200000", 10),
     maxBuffer: 1024 * 1024,
   });
   if (result.error) {
@@ -1430,7 +1430,7 @@ async function runGuardedSleepCycle() {
   // SetSuspendState very quickly even when the request was accepted; the
   // strict verifier requires a >=10s bracket so a too-short settle creates a
   // noisy duration failure that hides the real power-event result.
-  sleepSync(Number.parseInt(process.env.AETHER_POST_WAKE_SETTLE_MS ?? "12000", 10));
+  sleepSync(Number.parseInt(process.env.AELYRIS_POST_WAKE_SETTLE_MS ?? "12000", 10));
   await writeSuspendResume();
   await writePostResumeProbe();
   await validateEvidence({ promote: true });
@@ -1480,7 +1480,7 @@ async function runUserInitiatedSleepCycle() {
     await writePostResumeProbe();
     await validateEvidence({ promote: true });
   } finally {
-    if (process.env.AETHER_KEEP_NATIVE_PRIMARY_AFTER_MANUAL_SLEEP !== "1") {
+    if (process.env.AELYRIS_KEEP_NATIVE_PRIMARY_AFTER_MANUAL_SLEEP !== "1") {
       const latest = readEvidence();
       launch = latest?.validation?.nativePrimaryLaunch ?? launch;
       stopNativePrimaryLaunch(launch);
@@ -1513,8 +1513,8 @@ function queryWindowsPowerEventsViaPowerShell(startIso, endIso) {
   }
   const ps = `
     $ErrorActionPreference = 'Stop'
-    $start = ([datetime]::Parse($env:AETHER_SUSPEND_START)).AddMinutes(-5)
-    $end = ([datetime]::Parse($env:AETHER_SUSPEND_END)).AddMinutes(5)
+    $start = ([datetime]::Parse($env:AELYRIS_SUSPEND_START)).AddMinutes(-5)
+    $end = ([datetime]::Parse($env:AELYRIS_SUSPEND_END)).AddMinutes(5)
     $events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1,42,107,187,506,507; StartTime = $start; EndTime = $end } -ErrorAction SilentlyContinue |
       Sort-Object TimeCreated |
       Select-Object TimeCreated, Id, ProviderName, Message
@@ -1525,8 +1525,8 @@ function queryWindowsPowerEventsViaPowerShell(startIso, endIso) {
     windowsHide: true,
     env: {
       ...process.env,
-      AETHER_SUSPEND_START: startIso,
-      AETHER_SUSPEND_END: endIso,
+      AELYRIS_SUSPEND_START: startIso,
+      AELYRIS_SUSPEND_END: endIso,
     },
     maxBuffer: 5 * 1024 * 1024,
   });
@@ -1697,17 +1697,17 @@ function buildMissingFields(evidence) {
   const executable = appExecutableInfo(evidenceTargetExecutable(evidence));
   if (evidence.status !== "pass") missing.push(`status must be pass, currently ${String(evidence.status)}`);
   if (NATIVE_PRIMARY_REQUESTED && resolve(String(evidence.app?.executable ?? "")) !== executable.path) {
-    missing.push("app.executable must target aether-native.exe in native-primary mode");
+    missing.push("app.executable must target aelyris-native.exe in native-primary mode");
   }
   if (NATIVE_PRIMARY_REQUESTED && (evidence.app?.processName ?? "") !== executable.processName) {
-    missing.push("app.processName must be aether-native in native-primary mode");
+    missing.push("app.processName must be aelyris-native in native-primary mode");
   }
-  if (NATIVE_PRIMARY_REQUESTED && evidence.app?.targetKind !== "aether-native-primary-shell") {
-    missing.push("app.targetKind must be aether-native-primary-shell in native-primary mode");
+  if (NATIVE_PRIMARY_REQUESTED && evidence.app?.targetKind !== "aelyris-native-primary-shell") {
+    missing.push("app.targetKind must be aelyris-native-primary-shell in native-primary mode");
   }
   const target = evidence.validation?.suspendTarget;
-  if (NATIVE_PRIMARY_REQUESTED && target?.targetKind !== "aether-native-primary-shell") {
-    missing.push("validation.suspendTarget.targetKind must be aether-native-primary-shell");
+  if (NATIVE_PRIMARY_REQUESTED && target?.targetKind !== "aelyris-native-primary-shell") {
+    missing.push("validation.suspendTarget.targetKind must be aelyris-native-primary-shell");
   }
   if (NATIVE_PRIMARY_REQUESTED && target?.nativePrimaryRequested !== true) {
     missing.push("validation.suspendTarget.nativePrimaryRequested must be true");
@@ -1753,7 +1753,7 @@ function buildMissingFields(evidence) {
     missing.push("validation.postResumeProbes.process.ok must be true");
   }
   if (NATIVE_PRIMARY_REQUESTED && postResumeProbes?.process?.expectedProcessName !== executable.processName) {
-    missing.push("validation.postResumeProbes.process.expectedProcessName must be aether-native");
+    missing.push("validation.postResumeProbes.process.expectedProcessName must be aelyris-native");
   }
   if (NATIVE_PRIMARY_REQUESTED && !(Number(postResumeProbes?.process?.matchingProcessCount) >= 1)) {
     missing.push("validation.postResumeProbes.process.matchingProcessCount must be >= 1");
@@ -1915,8 +1915,8 @@ async function probeWindowsEventLogAccess() {
 async function writeNativePreflight() {
   const sidecar = await launchIsolatedSidecarForPreflight();
   if (sidecar.ok) {
-    process.env.QUORUM_API_URL = sidecar.baseUrl;
-    process.env.QUORUM_API_TOKEN = sidecar.tokenValue;
+    process.env.AELYRIS_API_URL = sidecar.baseUrl;
+    process.env.AELYRIS_API_TOKEN = sidecar.tokenValue;
   }
   const target = { ...suspendTargetMetadata(), launchNativePrimaryRequested: true };
   const launch = launchNativePrimaryShellForSuspend({ force: true, holdMs: NATIVE_PREFLIGHT_HOLD_MS });
@@ -1930,7 +1930,7 @@ async function writeNativePreflight() {
   const eventLogAccess = await probeWindowsEventLogAccess();
   const powerCapabilities = queryWindowsPowerCapabilities();
   const checks = {
-    nativePrimaryTarget: target.targetKind === "aether-native-primary-shell",
+    nativePrimaryTarget: target.targetKind === "aelyris-native-primary-shell",
     nativeBinaryExists: target.executable.exists === true,
     nativeProcessObserved: launch.ok === true,
     apiReachable: apiHealth.ok === true,
@@ -1942,7 +1942,7 @@ async function writeNativePreflight() {
   const onlyHostEventLogBlocked = missing.length === 1 && missing[0] === "systemEventLogReadable";
   const preflight = {
     version: 1,
-    schema: "aether.real-os-suspend.native-preflight.v1",
+    schema: "aelyris.real-os-suspend.native-preflight.v1",
     generatedAt: new Date().toISOString(),
     status:
       missing.length === 0
@@ -1994,8 +1994,8 @@ async function writeNativePreflight() {
 async function writeNativePostcheckPreflight() {
   const sidecar = await launchIsolatedSidecarForPreflight();
   if (sidecar.ok) {
-    process.env.QUORUM_API_URL = sidecar.baseUrl;
-    process.env.QUORUM_API_TOKEN = sidecar.tokenValue;
+    process.env.AELYRIS_API_URL = sidecar.baseUrl;
+    process.env.AELYRIS_API_TOKEN = sidecar.tokenValue;
   }
   const target = { ...suspendTargetMetadata(), launchNativePrimaryRequested: true };
   const launch = launchNativePrimaryShellForSuspend({
@@ -2017,7 +2017,7 @@ async function writeNativePostcheckPreflight() {
     } catch {}
   }
   const checks = {
-    nativePrimaryTarget: target.targetKind === "aether-native-primary-shell",
+    nativePrimaryTarget: target.targetKind === "aelyris-native-primary-shell",
     nativeBinaryExists: target.executable.exists === true,
     isolatedSidecarReady: sidecar.ok === true,
     nativePrimaryLaunchObserved: launch.ok === true,
@@ -2032,7 +2032,7 @@ async function writeNativePostcheckPreflight() {
     .map(([key]) => key);
   const artifact = {
     version: 1,
-    schema: "aether.real-os-suspend.native-postcheck-preflight.v1",
+    schema: "aelyris.real-os-suspend.native-postcheck-preflight.v1",
     generatedAt: new Date().toISOString(),
     status: missing.length === 0 ? "ready-for-native-postcheck" : "incomplete",
     checks,
@@ -2090,18 +2090,18 @@ function postcheckWriteSmokeChecks(evidence, sidecar, launch) {
 
 async function writeNativePostcheckWriteSmoke() {
   if (!NATIVE_PRIMARY_REQUESTED) {
-    fail("native postcheck write smoke requires native-primary mode", "set AETHER_SUSPEND_NATIVE_PRIMARY=1");
+    fail("native postcheck write smoke requires native-primary mode", "set AELYRIS_SUSPEND_NATIVE_PRIMARY=1");
   }
   if (!EVIDENCE.includes("postcheck-write-smoke")) {
     fail(
       "refusing to run postcheck write smoke against the real sleep/resume evidence path",
-      `set AETHER_PRODUCTION_SMOKE_DIR to an isolated directory; current evidence path is ${EVIDENCE}`,
+      `set AELYRIS_PRODUCTION_SMOKE_DIR to an isolated directory; current evidence path is ${EVIDENCE}`,
     );
   }
   const sidecar = await launchIsolatedSidecarForPreflight();
   if (sidecar.ok) {
-    process.env.QUORUM_API_URL = sidecar.baseUrl;
-    process.env.QUORUM_API_TOKEN = sidecar.tokenValue;
+    process.env.AELYRIS_API_URL = sidecar.baseUrl;
+    process.env.AELYRIS_API_TOKEN = sidecar.tokenValue;
   }
   const target = suspendTargetMetadata();
   const launch = launchNativePrimaryShellForSuspend({
@@ -2138,7 +2138,7 @@ async function writeNativePostcheckWriteSmoke() {
       .map(([key]) => key);
     const artifact = {
       version: 1,
-      schema: "aether.real-os-suspend.native-postcheck-write-smoke.v1",
+      schema: "aelyris.real-os-suspend.native-postcheck-write-smoke.v1",
       generatedAt: new Date().toISOString(),
       status: missing.length === 0 ? "pass" : "fail",
       checks,
@@ -2192,7 +2192,7 @@ async function writeDiagnostic() {
     NATIVE_PRIMARY_REQUESTED &&
     missingFields.some((field) => field.includes("native-primary mode") || field.includes("app.sha256"))
   ) {
-    nextSteps.push("Run pnpm verify:production:suspend:native-begin to arm fresh aether-native evidence.");
+    nextSteps.push("Run pnpm verify:production:suspend:native-begin to arm fresh aelyris-native evidence.");
   } else if (!evidence.suspend?.suspendedAt || !evidence.suspend?.resumedAt) {
     nextSteps.push("Record suspendedAt and resumedAt around one real Windows sleep/resume cycle.");
   }
@@ -2209,13 +2209,13 @@ async function writeDiagnostic() {
       nextSteps.push(
         `Launch ${postResumeProbes.process?.expectedProcessName ?? executable.processName} from ${executable.path} and rerun pnpm verify:production:suspend:postcheck.`,
       );
-      // Launch the release Aether.exe and rerun pnpm verify:production:suspend:postcheck.
+      // Launch the release Aelyris.exe and rerun pnpm verify:production:suspend:postcheck.
     }
     if (postResumeProbes.apiHealth?.ok !== true) {
       nextSteps.push("Ensure the PTY API is reachable and rerun pnpm verify:production:suspend:postcheck.");
     }
     if (postResumeProbes.terminalRoundtrip?.ok !== true) {
-      nextSteps.push("Ensure release aetherctl can create, write to, capture, and close a PowerShell session.");
+      nextSteps.push("Ensure release aelys can create, write to, capture, and close a PowerShell session.");
     }
     if (postResumeProbes.dbPaneLayout?.ok !== true) {
       nextSteps.push(
@@ -2224,7 +2224,7 @@ async function writeDiagnostic() {
     }
     if (NATIVE_PRIMARY_REQUESTED && postResumeProbes.nativeVisual?.ok !== true) {
       nextSteps.push(
-        "Ensure aether-native can run visual-qa-proof and primary-shell-proof after resume, then rerun pnpm verify:production:suspend:native-postcheck.",
+        "Ensure aelyris-native can run visual-qa-proof and primary-shell-proof after resume, then rerun pnpm verify:production:suspend:native-postcheck.",
       );
     }
   }
@@ -2329,7 +2329,7 @@ async function validateEvidence(options = {}) {
     ...(evidence.validation ?? {}),
     validatedAt: new Date().toISOString(),
     windowsPowerEvents: {
-      source: NATIVE_PRIMARY_REQUESTED ? "aether-native-power-events-proof" : "powershell-get-winevent",
+      source: NATIVE_PRIMARY_REQUESTED ? "aelyris-native-power-events-proof" : "powershell-get-winevent",
       nativeWindowsEventLog: NATIVE_PRIMARY_REQUESTED,
       powershellUsed: !NATIVE_PRIMARY_REQUESTED,
       suspendEventFound,
@@ -2387,7 +2387,7 @@ async function main() {
     await writeNativePostcheckPreflight();
     return;
   }
-  if (args.has("--native-postcheck-write-smoke") || process.env.AETHER_NATIVE_POSTCHECK_WRITE_SMOKE === "1") {
+  if (args.has("--native-postcheck-write-smoke") || process.env.AELYRIS_NATIVE_POSTCHECK_WRITE_SMOKE === "1") {
     await writeNativePostcheckWriteSmoke();
     return;
   }

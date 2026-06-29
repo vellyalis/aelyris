@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneNode } from "../features/terminal/pane-tree";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 
-const KEY = "aether:paneTree:test-tab";
+const KEY = "aelyris:paneTree:test-tab";
 const invokeMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -105,12 +105,12 @@ describe("pane tree persistence", () => {
     savePaneTreeSnapshot(KEY, {
       tree,
       activePaneId: "pane-main",
-      sessionId: "aether:paneTree:tab-test",
-      layoutId: "aether:paneTree:tab-test",
+      sessionId: "aelyris:paneTree:tab-test",
+      layoutId: "aelyris:paneTree:tab-test",
       paneIntents: {
         "pane-main": {
           paneId: "pane-main",
-          sessionId: "aether:paneTree:tab-test",
+          sessionId: "aelyris:paneTree:tab-test",
           terminalId: "pty-build",
           processId: 4242,
           cwd: "C:/repo",
@@ -118,7 +118,7 @@ describe("pane tree persistence", () => {
           command: "pnpm test",
           role: "build",
           name: "build",
-          layoutId: "aether:paneTree:tab-test",
+          layoutId: "aelyris:paneTree:tab-test",
           attachState: "attached",
           health: "healthy",
           lifecycle: "live",
@@ -142,12 +142,12 @@ describe("pane tree persistence", () => {
 
     const loaded = loadPaneTreeSnapshot(KEY, "powershell");
 
-    expect(loaded?.sessionId).toBe("aether:paneTree:tab-test");
-    expect(loaded?.layoutId).toBe("aether:paneTree:tab-test");
+    expect(loaded?.sessionId).toBe("aelyris:paneTree:tab-test");
+    expect(loaded?.layoutId).toBe("aelyris:paneTree:tab-test");
     expect(loaded?.paneIntents).toEqual({
       "pane-main": {
         paneId: "pane-main",
-        sessionId: "aether:paneTree:tab-test",
+        sessionId: "aelyris:paneTree:tab-test",
         terminalId: "pty-build",
         processId: 4242,
         cwd: "C:/repo",
@@ -155,7 +155,7 @@ describe("pane tree persistence", () => {
         command: "pnpm test",
         role: "build",
         name: "build",
-        layoutId: "aether:paneTree:tab-test",
+        layoutId: "aelyris:paneTree:tab-test",
         attachState: "attached",
         health: "healthy",
         lifecycle: "live",
@@ -396,9 +396,9 @@ describe("pane tree persistence", () => {
           backendBindings: { "pty-a": { terminalId: "pty-a" } },
           paneIntents: { "pty-b": { paneId: "pty-b", terminalId: "pty-b" } },
         },
-        "aether:paneTree:tab",
+        "aelyris:paneTree:tab",
       ),
-    ).toEqual(["workspace-explicit", "pty-a", "pty-b", "aether:paneTree:tab"]);
+    ).toEqual(["workspace-explicit", "pty-a", "pty-b", "aelyris:paneTree:tab"]);
   });
 
   it("loads a sanitized snapshot from the backend mirror", async () => {

@@ -18,9 +18,9 @@ function writeJson(path, data) {
 }
 
 const env = { ...process.env };
-env.QUORUM_AUTH_PROMPT_CONSENT = CONSENT_PHRASE;
-env.AETHER_AUTH_PROMPT_OUT = OUT;
-delete env.QUORUM_AUTH_PROMPT_PROVIDER;
+env.AELYRIS_AUTH_PROMPT_CONSENT = CONSENT_PHRASE;
+env.AELYRIS_AUTH_PROMPT_OUT = OUT;
+delete env.AELYRIS_AUTH_PROMPT_PROVIDER;
 
 const child = spawnSync(process.execPath, [join(ROOT, "scripts", "verify-authenticated-ai-cli-prompt-smoke.mjs")], {
   cwd: ROOT,

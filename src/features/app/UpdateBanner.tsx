@@ -86,7 +86,7 @@ const INITIAL: BannerVisualState = {
 };
 
 /**
- * Top-of-window banner that reports whether a newer Aether build is
+ * Top-of-window banner that reports whether a newer Aelyris build is
  * available and offers a one-click "Install & restart" path.
  *
  * Auto-checks once on mount; user-driven re-checks live in the Settings

@@ -5,7 +5,7 @@ import { defineConfig, type Plugin } from "vite";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 // @ts-expect-error process is a nodejs global
-const noEsbuildSpawn = process.env.AETHER_VITE_NO_ESBUILD_SPAWN === "1";
+const noEsbuildSpawn = process.env.AELYRIS_VITE_NO_ESBUILD_SPAWN === "1";
 const productionImportMetaEnv = JSON.stringify({
   DEV: false,
   MODE: "production",
@@ -18,7 +18,7 @@ const editorOnlyPreloadPattern = /(?:^|\/)(?:monaco-core|monaco-vim|(?:css|html|
 
 function typescriptTranspilePlugin(): Plugin {
   return {
-    name: "aether:typescript-transpile-no-esbuild-spawn",
+    name: "aelyris:typescript-transpile-no-esbuild-spawn",
     enforce: "pre",
     transform(code, id) {
       const path = id.split("?")[0]?.replaceAll("\\", "/") ?? id;
@@ -46,7 +46,7 @@ function typescriptTranspilePlugin(): Plugin {
 
 function inlineProductionEnvPlugin(): Plugin {
   return {
-    name: "aether:inline-production-env-no-esbuild-spawn",
+    name: "aelyris:inline-production-env-no-esbuild-spawn",
     enforce: "pre",
     transform(code, id) {
       const path = id.split("?")[0]?.replaceAll("\\", "/") ?? id;

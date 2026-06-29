@@ -7,11 +7,11 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const CDP_URL = "http://127.0.0.1:9222";
-const SHOT_DIR = "C:/tmp/aether-demo-shots";
+const SHOT_DIR = "C:/tmp/aelyris-demo-shots";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function setupRepo() {
-  const dir = mkdtempSync(join(tmpdir(), "aether-split-"));
+  const dir = mkdtempSync(join(tmpdir(), "aelyris-split-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: dir });
   execFileSync("git", ["config", "user.email", "v@a.test"], { cwd: dir });
   execFileSync("git", ["config", "user.name", "V"], { cwd: dir });

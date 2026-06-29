@@ -46,7 +46,7 @@ impl FromStr for TaskPriority {
 }
 
 /// A unit of work in the Task Graph. See
-/// docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 4.
+/// docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 4.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,

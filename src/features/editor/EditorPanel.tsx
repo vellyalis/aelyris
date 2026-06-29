@@ -489,8 +489,8 @@ export function EditorPanel({
               // ─── Ghost diff hotkeys (Phase 3C-1c) ──────────────────────
               // Context keys let us preempt Monaco's default Tab / Esc only
               // when ghost paint is actually present + the cursor is on it.
-              const ghostHunkKey = editor.createContextKey<boolean>("aetherGhostHunkAtCursor", false);
-              const ghostInFileKey = editor.createContextKey<boolean>("aetherGhostInFile", false);
+              const ghostHunkKey = editor.createContextKey<boolean>("aelyrisGhostHunkAtCursor", false);
+              const ghostInFileKey = editor.createContextKey<boolean>("aelyrisGhostInFile", false);
               ghostHunkKeyRef.current = ghostHunkKey;
               ghostInFileKeyRef.current = ghostInFileKey;
 
@@ -534,7 +534,7 @@ export function EditorPanel({
                       toast.error("Apply failed", String(err));
                     });
                 },
-                "aetherGhostHunkAtCursor && !suggestWidgetVisible && !editorHasSelection",
+                "aelyrisGhostHunkAtCursor && !suggestWidgetVisible && !editorHasSelection",
               );
 
               editor.addCommand(
@@ -557,7 +557,7 @@ export function EditorPanel({
                       toast.error("Apply-all failed", String(err));
                     });
                 },
-                "aetherGhostInFile && !suggestWidgetVisible && !editorHasSelection",
+                "aelyrisGhostInFile && !suggestWidgetVisible && !editorHasSelection",
               );
 
               editor.addCommand(
@@ -572,9 +572,9 @@ export function EditorPanel({
                       /* already dismissed */
                     });
                 },
-                "aetherGhostInFile && !suggestWidgetVisible && !findWidgetVisible",
+                "aelyrisGhostInFile && !suggestWidgetVisible && !findWidgetVisible",
               );
-              monaco.editor.defineTheme("aether-theme", {
+              monaco.editor.defineTheme("aelyris-theme", {
                 base: light ? "vs" : "vs-dark",
                 inherit: true,
                 rules: [
@@ -587,7 +587,7 @@ export function EditorPanel({
                 ],
                 colors: editorColors,
               });
-              monaco.editor.setTheme("aether-theme");
+              monaco.editor.setTheme("aelyris-theme");
               editor.focus();
               const model = editor.getModel();
               if (model) {

@@ -1,9 +1,9 @@
 ---
-name: aether-evidence-review
-description: Verify Aether Terminal readiness, implementation claims, GO-line status, or completion percentage from local machine evidence. Use when the user asks whether something is truly done, current, safe to claim, or blocked; when release or world-class status is discussed; or when a change needs PASS/REVIEW/BLOCK classification from verifier commands and artifacts.
+name: aelyris-evidence-review
+description: Verify Aelyris readiness, implementation claims, GO-line status, or completion percentage from local machine evidence. Use when the user asks whether something is truly done, current, safe to claim, or blocked; when release or world-class status is discussed; or when a change needs PASS/REVIEW/BLOCK classification from verifier commands and artifacts.
 ---
 
-# Aether Evidence Review
+# Aelyris Evidence Review
 
 Use this skill to turn claims into current evidence. Do not treat older prose,
 reviewer opinions, or historical score snapshots as controlling truth.

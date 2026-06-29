@@ -7,7 +7,7 @@
 
 mod pty_harness;
 
-use aether_terminal_lib::pty::{PtyManager, ShellType};
+use aelyris_lib::pty::{PtyManager, ShellType};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::time::timeout as tokio_timeout;

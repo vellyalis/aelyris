@@ -55,7 +55,7 @@ describe("toMonacoModelUri", () => {
   });
 
   // UNC paths (`\\\\server\\share\\file`) are intentionally out of scope —
-  // Aether Terminal's file tree only ever surfaces drive-letter or POSIX
+  // Aelyris's file tree only ever surfaces drive-letter or POSIX
   // absolute paths, and a canonical UNC URI (`file://server/share/file`)
   // would need different prefix logic. If UNC support is added later,
   // toMonacoModelUri should branch on `\\` before calling .replace.

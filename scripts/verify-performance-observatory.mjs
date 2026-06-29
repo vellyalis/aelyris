@@ -1,13 +1,13 @@
 // P2-06 live Tauri/WebView2 Performance Observatory smoke.
 //
 // Prerequisite:
-//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
+//   AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
-//   AETHER_PERF_SMOKE_OUT=.codex-auto/performance-observatory/p2-06-webview2-flood-smoke.json
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
+//   AELYRIS_PERF_SMOKE_OUT=.codex-auto/performance-observatory/p2-06-webview2-flood-smoke.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -15,16 +15,16 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const DASHBOARD_STATE_URL = process.env.AETHER_DASHBOARD_STATE_URL ?? "http://127.0.0.1:48371/state";
-const OUT = process.env.AETHER_PERF_SMOKE_OUT ?? ".codex-auto/performance-observatory/p2-06-webview2-flood-smoke.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_PERF_SMOKE_WAIT_MS ?? "60000", 10);
-const APP_READY_WAIT_MS = Number.parseInt(process.env.AETHER_PERF_APP_READY_WAIT_MS ?? "60000", 10);
-const FLOOD_LINES = Number.parseInt(process.env.AETHER_PERF_FLOOD_LINES ?? "420", 10);
-const SENTINEL = `aether-perf-flood-${FLOOD_LINES}`;
+const CDP = process.env.AELYRIS_TAURI_CDP ?? process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const DASHBOARD_STATE_URL = process.env.AELYRIS_DASHBOARD_STATE_URL ?? "http://127.0.0.1:48371/state";
+const OUT = process.env.AELYRIS_PERF_SMOKE_OUT ?? ".codex-auto/performance-observatory/p2-06-webview2-flood-smoke.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_PERF_SMOKE_WAIT_MS ?? "60000", 10);
+const APP_READY_WAIT_MS = Number.parseInt(process.env.AELYRIS_PERF_APP_READY_WAIT_MS ?? "60000", 10);
+const FLOOD_LINES = Number.parseInt(process.env.AELYRIS_PERF_FLOOD_LINES ?? "420", 10);
+const SENTINEL = `aelyris-perf-flood-${FLOOD_LINES}`;
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.includes("localhost:1420") ||
@@ -44,10 +44,10 @@ function writeArtifact(report) {
 function withPerformanceQaParams(rawUrl) {
   try {
     const url = new URL(rawUrl);
-    url.searchParams.set("aetherVisualQa", "1");
+    url.searchParams.set("aelyrisVisualQa", "1");
     url.searchParams.set("rail", "observe");
     url.searchParams.set("projectPath", PROJECT_PATH);
-    url.searchParams.set("aetherDashboardStateUrl", DASHBOARD_STATE_URL);
+    url.searchParams.set("aelyrisDashboardStateUrl", DASHBOARD_STATE_URL);
     return url.toString();
   } catch {
     return rawUrl;
@@ -96,11 +96,11 @@ async function connectWithWait() {
 async function seedPerformanceQa(page) {
   await page.evaluate(
     ({ dashboardStateUrl, projectPath }) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", projectPath);
-      localStorage.setItem("aether:lastProject", projectPath);
-      localStorage.setItem("aether:onboarding-done", "true");
-      localStorage.setItem("aether:dashboardStateUrl", dashboardStateUrl);
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", projectPath);
+      localStorage.setItem("aelyris:lastProject", projectPath);
+      localStorage.setItem("aelyris:onboarding-done", "true");
+      localStorage.setItem("aelyris:dashboardStateUrl", dashboardStateUrl);
     },
     { dashboardStateUrl: DASHBOARD_STATE_URL, projectPath: PROJECT_PATH },
   );
@@ -123,16 +123,16 @@ async function openPerformanceQaPage(page) {
 
 async function installPerformanceSampleCollector(page) {
   await page.evaluate(() => {
-    window.__aetherPerfSamples = [];
-    window.addEventListener("aether:terminal-performance-sample", (event) => {
-      window.__aetherPerfSamples.push(event.detail);
-      if (window.__aetherPerfSamples.length > 24) window.__aetherPerfSamples.shift();
+    window.__aelyrisPerfSamples = [];
+    window.addEventListener("aelyris:terminal-performance-sample", (event) => {
+      window.__aelyrisPerfSamples.push(event.detail);
+      if (window.__aelyrisPerfSamples.length > 24) window.__aelyrisPerfSamples.shift();
     });
   });
 }
 
 async function readPerformanceSamples(page) {
-  return page.evaluate(() => window.__aetherPerfSamples ?? []);
+  return page.evaluate(() => window.__aelyrisPerfSamples ?? []);
 }
 
 async function call(page, cmd, args = {}) {
@@ -216,11 +216,11 @@ async function main() {
 
     const pages = browser.contexts().flatMap((context) => context.pages());
     report.pages = pages.map((candidate) => candidate.url());
-    page = pages.find(isAetherPage);
+    page = pages.find(isAelyrisPage);
     if (!page) {
       report.status = "external_dependency";
-      report.dependency = "Aether Tauri WebView2 page";
-      report.error = `CDP attached, but no Aether page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
+      report.dependency = "Aelyris Tauri WebView2 page";
+      report.error = `CDP attached, but no Aelyris page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
       writeArtifact(report);
       console.error(`[perf-smoke] ${report.error}`);
       process.exit(2);
@@ -244,7 +244,7 @@ async function main() {
     const beforeMetrics = await call(page, "performance_observatory_metrics", { terminalId: spawnedTerminalId });
     await call(page, "write_terminal", {
       id: spawnedTerminalId,
-      data: `1..${FLOOD_LINES} | ForEach-Object { Write-Output "aether-perf-flood-$_" }\r`,
+      data: `1..${FLOOD_LINES} | ForEach-Object { Write-Output "aelyris-perf-flood-$_" }\r`,
     });
     const snapshot = await waitForGrid(page, spawnedTerminalId, SENTINEL);
     const historyRows = await waitForHistoryRows(page, spawnedTerminalId);

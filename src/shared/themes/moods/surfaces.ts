@@ -208,7 +208,7 @@ function crystalMoodSurfaces(): MoodSurfaceCSS {
 }
 
 export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
-  "aether-sky": darkMoodSurfaces({
+  "aelyris-sky": darkMoodSurfaces({
     shell: "2, 8, 18",
     panel: "6, 20, 36",
     panelStrong: "8, 27, 50",
@@ -216,7 +216,7 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     gold: "240, 207, 122",
     text: "246, 251, 255",
   }),
-  "aether-moonwater": darkMoodSurfaces({
+  "aelyris-moonwater": darkMoodSurfaces({
     shell: "0, 8, 22",
     panel: "2, 25, 48",
     panelStrong: "3, 35, 65",
@@ -224,8 +224,8 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     gold: "245, 199, 227",
     text: "246, 253, 255",
   }),
-  "aether-crystal": crystalMoodSurfaces(),
-  "aether-dream": darkMoodSurfaces({
+  "aelyris-crystal": crystalMoodSurfaces(),
+  "aelyris-dream": darkMoodSurfaces({
     shell: "10, 6, 20",
     panel: "34, 25, 50",
     panelStrong: "48, 38, 68",
@@ -233,7 +233,7 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     gold: "255, 217, 150",
     text: "253, 248, 255",
   }),
-  "aether-cute": darkMoodSurfaces({
+  "aelyris-cute": darkMoodSurfaces({
     shell: "3, 13, 13",
     panel: "18, 48, 44",
     panelStrong: "30, 70, 66",
@@ -241,7 +241,7 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     gold: "255, 209, 220",
     text: "246, 255, 253",
   }),
-  "aether-sakura": {
+  "aelyris-sakura": {
     // Light theme: keep a WHITE scrim and brightness >= 1 so the chrome is
     // lifted (never darkened). The base white-peach fill is already near-opaque
     // and legible; the scrim only guarantees AA if a bright wallpaper still
@@ -295,7 +295,7 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
       "linear-gradient(90deg, rgba(189, 63, 104, 0.07), transparent 52%, rgba(252, 201, 185, 0.07)), rgba(255, 244, 250, 0.78)",
     "--toolkit-bottom-btn-bg": "rgba(255, 250, 253, 0.84)",
   },
-  "aether-obsidian": darkMoodSurfaces({
+  "aelyris-obsidian": darkMoodSurfaces({
     shell: "8, 8, 13",
     panel: "21, 20, 26",
     panelStrong: "31, 30, 37",
@@ -303,7 +303,7 @@ export const MOOD_SURFACE_CSS: Record<MoodPresetId, MoodSurfaceCSS> = {
     gold: "137, 220, 235",
     text: "250, 246, 235",
   }),
-  "aether-pro": darkMoodSurfaces({
+  "aelyris-pro": darkMoodSurfaces({
     shell: "2, 8, 16",
     panel: "4, 13, 23",
     panelStrong: "8, 22, 34",

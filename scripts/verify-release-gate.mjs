@@ -9,10 +9,10 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const execFileAsync = promisify(execFile);
 const args = new Set(process.argv.slice(2));
-const withIme = args.has("--with-ime") || process.env.AETHER_RELEASE_WITH_IME === "1";
-const preflightOnly = args.has("--preflight") || process.env.AETHER_RELEASE_PREFLIGHT === "1";
-const allowDirtyWorktree = args.has("--allow-dirty") || process.env.AETHER_RELEASE_ALLOW_DIRTY === "1";
-const skipFullVitest = args.has("--skip-full-vitest") || process.env.AETHER_RELEASE_SKIP_FULL_VITEST === "1";
+const withIme = args.has("--with-ime") || process.env.AELYRIS_RELEASE_WITH_IME === "1";
+const preflightOnly = args.has("--preflight") || process.env.AELYRIS_RELEASE_PREFLIGHT === "1";
+const allowDirtyWorktree = args.has("--allow-dirty") || process.env.AELYRIS_RELEASE_ALLOW_DIRTY === "1";
+const skipFullVitest = args.has("--skip-full-vitest") || process.env.AELYRIS_RELEASE_SKIP_FULL_VITEST === "1";
 
 const focusedVitestSuites = [
   "src/__tests__/backendSilentBugs.test.ts",
@@ -132,7 +132,7 @@ async function readDirtyWorktreeEntries() {
 
 async function verifyCleanWorktree() {
   if (allowDirtyWorktree) {
-    console.warn("[release] Dirty worktree check bypassed by --allow-dirty/AETHER_RELEASE_ALLOW_DIRTY=1.");
+    console.warn("[release] Dirty worktree check bypassed by --allow-dirty/AELYRIS_RELEASE_ALLOW_DIRTY=1.");
     return;
   }
   let entries;
@@ -212,9 +212,9 @@ async function verifyReleaseContract() {
       `[release] package.json version (${pkg.version}) must match src-tauri/tauri.conf.json version (${tauriConfig.version})`,
     );
   }
-  if (tauriConfig.productName !== "Aether Terminal") {
+  if (tauriConfig.productName !== "Aelyris") {
     failures.push(
-      `[release] Tauri productName must be "Aether Terminal", got ${JSON.stringify(tauriConfig.productName)}`,
+      `[release] Tauri productName must be "Aelyris", got ${JSON.stringify(tauriConfig.productName)}`,
     );
   }
   if (tauriConfig.bundle?.active !== true) {

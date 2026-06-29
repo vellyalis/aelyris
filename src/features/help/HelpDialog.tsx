@@ -79,7 +79,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
     title: "Workflow Engine",
     items: [
       "Workflows are multi-phase AI automation pipelines defined in YAML.",
-      "Place YAML files in .aether/workflows/ to make them available.",
+      "Place YAML files in .aelyris/workflows/ to make them available.",
       "Click a workflow name to start it. Each phase spawns an AI agent.",
       "Quality gates: Approve (✓) or Reject (✗) at gate points between phases.",
       "Visual Builder: Click 'Visual Builder' to design workflows with drag-and-drop nodes.",

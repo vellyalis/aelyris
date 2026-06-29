@@ -183,12 +183,12 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
   afterEach(() => {
     vi.useRealTimers();
     cleanup();
-    localStorage.removeItem("aether:debug:ime");
-    localStorage.removeItem("aether:debug:imeOverlay");
-    delete window.__AETHER_IME_DEBUG__;
-    delete window.__AETHER_IME_DEBUG_OVERLAY__;
-    delete window.__AETHER_IME_EVENTS__;
-    delete window.__AETHER_NATIVE_INPUT_SURFACE__;
+    localStorage.removeItem("aelyris:debug:ime");
+    localStorage.removeItem("aelyris:debug:imeOverlay");
+    delete window.__AELYRIS_IME_DEBUG__;
+    delete window.__AELYRIS_IME_DEBUG_OVERLAY__;
+    delete window.__AELYRIS_IME_EVENTS__;
+    delete window.__AELYRIS_NATIVE_INPUT_SURFACE__;
     vi.restoreAllMocks();
   });
 
@@ -212,7 +212,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
   });
 
   it("does not report fallback telemetry when the native input surface owns focus", async () => {
-    window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    window.__AELYRIS_NATIVE_INPUT_SURFACE__ = true;
     const telemetry = listenForFallbackTelemetry();
     try {
       const { getByTestId } = render(
@@ -233,7 +233,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
   });
 
   it("mirrors native IME preedit text in the terminal overlay while the native surface suppresses OS painting", async () => {
-    window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    window.__AELYRIS_NATIVE_INPUT_SURFACE__ = true;
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "native_terminal_input_preedit") {
         return Promise.resolve({ terminalId: "t1", active: true, text: "あああ" });
@@ -546,7 +546,7 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
   });
 
   it("delegates native input surface paste to the Rust clipboard guard before PTY write", async () => {
-    window.__AETHER_NATIVE_INPUT_SURFACE__ = true;
+    window.__AELYRIS_NATIVE_INPUT_SURFACE__ = true;
     invokeMock.mockResolvedValueOnce({ nativePasteGuardLastAction: "blocked" });
     const writeBytes = vi.fn();
     const { getByTestId } = render(
@@ -965,12 +965,12 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
     window.removeEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic);
 
     expect(events).toEqual([]);
-    expect(window.__AETHER_IME_EVENTS__).toBeUndefined();
+    expect(window.__AELYRIS_IME_EVENTS__).toBeUndefined();
     expect(screen.queryByTestId("terminal-input-diagnostics")).toBeNull();
   });
 
   it("records an opt-in Japanese IME event trace without storing raw typed text", () => {
-    localStorage.setItem("aether:debug:ime", "1");
+    localStorage.setItem("aelyris:debug:ime", "1");
     const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
     const events: Array<Record<string, unknown>> = [];
     const onDiagnostic = ((event: CustomEvent) => {
@@ -1006,13 +1006,13 @@ describe("TerminalCanvas — input wiring (Phase B: textarea owns keyboard)", ()
       anchorMode: "terminal-cursor",
     });
     expect(JSON.stringify(events)).not.toContain("あ");
-    expect(window.__AETHER_IME_EVENTS__).toHaveLength(4);
+    expect(window.__AELYRIS_IME_EVENTS__).toHaveLength(4);
     expect(screen.queryByTestId("terminal-input-diagnostics")).toBeNull();
     expect(debugSpy).toHaveBeenCalled();
   });
 
   it("does not flash the diagnostics overlay when only trace recording is enabled", () => {
-    localStorage.setItem("aether:debug:ime", "1");
+    localStorage.setItem("aelyris:debug:ime", "1");
     renderCanvas(vi.fn());
 
     expect(screen.queryByTestId("terminal-input-diagnostics")).toBeNull();

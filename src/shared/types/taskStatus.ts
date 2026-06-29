@@ -2,7 +2,7 @@
  * Canonical Task Graph lifecycle states — TS mirror of the Rust source of
  * truth in `src-tauri/src/task/status.rs`. Kept in lockstep by
  * `src/__tests__/taskStatusContract.test.ts`. See
- * docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 4.
+ * docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding Requirement 4.
  *
  * Distinct from the kanban board's `KanbanColumnId` (a UI projection); these
  * are the runtime orchestration states the autonomous loop transitions through.

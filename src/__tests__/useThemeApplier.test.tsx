@@ -63,42 +63,42 @@ describe("useThemeApplier", () => {
   });
 
   it("applies mood variables after palette variables and persists both ids", async () => {
-    render(<ThemeProbe themeId="catppuccin-latte" moodPresetId="aether-sky" />);
+    render(<ThemeProbe themeId="catppuccin-latte" moodPresetId="aelyris-sky" />);
 
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("catppuccin-latte");
-      expect(document.documentElement.dataset.mood).toBe("aether-sky");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-sky");
     });
 
     const style = document.documentElement.style;
     expect(style.getPropertyValue("--terminal-canvas-bg").trim()).toBe(DEFAULT_BG);
     expect(style.getPropertyValue("--gold").trim()).toBe("#f0cf7a");
-    expect(localStorage.getItem("aether:theme")).toBe("catppuccin-latte");
-    expect(localStorage.getItem("aether:moodPreset")).toBe("aether-sky");
+    expect(localStorage.getItem("aelyris:theme")).toBe("catppuccin-latte");
+    expect(localStorage.getItem("aelyris:moodPreset")).toBe("aelyris-sky");
   });
 
   it("replaces the previous mood variable set on rerender", async () => {
-    const { rerender } = render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-dream" />);
+    const { rerender } = render(<ThemeProbe themeId="aelyris-dark" moodPresetId="aelyris-dream" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-dream");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-dream");
     });
     expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe(DEFAULT_BG);
 
-    rerender(<ThemeProbe themeId="aether-dark" moodPresetId="aether-pro" />);
+    rerender(<ThemeProbe themeId="aelyris-dark" moodPresetId="aelyris-pro" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-pro");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-pro");
     });
     expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg").trim()).toBe(DEFAULT_BG);
     expect(document.documentElement.style.getPropertyValue("--terminal-watermark-opacity").trim()).toBe("0.045");
   });
 
   it("replaces Sakura surface tokens when switching to darker moods", async () => {
-    const { rerender } = render(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sakura" />);
+    const { rerender } = render(<ThemeProbe themeId="sakura-hub" moodPresetId="aelyris-sakura" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-sakura");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-sakura");
     });
     expect(document.documentElement.dataset.theme).toBe("sakura-hub");
     expect(document.documentElement.classList.contains("light-theme")).toBe(true);
@@ -107,10 +107,10 @@ describe("useThemeApplier", () => {
     expect(document.documentElement.style.getPropertyValue("--dialog-surface")).toContain("255, 248, 252");
     expect(document.documentElement.style.getPropertyValue("--settings-card-bg")).toContain("255, 246, 250");
 
-    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-pro" />);
+    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aelyris-pro" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-pro");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-pro");
     });
     expect(document.documentElement.dataset.theme).toBe("sakura-hub");
     expect(document.documentElement.classList.contains("dark-theme")).toBe(true);
@@ -124,24 +124,24 @@ describe("useThemeApplier", () => {
     expect(document.documentElement.style.getPropertyValue("--dialog-surface")).not.toContain("255, 248, 252");
     expect(document.documentElement.style.getPropertyValue("--settings-card-bg")).not.toContain("255, 246, 250");
 
-    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sky" />);
+    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aelyris-sky" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-sky");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-sky");
     });
     expect(document.documentElement.style.getPropertyValue("--chrome-frame-bg")).toContain("2, 8, 18");
     expect(document.documentElement.style.getPropertyValue("--statusbar-bg")).not.toContain("255, 238, 247");
   });
 
   it("uses the mood material brightness for light/dark classes instead of the palette id", async () => {
-    const { rerender } = render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sakura" />);
+    const { rerender } = render(<ThemeProbe themeId="aelyris-dark" moodPresetId="aelyris-sakura" />);
 
     await waitFor(() => {
       expect(document.documentElement.classList.contains("light-theme")).toBe(true);
     });
     expect(document.documentElement.classList.contains("dark-theme")).toBe(false);
 
-    rerender(<ThemeProbe themeId="catppuccin-latte" moodPresetId="aether-pro" />);
+    rerender(<ThemeProbe themeId="catppuccin-latte" moodPresetId="aelyris-pro" />);
 
     await waitFor(() => {
       expect(document.documentElement.classList.contains("dark-theme")).toBe(true);
@@ -153,23 +153,23 @@ describe("useThemeApplier", () => {
     const { rerender } = render(
       <ThemeProbe
         themeId="sakura-hub"
-        moodPresetId="aether-sakura"
+        moodPresetId="aelyris-sakura"
         materialOverrides={{ panelColor: "#fffafc", panelAlpha: 0.94, terminalAlpha: 0.48 }}
       />,
     );
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-sakura");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-sakura");
     });
 
     expect(document.documentElement.style.getPropertyValue("--mood-left-panel-bg")).toContain("255, 250, 252");
     expect(document.documentElement.style.getPropertyValue("--mood-left-panel-bg")).toContain("0.94");
     expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toContain("0.48");
 
-    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-pro" />);
+    rerender(<ThemeProbe themeId="sakura-hub" moodPresetId="aelyris-pro" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-pro");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-pro");
     });
     expect(document.documentElement.style.getPropertyValue("--mood-left-panel-bg")).not.toContain("255, 250, 252");
   });
@@ -178,7 +178,7 @@ describe("useThemeApplier", () => {
     render(
       <ThemeProbe
         themeId="sakura-hub"
-        moodPresetId="aether-sakura"
+        moodPresetId="aelyris-sakura"
         materialOverrides={{
           backdropColor: "#fff8fb",
           panelColor: "#fff0f6",
@@ -208,7 +208,7 @@ describe("useThemeApplier", () => {
     render(
       <ThemeProbe
         themeId="sakura-hub"
-        moodPresetId="aether-sakura"
+        moodPresetId="aelyris-sakura"
         wallpaper={{
           imagePath: "C:/Users/example/Pictures/background.jpg",
           opacity: 0.32,
@@ -220,28 +220,28 @@ describe("useThemeApplier", () => {
     );
 
     await waitFor(() => {
-      expect(document.documentElement.style.getPropertyValue("--aether-wallpaper-opacity").trim()).toBe("0.32");
+      expect(document.documentElement.style.getPropertyValue("--aelyris-wallpaper-opacity").trim()).toBe("0.32");
     });
     const style = document.documentElement.style;
-    expect(style.getPropertyValue("--aether-wallpaper-image")).toContain("background.jpg");
-    expect(style.getPropertyValue("--aether-wallpaper-position-x").trim()).toBe("20%");
-    expect(style.getPropertyValue("--aether-wallpaper-position-y").trim()).toBe("75%");
-    expect(style.getPropertyValue("--aether-wallpaper-size").trim()).toBe("135% auto");
+    expect(style.getPropertyValue("--aelyris-wallpaper-image")).toContain("background.jpg");
+    expect(style.getPropertyValue("--aelyris-wallpaper-position-x").trim()).toBe("20%");
+    expect(style.getPropertyValue("--aelyris-wallpaper-position-y").trim()).toBe("75%");
+    expect(style.getPropertyValue("--aelyris-wallpaper-size").trim()).toBe("135% auto");
   });
 
   it("applies global window opacity as backdrop strength variables without dimming text nodes", async () => {
-    render(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sakura" windowOpacity={0.62} />);
+    render(<ThemeProbe themeId="sakura-hub" moodPresetId="aelyris-sakura" windowOpacity={0.62} />);
 
     await waitFor(() => {
-      expect(document.documentElement.style.getPropertyValue("--aether-window-opacity").trim()).toBe("0.62");
+      expect(document.documentElement.style.getPropertyValue("--aelyris-window-opacity").trim()).toBe("0.62");
     });
 
-    expect(document.documentElement.style.getPropertyValue("--aether-window-veil-opacity").trim()).toBe("0.046");
+    expect(document.documentElement.style.getPropertyValue("--aelyris-window-veil-opacity").trim()).toBe("0.046");
     expect(document.documentElement.style.opacity).toBe("");
   });
 
   it("applies terminal surface opacity as material strength without dimming text nodes", async () => {
-    render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" terminalSurfaceOpacity={0.26} />);
+    render(<ThemeProbe themeId="aelyris-dark" moodPresetId="aelyris-sky" terminalSurfaceOpacity={0.26} />);
 
     await waitFor(() => {
       expect(document.documentElement.style.getPropertyValue("--terminal-surface-opacity").trim()).toBe("0.26");
@@ -251,10 +251,10 @@ describe("useThemeApplier", () => {
   });
 
   it("keeps dark mood glyph colors solid while pane material stays translucent", async () => {
-    render(<ThemeProbe themeId="aether-dark" moodPresetId="aether-sky" />);
+    render(<ThemeProbe themeId="aelyris-dark" moodPresetId="aelyris-sky" />);
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.mood).toBe("aether-sky");
+      expect(document.documentElement.dataset.mood).toBe("aelyris-sky");
     });
 
     const style = document.documentElement.style;
@@ -283,13 +283,13 @@ describe("useThemeApplier", () => {
     });
 
     try {
-      render(<ThemeProbe themeId="sakura-hub" moodPresetId="aether-sakura" windowOpacity={0.72} />);
+      render(<ThemeProbe themeId="sakura-hub" moodPresetId="aelyris-sakura" windowOpacity={0.72} />);
 
       await waitFor(() => {
         expect(document.documentElement.dataset.theme).toBe("sakura-hub");
-        expect(document.documentElement.dataset.mood).toBe("aether-sakura");
+        expect(document.documentElement.dataset.mood).toBe("aelyris-sakura");
       });
-      expect(document.documentElement.style.getPropertyValue("--aether-window-opacity").trim()).toBe("0.72");
+      expect(document.documentElement.style.getPropertyValue("--aelyris-window-opacity").trim()).toBe("0.72");
       expect(telemetry.events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

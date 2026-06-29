@@ -7,20 +7,20 @@ const SAMPLE: ShellIntegrationStatus[] = [
   {
     shell: "powershell",
     label: "PowerShell",
-    scriptPath: "C:/Users/x/.aether/shell-integration/aether.ps1",
+    scriptPath: "C:/Users/x/.aelyris/shell-integration/aelyris.ps1",
     profilePath: "C:/Users/x/Documents/PowerShell/Microsoft.PowerShell_profile.ps1",
     profileExists: true,
     installed: false,
-    sourceLine: '. "C:/Users/x/.aether/shell-integration/aether.ps1"',
+    sourceLine: '. "C:/Users/x/.aelyris/shell-integration/aelyris.ps1"',
   },
   {
     shell: "bash",
     label: "Bash",
-    scriptPath: "/home/x/.aether/shell-integration/aether.bash",
+    scriptPath: "/home/x/.aelyris/shell-integration/aelyris.bash",
     profilePath: "/home/x/.bashrc",
     profileExists: true,
     installed: true,
-    sourceLine: "source '/home/x/.aether/shell-integration/aether.bash'",
+    sourceLine: "source '/home/x/.aelyris/shell-integration/aelyris.bash'",
   },
 ];
 

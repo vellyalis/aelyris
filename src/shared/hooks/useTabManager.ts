@@ -9,7 +9,7 @@ export interface Tab {
   worktreeBranch?: string;
 }
 
-export const VISUAL_QA_FALLBACK_PROJECT_PATH = "C:/repo/aether-terminal";
+export const VISUAL_QA_FALLBACK_PROJECT_PATH = "C:/repo/aelyris";
 
 const SHELL_LABELS: Record<ShellType, string> = {
   powershell: "PowerShell",
@@ -29,11 +29,11 @@ function readVisualQaProjectPath(): string | null {
   const params = new URLSearchParams(window.location.search);
   let storedProject: string | null = null;
   try {
-    storedProject = window.localStorage.getItem("aether:visualQaProject");
+    storedProject = window.localStorage.getItem("aelyris:visualQaProject");
   } catch {
     /* storage may be unavailable in private/test contexts */
   }
-  const enabled = params.get("aetherVisualQa") === "1" || params.get("visualQa") === "1";
+  const enabled = params.get("aelyrisVisualQa") === "1" || params.get("visualQa") === "1";
   if (!enabled) return null;
   return (params.get("projectPath") || storedProject || VISUAL_QA_FALLBACK_PROJECT_PATH).replace(/\\/g, "/");
 }
@@ -58,7 +58,7 @@ function isValidTab(value: unknown): value is Tab {
 
 function loadSavedTabs(): Tab[] | null {
   try {
-    const saved = localStorage.getItem("aether:tabs");
+    const saved = localStorage.getItem("aelyris:tabs");
     if (!saved) return null;
     const parsed = JSON.parse(saved);
     if (!Array.isArray(parsed)) return null;
@@ -71,8 +71,8 @@ function loadSavedTabs(): Tab[] | null {
 
 function saveTabs(tabs: Tab[], activeId: string) {
   try {
-    localStorage.setItem("aether:tabs", JSON.stringify(tabs));
-    localStorage.setItem("aether:activeTab", activeId);
+    localStorage.setItem("aelyris:tabs", JSON.stringify(tabs));
+    localStorage.setItem("aelyris:activeTab", activeId);
   } catch {
     /* ignore */
   }
@@ -85,7 +85,7 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     if (visualQaProjectPath) {
       const tab: Tab = {
         id: "tab-visual-qa",
-        label: visualQaProjectPath.split("/").filter(Boolean).pop() ?? "Aether_Terminal",
+        label: visualQaProjectPath.split("/").filter(Boolean).pop() ?? "Aelyris",
         shell: defaultShell,
         cwd: visualQaProjectPath,
       };
@@ -95,7 +95,7 @@ export function useTabManager(defaultShell: ShellType = "powershell") {
     const tabs = saved ?? [createTab(defaultShell)];
     let activeId: string;
     try {
-      const savedActive = localStorage.getItem("aether:activeTab");
+      const savedActive = localStorage.getItem("aelyris:activeTab");
       activeId = savedActive && tabs.some((t) => t.id === savedActive) ? savedActive : (tabs[0]?.id ?? "");
     } catch {
       activeId = tabs[0]?.id ?? "";

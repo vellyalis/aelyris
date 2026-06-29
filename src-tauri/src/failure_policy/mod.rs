@@ -1,6 +1,6 @@
 //! Failure Policy — what the autonomous loop does when something fails.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 //! Requirement 12. Pure decision logic: map a failure event to a recovery
 //! action. The actual restart/notify/escalate side effects are the
 //! controller's job (runtime); this module owns only the policy so it is

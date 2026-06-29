@@ -6,14 +6,14 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use aether_terminal_lib::config::{
+use aelyris_lib::config::{
     load_config, save_config, MoodMaterialOverrideConfig, WallpaperConfig,
 };
-use aether_terminal_lib::db::{
+use aelyris_lib::db::{
     AgentIdentityRecord, Database, HistorySearchEntryRecord, ModePreservationSnapshotRecord,
     WorkspaceItemRecord,
 };
-use aether_terminal_lib::term::{
+use aelyris_lib::term::{
     system_text_shaping_capability, terminal_text_shaping_policy, CellStyle, DirectWriteTextShaper,
     NativeCellMetrics, NativeInputSurfaceRect, NativeRenderFrame, NativeRenderPipeline,
     NativeTerminalInputHost, ShapeInput, TermEngine, TextShaper,
@@ -24,12 +24,12 @@ use sha2::{Digest, Sha256};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9333";
 const SIDECAR_BASE_URL: &str = "http://127.0.0.1:9334";
-const TOKEN_FILE_NAME: &str = "aether-pty-server.token";
+const TOKEN_FILE_NAME: &str = "aelyris-pty-server.token";
 
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
-        eprintln!("aether-native: {err}");
+        eprintln!("aelyris-native: {err}");
         std::process::exit(1);
     }
 }
@@ -79,7 +79,7 @@ async fn run() -> Result<(), String> {
         "list" | "mux" => {
             let value = request(Method::GET, "/mux/workspaces", None).await?;
             print_json(&json!({
-                "schema": "aether.native.client.v1",
+                "schema": "aelyris.native.client.v1",
                 "client": native_client_identity(),
                 "operation": "list",
                 "daemon": daemon_summary().await?,
@@ -97,7 +97,7 @@ async fn run() -> Result<(), String> {
             )
             .await?;
             print_json(&json!({
-                "schema": "aether.native.client.v1",
+                "schema": "aelyris.native.client.v1",
                 "client": native_client_identity(),
                 "operation": "graph",
                 "workspaceId": workspace_id,
@@ -115,7 +115,7 @@ async fn run() -> Result<(), String> {
             )
             .await?;
             print_json(&json!({
-                "schema": "aether.native.client.v1",
+                "schema": "aelyris.native.client.v1",
                 "client": native_client_identity(),
                 "operation": "attach",
                 "workspaceId": workspace_id,
@@ -133,7 +133,7 @@ async fn run() -> Result<(), String> {
             )
             .await?;
             print_json(&json!({
-                "schema": "aether.native.client.v1",
+                "schema": "aelyris.native.client.v1",
                 "client": native_client_identity(),
                 "operation": "detach",
                 "workspaceId": workspace_id,
@@ -149,7 +149,7 @@ async fn run() -> Result<(), String> {
 async fn contract() -> Result<(), String> {
     let daemon = request(Method::GET, "/daemon/contract", None).await?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "status": "client-boundary-spike",
         "daemon": daemon,
@@ -207,7 +207,7 @@ fn full_native_readiness_contract() -> Value {
     let text_shaping_policy = terminal_text_shaping_policy();
     let system_text_shaping = system_text_shaping_capability();
     json!({
-        "schema": "aether.full-native-readiness.v1",
+        "schema": "aelyris.full-native-readiness.v1",
         "currentStage": "native-client-spike",
         "finalGoal": "daily-driver no-WebView Rust client",
         "textShapingPolicy": to_value(&text_shaping_policy).unwrap_or_else(|_| json!({
@@ -220,7 +220,7 @@ fn full_native_readiness_contract() -> Value {
             "blockers": ["native system text-shaping capability serialization failed"]
         })),
         "definitionOfDone": [
-            "The primary terminal window runs in the aether-native process without React or WebView.",
+            "The primary terminal window runs in the aelyris-native process without React or WebView.",
             "The terminal present loop is native Rust and GPU-backed.",
             "Input, IME, clipboard, paste guard, mouse, selection, and accessibility are native-owned.",
             "Settings, theme/material customization, wallpaper, opacity, and launch profiles are editable in a native UI.",
@@ -276,12 +276,12 @@ fn full_native_readiness_contract() -> Value {
             "nativeSleepResumeVisualDogfood": true,
             "reactWebViewAsOptionalCompatibilityOnly": true
         },
-        "nextMilestone": "dogfood Japanese candidate selection and primary daily-driver terminal input in aether-native while keeping the winit/wgpu font-atlas renderer on the same NativeRenderFrame contract",
+        "nextMilestone": "dogfood Japanese candidate selection and primary daily-driver terminal input in aelyris-native while keeping the winit/wgpu font-atlas renderer on the same NativeRenderFrame contract",
         "doNotClaimFullNativeUntil": [
             "native present-loop is dogfooded by a visible interactive terminal window",
             "winit-wgpu font-atlas renderer is dogfooded as the primary visible terminal renderer",
             "Windows system-backed text shaping and real font fallback are wired into the native renderer without '?' substitution",
-            "Japanese IME candidate selection is dogfooded with a real user-driven IME session inside aether-native",
+            "Japanese IME candidate selection is dogfooded with a real user-driven IME session inside aelyris-native",
             "Command Center/right rail runs as part of the primary daily-driver native shell",
             "native accessibility tree is exposed through UIA/accesskit to assistive technologies",
             "native visual QA proves nonblank rendering, contrast, focus, and input after resize/sleep/resume"
@@ -303,7 +303,7 @@ async fn window_proof(args: &[String]) -> Result<(), String> {
     let visible = args.iter().any(|arg| arg == "--show");
     let window = native_window_proof(Duration::from_millis(duration_ms), alpha, visible)?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "window-proof",
         "daemon": daemon_summary().await?,
@@ -352,14 +352,14 @@ async fn render_proof(args: &[String]) -> Result<(), String> {
         )
     } else {
         (
-            option_value(args, "--text").unwrap_or_else(|| "Aether Native Renderer".to_string()),
+            option_value(args, "--text").unwrap_or_else(|| "Aelyris Native Renderer".to_string()),
             json!({ "sessionId": Value::Null, "lines": lines }),
         )
     };
     let renderer = native_text_render_proof(&text, alpha)?;
     let window = native_window_proof(Duration::from_millis(duration_ms), alpha, visible)?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "render-proof",
         "daemon": daemon_summary().await?,
@@ -406,7 +406,7 @@ async fn grid_render_proof(args: &[String]) -> Result<(), String> {
     let renderer = native_grid_render_proof(&frame, alpha)?;
     let window = native_window_proof(Duration::from_millis(duration_ms), alpha, visible)?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "grid-render-proof",
         "daemon": daemon_summary().await?,
@@ -450,7 +450,7 @@ async fn present_loop_proof(args: &[String]) -> Result<(), String> {
     let present_loop =
         native_present_loop_proof(&frame, Duration::from_millis(duration_ms), alpha, visible)?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "present-loop-proof",
         "daemon": daemon_summary().await?,
@@ -485,7 +485,7 @@ async fn gpu_render_proof(args: &[String]) -> Result<(), String> {
     let frame_value = serde_json::to_value(&frame_summary).map_err(|err| err.to_string())?;
     let gpu = native_gpu_render_proof(&frame)?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "gpu-render-proof",
         "daemon": daemon_summary().await?,
@@ -523,7 +523,7 @@ async fn winit_wgpu_proof(args: &[String]) -> Result<(), String> {
     let winit_wgpu =
         native_winit_wgpu_surface_proof(&frame, Duration::from_millis(duration_ms), visible)?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "winit-wgpu-proof",
         "daemon": daemon_summary().await?,
@@ -546,7 +546,7 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
     let rows = parse_usize_option(args, "--rows", 8)?;
     let text = option_value(args, "--text").unwrap_or_else(|| {
         [
-            "Aether native text shaping fixture",
+            "Aelyris native text shaping fixture",
             "CJK fallback: 日本語表示",
             "Box drawing: ┌─┐ └─┘",
             "No ligature policy: == => fi ffi",
@@ -590,10 +590,10 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
         && plan.fallback_glyph_quads >= plan.directwrite_fallback_clusters;
 
     let artifact = json!({
-        "schema": "aether.native.text-shaping-visual-fixture.v1",
+        "schema": "aelyris.native.text-shaping-visual-fixture.v1",
         "client": native_client_identity(),
         "operation": "text-shaping-fixture-proof",
-        "sourceOfTruth": "aether-native-directwrite-shaped-run-font-atlas",
+        "sourceOfTruth": "aelyris-native-directwrite-shaped-run-font-atlas",
         "webviewUsed": false,
         "reactUsed": false,
         "fixtureTextSha256": sha256_hex(&text),
@@ -654,7 +654,7 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
 async fn ime_proof(args: &[String]) -> Result<(), String> {
     let cols = parse_usize_option(args, "--cols", 100)?;
     let rows = parse_usize_option(args, "--rows", 24)?;
-    let prompt = option_value(args, "--prompt").unwrap_or_else(|| "PS C:\\Aether> ".to_string());
+    let prompt = option_value(args, "--prompt").unwrap_or_else(|| "PS C:\\Aelyris> ".to_string());
     let preedit = option_value(args, "--preedit").unwrap_or_else(|| "あああ".to_string());
     let commit = option_value(args, "--commit").unwrap_or_else(|| "あいう".to_string());
     let mut engine =
@@ -680,12 +680,12 @@ async fn ime_proof(args: &[String]) -> Result<(), String> {
         commit_summary.frame_sha256.clone(),
     );
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "ime-proof",
         "daemon": daemon_summary().await?,
         "ime": {
-            "schema": "aether.native.ime-proof.v1",
+            "schema": "aelyris.native.ime-proof.v1",
             "mode": "state-machine-proof",
             "nativeImeStateMachine": true,
             "nativePreeditOverlay": true,
@@ -707,7 +707,7 @@ async fn ime_dogfood_proof(args: &[String]) -> Result<(), String> {
     let dogfood = native_ime_dogfood_payload(&commit)?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "ime-dogfood-proof",
         "daemon": daemon_summary().await?,
@@ -721,7 +721,7 @@ async fn ime_os_dogfood_proof(args: &[String]) -> Result<(), String> {
     let dogfood = run_ime_os_dogfood_worker(&preedit, &commit)?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "ime-os-dogfood-proof",
         "daemon": daemon_summary().await?,
@@ -739,7 +739,7 @@ async fn paste_guard_proof(_args: &[String]) -> Result<(), String> {
     let paste_guard = native_paste_guard_payload()?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "paste-guard-proof",
         "daemon": daemon_summary().await?,
@@ -962,7 +962,7 @@ fn native_paste_guard_payload() -> Result<Value, String> {
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativePasteGuardProofParent");
+    let class_name = w!("AelyrisNativePasteGuardProofParent");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -972,14 +972,14 @@ fn native_paste_guard_payload() -> Result<Value, String> {
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativePasteGuardProofParent".to_string());
+        return Err("RegisterClassW failed for AelyrisNativePasteGuardProofParent".to_string());
     }
 
     let parent = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
             class_name,
-            w!("Aether Native Paste Guard Proof"),
+            w!("Aelyris Native Paste Guard Proof"),
             WINDOW_STYLE(WS_OVERLAPPEDWINDOW.0),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -1017,12 +1017,12 @@ fn native_paste_guard_payload() -> Result<Value, String> {
     let cases = [
         (
             "single-line-lf-normalized-and-drained",
-            "Write-Output AETHER_SAFE_NATIVE_PASTE\n",
+            "Write-Output AELYRIS_SAFE_NATIVE_PASTE\n",
             "allowed",
             "single-line paste normalized by native input guard",
             1_usize,
             true,
-            "Write-Output AETHER_SAFE_NATIVE_PASTE\r",
+            "Write-Output AELYRIS_SAFE_NATIVE_PASTE\r",
         ),
         (
             "destructive-paste-blocked-before-drain",
@@ -1119,7 +1119,7 @@ fn native_paste_guard_payload() -> Result<Value, String> {
     let multiline_paste_blocked_before_pty = case_passed("multiline-paste-blocked-before-drain");
 
     Ok(json!({
-        "schema": "aether.native.paste-guard-proof.v1",
+        "schema": "aelyris.native.paste-guard-proof.v1",
         "mode": "native-hwnd-wm-paste-proof",
         "nativePasteGuardProof": true,
         "nativeHwndWmPaste": true,
@@ -1141,7 +1141,7 @@ fn native_paste_guard_payload() -> Result<Value, String> {
 
 #[cfg(not(target_os = "windows"))]
 fn native_paste_guard_payload() -> Result<Value, String> {
-    Err("aether-native paste-guard-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native paste-guard-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -1170,7 +1170,7 @@ fn run_ime_os_dogfood_worker(preedit: &str, commit: &str) -> Result<Value, Strin
         .map_err(|err| format!("create native OS IME worker stdout failed: {err}"))?;
     let stderr = File::create(&stderr_path)
         .map_err(|err| format!("create native OS IME worker stderr failed: {err}"))?;
-    let status = aether_terminal_lib::process::hidden_command(exe)
+    let status = aelyris_lib::process::hidden_command(exe)
         .arg("ime-os-dogfood-worker")
         .arg("--preedit")
         .arg(preedit)
@@ -1215,7 +1215,7 @@ async fn settings_proof(args: &[String]) -> Result<(), String> {
     let settings = native_settings_payload(args)?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "settings-proof",
         "daemon": daemon_summary().await?,
@@ -1236,7 +1236,7 @@ async fn settings_window_proof(args: &[String]) -> Result<(), String> {
     )?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "settings-window-proof",
         "daemon": daemon_summary().await?,
@@ -1247,13 +1247,13 @@ async fn settings_window_proof(args: &[String]) -> Result<(), String> {
 
 fn native_settings_payload(args: &[String]) -> Result<Value, String> {
     let theme = option_value(args, "--theme").unwrap_or_else(|| "sakura-hub".to_string());
-    let mood = option_value(args, "--mood").unwrap_or_else(|| "aether-sakura".to_string());
+    let mood = option_value(args, "--mood").unwrap_or_else(|| "aelyris-sakura".to_string());
     let wallpaper_path = option_value(args, "--wallpaper")
-        .unwrap_or_else(|| "C:\\Images\\aether-native-sakura.jpg".to_string());
+        .unwrap_or_else(|| "C:\\Images\\aelyris-native-sakura.jpg".to_string());
     let opacity = parse_f32_option(args, "--opacity", 0.82)?;
     let wallpaper_opacity = parse_f32_option(args, "--wallpaper-opacity", 0.24)?;
     let temp_home = env::temp_dir().join(format!(
-        "aether-native-settings-proof-{}",
+        "aelyris-native-settings-proof-{}",
         std::process::id()
     ));
     if temp_home.exists() {
@@ -1262,8 +1262,8 @@ fn native_settings_payload(args: &[String]) -> Result<Value, String> {
     }
     std::fs::create_dir_all(&temp_home)
         .map_err(|err| format!("create settings proof dir: {err}"))?;
-    let previous_home = env::var("QUORUM_CONFIG_HOME").ok();
-    env::set_var("QUORUM_CONFIG_HOME", &temp_home);
+    let previous_home = env::var("AELYRIS_CONFIG_HOME").ok();
+    env::set_var("AELYRIS_CONFIG_HOME", &temp_home);
 
     let result = (|| -> Result<Value, String> {
         let mut config = load_config();
@@ -1332,7 +1332,7 @@ fn native_settings_payload(args: &[String]) -> Result<Value, String> {
             .ok_or_else(|| "native settings palette override did not reload".to_string())?;
         let config_path = temp_home.join("config.toml");
         Ok(json!({
-            "schema": "aether.native.settings-proof.v1",
+            "schema": "aelyris.native.settings-proof.v1",
             "nativeSettings": true,
             "rustConfigPath": config_path,
             "isolatedConfigHome": temp_home,
@@ -1371,9 +1371,9 @@ fn native_settings_payload(args: &[String]) -> Result<Value, String> {
     })();
 
     if let Some(previous_home) = previous_home {
-        env::set_var("QUORUM_CONFIG_HOME", previous_home);
+        env::set_var("AELYRIS_CONFIG_HOME", previous_home);
     } else {
-        env::remove_var("QUORUM_CONFIG_HOME");
+        env::remove_var("AELYRIS_CONFIG_HOME");
     }
 
     result
@@ -1383,7 +1383,7 @@ async fn command_center_proof(_args: &[String]) -> Result<(), String> {
     let command_center = command_center_payload()?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "command-center-proof",
         "daemon": daemon_summary().await?,
@@ -1404,7 +1404,7 @@ async fn command_center_window_proof(args: &[String]) -> Result<(), String> {
     )?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "command-center-window-proof",
         "daemon": daemon_summary().await?,
@@ -1418,7 +1418,7 @@ async fn command_center_input_scroll_proof(_args: &[String]) -> Result<(), Strin
     let input_scroll = native_command_center_input_scroll_proof(&command_center);
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "command-center-input-scroll-proof",
         "daemon": daemon_summary().await?,
@@ -1433,7 +1433,7 @@ async fn mode_shell_proof(args: &[String]) -> Result<(), String> {
     let mode_shell = native_mode_shell_payload(&requested_mode, &command_center);
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "mode-shell-proof",
         "daemon": daemon_summary().await?,
@@ -1457,7 +1457,7 @@ async fn mode_rail_window_proof(args: &[String]) -> Result<(), String> {
     )?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "mode-rail-window-proof",
         "daemon": daemon_summary().await?,
@@ -1483,7 +1483,7 @@ async fn inspector_window_proof(args: &[String]) -> Result<(), String> {
     )?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "inspector-window-proof",
         "daemon": daemon_summary().await?,
@@ -1499,7 +1499,7 @@ async fn right_rail_demotion_proof(_args: &[String]) -> Result<(), String> {
     let demotion = native_right_rail_demotion_payload(&command_center, &mode_shell)?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "right-rail-demotion-proof",
         "daemon": daemon_summary().await?,
@@ -1516,7 +1516,7 @@ async fn accessibility_proof(_args: &[String]) -> Result<(), String> {
     let accessibility = native_accessibility_payload(&command_center, &mode_shell, &settings);
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "accessibility-proof",
         "daemon": daemon_summary().await?,
@@ -1535,7 +1535,7 @@ async fn uia_provider_proof(_args: &[String]) -> Result<(), String> {
     let uia_provider = native_uia_provider_dogfood_payload(&accessibility)?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "uia-provider-proof",
         "daemon": daemon_summary().await?,
@@ -1551,7 +1551,7 @@ async fn visual_qa_proof(_args: &[String]) -> Result<(), String> {
     let visual_qa = native_visual_qa_payload(&command_center, &mode_shell, &settings)?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "visual-qa-proof",
         "daemon": daemon_summary().await?,
@@ -1583,7 +1583,7 @@ async fn primary_shell_proof(args: &[String]) -> Result<(), String> {
     )?;
 
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "primary-shell-proof",
         "daemon": daemon_summary().await?,
@@ -1618,7 +1618,7 @@ async fn power_events_proof(args: &[String]) -> Result<(), String> {
         .any(|event| event.get("id").and_then(Value::as_u64) == Some(187));
 
     print_json(&json!({
-        "schema": "aether.native.power-events-proof.v1",
+        "schema": "aelyris.native.power-events-proof.v1",
         "client": native_client_identity(),
         "operation": "power-events-proof",
         "log": "System",
@@ -1638,13 +1638,13 @@ async fn power_events_proof(args: &[String]) -> Result<(), String> {
 }
 
 async fn sleep_now(args: &[String]) -> Result<(), String> {
-    let allow = env::var("QUORUM_ALLOW_OS_SLEEP").unwrap_or_default() == "1"
+    let allow = env::var("AELYRIS_ALLOW_OS_SLEEP").unwrap_or_default() == "1"
         || args
             .iter()
             .any(|arg| arg == "--i-understand-this-sleeps-windows");
     if !allow {
         return Err(
-            "sleep-now refuses to suspend Windows without QUORUM_ALLOW_OS_SLEEP=1 or --i-understand-this-sleeps-windows"
+            "sleep-now refuses to suspend Windows without AELYRIS_ALLOW_OS_SLEEP=1 or --i-understand-this-sleeps-windows"
                 .to_string(),
         );
     }
@@ -1658,7 +1658,7 @@ async fn sleep_now(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
         .as_secs();
     print_json(&json!({
-        "schema": "aether.native.sleep-now.v1",
+        "schema": "aelyris.native.sleep-now.v1",
         "client": native_client_identity(),
         "operation": "sleep-now",
         "nativeWindowsSleepApi": true,
@@ -1678,7 +1678,7 @@ async fn db_smoke_proof() -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|err| err.to_string())?
         .as_millis();
-    let storage_key = format!("aether:native:post-resume-smoke-{nonce}");
+    let storage_key = format!("aelyris:native:post-resume-smoke-{nonce}");
     let project_path = env::current_dir()
         .map_err(|err| err.to_string())?
         .to_string_lossy()
@@ -1711,7 +1711,7 @@ async fn db_smoke_proof() -> Result<(), String> {
         return Err("native db smoke did not preserve the written pane state".to_string());
     }
     print_json(&json!({
-        "schema": "aether.native.db-smoke-proof.v1",
+        "schema": "aelyris.native.db-smoke-proof.v1",
         "client": native_client_identity(),
         "operation": "db-smoke-proof",
         "status": "pass",
@@ -1758,7 +1758,7 @@ async fn upper_compat_proof() -> Result<(), String> {
             owner: Some("rust-core".to_string()),
             source: "native-proof".to_string(),
             metadata_json: json!({
-                "schema": "aether.workspace.data.v1",
+                "schema": "aelyris.workspace.data.v1",
                 "projectPath": project_path,
                 "webviewUsed": false,
                 "reactUsed": false
@@ -1775,7 +1775,7 @@ async fn upper_compat_proof() -> Result<(), String> {
             workspace_id: workspace_id.clone(),
             active_mode: "terminal".to_string(),
             snapshot_json: json!({
-                "schema": "aether.mode-preservation.v1",
+                "schema": "aelyris.mode-preservation.v1",
                 "activeMode": "terminal",
                 "selectedRail": "observe",
                 "activePaneId": "pane-primary",
@@ -1794,7 +1794,7 @@ async fn upper_compat_proof() -> Result<(), String> {
         purpose: "implementation".to_string(),
         worktree_path: Some(project_path.clone()),
         context_usage_json: json!({
-            "schema": "aether.agent-identity.v1",
+            "schema": "aelyris.agent-identity.v1",
             "contextWindowKnown": true,
             "visibleInRail": true,
             "handoffReady": true
@@ -1842,34 +1842,34 @@ async fn upper_compat_proof() -> Result<(), String> {
     let history_hits = database.search_workspace_history(&workspace_id, "evidence", 20)?;
 
     print_json(&json!({
-        "schema": "aether.upper-compat-proof.v1",
+        "schema": "aelyris.upper-compat-proof.v1",
         "client": native_client_identity(),
         "operation": "upper-compat-proof",
         "status": "pass",
         "dbPath": db_path.display().to_string(),
         "workspaceId": workspace_id,
         "gates": {
-            "aether.mcp.server.v1": {
+            "aelyris.mcp.server.v1": {
                 "complete": true,
                 "evidence": "HTTP local MCP contract exposes tool list and tool call routes backed by Rust PTY/mux state.",
                 "routes": ["/mcp/contract", "/mcp/tools/list", "/mcp/tools/call"]
             },
-            "aether.workspace.data.v1": {
+            "aelyris.workspace.data.v1": {
                 "complete": workspace_items.len() >= 4,
                 "itemCount": workspace_items.len(),
                 "types": workspace_items.iter().map(|item| item.item_type.clone()).collect::<Vec<_>>()
             },
-            "aether.mode-preservation.v1": {
+            "aelyris.mode-preservation.v1": {
                 "complete": mode_snapshot.snapshot_json["reloadPreserved"] == true,
                 "activeMode": mode_snapshot.active_mode,
                 "restoredModes": mode_snapshot.snapshot_json["restoredModes"]
             },
-            "aether.history.search.v1": {
+            "aelyris.history.search.v1": {
                 "complete": history_hits.len() >= 2,
                 "hitCount": history_hits.len(),
                 "types": history_hits.iter().map(|entry| entry.entry_type.clone()).collect::<Vec<_>>()
             },
-            "aether.agent-identity.v1": {
+            "aelyris.agent-identity.v1": {
                 "complete": agent_identity.context_usage_json["visibleInRail"] == true,
                 "provider": agent_identity.provider,
                 "authState": agent_identity.auth_state,
@@ -1887,7 +1887,7 @@ async fn upper_compat_proof() -> Result<(), String> {
 }
 
 fn native_db_smoke_path() -> Result<PathBuf, String> {
-    let path = env::var("AETHER_NATIVE_DB_SMOKE_PATH")
+    let path = env::var("AELYRIS_NATIVE_DB_SMOKE_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             env::current_dir()
@@ -1895,7 +1895,7 @@ fn native_db_smoke_path() -> Result<PathBuf, String> {
                 .join(".codex-auto")
                 .join("production-smoke")
                 .join("native-db-smoke")
-                .join("aether.db")
+                .join("aelyris.db")
         });
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -1905,7 +1905,7 @@ fn native_db_smoke_path() -> Result<PathBuf, String> {
 }
 
 fn native_upper_compat_db_path() -> Result<PathBuf, String> {
-    let path = env::var("AETHER_UPPER_COMPAT_DB_PATH")
+    let path = env::var("AELYRIS_UPPER_COMPAT_DB_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             env::current_dir()
@@ -1913,7 +1913,7 @@ fn native_upper_compat_db_path() -> Result<PathBuf, String> {
                 .join(".codex-auto")
                 .join("production-smoke")
                 .join("upper-compat")
-                .join("aether.db")
+                .join("aelyris.db")
         });
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -2127,7 +2127,7 @@ fn command_center_payload() -> Result<Value, String> {
         .count();
 
     Ok(json!({
-        "schema": "aether.native.command-center-proof.v1",
+        "schema": "aelyris.native.command-center-proof.v1",
         "nativeCommandCenter": true,
         "mode": "data-contract-proof",
         "workspaceRoot": root,
@@ -2211,7 +2211,7 @@ fn native_mode_shell_payload(requested_mode: &str, command_center: &Value) -> Va
         .collect::<Vec<_>>();
 
     json!({
-        "schema": "aether.native.mode-shell.v1",
+        "schema": "aelyris.native.mode-shell.v1",
         "nativeModeShell": true,
         "architecture": "mode-rail-center-workspace-contextual-inspector",
         "webviewUsed": false,
@@ -2226,7 +2226,7 @@ fn native_mode_shell_payload(requested_mode: &str, command_center: &Value) -> Va
             "statusBar": "native-status-strip",
         },
         "modeRail": {
-            "schema": "aether.native.mode-rail.v1",
+            "schema": "aelyris.native.mode-rail.v1",
             "nativeModeRail": true,
             "modeCount": mode_count,
             "selectedIndex": selected_index,
@@ -2241,16 +2241,16 @@ fn native_mode_shell_payload(requested_mode: &str, command_center: &Value) -> Va
         "modes": modes,
         "selectedEntityRoute": native_mode_shell_route(&selected_mode),
         "routeMatrix": route_matrix,
-        "rightInspectorContractId": "aether.native.inspector.v1:command-center",
+        "rightInspectorContractId": "aelyris.native.inspector.v1:command-center",
         "inspector": {
-            "schema": "aether.native.inspector.v1",
+            "schema": "aelyris.native.inspector.v1",
             "nativeInspector": true,
             "mode": selected_mode.clone(),
             "kind": inspector_kind,
-            "sourceContract": command_center.get("schema").and_then(Value::as_str).unwrap_or("aether.native.command-center-proof.v1"),
+            "sourceContract": command_center.get("schema").and_then(Value::as_str).unwrap_or("aelyris.native.command-center-proof.v1"),
             "commandCenterBacked": true,
             "contextualInspector": true,
-            "rightInspectorContractId": "aether.native.inspector.v1:command-center",
+            "rightInspectorContractId": "aelyris.native.inspector.v1:command-center",
             "evidenceRows": evidence_count,
             "actionsCount": actions_count,
             "blockerCount": blocker_count,
@@ -2276,7 +2276,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "terminal",
             "label": "Terminal",
             "shortcut": "Alt+1",
-            "rustContract": "aether.native.terminal-workspace.v1",
+            "rustContract": "aelyris.native.terminal-workspace.v1",
             "centerSurface": "native-terminal-workspace",
             "inspectorKind": "pane-command-evidence",
             "primaryAction": "spawn-or-attach-pane",
@@ -2285,7 +2285,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "agents",
             "label": "Agents",
             "shortcut": "Alt+2",
-            "rustContract": "aether.native.agent-session.v1",
+            "rustContract": "aelyris.native.agent-session.v1",
             "centerSurface": "native-agent-session-board",
             "inspectorKind": "agent-session-evidence",
             "primaryAction": "start-or-resume-agent",
@@ -2294,7 +2294,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "workspace",
             "label": "Workspace",
             "shortcut": "Alt+3",
-            "rustContract": "aether.native.workspace-item.v1",
+            "rustContract": "aelyris.native.workspace-item.v1",
             "centerSurface": "native-project-workspace",
             "inspectorKind": "file-project-context",
             "primaryAction": "open-project-item",
@@ -2303,7 +2303,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "review",
             "label": "Review",
             "shortcut": "Alt+4",
-            "rustContract": "aether.native.review-queue.v1",
+            "rustContract": "aelyris.native.review-queue.v1",
             "centerSurface": "native-review-queue",
             "inspectorKind": "change-and-command-evidence",
             "primaryAction": "review-current-change",
@@ -2312,7 +2312,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "git",
             "label": "Git",
             "shortcut": "Alt+5",
-            "rustContract": "aether.native.git-worktree.v1",
+            "rustContract": "aelyris.native.git-worktree.v1",
             "centerSurface": "native-git-worktree",
             "inspectorKind": "branch-worktree-status",
             "primaryAction": "commit-or-open-worktree",
@@ -2321,7 +2321,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "context",
             "label": "Context",
             "shortcut": "Alt+6",
-            "rustContract": "aether.native.context-pack.v1",
+            "rustContract": "aelyris.native.context-pack.v1",
             "centerSurface": "native-context-pack-manager",
             "inspectorKind": "prompt-context-provenance",
             "primaryAction": "attach-context-pack",
@@ -2330,7 +2330,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "history",
             "label": "History",
             "shortcut": "Alt+7",
-            "rustContract": "aether.native.history-index.v1",
+            "rustContract": "aelyris.native.history-index.v1",
             "centerSurface": "native-command-history",
             "inspectorKind": "scrollback-and-recovery",
             "primaryAction": "jump-to-command-evidence",
@@ -2339,7 +2339,7 @@ fn native_mode_shell_modes() -> Vec<Value> {
             "id": "settings",
             "label": "Settings",
             "shortcut": "Alt+8",
-            "rustContract": "aether.native.settings.v1",
+            "rustContract": "aelyris.native.settings.v1",
             "centerSurface": "native-settings-surface",
             "inspectorKind": "profile-theme-keymap",
             "primaryAction": "edit-native-profile",
@@ -2558,7 +2558,7 @@ fn native_right_rail_demotion_payload(
         && react_sources_marked_compatibility;
 
     Ok(json!({
-        "schema": "aether.native.right-rail-demotion-proof.v1",
+        "schema": "aelyris.native.right-rail-demotion-proof.v1",
         "nativeRightRailDemotionProof": true,
         "sourceOfTruth": "rust-native-command-center-mode-shell-inspector",
         "webviewUsed": false,
@@ -2579,23 +2579,23 @@ fn native_right_rail_demotion_payload(
         "nativeReplacementMap": [
             {
                 "reactSurface": "AgentInspector sessions/activity/right rail",
-                "nativeReplacement": "aether-native inspector-window-proof",
-                "sourceContract": "aether.native.inspector-window-proof.v1",
+                "nativeReplacement": "aelyris-native inspector-window-proof",
+                "sourceContract": "aelyris.native.inspector-window-proof.v1",
             },
             {
                 "reactSurface": "right rail navigation/rail",
-                "nativeReplacement": "aether-native mode-rail-window-proof",
-                "sourceContract": "aether.native.mode-rail-window-proof.v1",
+                "nativeReplacement": "aelyris-native mode-rail-window-proof",
+                "sourceContract": "aelyris.native.mode-rail-window-proof.v1",
             },
             {
                 "reactSurface": "right rail data/actions",
-                "nativeReplacement": "aether-native command-center-proof",
-                "sourceContract": "aether.native.command-center-proof.v1",
+                "nativeReplacement": "aelyris-native command-center-proof",
+                "sourceContract": "aelyris.native.command-center-proof.v1",
             },
             {
                 "reactSurface": "right rail action dispatch",
-                "nativeReplacement": "aether-native command-center-input-scroll-proof",
-                "sourceContract": "aether.native.command-center-input-scroll-proof.v1",
+                "nativeReplacement": "aelyris-native command-center-input-scroll-proof",
+                "sourceContract": "aelyris.native.command-center-input-scroll-proof.v1",
             }
         ],
         "guardrails": {
@@ -2610,7 +2610,7 @@ fn native_right_rail_demotion_payload(
         "reactDemotionComplete": react_compatibility_only,
         "readyForReactDemotion": native_product_path_ready && react_right_rail_sources_present && !react_compatibility_only,
         "readyForFullNativeClaim": false,
-        "nextProof": "aether-native-primary-daily-driver-promotion",
+        "nextProof": "aelyris-native-primary-daily-driver-promotion",
     }))
 }
 
@@ -2648,12 +2648,12 @@ fn native_accessibility_payload(
 
     let mut nodes = Vec::new();
     nodes.push(json!({
-        "id": "window:aether-native",
+        "id": "window:aelyris-native",
         "role": "window",
-        "name": "Aether Native",
+        "name": "Aelyris Native",
         "description": "Project-first native Rust terminal workspace",
         "focusable": false,
-        "sourceContract": "aether.native.client.v1",
+        "sourceContract": "aelyris.native.client.v1",
     }));
     nodes.push(json!({
         "id": "region:modes",
@@ -2661,7 +2661,7 @@ fn native_accessibility_payload(
         "name": "Modes",
         "description": "Switch between Terminal, Agents, Workspace, Review, Git, Context, History, and Settings",
         "focusable": false,
-        "sourceContract": "aether.native.mode-rail.v1",
+        "sourceContract": "aelyris.native.mode-rail.v1",
     }));
     for mode in &modes {
         let id = mode.get("id").and_then(Value::as_str).unwrap_or("mode");
@@ -2683,7 +2683,7 @@ fn native_accessibility_payload(
         "name": "Terminal work surface",
         "description": "Native terminal pane backed by the Rust mux daemon and NativeRenderFrame",
         "focusable": true,
-        "sourceContract": "aether.native.render-frame.v1",
+        "sourceContract": "aelyris.native.render-frame.v1",
     }));
     nodes.push(json!({
         "id": "region:inspector",
@@ -2704,7 +2704,7 @@ fn native_accessibility_payload(
             "name": format!("Evidence {} {}", idx + 1, id),
             "description": entry.get("path").and_then(Value::as_str).unwrap_or("Native evidence"),
             "focusable": false,
-            "sourceContract": "aether.native.command-center-proof.v1",
+            "sourceContract": "aelyris.native.command-center-proof.v1",
         }));
     }
     for (idx, action) in actions.iter().take(8).enumerate() {
@@ -2718,7 +2718,7 @@ fn native_accessibility_payload(
             "keyboardIndex": idx + 1,
             "requiresReact": action.get("requiresReact").and_then(Value::as_bool).unwrap_or(false),
             "requiresWebView": action.get("requiresWebView").and_then(Value::as_bool).unwrap_or(false),
-            "sourceContract": "aether.native.command-center-proof.v1",
+            "sourceContract": "aelyris.native.command-center-proof.v1",
         }));
     }
     for (idx, (id, label)) in setting_controls.iter().enumerate() {
@@ -2729,7 +2729,7 @@ fn native_accessibility_payload(
             "description": "Native settings control backed by Rust config hot reload",
             "focusable": true,
             "keyboardIndex": idx + 1,
-            "sourceContract": "aether.native.settings-proof.v1",
+            "sourceContract": "aelyris.native.settings-proof.v1",
         }));
     }
 
@@ -2761,7 +2761,7 @@ fn native_accessibility_payload(
     ];
 
     json!({
-        "schema": "aether.native.accessibility-proof.v1",
+        "schema": "aelyris.native.accessibility-proof.v1",
         "nativeAccessibilityTreeProof": true,
         "mode": "semantic-tree-proof",
         "webviewUsed": false,
@@ -2851,8 +2851,8 @@ fn native_uia_provider_dogfood_payload(accessibility: &Value) -> Result<Value, S
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeUiaProviderProof");
-    let window_title = w!("Aether Native Accessibility Dogfood");
+    let class_name = w!("AelyrisNativeUiaProviderProof");
+    let window_title = w!("Aelyris Native Accessibility Dogfood");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -2862,7 +2862,7 @@ fn native_uia_provider_dogfood_payload(accessibility: &Value) -> Result<Value, S
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeUiaProviderProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeUiaProviderProof".to_string());
     }
 
     let hwnd = unsafe {
@@ -3018,7 +3018,7 @@ fn native_uia_provider_dogfood_payload(accessibility: &Value) -> Result<Value, S
         .unwrap_or_default();
 
     Ok(json!({
-        "schema": "aether.native.uia-provider-proof.v1",
+        "schema": "aelyris.native.uia-provider-proof.v1",
         "nativeUiaProviderDogfood": true,
         "mode": "win32-uia-client-dogfood",
         "providerKind": "Windows UIAutomation provider over native HWND controls",
@@ -3039,7 +3039,7 @@ fn native_uia_provider_dogfood_payload(accessibility: &Value) -> Result<Value, S
         "descendantCount": descendant_count,
         "elements": elements,
         "projectedSemanticNodeCount": projected_node_count,
-        "semanticTreeSource": "aether.native.accessibility-proof.v1",
+        "semanticTreeSource": "aelyris.native.accessibility-proof.v1",
         "controlsCreated": {
             "parent": parent_alive,
             "terminal": terminal_alive,
@@ -3047,7 +3047,7 @@ fn native_uia_provider_dogfood_payload(accessibility: &Value) -> Result<Value, S
             "settingsEdit": edit_alive,
         },
         "dogfoodChecks": {
-            "rootNameReadable": root_name == "Aether Native Accessibility Dogfood",
+            "rootNameReadable": root_name == "Aelyris Native Accessibility Dogfood",
             "terminalNameReadable": has_terminal_name,
             "actionNameReadable": has_action_name,
             "settingsNameReadable": has_settings_name,
@@ -3149,31 +3149,31 @@ fn native_visual_qa_payload(
             "command-center-window",
             &command_center_window_data,
             &["window"],
-            "aether.native.command-center-window-proof.v1",
+            "aelyris.native.command-center-window-proof.v1",
         ),
         visual_surface_status(
             "mode-rail-window",
             &mode_rail_window_data,
             &["window"],
-            "aether.native.mode-rail-window-proof.v1",
+            "aelyris.native.mode-rail-window-proof.v1",
         ),
         visual_surface_status(
             "inspector-window",
             &inspector_window_data,
             &["window"],
-            "aether.native.inspector-window-proof.v1",
+            "aelyris.native.inspector-window-proof.v1",
         ),
         visual_surface_status(
             "settings-window",
             &settings_window_data,
             &["window"],
-            "aether.native.settings-window-proof.v1",
+            "aelyris.native.settings-window-proof.v1",
         ),
         visual_surface_status(
             "accessibility-tree",
             &accessibility_data,
             &["accessibility"],
-            "aether.native.accessibility-proof.v1",
+            "aelyris.native.accessibility-proof.v1",
         ),
     ];
     let nonblank_surfaces = surfaces
@@ -3197,10 +3197,10 @@ fn native_visual_qa_payload(
     let resize_probe_pass = visual_probe.get("resizeProbe").and_then(Value::as_bool) == Some(true);
 
     Ok(json!({
-        "schema": "aether.native.visual-qa-proof.v1",
+        "schema": "aelyris.native.visual-qa-proof.v1",
         "nativeVisualQaHarness": true,
         "mode": "native-pixel-contrast-harness",
-        "sourceOfTruth": "aether-native-win32-wgpu-artifacts",
+        "sourceOfTruth": "aelyris-native-win32-wgpu-artifacts",
         "webviewUsed": false,
         "reactUsed": false,
         "commandCenterNative": command_center.get("nativeCommandCenter").and_then(Value::as_bool).unwrap_or(false),
@@ -3216,7 +3216,7 @@ fn native_visual_qa_payload(
         "pixelProbe": visual_probe,
         "pixelProbePass": visual_probe_nonblank && resize_probe_pass,
         "resizeProbePass": resize_probe_pass,
-        "focusCoverageSource": "aether.native.accessibility-proof.v1",
+        "focusCoverageSource": "aelyris.native.accessibility-proof.v1",
         "focusCoveragePass": json_path_bool(&accessibility_data, &["accessibility", "keyboardTraversal"]),
         "sleepResumeRecoveryProbe": sleep_resume_recovery_probe,
         "sleepResumeRecoveryProbePass": sleep_resume_recovery_probe.get("readyForRealSleepResumeDogfood").and_then(Value::as_bool) == Some(true),
@@ -3291,7 +3291,7 @@ fn native_primary_shell_payload(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let current_checks = std::env::var("AETHER_NATIVE_CLIENT_CURRENT_CHECKS")
+    let current_checks = std::env::var("AELYRIS_NATIVE_CLIENT_CURRENT_CHECKS")
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|value| value.as_array().cloned())
@@ -3378,9 +3378,9 @@ fn native_primary_shell_payload(
     )?;
 
     Ok(json!({
-        "schema": "aether.native.primary-shell-proof.v1",
+        "schema": "aelyris.native.primary-shell-proof.v1",
         "nativePrimaryShellPromotion": true,
-        "primarySurface": "aether-native",
+        "primarySurface": "aelyris-native",
         "launchProfile": "native-primary",
         "productTruthOwner": "rust-native-shell",
         "reactWebViewCompatibilityOnly": true,
@@ -3462,7 +3462,7 @@ fn native_primary_shell_window_proof(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativePrimaryShellProof");
+    let class_name = w!("AelyrisNativePrimaryShellProof");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -3472,13 +3472,13 @@ fn native_primary_shell_window_proof(
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativePrimaryShellProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativePrimaryShellProof".to_string());
     }
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0),
             class_name,
-            w!("Aether Native Primary Shell"),
+            w!("Aelyris Native Primary Shell"),
             WINDOW_STYLE(WS_OVERLAPPEDWINDOW.0),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -3548,7 +3548,7 @@ fn native_primary_shell_window_proof(
             SetTextColor(dc, COLORREF(0x00F8EAF1));
         }
         let header = format!(
-            "Aether Native Primary Shell | native-primary | {completed_prereqs}/{} gates | theme={theme} mood={mood}",
+            "Aelyris Native Primary Shell | native-primary | {completed_prereqs}/{} gates | theme={theme} mood={mood}",
             prerequisites.len()
         );
         if draw_native_text_line(dc, 24, 24, &header)? {
@@ -3585,7 +3585,7 @@ fn native_primary_shell_window_proof(
         )? {
             draw_calls += 1;
         }
-        if draw_native_text_line(dc, 260, 100, "PS C:\\Users\\user\\Aether_Terminal> _")? {
+        if draw_native_text_line(dc, 260, 100, "PS C:\\Users\\user\\Aelyris> _")? {
             draw_calls += 1;
         }
         if draw_native_text_line(
@@ -3672,11 +3672,11 @@ fn native_primary_shell_window_proof(
     }
 
     Ok(json!({
-        "schema": "aether.native.primary-shell-window-proof.v1",
+        "schema": "aelyris.native.primary-shell-window-proof.v1",
         "nativePrimaryShellWindow": true,
         "windowSystem": "win32",
-        "className": "AetherNativePrimaryShellProof",
-        "title": "Aether Native Primary Shell",
+        "className": "AelyrisNativePrimaryShellProof",
+        "title": "Aelyris Native Primary Shell",
         "interactiveWindow": is_window_before_destroy,
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
@@ -3697,7 +3697,7 @@ fn native_primary_shell_window_proof(
         "reactUsed": false,
         "renderer": "win32-gdi-primary-shell-proof",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -3713,7 +3713,7 @@ fn native_primary_shell_window_proof(
     _alpha: u8,
     _visible: bool,
 ) -> Result<Value, String> {
-    Err("aether-native primary-shell-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native primary-shell-proof is currently implemented for Windows only".to_string())
 }
 
 fn contrast_pair(label: &str, background: &str, foreground: &str) -> Value {
@@ -3771,11 +3771,11 @@ fn react_right_rail_source_status(label: &str, path: &str) -> Value {
         || source.contains("useMemo")
         || source.contains("export function");
     let compatibility_marker_present = source
-        .contains("aether.react.right-rail-compatibility-client.v1")
-        && source.contains("primarySurface: \"aether-native\"")
+        .contains("aelyris.react.right-rail-compatibility-client.v1")
+        && source.contains("primarySurface: \"aelyris-native\"")
         && source.contains("compatibilityRole: \"legacy-tauri-react-client\"")
         && source.contains("productTruthOwner: \"rust-native-command-center\"")
-        && source.contains("nativeContract: \"aether.native.right-rail-demotion-proof.v1\"")
+        && source.contains("nativeContract: \"aelyris.native.right-rail-demotion-proof.v1\"")
         && source.contains("reactOwnsProductTruth: false")
         && source.contains("webviewDispatchRequired: false");
     json!({
@@ -3873,7 +3873,7 @@ fn native_command_center_input_scroll_proof(command_center: &Value) -> Value {
         .collect::<Vec<_>>();
 
     json!({
-        "schema": "aether.native.command-center-input-scroll-proof.v1",
+        "schema": "aelyris.native.command-center-input-scroll-proof.v1",
         "nativeCommandCenterInput": true,
         "nativeCommandCenterScroll": true,
         "mode": "rust-native-input-scroll-model-proof",
@@ -3882,7 +3882,7 @@ fn native_command_center_input_scroll_proof(command_center: &Value) -> Value {
         "keyboardNavigation": true,
         "scrollModel": true,
         "actionDispatchPlan": true,
-        "eventSource": "aether-native",
+        "eventSource": "aelyris-native",
         "eventLoopOwner": "rust",
         "actionCount": action_count,
         "evidenceCount": evidence.len(),
@@ -3922,7 +3922,7 @@ async fn send_input(args: &[String]) -> Result<(), String> {
     )
     .await?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "send",
         "sessionId": id,
@@ -3947,7 +3947,7 @@ async fn capture_output(args: &[String]) -> Result<(), String> {
     )
     .await?;
     print_json(&json!({
-        "schema": "aether.native.client.v1",
+        "schema": "aelyris.native.client.v1",
         "client": native_client_identity(),
         "operation": "capture",
         "sessionId": id,
@@ -3998,7 +3998,7 @@ async fn request(method: Method, path: &str, body: Option<Value>) -> Result<Valu
 
 fn native_client_identity() -> Value {
     json!({
-        "process": "aether-native",
+        "process": "aelyris-native",
         "kind": "rust-native-client-spike",
         "uiBoundary": "no-webview",
         "muxTransport": "loopback-http",
@@ -4007,7 +4007,7 @@ fn native_client_identity() -> Value {
 }
 
 fn api_base_url() -> String {
-    if let Ok(url) = env::var("QUORUM_API_URL") {
+    if let Ok(url) = env::var("AELYRIS_API_URL") {
         let trimmed = url.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -4021,7 +4021,7 @@ fn api_base_url() -> String {
 }
 
 fn api_token() -> Option<String> {
-    if let Ok(token) = env::var("QUORUM_API_TOKEN") {
+    if let Ok(token) = env::var("AELYRIS_API_TOKEN") {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
@@ -4041,14 +4041,14 @@ fn token_path() -> Option<PathBuf> {
     if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
         return Some(
             PathBuf::from(local_app_data)
-                .join("Aether Terminal")
+                .join("Aelyris")
                 .join(TOKEN_FILE_NAME),
         );
     }
     env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(PathBuf::from))
-        .map(|home| home.join(".aether").join(TOKEN_FILE_NAME))
+        .map(|home| home.join(".aelyris").join(TOKEN_FILE_NAME))
 }
 
 fn option_value(args: &[String], name: &str) -> Option<String> {
@@ -4231,7 +4231,7 @@ fn native_command_center_actions(missing: &[Value]) -> Vec<Value> {
         "requiresReact": false,
         "requiresWebView": false,
         "requiresExplicitOptIn": true,
-        "explicitOptInEnv": "QUORUM_ALLOW_OS_SLEEP=1",
+        "explicitOptInEnv": "AELYRIS_ALLOW_OS_SLEEP=1",
         "evidencePath": ".codex-auto/production-smoke/real-os-suspend-resume.json",
     }));
     actions.push(json!({
@@ -4326,7 +4326,7 @@ async fn capture_text_for_render(
         ));
     }
     Ok((
-        "Aether Native Renderer".to_string(),
+        "Aelyris Native Renderer".to_string(),
         json!({ "sessionId": Value::Null, "lines": lines }),
     ))
 }
@@ -4404,7 +4404,7 @@ fn sha256_bytes_hex(bytes: &[u8]) -> String {
 
 fn print_help() {
     println!(
-        "aether-native commands:\n  contract\n  window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  render-proof [--session id] [--text text] [--expect text] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  present-loop-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  gpu-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n]\n  winit-wgpu-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--show]\n  text-shaping-fixture-proof [--text text] [--cols n] [--rows n] [--png path] [--out path]\n  ime-proof [--prompt text] [--preedit text] [--commit text] [--cols n] [--rows n]\n  ime-dogfood-proof [--commit text]\n  ime-os-dogfood-proof [--preedit text] [--commit text]\n  settings-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n]\n  settings-window-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n] [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-proof\n  command-center-window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-input-scroll-proof\n  mode-shell-proof [--mode id]\n  mode-rail-window-proof [--mode id] [--duration-ms n] [--alpha 1..255] [--show]\n  inspector-window-proof [--mode id] [--alpha 1..255] [--duration-ms n] [--show]\n  right-rail-demotion-proof\n  accessibility-proof\n  uia-provider-proof\n  visual-qa-proof\n  primary-shell-proof [--duration-ms n] [--alpha 1..255] [--show]\n  power-events-proof --start-epoch n --end-epoch n\n  db-smoke-proof\n  sleep-now [--i-understand-this-sleeps-windows]\n  list\n  graph <workspace>\n  attach <workspace>\n  detach <workspace>\n  send <session> <text...> [--enter]\n  capture <session> [--lines n] [--raw]\n\nEnvironment:\n  QUORUM_API_URL    daemon URL; defaults to sidecar token location or http://127.0.0.1:9333\n  QUORUM_API_TOKEN  bearer token; otherwise reads the Aether sidecar token file"
+        "aelyris-native commands:\n  contract\n  window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  render-proof [--session id] [--text text] [--expect text] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  present-loop-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--alpha 1..255] [--show]\n  gpu-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n]\n  winit-wgpu-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--duration-ms n] [--show]\n  text-shaping-fixture-proof [--text text] [--cols n] [--rows n] [--png path] [--out path]\n  ime-proof [--prompt text] [--preedit text] [--commit text] [--cols n] [--rows n]\n  ime-dogfood-proof [--commit text]\n  ime-os-dogfood-proof [--preedit text] [--commit text]\n  settings-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n]\n  settings-window-proof [--theme text] [--mood text] [--wallpaper path] [--opacity n] [--wallpaper-opacity n] [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-proof\n  command-center-window-proof [--duration-ms n] [--alpha 1..255] [--show]\n  command-center-input-scroll-proof\n  mode-shell-proof [--mode id]\n  mode-rail-window-proof [--mode id] [--duration-ms n] [--alpha 1..255] [--show]\n  inspector-window-proof [--mode id] [--alpha 1..255] [--duration-ms n] [--show]\n  right-rail-demotion-proof\n  accessibility-proof\n  uia-provider-proof\n  visual-qa-proof\n  primary-shell-proof [--duration-ms n] [--alpha 1..255] [--show]\n  power-events-proof --start-epoch n --end-epoch n\n  db-smoke-proof\n  sleep-now [--i-understand-this-sleeps-windows]\n  list\n  graph <workspace>\n  attach <workspace>\n  detach <workspace>\n  send <session> <text...> [--enter]\n  capture <session> [--lines n] [--raw]\n\nEnvironment:\n  AELYRIS_API_URL    daemon URL; defaults to sidecar token location or http://127.0.0.1:9333\n  AELYRIS_API_TOKEN  bearer token; otherwise reads the Aelyris sidecar token file"
     );
 }
 
@@ -4443,8 +4443,8 @@ fn native_window_proof(duration: Duration, alpha: u8, visible: bool) -> Result<V
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeWindowProof");
-    let window_title = w!("Aether Native");
+    let class_name = w!("AelyrisNativeWindowProof");
+    let window_title = w!("Aelyris Native");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -4454,7 +4454,7 @@ fn native_window_proof(duration: Duration, alpha: u8, visible: bool) -> Result<V
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeWindowProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeWindowProof".to_string());
     }
 
     let ex_style = WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0);
@@ -4510,8 +4510,8 @@ fn native_window_proof(duration: Duration, alpha: u8, visible: bool) -> Result<V
     Ok(json!({
         "nativeWindowCreated": is_window_before_destroy,
         "windowSystem": "win32",
-        "className": "AetherNativeWindowProof",
-        "title": "Aether Native",
+        "className": "AelyrisNativeWindowProof",
+        "title": "Aelyris Native",
         "hwnd": format!("0x{:X}", hwnd.0 as usize),
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
@@ -4524,7 +4524,7 @@ fn native_window_proof(duration: Duration, alpha: u8, visible: bool) -> Result<V
         "terminalRenderer": "not-yet-native-terminal-renderer",
         "nativeIme": "not-yet-dogfooded",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "exe": exe,
             "pid": std::process::id(),
         }
@@ -4533,7 +4533,7 @@ fn native_window_proof(duration: Duration, alpha: u8, visible: bool) -> Result<V
 
 #[cfg(not(target_os = "windows"))]
 fn native_window_proof(_duration: Duration, _alpha: u8, _visible: bool) -> Result<Value, String> {
-    Err("aether-native window-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native window-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -4568,7 +4568,7 @@ fn native_ime_dogfood_payload(commit: &str) -> Result<Value, String> {
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeImeDogfoodParent");
+    let class_name = w!("AelyrisNativeImeDogfoodParent");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -4578,14 +4578,14 @@ fn native_ime_dogfood_payload(commit: &str) -> Result<Value, String> {
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeImeDogfoodParent".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeImeDogfoodParent".to_string());
     }
 
     let parent = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
             class_name,
-            w!("Aether Native IME Dogfood"),
+            w!("Aelyris Native IME Dogfood"),
             WINDOW_STYLE(WS_OVERLAPPEDWINDOW.0),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -4696,7 +4696,7 @@ fn native_ime_dogfood_payload(commit: &str) -> Result<Value, String> {
         .and_then(|dir| mark_ime_os_probe_finished(&dir.join("native-ime-os-worker-last-run.txt")));
 
     Ok(json!({
-        "schema": "aether.native.ime-dogfood-proof.v1",
+        "schema": "aelyris.native.ime-dogfood-proof.v1",
         "mode": "native-hwnd-message-loop-dogfood",
         "nativeHwndImeDogfood": true,
         "nativeCompositionSurfaceReady": focus_status.native_composition_surface_ready,
@@ -4725,7 +4725,7 @@ fn native_ime_dogfood_payload(commit: &str) -> Result<Value, String> {
 
 #[cfg(not(target_os = "windows"))]
 fn native_ime_dogfood_payload(_commit: &str) -> Result<Value, String> {
-    Err("aether-native ime-dogfood-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native ime-dogfood-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -4765,7 +4765,7 @@ fn native_ime_os_dogfood_payload(preedit: &str, commit: &str) -> Result<Value, S
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeImeOsDogfoodParent");
+    let class_name = w!("AelyrisNativeImeOsDogfoodParent");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -4775,14 +4775,14 @@ fn native_ime_os_dogfood_payload(preedit: &str, commit: &str) -> Result<Value, S
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeImeOsDogfoodParent".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeImeOsDogfoodParent".to_string());
     }
 
     let parent = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
             class_name,
-            w!("Aether Native OS IME Dogfood"),
+            w!("Aelyris Native OS IME Dogfood"),
             WINDOW_STYLE(WS_OVERLAPPEDWINDOW.0),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -4955,7 +4955,7 @@ fn native_ime_os_dogfood_payload(preedit: &str, commit: &str) -> Result<Value, S
 
     let preedit_matches = preedit_after_ime.text == preedit;
     Ok(json!({
-        "schema": "aether.native.ime-os-dogfood-proof.v1",
+        "schema": "aelyris.native.ime-os-dogfood-proof.v1",
         "mode": "win32-imm32-composition-dogfood",
         "nativeOsImeDogfood": true,
         "imeApi": "Imm32",
@@ -4998,7 +4998,7 @@ fn native_ime_os_dogfood_payload(preedit: &str, commit: &str) -> Result<Value, S
 
 #[cfg(not(target_os = "windows"))]
 fn native_ime_os_dogfood_payload(_preedit: &str, _commit: &str) -> Result<Value, String> {
-    Err("aether-native ime-os-dogfood-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native ime-os-dogfood-proof is currently implemented for Windows only".to_string())
 }
 
 fn parse_hwnd_hex(value: &str) -> Result<isize, String> {
@@ -5059,7 +5059,7 @@ fn native_sleep_resume_recovery_probe() -> Result<Value, String> {
             .map_err(|err| format!("GetModuleHandleW power broadcast probe failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativePowerBroadcastProbe");
+    let class_name = w!("AelyrisNativePowerBroadcastProbe");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -5069,14 +5069,14 @@ fn native_sleep_resume_recovery_probe() -> Result<Value, String> {
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativePowerBroadcastProbe".to_string());
+        return Err("RegisterClassW failed for AelyrisNativePowerBroadcastProbe".to_string());
     }
 
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(WS_EX_NOACTIVATE.0),
             class_name,
-            w!("Aether Native Power Broadcast Probe"),
+            w!("Aelyris Native Power Broadcast Probe"),
             WINDOW_STYLE(WS_OVERLAPPEDWINDOW.0),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -5155,7 +5155,7 @@ fn native_sleep_resume_recovery_probe() -> Result<Value, String> {
         post_resume_visual.get("nonBlank").and_then(Value::as_bool) == Some(true);
 
     Ok(json!({
-        "schema": "aether.native.sleep-resume-recovery-probe.v1",
+        "schema": "aelyris.native.sleep-resume-recovery-probe.v1",
         "mode": "win32-power-broadcast-message-loop-dogfood",
         "syntheticPowerBroadcastDogfood": true,
         "realWindowsSleepResumeDogfood": false,
@@ -5183,7 +5183,7 @@ fn native_sleep_resume_recovery_probe() -> Result<Value, String> {
 #[cfg(not(target_os = "windows"))]
 fn native_sleep_resume_recovery_probe() -> Result<Value, String> {
     Err(
-        "aether-native sleep/resume recovery probe is currently implemented for Windows only"
+        "aelyris-native sleep/resume recovery probe is currently implemented for Windows only"
             .to_string(),
     )
 }
@@ -5226,7 +5226,7 @@ fn native_visual_probe() -> Result<Value, String> {
         }
         let mut draw_calls = 0usize;
         for (idx, line) in [
-            "Aether Native Visual QA",
+            "Aelyris Native Visual QA",
             "Terminal / Modes / Inspector / Settings",
             "Pixel, contrast, resize, focus coverage",
         ]
@@ -5280,7 +5280,7 @@ fn native_visual_probe() -> Result<Value, String> {
         .iter()
         .all(|scenario| scenario.get("nonBlank").and_then(Value::as_bool) == Some(true));
     Ok(json!({
-        "schema": "aether.native.visual-pixel-probe.v1",
+        "schema": "aelyris.native.visual-pixel-probe.v1",
         "captureMethod": "win32-compatible-bitmap-getpixel",
         "webviewCdpUsed": false,
         "webviewUsed": false,
@@ -5294,7 +5294,7 @@ fn native_visual_probe() -> Result<Value, String> {
 
 #[cfg(not(target_os = "windows"))]
 fn native_visual_probe() -> Result<Value, String> {
-    Err("aether-native visual-qa-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native visual-qa-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -5391,8 +5391,8 @@ fn native_settings_window_proof(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeSettingsProof");
-    let window_title = w!("Aether Native Settings");
+    let class_name = w!("AelyrisNativeSettingsProof");
+    let window_title = w!("Aelyris Native Settings");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -5402,7 +5402,7 @@ fn native_settings_window_proof(
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeSettingsProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeSettingsProof".to_string());
     }
 
     let ex_style = WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0);
@@ -5457,7 +5457,7 @@ fn native_settings_window_proof(
             SetTextColor(dc, COLORREF(0x00F8EAF1));
         }
 
-        if draw_native_text_line(dc, 24, 26, "Aether Native Settings")? {
+        if draw_native_text_line(dc, 24, 26, "Aelyris Native Settings")? {
             draw_calls += 1;
         }
         unsafe {
@@ -5539,14 +5539,14 @@ fn native_settings_window_proof(
     }
 
     Ok(json!({
-        "schema": "aether.native.settings-window-proof.v1",
+        "schema": "aelyris.native.settings-window-proof.v1",
         "nativeSettingsWindow": true,
         "nativeSettingsCustomization": true,
         "windowUi": true,
         "mode": "win32-gdi-settings-window-proof",
         "windowSystem": "win32",
-        "className": "AetherNativeSettingsProof",
-        "title": "Aether Native Settings",
+        "className": "AelyrisNativeSettingsProof",
+        "title": "Aelyris Native Settings",
         "interactiveWindow": is_window_before_destroy,
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
@@ -5574,7 +5574,7 @@ fn native_settings_window_proof(
         "readyForFullNativeClaim": false,
         "nextProof": "react-settings-compatibility-demotion",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -5587,7 +5587,7 @@ fn native_settings_window_proof(
     _alpha: u8,
     _visible: bool,
 ) -> Result<Value, String> {
-    Err("aether-native settings-window-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native settings-window-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -5654,8 +5654,8 @@ fn native_command_center_window_proof(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeCommandCenterProof");
-    let window_title = w!("Aether Native Command Center");
+    let class_name = w!("AelyrisNativeCommandCenterProof");
+    let window_title = w!("Aelyris Native Command Center");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -5665,7 +5665,7 @@ fn native_command_center_window_proof(
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeCommandCenterProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeCommandCenterProof".to_string());
     }
 
     let ex_style = WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0);
@@ -5723,7 +5723,7 @@ fn native_command_center_window_proof(
         }
 
         let header = format!(
-            "Aether Native Command Center  | blockers: {blocker_count} | evidence: {ready_evidence_count}/{}",
+            "Aelyris Native Command Center  | blockers: {blocker_count} | evidence: {ready_evidence_count}/{}",
             evidence.len()
         );
         if draw_native_text_line(dc, 24, 28, &header)? {
@@ -5830,14 +5830,14 @@ fn native_command_center_window_proof(
     }
 
     Ok(json!({
-        "schema": "aether.native.command-center-window-proof.v1",
+        "schema": "aelyris.native.command-center-window-proof.v1",
         "nativeCommandCenterWindow": true,
         "nativeRightRailWindow": true,
         "windowUi": true,
         "mode": "win32-gdi-window-proof",
         "windowSystem": "win32",
-        "className": "AetherNativeCommandCenterProof",
-        "title": "Aether Native Command Center",
+        "className": "AelyrisNativeCommandCenterProof",
+        "title": "Aelyris Native Command Center",
         "interactiveWindow": is_window_before_destroy,
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
@@ -5860,7 +5860,7 @@ fn native_command_center_window_proof(
         "rightRailUiStatus": "native-command-center-window-ui-proof",
         "nextProof": "native-command-center-input-and-scroll",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -5874,7 +5874,7 @@ fn native_command_center_window_proof(
     _visible: bool,
 ) -> Result<Value, String> {
     Err(
-        "aether-native command-center-window-proof is currently implemented for Windows only"
+        "aelyris-native command-center-window-proof is currently implemented for Windows only"
             .to_string(),
     )
 }
@@ -5972,8 +5972,8 @@ fn native_mode_rail_window_proof(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeModeRailProof");
-    let window_title = w!("Aether Native Modes");
+    let class_name = w!("AelyrisNativeModeRailProof");
+    let window_title = w!("Aelyris Native Modes");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -5983,7 +5983,7 @@ fn native_mode_rail_window_proof(
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeModeRailProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeModeRailProof".to_string());
     }
 
     let ex_style = WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0);
@@ -6038,7 +6038,7 @@ fn native_mode_rail_window_proof(
             SetTextColor(dc, COLORREF(0x00F8EAF1));
         }
 
-        if draw_native_text_line(dc, 22, 26, "Aether Native Modes")? {
+        if draw_native_text_line(dc, 22, 26, "Aelyris Native Modes")? {
             draw_calls += 1;
         }
         unsafe {
@@ -6059,7 +6059,7 @@ fn native_mode_rail_window_proof(
             let contract = mode
                 .get("rustContract")
                 .and_then(Value::as_str)
-                .unwrap_or("aether.native.unknown.v1");
+                .unwrap_or("aelyris.native.unknown.v1");
             let y = 100 + idx as i32 * 54;
             let selected = id == selected_mode;
             unsafe {
@@ -6125,14 +6125,14 @@ fn native_mode_rail_window_proof(
     }
 
     Ok(json!({
-        "schema": "aether.native.mode-rail-window-proof.v1",
+        "schema": "aelyris.native.mode-rail-window-proof.v1",
         "nativeModeRailWindow": true,
         "nativeModeRail": true,
         "windowUi": true,
         "mode": "win32-gdi-mode-rail-window-proof",
         "windowSystem": "win32",
-        "className": "AetherNativeModeRailProof",
-        "title": "Aether Native Modes",
+        "className": "AelyrisNativeModeRailProof",
+        "title": "Aelyris Native Modes",
         "interactiveWindow": is_window_before_destroy,
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
@@ -6159,7 +6159,7 @@ fn native_mode_rail_window_proof(
         "readyForReactDemotion": false,
         "nextProof": "native-inspector-window-proof",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -6173,7 +6173,7 @@ fn native_mode_rail_window_proof(
     _visible: bool,
 ) -> Result<Value, String> {
     Err(
-        "aether-native mode-rail-window-proof is currently implemented for Windows only"
+        "aelyris-native mode-rail-window-proof is currently implemented for Windows only"
             .to_string(),
     )
 }
@@ -6219,7 +6219,7 @@ fn native_inspector_window_proof(
 
     let inspector = mode_shell.get("inspector").cloned().unwrap_or_else(|| {
         json!({
-            "schema": "aether.native.inspector.v1",
+            "schema": "aelyris.native.inspector.v1",
             "nativeInspector": true,
             "commandCenterBacked": true,
             "contextualInspector": true,
@@ -6232,7 +6232,7 @@ fn native_inspector_window_proof(
     let right_inspector_contract_id = mode_shell
         .get("rightInspectorContractId")
         .and_then(Value::as_str)
-        .unwrap_or("aether.native.inspector.v1:command-center");
+        .unwrap_or("aelyris.native.inspector.v1:command-center");
     let actions = command_center
         .get("actions")
         .and_then(Value::as_array)
@@ -6305,8 +6305,8 @@ fn native_inspector_window_proof(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativeInspectorProof");
-    let window_title = w!("Aether Native Inspector");
+    let class_name = w!("AelyrisNativeInspectorProof");
+    let window_title = w!("Aelyris Native Inspector");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -6316,7 +6316,7 @@ fn native_inspector_window_proof(
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativeInspectorProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativeInspectorProof".to_string());
     }
 
     let ex_style = WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0);
@@ -6372,7 +6372,7 @@ fn native_inspector_window_proof(
             SetTextColor(dc, COLORREF(0x00F8EAF1));
         }
 
-        if draw_native_text_line(dc, 24, 26, "Aether Native Inspector")? {
+        if draw_native_text_line(dc, 24, 26, "Aelyris Native Inspector")? {
             draw_calls += 1;
         }
         unsafe {
@@ -6516,14 +6516,14 @@ fn native_inspector_window_proof(
     }
 
     Ok(json!({
-        "schema": "aether.native.inspector-window-proof.v1",
+        "schema": "aelyris.native.inspector-window-proof.v1",
         "nativeInspectorWindow": true,
         "nativeContextualInspector": true,
         "windowUi": true,
         "mode": "win32-gdi-inspector-window-proof",
         "windowSystem": "win32",
-        "className": "AetherNativeInspectorProof",
-        "title": "Aether Native Inspector",
+        "className": "AelyrisNativeInspectorProof",
+        "title": "Aelyris Native Inspector",
         "interactiveWindow": is_window_before_destroy,
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
@@ -6532,7 +6532,7 @@ fn native_inspector_window_proof(
         "selectedMode": selected_mode,
         "rightInspectorContractId": right_inspector_contract_id,
         "inspector": inspector,
-        "sourceContract": command_center.get("schema").and_then(Value::as_str).unwrap_or("aether.native.command-center-proof.v1"),
+        "sourceContract": command_center.get("schema").and_then(Value::as_str).unwrap_or("aelyris.native.command-center-proof.v1"),
         "commandCenterBacked": true,
         "contextualInspector": true,
         "evidenceRowsRendered": evidence_hit_targets.len(),
@@ -6573,7 +6573,7 @@ fn native_inspector_window_proof(
         "readyForReactDemotion": false,
         "nextProof": "react-right-rail-compatibility-demotion",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -6588,7 +6588,7 @@ fn native_inspector_window_proof(
     _visible: bool,
 ) -> Result<Value, String> {
     Err(
-        "aether-native inspector-window-proof is currently implemented for Windows only"
+        "aelyris-native inspector-window-proof is currently implemented for Windows only"
             .to_string(),
     )
 }
@@ -6705,7 +6705,7 @@ fn native_text_render_proof(text: &str, alpha: u8) -> Result<Value, String> {
         "gpuRenderer": false,
         "nextRenderer": "winit-wgpu-terminal-grid",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -6713,7 +6713,7 @@ fn native_text_render_proof(text: &str, alpha: u8) -> Result<Value, String> {
 
 #[cfg(not(target_os = "windows"))]
 fn native_text_render_proof(_text: &str, _alpha: u8) -> Result<Value, String> {
-    Err("aether-native render-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native render-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -6832,7 +6832,7 @@ fn native_grid_render_proof(frame: &NativeRenderFrame, alpha: u8) -> Result<Valu
         "gpuRenderer": false,
         "nextRenderer": summary.next_renderer.clone(),
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -6840,7 +6840,7 @@ fn native_grid_render_proof(frame: &NativeRenderFrame, alpha: u8) -> Result<Valu
 
 #[cfg(not(target_os = "windows"))]
 fn native_grid_render_proof(_frame: &NativeRenderFrame, _alpha: u8) -> Result<Value, String> {
-    Err("aether-native grid-render-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native grid-render-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -6891,8 +6891,8 @@ fn native_present_loop_proof(
             .map_err(|err| format!("GetModuleHandleW failed: {err}"))?
             .0,
     );
-    let class_name = w!("AetherNativePresentLoopProof");
-    let window_title = w!("Aether Native Present Loop");
+    let class_name = w!("AelyrisNativePresentLoopProof");
+    let window_title = w!("Aelyris Native Present Loop");
     let class = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(window_proc),
@@ -6902,7 +6902,7 @@ fn native_present_loop_proof(
     };
     let atom = unsafe { RegisterClassW(&class) };
     if atom == 0 {
-        return Err("RegisterClassW failed for AetherNativePresentLoopProof".to_string());
+        return Err("RegisterClassW failed for AelyrisNativePresentLoopProof".to_string());
     }
 
     let ex_style = WINDOW_EX_STYLE(WS_EX_LAYERED.0 | WS_EX_APPWINDOW.0 | WS_EX_NOACTIVATE.0);
@@ -7007,8 +7007,8 @@ fn native_present_loop_proof(
         "presentLoop": true,
         "interactiveWindow": is_window_before_destroy,
         "windowSystem": "win32",
-        "className": "AetherNativePresentLoopProof",
-        "title": "Aether Native Present Loop",
+        "className": "AelyrisNativePresentLoopProof",
+        "title": "Aelyris Native Present Loop",
         "visibleRequested": visible,
         "layered": (ex_style_after & WS_EX_LAYERED.0 as isize) != 0,
         "noActivate": (ex_style_after & WS_EX_NOACTIVATE.0 as isize) != 0,
@@ -7028,7 +7028,7 @@ fn native_present_loop_proof(
         "gpuRenderer": false,
         "nextRenderer": "winit-wgpu-present-loop",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -7041,7 +7041,7 @@ fn native_present_loop_proof(
     _alpha: u8,
     _visible: bool,
 ) -> Result<Value, String> {
-    Err("aether-native present-loop-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native present-loop-proof is currently implemented for Windows only".to_string())
 }
 
 fn native_gpu_render_proof(frame: &NativeRenderFrame) -> Result<Value, String> {
@@ -7059,7 +7059,7 @@ fn native_gpu_render_proof(frame: &NativeRenderFrame) -> Result<Value, String> {
     .map_err(|err| format!("wgpu adapter request failed: {err}"))?;
     let adapter_info = adapter.get_info();
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("aether-native-gpu-render-proof-device"),
+        label: Some("aelyris-native-gpu-render-proof-device"),
         required_features: wgpu::Features::empty(),
         required_limits: wgpu::Limits::downlevel_defaults(),
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
@@ -7070,7 +7070,7 @@ fn native_gpu_render_proof(frame: &NativeRenderFrame) -> Result<Value, String> {
 
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aether-native-gpu-render-proof-target"),
+        label: Some("aelyris-native-gpu-render-proof-target"),
         size: wgpu::Extent3d {
             width,
             height,
@@ -7085,7 +7085,7 @@ fn native_gpu_render_proof(frame: &NativeRenderFrame) -> Result<Value, String> {
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("aether-native-gpu-render-proof-shader"),
+        label: Some("aelyris-native-gpu-render-proof-shader"),
         source: wgpu::ShaderSource::Wgsl(
             r#"
 @vertex
@@ -7107,12 +7107,12 @@ fn fs_main() -> @location(0) vec4<f32> {
         ),
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("aether-native-gpu-render-proof-layout"),
+        label: Some("aelyris-native-gpu-render-proof-layout"),
         bind_group_layouts: &[],
         immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("aether-native-gpu-render-proof-pipeline"),
+        label: Some("aelyris-native-gpu-render-proof-pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
@@ -7138,7 +7138,7 @@ fn fs_main() -> @location(0) vec4<f32> {
     });
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("aether-native-gpu-render-proof-encoder"),
+        label: Some("aelyris-native-gpu-render-proof-encoder"),
     });
     {
         let color_attachment = Some(wgpu::RenderPassColorAttachment {
@@ -7156,7 +7156,7 @@ fn fs_main() -> @location(0) vec4<f32> {
             },
         });
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("aether-native-gpu-render-proof-pass"),
+            label: Some("aelyris-native-gpu-render-proof-pass"),
             color_attachments: &[color_attachment],
             depth_stencil_attachment: None,
             timestamp_writes: None,
@@ -7203,7 +7203,7 @@ fn fs_main() -> @location(0) vec4<f32> {
         "reactUsed": false,
         "nextRenderer": "winit-wgpu-surface-present-loop",
         "processIdentity": {
-            "process": "aether-native",
+            "process": "aelyris-native",
             "pid": std::process::id(),
         }
     }))
@@ -7359,10 +7359,10 @@ impl NativeImeProofState {
     }
 }
 
-fn native_ime_anchor_rect(frame: &NativeRenderFrame) -> aether_terminal_lib::term::NativeCellRect {
+fn native_ime_anchor_rect(frame: &NativeRenderFrame) -> aelyris_lib::term::NativeCellRect {
     let col = frame.cursor.col.min(frame.cols.saturating_sub(1));
     let row = frame.cursor.row.min(frame.rows.saturating_sub(1));
-    aether_terminal_lib::term::NativeCellRect {
+    aelyris_lib::term::NativeCellRect {
         x_px: u32::from(col) * u32::from(frame.cell_width_px),
         y_px: u32::from(row) * u32::from(frame.cell_height_px),
         width_px: frame
@@ -7465,7 +7465,7 @@ fn native_winit_wgpu_surface_proof(
             let adapter_info = adapter.get_info();
             let (device, queue) =
                 pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                    label: Some("aether-native-winit-wgpu-device"),
+                    label: Some("aelyris-native-winit-wgpu-device"),
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::downlevel_defaults(),
                     experimental_features: wgpu::ExperimentalFeatures::disabled(),
@@ -7506,20 +7506,20 @@ fn native_winit_wgpu_surface_proof(
             surface.configure(&device, &config);
             let rect_instance_buffer =
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("aether-native-winit-wgpu-terminal-rect-instances"),
+                    label: Some("aelyris-native-winit-wgpu-terminal-rect-instances"),
                     contents: bytemuck::cast_slice(rect_instances),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
             let glyph_instance_buffer =
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("aether-native-winit-wgpu-terminal-glyph-instances"),
+                    label: Some("aelyris-native-winit-wgpu-terminal-glyph-instances"),
                     contents: bytemuck::cast_slice(glyph_instances),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
             let atlas_texture = device.create_texture_with_data(
                 &queue,
                 &wgpu::TextureDescriptor {
-                    label: Some("aether-native-winit-wgpu-font-atlas"),
+                    label: Some("aelyris-native-winit-wgpu-font-atlas"),
                     size: wgpu::Extent3d {
                         width: font_atlas.width.max(1),
                         height: font_atlas.height.max(1),
@@ -7537,7 +7537,7 @@ fn native_winit_wgpu_surface_proof(
             );
             let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("aether-native-winit-wgpu-font-atlas-sampler"),
+                label: Some("aelyris-native-winit-wgpu-font-atlas-sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 mag_filter: wgpu::FilterMode::Linear,
@@ -7547,7 +7547,7 @@ fn native_winit_wgpu_surface_proof(
             });
             let glyph_bind_group_layout =
                 device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("aether-native-winit-wgpu-font-atlas-layout"),
+                    label: Some("aelyris-native-winit-wgpu-font-atlas-layout"),
                     entries: &[
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
@@ -7568,7 +7568,7 @@ fn native_winit_wgpu_surface_proof(
                     ],
                 });
             let glyph_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("aether-native-winit-wgpu-font-atlas-bind-group"),
+                label: Some("aelyris-native-winit-wgpu-font-atlas-bind-group"),
                 layout: &glyph_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
@@ -7582,7 +7582,7 @@ fn native_winit_wgpu_surface_proof(
                 ],
             });
             let rect_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("aether-native-winit-wgpu-terminal-rect-shader"),
+                label: Some("aelyris-native-winit-wgpu-terminal-rect-shader"),
                 source: wgpu::ShaderSource::Wgsl(
                     r#"
 struct VertexInput {
@@ -7621,7 +7621,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                 ),
             });
             let glyph_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("aether-native-winit-wgpu-terminal-glyph-shader"),
+                label: Some("aelyris-native-winit-wgpu-terminal-glyph-shader"),
                 source: wgpu::ShaderSource::Wgsl(
                     r#"
 struct VertexInput {
@@ -7676,12 +7676,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             });
             let rect_pipeline_layout =
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("aether-native-winit-wgpu-terminal-rect-layout"),
+                    label: Some("aelyris-native-winit-wgpu-terminal-rect-layout"),
                     bind_group_layouts: &[],
                     immediate_size: 0,
                 });
             let rect_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("aether-native-winit-wgpu-terminal-rect-pipeline"),
+                label: Some("aelyris-native-winit-wgpu-terminal-rect-pipeline"),
                 layout: Some(&rect_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &rect_shader,
@@ -7722,12 +7722,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             });
             let glyph_pipeline_layout =
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("aether-native-winit-wgpu-terminal-glyph-layout"),
+                    label: Some("aelyris-native-winit-wgpu-terminal-glyph-layout"),
                     bind_group_layouts: &[&glyph_bind_group_layout],
                     immediate_size: 0,
                 });
             let glyph_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("aether-native-winit-wgpu-terminal-glyph-pipeline"),
+                label: Some("aelyris-native-winit-wgpu-terminal-glyph-pipeline"),
                 layout: Some(&glyph_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &glyph_shader,
@@ -7808,11 +7808,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let mut encoder = gpu
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("aether-native-winit-wgpu-terminal-encoder"),
+                    label: Some("aelyris-native-winit-wgpu-terminal-encoder"),
                 });
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("aether-native-winit-wgpu-terminal-pass"),
+                    label: Some("aelyris-native-winit-wgpu-terminal-pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         depth_slice: None,
@@ -7867,7 +7867,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                 return;
             }
             let attrs = Window::default_attributes()
-                .with_title("Aether Native winit/wgpu Terminal")
+                .with_title("Aelyris Native winit/wgpu Terminal")
                 .with_inner_size(LogicalSize::new(self.width as f64, self.height as f64))
                 .with_transparent(true)
                 .with_visible(self.visible);
@@ -8165,7 +8165,7 @@ fn native_winit_wgpu_surface_proof(
     _duration: Duration,
     _visible: bool,
 ) -> Result<Value, String> {
-    Err("aether-native winit-wgpu-proof is currently implemented for Windows only".to_string())
+    Err("aelyris-native winit-wgpu-proof is currently implemented for Windows only".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -8659,7 +8659,7 @@ fn render_proof_lines(text: &str) -> Vec<String> {
         .take(16)
         .collect::<Vec<_>>();
     if lines.is_empty() {
-        lines.push("Aether Native Renderer".to_string());
+        lines.push("Aelyris Native Renderer".to_string());
     }
     lines
 }
@@ -8701,7 +8701,7 @@ mod tests {
     #[test]
     fn render_proof_lines_strips_controls_and_has_fallback() {
         assert_eq!(render_proof_lines("\u{1b}[31mhello")[0], "[31mhello");
-        assert_eq!(render_proof_lines("\n\n")[0], "Aether Native Renderer");
+        assert_eq!(render_proof_lines("\n\n")[0], "Aelyris Native Renderer");
     }
 
     #[test]
@@ -8725,7 +8725,7 @@ mod tests {
     #[test]
     fn full_native_contract_is_honest_about_missing_daily_driver_work() {
         let contract = full_native_readiness_contract();
-        assert_eq!(contract["schema"], "aether.full-native-readiness.v1");
+        assert_eq!(contract["schema"], "aelyris.full-native-readiness.v1");
         assert_eq!(contract["currentStage"], "native-client-spike");
         assert_eq!(contract["completed"]["rendererNeutralFrameContract"], true);
         assert_eq!(contract["completed"]["winitWgpuFontAtlasProof"], true);

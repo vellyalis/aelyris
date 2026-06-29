@@ -230,7 +230,7 @@ impl TermEngine {
                 ImageParseStep::None => {} // fall through to OSC 1338
             }
 
-            // Chunked OSC 1338 image protocol — Aether-specific vehicle
+            // Chunked OSC 1338 image protocol — Aelyris-specific vehicle
             // for Windows where ConPTY strips Kitty APC. Bytes are
             // *consumed* (never forwarded to alacritty) so an in-flight
             // BEGIN/DATA/END sequence never leaks into the grid. See

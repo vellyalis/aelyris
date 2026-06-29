@@ -79,7 +79,7 @@ const checks = [
     "window-session-model-verifier-is-required",
     packageJson.includes('"verify:mux-window-session-model"') &&
       packageJson.includes("scripts/verify-mux-window-session-model.mjs") &&
-      windowSession.includes("aether.mux-window-session-model/v1") &&
+      windowSession.includes("aelyris.mux-window-session-model/v1") &&
       windowSession.includes("delete_mux_workspace") &&
       windowSession.includes("create_mux_window") &&
       windowSession.includes("close_mux_window") &&
@@ -102,7 +102,7 @@ const checks = [
     "live-process-preservation-gate-is-separated",
     packageJson.includes('"verify:mux-live-process-preservation"') &&
       packageJson.includes("scripts/verify-mux-live-process-preservation.mjs") &&
-      processPreservation.includes("aether.mux-live-process-preservation/v1") &&
+      processPreservation.includes("aelyris.mux-live-process-preservation/v1") &&
       processPreservation.includes('currentCapability: ok ? "daemon-live-detach-reattach-same-process" : "unknown"') &&
       processPreservation.includes('requiredCapability: "same-process-or-broker-preserved-reconnect"') &&
       processPreservation.includes("daemon-restart-is-restore-pending-respawn") &&
@@ -135,7 +135,7 @@ const checks = [
   check(
     "snapshot-store-is-versioned-atomic-and-restore-pending",
     store.includes("VersionedMuxSnapshot") &&
-      store.includes("aether.mux.v") &&
+      store.includes("aelyris.mux.v") &&
       store.includes("tmp_snapshot_path") &&
       store.includes("fs::rename") &&
       store.includes("graph_for_snapshot_restore") &&
@@ -149,8 +149,8 @@ const checks = [
       apiMod.includes("store.load_all_graphs()") &&
       apiMod.includes("graph_for_snapshot_restore(graph)") &&
       apiMod.includes("with_env_mux_store") &&
-      apiMod.includes("QUORUM_MUX_SNAPSHOT_DIR"),
-    "ApiState loads mux snapshots on startup from QUORUM_MUX_SNAPSHOT_DIR and converts them to restore-pending graphs.",
+      apiMod.includes("AELYRIS_MUX_SNAPSHOT_DIR"),
+    "ApiState loads mux snapshots on startup from AELYRIS_MUX_SNAPSHOT_DIR and converts them to restore-pending graphs.",
   ),
   check(
     "api-mux-mutating-routes-persist-snapshots",
@@ -195,8 +195,8 @@ const checks = [
       liveRestore.includes("durable-scrollback") &&
       liveRestore.includes("startSidecar") &&
       liveRestore.includes("killProcess") &&
-      liveRestore.includes("aetherctl"),
-    "Live restore verifier checks sidecar contract capabilities and exercises restart/restore through aetherctl.",
+      liveRestore.includes("aelys"),
+    "Live restore verifier checks sidecar contract capabilities and exercises restart/restore through aelys.",
   ),
   check(
     "performance-verifier-covers-attach-detach-budgets",
@@ -231,7 +231,7 @@ const checks = [
 
 const failed = checks.filter((item) => !item.ok);
 const report = {
-  schema: "aether.mux-tmux-grade-contract/v1",
+  schema: "aelyris.mux-tmux-grade-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,

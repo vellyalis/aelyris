@@ -126,7 +126,7 @@ export function DiffViewer({
           original={original}
           modified={modified}
           language={language}
-          theme="aether-theme"
+          theme="aelyris-theme"
           options={{
             readOnly: true,
             renderSideBySide: layout === "split",
@@ -140,7 +140,7 @@ export function DiffViewer({
             scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
           }}
           beforeMount={(monaco) => {
-            monaco.editor.defineTheme("aether-theme", {
+            monaco.editor.defineTheme("aelyris-theme", {
               base: light ? "vs" : "vs-dark",
               inherit: true,
               rules: [],
@@ -148,7 +148,7 @@ export function DiffViewer({
             });
           }}
           onMount={(editor, monaco) => {
-            monaco.editor.setTheme("aether-theme");
+            monaco.editor.setTheme("aelyris-theme");
             const modifiedEditor = editor.getModifiedEditor();
             // Monaco MouseTargetType.GUTTER_GLYPH_MARGIN === 2.
             modifiedEditor.onMouseDown((e) => {

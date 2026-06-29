@@ -1,12 +1,12 @@
 // Live Tauri/WebView2 smoke for right-rail recoverable negative paths.
 //
 // Prerequisite:
-//   set QUORUM_API_TOKEN=dev && pnpm.cmd tauri:dev
+//   set AELYRIS_API_TOKEN=dev && pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_RIGHT_RAIL_NEGATIVE_OUT=.codex-auto/production-smoke/right-rail-negative-path.json
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_RIGHT_RAIL_NEGATIVE_OUT=.codex-auto/production-smoke/right-rail-negative-path.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -14,10 +14,10 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? "http://127.0.0.1:9222";
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const OUT = process.env.AETHER_RIGHT_RAIL_NEGATIVE_OUT ?? ".codex-auto/production-smoke/right-rail-negative-path.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_RIGHT_RAIL_NEGATIVE_WAIT_MS ?? "90000", 10);
+const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const OUT = process.env.AELYRIS_RIGHT_RAIL_NEGATIVE_OUT ?? ".codex-auto/production-smoke/right-rail-negative-path.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_RIGHT_RAIL_NEGATIVE_WAIT_MS ?? "90000", 10);
 
 const CASES = [
   {
@@ -92,13 +92,13 @@ async function connectWithWait() {
 
 function targetQaUrl(rawUrl, testCase) {
   const url = new URL(rawUrl);
-  url.searchParams.set("aetherVisualQa", "1");
+  url.searchParams.set("aelyrisVisualQa", "1");
   url.searchParams.set("projectPath", PROJECT_PATH);
   url.searchParams.set("rail", "command");
   url.searchParams.set("state", testCase.state);
   url.searchParams.set("negativePath", testCase.id);
   url.searchParams.set("v", `right-rail-negative-${testCase.id}`);
-  url.searchParams.delete("aetherDashboardStateUrl");
+  url.searchParams.delete("aelyrisDashboardStateUrl");
   return url.toString();
 }
 
@@ -129,11 +129,11 @@ async function assertTauriInternals(page) {
 async function seedQaStorage(page) {
   await page
     .evaluate((projectPath) => {
-      window.localStorage.setItem("aether:visualQa", "1");
-      window.localStorage.setItem("aether:visualQaProject", projectPath);
-      window.localStorage.setItem("aether:lastProject", projectPath);
-      window.localStorage.setItem("aether:onboarding-done", "true");
-      window.localStorage.removeItem("aether:dashboardStateUrl");
+      window.localStorage.setItem("aelyris:visualQa", "1");
+      window.localStorage.setItem("aelyris:visualQaProject", projectPath);
+      window.localStorage.setItem("aelyris:lastProject", projectPath);
+      window.localStorage.setItem("aelyris:onboarding-done", "true");
+      window.localStorage.removeItem("aelyris:dashboardStateUrl");
     }, PROJECT_PATH)
     .catch(() => {});
 }

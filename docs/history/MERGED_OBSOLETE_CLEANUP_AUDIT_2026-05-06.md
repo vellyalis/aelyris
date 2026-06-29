@@ -2,7 +2,7 @@
 
 ## Verdict
 
-Do not delete the dirty Aether source changes as "already merged residue".
+Do not delete the dirty Aelyris source changes as "already merged residue".
 
 The repository has only one git branch and one git worktree, so there are no leftover merged feature branches or longrun worker worktrees to remove. The remaining dirty state is the current `master` working tree itself and includes runtime code, Rust backend changes, frontend feature panels, tests, release scripts, icons, and documentation changes.
 
@@ -61,14 +61,14 @@ Remaining risk state after cleanup:
 
 ## Process Cleanup
 
-Stopped stale Aether Vite validation servers on ports `1420` and `1421`.
+Stopped stale Aelyris Vite validation servers on ports `1420` and `1421`.
 
 Kept the longrun dashboard alive:
 
 - `http://127.0.0.1:48371/`
 - PID: `20720`
 
-After cleanup, Aether-related Node processes are limited to:
+After cleanup, Aelyris-related Node processes are limited to:
 
 - the Codex worker/kernel for this session
 - the longrun progress dashboard

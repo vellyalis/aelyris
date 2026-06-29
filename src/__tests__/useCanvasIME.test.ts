@@ -444,8 +444,8 @@ describe("IME diagnostic helpers", () => {
     });
 
     installImeDiagnosticHelpers(window);
-    window.__AETHER_ENABLE_IME_DEBUG__?.();
-    window.__AETHER_IME_EVENTS__ = [
+    window.__AELYRIS_ENABLE_IME_DEBUG__?.();
+    window.__AELYRIS_IME_EVENTS__ = [
       {
         phase: "compositionstart",
         terminalId: "term-1",
@@ -475,8 +475,8 @@ describe("IME diagnostic helpers", () => {
     );
     expect(writeText).not.toHaveBeenCalled();
 
-    await expect(window.__AETHER_COPY_IME_EVENTS__?.()).resolves.toBe(true);
-    window.__AETHER_DISABLE_IME_DEBUG__?.();
+    await expect(window.__AELYRIS_COPY_IME_EVENTS__?.()).resolves.toBe(true);
+    window.__AELYRIS_DISABLE_IME_DEBUG__?.();
     expect(imeDiagnosticsEnabled(window)).toBe(false);
   });
 
@@ -495,7 +495,7 @@ describe("IME diagnostic helpers", () => {
     enableImeDiagnostics(window);
     dispatchComposition(textarea, "compositionstart");
 
-    const last = window.__AETHER_IME_EVENTS__?.at(-1);
+    const last = window.__AELYRIS_IME_EVENTS__?.at(-1);
     expect(last).toEqual(
       expect.objectContaining({
         phase: "compositionstart",
@@ -701,7 +701,7 @@ describe("useCanvasIME composition lifecycle", () => {
 
       expect(writeBytes).toHaveBeenCalledTimes(1);
       expect(writeBytes).toHaveBeenCalledWith("term-1", "\x7f");
-      expect(JSON.stringify(window.__AETHER_IME_EVENTS__ ?? [])).not.toContain(longPreedit);
+      expect(JSON.stringify(window.__AELYRIS_IME_EVENTS__ ?? [])).not.toContain(longPreedit);
     } finally {
       vi.useRealTimers();
     }
@@ -728,7 +728,7 @@ describe("useCanvasIME composition lifecycle", () => {
 
       expect(writeBytes).toHaveBeenCalledTimes(1);
       expect(writeBytes).toHaveBeenCalledWith("term-1", "\x1b[3~");
-      expect(JSON.stringify(window.__AETHER_IME_EVENTS__ ?? [])).not.toContain(longPreedit);
+      expect(JSON.stringify(window.__AELYRIS_IME_EVENTS__ ?? [])).not.toContain(longPreedit);
     } finally {
       vi.useRealTimers();
     }
@@ -944,7 +944,7 @@ describe("useCanvasIME composition lifecycle", () => {
     const onDiagnostic = (event: Event) => {
       diagnostics.push((event as CustomEvent).detail as Record<string, unknown>);
     };
-    window.__AETHER_IME_DEBUG__ = true;
+    window.__AELYRIS_IME_DEBUG__ = true;
     window.addEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic);
 
     try {
@@ -958,7 +958,7 @@ describe("useCanvasIME composition lifecycle", () => {
         reason: "empty-or-non-text-paste-ignored",
       });
     } finally {
-      window.__AETHER_IME_DEBUG__ = false;
+      window.__AELYRIS_IME_DEBUG__ = false;
       window.removeEventListener(IME_DIAGNOSTIC_EVENT, onDiagnostic);
     }
   });

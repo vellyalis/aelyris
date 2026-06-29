@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const tauriDir = join(root, "src-tauri");
-const DEV_SIDECAR_REPLACE_RETRIES = Number.parseInt(process.env.AETHER_DEV_SIDECAR_REPLACE_RETRIES ?? "5", 10);
+const DEV_SIDECAR_REPLACE_RETRIES = Number.parseInt(process.env.AELYRIS_DEV_SIDECAR_REPLACE_RETRIES ?? "5", 10);
 const DEV_SIDECAR_REPLACE_RETRY_DELAY_MS = Number.parseInt(
-  process.env.AETHER_DEV_SIDECAR_REPLACE_RETRY_DELAY_MS ?? "250",
+  process.env.AELYRIS_DEV_SIDECAR_REPLACE_RETRY_DELAY_MS ?? "250",
   10,
 );
 
@@ -47,8 +47,8 @@ function run(command, args) {
 run("cargo", ["build", "--manifest-path", "src-tauri/pty-server/Cargo.toml"]);
 
 const extension = process.platform === "win32" ? ".exe" : "";
-const built = join(tauriDir, "pty-server", "target", "debug", `aether-pty-server${extension}`);
-const sibling = join(tauriDir, "target", "debug", `aether-pty-server${extension}`);
+const built = join(tauriDir, "pty-server", "target", "debug", `aelyris-pty-server${extension}`);
+const sibling = join(tauriDir, "target", "debug", `aelyris-pty-server${extension}`);
 
 function sleepSync(ms) {
   const buffer = new SharedArrayBuffer(4);

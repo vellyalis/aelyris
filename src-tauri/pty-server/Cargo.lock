@@ -9,16 +9,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "aether-pty-server"
-version = "0.2.3"
-dependencies = [
- "aether-terminal",
- "log",
- "tokio",
-]
-
-[[package]]
-name = "aether-terminal"
+name = "aelyris"
 version = "0.2.3"
 dependencies = [
  "alacritty_terminal",
@@ -67,6 +58,15 @@ dependencies = [
  "windows-core 0.61.2",
  "windows-core 0.62.2",
  "winit",
+]
+
+[[package]]
+name = "aelyris-pty-server"
+version = "0.2.3"
+dependencies = [
+ "aelyris",
+ "log",
+ "tokio",
 ]
 
 [[package]]

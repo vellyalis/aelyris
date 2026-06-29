@@ -3,7 +3,7 @@
   align-items: center;
   height: 22px;
   padding: 0 10px;
-  background: var(--aether-bg-sidebar);
+  background: var(--aelyris-bg-sidebar);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-md);
   overflow: hidden;

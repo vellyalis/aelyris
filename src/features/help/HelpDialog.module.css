@@ -18,7 +18,7 @@
   width: var(--dialog-width-lg);
   max-width: 90vw;
   max-height: 80vh;
-  /* --dialog-surface (92% alpha) instead of --aether-bg-card (72%) so the
+  /* --dialog-surface (92% alpha) instead of --aelyris-bg-card (72%) so the
    * shortcut table reads crisply over the scrim — same treatment we rolled
    * out to Settings after the 2026-04-25 CDP review flagged the darker
    * variants as illegible. */

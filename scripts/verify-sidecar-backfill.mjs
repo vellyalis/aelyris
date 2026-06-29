@@ -18,8 +18,8 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_BACKFILL_CDP ?? "http://127.0.0.1:9222";
-const OUT = process.env.AETHER_BACKFILL_OUT ?? ".codex-auto/production-smoke/verify-sidecar-backfill.json";
+const CDP = process.env.AELYRIS_BACKFILL_CDP ?? "http://127.0.0.1:9222";
+const OUT = process.env.AELYRIS_BACKFILL_OUT ?? ".codex-auto/production-smoke/verify-sidecar-backfill.json";
 const PHASE = process.argv.includes("--phase") ? process.argv[process.argv.indexOf("--phase") + 1] : "seed";
 
 function loadArtifact() {
@@ -54,7 +54,7 @@ async function connectWithRetry() {
   throw lastErr;
 }
 
-async function findAetherPage(browser) {
+async function findAelyrisPage(browser) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     for (const context of browser.contexts()) {
       for (const page of context.pages()) {
@@ -152,7 +152,7 @@ async function main() {
 
   const browser = await connectWithRetry();
   try {
-    const page = await findAetherPage(browser);
+    const page = await findAelyrisPage(browser);
     if (PHASE === "seed") {
       report.seed = await seed(page);
       report.status = "seeded";

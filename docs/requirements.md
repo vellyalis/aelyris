@@ -1,45 +1,52 @@
-# Quorum Requirements Index
+# Aelyris Requirements Index
 
 Status: active implementation index
 Last updated: 2026-06-27 JST
-Last reviewed: 2026-06-28 JST
+Last reviewed: 2026-06-29 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
 authoritative requirement, specification, design, and proof sources.
 
+## Naming Authority
+
+- Product: **Aelyris** (`Aelys` / `エイリス`).
+- CLI / short name: `aelys`.
+- Product surfaces: **Aelyris Core**, **Aelyris Grid**, **Aelyris Pane**.
+- Coordination engine: **Qralis**.
+
 ## Current Requirements Authority
 
 1. Product requirements:
-   `docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md`
+   `docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md`
 
-   Owns the AI Agent OS / autonomous cockpit requirements: Quorum Control API,
+   Owns the AI Agent OS / autonomous cockpit requirements: Aelyris Control API,
    Planner / Worker / Reviewer hierarchy, Task Graph, Event Bus, Context Store,
    Cost Manager, worktree isolation, merge authority, and non-blocking automated
    safety controls.
 
 2. World-class claim requirements:
-   `docs/specs/QUORUM_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
+   `docs/specs/AELYRIS_COMPETITIVE_GAP_AUDIT_2026-06-25.md`
 
    Owns the current gap classification for tmux-grade mux behavior,
    BridgeSpace-plus AI team OS behavior, Ghostty / WezTerm-class Windows
    terminal quality, and release readiness.
 
 3. Gap-closure implementation requirements:
-   `docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md`
+   `docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md`
 
    Owns the active implementation workstreams, anti-debt rules, fallback policy,
    G5 native terminal closure gates, and G6 aggregate world-class gate.
 
 4. Agent-message superset requirements:
-   `docs/specs/QUORUM_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
+   `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 
    Owns the `agmsg` comparative audit result, local agent message bus
    requirements, delivery policy, role leases, directive protocol, driver trust,
    and the strict-superset claim boundary.
 
 5. Traceability:
-   `docs/specs/QUORUM_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
+   `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md`
 
    Owns the mapping from requirement -> specification -> implementation design
    -> verifier -> current artifact.
@@ -57,7 +64,7 @@ The product must not claim any of these until the matching gate is green:
 
 The current defensible claim is narrower:
 
-> Quorum has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
+> Aelyris has a real Rust/Tauri terminal, mux, sidecar, visible-agent, MCP,
 > worktree, ownership, review, and merge substrate, but the world-class claim is
 > still blocked by durability, persistence, native-quality, and current-proof
 > gates.
@@ -76,8 +83,8 @@ pnpm verify:requirements-spec-design-traceability
 Current expected classification after the 2026-06-27 doc sync:
 
 - `.codex-auto/quality/world-class-terminal-ai-os.json`: `status=external-blocked`
-- `.codex-auto/quality/release-quality-score.json`: score `43/100`,
-  `150/351`, grade `D`, `releaseCandidateReady=false`
+- `.codex-auto/quality/release-quality-score.json`: score `35/100`,
+  `124/351`, grade `D`, `releaseCandidateReady=false`
 - `.codex-auto/quality/current-readiness-source.json`: `status=block`
 
 These artifacts override stale prose, older promotion gates, and historical

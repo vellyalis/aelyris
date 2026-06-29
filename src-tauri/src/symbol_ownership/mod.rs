@@ -273,7 +273,7 @@ impl SymbolOwnership {
     /// parser tier, `dh:` for diff-hunk) so an extractor reconciles ONLY its OWN prior
     /// derived claims for a file: re-deriving the whole file frees a renamed/removed
     /// symbol's stale claim WITHOUT erasing the OTHER extractor's claims or an agent's
-    /// hand-made (`aether.symbol.claim`) claims on the same file. Returns the count freed.
+    /// hand-made (`aelyris.symbol.claim`) claims on the same file. Returns the count freed.
     pub fn release_for_prefix(&mut self, prefix: &str) -> usize {
         let before = self.claims.len();
         self.claims.retain(|c| !c.claim_id.starts_with(prefix));

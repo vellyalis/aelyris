@@ -122,7 +122,7 @@
   text-align: center;
 }
 
-:global(:root[data-mood="aether-sakura"]) .pulse {
+:global(:root[data-mood="aelyris-sakura"]) .pulse {
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.48), transparent 74%),
@@ -133,39 +133,39 @@
     0 6px 16px rgba(80, 32, 52, 0.08);
 }
 
-:global(:root[data-mood="aether-sakura"]) .pulse[data-tone="danger"],
-:global(:root[data-mood="aether-sakura"]) .pulse[data-tone="warn"] {
+:global(:root[data-mood="aelyris-sakura"]) .pulse[data-tone="danger"],
+:global(:root[data-mood="aelyris-sakura"]) .pulse[data-tone="warn"] {
   border-color: color-mix(in srgb, var(--ctp-yellow) 36%, var(--accent));
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--ctp-yellow) 13%, rgba(255, 255, 255, 0.72)), transparent 68%),
     rgba(255, 248, 251, 0.88);
 }
 
-:global(:root[data-mood="aether-sakura"]) .pulse[data-tone="review"] {
+:global(:root[data-mood="aelyris-sakura"]) .pulse[data-tone="review"] {
   border-color: color-mix(in srgb, var(--ctp-blue) 24%, var(--accent));
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--ctp-blue) 9%, rgba(255, 255, 255, 0.72)), transparent 68%),
     rgba(255, 248, 251, 0.86);
 }
 
-:global(:root[data-mood="aether-sakura"]) .signalIcon {
+:global(:root[data-mood="aelyris-sakura"]) .signalIcon {
   color: var(--gold);
   background: color-mix(in srgb, var(--accent) 12%, rgba(255, 255, 255, 0.58));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-:global(:root[data-mood="aether-sakura"]) .metric {
+:global(:root[data-mood="aelyris-sakura"]) .metric {
   background: rgba(255, 255, 255, 0.48);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
-:global(:root[data-mood="aether-sakura"]) .signalLabel,
-:global(:root[data-mood="aether-sakura"]) .metricValue {
+:global(:root[data-mood="aelyris-sakura"]) .signalLabel,
+:global(:root[data-mood="aelyris-sakura"]) .metricValue {
   color: var(--text-primary);
 }
 
-:global(:root[data-mood="aether-sakura"]) .signalDetail,
-:global(:root[data-mood="aether-sakura"]) .metricLabel {
+:global(:root[data-mood="aelyris-sakura"]) .signalDetail,
+:global(:root[data-mood="aelyris-sakura"]) .metricLabel {
   color: var(--text-muted);
 }
 

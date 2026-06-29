@@ -4,13 +4,13 @@ Date: 2026-05-27
 
 ## Final Goal
 
-Aether Terminal reaches the current final implementation goal when the native-first hybrid product is implementation-complete:
+Aelyris reaches the current final implementation goal when the native-first hybrid product is implementation-complete:
 
 - Rust owns terminal truth: PTY, mux/session graph, pane lifecycle, scrollback, command history, recovery evidence, settings data, Command Center data, and AI CLI orchestration contracts.
 - The terminal hot path is native-first: input, IME, clipboard, paste guard, shell launch, AI CLI launch planning, pane split/close/focus, and recovery must not depend on xterm/WebView truth.
 - React/Tauri remains allowed only for contract-backed UI surfaces: settings, inspector, review panels, project panels, and compatibility views.
 - Clauge-inspired information architecture is retained: left mode rail, central work surface, and right contextual Inspector.
-- Clauge source good parts are tracked in `docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md`; the target is upper compatibility for Aether's AI-terminal domain, not broad REST/SQL/NoSQL/S3 feature sprawl.
+- Clauge source good parts are tracked in `docs/history/CLAUGE_SOURCE_AUDIT_GOOD_PARTS_2026-05-27.md`; the target is upper compatibility for Aelyris's AI-terminal domain, not broad REST/SQL/NoSQL/S3 feature sprawl.
 - Mission Control-style ambiguity is removed; the right rail explains what can be done, why it matters, what evidence backs it, and what recovery action exists.
 - Theme customization is user-owned: per-preset color, material opacity, wallpaper path/file selection, image opacity, scale, position, and Sakura isolation must remain tested.
 
@@ -80,9 +80,9 @@ Acceptance:
 
 - Clauge source-informed patterns are accounted for: mode identity, mode state preservation, per-mode AI/context, agent purpose/worktree/provider identity, workspace inbox/notes/boards, cross-mode history, and MCP-ready local-first contracts.
 - New upper-compatibility gates are tracked from the Clauge source audit:
-  `aether.mcp.server.v1`, `aether.workspace.data.v1`,
-  `aether.mode-preservation.v1`, `aether.history.search.v1`, and
-  `aether.agent-identity.v1`.
+  `aelyris.mcp.server.v1`, `aelyris.workspace.data.v1`,
+  `aelyris.mode-preservation.v1`, `aelyris.history.search.v1`, and
+  `aelyris.agent-identity.v1`.
 - The right rail scrolls reliably.
 - It exposes ranked actions, evidence, recovery, consent state, freshness, and current blocker ownership.
 - It does not leak Visual QA fixture state into runtime truth.
@@ -126,7 +126,7 @@ pnpm verify:quality-score
 pnpm verify:native-first:audit
 node node_modules\typescript\bin\tsc --noEmit --pretty false
 cargo fmt --manifest-path src-tauri\Cargo.toml --check
-cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native
+cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native
 ```
 
 ## Release-Operation Gates

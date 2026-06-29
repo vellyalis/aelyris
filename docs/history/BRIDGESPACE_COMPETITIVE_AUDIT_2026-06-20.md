@@ -2,7 +2,7 @@
 
 対象: BridgeMind **BridgeSpace**（Agentic Development Environment）。出典: 製品ページ /
 docs.bridgemind.ai/docs/bridgespace / roadmap（browser-UA fetch, 2026-06-20）。
-Aether 側はコードで実在確認（grep ベース、推測でない）。
+Aelyris 側はコードで実在確認（grep ベース、推測でない）。
 
 ## BridgeSpace 機能インベントリ（公開情報）
 - マルチペインターミナル 1–16、**Warp風コマンドブロック**（command text / full output /
@@ -19,8 +19,8 @@ Aether 側はコードで実在確認（grep ベース、推測でない）。
 - エコシステム: **BridgeMCP**(共有エージェントメモリ/タスク連携/cross-tool sync)、
   **BridgeVoice**(オンデバイスWhisper・sub-second の音声コーディング)、BridgeShot
 
-## Aether の実在確認（コード）
-| 機能 | Aether | 証拠 |
+## Aelyris の実在確認（コード）
+| 機能 | Aelyris | 証拠 |
 |---|---|---|
 | マルチペイン分割/mux | ✅ | `pane-tree`, `mux_*` |
 | コマンドブロック+exit表示 | ✅ | `TerminalInfoBar.ExitStatusDot`(緑/赤), `CommandBlockJournal`, prompt marks |
@@ -49,10 +49,10 @@ Aether 側はコードで実在確認（grep ベース、推測でない）。
 5. **【確認】コマンドブロックの per-block 折りたたみ UX**（exit表示はある、折りたたみ要確認）。
 
 ## 取り込まない（既に上 or 別路線）
-- コア自律オーケストレーション（Aether が大幅に深い）/ エディタ深さ(LSP/Vim/Diff) /
+- コア自律オーケストレーション（Aelyris が大幅に深い）/ エディタ深さ(LSP/Vim/Diff) /
   ネイティブRustターミナルエンジン＋PTYサイドカー。
 
 ## 結論（音声系除外後）
 製品体験（テンプレ/テーマ/配布）は BridgeSpace が先行、**自律の深さと API-first
-（外部AIが指揮）は Aether が上**。採用するのは **(1) Fleet含むテンプレート → (2) テーマ
+（外部AIが指揮）は Aelyris が上**。採用するのは **(1) Fleet含むテンプレート → (2) テーマ
 プリセット**（＋配布時に(4)自動更新、(5)ブロック折りたたみ確認）。**音声系(3)は不採用。**

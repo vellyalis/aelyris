@@ -76,8 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_principals_key ON principals(key_hash);
 ## E3 — RBAC + テナント分離（設計）
 
 ### RBAC
-- **`RolePolicy`**(`AccessControl` 実装): `role → 許可 capability パターン集合`（glob: `session.*`, `aether.task.*`, `*`=admin）。`authorize(actor, verb)` = actor の roles の許可集合に verb がマッチするか。`roles` は Principal(E2) から。
-- 例: `admin`=`*` / `operator`=`session.*,aether.*,mux.*` / `readonly`=`*.list,*.get,*.capture,*.recent,*.since,health.*`。
+- **`RolePolicy`**(`AccessControl` 実装): `role → 許可 capability パターン集合`（glob: `session.*`, `aelyris.task.*`, `*`=admin）。`authorize(actor, verb)` = actor の roles の許可集合に verb がマッチするか。`roles` は Principal(E2) から。
+- 例: `admin`=`*` / `operator`=`session.*,aelyris.*,mux.*` / `readonly`=`*.list,*.get,*.capture,*.recent,*.since,health.*`。
 - 設定は TOML or `principals.roles_json`。
 
 ### テナント分離

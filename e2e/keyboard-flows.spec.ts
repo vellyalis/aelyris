@@ -12,14 +12,14 @@ import { test, expect } from "@playwright/test";
  */
 
 const setupProject = async (page: import("@playwright/test").Page) => {
-  const projectPath = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
-  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
+  const projectPath = process.env.AELYRIS_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+  await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(projectPath)}`, {
     waitUntil: "domcontentloaded",
   });
   await page.evaluate((path) => {
-    localStorage.setItem("aether:visualQa", "1");
-    localStorage.setItem("aether:visualQaProject", path);
-    localStorage.setItem("aether:onboarding-done", "1");
+    localStorage.setItem("aelyris:visualQa", "1");
+    localStorage.setItem("aelyris:visualQaProject", path);
+    localStorage.setItem("aelyris:onboarding-done", "1");
   }, projectPath);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });

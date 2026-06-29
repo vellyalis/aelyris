@@ -12,7 +12,7 @@ function check(id, ok, detail, evidence = {}) {
   return { id, ok: Boolean(ok), detail, evidence };
 }
 
-const design = read("docs/specs/QUORUM_GAP_CLOSURE_DESIGN_2026-06-25.md");
+const design = read("docs/specs/AELYRIS_GAP_CLOSURE_DESIGN_2026-06-25.md");
 const packageJson = read("package.json");
 const api = read("src-tauri/src/api/mod.rs");
 const app = read("src/App.tsx");
@@ -61,7 +61,7 @@ const checks = [
   ),
   check(
     "anti-debt-register-enforces-claim-block-shape",
-    antiDebt.includes('schema: "aether.degradation-register/v1"') &&
+    antiDebt.includes('schema: "aelyris.degradation-register/v1"') &&
       antiDebt.includes("claimBlocks") &&
       antiDebt.includes("removalGate") &&
       antiDebt.includes("noClaimPassesWhileBlocked") &&
@@ -78,7 +78,7 @@ const checks = [
 
 const failed = checks.filter((item) => !item.ok);
 const report = {
-  schema: "aether.mux-fallback-blocker-contract/v1",
+  schema: "aelyris.mux-fallback-blocker-contract/v1",
   version: 1,
   generatedAt: new Date().toISOString(),
   ok: failed.length === 0,

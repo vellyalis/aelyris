@@ -16,7 +16,7 @@
   z-index: calc(var(--z-modal) + 1);
   width: 320px;
   max-width: calc(100vw - var(--space-12));
-  background: var(--aether-bg-card);
+  background: var(--aelyris-bg-card);
   border: 1px solid var(--white-10);
   border-radius: var(--radius-lg);
   padding: var(--space-12);

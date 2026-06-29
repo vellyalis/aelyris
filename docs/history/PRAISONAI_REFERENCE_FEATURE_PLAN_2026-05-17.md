@@ -4,7 +4,7 @@ Date: 2026-05-17
 
 ## Verdict
 
-PraisonAI is a strong reference for Aether's agent orchestration layer, especially the right rail. It should not replace Aether's terminal-first direction. The useful move is to turn Aether into a local project command center where terminal panes, AI CLI sessions, workflows, guardrails, memory, and telemetry are visible and controllable from one native workspace.
+PraisonAI is a strong reference for Aelyris's agent orchestration layer, especially the right rail. It should not replace Aelyris's terminal-first direction. The useful move is to turn Aelyris into a local project command center where terminal panes, AI CLI sessions, workflows, guardrails, memory, and telemetry are visible and controllable from one native workspace.
 
 ## High-Value Ideas To Borrow
 
@@ -16,7 +16,7 @@ Add a clear "workforce" model to the right rail:
 - One-click actions: pause, resume, hand off, attach to pane, open diff, copy context pack, rerun with guardrails.
 - Session health: stuck loop, idle, blocked, waiting for approval, failed tool, missing credentials.
 
-Why it matters: Aether's right rail becomes an operational surface instead of a collection of panels.
+Why it matters: Aelyris's right rail becomes an operational surface instead of a collection of panels.
 
 ### P0: Guardrail Profiles
 
@@ -80,11 +80,11 @@ Before risky actions:
 - Verify diff/tests.
 - Offer rollback or auto-rollback on failure.
 
-This matches Aether's product promise better than generic "agent automation."
+This matches Aelyris's product promise better than generic "agent automation."
 
 ## What Not To Copy Directly
 
-- Do not make Aether a Python SDK clone.
+- Do not make Aelyris a Python SDK clone.
 - Do not hide the terminal behind chat.
 - Do not add broad multi-provider features before the local terminal/session core is rock solid.
 - Do not add a visual workflow builder unless right-rail actions and templates are already useful.

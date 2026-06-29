@@ -201,8 +201,8 @@ const report = {
       requires:
         "Run only in a secure operator shell with the current Tauri signing key. Do not persist private keys in the repo or artifacts.",
       expectedOutputs: [
-        "src-tauri/target/release/bundle/nsis/Aether Terminal_0.2.3_x64-setup.exe.sig",
-        "src-tauri/target/release/bundle/msi/Aether Terminal_0.2.3_x64_en-US.msi.sig",
+        "src-tauri/target/release/bundle/nsis/Aelyris_0.2.3_x64-setup.exe.sig",
+        "src-tauri/target/release/bundle/msi/Aelyris_0.2.3_x64_en-US.msi.sig",
         "src-tauri/target/release/bundle/latest.json",
       ],
     },

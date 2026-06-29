@@ -3,7 +3,7 @@
 //! This module is intentionally renderer-neutral. It converts the Rust-owned
 //! terminal grid snapshot into positioned cells and stable metrics that a
 //! native renderer can consume without depending on React, WebView, Canvas, or
-//! xterm semantics. The current `aether-native` proof renders this frame with
+//! xterm semantics. The current `aelyris-native` proof renders this frame with
 //! Win32/GDI; the next renderer can consume the same frame through winit/wgpu.
 
 use serde::{Deserialize, Serialize};
@@ -11,8 +11,8 @@ use sha2::{Digest, Sha256};
 
 use super::snapshot::{CellSnapshot, CursorSnapshot, GridSnapshot, ImageRef};
 
-const RENDER_FRAME_SCHEMA: &str = "aether.native.render-frame.v1";
-const RENDER_DIFF_SCHEMA: &str = "aether.native.render-diff.v1";
+const RENDER_FRAME_SCHEMA: &str = "aelyris.native.render-frame.v1";
+const RENDER_DIFF_SCHEMA: &str = "aelyris.native.render-diff.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -215,7 +215,7 @@ impl NativeRenderFrame {
             }
         }
         if lines.is_empty() {
-            lines.push("Aether Native Grid".to_string());
+            lines.push("Aelyris Native Grid".to_string());
         }
         lines
     }
@@ -382,7 +382,7 @@ mod tests {
             NativeCellMetrics::new(9, 18).expect("metrics"),
         );
 
-        assert_eq!(frame.schema, "aether.native.render-frame.v1");
+        assert_eq!(frame.schema, "aelyris.native.render-frame.v1");
         assert_eq!(frame.cells.len(), 8);
         assert_eq!(frame.width_px, 36);
         assert_eq!(frame.height_px, 36);
@@ -424,7 +424,7 @@ mod tests {
         let current = NativeRenderFrame::from_snapshot(&current_engine.snapshot(), metrics);
         let diff = current.diff_against(Some(&previous));
 
-        assert_eq!(diff.schema, "aether.native.render-diff.v1");
+        assert_eq!(diff.schema, "aelyris.native.render-diff.v1");
         assert_eq!(diff.previous_frame_sha256, Some(previous.frame_sha256()));
         assert_eq!(diff.current_frame_sha256, current.frame_sha256());
         assert!(diff.dirty_cells >= 2);

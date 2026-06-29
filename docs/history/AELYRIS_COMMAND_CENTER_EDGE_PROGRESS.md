@@ -1,5 +1,5 @@
-> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aether is alpha / not release-ready.
-# Aether Command Center Edge Progress
+> **Historical snapshot.** This document may contain stale scores or older release language. Current public readiness is controlled by `README.md`, `docs/README.md`, `docs/requirements.md`, and locally regenerated verifier artifacts. As of the 2026-06-28 public-doc refresh, Aelyris is alpha / not release-ready.
+# Aelyris Command Center Edge Progress
 
 Date: 2026-05-15
 Scope: Sequential execution toward the command-center edge plan.
@@ -12,10 +12,10 @@ Scope: Sequential execution toward the command-center edge plan.
 - The world-class claims remain blocked: tmux, BridgeSpace, Ghostty/WezTerm-class daily-driver quality, and release readiness must not be claimed until the current release-quality and world-class gates pass.
 - The required safe proof registry target is `27/27`, but current final-goal evidence is not complete; stale historical `27/27` phase notes below are retained only as history unless refreshed by the current gate chain.
 - Long external/operator gates persist `.codex-auto/quality/goal-operator-progress.json` with `lastHeartbeatAt`, `nextHeartbeatAt`, active step, and next action, so resumed work can distinguish a real stall from a sleep/token/signing handoff.
-- `pnpm verify:goal:finalize` excludes git finalization by default; set `AETHER_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
+- `pnpm verify:goal:finalize` excludes git finalization by default; set `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` only when commit/merge readiness is intentionally in scope.
 - Git finalization is an optional handoff gate, not required for product/safe/finalize evidence: `.codex-auto/quality/git-finalization-readiness.json` records the exact commit/merge runbook when `.git/index.lock` or `.git/objects` permission errors block staging.
 - `real-os-soak` is host-blocked, not passed: the native sleep command returned `SetSuspendState returned false; GetLastError=50`, while native sleep/postcheck preflights and the no-real-sleep-claim postcheck writer pass.
-- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
+- `authenticated-ai-cli-prompt-smoke` is not run by default because it may spend tokens; `authenticated-ai-cli-consent-packet` must prove the required `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` boundary before any future token-spending prompt run.
 - Current implementation-fixable risks are limited to the `world-class-terminal-ai-os` aggregate gate and its tmux, BridgeSpace, Ghostty/WezTerm-class, and release claim blocks. `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, and `release-operations-proof` are no longer missing final-goal requirements; they are external-blocked proof paths backed by current artifacts. The remaining host/operator gates are mux live restore, npm supply-chain audit, chunked OSC live proof, Tauri/right-rail live visual proof, live/multipane/recovered/process-reconnect command evidence, release signing/updater, and real OS sleep (`spawn EPERM`, WebView2/CDP unavailable, signing material absent, or `SetSuspendState` unsupported). `authenticated-ai-cli-prompt-smoke` remains explicit-consent blocked. Command Center scenario plus provenance/recovery/context-pack evidence are proved; theme customization, fallback/stale visibility, AI CLI launch planner, right-rail command-evidence jump coverage, and right-rail final goal visibility remain proved. The product must still not claim tmux/BridgeSpace/Ghostty/release parity until the world-class gate passes.
 ## Superseded Canonical State - 2026-05-22
 
@@ -23,7 +23,7 @@ Scope: Sequential execution toward the command-center edge plan.
 - `.codex-auto/quality/final-goal-audit.json` reports `ok=true`, `evidenceComplete=true`, and `status=blocked-by-explicit-consent`.
 - `.codex-auto/quality/final-goal-safe-summary.json` reports `ok=true`, `proofArtifactPassCount=27/27`, and no implementation-fixable blocker.
 - The only remaining blocker is `authenticated-ai-cli-prompt-smoke`, because the final authenticated AI CLI prompt smoke may spend tokens.
-- The opt-in artifact is `authenticated-ai-cli-consent-packet`; that final smoke requires `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- The opt-in artifact is `authenticated-ai-cli-consent-packet`; that final smoke requires `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` plus `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
 ### Phase 2.48 - Native winit/wgpu Font Atlas Proof
 
@@ -31,16 +31,16 @@ Status: done
 
 Implemented:
 
-- `aether-native winit-wgpu-proof` now renders terminal glyphs through a native GPU font atlas instead of the earlier cell-quad proxy.
+- `aelyris-native winit-wgpu-proof` now renders terminal glyphs through a native GPU font atlas instead of the earlier cell-quad proxy.
 - Added `fontdue` rasterization from Windows terminal fonts and uploads the atlas to a `wgpu` `R8Unorm` texture.
 - Split the winit/wgpu renderer into dirty/cursor rectangle and glyph sampling pipelines while keeping the same daemon-backed `NativeRenderFrame` and `frameSha256`.
 - The native proof now reports `glyphMode=font-atlas`, `fontAtlas=true`, `fontAtlasGlyphs`, `fontAtlasFontPath`, and check `native-winit-wgpu-font-atlas-proof`.
 
 Validation:
 
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `cargo check --manifest-path src-tauri\pty-server\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-hwnd-paste`
 - `pnpm verify:terminal:native-input`
@@ -64,7 +64,7 @@ Status: done
 
 Implemented:
 
-- Added `aether-native ime-proof`.
+- Added `aelyris-native ime-proof`.
 - The proof keeps IME preedit/commit state in the native Rust client boundary and uses `NativeRenderFrame` cursor metrics for the preedit anchor rectangle.
 - The commit path writes Japanese text into the Rust terminal engine and proves the committed text is visible in the resulting render frame.
 - The proof is deliberately labelled `mode=state-machine-proof` and `realOsImeDogfood=false`, so it does not overclaim live Windows/Japanese IME dogfood.
@@ -72,21 +72,21 @@ Implemented:
 
 Validation:
 
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
 - `pnpm verify:full-native:audit`
 
 Result:
 
-- `.codex-auto/quality/native-client-spike.json` records `nativeIme.operation=ime-proof`, `schema=aether.native.ime-proof.v1`, `nativePreeditOverlay=true`, `nativeCommitPath=true`, `webviewUsed=false`, and `reactUsed=false`.
+- `.codex-auto/quality/native-client-spike.json` records `nativeIme.operation=ime-proof`, `schema=aelyris.native.ime-proof.v1`, `nativePreeditOverlay=true`, `nativeCommitPath=true`, `webviewUsed=false`, and `reactUsed=false`.
 - `.codex-auto/quality/native-boundary-contract.json` remains `14/14` passing.
 - `.codex-auto/quality/full-native-rust-gap-audit.json` reports `61/100`, `70/114`, `status=in-progress`.
 
 Residual:
 
-- Live OS IME dogfood is still open. The next step is to process real `winit`/Win32 IME events inside `aether-native` and run Codex/Claude/Gemini prompt-row IME checks there.
+- Live OS IME dogfood is still open. The next step is to process real `winit`/Win32 IME events inside `aelyris-native` and run Codex/Claude/Gemini prompt-row IME checks there.
 
 ### Phase 2.50 - Native Settings Config Proof
 
@@ -94,16 +94,16 @@ Status: done
 
 Implemented:
 
-- Added `aether-native settings-proof`.
-- Added `QUORUM_CONFIG_HOME` support to the Rust config loader so proof runs can use an isolated config directory and avoid mutating the user's real `~/.aether/config.toml`.
+- Added `aelyris-native settings-proof`.
+- Added `AELYRIS_CONFIG_HOME` support to the Rust config loader so proof runs can use an isolated config directory and avoid mutating the user's real `~/.aelyris/config.toml`.
 - The proof writes and reloads theme, mood, window opacity, palette overrides, material overrides, wallpaper image path, wallpaper opacity, wallpaper position, and wallpaper scale through the real Rust `load_config` / `save_config` path.
 - The proof saves a second generation and reloads it to verify settings changes can be observed without React/WebView, recording `hotReloadProof.changedWithoutReact=true`.
 - The native-client verifier now requires `native-settings-config-roundtrip-proof`, `native-settings-hot-reload-proof`, `native-settings-wallpaper-customization-proof`, and `native-settings-material-customization-proof`.
 
 Validation:
 
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `cargo test --manifest-path src-tauri\Cargo.toml config::settings:: -- --nocapture`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
@@ -111,13 +111,13 @@ Validation:
 
 Result:
 
-- `.codex-auto/quality/native-client-spike.json` records `nativeSettings.operation=settings-proof`, `schema=aether.native.settings-proof.v1`, `webviewUsed=false`, `reactUsed=false`, `theme=sakura-hub`, `mood=aether-sakura`, material overrides, and wallpaper customization.
+- `.codex-auto/quality/native-client-spike.json` records `nativeSettings.operation=settings-proof`, `schema=aelyris.native.settings-proof.v1`, `webviewUsed=false`, `reactUsed=false`, `theme=sakura-hub`, `mood=aelyris-sakura`, material overrides, and wallpaper customization.
 - `.codex-auto/quality/native-boundary-contract.json` remains `14/14` passing.
 - `.codex-auto/quality/full-native-rust-gap-audit.json` reports `63/100`, `72/114`, `status=in-progress`.
 
 Residual:
 
-- The Rust config proof is complete, but a native settings window/dialog is still open. React settings UI remains compatibility until `aether-native` can edit these settings interactively.
+- The Rust config proof is complete, but a native settings window/dialog is still open. React settings UI remains compatibility until `aelyris-native` can edit these settings interactively.
 
 ### Phase 2.51 - Native Command Center Data Proof
 
@@ -125,7 +125,7 @@ Status: partial
 
 Implemented:
 
-- Added `aether-native command-center-proof`.
+- Added `aelyris-native command-center-proof`.
 - The proof reads the full-native audit, native boundary contract, native client proof, command recovery contract, and AI CLI launch planner artifacts from the Rust native client boundary.
 - It emits a native Command Center data contract with `nativeCommandCenter=true`, `mode=data-contract-proof`, `rightRailDataOwnedByRust=true`, `webviewUsed=false`, `reactUsed=false`, and `nextProof=native-command-center-window-ui`.
 - It maps open full-native blockers into actionable native operations, including native IME dogfood, native settings UI, native Command Center UI, native accessibility, native visual QA, React/WebView compatibility demotion, and native proof refresh.
@@ -137,14 +137,14 @@ Validation:
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- Manual PowerShell sidecar launch plus `src-tauri\target\debug\aether-native.exe command-center-proof`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- Manual PowerShell sidecar launch plus `src-tauri\target\debug\aelyris-native.exe command-center-proof`
 
 Result:
 
-- Manual proof output reports `schema=aether.native.command-center-proof.v1`, `actionable=true`, `rightRailDataOwnedByRust=true`, `readyEvidenceCount=5`, and native actions for all currently open full-native blockers.
+- Manual proof output reports `schema=aelyris.native.command-center-proof.v1`, `actionable=true`, `rightRailDataOwnedByRust=true`, `readyEvidenceCount=5`, and native actions for all currently open full-native blockers.
 - The proof remains honest: it does not claim native UI completion and points to `native-command-center-window-ui` as the next proof.
 
 Residual:
@@ -158,7 +158,7 @@ Status: done
 
 Implemented:
 
-- Added `aether-native command-center-window-proof`.
+- Added `aelyris-native command-center-window-proof`.
 - The proof reuses the Rust-owned Command Center data contract and renders it into a native Win32 layered window without React/WebView.
 - The window proof draws Command Center header text, evidence rows, action rows, and records action hit-target rectangles with keyboard indices.
 - The proof is deliberately honest: it reports `rightRailUiStatus=native-command-center-window-ui-proof` and `nextProof=native-command-center-input-and-scroll`, so it does not claim scroll/input parity yet.
@@ -170,16 +170,16 @@ Validation:
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - Manual PowerShell sidecar run that executed the native-client proof sequence and refreshed `.codex-auto/quality/native-client-spike.json`
 - `pnpm verify:terminal:native-boundary`
 - `pnpm verify:full-native:audit`
 
 Result:
 
-- `.codex-auto/quality/native-command-center-window-proof.json` records `operation=command-center-window-proof`, `window.schema=aether.native.command-center-window-proof.v1`, `nativeRightRailWindow=true`, `actionRowsRendered>=4`, `evidenceRowsRendered>=3`, and `nonBlank=true`.
+- `.codex-auto/quality/native-command-center-window-proof.json` records `operation=command-center-window-proof`, `window.schema=aelyris.native.command-center-window-proof.v1`, `nativeRightRailWindow=true`, `actionRowsRendered>=4`, `evidenceRowsRendered>=3`, and `nonBlank=true`.
 - `.codex-auto/quality/native-boundary-contract.json` reports `14/14` passing.
 - `.codex-auto/quality/full-native-rust-gap-audit.json` reports `67/100`, `76/114`, `status=in-progress`.
 
@@ -194,7 +194,7 @@ Status: done
 
 Implemented:
 
-- Added `aether-native command-center-input-scroll-proof`.
+- Added `aelyris-native command-center-input-scroll-proof`.
 - The proof builds on the Rust-owned Command Center data contract and verifies a native input/scroll model without React/WebView.
 - It records bounded keyboard selection through ArrowDown, PageDown, End, Home, and Enter transitions.
 - It records visible action-window state, scroll offset guardrails, selected action dispatch, and verifies dispatch does not require React or WebView.
@@ -207,10 +207,10 @@ Validation:
 - `node --check scripts\verify-native-boundary-contract.mjs`
 - `node --check scripts\verify-full-native-rust-gap-audit.mjs`
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- Manual PowerShell sidecar run of `src-tauri\target\debug\aether-native.exe command-center-input-scroll-proof`
+- `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- Manual PowerShell sidecar run of `src-tauri\target\debug\aelyris-native.exe command-center-input-scroll-proof`
 - `pnpm verify:terminal:native-boundary`
 - `pnpm verify:full-native:audit`
 
@@ -232,29 +232,29 @@ Implemented:
 
 - Added `src-tauri/src/term/render_frame.rs` as the renderer-neutral Rust contract between `GridSnapshot` and native drawing.
 - `NativeRenderFrame` now converts Rust terminal cells into positioned native cells with:
-  - schema `aether.native.render-frame.v1`;
+  - schema `aelyris.native.render-frame.v1`;
   - cell metrics and frame pixel bounds;
   - row/column cell rectangles;
   - cursor and image overlay metadata;
   - nonblank/paintable/styled/hyperlink counters;
   - stable `frameSha256`;
   - explicit `webviewUsed=false` and `reactUsed=false`.
-- `aether-native grid-render-proof` now builds this RenderFrame first, emits `renderFrame`, and proves the Win32/GDI renderer consumes the same `frameSha256`.
+- `aelyris-native grid-render-proof` now builds this RenderFrame first, emits `renderFrame`, and proves the Win32/GDI renderer consumes the same `frameSha256`.
 - `scripts/verify-native-client-spike.mjs`, `scripts/verify-native-boundary-contract.mjs`, and `scripts/score-release-quality.mjs` now require the native render-frame contract, not just ad hoc grid summary fields.
-- `verify-native-client-spike` now builds `aether-native` once and invokes the compiled binary directly, avoiding repeated `cargo run` timeouts during native boundary verification.
+- `verify-native-client-spike` now builds `aelyris-native` once and invokes the compiled binary directly, avoiding repeated `cargo run` timeouts during native boundary verification.
 
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
 - `cargo test --manifest-path src-tauri\Cargo.toml --lib term::render_frame -- --nocapture`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
 
 Result:
 
-- `.codex-auto/quality/native-client-spike.json` records `nativeGridRender.renderFrame.schema=aether.native.render-frame.v1`, `rendererBoundary=rust-native-render-frame`, `frameSha256` length 64, `nonBlankCells=216`, and matching `renderer.renderFrameSha256`.
+- `.codex-auto/quality/native-client-spike.json` records `nativeGridRender.renderFrame.schema=aelyris.native.render-frame.v1`, `rendererBoundary=rust-native-render-frame`, `frameSha256` length 64, `nonBlankCells=216`, and matching `renderer.renderFrameSha256`.
 - `.codex-auto/quality/native-boundary-contract.json` reports `14/14` native boundary checks passing.
 
 Residual:
@@ -262,13 +262,13 @@ Residual:
 - The RenderFrame contract is the bridge to the real renderer, not the final renderer itself. Remaining native-shell work is still `winit`/`wgpu` drawing, native IME dogfood in the native client, native glass/theme rendering, and native visual regression.
 - The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
 
-### Phase 2.44 - Aether Native TermEngine Grid Render Proof
+### Phase 2.44 - Aelyris Native TermEngine Grid Render Proof
 
 Status: done
 
 Implemented:
 
-- Added `aether-native grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--alpha n]`.
+- Added `aelyris-native grid-render-proof [--session id] [--expect text] [--cols n] [--rows n] [--lines n] [--alpha n]`.
 - The proof reads daemon session capture from the same sidecar/mux API, feeds it into Rust `TermEngine`, and renders the resulting terminal cell grid through a Win32/GDI memory-compatible device context.
 - The proof records:
   - source session id;
@@ -291,7 +291,7 @@ Implemented:
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
@@ -309,14 +309,14 @@ Residual:
 - This is still not the final GPU terminal renderer. It proves Rust terminal-grid ownership and native no-WebView cell rendering first; the remaining renderer work is `winit`/`wgpu` terminal grid drawing, native IME dogfood inside the native client, native glass/theme rendering, and native visual regression.
 - The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
 
-### Phase 2.42 - Aether Native Win32 Window Proof
+### Phase 2.42 - Aelyris Native Win32 Window Proof
 
 Status: done
 
 Implemented:
 
-- Added `aether-native window-proof [--duration-ms n] [--alpha n] [--show]`.
-- The proof creates a native Win32 top-level window in the `aether-native` process without React or WebView.
+- Added `aelyris-native window-proof [--duration-ms n] [--alpha n] [--show]`.
+- The proof creates a native Win32 top-level window in the `aelyris-native` process without React or WebView.
 - The proof applies `WS_EX_LAYERED` alpha transparency and records:
   - HWND;
   - class/title;
@@ -333,7 +333,7 @@ Implemented:
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
@@ -343,13 +343,13 @@ Residual:
 - This is still not a native GPU terminal renderer. It proves the native process/window/compositor entry point and daemon boundary before `winit`/`wgpu`, terminal drawing, IME dogfood, and native visual regression are added.
 - The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
 
-### Phase 2.43 - Aether Native Text Render Proof
+### Phase 2.43 - Aelyris Native Text Render Proof
 
 Status: done
 
 Implemented:
 
-- Added `aether-native render-proof [--session id] [--expect text] [--lines n] [--alpha n]`.
+- Added `aelyris-native render-proof [--session id] [--expect text] [--lines n] [--alpha n]`.
 - The proof reads a daemon session capture through the same sidecar/mux API used by `capture`.
 - The captured text is rendered through a Win32/GDI memory-compatible device context, not React, WebView, canvas, or xterm.
 - The proof records:
@@ -371,7 +371,7 @@ Implemented:
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
 - `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
@@ -381,20 +381,20 @@ Residual:
 - This is still not the final GPU terminal renderer. It proves native text rendering and daemon capture ownership first; the remaining renderer work is `winit`/`wgpu` terminal grid drawing, native IME dogfood inside the native client, native glass/theme rendering, and native visual regression.
 - The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
 
-### Phase 2.41 - Aether Native Client Attach Spike
+### Phase 2.41 - Aelyris Native Client Attach Spike
 
 Status: done
 
 Implemented:
 
-- Added the `aether-native` Rust binary as the first no-WebView native client boundary.
+- Added the `aelyris-native` Rust binary as the first no-WebView native client boundary.
 - The client exposes a machine-readable `contract` that states:
   - `webviewUsed=false`;
   - `reactUsed=false`;
   - mux truth comes from the daemon API;
   - GPU terminal rendering and native window IME remain explicit next-step blockers, not hidden claims.
 - Added native client operations for daemon-backed `list`, `graph`, `attach`, `detach`, `send`, and `capture`.
-- Added `pnpm verify:terminal:native-client`, which starts the PTY sidecar, creates a real shell session, and proves `aether-native` can:
+- Added `pnpm verify:terminal:native-client`, which starts the PTY sidecar, creates a real shell session, and proves `aelyris-native` can:
   - attach to the same daemon instance;
   - read mux workspaces;
   - send input and capture output;
@@ -404,8 +404,8 @@ Implemented:
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys`
 - `pnpm exec biome check scripts\verify-native-client-spike.mjs scripts\verify-native-boundary-contract.mjs scripts\score-release-quality.mjs --formatter-enabled=false`
 - `pnpm verify:terminal:native-client`
 - `pnpm verify:terminal:native-boundary`
@@ -418,7 +418,7 @@ Residual:
 - This is not yet the full native GPU terminal window. It proves the correct daemon/client boundary first, so the upcoming `winit`/`wgpu`/IME window work does not create a parallel terminal truth.
 - The only non-cleared final blocker remains explicit token-spend consent for the authenticated AI CLI prompt smoke.
 
-### Phase 2.40 - Aetherctl Mux Export/Import Parity
+### Phase 2.40 - Aelyrisctl Mux Export/Import Parity
 
 Status: done
 
@@ -429,17 +429,17 @@ Implemented:
 - Import always routes through Rust restore policy so imported panes become detached `restore-pending:<paneId>` bindings with no trusted external process id.
 - Existing live workspaces are protected by a conflict response unless `replace=true` is explicit.
 - Replace import closes stale live PTYs owned by the replaced graph before exposing the imported restore-pending graph.
-- Added `aetherctl mux-export <workspace> [--out path]` and `aetherctl mux-import <snapshot-path|-> [--replace]`.
+- Added `aelys mux-export <workspace> [--out path]` and `aelys mux-import <snapshot-path|-> [--replace]`.
 - Extended live mux restore verification with:
-  - `aetherctl-mux-export-parity`;
-  - `aetherctl-mux-import-parity`;
+  - `aelys-mux-export-parity`;
+  - `aelys-mux-import-parity`;
   - `mux-import-restore-pending`;
   - `mux-import-replace-closes-live-pty`.
 
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys`
 - `cargo test --manifest-path src-tauri\Cargo.toml mux_snapshot_store_persists_and_restores_api_graphs --test test_api_3d1`
 - `pnpm verify:mux-live`
 - `pnpm verify:terminal:native-boundary`
@@ -654,7 +654,7 @@ Validation:
 - `pnpm exec biome check src\App.tsx src\__tests__\AppSilentBugs.test.ts src\styles\global.css src\shared\lib\rightRailWorkforce.ts src\__tests__\rightRailWorkforce.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\rightRailAdvisor.test.ts src\__tests__\rightRailWorkforce.test.ts src\__tests__\guardrailPolicy.test.ts --reporter=dot`
 - `pnpm exec tsc --noEmit --pretty false`
-- In-app browser QA on `http://localhost:1420/?aetherVisualQa=1...` confirmed the guardrail select renders, switching to `Builder` updates the tool envelope and action guardrail, and running an action creates a durable Recent actions entry.
+- In-app browser QA on `http://localhost:1420/?aelyrisVisualQa=1...` confirmed the guardrail select renders, switching to `Builder` updates the tool envelope and action guardrail, and running an action creates a durable Recent actions entry.
 
 Residual:
 
@@ -819,7 +819,7 @@ Validation:
 - `pnpm exec biome check src\App.tsx src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\designTokenUsage.test.ts --reporter=dot`
 - `pnpm exec tsc --noEmit --pretty false`
-- Live WebView2 QA at `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=command&state=blocked&v=decision-load-pass` confirmed the Decision focus renders above telemetry/action sections and does not overflow at right-rail width.
+- Live WebView2 QA at `http://localhost:1420/?aelyrisVisualQa=1&projectPath=C%3A%2Fdev%2FAelyris&rail=command&state=blocked&v=decision-load-pass` confirmed the Decision focus renders above telemetry/action sections and does not overflow at right-rail width.
 
 Residual:
 
@@ -1465,7 +1465,7 @@ Validation:
 
 - `pnpm exec biome check --write src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
-- Browser verification on `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=command&v=right-rail-scroll-fix`
+- Browser verification on `http://localhost:1420/?aelyrisVisualQa=1&projectPath=C%3A%2Fdev%2FAelyris&rail=command&v=right-rail-scroll-fix`
 - Browser metrics: `.right-panel-content` computed `overflowY=auto`, `scrollHeight > clientHeight`, wheel scroll moved `scrollTop` from `0` to `420`.
 
 Residual:
@@ -1697,7 +1697,7 @@ Status: done
 
 Implemented:
 
-- The real OS suspend evidence template now resolves `src-tauri/target/release/Aether.exe` from the current repository root instead of hard-coding a user-specific absolute path.
+- The real OS suspend evidence template now resolves `src-tauri/target/release/Aelyris.exe` from the current repository root instead of hard-coding a user-specific absolute path.
 - Evidence now records the release executable identity: path, byte size, modified timestamp, and SHA-256.
 - Resume capture refreshes the executable identity so the evidence reflects the binary that was actually present for the soak run.
 - Strict verification now fails when the executable is missing, too small to be a release build, or when `app.sha256` does not match the current executable.
@@ -1792,7 +1792,7 @@ Status: done
 Implemented:
 
 - Added `pnpm verify:production:suspend:postcheck` for capturing non-mutating post-resume probes into the suspend evidence.
-- The postcheck records current release executable identity, matching `Aether.exe` process presence, and PTY API `/health` reachability.
+- The postcheck records current release executable identity, matching `Aelyris.exe` process presence, and PTY API `/health` reachability.
 - Postcheck evidence is stored under `validation.postResumeProbes` and mirrored into diagnostic output.
 - The command deliberately does not set strict checks to `true`; it only reduces triage ambiguity before the operator confirms app responsiveness, terminal responsiveness, SQLite write, and pane preservation.
 - Running postcheck resets a previously passing evidence file back to `pending`, preventing a new probe from accidentally preserving old release approval.
@@ -1815,7 +1815,7 @@ Status: done
 Implemented:
 
 - Added post-resume probe status to the release quality score detail.
-- Real OS soak detail now reports whether the matching Aether process and PTY API health probe are up or down.
+- Real OS soak detail now reports whether the matching Aelyris process and PTY API health probe are up or down.
 - Missing or failing postcheck probes now appear as explicit `real-os-soak` blockers.
 - Diagnostic next steps now tell the operator to run postcheck, launch the release app, or restore PTY API health when those probes are missing or failing.
 - Added source-contract coverage for postcheck score detail, probe blockers, and diagnostic next-step copy.
@@ -1839,9 +1839,9 @@ Status: done
 
 Implemented:
 
-- Extended `pnpm verify:production:suspend:postcheck` with an actual PTY terminal roundtrip through the release `aetherctl.exe`.
-- Postcheck now creates a temporary PowerShell session, sends a unique `AETHER_POST_RESUME_TERMINAL_OK_*` marker, captures output, checks for the marker, and closes the session.
-- Postcheck now machine-verifies and writes `checks.appResponsive` when the matching Aether process and PTY API health probe are both up.
+- Extended `pnpm verify:production:suspend:postcheck` with an actual PTY terminal roundtrip through the release `aelys.exe`.
+- Postcheck now creates a temporary PowerShell session, sends a unique `AELYRIS_POST_RESUME_TERMINAL_OK_*` marker, captures output, checks for the marker, and closes the session.
+- Postcheck now machine-verifies and writes `checks.appResponsive` when the matching Aelyris process and PTY API health probe are both up.
 - Postcheck now machine-verifies and writes `checks.terminalResponsive` when the terminal roundtrip succeeds.
 - SQLite write and pane preservation remain strict/manual because the current probe cannot prove them without mutating or inspecting app-specific state more deeply.
 - Quality score detail now includes terminal probe state, and failing terminal roundtrip is reported as an explicit blocker.
@@ -1894,17 +1894,17 @@ Status: done
 
 Implemented:
 
-- Added an `aetherctl db-smoke` command that writes, reads, compares, and deletes a pane-tree layout row in the production SQLite database.
+- Added an `aelys db-smoke` command that writes, reads, compares, and deletes a pane-tree layout row in the production SQLite database.
 - Extended `pnpm verify:production:suspend:postcheck` to run the SQLite pane-layout smoke after resume.
 - Postcheck now machine-verifies `checks.sqliteWritable` and `checks.paneStatePreserved` when the DB roundtrip preserves the layout JSON exactly.
-- The postcheck falls back to `cargo run --bin aetherctl -- db-smoke` when the release `aetherctl.exe` is older than the current source, so local validation is not blocked by a heavy distribution build.
+- The postcheck falls back to `cargo run --bin aelys -- db-smoke` when the release `aelys.exe` is older than the current source, so local validation is not blocked by a heavy distribution build.
 - Release quality scoring now reports DB probe state and adds a dedicated blocker when pane-layout persistence is failing.
 
 Validation:
 
 - `node --check scripts\verify-real-os-suspend-evidence.mjs`
 - `node --check scripts\score-release-quality.mjs`
-- `cargo run --manifest-path src-tauri\Cargo.toml --bin aetherctl -- db-smoke`
+- `cargo run --manifest-path src-tauri\Cargo.toml --bin aelys -- db-smoke`
 - `pnpm exec biome check --write scripts\verify-real-os-suspend-evidence.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
 - `pnpm verify:production:suspend:postcheck`
@@ -1939,19 +1939,19 @@ Residual:
 
 - Diagnostics now explain the host sleep mode and blockers, but strict pass still requires actual Windows sleep/resume events `42/506` and `1/107/507`.
 
-### Phase 1.63 - Release Aetherctl Postcheck Proof
+### Phase 1.63 - Release Aelyrisctl Postcheck Proof
 
 Status: done
 
 Implemented:
 
-- Rebuilt the release `aetherctl.exe` binary only, without running the heavy installer/distribution build.
-- Re-ran post-resume evidence capture so SQLite pane-layout smoke now runs through `release-aetherctl db-smoke` instead of the source fallback.
+- Rebuilt the release `aelys.exe` binary only, without running the heavy installer/distribution build.
+- Re-ran post-resume evidence capture so SQLite pane-layout smoke now runs through `release-aelys db-smoke` instead of the source fallback.
 - Release quality score detail now shows which tool executed the DB/pane probe, making source fallback versus release-binary proof visible.
 
 Validation:
 
-- `cargo build --manifest-path src-tauri\Cargo.toml --release --bin aetherctl`
+- `cargo build --manifest-path src-tauri\Cargo.toml --release --bin aelys`
 - `pnpm verify:production:suspend:postcheck`
 - `pnpm verify:production:suspend:diagnose`
 - `pnpm verify:quality-score`
@@ -1967,7 +1967,7 @@ Status: done
 Implemented:
 
 - Added strict right-rail smoke mode via `pnpm verify:right-rail:strict`.
-- `verify-right-rail-suite` can now fail CDP/WebView2-dependent checks when `AETHER_RIGHT_RAIL_REQUIRE_CDP=1` instead of quietly marking them skipped.
+- `verify-right-rail-suite` can now fail CDP/WebView2-dependent checks when `AELYRIS_RIGHT_RAIL_REQUIRE_CDP=1` instead of quietly marking them skipped.
 - Release quality scoring no longer grants full right-rail smoke points when CDP/WebView2 checks are skipped.
 - Skipped right-rail CDP checks are now explicit score blockers, so the right rail cannot look fully verified without live native WebView2 evidence.
 
@@ -1978,7 +1978,7 @@ Validation:
 - `pnpm exec biome check --write scripts\verify-right-rail-suite.mjs scripts\score-release-quality.mjs src\__tests__\AppSilentBugs.test.ts package.json`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
 - `pnpm verify:quality-score`
-- `AETHER_RIGHT_RAIL_SUITE_OUT=.codex-auto/production-smoke/right-rail-suite-strict-dryrun.json pnpm verify:right-rail:strict` expectedly fails without CDP
+- `AELYRIS_RIGHT_RAIL_SUITE_OUT=.codex-auto/production-smoke/right-rail-suite-strict-dryrun.json pnpm verify:right-rail:strict` expectedly fails without CDP
 
 Residual:
 
@@ -2003,7 +2003,7 @@ Validation:
 
 Residual:
 
-- The screenshot text is emitted by the AI CLI, not by Aether. This guard reduces Aether-originated leakage, but a CLI-native image-paste keybinding can still print its own error when triggered inside the CLI.
+- The screenshot text is emitted by the AI CLI, not by Aelyris. This guard reduces Aelyris-originated leakage, but a CLI-native image-paste keybinding can still print its own error when triggered inside the CLI.
 
 ### Phase 1.66 - Terminal Core Edge Readiness Scoring
 
@@ -2081,7 +2081,7 @@ Implemented:
 - Changed the native terminal cursor color from Catppuccin mauve to a neutral foreground tint, removing the obvious pink flash.
 - Fixed terminal bell detection so OSC control-sequence terminators such as `ESC ] 133 ; ... BEL` do not emit user-facing `terminal:bell` events.
 - The bell filter tracks OSC state across split PTY chunks, so prompt marks split over multiple reads do not create fake bell notifications.
-- Native OS terminal bell notifications are now opt-in via `localStorage["aether:terminalBellNotifications"]`, with a 30s per-terminal throttle when enabled.
+- Native OS terminal bell notifications are now opt-in via `localStorage["aelyris:terminalBellNotifications"]`, with a 30s per-terminal throttle when enabled.
 
 Validation:
 
@@ -2091,7 +2091,7 @@ Validation:
 
 Residual:
 
-- This removes the visible flicker and the most likely source of repeated PowerShell/Aether bottom-right bell popups. The remaining deeper risk is still the WebView-backed IME input bridge.
+- This removes the visible flicker and the most likely source of repeated PowerShell/Aelyris bottom-right bell popups. The remaining deeper risk is still the WebView-backed IME input bridge.
 
 ### Phase 1.70 - Native Terminal Clipboard Text
 
@@ -2227,7 +2227,7 @@ Implemented:
 - Fixed the native `set_ime_position` command to query GUI focus from the Tauri/WebView window's UI thread instead of using `GetGUIThreadInfo(0)`.
 - This matters because IMM coordinates are relative to the focused child HWND. WebView2 keeps text focus on a child window; resolving focus from the wrong thread can fall back to the top-level Tauri HWND and shift Japanese candidate windows under DPI/custom-chrome layouts.
 - The command now calls `GetWindowThreadProcessId(hwnd, None)` and passes that thread id into `GetGUIThreadInfo`.
-- The safety fallback remains: if the focused HWND is not the main window or its child, Aether still uses the top-level HWND.
+- The safety fallback remains: if the focused HWND is not the main window or its child, Aelyris still uses the top-level HWND.
 
 Validation:
 
@@ -2245,7 +2245,7 @@ Status: done
 Implemented:
 
 - Re-ran the native WebView2/CDP IME smoke after the `GetWindowThreadProcessId` focus-HWND fix.
-- First Tauri dev launch hit a transient Windows linker lock (`LNK1114`) on the debug import library; Aether dev processes were stopped, the stale import library was removed, and the app was relaunched successfully.
+- First Tauri dev launch hit a transient Windows linker lock (`LNK1114`) on the debug import library; Aelyris dev processes were stopped, the stale import library was removed, and the app was relaunched successfully.
 - Refreshed `.codex-auto/production-smoke/verify-ime.json` with current live evidence.
 
 Validation:
@@ -2303,7 +2303,7 @@ Validation:
 
 - `pnpm exec biome check --write src\styles\global.css src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts src\__tests__\TerminalCanvasInput.test.tsx --reporter=dot`
-- In-app browser/Vite visual check on `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=observe&state=blocked&v=rail-scroll-contract`
+- In-app browser/Vite visual check on `http://localhost:1420/?aelyrisVisualQa=1&projectPath=C%3A%2Fdev%2FAelyris&rail=observe&state=blocked&v=rail-scroll-contract`
 
 Browser metrics:
 
@@ -2322,9 +2322,9 @@ Status: done
 Implemented:
 
 - Added `pnpm verify:production:suspend:cycle` for a single guarded Windows sleep/resume evidence flow.
-- Wired the production release gate so `--sleep-cycle` or `AETHER_RELEASE_SLEEP_CYCLE=1` uses that guarded cycle instead of the older split diagnose/evidence pair.
+- Wired the production release gate so `--sleep-cycle` or `AELYRIS_RELEASE_SLEEP_CYCLE=1` uses that guarded cycle instead of the older split diagnose/evidence pair.
 - The cycle refreshes the release app identity, records begin time, invokes Windows sleep, records resume time, runs post-resume process/API/terminal/SQLite probes, then promotes the evidence to `pass` only if strict Windows power events are present.
-- The command refuses to sleep unless `QUORUM_ALLOW_OS_SLEEP=1` is set, and that guard now runs before any evidence/session file is touched.
+- The command refuses to sleep unless `AELYRIS_ALLOW_OS_SLEEP=1` is set, and that guard now runs before any evidence/session file is touched.
 - Programmatic attempted-suspend-only evidence still cannot pass; the strict validator still requires provider-matched suspend and resume events.
 
 Validation:
@@ -2334,11 +2334,11 @@ Validation:
 - `pnpm exec biome check --write scripts\verify-real-os-suspend-evidence.mjs package.json src\__tests__\AppSilentBugs.test.ts`
 - `pnpm exec biome check --write scripts\verify-production-release-gate.mjs src\__tests__\AppSilentBugs.test.ts`
 - `pnpm vitest run src\__tests__\AppSilentBugs.test.ts --reporter=dot`
-- `pnpm verify:production:suspend:cycle` without `QUORUM_ALLOW_OS_SLEEP=1` exited `1` and left both evidence and session timestamps unchanged.
+- `pnpm verify:production:suspend:cycle` without `AELYRIS_ALLOW_OS_SLEEP=1` exited `1` and left both evidence and session timestamps unchanged.
 
 Residual:
 
-- This removes operator-step ambiguity and prevents accidental false evidence. It does not itself create the missing real Windows sleep/resume proof; the host must actually enter and resume from a Windows sleep state with `QUORUM_ALLOW_OS_SLEEP=1` for the score blocker to clear.
+- This removes operator-step ambiguity and prevents accidental false evidence. It does not itself create the missing real Windows sleep/resume proof; the host must actually enter and resume from a Windows sleep state with `AELYRIS_ALLOW_OS_SLEEP=1` for the score blocker to clear.
 
 ### Phase 1.80 - Real OS Sleep Cycle Noise Reduction
 
@@ -2346,15 +2346,15 @@ Status: done
 
 Implemented:
 
-- Ran the guarded production sleep/resume cycle against the release `Aether.exe`.
+- Ran the guarded production sleep/resume cycle against the release `Aelyris.exe`.
 - Confirmed the host still records only `Microsoft-Windows-Kernel-Power:187` attempted-suspend events for the programmatic `SetSuspendState` path.
 - Increased the guarded cycle default post-wake settle from 5s to 12s so the strict `>=10s` evidence bracket does not add a noisy duration failure on fast Modern Standby returns.
 
 Validation:
 
-- `Start-Process <repo>\src-tauri\target\release\Aether.exe`
+- `Start-Process <repo>\src-tauri\target\release\Aelyris.exe`
 - `pnpm verify:production:suspend:refresh-app`
-- `QUORUM_ALLOW_OS_SLEEP=1 pnpm verify:production:suspend:cycle`
+- `AELYRIS_ALLOW_OS_SLEEP=1 pnpm verify:production:suspend:cycle`
 - `node --check scripts\verify-real-os-suspend-evidence.mjs`
 - `pnpm exec biome check --write scripts\verify-real-os-suspend-evidence.mjs`
 
@@ -2714,7 +2714,7 @@ Validation:
 
 Result:
 
-- `pnpm verify:ime` now attaches to `http://localhost:1420/?aetherVisualQa=1&projectPath=C%3A%2Fdev%2FAether_Terminal&rail=command&v=verify-ime-clean`.
+- `pnpm verify:ime` now attaches to `http://localhost:1420/?aelyrisVisualQa=1&projectPath=C%3A%2Fdev%2FAelyris&rail=command&v=verify-ime-clean`.
 - `pnpm verify:quality-score` reports `100/124`, grade `S`, `legacy release-ready state`.
 
 Residual:
@@ -2733,7 +2733,7 @@ Implemented:
 - Hardened `save_command_history` and the write-side IPC paths so full submitted payloads (`command + Enter`) prepare a command block before PTY write, while reusing an already-open matching block to avoid duplicate history rows.
 - Added command-block dedupe support in `CommandBlockJournal` and pane cwd lookup in `PaneRegistry`.
 - Bumped the daemon protocol to `2` and made the app terminate a stale matching PTY sidecar when protocol/version no longer matches. This prevents dev/release sessions from silently keeping an older sidecar that lacks current PowerShell shell-integration behavior.
-- Rebuilt the dev PTY sidecar at `src-tauri\target\debug\aether-pty-server.exe` so spawned PowerShell sessions now include Aether OSC 133 shell integration.
+- Rebuilt the dev PTY sidecar at `src-tauri\target\debug\aelyris-pty-server.exe` so spawned PowerShell sessions now include Aelyris OSC 133 shell integration.
 - Fixed CDP smoke scripts to use `browser.disconnect()` instead of `browser.close()` so one smoke no longer closes the Tauri WebView before the rest of the strict suite runs.
 
 Validation:
@@ -2837,9 +2837,9 @@ Status: done
 
 Implemented:
 
-- Added `scripts/verify-process-reconnect-command-evidence.mjs`, a live WebView2/CDP smoke for true Aether process restart over a long-lived PTY sidecar.
+- Added `scripts/verify-process-reconnect-command-evidence.mjs`, a live WebView2/CDP smoke for true Aelyris process restart over a long-lived PTY sidecar.
 - Added `pnpm verify:terminal:process-reconnect-command-evidence`.
-- The smoke attaches to a running Tauri dev app, spawns a base PowerShell pane, creates a mux split pane, submits commands in both panes, verifies live and persisted command-block evidence, stops the current `Aether.exe` process without killing the sidecar, verifies the sidecar still lists both terminal ids, starts the debug `Aether.exe` again, verifies the restarted app adopts both terminal ids, then submits fresh commands through both recovered terminals and verifies live plus persisted command evidence again.
+- The smoke attaches to a running Tauri dev app, spawns a base PowerShell pane, creates a mux split pane, submits commands in both panes, verifies live and persisted command-block evidence, stops the current `Aelyris.exe` process without killing the sidecar, verifies the sidecar still lists both terminal ids, starts the debug `Aelyris.exe` again, verifies the restarted app adopts both terminal ids, then submits fresh commands through both recovered terminals and verifies live plus persisted command evidence again.
 - The smoke now reads the hardened sidecar token file instead of assuming `dev`, matching the real app/sidecar authentication boundary.
 - Added a `process-reconnect-command-evidence` category to `pnpm verify:quality-score`, raising the scored surface to `156` max points.
 - Added static regression coverage so the package script, sidecar retention check, restarted-app adoption check, persisted command-block check, and score category stay wired.
@@ -2876,11 +2876,11 @@ Implemented:
 - Fixed command evidence false positives:
   - command history cwd is normalized so frontend `C:/...` and backend `C:\...` saves dedupe instead of producing fallback-looking duplicate blocks.
   - initial PowerShell prompt `CommandEnd(sequence=0)` no longer closes a pending command before any actual command start/output.
-  - after app-process reconnect, command blocks can still close when the current prompt's `CommandStart` happened before the new Aether process attached, as long as the observed `CommandEnd` is post-output rather than the initial prompt sentinel.
+  - after app-process reconnect, command blocks can still close when the current prompt's `CommandStart` happened before the new Aelyris process attached, as long as the observed `CommandEnd` is post-output rather than the initial prompt sentinel.
 - Hardened live smoke scripts against real async races:
   - multipane long-output verification now waits for scrollback growth.
   - final snapshot reads are accepted when the marker appears exactly at the timeout edge.
-  - process-reconnect smoke can restart Vite when killing the initial Aether process also tears down the dev server.
+  - process-reconnect smoke can restart Vite when killing the initial Aelyris process also tears down the dev server.
   - fresh split panes wait for shell readiness before input, while restored sidecar panes rely on adoption plus command-end evidence because their previous prompt screen is not replayed.
 - Added `interactive-ai-cli-sidecar-boundary` to `pnpm verify:quality-score`, raising the scored surface to `164` max points.
 
@@ -2891,7 +2891,7 @@ Validation:
 - `cargo test --manifest-path src-tauri\Cargo.toml command_end_before_command_start_does_not_close_pending_command -- --nocapture`
 - `cargo test --manifest-path src-tauri\Cargo.toml command_end_without_seen_start_can_close_after_reconnect_output -- --nocapture`
 - `cargo test --manifest-path src-tauri\Cargo.toml command_history_cwd_normalizes_windows_and_url_separators -- --nocapture`
-- `cargo build --manifest-path src-tauri\Cargo.toml --bin Aether`
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin Aelyris`
 - `pnpm vitest run src\__tests__\interactiveCommandsWorktreeFailure.test.ts src\__tests__\AppSilentBugs.test.ts --reporter=dot`
 - `pnpm exec tsc --noEmit`
 - `pnpm exec biome check scripts\verify-process-reconnect-command-evidence.mjs scripts\verify-multipane-command-evidence.mjs scripts\score-release-quality.mjs src\__tests__\interactiveCommandsWorktreeFailure.test.ts src\shared\types\interactiveAgent.ts`
@@ -3273,10 +3273,10 @@ Implemented:
 
 - Re-ran the live Tauri/WebView2 post-launch chaos gate against a fresh dev runtime.
 - The first fresh run exposed a real dev-environment regression: AI CLI session spawn failed with `PTY server command spawn failed: 404 Not Found`.
-- Root cause: `tauri:dev` launched the stale sibling `src-tauri/target/debug/aether-pty-server.exe`, which did not expose the current `/commands` route.
-- Added `scripts/build-pty-sidecar-dev.mjs` to build `src-tauri/pty-server/Cargo.toml` and copy the debug sidecar next to `target/debug/Aether.exe`.
+- Root cause: `tauri:dev` launched the stale sibling `src-tauri/target/debug/aelyris-pty-server.exe`, which did not expose the current `/commands` route.
+- Added `scripts/build-pty-sidecar-dev.mjs` to build `src-tauri/pty-server/Cargo.toml` and copy the debug sidecar next to `target/debug/Aelyris.exe`.
 - Updated `pnpm tauri:dev` to prepare the dev PTY sidecar before launching Tauri, preventing stale sidecar APIs from silently breaking interactive AI CLI launch.
-- Decoupled the live chaos smoke from the old longrun dashboard URL. Dashboard state is now recorded when available, but an unavailable historical dashboard no longer invalidates the live Aether runtime chaos proof.
+- Decoupled the live chaos smoke from the old longrun dashboard URL. Dashboard state is now recorded when available, but an unavailable historical dashboard no longer invalidates the live Aelyris runtime chaos proof.
 
 Validation:
 
@@ -3313,7 +3313,7 @@ Implemented:
 
 - Added `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs`.
 - Added `pnpm verify:terminal:authenticated-ai-cli-prompt`.
-- The verifier refuses to launch a real AI CLI prompt unless `QUORUM_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` is set.
+- The verifier refuses to launch a real AI CLI prompt unless `AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS` is set.
 - Without consent it writes `.codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json` with `status=requires_opt_in`, `wouldSpendTokens=true`, and the required env var.
 - With consent it is prepared to:
   - attach to the live Tauri/WebView2 runtime through CDP;
@@ -3343,7 +3343,7 @@ Result:
 
 Residual:
 
-- Clearing this blocker requires an explicit token-spend opt-in run. Until then, Aether should not claim full post-launch authenticated prompt confidence, even though non-token-spending launch, sidecar, recovery, IME, reconnect, and command evidence gates are green.
+- Clearing this blocker requires an explicit token-spend opt-in run. Until then, Aelyris should not claim full post-launch authenticated prompt confidence, even though non-token-spending launch, sidecar, recovery, IME, reconnect, and command evidence gates are green.
 
 ### Phase 2.11 - Auth Prompt Consent Readiness and Blocker Precision
 
@@ -3459,7 +3459,7 @@ Implemented:
 - Added `waitForPowerShellReady()` to the live chaos smoke before both the initial write and the post-restart write.
 - The rerun then exposed a dev runtime crash with `STATUS_HEAP_CORRUPTION`; the smoke was still carrying a stale `edgeLoop` URL parameter from the browser state.
 - Hardened `withChaosQaParams()` to delete `state`, `edgeLoop`, and `dashboardState`, and to set `v=live-pty-ai-cli-chaos`.
-- Restarted the dev runtime cleanly with `QUORUM_API_TOKEN=dev`, reran the smoke, and confirmed fresh pass.
+- Restarted the dev runtime cleanly with `AELYRIS_API_TOKEN=dev`, reran the smoke, and confirmed fresh pass.
 
 Validation:
 
@@ -4172,22 +4172,22 @@ Residual:
 
 - The only remaining blocker is still explicit token-spend consent for the real authenticated AI CLI prompt smoke.
 
-### Phase 2.39 - Aetherctl Daemon And Scrollback Parity
+### Phase 2.39 - Aelyrisctl Daemon And Scrollback Parity
 
 Status: done
 
 Implemented:
 
-- Added `aetherctl search` with the alias `aetherctl scrollback-search` so daemon-owned scrollback can be queried from the CLI without depending on the React/WebView surface.
+- Added `aelys search` with the alias `aelys scrollback-search` so daemon-owned scrollback can be queried from the CLI without depending on the React/WebView surface.
 - Added URL-safe query construction and parser coverage for `--lines`, `--limit`, and `--case-sensitive`.
-- Extended the live mux restore verifier so it now proves both `aetherctl daemon` contract parity and `aetherctl search` scrollback parity against the running daemon.
+- Extended the live mux restore verifier so it now proves both `aelys daemon` contract parity and `aelys search` scrollback parity against the running daemon.
 - Tightened the native boundary and release quality source contracts so daemon parity, scrollback search parity, and restart/restore policy coverage stay required evidence.
 - Refreshed the right-rail Goal Track mutual proof with a strict non-bootstrap `pnpm verify:goal:safe` pass after live Tauri DOM verification.
 
 Validation:
 
 - `cargo fmt --manifest-path src-tauri\Cargo.toml`
-- `cargo test --manifest-path src-tauri\Cargo.toml --bin aetherctl`
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys`
 - `pnpm verify:mux-live`
 - `pnpm verify:terminal:native-boundary`
 - `pnpm verify:terminal:real-ai-cli`
@@ -4222,7 +4222,7 @@ Status: done
 Implemented:
 
 - Moved Windows AppUserModelID setup to the start of `run()` before Tauri creates the window.
-- Made direct HWND/DWM chrome mutation opt-in through `AETHER_EXPERIMENTAL_DWM_CHROME=1`; default startup now relies on Tauri `windowEffects` for stability.
+- Made direct HWND/DWM chrome mutation opt-in through `AELYRIS_EXPERIMENTAL_DWM_CHROME=1`; default startup now relies on Tauri `windowEffects` for stability.
 - Silenced `taskkill`, `icacls`, and `attrib` helper stdout/stderr in the PTY sidecar path so token-file ACL hardening cannot leak localized/garbled helper output into dev/runtime logs.
 - Extended `scripts/verify-tauri-runtime-hygiene.mjs` with `noHelperOutputLeaks` and active-log-run tracking, while still preserving previous crash evidence.
 - Tightened release scoring and static regression coverage so direct DWM chrome cannot become an unconditional startup path again.
@@ -4328,7 +4328,7 @@ Implemented:
 
 - Added `scripts/verify-tauri-runtime-hygiene.mjs` and `pnpm verify:tauri-runtime-hygiene`.
 - The verifier now fails if the latest Tauri verification logs contain crash markers such as `STATUS_ACCESS_VIOLATION`, `STATUS_HEAP_CORRUPTION`, `0xc0000005`, or `0xc0000374`.
-- The verifier also requires dev ports `1420` / `9222` to be closed, no workspace `Aether` / `aether-pty-server` processes to remain, and no stale dev pid file.
+- The verifier also requires dev ports `1420` / `9222` to be closed, no workspace `Aelyris` / `aelyris-pty-server` processes to remain, and no stale dev pid file.
 - Changed high-risk CDP verifiers to detach from WebView2 with `browser.disconnect()` rather than closing the attached host browser:
   - `verify-right-rail-goal-track-tauri.mjs`
   - `verify-live-tauri-pty-ai-cli-chaos.mjs`
@@ -4367,7 +4367,7 @@ Status: done
 Implemented:
 
 - Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so token-spending execution now requires an explicit supported provider.
-- A consented run with no `QUORUM_AUTH_PROMPT_PROVIDER` now writes `status=provider_required`, keeps `safeNoPromptSent=true`, and exits before CDP attach, session spawn, or prompt send.
+- A consented run with no `AELYRIS_AUTH_PROMPT_PROVIDER` now writes `status=provider_required`, keeps `safeNoPromptSent=true`, and exits before CDP attach, session spawn, or prompt send.
 - A consented run with an unsupported provider now writes `status=unsupported_provider` and also exits before token-spending work.
 - Added `scripts/verify-authenticated-ai-cli-provider-guard.mjs` and `pnpm verify:terminal:authenticated-ai-cli-provider-guard` to prove the missing-provider path is blocked.
 - Tightened `authenticated-ai-cli-preflight-gate` scoring so the provider-required guard artifact must be fresh and prove `tokenBlocked`, `noPromptSent`, and `noSessionSpawned`.
@@ -4406,7 +4406,7 @@ Implemented:
 - Hardened `scripts/verify-authenticated-ai-cli-prompt-smoke.mjs` so consented prompt execution captures a session baseline before spawn.
 - Success cleanup now requires structured proof: stop attempted, list checked, spawned session absent, no new unexpected sessions, and no stop/list errors.
 - Failure cleanup now attempts `stop_interactive_agent` and records `cleanupAfterFailure` instead of only setting `cleanupAttempted`.
-- CDP shutdown now detaches from the attached WebView2 browser by default and only closes the host when `QUORUM_AUTH_PROMPT_CLOSE_BROWSER=1`.
+- CDP shutdown now detaches from the attached WebView2 browser by default and only closes the host when `AELYRIS_AUTH_PROMPT_CLOSE_BROWSER=1`.
 - Tightened `scripts/score-release-quality.mjs` so authenticated prompt scoring requires fresh embedded non-token preflight artifacts and structured cleanup proof.
 - Updated final-goal audit logic so it can reach `complete` after the authenticated prompt blocker is cleared, while still preserving the current `blocked-by-explicit-consent` release state.
 
@@ -4437,7 +4437,7 @@ Residual:
 
 - Current release score evidence: `96/100`, `321/335`.
 - `releaseCandidateReady=false`; final-goal audit status is `blocked-by-external-gates` until real sleep/resume evidence and consented `authenticated-ai-cli-prompt-smoke` are both proven.
-- Authenticated prompt execution remains gated by `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` and explicit consent; the safe proof registry is `27/27`.
 
 ## 2026-05-24 Release Evidence Refresh
 
@@ -4447,9 +4447,9 @@ Residual:
 
 ## 2026-05-24 Full-Native Phase 2 Progress
 
-- Added `aether-native present-loop-proof`.
+- Added `aelyris-native present-loop-proof`.
 - The native client proof now verifies a native Win32 window present loop that consumes the same daemon-backed `NativeRenderFrame`, presents multiple nonblank frames, and records `webviewUsed=false` / `reactUsed=false`.
-- Added `aether-native gpu-render-proof`.
+- Added `aelyris-native gpu-render-proof`.
 - The native client proof now verifies `wgpu` adapter/device creation, WGSL shader compilation, offscreen render pipeline execution, one draw submission, and `NativeRenderFrame` hash parity with `webviewUsed=false` / `reactUsed=false`.
 - Refreshed live `native-hwnd-paste-live` evidence through WebView2 CDP and re-ran native input and native boundary gates.
 - `pnpm verify:terminal:native-client` passes with `native-gpu-render-proof` and `native-gpu-render-frame-contract`.
@@ -4459,7 +4459,7 @@ Residual:
 
 ## 2026-05-24 Full-Native Phase 2 Progress 2
 
-- Added `aether-native winit-wgpu-proof`.
+- Added `aelyris-native winit-wgpu-proof`.
 - Added a Windows native `winit` window connected to a `wgpu` swapchain.
 - The native client proof now verifies `native-winit-wgpu-surface-proof` and `native-winit-wgpu-frame-contract`: same daemon session, same `NativeRenderFrame` hash, GPU-backed surface configuration, multiple presented frames, and no React/WebView.
 - `pnpm verify:terminal:native-client` passes with the winit/wgpu surface proof.
@@ -4469,7 +4469,7 @@ Residual:
 
 ## 2026-05-24 Full-Native Phase 2 Progress 3
 
-- Extended `aether-native winit-wgpu-proof` from surface-only proof to a dirty-rect terminal cell proof.
+- Extended `aelyris-native winit-wgpu-proof` from surface-only proof to a dirty-rect terminal cell proof.
 - The winit/wgpu renderer now consumes `NativeRenderFrame` cell rects, cursor position, and `NativeRenderFrameDiff` dirty rects as GPU instance data.
 - The proof reports `glyphMode=cell-quad-proof`, `terminalGlyphQuads`, `cursorQuads`, `dirtyRectDogfood=true`, `dirtyRectsRendered`, `dirtyCells`, and `dirtyRows`.
 - `pnpm verify:terminal:native-client` passes with `native-winit-wgpu-dirty-rect-cell-proof` and `native-winit-wgpu-cursor-cell-proof`.
@@ -4479,164 +4479,164 @@ Residual:
 
 ## 2026-05-25 Full-Native Mode Shell Progress
 
-- Added `aether-native mode-shell-proof`.
+- Added `aelyris-native mode-shell-proof`.
 - The new native shell contract makes the Clauge-style information architecture explicit in Rust: left mode rail, central work surface, and right contextual inspector.
 - The contract exposes 8 fixed modes: Terminal, Agents, Workspace, Review, Git, Context, History, and Settings.
 - Each mode now has a stable shortcut, Rust contract id, center surface id, inspector kind, primary action, and selected entity route.
 - The contextual inspector is backed by the Rust Command Center contract and its counts are verified against the backing evidence/actions/blockers.
 - The verifier now rejects loose mode-shell claims: mode ids and `Alt+1` through `Alt+8` shortcuts must match exactly, all mode routes must be Rust-owned, and shell/rail/inspector/Command Center layers must report no React/WebView usage.
 - Added standalone evidence at `.codex-auto/quality/native-mode-shell-proof.json`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `70/100`, `80/114`, `in-progress`.
 - Remaining product-edge blockers: live native OS IME dogfood, native settings UI, rendered native mode rail/right inspector demotion from React, accessibility, native visual QA, and making React/WebView compatibility-only.
 
 ## 2026-05-25 Full-Native Mode Rail Window Progress
 
-- Added `aether-native mode-rail-window-proof`.
+- Added `aelyris-native mode-rail-window-proof`.
 - The native client now renders the 8-mode rail into a Win32 layered window using Rust-owned mode shell data.
 - The proof exposes rendered rows, exact hit targets, selected/focused mode, keyboard transitions, nonblank pixel evidence, and `readyForReactDemotion=false`.
 - The verifier now rejects rail proofs that skip any mode, lose `Alt+1` through `Alt+8`, omit hit targets, miss keyboard evidence, render blank pixels, or require React/WebView.
 - Added standalone evidence at `.codex-auto/quality/native-mode-rail-window-proof.json`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `71/100`, `82/116`, `in-progress`.
 - Remaining product-edge blockers: live native OS IME dogfood, native settings UI, native inspector/right-rail React demotion, native accessibility, native visual QA, and React/WebView compatibility-only promotion.
 
 ## 2026-05-25 Full-Native Inspector Window Progress
 
-- Added `aether-native inspector-window-proof`.
+- Added `aelyris-native inspector-window-proof`.
 - The native client now renders the Command Center-backed contextual inspector into a Win32 layered window using Rust-owned mode shell and Command Center data.
 - The proof exposes evidence rows, action rows, action hit targets, keyboard selection, scroll state, enter dispatch metadata, nonblank pixel evidence, and explicit no React/WebView dispatch guardrails.
 - The verifier now rejects inspector proofs that do not match Command Center evidence/action counts, miss action targets, omit keyboard/scroll evidence, render blank pixels, or require React/WebView to dispatch the selected action.
 - Added standalone evidence at `.codex-auto/quality/native-inspector-window-proof.json`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `71/100`, `84/118`, `in-progress`.
 - Remaining product-edge blockers: live native OS IME dogfood, native settings UI, actual native Command Center/right-rail React demotion, native accessibility, native visual QA, and React/WebView compatibility-only promotion.
 
 ## 2026-05-25 Full-Native Right-Rail Demotion Readiness
 
-- Added `aether-native right-rail-demotion-proof`.
+- Added `aelyris-native right-rail-demotion-proof`.
 - The proof connects the already-proven native Command Center, mode shell, mode rail, and contextual inspector into a single readiness contract for demoting the React right rail.
 - The proof records the native replacement map, verifies every prerequisite is complete, and still reports the current React right-rail sources as present.
 - This keeps the claim honest: the native product path is ready for the demotion work, but React/WebView has not been reduced to compatibility-only yet.
 - Added standalone evidence at `.codex-auto/quality/native-right-rail-demotion-proof.json`.
 - The verifiers now require `native-right-rail-demotion-contract-proof`, `native-right-rail-replacement-map-proof`, and `native-right-rail-demotion-honesty-proof`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `72/100`, `86/120`, `in-progress`.
-- Remaining product-edge blockers: live native OS IME dogfood, native settings UI, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: live native OS IME dogfood, native settings UI, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Full-Native Native Settings Window Progress
 
-- Added `aether-native settings-window-proof`.
+- Added `aelyris-native settings-window-proof`.
 - The native client now renders settings customization into a Win32 layered native window using Rust-owned config data.
 - The proof covers theme, mood, window opacity, wallpaper image path, wallpaper opacity, wallpaper position, wallpaper scale, panel/terminal material controls, palette controls, hit targets, keyboard navigation, hot-reload binding, and nonblank pixel evidence.
 - The verifier now rejects settings UI claims that omit controls, hot reload, wallpaper controls, keyboard navigation, nonblank rendering, or no-React/no-WebView ownership.
 - Added standalone evidence at `.codex-auto/quality/native-settings-window-proof.json`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `77/100`, `92/120`, `in-progress`.
-- Remaining product-edge blockers: live native OS IME dogfood, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: live native OS IME dogfood, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Native HWND IME Dogfood Progress
 
-- Added `aether-native ime-dogfood-proof`.
+- Added `aelyris-native ime-dogfood-proof`.
 - The proof dogfoods the Rust native input HWND rather than the WebView IME bridge: a native parent HWND is created, the native input child HWND is focused, `WM_IME_STARTCOMPOSITION` is observed, Japanese committed text is drained through `NativeTerminalInputHost`, and Codex/Claude/Gemini prompt rows are rendered through `NativeRenderFrame`.
 - The verifier now requires `native-ime-hwnd-dogfood-proof`, `native-ime-ai-cli-prompt-row-proof`, and `native-ime-dogfood-honesty-proof`.
 - Added standalone evidence at `.codex-auto/quality/native-ime-hwnd-dogfood-proof.json`.
 - This intentionally does not close real OS IME dogfood yet. The remaining IME work is an installed Japanese IME/TSF composition/candidate session, not synthetic `WM_CHAR` commit through the native HWND.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `78/100`, `94/120`, `in-progress`.
-- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, native accessibility/UIA, native visual QA, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Native Accessibility Tree Progress
 
-- Added `aether-native accessibility-proof`.
+- Added `aelyris-native accessibility-proof`.
 - The proof builds a native semantic tree from Rust-owned mode shell, Command Center, inspector, and settings contracts.
 - It verifies accessible names, roles, focus order, keyboard traversal, action guardrails, and no React/WebView dependency.
 - The proof deliberately does not claim screen-reader completion: `screenReaderProviderReady=false` and `nextProof=native-uia-provider-dogfood`.
 - Added standalone evidence at `.codex-auto/quality/native-accessibility-proof.json`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `80/100`, `96/120`, `in-progress`.
-- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, UIA/accesskit provider dogfood, native visual QA, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, UIA/accesskit provider dogfood, native visual QA, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Native Visual QA Harness Progress
 
-- Added `aether-native visual-qa-proof`.
+- Added `aelyris-native visual-qa-proof`.
 - The native client now has a WebView/CDP-free visual QA harness that aggregates native renderer/window proofs and adds direct Win32 pixel sampling.
 - The proof verifies required native surfaces, nonblank rendering, contrast, resize probe coverage, and focus coverage through the native accessibility proof.
 - The pixel probe uses a Win32 compatible bitmap and `GetPixel` for desktop and compact scenarios.
 - The proof deliberately leaves real Windows sleep/resume open: `sleepResumeDogfood=false` and `nextProof=native-sleep-resume-visual-dogfood`.
 - Added standalone evidence at `.codex-auto/quality/native-visual-qa-proof.json`.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `82/100`, `98/120`, `in-progress`.
-- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, UIA/accesskit provider dogfood, real Windows sleep/resume visual dogfood, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, actual React right-rail compatibility demotion, UIA/accesskit provider dogfood, real Windows sleep/resume visual dogfood, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 React Right-Rail Compatibility Demotion
 
 - Marked the existing React right-rail modules as explicit compatibility clients instead of product truth: `AgentInspector`, `LivePanesPanel`, `rightRailGoalTrack`, and `rightRailAdvisor`.
-- Updated `aether-native right-rail-demotion-proof` so Rust verifies every compatibility client has the expected contract marker and reports `reactCompatibilityOnly=true`.
+- Updated `aelyris-native right-rail-demotion-proof` so Rust verifies every compatibility client has the expected contract marker and reports `reactCompatibilityOnly=true`.
 - The proof now reports `compatibilityStatus=react-right-rail-compatibility-only`, `reactDemotionComplete=true`, `reactOwnsProductTruth=false`, and `webviewDispatchRequired=false`.
 - The native-client, native-boundary, and full-native audit verifiers now reject unmarked React right-rail sources.
 - Refreshed `.codex-auto/quality/native-client-spike.json`, `.codex-auto/quality/native-boundary-contract.json`, `.codex-auto/quality/native-right-rail-demotion-proof.json`, and `.codex-auto/quality/full-native-rust-gap-audit.json`.
-- Validation passed: `pnpm exec tsc --noEmit`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `pnpm exec tsc --noEmit`, `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `83/100`, `100/120`, `in-progress`.
-- Remaining product-edge blockers: real OS IME/TSF dogfood, UIA/accesskit provider dogfood, real Windows sleep/resume visual dogfood, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, UIA/accesskit provider dogfood, real Windows sleep/resume visual dogfood, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Native UIA Provider Dogfood
 
-- Added `aether-native uia-provider-proof`.
+- Added `aelyris-native uia-provider-proof`.
 - The proof creates native Win32 controls for the accessibility dogfood path and validates them through Windows UIAutomation, with no React/WebView involvement.
 - The proof verifies `ElementFromHandle`, readable UIA names, descendant enumeration, ControlType reporting, and `InvokePattern` execution for a native action button.
 - Added standalone evidence at `.codex-auto/quality/native-uia-provider-proof.json`.
 - The proof records `manualNarratorDogfood=false`; it proves UIA provider readiness and programmatic invocation, not a human/manual screen-reader pass.
 - The native-client, native-boundary, and full-native audit verifiers now require the UIA provider proof.
-- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `85/100`, `102/120`, `in-progress`.
-- Remaining product-edge blockers: real OS IME/TSF dogfood, real Windows sleep/resume visual dogfood, and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real OS IME/TSF dogfood, real Windows sleep/resume visual dogfood, and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Native OS IME Dogfood
 
-- Added `aether-native ime-os-dogfood-proof`.
+- Added `aelyris-native ime-os-dogfood-proof`.
 - The native path now proves Japanese preedit/result handling through Win32 Imm32 APIs and the Rust `NativeTerminalInputHost`, not WebView/xterm fallback.
 - The proof covers `ImmSetCompositionStringW(GCS_COMPSTR)`, `ImmNotifyIME` completion, native input-host drain, one committed PTY write, and Codex/Claude/Gemini prompt-row visibility through `NativeRenderFrame`.
 - Added standalone evidence at `.codex-auto/quality/native-ime-os-dogfood-proof.json`.
 - The verifier now requires `native-ime-os-composition-proof`, `native-ime-os-result-commit-proof`, and `native-ime-os-ai-cli-prompt-proof`.
 - Honesty boundary: manual Japanese candidate-window dogfood and TSF candidate UI sweep are still follow-up hardening gates; the current proof closes automated OS IME preedit/result routing.
-- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `90/100`, `108/120`, `A`, `in-progress`.
-- Remaining product-edge blockers: real Windows sleep/resume visual dogfood and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real Windows sleep/resume visual dogfood and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Native Sleep/Resume Recovery Probe
 
-- Added a native sleep/resume recovery probe to `aether-native visual-qa-proof`.
+- Added a native sleep/resume recovery probe to `aelyris-native visual-qa-proof`.
 - The probe uses a native Win32 message loop and `WM_POWERBROADCAST` suspend/resume messages to verify that the native shell has a redraw/focus/surface-reconfigure recovery path ready.
-- The visual QA proof now records `aether.native.sleep-resume-recovery-probe.v1`, pre/post resume nonblank visual probes, and `native-sleep-resume-recovery-probe-proof`.
+- The visual QA proof now records `aelyris.native.sleep-resume-recovery-probe.v1`, pre/post resume nonblank visual probes, and `native-sleep-resume-recovery-probe-proof`.
 - The proof intentionally records `realWindowsSleepResumeDogfood=false`; it does not claim the final Windows sleep/resume gate because it does not put the machine to sleep.
 - Command Center action generation was hardened so the right rail still exposes recovery/refresh actions when the remaining blocker list becomes short.
 - Right-rail demotion readiness was hardened to use standalone native inspector evidence if a previous partial native-client run overwrote the aggregate artifact.
 - Refreshed `.codex-auto/quality/native-client-spike.json`, `.codex-auto/quality/native-boundary-contract.json`, `.codex-auto/quality/native-visual-qa-proof.json`, and `.codex-auto/quality/full-native-rust-gap-audit.json`.
-- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `90/100`, `108/120`, `A`, `in-progress`.
-- Remaining product-edge blockers: real Windows sleep/resume visual dogfood and making `aether-native` the primary daily-driver shell.
+- Remaining product-edge blockers: real Windows sleep/resume visual dogfood and making `aelyris-native` the primary daily-driver shell.
 
 ## 2026-05-25 Primary Native Shell Promotion
 
-- Added `aether-native primary-shell-proof`.
-- The proof makes `aether-native` the primary product-truth surface for the native migration and demotes the existing React/WebView shell to compatibility-only.
+- Added `aelyris-native primary-shell-proof`.
+- The proof makes `aelyris-native` the primary product-truth surface for the native migration and demotes the existing React/WebView shell to compatibility-only.
 - It aggregates native prerequisites across renderer, input/IME, settings, Command Center/right rail, UIA/accessibility, visual QA harness, native-client, and native-boundary artifacts.
 - It renders a single native Win32 primary shell proof window with mode rail, terminal surface, Command Center actions, promotion gates, action hit targets, and nonblank pixel evidence.
-- The proof records `nativePrimaryShellPromotion=true`, `primarySurface=aether-native`, `productTruthOwner=rust-native-shell`, `reactWebViewCompatibilityOnly=true`, `reactOwnsProductTruth=false`, `webviewOwnsTerminal=false`, and `promotionReady=true`.
+- The proof records `nativePrimaryShellPromotion=true`, `primarySurface=aelyris-native`, `productTruthOwner=rust-native-shell`, `reactWebViewCompatibilityOnly=true`, `reactOwnsProductTruth=false`, `webviewOwnsTerminal=false`, and `promotionReady=true`.
 - The proof does not claim final full-native readiness: `readyForFullNativeClaim=false` remains until real Windows sleep/resume visual dogfood is complete.
 - Added standalone evidence at `.codex-auto/quality/native-primary-shell-proof.json`.
 - Refreshed `.codex-auto/quality/native-client-spike.json`, `.codex-auto/quality/native-boundary-contract.json`, and `.codex-auto/quality/full-native-rust-gap-audit.json`.
-- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aether-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aether-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: `node --check scripts\verify-native-client-spike.mjs`, `node --check scripts\verify-native-boundary-contract.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `cargo fmt --manifest-path src-tauri\Cargo.toml --check`, `cargo check --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo test --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `cargo build --manifest-path src-tauri\Cargo.toml --bin aelyris-native`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
 - Remaining product-edge blocker: real Windows sleep/resume visual dogfood.
 
 ## 2026-05-25 Native Sleep/Resume Final Gate Hardening
 
 - Hardened `scripts/verify-real-os-suspend-evidence.mjs` for the full-native target.
-- The suspend/resume verifier now accepts `AETHER_APP_EXE` and `AETHER_APP_PROCESS_NAME`, allowing the final run to target `aether-native.exe` rather than only `Aether.exe`.
+- The suspend/resume verifier now accepts `AELYRIS_APP_EXE` and `AELYRIS_APP_PROCESS_NAME`, allowing the final run to target `aelyris-native.exe` rather than only `Aelyris.exe`.
 - The full-native audit now refuses to close the final sleep/resume blocker with stale or legacy Tauri evidence.
-- Required final evidence now includes `aether-native` executable/process identity, real Windows suspend/resume power events, post-resume app/API/terminal/SQLite/pane-state checks, and a resume timestamp newer than `.codex-auto/quality/native-primary-shell-proof.json`.
+- Required final evidence now includes `aelyris-native` executable/process identity, real Windows suspend/resume power events, post-resume app/API/terminal/SQLite/pane-state checks, and a resume timestamp newer than `.codex-auto/quality/native-primary-shell-proof.json`.
 - Validation passed: `node --check scripts\verify-real-os-suspend-evidence.mjs`, `node --check scripts\verify-full-native-rust-gap-audit.mjs`, `pnpm verify:production:suspend:diagnose`, `pnpm verify:production:suspend`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
 - Remaining product-edge blocker: real Windows sleep/resume visual dogfood against the current native primary shell.
@@ -4644,8 +4644,8 @@ Residual:
 ## 2026-05-26 Native Primary Sleep/Resume Harness
 
 - Extended the real OS suspend/resume harness with native primary-shell targeting.
-- `--native-primary` now makes the evidence target `aether-native.exe` and the `aether-native` process identity instead of the legacy Tauri release shell.
-- `--launch-native-primary` starts a visible long-held `aether-native primary-shell-proof` process before arming the suspend window, then records the exact launch/probe result in the evidence session.
+- `--native-primary` now makes the evidence target `aelyris-native.exe` and the `aelyris-native` process identity instead of the legacy Tauri release shell.
+- `--launch-native-primary` starts a visible long-held `aelyris-native primary-shell-proof` process before arming the suspend window, then records the exact launch/probe result in the evidence session.
 - The evidence flow now writes `suspendTarget`, `nativePrimaryLaunch`, native `processName`, and `targetKind` metadata so the final audit can tell whether the proof was collected against the actual Rust primary shell.
 - Added dedicated package scripts for the native run: `verify:production:suspend:native-begin`, `native-resume`, `native-postcheck`, `native-diagnose`, and guarded `native-cycle`.
 - Validation passed: `node --check scripts\verify-real-os-suspend-evidence.mjs`, `pnpm verify:production:suspend:native-diagnose`, `pnpm verify:production:suspend:diagnose`, and `pnpm verify:full-native:audit`.
@@ -4655,7 +4655,7 @@ Residual:
 ## 2026-05-26 Native Verifier Hardening And Preflight
 
 - Repaired the native-client verifier so it no longer depends on PowerShell sidecar launch, mandatory cargo rebuilds, or spawnSync native execution in the Windows sandbox.
-- The verifier now prefers the bundled PTY sidecar, can start it directly with hidden windows, skips rebuild when the debug `aether-native.exe` already exists, and captures `aether-native` JSON output through temporary files instead of pipe-backed spawnSync.
+- The verifier now prefers the bundled PTY sidecar, can start it directly with hidden windows, skips rebuild when the debug `aelyris-native.exe` already exists, and captures `aelyris-native` JSON output through temporary files instead of pipe-backed spawnSync.
 - Fixed the primary-shell proof self-reference: component proofs can satisfy the native-client prerequisite while the aggregate verifier is still assembling its final artifact.
 - Added the `open-native-sleep-resume-preflight` Command Center action so the native right rail remains actionable even when the full-native blocker list is down to one item.
 - Added native sleep/resume preflight evidence at `.codex-auto/production-smoke/real-os-suspend-native-preflight.json`.
@@ -4667,38 +4667,38 @@ Residual:
 ## 2026-05-26 Native Power Event Proof
 
 - Added a Rust-native Windows event-log proof for the final sleep/resume gate.
-- `aether-native power-events-proof --start-epoch n --end-epoch n` now reads the System log through Windows Event Log APIs without PowerShell and emits `aether.native.power-events-proof.v1`.
+- `aelyris-native power-events-proof --start-epoch n --end-epoch n` now reads the System log through Windows Event Log APIs without PowerShell and emits `aelyris.native.power-events-proof.v1`.
 - The proof filters by provider as well as event id, preventing unrelated `id=1` or `id=107` records from being counted as resume evidence.
 - `verify-real-os-suspend-evidence.mjs` now uses the native event proof in `--native-primary` mode for diagnostics, preflight, and final validation.
 - Native preflight now reports `ready-for-real-sleep`; event-log access is green with `nativeWindowsEventLog=true` and `powershellUsed=false`.
 - Native process liveness for the launched proof window now uses Node PID liveness instead of PowerShell process enumeration, removing another sandbox-specific false negative.
-- Validation passed: direct `aether-native power-events-proof`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-diagnose`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
+- Validation passed: direct `aelyris-native power-events-proof`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-diagnose`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `98/100`, `118/120`, `A`, `in-progress`.
 - Remaining product-edge blocker: real Windows sleep/resume visual dogfood against freshly armed native evidence.
 
 ## 2026-05-26 Guarded Native Sleep And Primary Shell Gate Repair
 
-- Added `aether-native sleep-now` as the Rust-native guarded sleep command for the final real Windows sleep/resume path.
-- The command is intentionally fail-closed: it refuses to call the Windows power API unless `QUORUM_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows` is present.
+- Added `aelyris-native sleep-now` as the Rust-native guarded sleep command for the final real Windows sleep/resume path.
+- The command is intentionally fail-closed: it refuses to call the Windows power API unless `AELYRIS_ALLOW_OS_SLEEP=1` or `--i-understand-this-sleeps-windows` is present.
 - Updated `verify-real-os-suspend-evidence.mjs` so native-primary guarded cycles use the Rust command instead of PowerShell.
-- Fixed stale-artifact pressure in `aether-native primary-shell-proof`: the proof now merges persisted native-client checks with the current verifier run's checks, so primary-shell promotion is evaluated from the proof run that is actually in progress.
+- Fixed stale-artifact pressure in `aelyris-native primary-shell-proof`: the proof now merges persisted native-client checks with the current verifier run's checks, so primary-shell promotion is evaluated from the proof run that is actually in progress.
 - Revalidated the native IME OS dogfood path after the regression report. Full native-client verification again passes IME OS composition/result/prompt-row checks.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
 - Remaining product-edge blocker: run the explicitly opted-in real Windows sleep/resume cycle and post-resume native visual QA.
 
 ## 2026-05-26 Strict Native Sleep Evidence Contract
 
-- Hardened the final native sleep/resume gate so it cannot be satisfied by stale `Aether.exe` evidence, PowerShell event-log evidence, or a native binary hash refresh alone.
-- Native-primary evidence must now prove the target kind, native-primary launch request, successful native launch with PID, post-resume `aether-native` process identity, API health, terminal roundtrip, SQLite/pane-layout preservation, and native Windows event-log source.
-- `verify-full-native-rust-gap-audit.mjs` now requires `validation.windowsPowerEvents.source=aether-native-power-events-proof`, `nativeWindowsEventLog=true`, and `powershellUsed=false` before awarding the final `native-visual-qa` sleep/resume points.
+- Hardened the final native sleep/resume gate so it cannot be satisfied by stale `Aelyris.exe` evidence, PowerShell event-log evidence, or a native binary hash refresh alone.
+- Native-primary evidence must now prove the target kind, native-primary launch request, successful native launch with PID, post-resume `aelyris-native` process identity, API health, terminal roundtrip, SQLite/pane-layout preservation, and native Windows event-log source.
+- `verify-full-native-rust-gap-audit.mjs` now requires `validation.windowsPowerEvents.source=aelyris-native-power-events-proof`, `nativeWindowsEventLog=true`, and `powershellUsed=false` before awarding the final `native-visual-qa` sleep/resume points.
 - Refreshed the sleep/resume evidence file to the current native executable identity without claiming completion. Diagnostic remains incomplete until the real opted-in sleep/resume cycle runs.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
-- Remaining product-edge blocker: real Windows sleep/resume visual dogfood against the launched `aether-native` primary shell.
+- Remaining product-edge blocker: real Windows sleep/resume visual dogfood against the launched `aelyris-native` primary shell.
 
 ## 2026-05-26 Post-Resume Native Visual Proof Gate
 
 - Extended native sleep/resume postcheck to run native visual proof after resume.
-- Postcheck now records `validation.postResumeProbes.nativeVisual` from `aether-native visual-qa-proof` and `aether-native primary-shell-proof`.
+- Postcheck now records `validation.postResumeProbes.nativeVisual` from `aelyris-native visual-qa-proof` and `aelyris-native primary-shell-proof`.
 - The final audit now requires post-resume pixel/contrast/resize/focus coverage and primary-shell nonblank/interactive evidence before it can award the final native visual QA sleep/resume points.
 - This closes a blind spot where process/API/terminal/DB recovery could pass while native rendering quality after resume remained unproven.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
@@ -4708,7 +4708,7 @@ Residual:
 
 - Added a final-gate runbook to the Rust-native Command Center action model.
 - The native actions now cover preflight, begin/arm, guarded host sleep cycle, resume timestamp capture, post-resume checks, and the final full-native audit.
-- The host sleep action is explicitly marked with `requiresExplicitOptIn=true` and `explicitOptInEnv=QUORUM_ALLOW_OS_SLEEP=1`.
+- The host sleep action is explicitly marked with `requiresExplicitOptIn=true` and `explicitOptInEnv=AELYRIS_ALLOW_OS_SLEEP=1`.
 - The native-client verifier now requires `native-command-center-sleep-resume-runbook-proof`.
 - The full-native audit now requires this runbook before accepting the Command Center data/action proof, keeping the final gate discoverable from the Rust native product surface.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
@@ -4718,8 +4718,8 @@ Residual:
 
 - Added `verify:production:suspend:native-postcheck-preflight` as a dry run for the final post-resume checks.
 - The dry run starts an isolated sidecar, launches the native primary shell proof, and verifies post-resume process identity, API health, terminal roundtrip, DB/pane-layout persistence, and native visual proof readiness without claiming a real Windows sleep event.
-- Native-primary terminal roundtrip now uses direct sidecar HTTP in the preflight path, so `aetherctl` spawn restrictions do not mask product readiness.
-- Added `aether-native db-smoke-proof` for isolated SQLite/pane-layout proof. This keeps preflight and final postcheck evidence out of the user's real config/database.
+- Native-primary terminal roundtrip now uses direct sidecar HTTP in the preflight path, so `aelys` spawn restrictions do not mask product readiness.
+- Added `aelyris-native db-smoke-proof` for isolated SQLite/pane-layout proof. This keeps preflight and final postcheck evidence out of the user's real config/database.
 - Repaired the IME OS dogfood verifier crash by running the Imm32 worker with file-backed stdio and `CREATE_BREAKAWAY_FROM_JOB`. The proof still verifies Win32 Imm32 preedit/result handling, native input-host drain, and Codex/Claude/Gemini prompt-row visibility without WebView or React.
 - Validation passed: `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, `pnpm verify:production:suspend:native-preflight`, `pnpm verify:production:suspend:native-postcheck-preflight`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
@@ -4748,7 +4748,7 @@ Residual:
 
 - Added a Command Center-visible proof that the native sleep action is fail-closed before a real host-power test is attempted.
 - The new `verify-native-sleep-guard` runbook action is owned by the Rust-native Command Center model, requires no React/WebView surface, and points to `pnpm verify:production:suspend:native-sleep-guard`.
-- The verifier runs `aether-native sleep-now` without `QUORUM_ALLOW_OS_SLEEP=1` and proves that it refuses quickly, does not emit success JSON, does not claim a real sleep attempt, and does not fall back to PowerShell.
+- The verifier runs `aelyris-native sleep-now` without `AELYRIS_ALLOW_OS_SLEEP=1` and proves that it refuses quickly, does not emit success JSON, does not claim a real sleep attempt, and does not fall back to PowerShell.
 - Evidence is stored at `.codex-auto/production-smoke/native-sleep-guard-refusal.json`, and the full-native audit now reports it under `currentTruth.nativeSleepGuard`.
 - Validation passed: `pnpm verify:production:suspend:native-sleep-guard`, `pnpm verify:terminal:native-client`, `pnpm verify:terminal:native-boundary`, and `pnpm verify:full-native:audit`.
 - Current full-native audit: `98/100`, `118/120`, `S`, `in-progress`.
@@ -4756,7 +4756,7 @@ Residual:
 
 ## 2026-05-26 Native Paste Guard Proof And Visual QA Artifact Split
 
-- Added `aether-native paste-guard-proof` as a Rust-native no-WebView/no-CDP proof for terminal paste safety.
+- Added `aelyris-native paste-guard-proof` as a Rust-native no-WebView/no-CDP proof for terminal paste safety.
 - The proof dogfoods a real native input HWND with Windows clipboard `CF_UNICODETEXT` and `WM_PASTE`, proving allowed single-line paste normalization plus destructive and multiline paste blocking before PTY write.
 - The native input verifier now accepts this fresh Rust artifact as behavioral HWND paste evidence, eliminating the old requirement that a CDP browser smoke be current.
 - Split native present-loop and winit/wgpu proof outputs into standalone quality artifacts so the native visual QA harness reads completed surface evidence instead of the in-progress native-client report.
@@ -4780,7 +4780,7 @@ Residual:
 - Current score after the fresh final-goal evidence map is `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - The terminal render-fidelity gate is green, and browser/Codex preview now uses the production `TerminalCanvas` path instead of a clean DOM-text surrogate.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for authenticated AI CLI prompt smoke.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Final Goal Evidence Refresh
 
@@ -4788,7 +4788,7 @@ Residual:
 - Projected score after the fresh final-goal evidence map remains `96/100`, `321/335`; auditStatus=`blocked-by-external-gates`.
 - Terminal text clarity is now guarded by the production canvas path plus a Sharp-mode no-backdrop-blur terminal shell path.
 - Remaining external gate is real Windows sleep/resume support; remaining policy gate is explicit token-spend consent for `authenticated-ai-cli-prompt-smoke`.
-- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `QUORUM_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
+- Authenticated prompt execution remains gated by `authenticated-ai-cli-prompt-smoke`, `authenticated-ai-cli-consent-packet`, and `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`; safe proof registry is `27/27`.
 
 ## 2026-05-31 Chunked OSC Safe Refresh Guard
 
@@ -4801,14 +4801,14 @@ Residual:
 ## 2026-05-31 Operator Finish Heartbeat Guard
 
 - `pnpm verify:goal:operator-finish` now streams long external-gate steps instead of hiding them behind a silent `spawnSync` wait.
-- Token prompt smoke, real user sleep/wake, post-operator refresh, and final safe reruns emit `[goal-operator] start`, `[goal-operator] waiting`, and pass/fail markers with a default `AETHER_GOAL_OPERATOR_HEARTBEAT_MS=30000`.
+- Token prompt smoke, real user sleep/wake, post-operator refresh, and final safe reruns emit `[goal-operator] start`, `[goal-operator] waiting`, and pass/fail markers with a default `AELYRIS_GOAL_OPERATOR_HEARTBEAT_MS=30000`.
 - Readiness-only mode still sends no prompt, invokes no OS sleep, and can replay the same-day external gate readiness artifact when sandbox child-process launch is blocked.
 - Anti-stall proof now requires `operatorFinishStreamsLongExternalSteps`, so the external-gate handoff cannot regress to a long silent wait without failing `pnpm verify:goal:anti-stall`.
 
 ## 2026-05-31 Finalize Evidence Gate
 
 - Added `pnpm verify:goal:finalize` as the ordered, no-token/no-sleep evidence finalizer for the self-referential final audit/score/docs/matrix/safe chain.
-- The sequence is fixed as release hygiene -> anti-stall -> quality score -> final audit -> quality score -> docs -> final audit -> quality score -> completion matrix -> operator finish readiness -> final safe, with `AETHER_GOAL_FINALIZE_SKIP_OPERATOR=1` for the nested post-operator path.
+- The sequence is fixed as release hygiene -> anti-stall -> quality score -> final audit -> quality score -> docs -> final audit -> quality score -> completion matrix -> operator finish readiness -> final safe, with `AELYRIS_GOAL_FINALIZE_SKIP_OPERATOR=1` for the nested post-operator path.
 - `pnpm verify:goal:operator-finish` now calls the finalize gate after a real external gate run instead of relying on a loose refresh/safe pair.
 - Anti-stall proof now requires `goalFinalizeClosesSelfReferenceLoop`, so the known `93` transient score caused by running score/docs out of order cannot become the documented finish path.
 
@@ -4824,6 +4824,6 @@ Residual:
 
 - Added a shared `.codex-auto/quality/final-goal-evidence.lock` guard for `pnpm verify:quality-score` and `pnpm verify:final-goal-audit`.
 - The lock prevents `score-release-quality` from reading `final-goal-audit.json` while `verify-final-goal-audit` has removed and is rewriting it, which previously could create a transient `93/100` score and strand the goal chain.
-- Lock ownership records pid, argv, cwd, and start time; stale locks are cleared only after `AETHER_FINAL_GOAL_LOCK_STALE_MS` so interrupted verifier runs can recover without manual cleanup.
+- Lock ownership records pid, argv, cwd, and start time; stale locks are cleared only after `AELYRIS_FINAL_GOAL_LOCK_STALE_MS` so interrupted verifier runs can recover without manual cleanup.
 - Anti-stall proof now requires both score and audit scripts to use the shared lock before the self-referential final-goal evidence map can count as safe.
 - The finalizer now refreshes `quality-score` immediately after anti-stall before the first final audit, so a source change to the anti-stall/score/audit verifier set cannot make audit consume stale score evidence.

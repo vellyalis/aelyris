@@ -1,6 +1,6 @@
 //! Cost Manager — runaway prevention for the autonomous loop.
 //!
-//! See docs/specs/AETHER_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
+//! See docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md, Binding
 //! Requirement 7. Hard caps bound the fleet; when a cap is reached the loop
 //! must **block new agent spawn** (concurrency / budget) and **halt cleanly**
 //! (budget). This module is the pure decision logic; the spawn gate wires it
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// Hard caps. `None` means "no limit on this axis". The default fleet size is a
 /// controlled-but-bounded 4 concurrent agents — the spec's binding default
-/// (AETHER_COCKPIT_REQUIREMENTS BR7: `max_agents` default 4; worker batch 3-4),
+/// (AELYRIS_COCKPIT_REQUIREMENTS BR7: `max_agents` default 4; worker batch 3-4),
 /// favouring controlled parallel engineering over a dense stress fleet, while
 /// still being a hard ceiling the loop never exceeds (BR7 runaway protection). It
 /// stays runtime-configurable (`cost_set_caps`), so an operator who wants a denser

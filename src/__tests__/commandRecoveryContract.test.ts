@@ -5,7 +5,7 @@ import type { AgentSession } from "../shared/types/agent";
 import type { AuditEventRecord } from "../shared/types/audit";
 
 function emitRecoveryCheck(name: string, value: Record<string, unknown>) {
-  console.log(`AETHER_COMMAND_RECOVERY_CHECK ${JSON.stringify({ name, value })}`);
+  console.log(`AELYRIS_COMMAND_RECOVERY_CHECK ${JSON.stringify({ name, value })}`);
 }
 
 function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
@@ -53,7 +53,7 @@ describe("deriveCommandRecoveryPlan", () => {
       role: "implementer",
       worktree: {
         name: "native-edge",
-        path: "C:/repo/.aether/worktrees/native-edge",
+        path: "C:/repo/.aelyris/worktrees/native-edge",
         branch: "codex/native-edge",
         is_main: false,
         head_sha: "abc123",

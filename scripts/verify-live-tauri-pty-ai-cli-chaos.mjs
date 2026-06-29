@@ -1,14 +1,14 @@
 // P2-07 live Tauri/WebView2 PTY and AI CLI chaos smoke.
 //
 // Prerequisite:
-//   QUORUM_API_TOKEN=dev pnpm.cmd tauri:dev
+//   AELYRIS_API_TOKEN=dev pnpm.cmd tauri:dev
 //
 // Optional env:
-//   AETHER_TAURI_CDP=http://127.0.0.1:9222
-//   AETHER_LIVE_CHAOS_APP_URL=http://localhost:1420/
-//   AETHER_TAURI_PROJECT=C:/repo/aether-terminal
-//   AETHER_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
-//   AETHER_LIVE_CHAOS_OUT=.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json
+//   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
+//   AELYRIS_LIVE_CHAOS_APP_URL=http://localhost:1420/
+//   AELYRIS_TAURI_PROJECT=C:/repo/aelyris
+//   AELYRIS_DASHBOARD_STATE_URL=http://127.0.0.1:48371/state
+//   AELYRIS_LIVE_CHAOS_OUT=.codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
@@ -16,16 +16,16 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 
-const CDP = process.env.AETHER_TAURI_CDP ?? process.env.AETHER_IME_CDP ?? "http://127.0.0.1:9222";
-const APP_URL = process.env.AETHER_LIVE_CHAOS_APP_URL ?? "http://localhost:1420/";
+const CDP = process.env.AELYRIS_TAURI_CDP ?? process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
+const APP_URL = process.env.AELYRIS_LIVE_CHAOS_APP_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
-const PROJECT_PATH = (process.env.AETHER_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
-const DASHBOARD_STATE_URL = process.env.AETHER_DASHBOARD_STATE_URL ?? "http://127.0.0.1:48371/state";
-const OUT = process.env.AETHER_LIVE_CHAOS_OUT ?? ".codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json";
-const WAIT_MS = Number.parseInt(process.env.AETHER_LIVE_CHAOS_WAIT_MS ?? "45000", 10);
-const APP_READY_WAIT_MS = Number.parseInt(process.env.AETHER_LIVE_CHAOS_APP_READY_WAIT_MS ?? "60000", 10);
-const PTY_SENTINEL_BEFORE = "aether-live-chaos-pty-before";
-const PTY_SENTINEL_AFTER = "aether-live-chaos-pty-after-restart";
+const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
+const DASHBOARD_STATE_URL = process.env.AELYRIS_DASHBOARD_STATE_URL ?? "http://127.0.0.1:48371/state";
+const OUT = process.env.AELYRIS_LIVE_CHAOS_OUT ?? ".codex-auto/chaos-recovery/p2-07-live-tauri-pty-ai-cli-chaos.json";
+const WAIT_MS = Number.parseInt(process.env.AELYRIS_LIVE_CHAOS_WAIT_MS ?? "45000", 10);
+const APP_READY_WAIT_MS = Number.parseInt(process.env.AELYRIS_LIVE_CHAOS_APP_READY_WAIT_MS ?? "60000", 10);
+const PTY_SENTINEL_BEFORE = "aelyris-live-chaos-pty-before";
+const PTY_SENTINEL_AFTER = "aelyris-live-chaos-pty-after-restart";
 const STALE_QA_PARAMS = ["state", "edgeLoop", "dashboardState"];
 
 function writeArtifact(report) {
@@ -35,7 +35,7 @@ function writeArtifact(report) {
   return path;
 }
 
-function isAetherPage(page) {
+function isAelyrisPage(page) {
   const url = page.url();
   return (
     url.startsWith(APP_ORIGIN) ||
@@ -50,11 +50,11 @@ function withChaosQaParams(rawUrl) {
   try {
     const source = new URL(rawUrl);
     const url = new URL(source.pathname || "/", source.origin);
-    url.searchParams.set("aetherVisualQa", "1");
+    url.searchParams.set("aelyrisVisualQa", "1");
     url.searchParams.set("v", "live-pty-ai-cli-chaos");
     url.searchParams.set("rail", "observe");
     url.searchParams.set("projectPath", PROJECT_PATH);
-    url.searchParams.set("aetherDashboardStateUrl", DASHBOARD_STATE_URL);
+    url.searchParams.set("aelyrisDashboardStateUrl", DASHBOARD_STATE_URL);
     return url.toString();
   } catch {
     return rawUrl;
@@ -65,7 +65,7 @@ function isCleanChaosQaUrl(rawUrl) {
   try {
     const url = new URL(rawUrl);
     return (
-      url.searchParams.get("aetherVisualQa") === "1" &&
+      url.searchParams.get("aelyrisVisualQa") === "1" &&
       url.searchParams.get("v") === "live-pty-ai-cli-chaos" &&
       STALE_QA_PARAMS.every((key) => !url.searchParams.has(key))
     );
@@ -116,11 +116,11 @@ async function connectWithWait() {
 async function seedChaosQa(page) {
   await page.evaluate(
     ({ dashboardStateUrl, projectPath }) => {
-      localStorage.setItem("aether:visualQa", "1");
-      localStorage.setItem("aether:visualQaProject", projectPath);
-      localStorage.setItem("aether:lastProject", projectPath);
-      localStorage.setItem("aether:onboarding-done", "true");
-      localStorage.setItem("aether:dashboardStateUrl", dashboardStateUrl);
+      localStorage.setItem("aelyris:visualQa", "1");
+      localStorage.setItem("aelyris:visualQaProject", projectPath);
+      localStorage.setItem("aelyris:lastProject", projectPath);
+      localStorage.setItem("aelyris:onboarding-done", "true");
+      localStorage.setItem("aelyris:dashboardStateUrl", dashboardStateUrl);
     },
     { dashboardStateUrl: DASHBOARD_STATE_URL, projectPath: PROJECT_PATH },
   );
@@ -260,7 +260,7 @@ async function smokeLocalStorageReload(page) {
   const before = await page.evaluate(() => ({
     href: location.href,
     keyCount: localStorage.length,
-    hasProject: !!localStorage.getItem("aether:lastProject"),
+    hasProject: !!localStorage.getItem("aelyris:lastProject"),
     bodyOverflow: document.body.scrollWidth > document.documentElement.clientWidth + 1,
   }));
   await page.evaluate(() => localStorage.clear());
@@ -278,7 +278,7 @@ async function smokeLocalStorageReload(page) {
   const afterReseed = await page.evaluate(() => ({
     href: location.href,
     keyCount: localStorage.length,
-    hasProject: !!localStorage.getItem("aether:lastProject"),
+    hasProject: !!localStorage.getItem("aelyris:lastProject"),
     density: document.querySelector(".app-container")?.getAttribute("data-density") ?? null,
     bodyOverflow: document.body.scrollWidth > document.documentElement.clientWidth + 1,
   }));
@@ -442,11 +442,11 @@ async function main() {
     report.cdpWaitedMs = connected.waitedMs;
     const pages = browser.contexts().flatMap((context) => context.pages());
     report.pages = pages.map((candidate) => candidate.url());
-    page = pages.find(isAetherPage);
+    page = pages.find(isAelyrisPage);
     if (!page) {
       report.status = "external_dependency";
-      report.dependency = "Aether Tauri WebView2 page";
-      report.error = `CDP attached, but no Aether page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
+      report.dependency = "Aelyris Tauri WebView2 page";
+      report.error = `CDP attached, but no Aelyris page was exposed. Pages: ${report.pages.join(", ") || "none"}`;
       writeArtifact(report);
       console.error(`[live-chaos] ${report.error}`);
       process.exit(2);

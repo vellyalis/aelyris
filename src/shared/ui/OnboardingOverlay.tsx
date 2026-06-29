@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { PRODUCT_NAME } from "../constants/product";
 import styles from "./OnboardingOverlay.module.css";
 
-const STORAGE_KEY = "aether:onboarding-done";
+const STORAGE_KEY = "aelyris:onboarding-done";
 
 interface Step {
   title: string;

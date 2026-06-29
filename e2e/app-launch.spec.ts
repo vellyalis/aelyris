@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * E2E tests for Quorum UI rendering.
+ * E2E tests for Aelyris UI rendering.
  * Runs against Vite dev server (localhost:1420).
  *
  * Without Tauri backend, the app shows WelcomeScreen
@@ -9,16 +9,16 @@ import { test, expect } from "@playwright/test";
  * the frontend renders correctly in both states.
  */
 
-const PROJECT_PATH = process.env.AETHER_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
+const PROJECT_PATH = process.env.AELYRIS_E2E_PROJECT_PATH ?? process.cwd().replaceAll("\\", "/");
 
 async function openProjectFixture(page: import("@playwright/test").Page) {
-  await page.goto(`/?aetherVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
+  await page.goto(`/?aelyrisVisualQa=1&projectPath=${encodeURIComponent(PROJECT_PATH)}`, {
     waitUntil: "domcontentloaded",
   });
   await page.evaluate((path) => {
-    localStorage.setItem("aether:visualQa", "1");
-    localStorage.setItem("aether:visualQaProject", path);
-    localStorage.setItem("aether:onboarding-done", "true");
+    localStorage.setItem("aelyris:visualQa", "1");
+    localStorage.setItem("aelyris:visualQaProject", path);
+    localStorage.setItem("aelyris:onboarding-done", "true");
   }, PROJECT_PATH);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
@@ -33,7 +33,7 @@ test.describe("Welcome screen (no project)", () => {
   });
 
   test("renders the welcome screen", async ({ page }) => {
-    await expect(page.getByText("Quorum")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Aelyris")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Project terminal for shells, agents, edits, and review")).toBeVisible();
   });
 

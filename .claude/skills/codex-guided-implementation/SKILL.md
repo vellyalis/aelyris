@@ -7,7 +7,7 @@ description: Implement a substantial, drift-prone feature to completion using Co
 
 You stay the **implementer and final judge**. Codex is an **independent senior reviewer on a
 different model** — its value is catching YOUR blind spots and scope drift, not doing the work.
-Aether claim-safety note: Codex review is advisory. It cannot prove release readiness, world-class status, or token-spending AI prompt success. Public claims still require Aether verifier gates and explicit operator consent where applicable.
+Aelyris claim-safety note: Codex review is advisory. It cannot prove release readiness, world-class status, or token-spending AI prompt success. Public claims still require Aelyris verifier gates and explicit operator consent where applicable.
 
 **Scrutinize every Codex output; never rubber-stamp it.** Refute findings you can prove wrong (in
 code), fix-forward the real ones. The loop's whole point: the goal is set once, written down, and
@@ -70,6 +70,6 @@ codex exec review
 ```
 
 ## References
-- Pairs with `aether-plan` (decompose) / `aether-fleet` (dispatch) when the increments are parallelizable.
+- Pairs with `aelyris-plan` (decompose) / `aelyris-fleet` (dispatch) when the increments are parallelizable.
 - Worked example in this repo: the symbol-extractor A4 work (Codex set the non-LSP scope + tree-sitter
   ruling + 5 hard boundaries; each A4.x increment was gated then Codex-reviewed before commit).

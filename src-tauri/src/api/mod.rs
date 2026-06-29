@@ -16,7 +16,7 @@
 //! ```
 //!
 //! All routes require a `Authorization: Bearer <token>` header. The token is
-//! read from the `QUORUM_API_TOKEN` env var at startup; if unset, a random
+//! read from the `AELYRIS_API_TOKEN` env var at startup; if unset, a random
 //! token is generated and logged once so the running user can copy it.
 //!
 //! Sessions created via this API land in the same `PtyManager` as Tauri-spawned
@@ -26,7 +26,7 @@
 //! master. Stream tickets can be read-write or read-only; read-only sockets
 //! keep receiving output but cannot forward bytes into the PTY writer. Clients
 //! that request `control=exclusive` get a session controller lease; REST input
-//! and resize must then carry `x-aether-client-id` for the lease owner.
+//! and resize must then carry `x-aelyris-client-id` for the lease owner.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -75,7 +75,7 @@ pub const DEFAULT_PORT: u16 = 9333;
 pub const PROCESS_KIND_EMBEDDED: &str = "embedded-api";
 pub const PROCESS_KIND_SIDE_CAR: &str = "pty-sidecar";
 pub const DAEMON_PROTOCOL_VERSION: u32 = 2;
-pub const MUX_SNAPSHOT_DIR_ENV: &str = "QUORUM_MUX_SNAPSHOT_DIR";
+pub const MUX_SNAPSHOT_DIR_ENV: &str = "AELYRIS_MUX_SNAPSHOT_DIR";
 
 /// Per-frame write deadline for the WS send half.
 ///
@@ -112,7 +112,7 @@ pub const MAX_PTY_SESSIONS: usize = 32;
 /// Default allowed CORS origin — the Tauri dev server. In release builds the
 /// webview loads from `tauri://localhost` which does not send `Origin` so is
 /// unaffected by CORS; the list only matters for browser clients. Override
-/// via `QUORUM_API_CORS_ORIGIN` (comma-separated, e.g. `https://foo,https://bar`).
+/// via `AELYRIS_API_CORS_ORIGIN` (comma-separated, e.g. `https://foo,https://bar`).
 pub const DEFAULT_CORS_ORIGIN: &str = "http://127.0.0.1:1420";
 
 /// REST rate-limit bucket: tolerant enough for local UI reload/reconnect storms
@@ -213,7 +213,7 @@ pub struct ApiState {
     /// bumps an `Arc`), and the internal state is `Mutex`-guarded.
     pub rate_limiter: Arc<RateLimiter>,
     /// Allowed CORS origins. Applied as a `tower_http::cors::CorsLayer` in
-    /// `router()`. Defaulted from `QUORUM_API_CORS_ORIGIN`; browser clients
+    /// `router()`. Defaulted from `AELYRIS_API_CORS_ORIGIN`; browser clients
     /// from other origins get no `Access-Control-Allow-Origin` header and
     /// will fail the preflight.
     pub cors_origins: Vec<HeaderValue>,
@@ -462,13 +462,13 @@ impl ApiState {
     }
 }
 
-/// Read the comma-separated `QUORUM_API_CORS_ORIGIN` env var. Individual
+/// Read the comma-separated `AELYRIS_API_CORS_ORIGIN` env var. Individual
 /// typos are logged at `warn` and skipped. If the entire list fails to
 /// parse, we fall back to the dev-server default rather than leave the
 /// server with a zero-origin allow-list (which silently breaks every
 /// browser client). Returns the dev-server default when unset / empty.
 fn default_cors_origins() -> Vec<HeaderValue> {
-    match std::env::var("QUORUM_API_CORS_ORIGIN") {
+    match std::env::var("AELYRIS_API_CORS_ORIGIN") {
         Ok(s) if !s.trim().is_empty() => {
             let parsed: Vec<HeaderValue> = s
                 .split(',')
@@ -478,7 +478,7 @@ fn default_cors_origins() -> Vec<HeaderValue> {
                         Ok(v) => Some(v),
                         Err(_) => {
                             log::warn!(
-                                "api: QUORUM_API_CORS_ORIGIN entry {:?} is not a valid \
+                                "api: AELYRIS_API_CORS_ORIGIN entry {:?} is not a valid \
                                  HeaderValue — dropping",
                                 trimmed
                             );
@@ -489,7 +489,7 @@ fn default_cors_origins() -> Vec<HeaderValue> {
                 .collect();
             if parsed.is_empty() {
                 log::warn!(
-                    "api: QUORUM_API_CORS_ORIGIN parsed to zero valid origins — \
+                    "api: AELYRIS_API_CORS_ORIGIN parsed to zero valid origins — \
                      falling back to {}",
                     DEFAULT_CORS_ORIGIN
                 );
@@ -713,7 +713,7 @@ pub const TICKET_TTL_SECS: u64 = 10;
 /// redeeming. Expired entries are pruned lazily on every operation.
 pub const MAX_LIVE_TICKETS: usize = 1024;
 
-pub const CLIENT_ID_HEADER: &str = "x-aether-client-id";
+pub const CLIENT_ID_HEADER: &str = "x-aelyris-client-id";
 const MAX_STREAM_CLIENT_ID_LEN: usize = 128;
 
 fn client_id_header_name() -> HeaderName {
@@ -841,7 +841,7 @@ fn client_id_from_headers(headers: &HeaderMap) -> Result<Option<String>, ApiErro
     };
     let value = value
         .to_str()
-        .map_err(|_| ApiError::BadRequest("x-aether-client-id must be valid UTF-8".into()))?;
+        .map_err(|_| ApiError::BadRequest("x-aelyris-client-id must be valid UTF-8".into()))?;
     normalize_stream_client_id(Some(value))
 }
 
@@ -1020,7 +1020,7 @@ impl Drop for ActiveMuxClient {
 /// when the redeemed ticket's session_id matches the WS URL's path.
 ///
 /// Eviction semantics (single-tenant assumption): when `max_live` is hit
-/// we evict the oldest-by-expiry entry. This is safe for Aether's
+/// we evict the oldest-by-expiry entry. This is safe for Aelyris's
 /// single-token, single-user deployment — any authenticated caller is
 /// already trusted. If this module ever grows multi-tenant auth, swap
 /// this policy for per-tenant quotas before landing the multi-tenant
@@ -1166,16 +1166,16 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
-    /// Read `QUORUM_API_TOKEN` from the environment. If the variable is unset
+    /// Read `AELYRIS_API_TOKEN` from the environment. If the variable is unset
     /// or empty, generate a random UUID and log it once at WARN level so the
     /// operator can see it in the app's log output.
     pub fn from_env() -> Self {
-        let token = match std::env::var("QUORUM_API_TOKEN") {
+        let token = match std::env::var("AELYRIS_API_TOKEN") {
             Ok(t) if !t.is_empty() => t,
             _ => {
                 let generated = uuid::Uuid::new_v4().to_string();
                 log::warn!(
-                    "api: QUORUM_API_TOKEN not set — generated ephemeral token: {}",
+                    "api: AELYRIS_API_TOKEN not set — generated ephemeral token: {}",
                     generated
                 );
                 generated
@@ -1726,14 +1726,14 @@ fn terminal_core_policy() -> TerminalCorePolicyResponse {
         ime_policy: "native-composition-geometry-is-source-of-truth",
         clipboard_policy: "native-clipboard-first-with-telemetry-visible-browser-fallback",
         renderer_truth_source: "rust-term-engine-render-pipeline",
-        render_frame_schema: "aether.native.render-frame.v1",
-        render_diff_schema: "aether.native.render-diff.v1",
-        render_commit_schema: "aether.native.render-commit.v1",
+        render_frame_schema: "aelyris.native.render-frame.v1",
+        render_diff_schema: "aelyris.native.render-diff.v1",
+        render_commit_schema: "aelyris.native.render-commit.v1",
         render_pipeline_boundary: "rust-native-render-pipeline",
         next_renderer: "winit-wgpu-present-loop",
         current_presentation_surface: "react-canvas-presentation-with-rust-term-engine-truth",
         native_renderer_status:
-            "aether-native-no-webview-spike-proved-full-product-renderer-pending",
+            "aelyris-native-no-webview-spike-proved-full-product-renderer-pending",
         renderer_claim_policy:
             "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded",
         webview_terminal_renderer_policy: "fallback-contained-not-source-of-truth",
@@ -2316,7 +2316,7 @@ struct StreamTicket {
 /// ticket redemption to the right session.
 ///
 /// NOTE: this runs in the auth middleware on the raw pre-routing URI path,
-/// which is still percent-encoded. The session-id path segment in Aether
+/// which is still percent-encoded. The session-id path segment in Aelyris
 /// is always a UUID v4 (hex + dashes) — neither character needs escaping —
 /// so a direct `strip_prefix` / `strip_suffix` is safe. If the session-id
 /// format ever changes to allow characters that URL-encode, this function
@@ -2716,7 +2716,7 @@ mod tests {
         }
 
         let unicode_dir =
-            std::env::temp_dir().join(format!("aether-cwd-馬-{}", std::process::id()));
+            std::env::temp_dir().join(format!("aelyris-cwd-馬-{}", std::process::id()));
         std::fs::create_dir_all(&unicode_dir).unwrap();
         assert_eq!(
             normalize_api_cwd(Some(unicode_dir.to_string_lossy().to_string())).unwrap(),

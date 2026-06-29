@@ -14,14 +14,14 @@ const ARTIFACTS = {
 const SOURCE_GROUPS = {
   nativeClient: [
     "scripts/verify-native-client-spike.mjs",
-    "src-tauri/src/bin/aether_native.rs",
+    "src-tauri/src/bin/aelyris_native.rs",
     "src-tauri/src/term/mod.rs",
     "src-tauri/src/term/text_shaping.rs",
     "src-tauri/Cargo.toml",
   ],
   textShaping: [
     "scripts/verify-native-text-shaping-fallback.mjs",
-    "src-tauri/src/bin/aether_native.rs",
+    "src-tauri/src/bin/aelyris_native.rs",
     "src-tauri/src/term/mod.rs",
     "src-tauri/src/term/text_shaping.rs",
     "src-tauri/Cargo.toml",
@@ -29,7 +29,7 @@ const SOURCE_GROUPS = {
   postcheck: [
     "scripts/verify-real-os-suspend-evidence.mjs",
     "scripts/verify-native-client-spike.mjs",
-    "src-tauri/src/bin/aether_native.rs",
+    "src-tauri/src/bin/aelyris_native.rs",
   ],
 };
 
@@ -168,7 +168,7 @@ const freshPngArtifacts =
 const checks = [
   check(
     "visual-qa-artifact-current",
-    nativeClient?.status === "passed" && artifactFresh("nativeClient") && visualQa?.schema === "aether.native.visual-qa-proof.v1",
+    nativeClient?.status === "passed" && artifactFresh("nativeClient") && visualQa?.schema === "aelyris.native.visual-qa-proof.v1",
     "native visual QA must be produced from the current native renderer sources",
     {
       artifact: ARTIFACTS.nativeClient,
