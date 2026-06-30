@@ -4202,12 +4202,19 @@ export function App() {
         setRightRailFixtureSelectedSessionId(sessionId);
         return;
       }
+      // An interactive gate (e.g. a Decision Inbox approval row) must focus its
+      // live TUI through the interactive selector; the headless path below would
+      // instead clear the interactive selection and fail to focus the pane.
+      if (fleetSessions.some((session) => session.id === sessionId && session.runtime === "interactive")) {
+        selectInteractiveSession(sessionId);
+        return;
+      }
       // Selecting a headless session clears any interactive selection so the
       // unified active id (interactiveSessionId || activeSessionId) reflects it.
       if (interactiveSessionId) selectInteractiveSession("");
       handleSelectSession(sessionId);
     },
-    [handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
+    [fleetSessions, handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
   );
 
   // Resolve a blocked/waiting interactive agent gate from the Decision Inbox.
@@ -4239,6 +4246,9 @@ export function App() {
         });
       } catch (err) {
         toast.error("Decision delivery failed", String(err));
+        // Re-throw so the inbox row re-enables its buttons for a retry instead
+        // of latching on a delivery that never reached the agent.
+        throw err;
       }
     },
     [rightRailUsesFixtures, showRightRailRouteConfirmation],

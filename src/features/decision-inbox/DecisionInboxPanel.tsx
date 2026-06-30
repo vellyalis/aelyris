@@ -166,19 +166,26 @@ function DecisionRow({
   // it must carry a live agent PTY id. Watchdog/blocked items without a ptyId
   // (e.g. headless runs) keep the Focus route only.
   const canDecide = Boolean(onDecide && item.status === "pending" && item.source === "agent" && item.ptyId);
-  // In-flight guard: block a second keystroke while a decision is being
-  // delivered (double-click / slow round-trip), so the live PTY never receives
-  // duplicate bytes. The ref guards synchronously; state drives the disabled UI.
+  // Latch a decision once delivered so the live PTY never receives duplicate
+  // bytes. The item stays pending until the agent re-emits its run status, so a
+  // re-click in that gap could answer the NEXT prompt — we keep both buttons
+  // disabled after a successful send and let the row unmount (clearing this)
+  // when the item leaves the inbox. On delivery failure we re-enable for retry.
+  // The ref guards the synchronous in-flight window before state re-renders.
   const decidingRef = useRef(false);
   const [deciding, setDeciding] = useState<DecisionAction | null>(null);
   const runDecision = (decision: DecisionAction) => {
-    if (!onDecide || decidingRef.current) return;
+    if (!onDecide || decidingRef.current || deciding !== null) return;
     decidingRef.current = true;
     setDeciding(decision);
-    Promise.resolve(onDecide(item, decision)).finally(() => {
-      decidingRef.current = false;
-      setDeciding(null);
-    });
+    Promise.resolve(onDecide(item, decision))
+      .then(() => {
+        decidingRef.current = false; // stay latched (deciding !== null) on success
+      })
+      .catch(() => {
+        decidingRef.current = false;
+        setDeciding(null); // delivery failed — allow a retry
+      });
   };
   const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];

@@ -105,10 +105,15 @@ pub async fn resolve_interactive_approval(
         other => return Err(format!("invalid decision '{other}' (expected approve|deny)")),
     };
 
-    // Read the live prompt so we send the RIGHT key. Default to a menu when the
-    // prompt cannot be read — Enter-accept / Esc-reject is the safe Claude path.
+    // Read the live prompt so we send the RIGHT key. Include the partial
+    // (unterminated) line — a y/n prompt like `Allow? (y/n) ` is usually the
+    // current line with no trailing newline, which a completed-lines-only read
+    // would miss. Default to a menu when the prompt cannot be read — Enter-accept
+    // / Esc-reject is the safe Claude path.
     let registry = app.state::<OutputBufferRegistry>();
-    let recent = registry.capture(&terminal_id, 40, true).unwrap_or_default();
+    let recent = registry
+        .capture_including_partial(&terminal_id, 40, true)
+        .unwrap_or_default();
     let kind = crate::agent::output_monitor::classify_approval_prompt(&recent)
         .unwrap_or(crate::agent::output_monitor::ApprovalPromptKind::Menu);
     let keystroke = crate::agent::output_monitor::approval_keystroke(kind, approve);

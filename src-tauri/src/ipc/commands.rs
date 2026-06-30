@@ -486,6 +486,31 @@ impl OutputBufferRegistry {
         }
     }
 
+    /// Like [`capture`](Self::capture) but also includes the current unterminated
+    /// line. An interactive permission prompt (e.g. `Allow? (y/n) `) is usually
+    /// the live, not-yet-newline-terminated line, so callers that must classify
+    /// the prompt shape need the partial tail or they would miss it.
+    pub fn capture_including_partial(
+        &self,
+        id: &str,
+        lines: usize,
+        clean: bool,
+    ) -> Result<String, String> {
+        let buffers = self
+            .buffers
+            .lock()
+            .map_err(|_| "Lock poisoned".to_string())?;
+        let buf = buffers
+            .get(id)
+            .ok_or_else(|| format!("No buffer for terminal {}", id))?;
+        let output = buf.tail_including_partial(lines).join("\n");
+        if clean {
+            Ok(strip_ansi(&output))
+        } else {
+            Ok(output)
+        }
+    }
+
     pub fn remove(&self, id: &str) {
         if let Ok(mut buffers) = self.buffers.lock() {
             buffers.remove(id);
