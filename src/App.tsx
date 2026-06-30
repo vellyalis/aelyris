@@ -164,6 +164,7 @@ import { useTerminalNotifications } from "./shared/hooks/useTerminalNotification
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { type AgentFleetSession, headlessToFleetSession } from "./shared/lib/agentFleet";
+import { summarizeAgentLane } from "./shared/lib/agentLaneSummary";
 import {
   type AuthenticatedPromptConsentPacket,
   deriveAuthenticatedPromptConsentPacket,
@@ -4632,6 +4633,14 @@ export function App() {
   ).length;
   const liveAgentCount =
     rightRailSessions.filter((s) => s.status !== "idle" && s.status !== "done").length + liveInteractiveSessionCount;
+  // Sessions that are blocked on a human/operator decision. `status` is the
+  // legacy projection where canonical `waiting_approval`/`blocked` both fold to
+  // `waiting` (see agentFleet.agentRunStatusToLegacyStatus). Mirrors the
+  // attentionCount predicate in workstationSummary.buildWorkstationSummary so the
+  // rail and the workstation pulse agree on what "needs attention" means.
+  const attentionAgentCount = rightRailSessions.filter(
+    (s) => s.status === "waiting" || s.status === "error",
+  ).length;
   const rightRailModeBadges: Record<RightRailMode, number> = {
     command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
     review: rightRailAllChangedFiles.length,
@@ -4881,12 +4890,11 @@ export function App() {
   } · ${rightRailWorktreeScopedCount} worktree${rightRailWorktreeScopedCount === 1 ? "" : "s"} · ${
     rightRailAllChangedFiles.length
   } file${rightRailAllChangedFiles.length === 1 ? "" : "s"}`;
-  const rightRailAgentsSummary =
-    liveAgentCount > 0
-      ? `${liveAgentCount} live`
-      : rightRailSessions.length > 0
-        ? `${rightRailSessions.length} parked`
-        : "No agents";
+  const rightRailAgentsSummary = summarizeAgentLane({
+    attentionCount: attentionAgentCount,
+    liveCount: liveAgentCount,
+    totalCount: rightRailSessions.length,
+  });
   const rightRailAgentsDetail = `${rightRailWorktreeScopedCount} scoped · ${rightRailOrchestraLanes.filter((lane) => lane.total > 0).length}/${
     rightRailOrchestraLanes.length
   } roles`;

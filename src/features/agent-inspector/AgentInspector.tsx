@@ -20,10 +20,10 @@ import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
 import { writeClipboardText } from "../../shared/lib/nativeClipboard";
 import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { computeTokenProgress } from "../../shared/lib/tokenProgress";
+import { rankAgentSessions } from "../../shared/lib/workstationSummary";
 import { useAppStore } from "../../shared/store/appStore";
 import {
   type AgentSession,
-  type AgentStatus,
   getSessionColor,
   STATUS_COLORS,
   STATUS_LABELS,
@@ -82,16 +82,6 @@ interface AgentInspectorProps {
 }
 
 type InspectorTab = "sessions" | "activity" | "parallel" | "conductor" | "diffs";
-
-const STATUS_ORDER: Record<AgentStatus, number> = {
-  generating: 0,
-  coding: 1,
-  thinking: 2,
-  waiting: 3,
-  error: 4,
-  idle: 5,
-  done: 6,
-};
 
 export function AgentInspector({
   sessions,
@@ -202,10 +192,7 @@ export function AgentInspector({
   // interactive runtimes here to avoid double-display. Fixture sessions carry no
   // runtime field and are treated as headless.
   const sortedSessions = useMemo(
-    () =>
-      [...sessions]
-        .filter((s) => s.runtime !== "interactive")
-        .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
+    () => rankAgentSessions(sessions.filter((s) => s.runtime !== "interactive")),
     [sessions],
   );
 
