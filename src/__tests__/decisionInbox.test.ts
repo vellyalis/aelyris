@@ -195,6 +195,36 @@ describe("decisionInbox", () => {
     // The captured menu is shown so the human sees WHAT they approve (P2-A).
     expect(inbox.pendingItems[0].context).toContain("rm -rf dist");
   });
+  it("keeps the full interactive approval prompt before render clipping", () => {
+    const prefix = "echo safe && ".repeat(45);
+    const tail = " && echo done".repeat(45);
+    const approvalPrompt = `Bash(${prefix}rm -rf C:/danger${tail}) · Do you want to proceed?`;
+
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-long-danger", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-7b",
+          cli: "claude",
+          approvalPrompt,
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      type: "destructive_operation",
+      risk: "critical",
+    });
+    expect(inbox.pendingItems[0].context).toBe(approvalPrompt);
+    expect(inbox.pendingItems[0].context.length).toBeGreaterThan(300);
+    expect(inbox.pendingItems[0].context).toContain("rm -rf C:/danger");
+  });
+
 
   it("classifies a benign interactive approval as a plain permission gate", () => {
     const inbox = buildDecisionInbox({

@@ -59,11 +59,10 @@ pub trait CliOutputParser: Send + Sync {
 /// the canonical first words of the options. Used to EXCLUDE option lines from
 /// the captured command text. (Markdown markers `>`/`*` are NOT in the class, so
 /// a quoted/bulleted `> 1. yes` list is not mistaken for a menu.)
-static MENU_OPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^[\s│❯›▶»]*\d+[.)]\s+(?:yes|no)\b").unwrap()
-});
+static MENU_OPTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?im)^[\s│❯›▶»]*\d+[.)]\s+(?:yes|no)\b").unwrap());
 
-/// The HIGHLIGHTED option line — a numbered `Yes`/`No` option that the TUI draws
+/// The HIGHLIGHTED approval option line — a numbered `Yes` option that the TUI draws
 /// with its selection pointer (`❯`/`›`/`▶`/`»`) as a prefix. This is the live
 /// menu's signature: ordinary assistant prose can list "1. Yes / 2. No" but never
 /// draws the pointer ON the option. Requiring the cursor on the option line (not
@@ -71,9 +70,8 @@ static MENU_OPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// making prose look like a menu (and is the per-read trigger for detection).
 /// ANSI color is stripped before matching, but these are literal glyphs that
 /// survive stripping.
-static CURSOR_OPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^[\s│]*[❯›▶»][\s│]*\d+[.)]\s+(?:yes|no)\b").unwrap()
-});
+static CURSOR_OPTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?im)^[\s│]*[❯›▶»][\s│]*\d+[.)]\s+yes\b").unwrap());
 
 /// Box-drawing glyphs the Claude TUI draws at BOTH edges of a boxed line
 /// (`│ … │`). Stripped from a captured prompt line's edges only.
@@ -91,12 +89,9 @@ fn is_prompt_noise_line(line: &str) -> bool {
     let line = line.trim();
     line.is_empty()
         || line.starts_with("Thinking")
-        || line.chars().any(|c| {
-            matches!(
-                c,
-                '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏'
-            )
-        })
+        || line
+            .chars()
+            .any(|c| matches!(c, '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏'))
 }
 
 /// Strip TUI box/selection glyphs from a line's EDGES only — never its interior.
@@ -117,17 +112,18 @@ fn clean_prompt_line(line: &str) -> String {
 /// interactive permission MENU, otherwise `None`.
 ///
 /// A real menu is a `Do you want to …?` question PLUS the HIGHLIGHTED, cursored
-/// numbered `Yes`/`No` option the TUI draws ([`CURSOR_OPTION_RE`]). Both are
+/// numbered highlighted `Yes` option the TUI draws ([`CURSOR_OPTION_RE`]). Both are
 /// required:
 /// - The question alone is NOT a gate — Claude writes "Do you want to split
 ///   this up?" in ordinary prose, and surfacing that as an approvable row would
 ///   let a human "approve" a sentence (false gate).
-/// - The cursored `Yes`/`No` option is the structural signature: it is what the
-///   Decision Inbox answers with a MENU keystroke (Enter accepts the highlighted
-///   default, Esc rejects), and the selection pointer on the option line is what
+/// - The cursored `Yes` option is the structural signature: it is what the
+///   Decision Inbox answers with an explicit `1` keystroke (Esc rejects), and the
+///   selection pointer on the option line is what
 ///   separates a real TUI menu from prose that merely lists "1. Yes / 2. No"
 ///   after a "Do you want to …?" sentence (prose never draws the pointer). This
-///   closes the P2-B false-gate.
+///   closes the P2-B false-gate. A highlighted `No` is deliberately not
+///   resolvable from the Approve button.
 ///
 /// A y/n-style prompt (`(y/N)`, `[y/N]`) is still deliberately NOT matched:
 /// answering it needs the y/n key, not the menu keystroke the resolver sends
@@ -160,7 +156,7 @@ pub fn detect_permission_menu(text: &str) -> Option<String> {
     // line so we capture one tight block, not the whole screen redraw.
     let mut preceding: Vec<String> = Vec::new();
     for raw in lines[..q_idx].iter().rev() {
-        if preceding.len() >= 4 {
+        if preceding.len() >= APPROVAL_PROMPT_SOURCE_LINE_LIMIT {
             break;
         }
         if is_prompt_noise_line(raw) || MENU_OPTION_RE.is_match(raw) {
@@ -182,17 +178,25 @@ pub fn detect_permission_menu(text: &str) -> Option<String> {
     preceding.push(question);
 
     let prompt = preceding.join(" · ");
-    Some(elide_middle(&prompt, APPROVAL_PROMPT_MAX_CHARS))
+    Some(bound_transport_prompt(&prompt))
 }
 
-/// Upper bound on a captured approval prompt. Generous enough for a command plus
-/// its question; longer prompts are middle-elided (see [`elide_middle`]).
-const APPROVAL_PROMPT_MAX_CHARS: usize = 300;
+/// Upper bound on prompt source lines captured from one menu render. This keeps
+/// multi-line gated diffs/commands intact without swallowing an entire redraw.
+const APPROVAL_PROMPT_SOURCE_LINE_LIMIT: usize = 64;
 
-/// Bound `s` to `max` chars WITHOUT losing either end: keep the head (what the
-/// command is) and the tail (a dangerous redirect / path / `; rm -rf /` often
-/// lives last), eliding only the middle. A benign-looking prefix must never hide
-/// a destructive tail in the Decision Inbox.
+/// Transport safety bound for a captured approval prompt. Classification keeps
+/// the full prompt under this loose cap; visual shortening happens in the
+/// Decision Inbox render path, not before risk classification.
+const APPROVAL_PROMPT_MAX_CHARS: usize = 4096;
+
+fn bound_transport_prompt(prompt: &str) -> String {
+    elide_middle(prompt, APPROVAL_PROMPT_MAX_CHARS)
+}
+
+/// Bound `s` to `max` chars WITHOUT losing either end. This is a transport
+/// failsafe only; normal approval prompts are kept intact so classification sees
+/// dangerous text even when it appears in the middle.
 fn elide_middle(s: &str, max: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= max {
@@ -433,7 +437,10 @@ mod tests {
         assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
         // The captured prompt names the gated action so the inbox is not blind.
         let prompt = result.approval_prompt.expect("menu prompt captured");
-        assert!(prompt.contains("Do you want to make this edit to main.rs?"), "{prompt}");
+        assert!(
+            prompt.contains("Do you want to make this edit to main.rs?"),
+            "{prompt}"
+        );
     }
 
     #[test]
@@ -491,7 +498,9 @@ mod tests {
         assert_ne!(first.status, Some(DetectedStatus::WaitingPermission));
         let second = parser.parse_chunk("❯ 1. Yes\n  2. No, and tell Claude what to do (esc)");
         assert_eq!(second.status, Some(DetectedStatus::WaitingPermission));
-        let prompt = second.approval_prompt.expect("menu prompt captured across reads");
+        let prompt = second
+            .approval_prompt
+            .expect("menu prompt captured across reads");
         assert!(prompt.contains("rm -rf dist"), "{prompt}");
         assert!(prompt.contains("Do you want to proceed?"), "{prompt}");
     }
@@ -508,7 +517,9 @@ mod tests {
         assert_ne!(c2.status, Some(DetectedStatus::WaitingPermission));
         let c3 = parser.parse_chunk("❯ 1. Yes\n  2. No, tell Claude (esc)");
         assert_eq!(c3.status, Some(DetectedStatus::WaitingPermission));
-        let prompt = c3.approval_prompt.expect("menu prompt captured across three reads");
+        let prompt = c3
+            .approval_prompt
+            .expect("menu prompt captured across three reads");
         assert!(prompt.contains("rm -rf dist"), "{prompt}");
         assert!(prompt.contains("Do you want to proceed?"), "{prompt}");
     }
@@ -540,12 +551,36 @@ mod tests {
     }
 
     #[test]
-    fn claude_permission_prompt_keeps_both_ends_of_a_long_command() {
-        // A long gated command must keep BOTH the head (what it is) and the tail
-        // (a dangerous redirect/path often lives last); only the middle is elided,
-        // so a benign-looking prefix never hides a destructive tail (codex P2).
+    fn claude_permission_prompt_keeps_middle_danger_for_classification() {
+        // PRE-1: risk classification must see the captured prompt before visual
+        // clipping. A destructive command in the middle must not be removed by
+        // backend display elision while the prompt is under the loose IPC cap.
         let parser = ClaudeParser::new();
-        let filler = "echo ".repeat(80); // pushes the prompt past the cap
+        let benign_prefix = "echo safe && ".repeat(45);
+        let benign_tail = " && echo done".repeat(45);
+        let menu = format!(
+            "Bash({benign_prefix}rm -rf C:/danger{benign_tail})\nDo you want to proceed?\n❯ 1. Yes\n  2. No (esc)"
+        );
+        let prompt = parser
+            .parse_chunk(&menu)
+            .approval_prompt
+            .expect("menu prompt captured");
+        assert!(prompt.contains("Bash("), "{prompt}");
+        assert!(prompt.contains("rm -rf C:/danger"), "{prompt}");
+        assert!(
+            !prompt.contains('…'),
+            "under-cap prompt should not be display-elided: {prompt}"
+        );
+        assert!(
+            prompt.chars().count() <= APPROVAL_PROMPT_MAX_CHARS,
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn claude_permission_prompt_uses_transport_cap_only_for_extreme_prompts() {
+        let parser = ClaudeParser::new();
+        let filler = "echo ".repeat(1200);
         let menu = format!(
             "Bash({filler}&& rm -rf /etc/secret)\nDo you want to proceed?\n❯ 1. Yes\n  2. No (esc)"
         );
@@ -555,8 +590,24 @@ mod tests {
             .expect("menu prompt captured");
         assert!(prompt.contains("Bash("), "{prompt}");
         assert!(prompt.contains("rm -rf /etc/secret"), "{prompt}");
-        assert!(prompt.contains('…'), "long prompt should be middle-elided: {prompt}");
-        assert!(prompt.chars().count() <= APPROVAL_PROMPT_MAX_CHARS, "{prompt}");
+        assert!(
+            prompt.contains('…'),
+            "extreme prompt should hit transport elision: {prompt}"
+        );
+        assert!(
+            prompt.chars().count() <= APPROVAL_PROMPT_MAX_CHARS,
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn claude_permission_menu_requires_highlighted_yes_option() {
+        let parser = ClaudeParser::new();
+        let no_highlighted =
+            "Bash(rm -rf dist)\nDo you want to proceed?\n  1. Yes\n❯ 2. No, tell Claude (esc)";
+        let result = parser.parse_chunk(no_highlighted);
+        assert_ne!(result.status, Some(DetectedStatus::WaitingPermission));
+        assert_eq!(result.approval_prompt, None);
     }
 
     #[test]
@@ -582,7 +633,7 @@ mod tests {
 
     #[test]
     fn detect_permission_menu_requires_real_menu_structure() {
-        // A real menu (question + numbered Yes/No options) IS a gate and is
+        // A real menu (question + highlighted Yes option) IS a gate and is
         // captured.
         assert!(detect_permission_menu(BASH_MENU).is_some());
         assert!(detect_permission_menu(EDIT_MENU).is_some());
@@ -611,16 +662,17 @@ mod tests {
         // no selection cursor. Without the cursor requirement this would surface a
         // false, resolvable Approve/Deny row.
         assert!(
-            detect_permission_menu("Do you want to proceed?\n1. Yes, run all\n2. No, stop").is_none()
+            detect_permission_menu("Do you want to proceed?\n1. Yes, run all\n2. No, stop")
+                .is_none()
         );
 
         // The Yes/No discriminator is load-bearing: a real cursor + adjacent
         // numbered options whose first words are NOT Yes/No is some other prompt,
         // not the permission menu we answer with Enter/Esc.
-        assert!(
-            detect_permission_menu("Do you want to proceed?\n❯ 1. Update the config\n  2. Run the tests")
-                .is_none()
-        );
+        assert!(detect_permission_menu(
+            "Do you want to proceed?\n❯ 1. Update the config\n  2. Run the tests"
+        )
+        .is_none());
 
         // The boolean view agrees with the captured view.
         assert!(detect_waiting_permission(BASH_MENU));

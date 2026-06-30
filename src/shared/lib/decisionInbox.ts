@@ -289,11 +289,10 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
     // no captured menu is intentionally NOT surfaced: there is nothing confirmed
     // to approve, and offering a blind keystroke would be the anti-pattern.
     const prompt = session.approvalPrompt;
-    // Match the backend's own cap (it head/tail-elides to 300 chars so a dangerous
-    // tail like `…; rm -rf /` is never lost) so the command is not truncated a
-    // SECOND time below it here. The panel adds a hover tooltip for the full text
-    // when the row visually clips it.
-    const context = shortText(prompt, 300);
+    // Keep the full captured prompt for risk classification and the panel tooltip.
+    // Visual clipping is a render concern; trimming here can hide destructive text
+    // in the middle of a long command before the human reviews the approval.
+    const context = prompt;
     // Classify by the captured command so a destructive/secret-bearing gate
     // (e.g. `Bash(rm -rf dist)`) keeps its critical risk badge instead of a flat
     // medium "permission" — the existing classifiers already encode that policy.

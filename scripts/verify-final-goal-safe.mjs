@@ -7,7 +7,6 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "final-goal-safe-summary.json");
 const BOOTSTRAP_RIGHT_RAIL = process.env.AELYRIS_FINAL_GOAL_SAFE_BOOTSTRAP_RIGHT_RAIL === "1";
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
-const SAFE_NO_TOKEN_PROMPT_SENTINEL = "tokenSpendingPromptExecuted: false";
 const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
 const SAFE_STEP_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STEP_FALLBACK_ARTIFACTS = {
@@ -24,6 +23,7 @@ const STEP_FALLBACK_ARTIFACTS = {
   "real-os-sleep-operator-handoff": [".codex-auto/quality/real-os-sleep-operator-handoff.json"],
   "external-gate-readiness": [".codex-auto/quality/goal-external-gate-readiness.json"],
   "tauri-runtime-hygiene": [".codex-auto/quality/tauri-runtime-hygiene.json"],
+  "runtime-core-preconditions": [".codex-auto/quality/runtime-core-preconditions.json"],
   "release-hygiene-contract": [".codex-auto/quality/release-hygiene-contract.json"],
   "supply-chain-audit": [".codex-auto/release-doctor/supply-chain-audit.json"],
   "production-build": [".codex-auto/quality/production-bundle-budget.json"],
@@ -1690,6 +1690,11 @@ const steps = [
     "verify-release-signing-operator-handoff.mjs",
   ),
   runStep("tauri-runtime-hygiene", "Tauri runtime hygiene", "verify-tauri-runtime-hygiene.mjs"),
+  runStep(
+    "runtime-core-preconditions",
+    "Runtime Core approval preconditions",
+    "verify-runtime-core-preconditions.mjs",
+  ),
   runStep("release-hygiene-contract", "Release hygiene contract", "verify-release-hygiene-contract.mjs"),
   runStep("supply-chain-audit", "Supply-chain vulnerability audit", "verify-supply-chain.mjs"),
   runPnpmStep("production-build", "Production TypeScript and Vite build", "build"),

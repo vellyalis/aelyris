@@ -122,6 +122,35 @@ describe("DecisionInboxPanel", () => {
       />
     );
   }
+  it("keeps the full approval prompt in the rendered tooltip", () => {
+    const prefix = "echo safe && ".repeat(45);
+    const tail = " && echo done".repeat(45);
+    const approvalPrompt = `Bash(${prefix}rm -rf C:/danger${tail}) · Do you want to proceed?`;
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={vi.fn()}
+        auditEvents={[]}
+        sessions={[
+          session("int-long", {
+            name: "claude interactive",
+            status: "waiting",
+            runtime: "interactive",
+            runStatus: "waiting_approval",
+            ptyId: "pty-1b",
+            cli: "claude",
+            approvalPrompt,
+          }),
+        ]}
+      />,
+    );
+
+    const context = screen.getByTitle(approvalPrompt);
+    expect(context.textContent).toBe(approvalPrompt);
+    expect(context.textContent).toContain("rm -rf C:/danger");
+  });
+
 
   it("calls onDecide with approve for a keystroke-resolvable interactive agent gate", () => {
     const onDecide = vi.fn();
