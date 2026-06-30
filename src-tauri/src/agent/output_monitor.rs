@@ -45,25 +45,17 @@ pub trait CliOutputParser: Send + Sync {
     fn parse_chunk(&self, text: &str) -> MonitorResult;
 }
 
-/// Yes/no answer tokens. Their presence — or an explicit "Do you want to …?"
-/// question — is the only structure we treat as a permission prompt. A bare
-/// "Allow"/"permission" in ordinary output ("Permission denied", "Allow me to
-/// explain") must NOT be mistaken for a human gate. Checked BEFORE coding
-/// markers: an approval prompt names the tool it gates ("Bash(...) — Do you want
-/// to proceed?"), so a tool-name match would otherwise mask the prompt.
-const YES_NO_MARKERS: &[&str] = &["(y/n)", "(Y/n)", "(y/N)", "[y/n]", "[Y/n]", "[y/N]", "y/n"];
-
-/// True when an ANSI-stripped output chunk looks like a permission prompt.
-/// Applied to the Claude parser only: Claude's interactive gate is a selectable
-/// menu (Enter accepts the default, Esc rejects), which the Decision Inbox
-/// resolves with those keys. Other CLIs use varied y/n prompts whose correct
-/// answer key cannot be inferred from run status alone, so they are NOT given a
-/// permission status here (surfacing them would render an Approve/Deny that
-/// sends the wrong key); uniform multi-CLI resolution needs the prompt kind
-/// carried from the parser and is deferred.
+/// True when an ANSI-stripped chunk shows Claude's interactive permission menu
+/// ("Do you want to …?"). Detection is intentionally limited to this menu form,
+/// because the Decision Inbox answers it with MENU keystrokes (Enter accepts the
+/// highlighted default, Esc rejects). A y/n-style prompt (`(y/N)`, `[y/N]`, …) is
+/// deliberately NOT matched: answering it needs the y/n key, which requires
+/// carrying the prompt kind from the parser (deferred) — and surfacing a row we
+/// would answer with the WRONG key (Enter on `(y/N)` denies) is worse than not
+/// surfacing it. Bare words ("Permission denied", "Allow me to explain") are
+/// likewise not gates.
 pub fn detect_waiting_permission(text: &str) -> bool {
-    YES_NO_MARKERS.iter().any(|marker| text.contains(marker))
-        || (text.contains("Do you want to") && text.contains('?'))
+    text.contains("Do you want to") && text.contains('?')
 }
 
 /// Claude Code interactive mode parser
@@ -90,18 +82,19 @@ impl CliOutputParser for ClaudeParser {
 
         // Status detection from Claude Code interactive output patterns.
         // These are heuristic — Claude Code may change its output format.
-        // Permission detection runs BEFORE coding detection: a tool-use approval
-        // prompt names the gated tool (e.g. "Bash(...) — Do you want to proceed?"),
-        // so checking Edit/Write/Bash first would misclassify the gate as Coding
-        // and the human Approve/Deny would never surface.
-        if text.contains("Thinking")
+        // Permission detection runs BEFORE every other marker: a TUI redraw chunk
+        // can carry the previous spinner AND the freshly-rendered approval prompt
+        // together (and the prompt names the tool it gates), so checking Thinking
+        // or Edit/Write/Bash first would mask the gate and the human Approve/Deny
+        // would never surface.
+        if detect_waiting_permission(text) {
+            status = Some(DetectedStatus::WaitingPermission);
+        } else if text.contains("Thinking")
             || text.contains("⠋")
             || text.contains("⠙")
             || text.contains("⠹")
         {
             status = Some(DetectedStatus::Thinking);
-        } else if detect_waiting_permission(text) {
-            status = Some(DetectedStatus::WaitingPermission);
         } else if text.contains("Edit")
             || text.contains("Write")
             || text.contains("Bash")
@@ -221,16 +214,9 @@ mod tests {
     }
 
     #[test]
-    fn claude_detects_permission() {
+    fn claude_detects_permission_menu() {
         let parser = ClaudeParser::new();
-        let result = parser.parse_chunk("Allow this tool? (y/n)");
-        assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
-    }
-
-    #[test]
-    fn claude_detects_do_you_want_to_prompt() {
-        let parser = ClaudeParser::new();
-        let result = parser.parse_chunk("Do you want to proceed?");
+        let result = parser.parse_chunk("Do you want to make this edit?");
         assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
     }
 
@@ -240,10 +226,19 @@ mod tests {
         // Coding markers (Bash/Edit/Write) must NOT mask the permission gate,
         // otherwise the human Approve/Deny never surfaces in the Decision Inbox.
         let parser = ClaudeParser::new();
-        let bash = parser.parse_chunk("Bash(rm -rf dist)\nDo you want to proceed? (y/n)");
+        let bash = parser.parse_chunk("Bash(rm -rf dist)\nDo you want to proceed?");
         assert_eq!(bash.status, Some(DetectedStatus::WaitingPermission));
-        let edit = parser.parse_chunk("Edit src/main.rs — Allow this edit? (y/n)");
+        let edit = parser.parse_chunk("Edit src/main.rs\nDo you want to make this edit?");
         assert_eq!(edit.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn claude_permission_precedes_spinner_in_redraw_chunk() {
+        // A TUI redraw chunk can carry the previous spinner plus the new prompt;
+        // the permission gate must win so the actionable row still surfaces.
+        let parser = ClaudeParser::new();
+        let result = parser.parse_chunk("⠋ Thinking…\nDo you want to proceed?");
+        assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
     }
 
     #[test]
@@ -254,16 +249,18 @@ mod tests {
     }
 
     #[test]
-    fn detect_waiting_permission_requires_prompt_structure_not_bare_words() {
+    fn detect_waiting_permission_matches_only_the_menu_question() {
+        // The menu question IS a gate.
+        assert!(detect_waiting_permission("Do you want to continue?"));
+        assert!(detect_waiting_permission("Bash(rm -rf dist)\nDo you want to proceed?"));
         // Bare words in ordinary output must NOT be treated as a gate.
         assert!(!detect_waiting_permission("Compiling crate v0.1.0"));
         assert!(!detect_waiting_permission("error: Permission denied (os error 13)"));
-        assert!(!detect_waiting_permission("Updated config.rs // allow all routes"));
         assert!(!detect_waiting_permission("Allow me to explain the approach."));
-        assert!(!detect_waiting_permission("I don't have permission to read that file"));
-        // Real prompt structure IS detected.
-        assert!(detect_waiting_permission("Do you want to continue?"));
-        assert!(detect_waiting_permission("Bash(rm -rf dist) — Allow? (y/n)"));
+        // A bare y/n prompt is intentionally NOT surfaced: we cannot answer it
+        // with the menu keystroke the resolver sends (deferred — needs the prompt
+        // kind carried from the parser).
+        assert!(!detect_waiting_permission("Allow this command? (y/N)"));
     }
 
     #[test]
