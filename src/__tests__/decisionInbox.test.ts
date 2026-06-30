@@ -190,7 +190,7 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems[0].evidence).toContain("runStatus=waiting_approval");
   });
 
-  it("surfaces a blocked interactive agent and prefers its blocked reason as context", () => {
+  it("surfaces a blocked interactive agent for inspection only (no keystroke resolution)", () => {
     const inbox = buildDecisionInbox({
       now: 5_000,
       sessions: [
@@ -206,16 +206,15 @@ describe("decisionInbox", () => {
     });
 
     expect(inbox.pendingCount).toBe(1);
-    expect(inbox.pendingItems[0]).toMatchObject({
-      sessionId: "int-block",
-      ptyId: "pty-8",
-      source: "agent",
-      status: "pending",
-    });
-    expect(inbox.pendingItems[0].context).toContain("merge strategy");
+    const item = inbox.pendingItems[0];
+    expect(item).toMatchObject({ sessionId: "int-block", source: "agent", status: "pending" });
+    // `blocked` is broader than an approval prompt, so it is Focus-only: no ptyId
+    // means the panel renders no Approve/Deny and never sends a blind keystroke.
+    expect(item.ptyId).toBeUndefined();
+    expect(item.context).toContain("merge strategy");
   });
 
-  it("emits a single keystroke-resolvable row for an interactive gate even when nextActor is set", () => {
+  it("emits a single row for a blocked interactive gate even when nextActor is set", () => {
     const inbox = buildDecisionInbox({
       now: 5_000,
       sessions: [
@@ -233,7 +232,8 @@ describe("decisionInbox", () => {
 
     const forSession = inbox.items.filter((item) => item.sessionId === "int-dup");
     expect(forSession).toHaveLength(1);
-    expect(forSession[0]).toMatchObject({ ptyId: "pty-9", source: "agent", status: "pending" });
+    expect(forSession[0]).toMatchObject({ source: "agent", status: "pending" });
+    expect(forSession[0].ptyId).toBeUndefined();
   });
 
   it("does not surface an interactive approval that has no addressable pty id", () => {

@@ -83,14 +83,13 @@ pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Res
 /// human typing on the same pane.
 const DECISION_APPROVAL_SOURCE: &str = "ipc-decision-approval";
 
-/// Resolve a blocked/waiting interactive agent gate from the cockpit Decision
-/// Inbox. We read the live pane to learn the prompt SHAPE, then write the
-/// matching keystroke through the P0-4 gate: a y/n prompt gets `y`/`n` (a bare
-/// Enter could select "No" or stall), a menu gets Enter (accept default) / Esc
-/// (reject). Atomic gate mode is used because the payload is one complete, known
-/// keystroke — there is no held/mirrored state that a later resolution could
-/// inherit. A dedicated audit event records the decision + prompt kind (a bare
-/// Esc deny would otherwise leave NO trace, and a bare Enter approve is
+/// Resolve a waiting interactive agent gate from the cockpit Decision Inbox.
+/// This is scoped to Claude's selectable permission menu (the inbox only marks
+/// those rows keystroke-resolvable), so the answer is unambiguous: Enter accepts
+/// the highlighted default, Esc rejects. Atomic gate mode is used because the
+/// payload is one complete, known keystroke — there is no held/mirrored state a
+/// later resolution could inherit. A dedicated audit event records the decision
+/// (a bare Esc deny would otherwise leave NO trace, and a bare Enter approve is
 /// indistinguishable from a human keypress). This only DELIVERS the human
 /// choice; the inbox item clears when the agent re-emits its run status.
 #[tauri::command]
@@ -105,18 +104,8 @@ pub async fn resolve_interactive_approval(
         other => return Err(format!("invalid decision '{other}' (expected approve|deny)")),
     };
 
-    // Read the live prompt so we send the RIGHT key. Include the partial
-    // (unterminated) line — a y/n prompt like `Allow? (y/n) ` is usually the
-    // current line with no trailing newline, which a completed-lines-only read
-    // would miss. Default to a menu when the prompt cannot be read — Enter-accept
-    // / Esc-reject is the safe Claude path.
-    let registry = app.state::<OutputBufferRegistry>();
-    let recent = registry
-        .capture_including_partial(&terminal_id, 40, true)
-        .unwrap_or_default();
-    let kind = crate::agent::output_monitor::classify_approval_prompt(&recent)
-        .unwrap_or(crate::agent::output_monitor::ApprovalPromptKind::Menu);
-    let keystroke = crate::agent::output_monitor::approval_keystroke(kind, approve);
+    // Menu keystrokes: Enter accepts the highlighted default option, Esc rejects.
+    let keystroke: &[u8] = if approve { b"\r" } else { b"\x1b" };
 
     // Audit the INTENT before the write so a crash mid-delivery still leaves a trace.
     record_audit_event(
@@ -129,7 +118,6 @@ pub async fn resolve_interactive_approval(
         "Interactive approval resolved from Decision Inbox",
         serde_json::json!({
             "decision": if approve { "approve" } else { "deny" },
-            "promptKind": format!("{:?}", kind),
             "bytes": keystroke.len(),
             "redacted": true,
         }),

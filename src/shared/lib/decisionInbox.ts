@@ -271,25 +271,13 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
     }
   }
 
-  // Interactive PTY agents waiting for approval (or blocked) are
-  // keystroke-resolvable: surface them with their `ptyId` so the inbox can
-  // Approve/Deny by writing a keystroke into the live agent TUI. We require an
-  // interactive runtime AND a ptyId — headless runs carry no addressable PTY
-  // and are handled by the watchdog/blocked branches above, so they never
-  // produce a (non-actionable) Approve/Deny row here.
-  if (
-    session.runtime === "interactive" &&
-    session.ptyId &&
-    (session.runStatus === "waiting_approval" || session.runStatus === "blocked")
-  ) {
-    // Interactive fleet sessions carry no per-event log; `startedAt` is the
-    // process start (and seconds-based), so use the inbox build time `now` for a
-    // fresh, correctly-scaled epoch-ms timestamp that sorts among current gates.
-    const requestedAt = now;
-    const context =
-      session.runStatus === "blocked"
-        ? blockedReason || "Interactive agent is blocked and needs a human decision."
-        : "Interactive agent is waiting for approval to proceed.";
+  // Interactive fleet sessions carry no per-event log; `startedAt` is the
+  // process start (and seconds-based), so use the inbox build time `now` for a
+  // fresh, correctly-scaled epoch-ms timestamp that sorts among current gates.
+  if (session.runtime === "interactive" && session.runStatus === "waiting_approval" && session.ptyId) {
+    // A confirmed permission prompt on a live PTY → keystroke-resolvable: carry
+    // the `ptyId` so the inbox can Approve/Deny by writing into the agent TUI.
+    const context = "Interactive agent is waiting for approval to proceed.";
     decisions.push(
       createDecision({
         id: `agent:${session.id}:interactive-approval`,
@@ -297,17 +285,32 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
         status: "pending",
         source: "agent",
         title: `${TYPE_LABELS.permission_required} · ${session.name}`,
-        context: shortText(context),
-        requestedAt,
+        context,
+        requestedAt: now,
         sessionId: session.id,
         ptyId: session.ptyId,
         evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
-        history: historyEntry(
-          requestedAt,
-          "agent",
-          session.runStatus === "blocked" ? "blocked" : "waiting",
-          context,
-        ),
+        history: historyEntry(now, "agent", "waiting", context),
+      }),
+    );
+  } else if (session.runtime === "interactive" && session.runStatus === "blocked") {
+    // `blocked` is broader than an approval prompt (it may need typed direction),
+    // so surface it for inspection ONLY — no `ptyId` means the row offers Focus
+    // (to the live TUI) but no Approve/Deny, so we never write a blind keystroke.
+    const reason = blockedReason || "Interactive agent is blocked and needs a human decision.";
+    const type = typeFromText(reason) ?? "permission_required";
+    decisions.push(
+      createDecision({
+        id: `agent:${session.id}:interactive-blocked`,
+        type,
+        status: "pending",
+        source: "agent",
+        title: `${TYPE_LABELS[type]} · ${session.name}`,
+        context: shortText(reason),
+        requestedAt: now,
+        sessionId: session.id,
+        evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
+        history: historyEntry(now, "agent", "blocked", reason),
       }),
     );
   }
