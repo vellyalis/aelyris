@@ -42,6 +42,7 @@ import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import styles from "./AgentInspector.module.css";
 import { ConductorView } from "./ConductorView";
+import { FleetGridTerminal } from "./FleetGridTerminal";
 import { InlineResultPanel } from "./InlineResultPanel";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
 import { SessionCard } from "./SessionCard";
@@ -820,29 +821,39 @@ export function AgentInspector({
                       style={{ width: `${pct}%`, background: sColor.accent }}
                     />
                   </div>
-                  <div className={styles.parallelLogs}>
-                    {s.logs.slice(-5).map((log) => {
-                      const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
-                      return (
-                        <div
-                          key={`${s.id}-${log.timestamp}-${log.type}-${log.content}`}
-                          className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}
-                        >
-                          <span className={styles.logTime}>
-                            {new Date(log.timestamp).toLocaleTimeString("en-US", {
-                              hour12: false,
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                            })}
-                          </span>
-                          {tool && <ToolBadge tool={tool} />}
-                          <span className={styles.logContent}>{log.content}</span>
-                        </div>
-                      );
-                    })}
-                    {s.logs.length === 0 && <span className={styles.parallelEmpty}>Waiting for activity...</span>}
-                  </div>
+                  {/* Live PTY mirror when the session owns one and is still
+                      running; otherwise the cheap log tail. ptyId only exists
+                      for interactive/backend runs, and an interactive TUI stays
+                      "idle" while alive, so mirror it unless it is done. */}
+                  {s.ptyId && s.status !== "done" && (s.runtime === "interactive" || s.status !== "idle") ? (
+                    <div className={styles.parallelTerminal}>
+                      <FleetGridTerminal ptyId={s.ptyId} />
+                    </div>
+                  ) : (
+                    <div className={styles.parallelLogs}>
+                      {s.logs.slice(-5).map((log) => {
+                        const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                        return (
+                          <div
+                            key={`${s.id}-${log.timestamp}-${log.type}-${log.content}`}
+                            className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}
+                          >
+                            <span className={styles.logTime}>
+                              {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                                hour12: false,
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </span>
+                            {tool && <ToolBadge tool={tool} />}
+                            <span className={styles.logContent}>{log.content}</span>
+                          </div>
+                        );
+                      })}
+                      {s.logs.length === 0 && <span className={styles.parallelEmpty}>Waiting for activity...</span>}
+                    </div>
+                  )}
                 </div>
               );
             })
