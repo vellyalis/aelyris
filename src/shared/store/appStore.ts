@@ -581,6 +581,8 @@ interface AppState {
   setWebInspectorVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
   prInspectorVisible: boolean;
   setPrInspectorVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
+  mergeQueueVisible: boolean;
+  setMergeQueueVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
 
   // Agent model
   selectedModel: string;
@@ -1207,6 +1209,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setWebInspectorVisible: (v) => set((s) => ({ webInspectorVisible: toggleOrSet(v, s.webInspectorVisible) })),
   prInspectorVisible: false,
   setPrInspectorVisible: (v) => set((s) => ({ prInspectorVisible: toggleOrSet(v, s.prInspectorVisible) })),
+  mergeQueueVisible: false,
+  setMergeQueueVisible: (v) => set((s) => ({ mergeQueueVisible: toggleOrSet(v, s.mergeQueueVisible) })),
 
   // Agent model
   selectedModel: (() => {

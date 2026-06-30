@@ -7,6 +7,7 @@ import {
   FolderOpen,
   FolderX,
   GitBranch,
+  GitMerge,
   GitPullRequest,
   Globe,
   History,
@@ -71,6 +72,7 @@ interface UseAppMenusOptions {
   setHelpVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setWebInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setPrInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
+  setMergeQueueVisible: (v: boolean | ((p: boolean) => boolean)) => void;
 }
 
 export function useAppMenus(opts: UseAppMenusOptions) {
@@ -108,6 +110,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     setHelpVisible,
     setWebInspectorVisible,
     setPrInspectorVisible,
+    setMergeQueueVisible,
   } = opts;
 
   // Compare Branch action extracted so the palette entry and the View menu
@@ -600,6 +603,14 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         action: () => setPrInspectorVisible(true),
       },
       {
+        id: "merge-queue",
+        label: "Ready to Merge",
+        description: "Review done agent branches and their merge outcomes",
+        category: "View",
+        icon: GitMerge,
+        action: () => setMergeQueueVisible(true),
+      },
+      {
         id: "web-inspector",
         label: "Web Inspector",
         description: "Inspect a web page",
@@ -693,6 +704,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       disableImeTrace,
       setAboutVisible,
       setPrInspectorVisible,
+      setMergeQueueVisible,
       setSearchVisible,
       setSettingsVisible,
       setWatchdogVisible,
@@ -767,6 +779,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           { divider: true, label: "" },
           { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
           { label: "Pull Requests", action: () => setPrInspectorVisible((v) => !v) },
+          { label: "Ready to Merge", action: () => setMergeQueueVisible((v) => !v) },
         ],
       },
       {
@@ -837,6 +850,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       setSearchVisible,
       setWebInspectorVisible,
       setPrInspectorVisible,
+      setMergeQueueVisible,
       setSettingsVisible,
       setHelpVisible,
       setAboutVisible,

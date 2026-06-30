@@ -145,6 +145,9 @@ const SearchPanel = lazy(() => import("./features/search/SearchPanel").then((m) 
 const AboutDialog = lazy(() => import("./features/about/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 const HelpDialog = lazy(() => import("./features/help/HelpDialog").then((m) => ({ default: m.HelpDialog })));
 const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").then((m) => ({ default: m.PRInspector })));
+const MergeQueuePanel = lazy(() =>
+  import("./features/merge-queue/MergeQueuePanel").then((m) => ({ default: m.MergeQueuePanel })),
+);
 const WebInspector = lazy(() =>
   import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })),
 );
@@ -2332,6 +2335,8 @@ export function App() {
     setWebInspectorVisible,
     prInspectorVisible,
     setPrInspectorVisible,
+    mergeQueueVisible,
+    setMergeQueueVisible,
     openFiles,
     activeFile,
     openFile,
@@ -4592,6 +4597,7 @@ export function App() {
     setHelpVisible,
     setWebInspectorVisible,
     setPrInspectorVisible,
+    setMergeQueueVisible,
   });
 
   // ── Render ──
@@ -7137,6 +7143,11 @@ export function App() {
                   onClose={() => setPrInspectorVisible(false)}
                   onStartReview={handleStartAgent}
                 />
+              </LazyDialog>
+            )}
+            {mergeQueueVisible && (
+              <LazyDialog>
+                <MergeQueuePanel visible onClose={() => setMergeQueueVisible(false)} />
               </LazyDialog>
             )}
             {quickOpenMode && (
