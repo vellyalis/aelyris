@@ -66,8 +66,12 @@ const DEFAULT_TERMINAL_CURSOR_BLINK = true;
 export type DefaultShellId = "powershell" | "cmd" | "gitbash" | "wsl";
 const DEFAULT_SHELL: DefaultShellId = "powershell";
 const DEFAULT_UI_FONT_FAMILY = '"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif';
-export type WindowEffect = "mica" | "acrylic";
-const DEFAULT_WINDOW_EFFECT: WindowEffect = "mica";
+// "transparent" = per-pixel see-through to the desktop/windows behind (no DWM
+// material). "mica"/"acrylic" are opt-in OPAQUE Win11 materials that disable
+// see-through (a material occludes the wry transparent window — see
+// `backdrop_for_effect` in src-tauri/src/lib.rs). Default is see-through.
+export type WindowEffect = "transparent" | "mica" | "acrylic";
+export const DEFAULT_WINDOW_EFFECT: WindowEffect = "transparent";
 
 export interface WallpaperSettings {
   imagePath: string | null;
@@ -274,7 +278,9 @@ function loadUiFontFamily(): string {
 }
 
 export function sanitizeWindowEffect(value: unknown): WindowEffect {
-  return value === "mica" || value === "acrylic" ? value : DEFAULT_WINDOW_EFFECT;
+  return value === "transparent" || value === "mica" || value === "acrylic"
+    ? value
+    : DEFAULT_WINDOW_EFFECT;
 }
 
 function loadWindowEffect(): WindowEffect {

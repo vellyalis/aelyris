@@ -23,7 +23,7 @@
         "backgroundColor": [0, 0, 0, 0],
         "visible": true,
         "windowEffects": {
-          "effects": ["acrylic"],
+          "effects": [],
           "state": "active"
         }
       }

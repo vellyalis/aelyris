@@ -808,7 +808,7 @@ describe("Release evidence gates", () => {
     expect(ptySidecar).toContain("stderr(std::process::Stdio::null())");
     expect(lib).toContain("apply_windows_app_identity();");
     expect(lib).toContain("AELYRIS_DISABLE_DWM_CHROME");
-    expect(lib).toContain("direct DWM chrome disabled by env; using Tauri windowEffects");
+    expect(lib).toContain("direct DWM chrome disabled by env");
     expect(score).toContain("p2-07-live-tauri-pty-ai-cli-chaos.json");
     expect(score).toContain('"live-ai-cli-post-launch-chaos"');
     expect(score).toContain("Live AI CLI post-launch chaos");

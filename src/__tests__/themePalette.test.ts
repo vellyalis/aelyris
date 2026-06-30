@@ -318,7 +318,10 @@ describe("themes/moods — preset metadata", () => {
     expect(vars["--text-primary"]).toBe("#24121b");
     expect(vars["--mood-root-glow"]).toContain("252, 201, 185");
     expect(contrastRatio(vars["--text-primary"], "#fff9fc")).toBeGreaterThanOrEqual(10);
-    expect(rgbaAlpha(vars["--glass-standard"])).toBeGreaterThanOrEqual(0.64);
+    // Sakura was redesigned to be see-through (like the dark presets) instead of
+    // an opaque white-peach slab — the glass tiers are now low-alpha. The colour
+    // checks below still guard against it regressing to grey/dark glass.
+    expect(rgbaAlpha(vars["--glass-standard"])).toBeLessThanOrEqual(0.3);
     expect(rgbaAlpha(vars["--terminal-canvas-bg"])).toBeLessThanOrEqual(0.56);
     expect(vars["--toolkit-tile-bg"]).not.toContain("0, 7, 15");
     expect(vars["--statusbar-bg"]).toContain("255, 238, 247");
@@ -333,7 +336,9 @@ describe("themes/moods — preset metadata", () => {
     expect(rgbaAlpha(vars["--statusbar-bg"])).toBeGreaterThanOrEqual(0.8);
     expect(vars["--glass-ground"]).toContain("255, 243, 249");
     expect(vars["--glass-frame"]).toContain("255, 241, 248");
-    expect(rgbaAlpha(vars["--glass-ground"])).toBeGreaterThanOrEqual(0.56);
+    // See-through redesign: glass tiers are low-alpha now (still white-peach by
+    // the colour checks above, never grey/dark glass).
+    expect(rgbaAlpha(vars["--glass-ground"])).toBeLessThanOrEqual(0.3);
     expect(vars["--mood-left-panel-bg"]).not.toContain("97, 37, 61");
     expect(vars["--mood-right-panel-bg"]).not.toContain("4, 13, 23");
   });

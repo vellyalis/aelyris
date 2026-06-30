@@ -83,7 +83,7 @@
   height: 22px;
 }
 .row:hover {
-  background: rgba(76, 184, 220, 0.018);
+  background: rgba(76, 184, 220, 0.07);
   color: var(--text-primary);
 }
 /* Keyboard-nav cursor — `rowFocused` marks the current treeitem under the
@@ -91,7 +91,7 @@
    sync, but survives mouse-leave so the cursor position is still legible
    after the user moved the mouse away. */
 .row.rowFocused {
-  background: rgba(76, 184, 220, 0.022);
+  background: rgba(76, 184, 220, 0.1);
   color: var(--text-primary);
   box-shadow: inset 1px 0 0 color-mix(in srgb, var(--gold) 42%, transparent);
 }
@@ -124,6 +124,9 @@
   flex: 1;
   transition: color var(--duration-fast);
 }
+/* Changed-file rows keep a neutral filename and let the GitStatusPip dot carry
+   the status color — deliberate for legibility over a busy/bright wallpaper, and
+   enforced by designTokenUsage.test ("no raw --ctp-* in .fileChanged"). */
 .fileChanged {
   color: var(--text-primary);
 }
@@ -183,27 +186,6 @@
   font-size: var(--text-md);
   color: var(--text-muted);
 }
-.changesBar {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-5);
-  font-size: var(--text-sm);
-  color: color-mix(in srgb, var(--gold) 72%, var(--text-muted));
-  font-family: var(--font-ui);
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: center;
-  transition: background var(--duration-fast);
-}
-.changesBar:hover {
-  background: rgba(216, 183, 102, 0.022);
-}
-.changesBar:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: -2px;
-}
-
 /* Context menu (Radix) */
 .ctxMenu {
   min-width: 160px;

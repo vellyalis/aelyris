@@ -222,7 +222,8 @@
   align-items: center;
   transition: opacity var(--duration-fast) var(--ease-apple);
 }
-.item:hover .itemAction {
+.item:hover .itemAction,
+.item:focus-within .itemAction {
   opacity: 1;
 }
 .itemAction:hover {
@@ -250,7 +251,8 @@
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-apple);
 }
-.item:hover .itemDelete {
+.item:hover .itemDelete,
+.item:focus-within .itemDelete {
   opacity: 1;
 }
 .itemDelete:hover {

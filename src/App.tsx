@@ -2347,6 +2347,7 @@ export function App() {
   const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);
   const appWindowOpacity = useAppStore((s) => s.appWindowOpacity);
   const terminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
+  const windowEffect = useAppStore((s) => s.windowEffect);
   const uiFontFamily = useAppStore((s) => s.uiFontFamily);
   const fallbackTelemetryEvents = useAppStore((s) => s.fallbackTelemetryEvents);
   const recordFallbackTelemetry = useAppStore((s) => s.recordFallbackTelemetry);
@@ -2365,6 +2366,7 @@ export function App() {
     wallpaperForMood,
     appWindowOpacity,
     terminalSurfaceOpacity,
+    windowEffect === "transparent",
   );
 
   useEffect(() => {
@@ -5242,6 +5244,22 @@ export function App() {
                         onStartAgent={handleStartAgent}
                         projectPath={projectPath}
                         agentStatuses={agentStatuses}
+                        onActivateTask={(taskId) => {
+                          // Jump from a task card to its linked agent: headless
+                          // agents launched here are inspector session cards (not
+                          // PTY panes), so reveal the sessions inspector and select
+                          // the run by its `assignedAgentId` (the session id).
+                          const task = kanbanTasks.find((t) => t.id === taskId);
+                          if (!task?.assignedAgentId) return;
+                          // Don't switch the inspector mode for a session that
+                          // has already been pruned — that reads as a dead click.
+                          if (!sessions.some((s) => s.id === task.assignedAgentId)) {
+                            toast.info("Agent session has ended", "This task's agent run is no longer active.");
+                            return;
+                          }
+                          setRightRailMode("command");
+                          handleSelectRightRailSession(task.assignedAgentId);
+                        }}
                       />
                     </Suspense>
                   </ErrorBoundary>
