@@ -35,6 +35,7 @@ describe("agent fleet projection", () => {
       status: "waiting",
       model: "codex",
       initial_prompt: "review",
+      approval_prompt: "Bash(rm -rf dist) · Do you want to proceed?",
       cwd: "C:/repo",
       worktree_path: "C:/repo-agent",
       cost: 0,
@@ -51,6 +52,7 @@ describe("agent fleet projection", () => {
       runStatus: "waiting_approval",
       workspaceScope: "C:/repo-agent",
       ptyId: "pty-1",
+      approvalPrompt: "Bash(rm -rf dist) · Do you want to proceed?",
     });
     expect(fleet[1]).toMatchObject({
       runtime: "headless",

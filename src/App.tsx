@@ -4217,11 +4217,14 @@ export function App() {
     [fleetSessions, handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
   );
 
-  // Resolve a blocked/waiting interactive agent gate from the Decision Inbox.
-  // The backend `resolve_interactive_approval` reads the live prompt shape and
-  // writes the correct keystroke through the P0-4 gate (y/n prompts get y/n; a
-  // menu gets Enter/Esc) and audits the decision. We do NOT clear the item: it
-  // leaves the inbox when the agent re-emits its run status after acting.
+  // Resolve a waiting interactive agent gate from the Decision Inbox. The safety
+  // contract lives in WHAT gets surfaced as resolvable, not in the backend: only
+  // a confirmed Claude selectable MENU carries a captured prompt + ptyId, so the
+  // backend `resolve_interactive_approval` always writes the MENU keystroke
+  // through the P0-4 gate (approve = Enter on the highlighted default, deny =
+  // Esc) and audits it. There is no y/n path — a y/n prompt is deliberately
+  // never surfaced as resolvable (it would need a different key). We do NOT clear
+  // the item: it leaves the inbox when the agent re-emits its run status.
   const handleDecideDecision = useCallback(
     async (item: HumanDecisionItem, decision: "approve" | "deny") => {
       if (rightRailUsesFixtures) {

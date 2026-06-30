@@ -274,17 +274,40 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
   // Interactive fleet sessions carry no per-event log; `startedAt` is the
   // process start (and seconds-based), so use the inbox build time `now` for a
   // fresh, correctly-scaled epoch-ms timestamp that sorts among current gates.
-  if (session.runtime === "interactive" && session.runStatus === "waiting_approval" && session.ptyId) {
-    // A confirmed permission prompt on a live PTY → keystroke-resolvable: carry
-    // the `ptyId` so the inbox can Approve/Deny by writing into the agent TUI.
-    const context = "Interactive agent is waiting for approval to proceed.";
+  if (
+    session.runtime === "interactive" &&
+    session.runStatus === "waiting_approval" &&
+    session.ptyId &&
+    session.approvalPrompt
+  ) {
+    // A confirmed Claude permission MENU on a live PTY → keystroke-resolvable.
+    // The backend captures `approvalPrompt` ONLY for a real selectable menu
+    // (never for ordinary prose), so its presence is what makes this row safe to
+    // resolve. Show the captured command as the context so the human sees WHAT
+    // they approve (no blind approval), and carry the `ptyId` so Approve/Deny can
+    // write the menu keystroke into the agent TUI. A `waiting_approval` run with
+    // no captured menu is intentionally NOT surfaced: there is nothing confirmed
+    // to approve, and offering a blind keystroke would be the anti-pattern.
+    const prompt = session.approvalPrompt;
+    // Match the backend's own cap (it head/tail-elides to 300 chars so a dangerous
+    // tail like `…; rm -rf /` is never lost) so the command is not truncated a
+    // SECOND time below it here. The panel adds a hover tooltip for the full text
+    // when the row visually clips it.
+    const context = shortText(prompt, 300);
+    // Classify by the captured command so a destructive/secret-bearing gate
+    // (e.g. `Bash(rm -rf dist)`) keeps its critical risk badge instead of a flat
+    // medium "permission" — the existing classifiers already encode that policy.
+    const type = typeFromText(prompt) ?? "permission_required";
     decisions.push(
       createDecision({
-        id: `agent:${session.id}:interactive-approval`,
-        type: "permission_required",
+        // The prompt fingerprint is part of the id so a NEW menu on the same
+        // session remounts the inbox row (fresh Approve/Deny latch) instead of
+        // reusing the stale, post-delivery disabled state of the previous gate.
+        id: `agent:${session.id}:interactive-approval:${stableTextKey(prompt)}`,
+        type,
         status: "pending",
         source: "agent",
-        title: `${TYPE_LABELS.permission_required} · ${session.name}`,
+        title: `${TYPE_LABELS[type]} · ${session.name}`,
         context,
         requestedAt: now,
         sessionId: session.id,

@@ -116,6 +116,7 @@ describe("DecisionInboxPanel", () => {
             runStatus: "waiting_approval",
             ptyId: "pty-1",
             cli: "claude",
+            approvalPrompt: "Bash(rm -rf dist) · Do you want to proceed?",
           }),
         ]}
       />

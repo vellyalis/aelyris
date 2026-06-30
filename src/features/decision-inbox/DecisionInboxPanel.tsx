@@ -223,7 +223,9 @@ function DecisionRow({
         </span>
         <div className={styles.titleBlock}>
           <span className={styles.title}>{item.title}</span>
-          <span className={styles.context}>{item.context}</span>
+          <span className={styles.context} title={item.context}>
+            {item.context}
+          </span>
         </div>
         <span className={styles.typeBadge}>{TYPE_LABELS[item.type]}</span>
         <span className={styles.riskBadge} data-risk={item.risk}>

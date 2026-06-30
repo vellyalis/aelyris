@@ -156,6 +156,7 @@ pub async fn spawn_interactive_agent(
         },
         model: model_str.to_string(),
         initial_prompt: initial_prompt.clone(),
+        approval_prompt: None,
         cwd: resolved_cwd,
         worktree_branch: worktree_branch.clone(),
         worktree_path: worktree_path.clone(),
@@ -557,23 +558,40 @@ async fn run_output_monitor(
 
                     let mut changed = false;
 
-                    if let Some(status) = result
-                        .status
-                        .as_ref()
-                        .and_then(output_monitor::DetectedStatus::to_agent_run_status)
-                    {
-                        let status_str = status.as_str();
-                        if status_str != last_status {
-                            match session_mgr.update_status(session_id, status_str) {
-                                Ok(()) => {
-                                    last_status = status_str.to_string();
-                                    changed = true;
+                    if let Some(detected) = result.status.as_ref() {
+                        if let Some(status) = detected.to_agent_run_status() {
+                            let status_str = status.as_str();
+                            if status_str != last_status {
+                                match session_mgr.update_status(session_id, status_str) {
+                                    Ok(()) => {
+                                        last_status = status_str.to_string();
+                                        changed = true;
+                                    }
+                                    Err(err) => {
+                                        log::warn!(
+                                            "interactive session status update skipped: {}",
+                                            err
+                                        );
+                                    }
                                 }
-                                Err(err) => {
-                                    log::warn!(
-                                        "interactive session status update skipped: {}",
-                                        err
-                                    );
+                            }
+                            // Carry the captured permission menu so the Decision
+                            // Inbox shows WHAT is being approved (P2-A) and only
+                            // marks real menus resolvable (P2-B). `update_status`
+                            // above already cleared it on any non-waiting status,
+                            // so it is only ever SET here, on the gate itself.
+                            if *detected == output_monitor::DetectedStatus::WaitingPermission {
+                                if let Some(prompt) = result.approval_prompt.clone() {
+                                    match session_mgr.set_approval_prompt(session_id, Some(prompt)) {
+                                        Ok(true) => changed = true,
+                                        Ok(false) => {}
+                                        Err(err) => {
+                                            log::warn!(
+                                                "interactive approval prompt update skipped: {}",
+                                                err
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }
