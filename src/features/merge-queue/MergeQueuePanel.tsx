@@ -123,13 +123,35 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
     [loadIntents],
   );
 
+  // Match an intent to a session by task identity (the session id we send as
+  // taskId at request time), NOT by branch pair alone — two repos can reuse a
+  // branch name, and a branch can be reused for a newer task. Approve only sends
+  // intentId, so a wrong match would merge an unrelated intent.
+  const matchIntentForSession = (session: AgentFleetSession): MergeIntent | undefined =>
+    intents.find(
+      (intent) =>
+        intent.taskId === session.id &&
+        intent.sourceBranch === session.worktreeBranch &&
+        intent.targetBranch === targetBranch,
+    );
+
+  // Durable intents persist across restart / session pruning; surface any that
+  // no longer have a live session as their own rows so the operator can still
+  // inspect and approve them instead of seeing an empty list.
+  const matchedIntentIds = new Set(
+    doneSessions
+      .map((session) => matchIntentForSession(session)?.intentId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const orphanIntents = intents.filter((intent) => !matchedIntentIds.has(intent.intentId));
+
   if (!visible) return null;
 
   return (
     <div className={styles.panel}>
       <PanelHeader
         title="Ready to Merge"
-        count={doneSessions.length}
+        count={doneSessions.length + orphanIntents.length}
         actions={
           <>
             <label className={styles.targetField} title="Target branch">
@@ -159,14 +181,12 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
       />
       <div className={styles.list}>
         {doneSessions.map((session) => {
-          const intent = intents.find(
-            (candidate) =>
-              candidate.sourceBranch === session.worktreeBranch && candidate.targetBranch === targetBranch,
-          );
+          const intent = matchIntentForSession(session);
           return (
             <MergeRow
-              key={session.id}
-              session={session}
+              key={`s:${session.id}`}
+              sourceBranch={session.worktreeBranch ?? ""}
+              repoPath={session.repoPath ?? ""}
               targetBranch={targetBranch}
               intent={intent}
               onRequest={() => requestMerge(session)}
@@ -174,7 +194,17 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
             />
           );
         })}
-        {doneSessions.length === 0 && (
+        {orphanIntents.map((intent) => (
+          <MergeRow
+            key={`i:${intent.intentId}`}
+            sourceBranch={intent.sourceBranch}
+            repoPath={intent.repoPath}
+            targetBranch={intent.targetBranch}
+            intent={intent}
+            onApprove={() => approveMerge(intent)}
+          />
+        ))}
+        {doneSessions.length === 0 && orphanIntents.length === 0 && (
           <EmptyState
             icon={<GitMerge size={20} strokeWidth={1.5} />}
             title="No branches ready to merge"
@@ -187,23 +217,22 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
 }
 
 interface MergeRowProps {
-  session: AgentFleetSession;
+  sourceBranch: string;
+  repoPath: string;
   targetBranch: string;
   intent?: MergeIntent;
-  onRequest: () => void;
+  /** Present only for live done-session rows; orphan-intent rows are already requested. */
+  onRequest?: () => void;
   onApprove?: () => void;
 }
 
-function MergeRow({ session, targetBranch, intent, onRequest, onApprove }: MergeRowProps) {
+function MergeRow({ sourceBranch, repoPath, targetBranch, intent, onRequest, onApprove }: MergeRowProps) {
   const [readiness, setReadiness] = useState<MergeReadiness | null>(null);
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [diff, setDiff] = useState<string | null>(null);
   const readinessSeq = useRef(0);
   const diffSeq = useRef(0);
-
-  const sourceBranch = session.worktreeBranch ?? "";
-  const repoPath = session.repoPath ?? "";
 
   useEffect(() => {
     if (!sourceBranch || !repoPath || sourceBranch === targetBranch) return;
@@ -276,7 +305,7 @@ function MergeRow({ session, targetBranch, intent, onRequest, onApprove }: Merge
         <button type="button" className={styles.actionBtn} onClick={() => void toggleDiff()}>
           {expanded ? "Hide diff" : "View diff"}
         </button>
-        {!intent && (
+        {onRequest && !intent && (
           <button type="button" className={styles.actionBtn} onClick={onRequest} title="Request a durable merge intent">
             Request merge
           </button>

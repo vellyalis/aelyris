@@ -145,6 +145,24 @@ describe("MergeQueuePanel", () => {
     await waitFor(() => expect(toastMock.success).toHaveBeenCalled());
   });
 
+  it("renders a persisted intent with no live session as its own approvable row", async () => {
+    fleetMock.sessions = [];
+    intents = [
+      {
+        intentId: "merge:gone:uuid",
+        repoPath: "/repo",
+        sourceBranch: "agent/old-task",
+        targetBranch: "main",
+        state: "queued",
+        taskId: "gone",
+      },
+    ];
+    render(<MergeQueuePanel visible onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText("agent/old-task")).toBeTruthy());
+    expect(screen.getByText("Approve")).toBeTruthy();
+    expect(screen.queryByText("No branches ready to merge")).toBeNull();
+  });
+
   it("shows an empty state when no branch is ready", () => {
     fleetMock.sessions = [];
     render(<MergeQueuePanel visible onClose={() => {}} />);

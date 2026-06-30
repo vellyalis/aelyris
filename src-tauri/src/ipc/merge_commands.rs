@@ -57,6 +57,17 @@ pub fn request_merge_intent(
     target_branch: String,
 ) -> Result<MergeIntent, String> {
     let store = require_store(&merge_store)?;
+    // Snapshot any uncommitted worktree edits onto the source branch BEFORE
+    // binding OIDs. A finished agent often leaves work uncommitted; without this
+    // the intent would bind the pre-work tip and an approve would see an empty /
+    // AlreadyMerged merge while the real change sits only in the worktree. The
+    // loop/review paths commit first for the same reason. Best-effort: a commit
+    // hiccup just leaves the existing tip, which is still bound correctly.
+    let _ = crate::control::worktree::commit_for_branch(
+        &repo_path,
+        &source_branch,
+        &format!("aelyris: merge request {source_branch}"),
+    );
     crate::control::merge::request_durable_intent(
         &store,
         &repo_path,
