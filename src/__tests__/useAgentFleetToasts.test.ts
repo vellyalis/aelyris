@@ -47,6 +47,25 @@ describe("useAgentFleetToasts", () => {
     expect(notifyMock.sendWindowsNotification.mock.calls[0][1]).toContain("Agent a");
   });
 
+  it("toasts on a transition into blocked (operator-attention state)", () => {
+    const { rerender } = renderHook((props: { sessions: AgentFleetSession[] }) => useAgentFleetToasts(props.sessions), {
+      initialProps: { sessions: [session("a", "coding")] },
+    });
+    rerender({ sessions: [session("a", "blocked")] });
+    expect(notifyMock.sendWindowsNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not toast for sessions that first appear after the initial snapshot (async restore)", () => {
+    // The first snapshot is legitimately empty before session restore lands;
+    // sessions added later — even already-done/errored ones — must be recorded
+    // silently, never toasted.
+    const { rerender } = renderHook((props: { sessions: AgentFleetSession[] }) => useAgentFleetToasts(props.sessions), {
+      initialProps: { sessions: [] as AgentFleetSession[] },
+    });
+    rerender({ sessions: [session("a", "done"), session("b", "error"), session("c", "waiting_approval")] });
+    expect(notifyMock.sendWindowsNotification).not.toHaveBeenCalled();
+  });
+
   it("toasts on transitions into done and error", () => {
     const { rerender } = renderHook((props: { sessions: AgentFleetSession[] }) => useAgentFleetToasts(props.sessions), {
       initialProps: { sessions: [session("a", "coding"), session("b", "coding")] },

@@ -6,6 +6,9 @@ import { useTerminalCellMetrics } from "../terminal/terminalMetrics";
 const MIN_COLS = 40;
 const MIN_ROWS = 6;
 
+/** No-op PTY writer: this mirror must never send input to the agent's pty. */
+const READ_ONLY_WRITE = () => {};
+
 interface Dims {
   cols: number;
   rows: number;
@@ -42,6 +45,12 @@ export function FleetGridTerminal({ ptyId }: FleetGridTerminalProps) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    // Make the whole mirror subtree non-interactive: `inert` blocks focus
+    // (including TerminalCanvas's mount-time auto-focus) and removes it from the
+    // tab order, so the tile can never steal focus from the primary pane or
+    // route keystrokes/paste into the agent pty. pointer-events:none (below)
+    // additionally blocks mouse selection/click-to-focus.
+    el.setAttribute("inert", "");
     let pending: number | null = null;
     const compute = (): Dims | null => {
       const w = el.clientWidth;
@@ -72,7 +81,7 @@ export function FleetGridTerminal({ ptyId }: FleetGridTerminalProps) {
   }, [cellMetrics.height, cellMetrics.width]);
 
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%", overflow: "hidden" }}>
+    <div ref={containerRef} style={{ width: "100%", height: "100%", overflow: "hidden", pointerEvents: "none" }}>
       {dims && (
         <TerminalCanvas
           terminalId={ptyId}
@@ -84,6 +93,7 @@ export function FleetGridTerminal({ ptyId }: FleetGridTerminalProps) {
           textClarity={terminalTextClarity}
           cursorStyle={cursorStyle}
           cursorBlink={cursorBlink}
+          writeBytes={READ_ONLY_WRITE}
         />
       )}
     </div>
