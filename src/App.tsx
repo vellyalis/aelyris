@@ -2711,13 +2711,22 @@ export function App() {
     agents: PaneAgentSpawnRequest["agents"][number][];
     sequence: number;
   } | null>(null);
-  // Role → mounted pty id for the most recent orchestra dispatch, so a role
-  // lane card can focus its central pane (WU-VP-1 DoD#6).
-  const [orchestraRolePanes, setOrchestraRolePanes] = useState<Map<string, string>>(() => new Map());
+  // Role → { mounted pty id, tab it was mounted in } for the most recent
+  // orchestra dispatch, so a role lane card can focus its central pane in the
+  // correct tab even after the operator switches tabs (WU-VP-1 DoD#6).
+  const [orchestraRolePanes, setOrchestraRolePanes] = useState<Map<string, { terminalId: string; tabId: string }>>(
+    () => new Map(),
+  );
   // Always-current active tab id read by the identity-stable mountAgentPtyInPane
   // below, so the agent-event listener does not have to re-subscribe per tab.
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  // Globally monotonic spawn-request sequence. Each tab's PaneTreeContainer only
+  // processes a request whose sequence exceeds the last it handled, so deriving
+  // the next sequence from the *last active tab's* request (mount A→B→A) would
+  // reset it to 1 and the re-mount into A would be silently ignored. A global
+  // counter keeps every tab's requests strictly increasing.
+  const paneSpawnSequenceRef = useRef(0);
 
   // Single owner of agent-pty → central-pane mounting. Both the autonomous loop
   // (agent-event payload.terminalId) and the orchestra/manual dispatch
@@ -2731,6 +2740,10 @@ export function App() {
     ) => {
       const incoming = Array.isArray(agents) ? agents : [agents];
       if (incoming.length === 0) return;
+      // Compute the next sequence once per call (not inside the updater, which
+      // React may invoke twice under StrictMode) so the counter stays monotonic.
+      paneSpawnSequenceRef.current += 1;
+      const nextSequence = paneSpawnSequenceRef.current;
       setPaneAgentSpawns((prev) => {
         const sameTab = prev && prev.tabId === tabId ? prev : null;
         const existing = sameTab?.agents ?? [];
@@ -2739,7 +2752,7 @@ export function App() {
           if (!merged.some((mounted) => mounted.terminalId === agent.terminalId)) merged.push(agent);
         }
         if (merged.length === existing.length) return prev;
-        return { tabId, agents: merged, sequence: (sameTab?.sequence ?? 0) + 1 };
+        return { tabId, agents: merged, sequence: nextSequence };
       });
     },
     [],
@@ -5053,9 +5066,14 @@ export function App() {
     );
     setOrchestraRolePanes((prev) => {
       const next = new Map(prev);
-      for (const launch of launches) next.set(launch.roleId, launch.terminalId);
+      for (const launch of launches) next.set(launch.roleId, { terminalId: launch.terminalId, tabId: activeTabId });
       return next;
     });
+    // spawn_interactive_agent selects each spawned session, and the main tab's
+    // pane tree only renders while no interactive session is selected — so the
+    // last-spawned agent tab would hide the panes we just mounted. Clear the
+    // selection so the operator lands on the tiled role panes, not an agent tab.
+    selectInteractiveSession("");
     setRightRailMode("command");
     setRightRailFocusWidget("sessions");
     toast.success(
@@ -5073,6 +5091,7 @@ export function App() {
     rightRailAllChangedFiles,
     rightRailAllChangedFiles.length,
     rightRailPrimaryAction?.nextStep,
+    selectInteractiveSession,
     sessions.length,
   ]);
   const renderRightRailDestinationPrompt = (widget: string) =>
@@ -5553,8 +5572,8 @@ export function App() {
                     </div>
                     <ul className="right-panel-orchestra-lanes" aria-label="Role lanes">
                       {rightRailOrchestraLanes.map((lane) => {
-                        const panePtyId = orchestraRolePanes.get(lane.id);
-                        const focusable = Boolean(panePtyId);
+                        const pane = orchestraRolePanes.get(lane.id);
+                        const focusable = Boolean(pane);
                         return (
                           // The lane item doubles as a focus shortcut to its agent pane; a
                           // nested button would break the flex lane layout. Interactive
@@ -5573,13 +5592,13 @@ export function App() {
                             role={focusable ? "button" : undefined}
                             tabIndex={focusable ? 0 : undefined}
                             aria-label={focusable ? `Focus ${lane.label} agent pane` : undefined}
-                            onClick={focusable && panePtyId ? () => void handlePaneSwitch(activeTabId, panePtyId) : undefined}
+                            onClick={pane ? () => void handlePaneSwitch(pane.tabId, pane.terminalId) : undefined}
                             onKeyDown={
-                              focusable && panePtyId
+                              pane
                                 ? (e) => {
                                     if (e.key === "Enter" || e.key === " ") {
                                       e.preventDefault();
-                                      void handlePaneSwitch(activeTabId, panePtyId);
+                                      void handlePaneSwitch(pane.tabId, pane.terminalId);
                                     }
                                   }
                                 : undefined
