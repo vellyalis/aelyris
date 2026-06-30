@@ -110,8 +110,10 @@ function terminalBellNotificationsEnabled(): boolean {
   }
 }
 
-/** Send a Windows toast notification via Tauri */
-async function sendWindowsNotification(title: string, body: string) {
+/** Send a Windows toast notification via Tauri. Exported so non-bell surfaces
+ * (e.g. {@link import("./useAgentFleetToasts").useAgentFleetToasts}) can reuse
+ * the same permission-gated transport. */
+export async function sendWindowsNotification(title: string, body: string) {
   try {
     const { sendNotification, isPermissionGranted, requestPermission } = await import(
       "@tauri-apps/plugin-notification"

@@ -60,6 +60,15 @@ pub fn create_worktree(
     crate::git::create_worktree(&repo_path, &branch_name)
 }
 
+/// Validate a branch name against the same rules `create_worktree` enforces
+/// server-side, so the UI can fail fast with a clean error before any git
+/// side-effect instead of relying on the validation buried inside
+/// `create_worktree`.
+#[tauri::command]
+pub fn validate_branch_name(name: String) -> Result<(), String> {
+    crate::git::validate_branch_name(&name)
+}
+
 /// Remove a git worktree (and optionally its branch)
 #[tauri::command]
 pub fn remove_worktree(

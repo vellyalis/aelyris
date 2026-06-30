@@ -145,6 +145,9 @@ const SearchPanel = lazy(() => import("./features/search/SearchPanel").then((m) 
 const AboutDialog = lazy(() => import("./features/about/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 const HelpDialog = lazy(() => import("./features/help/HelpDialog").then((m) => ({ default: m.HelpDialog })));
 const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").then((m) => ({ default: m.PRInspector })));
+const MergeQueuePanel = lazy(() =>
+  import("./features/merge-queue/MergeQueuePanel").then((m) => ({ default: m.MergeQueuePanel })),
+);
 const WebInspector = lazy(() =>
   import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })),
 );
@@ -160,10 +163,12 @@ import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
 import { useTabManager, VISUAL_QA_FALLBACK_PROJECT_PATH } from "./shared/hooks/useTabManager";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
+import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { type AgentFleetSession, headlessToFleetSession } from "./shared/lib/agentFleet";
+import { summarizeAgentLane } from "./shared/lib/agentLaneSummary";
 import {
   type AuthenticatedPromptConsentPacket,
   deriveAuthenticatedPromptConsentPacket,
@@ -2330,6 +2335,8 @@ export function App() {
     setWebInspectorVisible,
     prInspectorVisible,
     setPrInspectorVisible,
+    mergeQueueVisible,
+    setMergeQueueVisible,
     openFiles,
     activeFile,
     openFile,
@@ -2709,6 +2716,52 @@ export function App() {
     agents: PaneAgentSpawnRequest["agents"][number][];
     sequence: number;
   } | null>(null);
+  // Role → { mounted pty id, tab it was mounted in } for the most recent
+  // orchestra dispatch, so a role lane card can focus its central pane in the
+  // correct tab even after the operator switches tabs (WU-VP-1 DoD#6).
+  const [orchestraRolePanes, setOrchestraRolePanes] = useState<Map<string, { terminalId: string; tabId: string }>>(
+    () => new Map(),
+  );
+  // Always-current active tab id read by the identity-stable mountAgentPtyInPane
+  // below, so the agent-event listener does not have to re-subscribe per tab.
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  // Globally monotonic spawn-request sequence. Each tab's PaneTreeContainer only
+  // processes a request whose sequence exceeds the last it handled, so deriving
+  // the next sequence from the *last active tab's* request (mount A→B→A) would
+  // reset it to 1 and the re-mount into A would be silently ignored. A global
+  // counter keeps every tab's requests strictly increasing.
+  const paneSpawnSequenceRef = useRef(0);
+
+  // Single owner of agent-pty → central-pane mounting. Both the autonomous loop
+  // (agent-event payload.terminalId) and the orchestra/manual dispatch
+  // (SpawnResult.pty_id) funnel through here so the two paths can't diverge
+  // (WU-VP-2). Dedups by terminalId and bumps the sequence the PaneTreeContainer
+  // watches; an array argument mounts N roles in ONE tiling pass.
+  const mountAgentPtyInPane = useCallback(
+    (
+      agents: PaneAgentSpawnRequest["agents"][number] | PaneAgentSpawnRequest["agents"][number][],
+      tabId: string = activeTabIdRef.current,
+    ) => {
+      const incoming = Array.isArray(agents) ? agents : [agents];
+      if (incoming.length === 0) return;
+      // Compute the next sequence once per call (not inside the updater, which
+      // React may invoke twice under StrictMode) so the counter stays monotonic.
+      paneSpawnSequenceRef.current += 1;
+      const nextSequence = paneSpawnSequenceRef.current;
+      setPaneAgentSpawns((prev) => {
+        const sameTab = prev && prev.tabId === tabId ? prev : null;
+        const existing = sameTab?.agents ?? [];
+        const merged = [...existing];
+        for (const agent of incoming) {
+          if (!merged.some((mounted) => mounted.terminalId === agent.terminalId)) merged.push(agent);
+        }
+        if (merged.length === existing.length) return prev;
+        return { tabId, agents: merged, sequence: nextSequence };
+      });
+    },
+    [],
+  );
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let unlisten: UnlistenFn | null = null;
@@ -2754,16 +2807,7 @@ export function App() {
           ...(roleId ? { roleId } : {}),
           ...(branchName ? { branchName } : {}),
         };
-        setPaneAgentSpawns((prev) => {
-          const sameTab = prev && prev.tabId === activeTabId ? prev : null;
-          const agents = sameTab?.agents ?? [];
-          if (agents.some((agent) => agent.terminalId === terminalId)) return prev;
-          return {
-            tabId: activeTabId,
-            agents: [...agents, agent],
-            sequence: (sameTab?.sequence ?? 0) + 1,
-          };
-        });
+        mountAgentPtyInPane(agent);
       },
     )
       .then((fn) => {
@@ -2777,7 +2821,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [activeTabId]);
+  }, [mountAgentPtyInPane]);
 
   const activeTerminalTarget = useMemo<ActiveTerminalTarget>(
     () => ({
@@ -4357,6 +4401,9 @@ export function App() {
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
 
   useTerminalNotifications({ activeTabId, tabs, onTabActivity: markTabActivity });
+  // Native toasts on agent fleet transitions (→waiting_approval / →done / →error).
+  // Pass fleetSessions (not sessions) — only the fleet projection carries runStatus.
+  useAgentFleetToasts(fleetSessions);
 
   // ── Session restore (DB bookkeeping + localStorage fallback) ──
 
@@ -4550,6 +4597,7 @@ export function App() {
     setHelpVisible,
     setWebInspectorVisible,
     setPrInspectorVisible,
+    setMergeQueueVisible,
   });
 
   // ── Render ──
@@ -4632,6 +4680,14 @@ export function App() {
   ).length;
   const liveAgentCount =
     rightRailSessions.filter((s) => s.status !== "idle" && s.status !== "done").length + liveInteractiveSessionCount;
+  // Sessions that are blocked on a human/operator decision. `status` is the
+  // legacy projection where canonical `waiting_approval`/`blocked` both fold to
+  // `waiting` (see agentFleet.agentRunStatusToLegacyStatus). Mirrors the
+  // attentionCount predicate in workstationSummary.buildWorkstationSummary so the
+  // rail and the workstation pulse agree on what "needs attention" means.
+  const attentionAgentCount = rightRailSessions.filter(
+    (s) => s.status === "waiting" || s.status === "error",
+  ).length;
   const rightRailModeBadges: Record<RightRailMode, number> = {
     command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
     review: rightRailAllChangedFiles.length,
@@ -4881,12 +4937,11 @@ export function App() {
   } · ${rightRailWorktreeScopedCount} worktree${rightRailWorktreeScopedCount === 1 ? "" : "s"} · ${
     rightRailAllChangedFiles.length
   } file${rightRailAllChangedFiles.length === 1 ? "" : "s"}`;
-  const rightRailAgentsSummary =
-    liveAgentCount > 0
-      ? `${liveAgentCount} live`
-      : rightRailSessions.length > 0
-        ? `${rightRailSessions.length} parked`
-        : "No agents";
+  const rightRailAgentsSummary = summarizeAgentLane({
+    attentionCount: attentionAgentCount,
+    liveCount: liveAgentCount,
+    totalCount: rightRailSessions.length,
+  });
   const rightRailAgentsDetail = `${rightRailWorktreeScopedCount} scoped · ${rightRailOrchestraLanes.filter((lane) => lane.total > 0).length}/${
     rightRailOrchestraLanes.length
   } roles`;
@@ -4996,26 +5051,53 @@ export function App() {
       (prompt) => tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt }),
       isTauriRuntime(),
     );
-    const launched = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
-    if (launched === 0) {
+    const launches = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
+    if (launches.length === 0) {
       toast.error("Orchestra dispatch failed", "No agent session could be started.");
       return;
     }
+    // Mount each launched role as a live central pane (WU-VP-1) in one tiling
+    // pass, and remember role → pane so its lane card can focus it (DoD#6).
+    mountAgentPtyInPane(
+      launches.map((launch) => ({
+        terminalId: launch.terminalId,
+        model: launch.model,
+        backend: launch.backend === "sidecar" ? "sidecar" : "native",
+        durability: launch.backend === "sidecar" ? "tmux-durable" : "degraded",
+        spawnedAt: new Date().toISOString(),
+        ...(launch.roleId ? { roleId: launch.roleId } : {}),
+        ...(launch.branchName ? { branchName: launch.branchName } : {}),
+      })),
+      activeTabId,
+    );
+    setOrchestraRolePanes((prev) => {
+      const next = new Map(prev);
+      for (const launch of launches) next.set(launch.roleId, { terminalId: launch.terminalId, tabId: activeTabId });
+      return next;
+    });
+    // spawn_interactive_agent selects each spawned session, and the main tab's
+    // pane tree only renders while no interactive session is selected — so the
+    // last-spawned agent tab would hide the panes we just mounted. Clear the
+    // selection so the operator lands on the tiled role panes, not an agent tab.
+    selectInteractiveSession("");
     setRightRailMode("command");
     setRightRailFocusWidget("sessions");
     toast.success(
       "Orchestra dispatched",
-      `${launched} agent${launched === 1 ? "" : "s"} launched in role-scoped worktrees.`,
+      `${launches.length} agent${launches.length === 1 ? "" : "s"} launched in role-scoped panes.`,
     );
   }, [
+    activeTabId,
     decisionInbox.pendingCount,
     handleStartInteractiveSession,
     interactiveSessions.length,
+    mountAgentPtyInPane,
     projectName,
     projectPath,
     rightRailAllChangedFiles,
     rightRailAllChangedFiles.length,
     rightRailPrimaryAction?.nextStep,
+    selectInteractiveSession,
     sessions.length,
   ]);
   const renderRightRailDestinationPrompt = (widget: string) =>
@@ -5244,6 +5326,7 @@ export function App() {
                         onStartAgent={handleStartAgent}
                         projectPath={projectPath}
                         agentStatuses={agentStatuses}
+                        sessions={sessions}
                         onActivateTask={(taskId) => {
                           // Jump from a task card to its linked agent: headless
                           // agents launched here are inspector session cards (not
@@ -5495,21 +5578,47 @@ export function App() {
                       <span>{rightRailOrchestraDetail}</span>
                     </div>
                     <ul className="right-panel-orchestra-lanes" aria-label="Role lanes">
-                      {rightRailOrchestraLanes.map((lane) => (
-                        <li
-                          key={lane.id}
-                          data-role={lane.id}
-                          data-state={lane.state}
-                          style={{ "--lane-color": lane.color } as React.CSSProperties}
-                          title={`${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`}
-                        >
-                          <span>{lane.icon}</span>
-                          <strong>{lane.label}</strong>
-                          <small>
-                            {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
-                          </small>
-                        </li>
-                      ))}
+                      {rightRailOrchestraLanes.map((lane) => {
+                        const pane = orchestraRolePanes.get(lane.id);
+                        const focusable = Boolean(pane);
+                        return (
+                          // The lane item doubles as a focus shortcut to its agent pane; a
+                          // nested button would break the flex lane layout. Interactive
+                          // props are only attached when a pane exists for the role.
+                          <li
+                            key={lane.id}
+                            data-role={lane.id}
+                            data-state={lane.state}
+                            data-focusable={focusable ? "" : undefined}
+                            style={{ "--lane-color": lane.color } as React.CSSProperties}
+                            title={
+                              focusable
+                                ? `Focus ${lane.label} agent pane`
+                                : `${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`
+                            }
+                            role={focusable ? "button" : undefined}
+                            tabIndex={focusable ? 0 : undefined}
+                            aria-label={focusable ? `Focus ${lane.label} agent pane` : undefined}
+                            onClick={pane ? () => void handlePaneSwitch(pane.tabId, pane.terminalId) : undefined}
+                            onKeyDown={
+                              pane
+                                ? (e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      void handlePaneSwitch(pane.tabId, pane.terminalId);
+                                    }
+                                  }
+                                : undefined
+                            }
+                          >
+                            <span>{lane.icon}</span>
+                            <strong>{lane.label}</strong>
+                            <small>
+                              {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
+                            </small>
+                          </li>
+                        );
+                      })}
                     </ul>
                     <div className="right-panel-orchestra-actions" role="toolbar" aria-label="Orchestra actions">
                       <button
@@ -7034,6 +7143,11 @@ export function App() {
                   onClose={() => setPrInspectorVisible(false)}
                   onStartReview={handleStartAgent}
                 />
+              </LazyDialog>
+            )}
+            {mergeQueueVisible && (
+              <LazyDialog>
+                <MergeQueuePanel visible onClose={() => setMergeQueueVisible(false)} />
               </LazyDialog>
             )}
             {quickOpenMode && (

@@ -93,7 +93,7 @@ export function compactWorkstationNumber(value: number): string {
   return String(value);
 }
 
-export function rankAgentSessions(sessions: readonly AgentSession[], limit?: number): AgentSession[] {
+export function rankAgentSessions<T extends AgentSession>(sessions: readonly T[], limit?: number): T[] {
   const ranked = [...sessions].sort((a, b) => {
     const rank = STATUS_RANK[a.status] - STATUS_RANK[b.status];
     if (rank !== 0) return rank;

@@ -20,10 +20,10 @@ import { buildHandoffPrompt } from "../../shared/lib/handoffPrompt";
 import { writeClipboardText } from "../../shared/lib/nativeClipboard";
 import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from "../../shared/lib/orchestrator";
 import { computeTokenProgress } from "../../shared/lib/tokenProgress";
+import { rankAgentSessions } from "../../shared/lib/workstationSummary";
 import { useAppStore } from "../../shared/store/appStore";
 import {
   type AgentSession,
-  type AgentStatus,
   getSessionColor,
   STATUS_COLORS,
   STATUS_LABELS,
@@ -42,6 +42,7 @@ import { ToolBadge } from "../../shared/ui/ToolBadge";
 import { SessionAnalytics } from "../analytics/SessionAnalytics";
 import styles from "./AgentInspector.module.css";
 import { ConductorView } from "./ConductorView";
+import { FleetGridTerminal } from "./FleetGridTerminal";
 import { InlineResultPanel } from "./InlineResultPanel";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
 import { SessionCard } from "./SessionCard";
@@ -82,16 +83,6 @@ interface AgentInspectorProps {
 }
 
 type InspectorTab = "sessions" | "activity" | "parallel" | "conductor" | "diffs";
-
-const STATUS_ORDER: Record<AgentStatus, number> = {
-  generating: 0,
-  coding: 1,
-  thinking: 2,
-  waiting: 3,
-  error: 4,
-  idle: 5,
-  done: 6,
-};
 
 export function AgentInspector({
   sessions,
@@ -202,10 +193,7 @@ export function AgentInspector({
   // interactive runtimes here to avoid double-display. Fixture sessions carry no
   // runtime field and are treated as headless.
   const sortedSessions = useMemo(
-    () =>
-      [...sessions]
-        .filter((s) => s.runtime !== "interactive")
-        .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
+    () => rankAgentSessions(sessions.filter((s) => s.runtime !== "interactive")),
     [sessions],
   );
 
@@ -833,29 +821,39 @@ export function AgentInspector({
                       style={{ width: `${pct}%`, background: sColor.accent }}
                     />
                   </div>
-                  <div className={styles.parallelLogs}>
-                    {s.logs.slice(-5).map((log) => {
-                      const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
-                      return (
-                        <div
-                          key={`${s.id}-${log.timestamp}-${log.type}-${log.content}`}
-                          className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}
-                        >
-                          <span className={styles.logTime}>
-                            {new Date(log.timestamp).toLocaleTimeString("en-US", {
-                              hour12: false,
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                            })}
-                          </span>
-                          {tool && <ToolBadge tool={tool} />}
-                          <span className={styles.logContent}>{log.content}</span>
-                        </div>
-                      );
-                    })}
-                    {s.logs.length === 0 && <span className={styles.parallelEmpty}>Waiting for activity...</span>}
-                  </div>
+                  {/* Live PTY mirror when the session owns one and is still
+                      running; otherwise the cheap log tail. ptyId only exists
+                      for interactive/backend runs, and an interactive TUI stays
+                      "idle" while alive, so mirror it unless it is done. */}
+                  {s.ptyId && s.status !== "done" && (s.runtime === "interactive" || s.status !== "idle") ? (
+                    <div className={styles.parallelTerminal}>
+                      <FleetGridTerminal ptyId={s.ptyId} />
+                    </div>
+                  ) : (
+                    <div className={styles.parallelLogs}>
+                      {s.logs.slice(-5).map((log) => {
+                        const tool = log.type === "tool_use" ? extractToolName(log.content) : null;
+                        return (
+                          <div
+                            key={`${s.id}-${log.timestamp}-${log.type}-${log.content}`}
+                            className={`${styles.logEntry} ${styles[`log_${log.type}`]}`}
+                          >
+                            <span className={styles.logTime}>
+                              {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                                hour12: false,
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </span>
+                            {tool && <ToolBadge tool={tool} />}
+                            <span className={styles.logContent}>{log.content}</span>
+                          </div>
+                        );
+                      })}
+                      {s.logs.length === 0 && <span className={styles.parallelEmpty}>Waiting for activity...</span>}
+                    </div>
+                  )}
                 </div>
               );
             })

@@ -1359,3 +1359,14 @@
   font-style: italic;
   padding: var(--space-2) 0;
 }
+
+/* Live PTY mirror viewport. Fixed height + clip: the embedded TerminalCanvas is
+   fixed-size (flex 0 0 auto) and read-only, so the tile shows a top-left window
+   into the running terminal rather than reflowing it. The accent echoes the
+   tile's --session-accent without redefining it. */
+.parallelTerminal {
+  height: 140px;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--session-accent, var(--gold)) 22%, transparent);
+  background: rgba(3, 9, 16, 0.32);
+}
