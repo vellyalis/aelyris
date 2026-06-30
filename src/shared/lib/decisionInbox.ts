@@ -248,7 +248,10 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
 
   const actor = session.nextActor?.trim().toLowerCase();
   const blockedReason = session.blockedReason?.trim();
-  if ((actor === "human" || actor === "user") && blockedReason) {
+  // Interactive runs are surfaced by the keystroke-resolvable branch below
+  // (which carries a ptyId). Excluding them here prevents a double row if a
+  // backend ever populates nextActor/blockedReason on an interactive session.
+  if ((actor === "human" || actor === "user") && blockedReason && session.runtime !== "interactive") {
     const type = typeFromText(blockedReason);
     if (type) {
       decisions.push(
@@ -279,7 +282,10 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
     session.ptyId &&
     (session.runStatus === "waiting_approval" || session.runStatus === "blocked")
   ) {
-    const requestedAt = latestSessionTimestamp(session) ?? now;
+    // Interactive fleet sessions carry no per-event log; `startedAt` is the
+    // process start (and seconds-based), so use the inbox build time `now` for a
+    // fresh, correctly-scaled epoch-ms timestamp that sorts among current gates.
+    const requestedAt = now;
     const context =
       session.runStatus === "blocked"
         ? blockedReason || "Interactive agent is blocked and needs a human decision."
@@ -295,7 +301,7 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
         requestedAt,
         sessionId: session.id,
         ptyId: session.ptyId,
-        evidence: [`runStatus=${session.runStatus}`, session.cli ? `cli=${session.cli}` : ""],
+        evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
         history: historyEntry(
           requestedAt,
           "agent",

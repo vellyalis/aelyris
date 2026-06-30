@@ -4210,13 +4210,11 @@ export function App() {
     [handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
   );
 
-  // Resolve a blocked/waiting interactive agent gate from the Decision Inbox by
-  // writing a single keystroke into its live PTY: Enter accepts the highlighted
-  // (default) option, Esc cancels/rejects. We route through `write_terminal`
-  // because it gates in EchoPreserving mode — a lone Esc reaches the agent TUI
-  // (the send-keys family HOLDS unterminated input), and the keystroke is still
-  // classified + audited at the P0-4 boundary like any human keypress. We do NOT
-  // clear the item: it leaves the inbox when the agent re-emits its run status.
+  // Resolve a blocked/waiting interactive agent gate from the Decision Inbox.
+  // The backend `resolve_interactive_approval` reads the live prompt shape and
+  // writes the correct keystroke through the P0-4 gate (y/n prompts get y/n; a
+  // menu gets Enter/Esc) and audits the decision. We do NOT clear the item: it
+  // leaves the inbox when the agent re-emits its run status after acting.
   const handleDecideDecision = useCallback(
     async (item: HumanDecisionItem, decision: "approve" | "deny") => {
       if (rightRailUsesFixtures) {
@@ -4232,9 +4230,8 @@ export function App() {
         toast.error("No live agent pane", "This decision has no addressable agent terminal.");
         return;
       }
-      const data = decision === "approve" ? "\r" : "\x1b";
       try {
-        await tauriInvoke("write_terminal", { id: ptyId, data });
+        await tauriInvoke("resolve_interactive_approval", { terminalId: ptyId, decision });
         showRightRailRouteConfirmation({
           widget: "decision-inbox",
           title: decision === "approve" ? "Approval sent" : "Denial sent",

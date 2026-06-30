@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck, X } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   buildDecisionInbox,
   type DecisionInboxSummary,
@@ -29,8 +29,10 @@ interface DecisionInboxPanelProps {
    * items that carry a `ptyId` (a live interactive agent TUI). Approving writes
    * an accept keystroke; denying writes a cancel keystroke. The item is NOT
    * cleared here — it leaves the inbox when the agent re-emits its run status.
+   * May return a promise; the row disables both buttons until it settles so a
+   * double-click cannot deliver duplicate keystrokes to the live PTY.
    */
-  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void;
+  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
 }
 
 const TYPE_LABELS: Record<HumanDecisionType, string> = {
@@ -157,13 +159,27 @@ function DecisionRow({
   onSelectSession: (id: string) => void;
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
-  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void;
+  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
 }) {
   const canFocus = Boolean(item.sessionId);
   // Approve/Deny only for a pending agent gate that is keystroke-resolvable:
   // it must carry a live agent PTY id. Watchdog/blocked items without a ptyId
   // (e.g. headless runs) keep the Focus route only.
   const canDecide = Boolean(onDecide && item.status === "pending" && item.source === "agent" && item.ptyId);
+  // In-flight guard: block a second keystroke while a decision is being
+  // delivered (double-click / slow round-trip), so the live PTY never receives
+  // duplicate bytes. The ref guards synchronously; state drives the disabled UI.
+  const decidingRef = useRef(false);
+  const [deciding, setDeciding] = useState<DecisionAction | null>(null);
+  const runDecision = (decision: DecisionAction) => {
+    if (!onDecide || decidingRef.current) return;
+    decidingRef.current = true;
+    setDeciding(decision);
+    Promise.resolve(onDecide(item, decision)).finally(() => {
+      decidingRef.current = false;
+      setDeciding(null);
+    });
+  };
   const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];
   const visibleEvidence = item.evidence.slice(0, compact ? 1 : 3);
@@ -248,23 +264,27 @@ function DecisionRow({
               type="button"
               className={styles.approveBtn}
               data-decision="approve"
-              onClick={() => onDecide(item, "approve")}
+              disabled={deciding !== null}
+              aria-disabled={deciding !== null}
+              onClick={() => runDecision("approve")}
               aria-label={`Approve ${item.title}`}
               title={`Approve ${item.title}`}
             >
               <Check size={11} aria-hidden="true" />
-              Approve
+              {deciding === "approve" ? "Sent" : "Approve"}
             </button>
             <button
               type="button"
               className={styles.denyBtn}
               data-decision="deny"
-              onClick={() => onDecide(item, "deny")}
+              disabled={deciding !== null}
+              aria-disabled={deciding !== null}
+              onClick={() => runDecision("deny")}
               aria-label={`Deny ${item.title}`}
               title={`Deny ${item.title}`}
             >
               <X size={11} aria-hidden="true" />
-              Deny
+              {deciding === "deny" ? "Sent" : "Deny"}
             </button>
           </>
         )}

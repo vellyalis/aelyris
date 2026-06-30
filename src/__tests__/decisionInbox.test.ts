@@ -215,6 +215,27 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems[0].context).toContain("merge strategy");
   });
 
+  it("emits a single keystroke-resolvable row for an interactive gate even when nextActor is set", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-dup", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "blocked",
+          ptyId: "pty-9",
+          nextActor: "human",
+          blockedReason: "Permission required for destructive command",
+        }),
+      ],
+    });
+
+    const forSession = inbox.items.filter((item) => item.sessionId === "int-dup");
+    expect(forSession).toHaveLength(1);
+    expect(forSession[0]).toMatchObject({ ptyId: "pty-9", source: "agent", status: "pending" });
+  });
+
   it("does not surface an interactive approval that has no addressable pty id", () => {
     const inbox = buildDecisionInbox({
       sessions: [

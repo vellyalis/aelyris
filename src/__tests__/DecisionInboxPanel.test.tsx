@@ -101,13 +101,12 @@ describe("DecisionInboxPanel", () => {
     expect(onOpenWorkflow).toHaveBeenCalledWith("workflow-copy");
   });
 
-  it("renders Approve/Deny for a keystroke-resolvable interactive agent gate and calls onDecide", () => {
-    const onDecide = vi.fn();
-    render(
+  function interactiveGate(onDecide: (item: unknown, decision: string) => void | Promise<void>) {
+    return (
       <DecisionInboxPanel
         activeSessionId={null}
         onSelectSession={vi.fn()}
-        onDecide={onDecide}
+        onDecide={onDecide as never}
         auditEvents={[]}
         sessions={[
           session("int", {
@@ -119,17 +118,39 @@ describe("DecisionInboxPanel", () => {
             cli: "claude",
           }),
         ]}
-      />,
+      />
     );
+  }
 
+  it("calls onDecide with approve for a keystroke-resolvable interactive agent gate", () => {
+    const onDecide = vi.fn();
+    render(interactiveGate(onDecide));
     fireEvent.click(screen.getByRole("button", { name: /^Approve / }));
     expect(onDecide).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "int", ptyId: "pty-1" }),
       "approve",
     );
+  });
 
+  it("calls onDecide with deny for a keystroke-resolvable interactive agent gate", () => {
+    const onDecide = vi.fn();
+    render(interactiveGate(onDecide));
     fireEvent.click(screen.getByRole("button", { name: /^Deny / }));
     expect(onDecide).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "int" }), "deny");
+  });
+
+  it("blocks a second delivery while a decision is in flight (no duplicate keystrokes)", () => {
+    let release: () => void = () => {};
+    const onDecide = vi.fn(() => new Promise<void>((resolve) => {
+      release = resolve;
+    }));
+    render(interactiveGate(onDecide));
+    const approveBtn = screen.getByRole("button", { name: /^Approve / });
+    fireEvent.click(approveBtn);
+    fireEvent.click(approveBtn); // second click while the first is still in flight
+    fireEvent.click(screen.getByRole("button", { name: /^Deny / }));
+    expect(onDecide).toHaveBeenCalledTimes(1);
+    release();
   });
 
   it("does not render Approve/Deny for watchdog approvals that have no live agent pty", () => {

@@ -374,6 +374,12 @@
   outline-offset: -2px;
 }
 
+.approveBtn:disabled,
+.denyBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .routeBtn[data-route="workflow"] {
   border-color: rgba(203, 166, 247, 0.16);
   background: rgba(203, 166, 247, 0.075);
