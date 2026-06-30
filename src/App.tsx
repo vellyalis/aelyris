@@ -5320,6 +5320,7 @@ export function App() {
                         onStartAgent={handleStartAgent}
                         projectPath={projectPath}
                         agentStatuses={agentStatuses}
+                        sessions={sessions}
                         onActivateTask={(taskId) => {
                           // Jump from a task card to its linked agent: headless
                           // agents launched here are inspector session cards (not

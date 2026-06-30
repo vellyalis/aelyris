@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Bot, ChevronRight, GitBranch, Play, Plus } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Bot, ChevronRight, FileText, GitBranch, Play, Plus } from "lucide-react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../shared/store/appStore";
 import { toast } from "../../shared/store/toastStore";
-import { STATUS_COLORS } from "../../shared/types/agent";
+import { type AgentSession, STATUS_COLORS } from "../../shared/types/agent";
 import { KANBAN_COLUMNS, type KanbanColumnId, PRIORITY_COLORS, type TaskPriority } from "../../shared/types/kanban";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
+import { InlineResultPanel } from "../agent-inspector/InlineResultPanel";
 import styles from "./KanbanBoard.module.css";
 
 interface CreatedWorktree {
@@ -19,6 +20,9 @@ interface KanbanBoardProps {
   onMoveWithSideEffects?: (taskId: string, toColumn: string) => void;
   projectPath?: string;
   agentStatuses?: Record<string, { status: string; cost: number }>;
+  /** Full fleet sessions, so a review card can resolve its assigned agent for
+   *  the inline diff panel (agentStatuses alone lacks changedFileDetails). */
+  sessions?: AgentSession[];
 }
 
 export function KanbanBoard({
@@ -27,6 +31,7 @@ export function KanbanBoard({
   onMoveWithSideEffects,
   projectPath,
   agentStatuses,
+  sessions,
 }: KanbanBoardProps) {
   // Subscribe to each store slice individually so a write to an unrelated
   // field (terminals, agents, ghost layers…) does not re-render the entire
@@ -43,6 +48,7 @@ export function KanbanBoard({
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [showForm, setShowForm] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   // Close form on outside click (mousedown for WebView2 reliability)
@@ -85,6 +91,15 @@ export function KanbanBoard({
 
       // Create worktree if projectPath available
       if (projectPath) {
+        // Pre-flight through the shared validator so a bad slug fails with a
+        // clean message BEFORE any git side-effect (create_worktree validates
+        // internally, but only after starting work).
+        try {
+          await invoke("validate_branch_name", { name: branchSlug });
+        } catch (error) {
+          toast.error("Invalid branch name", error instanceof Error ? error.message : String(error));
+          return;
+        }
         try {
           worktree = await invoke<CreatedWorktree>("create_worktree", {
             repoPath: projectPath,
@@ -206,10 +221,15 @@ export function KanbanBoard({
               {!isCollapsed && tasks.length === 0 && <div className={styles.groupEmpty}>Drop a task here</div>}
               {!isCollapsed && tasks.length > 0 && (
                 <div className={styles.groupItems}>
-                  {tasks.map((t) => (
-                    /* biome-ignore lint/a11y/useSemanticElements: The draggable task card contains nested action buttons, so a button wrapper would be invalid. */
-                    <div
-                      key={t.id}
+                  {tasks.map((t) => {
+                    const reviewSession =
+                      t.column === "review" && t.assignedAgentId
+                        ? sessions?.find((session) => session.id === t.assignedAgentId)
+                        : undefined;
+                    return (
+                      <Fragment key={t.id}>
+                        {/* biome-ignore lint/a11y/useSemanticElements: The draggable task card contains nested action buttons, so a button wrapper would be invalid. */}
+                        <div
                       role="button"
                       tabIndex={0}
                       aria-label={`Activate task: ${t.title}`}
@@ -270,6 +290,25 @@ export function KanbanBoard({
                           <Play size={10} aria-hidden="true" />
                         </button>
                       )}
+                      {reviewSession && (
+                        <button
+                          type="button"
+                          className={styles.itemAction}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReviewTaskId((cur) => (cur === t.id ? null : t.id));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                            }
+                          }}
+                          title={reviewTaskId === t.id ? "Hide agent changes" : "Review agent changes"}
+                          aria-label={`Review changes for task: ${t.title}`}
+                        >
+                          <FileText size={10} aria-hidden="true" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={styles.itemDelete}
@@ -288,7 +327,23 @@ export function KanbanBoard({
                         <span aria-hidden="true">×</span>
                       </button>
                     </div>
-                  ))}
+                        {reviewTaskId === t.id && reviewSession && (
+                          <InlineResultPanel
+                            session={reviewSession}
+                            projectPath={projectPath ?? ""}
+                            onClose={() => setReviewTaskId(null)}
+                            onStartAgent={
+                              onStartAgent
+                                ? (prompt) => {
+                                    void onStartAgent(prompt);
+                                  }
+                                : undefined
+                            }
+                          />
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -1038,6 +1038,7 @@ pub fn run() {
             ipc::list_branches,
             ipc::list_worktrees,
             ipc::create_worktree,
+            ipc::validate_branch_name,
             ipc::remove_worktree,
             ipc::list_directory,
             ipc::git_status,
