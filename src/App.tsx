@@ -160,6 +160,7 @@ import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
 import { useTabManager, VISUAL_QA_FALLBACK_PROJECT_PATH } from "./shared/hooks/useTabManager";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
+import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
@@ -4358,6 +4359,9 @@ export function App() {
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
 
   useTerminalNotifications({ activeTabId, tabs, onTabActivity: markTabActivity });
+  // Native toasts on agent fleet transitions (→waiting_approval / →done / →error).
+  // Pass fleetSessions (not sessions) — only the fleet projection carries runStatus.
+  useAgentFleetToasts(fleetSessions);
 
   // ── Session restore (DB bookkeeping + localStorage fallback) ──
 
