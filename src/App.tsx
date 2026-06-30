@@ -176,7 +176,7 @@ import {
   parseAuthenticatedPromptPreflightMatrixReport,
 } from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
-import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
+import { buildDecisionInbox, type DecisionWorkflowStatus, type HumanDecisionItem } from "./shared/lib/decisionInbox";
 import {
   EDITOR_OPEN_MODE_CHANGE_EVENT,
   EDITOR_OPEN_MODE_STORAGE_KEY,
@@ -4210,6 +4210,43 @@ export function App() {
     [handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
   );
 
+  // Resolve a blocked/waiting interactive agent gate from the Decision Inbox by
+  // writing a single keystroke into its live PTY: Enter accepts the highlighted
+  // (default) option, Esc cancels/rejects. We route through `write_terminal`
+  // because it gates in EchoPreserving mode — a lone Esc reaches the agent TUI
+  // (the send-keys family HOLDS unterminated input), and the keystroke is still
+  // classified + audited at the P0-4 boundary like any human keypress. We do NOT
+  // clear the item: it leaves the inbox when the agent re-emits its run status.
+  const handleDecideDecision = useCallback(
+    async (item: HumanDecisionItem, decision: "approve" | "deny") => {
+      if (rightRailUsesFixtures) {
+        showRightRailRouteConfirmation({
+          widget: "decision-inbox",
+          title: decision === "approve" ? "Approval preview" : "Denial preview",
+          detail: "Fixture session — no live agent to signal.",
+        });
+        return;
+      }
+      const ptyId = item.ptyId;
+      if (!ptyId) {
+        toast.error("No live agent pane", "This decision has no addressable agent terminal.");
+        return;
+      }
+      const data = decision === "approve" ? "\r" : "\x1b";
+      try {
+        await tauriInvoke("write_terminal", { id: ptyId, data });
+        showRightRailRouteConfirmation({
+          widget: "decision-inbox",
+          title: decision === "approve" ? "Approval sent" : "Denial sent",
+          detail: item.title,
+        });
+      } catch (err) {
+        toast.error("Decision delivery failed", String(err));
+      }
+    },
+    [rightRailUsesFixtures, showRightRailRouteConfirmation],
+  );
+
   const handleRightRailAction = useCallback(
     async (action: RightRailAction) => {
       const auditRecord = await appendRightRailActionAudit(action, projectPath, rightRailMode);
@@ -6744,6 +6781,7 @@ export function App() {
                                   onSelectSession={handleSelectRightRailSession}
                                   onOpenWorkflow={handleOpenDecisionWorkflow}
                                   onOpenAudit={handleOpenDecisionAudit}
+                                  onDecide={handleDecideDecision}
                                 />
                               </RightRailWidgetFrame>
                             </Suspense>

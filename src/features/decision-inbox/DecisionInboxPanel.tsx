@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck, X } from "lucide-react";
 import { useMemo } from "react";
 import {
   buildDecisionInbox,
@@ -8,20 +8,29 @@ import {
   type HumanDecisionRisk,
   type HumanDecisionType,
 } from "../../shared/lib/decisionInbox";
-import type { AgentSession } from "../../shared/types/agent";
+import type { AgentFleetSession } from "../../shared/lib/agentFleet";
 import type { AuditEventRecord } from "../../shared/types/audit";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./DecisionInboxPanel.module.css";
 
+export type DecisionAction = "approve" | "deny";
+
 interface DecisionInboxPanelProps {
-  sessions: AgentSession[];
+  sessions: AgentFleetSession[];
   auditEvents: AuditEventRecord[];
   workflows?: DecisionWorkflowStatus[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
+  /**
+   * Resolve a keystroke-addressable agent gate. Only invoked for pending agent
+   * items that carry a `ptyId` (a live interactive agent TUI). Approving writes
+   * an accept keystroke; denying writes a cancel keystroke. The item is NOT
+   * cleared here — it leaves the inbox when the agent re-emits its run status.
+   */
+  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void;
 }
 
 const TYPE_LABELS: Record<HumanDecisionType, string> = {
@@ -59,6 +68,7 @@ export function DecisionInboxPanel({
   onSelectSession,
   onOpenWorkflow,
   onOpenAudit,
+  onDecide,
 }: DecisionInboxPanelProps) {
   const inbox = useMemo<DecisionInboxSummary>(
     () => buildDecisionInbox({ sessions, auditEvents, workflows }),
@@ -101,6 +111,7 @@ export function DecisionInboxPanel({
                   onSelectSession={onSelectSession}
                   onOpenWorkflow={onOpenWorkflow}
                   onOpenAudit={onOpenAudit}
+                  onDecide={onDecide}
                 />
               ))}
             </section>
@@ -138,6 +149,7 @@ function DecisionRow({
   onSelectSession,
   onOpenWorkflow,
   onOpenAudit,
+  onDecide,
 }: {
   item: HumanDecisionItem;
   active: boolean;
@@ -145,8 +157,13 @@ function DecisionRow({
   onSelectSession: (id: string) => void;
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
+  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void;
 }) {
   const canFocus = Boolean(item.sessionId);
+  // Approve/Deny only for a pending agent gate that is keystroke-resolvable:
+  // it must carry a live agent PTY id. Watchdog/blocked items without a ptyId
+  // (e.g. headless runs) keep the Focus route only.
+  const canDecide = Boolean(onDecide && item.status === "pending" && item.source === "agent" && item.ptyId);
   const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];
   const visibleEvidence = item.evidence.slice(0, compact ? 1 : 3);
@@ -225,6 +242,32 @@ function DecisionRow({
             {entry}
           </span>
         ))}
+        {canDecide && onDecide && (
+          <>
+            <button
+              type="button"
+              className={styles.approveBtn}
+              data-decision="approve"
+              onClick={() => onDecide(item, "approve")}
+              aria-label={`Approve ${item.title}`}
+              title={`Approve ${item.title}`}
+            >
+              <Check size={11} aria-hidden="true" />
+              Approve
+            </button>
+            <button
+              type="button"
+              className={styles.denyBtn}
+              data-decision="deny"
+              onClick={() => onDecide(item, "deny")}
+              aria-label={`Deny ${item.title}`}
+              title={`Deny ${item.title}`}
+            >
+              <X size={11} aria-hidden="true" />
+              Deny
+            </button>
+          </>
+        )}
         {route && (
           <button
             type="button"

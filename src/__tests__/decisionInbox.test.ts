@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildDecisionInbox, isTrueHumanDecisionKind } from "../shared/lib/decisionInbox";
-import type { AgentSession } from "../shared/types/agent";
+import type { AgentFleetSession } from "../shared/lib/agentFleet";
+
 import type { AuditEventRecord } from "../shared/types/audit";
 
-function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
+function session(id: string, overrides: Partial<AgentFleetSession> = {}): AgentFleetSession {
   return {
     id,
     name: `Agent ${id}`,
@@ -14,6 +15,9 @@ function session(id: string, overrides: Partial<AgentSession> = {}): AgentSessio
     logs: [],
     cost: 0,
     tokensUsed: 0,
+    runtime: "headless",
+    runStatus: "coding",
+    cwd: "",
     ...overrides,
   };
 }
@@ -158,6 +162,85 @@ describe("decisionInbox", () => {
       type: "permission_required",
       context: "Approve signed updater manifest before publish.",
     });
+  });
+
+  it("surfaces a waiting interactive agent as a keystroke-resolvable approval carrying its ptyId", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-wait", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-7",
+          cli: "claude",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      sessionId: "int-wait",
+      ptyId: "pty-7",
+      type: "permission_required",
+      source: "agent",
+      status: "pending",
+    });
+    expect(inbox.pendingItems[0].evidence).toContain("runStatus=waiting_approval");
+  });
+
+  it("surfaces a blocked interactive agent and prefers its blocked reason as context", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-block", {
+          name: "codex interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "blocked",
+          ptyId: "pty-8",
+          blockedReason: "Needs human direction on merge strategy",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      sessionId: "int-block",
+      ptyId: "pty-8",
+      source: "agent",
+      status: "pending",
+    });
+    expect(inbox.pendingItems[0].context).toContain("merge strategy");
+  });
+
+  it("does not surface an interactive approval that has no addressable pty id", () => {
+    const inbox = buildDecisionInbox({
+      sessions: [
+        session("no-pty", {
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: undefined,
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(0);
+  });
+
+  it("does not treat a headless waiting run as a keystroke-resolvable approval", () => {
+    const inbox = buildDecisionInbox({
+      sessions: [
+        session("headless-wait", {
+          runtime: "headless",
+          runStatus: "waiting_approval",
+          ptyId: "pty-x",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(0);
   });
 
   it("keeps denied watchdog decisions in history instead of the pending queue", () => {

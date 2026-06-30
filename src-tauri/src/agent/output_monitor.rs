@@ -45,6 +45,30 @@ pub trait CliOutputParser: Send + Sync {
     fn parse_chunk(&self, text: &str) -> MonitorResult;
 }
 
+/// Heuristic markers that indicate an interactive CLI is showing a
+/// permission/approval prompt. Kept CLI-independent so every parser can surface
+/// `WaitingPermission` uniformly — the cockpit Decision Inbox turns this state
+/// into a human Approve/Deny gate. These must be checked BEFORE coding-activity
+/// markers: a permission prompt routinely names the tool it is gating
+/// (e.g. "Bash(...) — Do you want to proceed?"), so a tool-name match would
+/// otherwise mask the prompt as ongoing work.
+const PERMISSION_PROMPT_MARKERS: &[&str] = &[
+    "Allow",
+    "permission",
+    "Do you want to",
+    "(y/n)",
+    "[y/N]",
+    "[Y/n]",
+    "y/n",
+];
+
+/// True when an ANSI-stripped output chunk looks like a permission prompt.
+pub fn detect_waiting_permission(text: &str) -> bool {
+    PERMISSION_PROMPT_MARKERS
+        .iter()
+        .any(|marker| text.contains(marker))
+}
+
 /// Claude Code interactive mode parser
 struct ClaudeParser {
     cost_re: Regex,
@@ -67,14 +91,20 @@ impl CliOutputParser for ClaudeParser {
         let mut status = None;
         let mut usage = DetectedUsage::default();
 
-        // Status detection from Claude Code interactive output patterns
-        // These are heuristic — Claude Code may change its output format
+        // Status detection from Claude Code interactive output patterns.
+        // These are heuristic — Claude Code may change its output format.
+        // Permission detection runs BEFORE coding detection: a tool-use approval
+        // prompt names the gated tool (e.g. "Bash(...) — Do you want to proceed?"),
+        // so checking Edit/Write/Bash first would misclassify the gate as Coding
+        // and the human Approve/Deny would never surface.
         if text.contains("Thinking")
             || text.contains("⠋")
             || text.contains("⠙")
             || text.contains("⠹")
         {
             status = Some(DetectedStatus::Thinking);
+        } else if detect_waiting_permission(text) {
+            status = Some(DetectedStatus::WaitingPermission);
         } else if text.contains("Edit")
             || text.contains("Write")
             || text.contains("Bash")
@@ -83,8 +113,6 @@ impl CliOutputParser for ClaudeParser {
             || text.contains("Updated")
         {
             status = Some(DetectedStatus::Coding);
-        } else if text.contains("Allow") || text.contains("(y/n)") || text.contains("permission") {
-            status = Some(DetectedStatus::WaitingPermission);
         } else if text.contains("❯") || text.contains("> ") && text.len() < 20 {
             status = Some(DetectedStatus::Idle);
         }
@@ -113,7 +141,10 @@ struct GeminiParser;
 
 impl CliOutputParser for GeminiParser {
     fn parse_chunk(&self, text: &str) -> MonitorResult {
-        let status = if text.contains("Generating") || text.contains("...") {
+        // Permission first so a y/n gate is never masked by a "..." progress marker.
+        let status = if detect_waiting_permission(text) {
+            Some(DetectedStatus::WaitingPermission)
+        } else if text.contains("Generating") || text.contains("...") {
             Some(DetectedStatus::Thinking)
         } else if text.contains("Done") || text.contains("Complete") {
             Some(DetectedStatus::Done)
@@ -132,7 +163,10 @@ struct CodexParser;
 
 impl CliOutputParser for CodexParser {
     fn parse_chunk(&self, text: &str) -> MonitorResult {
-        let status = if text.contains("thinking") || text.contains("Processing") {
+        // Permission first so an approval gate is never masked by a sandbox/run marker.
+        let status = if detect_waiting_permission(text) {
+            Some(DetectedStatus::WaitingPermission)
+        } else if text.contains("thinking") || text.contains("Processing") {
             Some(DetectedStatus::Thinking)
         } else if text.contains("sandbox") || text.contains("running") {
             Some(DetectedStatus::Coding)
@@ -146,13 +180,19 @@ impl CliOutputParser for CodexParser {
     }
 }
 
-/// Generic fallback parser — does minimal detection
+/// Generic fallback parser — minimal detection. It still surfaces permission
+/// prompts so a custom CLI's human gate reaches the Decision Inbox.
 struct GenericParser;
 
 impl CliOutputParser for GenericParser {
-    fn parse_chunk(&self, _text: &str) -> MonitorResult {
+    fn parse_chunk(&self, text: &str) -> MonitorResult {
+        let status = if detect_waiting_permission(text) {
+            Some(DetectedStatus::WaitingPermission)
+        } else {
+            None
+        };
         MonitorResult {
-            status: None,
+            status,
             usage: DetectedUsage::default(),
         }
     }
@@ -200,6 +240,59 @@ mod tests {
         let parser = ClaudeParser::new();
         let result = parser.parse_chunk("Allow this tool? (y/n)");
         assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn claude_detects_do_you_want_to_prompt() {
+        let parser = ClaudeParser::new();
+        let result = parser.parse_chunk("Do you want to proceed?");
+        assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn claude_permission_precedes_tool_name_in_same_chunk() {
+        // Regression: a tool-use approval prompt names the tool it is gating.
+        // Coding markers (Bash/Edit/Write) must NOT mask the permission gate,
+        // otherwise the human Approve/Deny never surfaces in the Decision Inbox.
+        let parser = ClaudeParser::new();
+        let bash = parser.parse_chunk("Bash(rm -rf dist)\nDo you want to proceed? (y/n)");
+        assert_eq!(bash.status, Some(DetectedStatus::WaitingPermission));
+        let edit = parser.parse_chunk("Edit src/main.rs — Allow this edit? (y/n)");
+        assert_eq!(edit.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn claude_still_detects_coding_without_a_permission_prompt() {
+        let parser = ClaudeParser::new();
+        let result = parser.parse_chunk("Updated src/main.rs");
+        assert_eq!(result.status, Some(DetectedStatus::Coding));
+    }
+
+    #[test]
+    fn gemini_detects_permission() {
+        let parser = GeminiParser;
+        let result = parser.parse_chunk("Allow this command? (y/n)");
+        assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn codex_detects_permission() {
+        let parser = CodexParser;
+        let result = parser.parse_chunk("Do you want to run this command? [y/N]");
+        assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn generic_detects_permission() {
+        let parser = GenericParser;
+        let result = parser.parse_chunk("Proceed with deletion? (y/n)");
+        assert_eq!(result.status, Some(DetectedStatus::WaitingPermission));
+    }
+
+    #[test]
+    fn detect_waiting_permission_ignores_benign_output() {
+        assert!(!detect_waiting_permission("Compiling crate v0.1.0"));
+        assert!(detect_waiting_permission("Do you want to continue?"));
     }
 
     #[test]

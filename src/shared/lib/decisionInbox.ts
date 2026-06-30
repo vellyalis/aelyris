@@ -1,5 +1,6 @@
 import type { AgentLog, AgentSession } from "../types/agent";
 import type { AuditEventRecord } from "../types/audit";
+import type { AgentFleetSession } from "./agentFleet";
 import type { CommandRiskClass } from "./shellSafety";
 
 export type HumanDecisionType =
@@ -36,6 +37,12 @@ export interface HumanDecisionItem {
   requestedAt: number;
   actor: "human";
   sessionId?: string;
+  /**
+   * PTY id of a live interactive agent terminal this decision can be resolved
+   * against by writing an approve/deny keystroke. Present only for
+   * keystroke-resolvable agent items; absent for workflow/audit/headless items.
+   */
+  ptyId?: string;
   workflowId?: string;
   taskId?: string;
   evidence: string[];
@@ -79,7 +86,14 @@ export interface DecisionWorkflowStatus {
 }
 
 export interface DecisionInboxInput {
-  sessions?: readonly AgentSession[];
+  /**
+   * The unified fleet sessions the cockpit projects from. `AgentFleetSession`
+   * carries the canonical `runStatus` plus `runtime`/`ptyId`, which the
+   * interactive-approval source below needs to surface keystroke-resolvable
+   * gates. `AgentFleetSession extends AgentSession`, so headless-only callers
+   * still type-check.
+   */
+  sessions?: readonly AgentFleetSession[];
   auditEvents?: readonly AuditEventRecord[];
   workflows?: readonly DecisionWorkflowStatus[];
   now?: number;
@@ -191,7 +205,7 @@ export function isTrueHumanDecisionKind(kind: string | null | undefined): boolea
   return typeFromKind(normalized) !== null;
 }
 
-function decisionsFromSession(session: AgentSession, now: number): HumanDecisionItem[] {
+function decisionsFromSession(session: AgentFleetSession, now: number): HumanDecisionItem[] {
   const decisions: HumanDecisionItem[] = [];
   const decisionLog = latestWatchdogDecisionLog(session.logs);
   if (decisionLog?.metadata?.decision === "manual") {
@@ -252,6 +266,44 @@ function decisionsFromSession(session: AgentSession, now: number): HumanDecision
         }),
       );
     }
+  }
+
+  // Interactive PTY agents waiting for approval (or blocked) are
+  // keystroke-resolvable: surface them with their `ptyId` so the inbox can
+  // Approve/Deny by writing a keystroke into the live agent TUI. We require an
+  // interactive runtime AND a ptyId — headless runs carry no addressable PTY
+  // and are handled by the watchdog/blocked branches above, so they never
+  // produce a (non-actionable) Approve/Deny row here.
+  if (
+    session.runtime === "interactive" &&
+    session.ptyId &&
+    (session.runStatus === "waiting_approval" || session.runStatus === "blocked")
+  ) {
+    const requestedAt = latestSessionTimestamp(session) ?? now;
+    const context =
+      session.runStatus === "blocked"
+        ? blockedReason || "Interactive agent is blocked and needs a human decision."
+        : "Interactive agent is waiting for approval to proceed.";
+    decisions.push(
+      createDecision({
+        id: `agent:${session.id}:interactive-approval`,
+        type: "permission_required",
+        status: "pending",
+        source: "agent",
+        title: `${TYPE_LABELS.permission_required} · ${session.name}`,
+        context: shortText(context),
+        requestedAt,
+        sessionId: session.id,
+        ptyId: session.ptyId,
+        evidence: [`runStatus=${session.runStatus}`, session.cli ? `cli=${session.cli}` : ""],
+        history: historyEntry(
+          requestedAt,
+          "agent",
+          session.runStatus === "blocked" ? "blocked" : "waiting",
+          context,
+        ),
+      }),
+    );
   }
 
   return decisions;
