@@ -2711,6 +2711,39 @@ export function App() {
     agents: PaneAgentSpawnRequest["agents"][number][];
     sequence: number;
   } | null>(null);
+  // Role → mounted pty id for the most recent orchestra dispatch, so a role
+  // lane card can focus its central pane (WU-VP-1 DoD#6).
+  const [orchestraRolePanes, setOrchestraRolePanes] = useState<Map<string, string>>(() => new Map());
+  // Always-current active tab id read by the identity-stable mountAgentPtyInPane
+  // below, so the agent-event listener does not have to re-subscribe per tab.
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+
+  // Single owner of agent-pty → central-pane mounting. Both the autonomous loop
+  // (agent-event payload.terminalId) and the orchestra/manual dispatch
+  // (SpawnResult.pty_id) funnel through here so the two paths can't diverge
+  // (WU-VP-2). Dedups by terminalId and bumps the sequence the PaneTreeContainer
+  // watches; an array argument mounts N roles in ONE tiling pass.
+  const mountAgentPtyInPane = useCallback(
+    (
+      agents: PaneAgentSpawnRequest["agents"][number] | PaneAgentSpawnRequest["agents"][number][],
+      tabId: string = activeTabIdRef.current,
+    ) => {
+      const incoming = Array.isArray(agents) ? agents : [agents];
+      if (incoming.length === 0) return;
+      setPaneAgentSpawns((prev) => {
+        const sameTab = prev && prev.tabId === tabId ? prev : null;
+        const existing = sameTab?.agents ?? [];
+        const merged = [...existing];
+        for (const agent of incoming) {
+          if (!merged.some((mounted) => mounted.terminalId === agent.terminalId)) merged.push(agent);
+        }
+        if (merged.length === existing.length) return prev;
+        return { tabId, agents: merged, sequence: (sameTab?.sequence ?? 0) + 1 };
+      });
+    },
+    [],
+  );
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let unlisten: UnlistenFn | null = null;
@@ -2756,16 +2789,7 @@ export function App() {
           ...(roleId ? { roleId } : {}),
           ...(branchName ? { branchName } : {}),
         };
-        setPaneAgentSpawns((prev) => {
-          const sameTab = prev && prev.tabId === activeTabId ? prev : null;
-          const agents = sameTab?.agents ?? [];
-          if (agents.some((agent) => agent.terminalId === terminalId)) return prev;
-          return {
-            tabId: activeTabId,
-            agents: [...agents, agent],
-            sequence: (sameTab?.sequence ?? 0) + 1,
-          };
-        });
+        mountAgentPtyInPane(agent);
       },
     )
       .then((fn) => {
@@ -2779,7 +2803,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [activeTabId]);
+  }, [mountAgentPtyInPane]);
 
   const activeTerminalTarget = useMemo<ActiveTerminalTarget>(
     () => ({
@@ -5008,21 +5032,42 @@ export function App() {
       (prompt) => tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt }),
       isTauriRuntime(),
     );
-    const launched = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
-    if (launched === 0) {
+    const launches = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
+    if (launches.length === 0) {
       toast.error("Orchestra dispatch failed", "No agent session could be started.");
       return;
     }
+    // Mount each launched role as a live central pane (WU-VP-1) in one tiling
+    // pass, and remember role → pane so its lane card can focus it (DoD#6).
+    mountAgentPtyInPane(
+      launches.map((launch) => ({
+        terminalId: launch.terminalId,
+        model: launch.model,
+        backend: launch.backend === "sidecar" ? "sidecar" : "native",
+        durability: launch.backend === "sidecar" ? "tmux-durable" : "degraded",
+        spawnedAt: new Date().toISOString(),
+        ...(launch.roleId ? { roleId: launch.roleId } : {}),
+        ...(launch.branchName ? { branchName: launch.branchName } : {}),
+      })),
+      activeTabId,
+    );
+    setOrchestraRolePanes((prev) => {
+      const next = new Map(prev);
+      for (const launch of launches) next.set(launch.roleId, launch.terminalId);
+      return next;
+    });
     setRightRailMode("command");
     setRightRailFocusWidget("sessions");
     toast.success(
       "Orchestra dispatched",
-      `${launched} agent${launched === 1 ? "" : "s"} launched in role-scoped worktrees.`,
+      `${launches.length} agent${launches.length === 1 ? "" : "s"} launched in role-scoped panes.`,
     );
   }, [
+    activeTabId,
     decisionInbox.pendingCount,
     handleStartInteractiveSession,
     interactiveSessions.length,
+    mountAgentPtyInPane,
     projectName,
     projectPath,
     rightRailAllChangedFiles,
@@ -5507,21 +5552,47 @@ export function App() {
                       <span>{rightRailOrchestraDetail}</span>
                     </div>
                     <ul className="right-panel-orchestra-lanes" aria-label="Role lanes">
-                      {rightRailOrchestraLanes.map((lane) => (
-                        <li
-                          key={lane.id}
-                          data-role={lane.id}
-                          data-state={lane.state}
-                          style={{ "--lane-color": lane.color } as React.CSSProperties}
-                          title={`${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`}
-                        >
-                          <span>{lane.icon}</span>
-                          <strong>{lane.label}</strong>
-                          <small>
-                            {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
-                          </small>
-                        </li>
-                      ))}
+                      {rightRailOrchestraLanes.map((lane) => {
+                        const panePtyId = orchestraRolePanes.get(lane.id);
+                        const focusable = Boolean(panePtyId);
+                        return (
+                          // The lane item doubles as a focus shortcut to its agent pane; a
+                          // nested button would break the flex lane layout. Interactive
+                          // props are only attached when a pane exists for the role.
+                          <li
+                            key={lane.id}
+                            data-role={lane.id}
+                            data-state={lane.state}
+                            data-focusable={focusable ? "" : undefined}
+                            style={{ "--lane-color": lane.color } as React.CSSProperties}
+                            title={
+                              focusable
+                                ? `Focus ${lane.label} agent pane`
+                                : `${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`
+                            }
+                            role={focusable ? "button" : undefined}
+                            tabIndex={focusable ? 0 : undefined}
+                            aria-label={focusable ? `Focus ${lane.label} agent pane` : undefined}
+                            onClick={focusable && panePtyId ? () => void handlePaneSwitch(activeTabId, panePtyId) : undefined}
+                            onKeyDown={
+                              focusable && panePtyId
+                                ? (e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      void handlePaneSwitch(activeTabId, panePtyId);
+                                    }
+                                  }
+                                : undefined
+                            }
+                          >
+                            <span>{lane.icon}</span>
+                            <strong>{lane.label}</strong>
+                            <small>
+                              {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
+                            </small>
+                          </li>
+                        );
+                      })}
                     </ul>
                     <div className="right-panel-orchestra-actions" role="toolbar" aria-label="Orchestra actions">
                       <button
