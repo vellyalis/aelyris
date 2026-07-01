@@ -21,6 +21,45 @@
    - 計測は **grid 読取（`term_snapshot`/GridSnapshot）** と頑健 proxy（status/時間/ターン）を一次に。`% context left` 行は補強。**Claude-first**（Codex/Gemini は時間/ターン fallback・confidence=unknown）。
    - 不可逆操作（退役）の**前に**耐久 intent 行（`session_handoffs`）と audit を置く。fail-closed（後継未確認なら退役しない）。
 
+## 0.5 codex 運用プロトコル（毎フェーズ・恒久）
+
+このリポで codex に WU-RT-1 を実装させる時の標準手順。**1 セッション = 1 フェーズ**。
+
+**A. 読む順**: `AGENTS.md` → `docs/specs/README.md` → 本 spec の親 `CONTEXT_SESSION_LIFECYCLE_SPEC.md`(真) → 本書（§1 ゲート・§2 当該フェーズ・§5 DoD）→ そのフェーズが名指す owner file **だけ**。
+
+**B. ゴール設定**: `IMPLEMENTATION.md §2` の**1フェーズだけ**を実装。**Definition of Done** = (1) 実装 (2) `cargo test --manifest-path src-tauri/Cargo.toml --lib` / `AELYRIS_VITE_NO_ESBUILD_SPAWN=1 pnpm test` / `pnpm exec tsc --noEmit` / `pnpm exec biome lint <files>` / **フェーズ verifier** 全緑 (3) そのフェーズに効く **§1 ゲート（SEC-1 / CX-1〜CX-4）充足** (4) reuse 表(spec §13)に反する重複なし。**成果物 = 「フェーズ完了・緑・ゲート充足」の報告**。
+
+**C. commit は owner が行う**: codex はサンドボックスで `.git` に書けない（ACL 修正では直らない・設計上の read-only）。**codex は commit/branch/push を試さない**。緑報告 → **owner（commit できるセッション）が差分 review→commit→push**。codex の code WIP は報告まで未コミットで良い。
+
+**D. フェーズ順 と ゲート対応**:
+| フェーズ | 効くゲート(§1) | 備考 |
+|---|---|---|
+| RT-1a0 spike | — | ★**owner-gated**（実 Claude＋token consent＋native backend CDP。codex 単独不可） |
+| RT-1a 計測 | — | RT-1a0 の fixture 前提 |
+| RT-1b 要約 | (CX-2) | ファイル経由・Rust redaction |
+| RT-1c persist/restore | **SEC-1 / CX-1 / CX-3** | 最初に整えると最短（現 WIP が跨ぐ） |
+| RT-1d handoff tx | — | no-loss verifier は最終 |
+| RT-1e resume/reset | — | ack 再確認 |
+| RT-1f UI | — | lineage/recycle |
+| 横断（承認硬化） | **CX-4** | resolve 前 waiting_approval 検証 |
+
+**E. 指示テンプレ（`<PHASE>`・`<GATES>` を差し替えて codex に渡す）**:
+```text
+WU-RT-1 の <PHASE> を実装する。ブランチは feat/wu-rt-1-context-lifecycle。
+読む順: AGENTS.md → docs/specs/README.md → CONTEXT_SESSION_LIFECYCLE_SPEC.md(真) →
+CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md(§0.5, §1 ゲート, §2 <PHASE>, §5 DoD) →
+<PHASE> が名指す owner file だけ。1フェーズのみ・他は開かない。
+守る: ファイル経由の授受(TUI スクレイプ禁止)/grid 読取＋頑健 proxy・Claude-first/退役前 intent＋audit・
+fail-closed/handoff 中 worktree 削除禁止/verb=session_*/既存基盤を重複しない/PRE-1・PRE-2 は再実装しない。
+このフェーズのゲート: <GATES>（§1 参照）。
+検証: cargo --lib / (AELYRIS_VITE_NO_ESBUILD_SPAWN=1) pnpm test / tsc / biome / フェーズ verifier。
+★cargo と pnpm を並列実行しない。.git 書込は試さない。
+実装＋全緑＋ゲート充足まで終えたら「<PHASE> 完了・緑・ゲート充足」と報告(commit は owner)。
+feat/approval-inbox には触れない。spec の穴は修正提案付きで報告。
+```
+
+**F. 推奨初手**: 現 WIP は RT-1a/1b/1c を跨ぐ。**まず RT-1c を1本に整えて緑化**（SEC-1／CX-1／CX-3 を同時に潰す）が最短。RT-1a0 spike は token を使うので owner と実施可能な時に。
+
 ## 1. 前提の状態 と 現在の必須是正
 
 ### 済み: PR #4（PRE-1/PRE-2）は main に merge 完了（2026-07-01, `d6b0b95`）
