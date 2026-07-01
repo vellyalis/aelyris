@@ -1,5 +1,6 @@
 import type { AgentLog, AgentSession } from "../types/agent";
 import type { AuditEventRecord } from "../types/audit";
+import type { AgentFleetSession } from "./agentFleet";
 import type { CommandRiskClass } from "./shellSafety";
 
 export type HumanDecisionType =
@@ -36,6 +37,12 @@ export interface HumanDecisionItem {
   requestedAt: number;
   actor: "human";
   sessionId?: string;
+  /**
+   * PTY id of a live interactive agent terminal this decision can be resolved
+   * against by writing an approve/deny keystroke. Present only for
+   * keystroke-resolvable agent items; absent for workflow/audit/headless items.
+   */
+  ptyId?: string;
   workflowId?: string;
   taskId?: string;
   evidence: string[];
@@ -79,7 +86,14 @@ export interface DecisionWorkflowStatus {
 }
 
 export interface DecisionInboxInput {
-  sessions?: readonly AgentSession[];
+  /**
+   * The unified fleet sessions the cockpit projects from. `AgentFleetSession`
+   * carries the canonical `runStatus` plus `runtime`/`ptyId`, which the
+   * interactive-approval source below needs to surface keystroke-resolvable
+   * gates. `AgentFleetSession extends AgentSession`, so headless-only callers
+   * still type-check.
+   */
+  sessions?: readonly AgentFleetSession[];
   auditEvents?: readonly AuditEventRecord[];
   workflows?: readonly DecisionWorkflowStatus[];
   now?: number;
@@ -191,7 +205,7 @@ export function isTrueHumanDecisionKind(kind: string | null | undefined): boolea
   return typeFromKind(normalized) !== null;
 }
 
-function decisionsFromSession(session: AgentSession, now: number): HumanDecisionItem[] {
+function decisionsFromSession(session: AgentFleetSession, now: number): HumanDecisionItem[] {
   const decisions: HumanDecisionItem[] = [];
   const decisionLog = latestWatchdogDecisionLog(session.logs);
   if (decisionLog?.metadata?.decision === "manual") {
@@ -234,7 +248,10 @@ function decisionsFromSession(session: AgentSession, now: number): HumanDecision
 
   const actor = session.nextActor?.trim().toLowerCase();
   const blockedReason = session.blockedReason?.trim();
-  if ((actor === "human" || actor === "user") && blockedReason) {
+  // Interactive runs are surfaced by the keystroke-resolvable branch below
+  // (which carries a ptyId). Excluding them here prevents a double row if a
+  // backend ever populates nextActor/blockedReason on an interactive session.
+  if ((actor === "human" || actor === "user") && blockedReason && session.runtime !== "interactive") {
     const type = typeFromText(blockedReason);
     if (type) {
       decisions.push(
@@ -252,6 +269,72 @@ function decisionsFromSession(session: AgentSession, now: number): HumanDecision
         }),
       );
     }
+  }
+
+  // Interactive fleet sessions carry no per-event log; `startedAt` is the
+  // process start (and seconds-based), so use the inbox build time `now` for a
+  // fresh, correctly-scaled epoch-ms timestamp that sorts among current gates.
+  if (
+    session.runtime === "interactive" &&
+    session.runStatus === "waiting_approval" &&
+    session.ptyId &&
+    session.approvalPrompt
+  ) {
+    // A confirmed Claude permission MENU on a live PTY → keystroke-resolvable.
+    // The backend captures `approvalPrompt` ONLY for a real selectable menu
+    // (never for ordinary prose), so its presence is what makes this row safe to
+    // resolve. Show the captured command as the context so the human sees WHAT
+    // they approve (no blind approval), and carry the `ptyId` so Approve/Deny can
+    // write the menu keystroke into the agent TUI. A `waiting_approval` run with
+    // no captured menu is intentionally NOT surfaced: there is nothing confirmed
+    // to approve, and offering a blind keystroke would be the anti-pattern.
+    const prompt = session.approvalPrompt;
+    // Keep the full captured prompt for risk classification and the panel tooltip.
+    // Visual clipping is a render concern; trimming here can hide destructive text
+    // in the middle of a long command before the human reviews the approval.
+    const context = prompt;
+    // Classify by the captured command so a destructive/secret-bearing gate
+    // (e.g. `Bash(rm -rf dist)`) keeps its critical risk badge instead of a flat
+    // medium "permission" — the existing classifiers already encode that policy.
+    const type = typeFromText(prompt) ?? "permission_required";
+    decisions.push(
+      createDecision({
+        // The prompt fingerprint is part of the id so a NEW menu on the same
+        // session remounts the inbox row (fresh Approve/Deny latch) instead of
+        // reusing the stale, post-delivery disabled state of the previous gate.
+        id: `agent:${session.id}:interactive-approval:${stableTextKey(prompt)}`,
+        type,
+        status: "pending",
+        source: "agent",
+        title: `${TYPE_LABELS[type]} · ${session.name}`,
+        context,
+        requestedAt: now,
+        sessionId: session.id,
+        ptyId: session.ptyId,
+        evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
+        history: historyEntry(now, "agent", "waiting", context),
+      }),
+    );
+  } else if (session.runtime === "interactive" && session.runStatus === "blocked") {
+    // `blocked` is broader than an approval prompt (it may need typed direction),
+    // so surface it for inspection ONLY — no `ptyId` means the row offers Focus
+    // (to the live TUI) but no Approve/Deny, so we never write a blind keystroke.
+    const reason = blockedReason || "Interactive agent is blocked and needs a human decision.";
+    const type = typeFromText(reason) ?? "permission_required";
+    decisions.push(
+      createDecision({
+        id: `agent:${session.id}:interactive-blocked`,
+        type,
+        status: "pending",
+        source: "agent",
+        title: `${TYPE_LABELS[type]} · ${session.name}`,
+        context: shortText(reason),
+        requestedAt: now,
+        sessionId: session.id,
+        evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
+        history: historyEntry(now, "agent", "blocked", reason),
+      }),
+    );
   }
 
   return decisions;

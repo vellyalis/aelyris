@@ -1,0 +1,97 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const ROOT = resolve(process.cwd());
+const OUT = join(ROOT, ".codex-auto", "quality", "runtime-core-preconditions.json");
+
+function read(path) {
+  return readFileSync(join(ROOT, path), "utf8");
+}
+
+function record(id, ok, detail) {
+  return { id, ok, detail };
+}
+
+const outputMonitor = read("src-tauri/src/agent/output_monitor.rs");
+const sendKeys = read("src-tauri/src/ipc/send_keys_commands.rs");
+const decisionInbox = read("src/shared/lib/decisionInbox.ts");
+const panel = read("src/features/decision-inbox/DecisionInboxPanel.tsx");
+const decisionInboxTest = read("src/__tests__/decisionInbox.test.ts");
+const panelTest = read("src/__tests__/DecisionInboxPanel.test.tsx");
+
+const cursorRegexSection = outputMonitor.match(/static CURSOR_OPTION_RE:[\s\S]*?;\r?\n\r?\n/)?.[0] ?? "";
+const promptCap = Number(outputMonitor.match(/const APPROVAL_PROMPT_MAX_CHARS: usize = (\d+);/)?.[1] ?? 0);
+
+const checks = [
+  record(
+    "approval-detection-highlighted-yes-only",
+    cursorRegexSection.includes("\\s+yes\\b") && !cursorRegexSection.includes("yes|no"),
+    "CURSOR_OPTION_RE only treats a highlighted Yes option as resolvable",
+  ),
+  record(
+    "approval-prompt-transport-cap-is-loose",
+    promptCap >= 1024 && outputMonitor.includes("bound_transport_prompt"),
+    `approval prompt transport cap is ${promptCap}`,
+  ),
+  record(
+    "backend-test-middle-danger-preserved",
+    outputMonitor.includes("claude_permission_prompt_keeps_middle_danger_for_classification") &&
+      outputMonitor.includes("rm -rf C:/danger"),
+    "Rust parser has a regression test for destructive text in the middle of a long prompt",
+  ),
+  record(
+    "backend-test-highlighted-no-not-resolvable",
+    outputMonitor.includes("claude_permission_menu_requires_highlighted_yes_option") &&
+      outputMonitor.includes("❯ 2. No"),
+    "Rust parser rejects a permission menu when No is the highlighted option",
+  ),
+  record(
+    "decision-inbox-keeps-full-prompt",
+    decisionInbox.includes("const context = prompt;") && !decisionInbox.includes("const context = shortText(prompt"),
+    "Decision Inbox stores the full captured prompt and leaves clipping to render",
+  ),
+  record(
+    "decision-inbox-classifies-full-prompt-test",
+    decisionInboxTest.includes("keeps the full interactive approval prompt before render clipping") &&
+      decisionInboxTest.includes("expect(inbox.pendingItems[0].context).toBe(approvalPrompt)"),
+    "Vitest covers full prompt retention before visual clipping",
+  ),
+  record(
+    "panel-tooltip-uses-full-context",
+    panel.includes("title={item.context}") &&
+      panelTest.includes("keeps the full approval prompt in the rendered tooltip") &&
+      panelTest.includes("screen.getByTitle(approvalPrompt)"),
+    "DecisionInboxPanel exposes the full prompt in the tooltip while CSS clips visually",
+  ),
+  record(
+    "approve-keystroke-selects-option-one",
+    /fn approval_resolution_keystroke\(approve: bool\)[\s\S]*?if approve\s*\{\s*b"1"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(sendKeys) &&
+      sendKeys.includes("approval_resolution_keystroke(approve)") &&
+      !/if approve\s*\{\s*b"\\r"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(sendKeys),
+    "Approve sends option 1 explicitly; Deny sends Escape",
+  ),
+  record(
+    "approve-keystroke-tests-present",
+    sendKeys.includes("approve_keystroke_explicitly_selects_yes") &&
+      sendKeys.includes("deny_keystroke_rejects_with_escape"),
+    "Rust tests lock approve/deny keystroke bytes",
+  ),
+];
+
+const ok = checks.every((check) => check.ok);
+const artifact = {
+  ok,
+  status: ok ? "pass-runtime-core-preconditions" : "fail-runtime-core-preconditions",
+  generatedAt: new Date().toISOString(),
+  checks,
+};
+
+mkdirSync(join(ROOT, ".codex-auto", "quality"), { recursive: true });
+writeFileSync(OUT, `${JSON.stringify(artifact, null, 2)}\n`);
+
+if (!ok) {
+  console.error(JSON.stringify(artifact, null, 2));
+  process.exit(1);
+}
+
+console.log(JSON.stringify(artifact, null, 2));

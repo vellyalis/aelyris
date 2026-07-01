@@ -1,12 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionInboxPanel } from "../features/decision-inbox";
-import type { AgentSession } from "../shared/types/agent";
+import type { AgentFleetSession } from "../shared/lib/agentFleet";
 import type { AuditEventRecord } from "../shared/types/audit";
 
 afterEach(() => cleanup());
 
-function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
+function session(id: string, overrides: Partial<AgentFleetSession> = {}): AgentFleetSession {
   return {
     id,
     name: `Agent ${id}`,
@@ -17,6 +17,9 @@ function session(id: string, overrides: Partial<AgentSession> = {}): AgentSessio
     logs: [],
     cost: 0,
     tokensUsed: 0,
+    runtime: "headless",
+    runStatus: "coding",
+    cwd: "",
     ...overrides,
   };
 }
@@ -96,6 +99,122 @@ describe("DecisionInboxPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open workflow Product Direction · workflow-copy" }));
     expect(onOpenWorkflow).toHaveBeenCalledWith("workflow-copy");
+  });
+
+  function interactiveGate(onDecide: (item: unknown, decision: string) => void | Promise<void>) {
+    return (
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={onDecide as never}
+        auditEvents={[]}
+        sessions={[
+          session("int", {
+            name: "claude interactive",
+            status: "waiting",
+            runtime: "interactive",
+            runStatus: "waiting_approval",
+            ptyId: "pty-1",
+            cli: "claude",
+            approvalPrompt: "Bash(rm -rf dist) · Do you want to proceed?",
+          }),
+        ]}
+      />
+    );
+  }
+  it("keeps the full approval prompt in the rendered tooltip", () => {
+    const prefix = "echo safe && ".repeat(45);
+    const tail = " && echo done".repeat(45);
+    const approvalPrompt = `Bash(${prefix}rm -rf C:/danger${tail}) · Do you want to proceed?`;
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={vi.fn()}
+        auditEvents={[]}
+        sessions={[
+          session("int-long", {
+            name: "claude interactive",
+            status: "waiting",
+            runtime: "interactive",
+            runStatus: "waiting_approval",
+            ptyId: "pty-1b",
+            cli: "claude",
+            approvalPrompt,
+          }),
+        ]}
+      />,
+    );
+
+    const context = screen.getByTitle(approvalPrompt);
+    expect(context.textContent).toBe(approvalPrompt);
+    expect(context.textContent).toContain("rm -rf C:/danger");
+  });
+
+
+  it("calls onDecide with approve for a keystroke-resolvable interactive agent gate", () => {
+    const onDecide = vi.fn();
+    render(interactiveGate(onDecide));
+    fireEvent.click(screen.getByRole("button", { name: /^Approve / }));
+    expect(onDecide).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "int", ptyId: "pty-1" }),
+      "approve",
+    );
+  });
+
+  it("calls onDecide with deny for a keystroke-resolvable interactive agent gate", () => {
+    const onDecide = vi.fn();
+    render(interactiveGate(onDecide));
+    fireEvent.click(screen.getByRole("button", { name: /^Deny / }));
+    expect(onDecide).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "int" }), "deny");
+  });
+
+  it("blocks a second delivery while a decision is in flight (no duplicate keystrokes)", () => {
+    let release: () => void = () => {};
+    const onDecide = vi.fn(() => new Promise<void>((resolve) => {
+      release = resolve;
+    }));
+    render(interactiveGate(onDecide));
+    const approveBtn = screen.getByRole("button", { name: /^Approve / });
+    fireEvent.click(approveBtn);
+    fireEvent.click(approveBtn); // second click while the first is still in flight
+    fireEvent.click(screen.getByRole("button", { name: /^Deny / }));
+    expect(onDecide).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it("does not render Approve/Deny for watchdog approvals that have no live agent pty", () => {
+    const onDecide = vi.fn();
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={onDecide}
+        auditEvents={[]}
+        sessions={[
+          session("manual", {
+            name: "Builder",
+            logs: [
+              {
+                timestamp: Date.now() - 1_000,
+                type: "system",
+                content: "Needs manual approval: Bash(rm -rf dist)",
+                metadata: {
+                  event: "watchdog_decision",
+                  decision: "manual",
+                  toolName: "Bash",
+                  riskClasses: ["destructive", "delete"],
+                },
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^Approve / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Deny / })).toBeNull();
+    expect(screen.getByText("Focus session")).toBeTruthy();
   });
 
   it("routes audit-backed decisions to audit context instead of dead-end labels", () => {

@@ -176,7 +176,7 @@ import {
   parseAuthenticatedPromptPreflightMatrixReport,
 } from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
-import { buildDecisionInbox, type DecisionWorkflowStatus } from "./shared/lib/decisionInbox";
+import { buildDecisionInbox, type DecisionWorkflowStatus, type HumanDecisionItem } from "./shared/lib/decisionInbox";
 import {
   EDITOR_OPEN_MODE_CHANGE_EVENT,
   EDITOR_OPEN_MODE_STORAGE_KEY,
@@ -4202,12 +4202,59 @@ export function App() {
         setRightRailFixtureSelectedSessionId(sessionId);
         return;
       }
+      // An interactive gate (e.g. a Decision Inbox approval row) must focus its
+      // live TUI through the interactive selector; the headless path below would
+      // instead clear the interactive selection and fail to focus the pane.
+      if (fleetSessions.some((session) => session.id === sessionId && session.runtime === "interactive")) {
+        selectInteractiveSession(sessionId);
+        return;
+      }
       // Selecting a headless session clears any interactive selection so the
       // unified active id (interactiveSessionId || activeSessionId) reflects it.
       if (interactiveSessionId) selectInteractiveSession("");
       handleSelectSession(sessionId);
     },
-    [handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
+    [fleetSessions, handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
+  );
+
+  // Resolve a waiting interactive agent gate from the Decision Inbox. The safety
+  // contract lives in WHAT gets surfaced as resolvable, not in the backend: only
+  // a confirmed Claude selectable MENU carries a captured prompt + ptyId, so the
+  // backend `resolve_interactive_approval` always writes the MENU keystroke
+  // through the P0-4 gate (approve = Enter on the highlighted default, deny =
+  // Esc) and audits it. There is no y/n path — a y/n prompt is deliberately
+  // never surfaced as resolvable (it would need a different key). We do NOT clear
+  // the item: it leaves the inbox when the agent re-emits its run status.
+  const handleDecideDecision = useCallback(
+    async (item: HumanDecisionItem, decision: "approve" | "deny") => {
+      if (rightRailUsesFixtures) {
+        showRightRailRouteConfirmation({
+          widget: "decision-inbox",
+          title: decision === "approve" ? "Approval preview" : "Denial preview",
+          detail: "Fixture session — no live agent to signal.",
+        });
+        return;
+      }
+      const ptyId = item.ptyId;
+      if (!ptyId) {
+        toast.error("No live agent pane", "This decision has no addressable agent terminal.");
+        return;
+      }
+      try {
+        await tauriInvoke("resolve_interactive_approval", { terminalId: ptyId, decision });
+        showRightRailRouteConfirmation({
+          widget: "decision-inbox",
+          title: decision === "approve" ? "Approval sent" : "Denial sent",
+          detail: item.title,
+        });
+      } catch (err) {
+        toast.error("Decision delivery failed", String(err));
+        // Re-throw so the inbox row re-enables its buttons for a retry instead
+        // of latching on a delivery that never reached the agent.
+        throw err;
+      }
+    },
+    [rightRailUsesFixtures, showRightRailRouteConfirmation],
   );
 
   const handleRightRailAction = useCallback(
@@ -6744,6 +6791,7 @@ export function App() {
                                   onSelectSession={handleSelectRightRailSession}
                                   onOpenWorkflow={handleOpenDecisionWorkflow}
                                   onOpenAudit={handleOpenDecisionAudit}
+                                  onDecide={handleDecideDecision}
                                 />
                               </RightRailWidgetFrame>
                             </Suspense>

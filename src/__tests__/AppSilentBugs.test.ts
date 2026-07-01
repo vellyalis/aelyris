@@ -1877,6 +1877,13 @@ describe("App right rail composition", () => {
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
     expect(src).toContain("buildDecisionInbox({");
     expect(src).toContain("decisionInbox.pendingCount");
+    // Surface 2: the Decision Inbox must keep an actionable Approve/Deny path that
+    // delivers the human decision to the live agent PTY via the gated backend
+    // resolver. If any of these wirings is dropped the surface degrades to a
+    // read-only list.
+    expect(src).toContain("const handleDecideDecision = useCallback(");
+    expect(src).toContain('tauriInvoke("resolve_interactive_approval", { terminalId: ptyId, decision })');
+    expect(src).toContain("onDecide={handleDecideDecision}");
     expect(src).toContain("deriveRightRailEdgeScore");
     expect(src).toContain("const rightRailEdgeScore = deriveRightRailEdgeScore({");
     expect(src).toContain('className="right-panel-edge-score"');

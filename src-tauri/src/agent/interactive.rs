@@ -328,6 +328,12 @@ pub struct InteractiveSessionInfo {
     pub status: String,
     pub model: String,
     pub initial_prompt: Option<String>,
+    /// The captured permission-menu prompt while this session is
+    /// `waiting_approval` — the gated command/action the human is being asked to
+    /// approve. Set by the output monitor when Claude's selectable menu is
+    /// detected and cleared by [`InteractiveSessionManager::update_status`] on
+    /// any other status, so it never outlives the gate. `None` otherwise.
+    pub approval_prompt: Option<String>,
     pub cwd: String,
     pub worktree_branch: Option<String>,
     pub worktree_path: Option<String>,
@@ -402,7 +408,30 @@ impl InteractiveSessionManager {
             );
         }
         session.status = status.to_string();
+        // A captured permission menu is only meaningful while the session is
+        // still waiting on it. Any other status (the agent acted, finished, or
+        // moved on) must drop the stale command so the Decision Inbox never
+        // shows — or lets a human approve — a gate that no longer exists.
+        // "waiting_approval" is `AgentRunStatus::WaitingApproval.as_str()`.
+        if status != "waiting_approval" {
+            session.approval_prompt = None;
+        }
         Ok(())
+    }
+
+    /// Set or clear the captured permission-menu prompt for a session. Returns
+    /// `Ok(true)` only when the stored value actually changed, so the output
+    /// monitor can skip re-emitting the fleet on identical menu redraw chunks.
+    pub fn set_approval_prompt(&self, id: &str, prompt: Option<String>) -> Result<bool, String> {
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(id)
+            .ok_or_else(|| format!("Interactive session not found for approval prompt update: {id}"))?;
+        if session.approval_prompt == prompt {
+            return Ok(false);
+        }
+        session.approval_prompt = prompt;
+        Ok(true)
     }
 
     /// Update cost and token usage
@@ -455,6 +484,7 @@ mod tests {
             status: "idle".to_string(),
             model: "sonnet".to_string(),
             initial_prompt: None,
+            approval_prompt: None,
             cwd: "/tmp".to_string(),
             worktree_branch: None,
             worktree_path: None,
@@ -507,6 +537,46 @@ mod tests {
         assert_eq!(s.status, "coding");
         assert_eq!(s.cost, 0.42);
         assert_eq!(s.tokens_used, 5000);
+    }
+
+    #[test]
+    fn set_approval_prompt_reports_only_real_changes() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+
+        // First set is a change; an identical re-set is not (so a menu redraw
+        // does not trigger a spurious fleet re-emit).
+        assert!(mgr
+            .set_approval_prompt("s1", Some("Do you want to proceed?".to_string()))
+            .unwrap());
+        assert!(!mgr
+            .set_approval_prompt("s1", Some("Do you want to proceed?".to_string()))
+            .unwrap());
+        assert_eq!(
+            mgr.get("s1").unwrap().unwrap().approval_prompt.as_deref(),
+            Some("Do you want to proceed?")
+        );
+
+        // Clearing is a change; clearing again is not.
+        assert!(mgr.set_approval_prompt("s1", None).unwrap());
+        assert!(!mgr.set_approval_prompt("s1", None).unwrap());
+    }
+
+    #[test]
+    fn update_status_clears_approval_prompt_when_leaving_waiting() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+
+        // Entering the gate keeps a captured prompt.
+        mgr.update_status("s1", "waiting_approval").unwrap();
+        mgr.set_approval_prompt("s1", Some("Bash(rm -rf dist) · Do you want to proceed?".to_string()))
+            .unwrap();
+        assert!(mgr.get("s1").unwrap().unwrap().approval_prompt.is_some());
+
+        // Any non-waiting status (the agent acted) drops the stale command so the
+        // inbox can no longer present a resolved gate as approvable.
+        mgr.update_status("s1", "coding").unwrap();
+        assert_eq!(mgr.get("s1").unwrap().unwrap().approval_prompt, None);
     }
 
     #[test]

@@ -10,6 +10,12 @@ export interface InteractiveSession {
   status: string;
   model: string;
   initial_prompt?: string;
+  /**
+   * Captured permission-menu prompt while `status` is `waiting_approval` — the
+   * gated command/action the human is being asked to approve. Present only for a
+   * confirmed Claude selectable menu; the backend clears it on any other status.
+   */
+  approval_prompt?: string | null;
   cwd: string;
   worktree_branch?: string;
   worktree_path?: string;

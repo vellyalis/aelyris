@@ -86,6 +86,7 @@
     "verify:tauri-runtime-hygiene": "node scripts/verify-tauri-runtime-hygiene.mjs",
     "verify:command-center-scenario": "node scripts/verify-command-center-scenario.mjs",
     "verify:command-recovery": "node scripts/verify-command-recovery-contract.mjs",
+    "verify:runtime-core:preconditions": "node scripts/verify-runtime-core-preconditions.mjs",
     "verify:final-goal-audit": "node scripts/verify-final-goal-audit.mjs",
     "verify:goal:completion-matrix": "node scripts/verify-goal-completion-matrix.mjs",
     "verify:goal:safe": "node scripts/verify-final-goal-safe.mjs",

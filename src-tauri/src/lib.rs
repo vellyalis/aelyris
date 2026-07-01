@@ -1112,6 +1112,7 @@ pub fn run() {
             ipc::compact_event_journal,
             // Workspace pane commands
             ipc::send_keys,
+            ipc::resolve_interactive_approval,
             ipc::broadcast_keys,
             ipc::capture_pane,
             ipc::command_blocks,

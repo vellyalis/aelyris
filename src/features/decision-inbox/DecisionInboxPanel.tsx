@@ -1,5 +1,5 @@
-import { AlertTriangle, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck } from "lucide-react";
-import { useMemo } from "react";
+import { AlertTriangle, Check, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import {
   buildDecisionInbox,
   type DecisionInboxSummary,
@@ -8,20 +8,31 @@ import {
   type HumanDecisionRisk,
   type HumanDecisionType,
 } from "../../shared/lib/decisionInbox";
-import type { AgentSession } from "../../shared/types/agent";
+import type { AgentFleetSession } from "../../shared/lib/agentFleet";
 import type { AuditEventRecord } from "../../shared/types/audit";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./DecisionInboxPanel.module.css";
 
+export type DecisionAction = "approve" | "deny";
+
 interface DecisionInboxPanelProps {
-  sessions: AgentSession[];
+  sessions: AgentFleetSession[];
   auditEvents: AuditEventRecord[];
   workflows?: DecisionWorkflowStatus[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
+  /**
+   * Resolve a keystroke-addressable agent gate. Only invoked for pending agent
+   * items that carry a `ptyId` (a live interactive agent TUI). Approving writes
+   * an accept keystroke; denying writes a cancel keystroke. The item is NOT
+   * cleared here — it leaves the inbox when the agent re-emits its run status.
+   * May return a promise; the row disables both buttons until it settles so a
+   * double-click cannot deliver duplicate keystrokes to the live PTY.
+   */
+  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
 }
 
 const TYPE_LABELS: Record<HumanDecisionType, string> = {
@@ -59,6 +70,7 @@ export function DecisionInboxPanel({
   onSelectSession,
   onOpenWorkflow,
   onOpenAudit,
+  onDecide,
 }: DecisionInboxPanelProps) {
   const inbox = useMemo<DecisionInboxSummary>(
     () => buildDecisionInbox({ sessions, auditEvents, workflows }),
@@ -101,6 +113,7 @@ export function DecisionInboxPanel({
                   onSelectSession={onSelectSession}
                   onOpenWorkflow={onOpenWorkflow}
                   onOpenAudit={onOpenAudit}
+                  onDecide={onDecide}
                 />
               ))}
             </section>
@@ -138,6 +151,7 @@ function DecisionRow({
   onSelectSession,
   onOpenWorkflow,
   onOpenAudit,
+  onDecide,
 }: {
   item: HumanDecisionItem;
   active: boolean;
@@ -145,8 +159,34 @@ function DecisionRow({
   onSelectSession: (id: string) => void;
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
+  onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
 }) {
   const canFocus = Boolean(item.sessionId);
+  // Approve/Deny only for a pending agent gate that is keystroke-resolvable:
+  // it must carry a live agent PTY id. Watchdog/blocked items without a ptyId
+  // (e.g. headless runs) keep the Focus route only.
+  const canDecide = Boolean(onDecide && item.status === "pending" && item.source === "agent" && item.ptyId);
+  // Latch a decision once delivered so the live PTY never receives duplicate
+  // bytes. The item stays pending until the agent re-emits its run status, so a
+  // re-click in that gap could answer the NEXT prompt — we keep both buttons
+  // disabled after a successful send and let the row unmount (clearing this)
+  // when the item leaves the inbox. On delivery failure we re-enable for retry.
+  // The ref guards the synchronous in-flight window before state re-renders.
+  const decidingRef = useRef(false);
+  const [deciding, setDeciding] = useState<DecisionAction | null>(null);
+  const runDecision = (decision: DecisionAction) => {
+    if (!onDecide || decidingRef.current || deciding !== null) return;
+    decidingRef.current = true;
+    setDeciding(decision);
+    Promise.resolve(onDecide(item, decision))
+      .then(() => {
+        decidingRef.current = false; // stay latched (deciding !== null) on success
+      })
+      .catch(() => {
+        decidingRef.current = false;
+        setDeciding(null); // delivery failed — allow a retry
+      });
+  };
   const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];
   const visibleEvidence = item.evidence.slice(0, compact ? 1 : 3);
@@ -183,7 +223,9 @@ function DecisionRow({
         </span>
         <div className={styles.titleBlock}>
           <span className={styles.title}>{item.title}</span>
-          <span className={styles.context}>{item.context}</span>
+          <span className={styles.context} title={item.context}>
+            {item.context}
+          </span>
         </div>
         <span className={styles.typeBadge}>{TYPE_LABELS[item.type]}</span>
         <span className={styles.riskBadge} data-risk={item.risk}>
@@ -225,6 +267,36 @@ function DecisionRow({
             {entry}
           </span>
         ))}
+        {canDecide && onDecide && (
+          <>
+            <button
+              type="button"
+              className={styles.approveBtn}
+              data-decision="approve"
+              disabled={deciding !== null}
+              aria-disabled={deciding !== null}
+              onClick={() => runDecision("approve")}
+              aria-label={`Approve ${item.title}`}
+              title={`Approve ${item.title}`}
+            >
+              <Check size={11} aria-hidden="true" />
+              {deciding === "approve" ? "Sent" : "Approve"}
+            </button>
+            <button
+              type="button"
+              className={styles.denyBtn}
+              data-decision="deny"
+              disabled={deciding !== null}
+              aria-disabled={deciding !== null}
+              onClick={() => runDecision("deny")}
+              aria-label={`Deny ${item.title}`}
+              title={`Deny ${item.title}`}
+            >
+              <X size={11} aria-hidden="true" />
+              {deciding === "deny" ? "Sent" : "Deny"}
+            </button>
+          </>
+        )}
         {route && (
           <button
             type="button"

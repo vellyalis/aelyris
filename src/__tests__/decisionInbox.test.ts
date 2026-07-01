@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildDecisionInbox, isTrueHumanDecisionKind } from "../shared/lib/decisionInbox";
-import type { AgentSession } from "../shared/types/agent";
+import type { AgentFleetSession } from "../shared/lib/agentFleet";
+
 import type { AuditEventRecord } from "../shared/types/audit";
 
-function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
+function session(id: string, overrides: Partial<AgentFleetSession> = {}): AgentFleetSession {
   return {
     id,
     name: `Agent ${id}`,
@@ -14,6 +15,9 @@ function session(id: string, overrides: Partial<AgentSession> = {}): AgentSessio
     logs: [],
     cost: 0,
     tokensUsed: 0,
+    runtime: "headless",
+    runStatus: "coding",
+    cwd: "",
     ...overrides,
   };
 }
@@ -158,6 +162,211 @@ describe("decisionInbox", () => {
       type: "permission_required",
       context: "Approve signed updater manifest before publish.",
     });
+  });
+
+  it("surfaces a waiting interactive agent as a keystroke-resolvable approval carrying its ptyId", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-wait", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-7",
+          cli: "claude",
+          approvalPrompt: "Bash(rm -rf dist) · Do you want to proceed?",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      sessionId: "int-wait",
+      ptyId: "pty-7",
+      // Classified from the captured command: `rm -rf` is destructive, so the
+      // row keeps a critical badge instead of a flat medium "permission".
+      type: "destructive_operation",
+      risk: "critical",
+      source: "agent",
+      status: "pending",
+    });
+    expect(inbox.pendingItems[0].evidence).toContain("runStatus=waiting_approval");
+    // The captured menu is shown so the human sees WHAT they approve (P2-A).
+    expect(inbox.pendingItems[0].context).toContain("rm -rf dist");
+  });
+  it("keeps the full interactive approval prompt before render clipping", () => {
+    const prefix = "echo safe && ".repeat(45);
+    const tail = " && echo done".repeat(45);
+    const approvalPrompt = `Bash(${prefix}rm -rf C:/danger${tail}) · Do you want to proceed?`;
+
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-long-danger", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-7b",
+          cli: "claude",
+          approvalPrompt,
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      type: "destructive_operation",
+      risk: "critical",
+    });
+    expect(inbox.pendingItems[0].context).toBe(approvalPrompt);
+    expect(inbox.pendingItems[0].context.length).toBeGreaterThan(300);
+    expect(inbox.pendingItems[0].context).toContain("rm -rf C:/danger");
+  });
+
+
+  it("classifies a benign interactive approval as a plain permission gate", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-benign", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-7c",
+          cli: "claude",
+          approvalPrompt: "ls -la · Do you want to proceed?",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0]).toMatchObject({
+      sessionId: "int-benign",
+      ptyId: "pty-7c",
+      type: "permission_required",
+      source: "agent",
+    });
+    expect(inbox.pendingItems[0].context).toContain("ls -la");
+  });
+
+  it("remounts the inbox row for a new menu on the same session (fresh decision id)", () => {
+    const base = {
+      name: "claude interactive",
+      status: "waiting" as const,
+      runtime: "interactive" as const,
+      runStatus: "waiting_approval" as const,
+      ptyId: "pty-7d",
+      cli: "claude",
+    };
+    const first = buildDecisionInbox({
+      now: 5_000,
+      sessions: [session("int-seq", { ...base, approvalPrompt: "ls -la · Do you want to proceed?" })],
+    });
+    const second = buildDecisionInbox({
+      now: 5_000,
+      sessions: [session("int-seq", { ...base, approvalPrompt: "Bash(rm -rf dist) · Do you want to proceed?" })],
+    });
+    // A different captured menu yields a different decision id, so the panel row
+    // remounts with a fresh Approve/Deny latch instead of staying disabled.
+    expect(first.pendingItems[0].id).not.toBe(second.pendingItems[0].id);
+  });
+
+  it("does not surface a waiting interactive agent that has no captured approval menu", () => {
+    // The backend only captures approvalPrompt for a confirmed selectable menu;
+    // its absence (e.g. a bare/false gate) must NOT produce a blind-approve row.
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-noprompt", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-7b",
+          cli: "claude",
+          approvalPrompt: undefined,
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(0);
+  });
+
+  it("surfaces a blocked interactive agent for inspection only (no keystroke resolution)", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-block", {
+          name: "codex interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "blocked",
+          ptyId: "pty-8",
+          blockedReason: "Needs human direction on merge strategy",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    const item = inbox.pendingItems[0];
+    expect(item).toMatchObject({ sessionId: "int-block", source: "agent", status: "pending" });
+    // `blocked` is broader than an approval prompt, so it is Focus-only: no ptyId
+    // means the panel renders no Approve/Deny and never sends a blind keystroke.
+    expect(item.ptyId).toBeUndefined();
+    expect(item.context).toContain("merge strategy");
+  });
+
+  it("emits a single row for a blocked interactive gate even when nextActor is set", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-dup", {
+          name: "claude interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "blocked",
+          ptyId: "pty-9",
+          nextActor: "human",
+          blockedReason: "Permission required for destructive command",
+        }),
+      ],
+    });
+
+    const forSession = inbox.items.filter((item) => item.sessionId === "int-dup");
+    expect(forSession).toHaveLength(1);
+    expect(forSession[0]).toMatchObject({ source: "agent", status: "pending" });
+    expect(forSession[0].ptyId).toBeUndefined();
+  });
+
+  it("does not surface an interactive approval that has no addressable pty id", () => {
+    const inbox = buildDecisionInbox({
+      sessions: [
+        session("no-pty", {
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: undefined,
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(0);
+  });
+
+  it("does not treat a headless waiting run as a keystroke-resolvable approval", () => {
+    const inbox = buildDecisionInbox({
+      sessions: [
+        session("headless-wait", {
+          runtime: "headless",
+          runStatus: "waiting_approval",
+          ptyId: "pty-x",
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(0);
   });
 
   it("keeps denied watchdog decisions in history instead of the pending queue", () => {

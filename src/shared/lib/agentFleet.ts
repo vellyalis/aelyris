@@ -26,6 +26,13 @@ export interface AgentFleetSession extends AgentSession {
   backend?: string;
   cli?: string;
   ptyId?: string;
+  /**
+   * Captured permission-menu prompt for an interactive run that is
+   * `waiting_approval` — the gated command the human is being asked to approve.
+   * Present only for a confirmed Claude selectable menu; the Decision Inbox marks
+   * a row keystroke-resolvable (and shows the command) only when this is set.
+   */
+  approvalPrompt?: string;
   worktreeBranch?: string;
   worktreePath?: string;
   repoPath?: string;
@@ -98,6 +105,7 @@ export function interactiveToFleetSession(session: InteractiveSession): AgentFle
     backend: session.backend,
     cli: session.cli,
     ptyId: session.pty_id,
+    approvalPrompt: session.approval_prompt ?? undefined,
     worktreeBranch: session.worktree_branch,
     worktreePath: session.worktree_path,
     repoPath: session.repo_path,
