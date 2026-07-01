@@ -207,6 +207,7 @@ export function isTrueHumanDecisionKind(kind: string | null | undefined): boolea
 
 function decisionsFromSession(session: AgentFleetSession, now: number): HumanDecisionItem[] {
   const decisions: HumanDecisionItem[] = [];
+  const lifecycleEvidence = sessionLifecycleEvidence(session);
   const decisionLog = latestWatchdogDecisionLog(session.logs);
   if (decisionLog?.metadata?.decision === "manual") {
     const type = typeFromRiskClasses(decisionLog.metadata.riskClasses) ?? typeFromText(decisionLog.content);
@@ -311,7 +312,11 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
         requestedAt: now,
         sessionId: session.id,
         ptyId: session.ptyId,
-        evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
+        evidence: [
+          `runStatus=${session.runStatus}`,
+          ...lifecycleEvidence,
+          ...(session.cli ? [`cli=${session.cli}`] : []),
+        ],
         history: historyEntry(now, "agent", "waiting", context),
       }),
     );
@@ -331,13 +336,30 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
         context: shortText(reason),
         requestedAt: now,
         sessionId: session.id,
-        evidence: [`runStatus=${session.runStatus}`, ...(session.cli ? [`cli=${session.cli}`] : [])],
+        evidence: [
+          `runStatus=${session.runStatus}`,
+          ...lifecycleEvidence,
+          ...(session.cli ? [`cli=${session.cli}`] : []),
+        ],
         history: historyEntry(now, "agent", "blocked", reason),
       }),
     );
   }
 
   return decisions;
+}
+
+function sessionLifecycleEvidence(session: AgentFleetSession): string[] {
+  const evidence: string[] = [];
+  if (session.lineage && session.lineage.length > 1) {
+    evidence.push(`lineage=${session.lineage.map((entry) => entry.logicalSessionId).join("->")}`);
+  } else if (session.predecessorSessionId) {
+    evidence.push(`lineage=${session.predecessorSessionId}->${session.logicalSessionId ?? session.id}`);
+  }
+  if (session.recycleStatus) {
+    evidence.push(`recycle=${session.recycleStatus.state}#${session.recycleStatus.handoffSeq}`);
+  }
+  return evidence;
 }
 
 function decisionsFromWorkflow(workflow: DecisionWorkflowStatus, now: number): HumanDecisionItem[] {

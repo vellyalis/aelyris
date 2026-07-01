@@ -22,12 +22,7 @@ import { buildOrchestraPrompts, detectFileConflicts, type OrchestraRoleId } from
 import { computeTokenProgress } from "../../shared/lib/tokenProgress";
 import { rankAgentSessions } from "../../shared/lib/workstationSummary";
 import { useAppStore } from "../../shared/store/appStore";
-import {
-  type AgentSession,
-  getSessionColor,
-  STATUS_COLORS,
-  STATUS_LABELS,
-} from "../../shared/types/agent";
+import { type AgentSession, getSessionColor, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import type { InteractiveSession } from "../../shared/types/interactiveAgent";
 import { getMaxTokens, getModelById, MODEL_OPTIONS } from "../../shared/types/model";
 import { extractToolName } from "../../shared/types/toolBadge";
@@ -187,6 +182,8 @@ export function AgentInspector({
       ((activeSession.changedFileDetails?.length ?? 0) > 0 || (activeSession.filesChanged ?? 0) > 0),
     [activeSession],
   );
+
+  const interactiveFleetCards = useMemo(() => sessions.filter((s) => s.runtime === "interactive"), [sessions]);
 
   // SessionCard renders headless agents only; interactive runs render via
   // InteractiveSessionCard above. `sessions` is now the unified fleet, so drop
@@ -543,7 +540,7 @@ export function AgentInspector({
       {tab === "sessions" ? (
         <>
           <div className={styles.cards}>
-            {sortedSessions.length === 0 && interactiveSessions.length === 0 && !showPromptInput && (
+            {sortedSessions.length === 0 && interactiveFleetCards.length === 0 && !showPromptInput && (
               <EmptyState
                 preset="agents"
                 title="No agent sessions"
@@ -551,7 +548,7 @@ export function AgentInspector({
               />
             )}
 
-            {interactiveSessions.map((is) => (
+            {interactiveFleetCards.map((is) => (
               <InteractiveSessionCard
                 key={`i-${is.id}`}
                 session={is}

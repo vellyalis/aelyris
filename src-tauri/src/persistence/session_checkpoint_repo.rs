@@ -398,6 +398,29 @@ impl SessionCheckpointRepo {
             .map_err(|e| format!("read unresolved session handoff rows: {e}"))?;
         rows.into_iter().map(raw_handoff_into_record).collect()
     }
+
+    pub fn load_latest_handoff_for_session(
+        db: &Database,
+        logical_session_id: &str,
+    ) -> Result<Option<SessionHandoffRecord>, String> {
+        let sql = format!(
+            "SELECT {HANDOFF_COLUMNS} FROM session_handoffs
+             WHERE predecessor_id = ?1 OR successor_id = ?1
+             ORDER BY updated_at DESC, handoff_seq DESC
+             LIMIT 1"
+        );
+        let raw = db
+            .conn()
+            .query_row(&sql, params![logical_session_id], handoff_from_row)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(format!(
+                    "load latest session handoff for {logical_session_id}: {other}"
+                )),
+            })?;
+        raw.map(raw_handoff_into_record).transpose()
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -718,5 +741,33 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(delete_err.contains("session_handoffs: rows are permanent"));
+    }
+
+    #[test]
+    fn loads_latest_handoff_for_predecessor_or_successor() {
+        let db = Database::open_memory().unwrap();
+        SessionCheckpointRepo::insert_or_get_handoff(&db, &handoff(1)).unwrap();
+        SessionCheckpointRepo::set_handoff_state(
+            &db,
+            "logical-a",
+            1,
+            SessionHandoffState::PredecessorRetired,
+            Some(4),
+            Some("C:/repo/.aelyris/handoff/logical-a.1.json"),
+            None,
+            150,
+        )
+        .unwrap();
+
+        let by_predecessor = SessionCheckpointRepo::load_latest_handoff_for_session(&db, "logical-a")
+            .unwrap()
+            .unwrap();
+        let by_successor = SessionCheckpointRepo::load_latest_handoff_for_session(&db, "logical-b")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(by_predecessor.state, SessionHandoffState::PredecessorRetired);
+        assert_eq!(by_successor.predecessor_id, "logical-a");
+        assert_eq!(by_successor.successor_id, "logical-b");
     }
 }

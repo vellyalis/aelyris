@@ -15,5 +15,5 @@ pub use interactive::{
     platform_cli_program, AgentCli, InteractiveSessionInfo, InteractiveSessionManager,
 };
 pub use oneshot::claude_oneshot;
-pub use session::{AgentRunMode, AgentSession};
+pub use session::{AgentRunMode, AgentSession, SessionLineageEntry, SessionRecycleStatus};
 pub use status::AgentRunStatus;

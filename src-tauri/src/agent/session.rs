@@ -1,4 +1,5 @@
 use super::context_lifecycle::ContextRemaining;
+use crate::persistence::{SessionCheckpointRecord, SessionHandoffRecord, SessionHandoffState};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -9,6 +10,65 @@ use super::{AgentCli, AgentRunStatus, AgentSessionInfo, InteractiveSessionInfo};
 pub enum AgentRunMode {
     Headless,
     Interactive,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionLineageEntry {
+    pub logical_session_id: String,
+    pub checkpoint_seq: Option<u64>,
+    pub pty_id: Option<String>,
+    pub status: Option<String>,
+    pub predecessor_session_id: Option<String>,
+    pub updated_at: Option<u64>,
+}
+
+impl SessionLineageEntry {
+    pub fn from_checkpoint(checkpoint: &SessionCheckpointRecord) -> Self {
+        Self {
+            logical_session_id: checkpoint.logical_session_id.clone(),
+            checkpoint_seq: Some(checkpoint.checkpoint_seq),
+            pty_id: Some(checkpoint.pty_id.clone()),
+            status: Some(checkpoint.status.clone()),
+            predecessor_session_id: checkpoint.predecessor_session_id.clone(),
+            updated_at: Some(checkpoint.updated_at),
+        }
+    }
+
+    pub fn unresolved(logical_session_id: String) -> Self {
+        Self {
+            logical_session_id,
+            checkpoint_seq: None,
+            pty_id: None,
+            status: None,
+            predecessor_session_id: None,
+            updated_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRecycleStatus {
+    pub predecessor_id: String,
+    pub successor_id: String,
+    pub handoff_seq: u64,
+    pub state: SessionHandoffState,
+    pub correlation_id: String,
+    pub failure_reason: Option<String>,
+    pub updated_at: u64,
+}
+
+impl From<&SessionHandoffRecord> for SessionRecycleStatus {
+    fn from(handoff: &SessionHandoffRecord) -> Self {
+        Self {
+            predecessor_id: handoff.predecessor_id.clone(),
+            successor_id: handoff.successor_id.clone(),
+            handoff_seq: handoff.handoff_seq,
+            state: handoff.state,
+            correlation_id: handoff.correlation_id.clone(),
+            failure_reason: handoff.failure_reason.clone(),
+            updated_at: handoff.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +90,9 @@ pub struct AgentSession {
     pub cli: Option<String>,
     pub backend: Option<String>,
     pub pty_id: Option<String>,
+    pub predecessor_session_id: Option<String>,
+    pub lineage: Vec<SessionLineageEntry>,
+    pub recycle_status: Option<SessionRecycleStatus>,
     pub worktree_branch: Option<String>,
     pub worktree_path: Option<String>,
     pub repo_path: Option<String>,
@@ -38,6 +101,18 @@ pub struct AgentSession {
 impl AgentSession {
     fn parse_status(status: &str) -> AgentRunStatus {
         AgentRunStatus::from_str(status).unwrap_or(AgentRunStatus::Error)
+    }
+
+    pub fn with_visibility(
+        mut self,
+        predecessor_session_id: Option<String>,
+        lineage: Vec<SessionLineageEntry>,
+        recycle_status: Option<SessionRecycleStatus>,
+    ) -> Self {
+        self.predecessor_session_id = predecessor_session_id;
+        self.lineage = lineage;
+        self.recycle_status = recycle_status;
+        self
     }
 }
 
@@ -61,6 +136,9 @@ impl From<AgentSessionInfo> for AgentSession {
             cli: None,
             backend: None,
             pty_id: None,
+            predecessor_session_id: None,
+            lineage: Vec::new(),
+            recycle_status: None,
             worktree_branch: None,
             worktree_path: None,
             repo_path: None,
@@ -92,6 +170,9 @@ impl From<InteractiveSessionInfo> for AgentSession {
             cli: Some(cli_name(&info.cli)),
             backend: Some(info.backend),
             pty_id: Some(info.pty_id),
+            predecessor_session_id: None,
+            lineage: Vec::new(),
+            recycle_status: None,
             worktree_branch: info.worktree_branch,
             worktree_path: info.worktree_path,
             repo_path: info.repo_path,
@@ -133,6 +214,8 @@ mod tests {
         assert_eq!(session.started_at, Some(123));
         assert_eq!(session.workspace_scope.as_deref(), Some("C:/repo"));
         assert_eq!(session.cli, None);
+        assert!(session.lineage.is_empty());
+        assert!(session.recycle_status.is_none());
     }
 
     #[test]
@@ -164,6 +247,8 @@ mod tests {
         assert_eq!(session.prompt.as_deref(), Some("review"));
         assert_eq!(session.cli.as_deref(), Some("codex"));
         assert_eq!(session.pty_id.as_deref(), Some("pty-1"));
+        assert_eq!(session.predecessor_session_id, None);
+        assert!(session.lineage.is_empty());
         assert_eq!(
             session.workspace_scope.as_deref(),
             Some("C:/repo/.worktrees/agent-review")

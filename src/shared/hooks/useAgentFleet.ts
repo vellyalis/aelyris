@@ -2,14 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  mapBackendAgentFleetSessions,
-  mergeAgentFleetSessions,
   type AgentFleetSession,
   type BackendAgentFleetSession,
+  mapBackendAgentFleetSessions,
+  mergeAgentFleetSessions,
 } from "../lib/agentFleet";
 import { reportInvokeFailure } from "../lib/fallbackTelemetry";
 import { isTauriRuntime } from "../lib/tauriRuntime";
-import { useAgentManager, type StartAgentMeta } from "./useAgentManager";
+import { type StartAgentMeta, useAgentManager } from "./useAgentManager";
 import { useInteractiveAgent } from "./useInteractiveAgent";
 
 export type { StartAgentMeta };
@@ -18,11 +18,13 @@ export function useAgentFleet() {
   const headless = useAgentManager();
   const interactive = useInteractiveAgent();
   const [backendFleetSessions, setBackendFleetSessions] = useState<AgentFleetSession[]>([]);
+  const [backendFleetReady, setBackendFleetReady] = useState(false);
 
-  const fleetSessions = useMemo(
+  const localFleetSessions = useMemo(
     () => mergeAgentFleetSessions(headless.sessions, interactive.sessions),
     [headless.sessions, interactive.sessions],
   );
+  const fleetSessions = backendFleetReady ? backendFleetSessions : localFleetSessions;
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -32,6 +34,7 @@ export function useAgentFleet() {
     const apply = (sessions: BackendAgentFleetSession[]) => {
       if (cancelled) return;
       setBackendFleetSessions(mapBackendAgentFleetSessions(sessions));
+      setBackendFleetReady(true);
     };
 
     void listen<BackendAgentFleetSession[]>("agent-fleet-updated", (event) => {

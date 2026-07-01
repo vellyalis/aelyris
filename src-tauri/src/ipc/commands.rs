@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
 use std::path::{Component, Path, PathBuf};
 
@@ -3445,19 +3445,31 @@ pub fn list_agents(app: AppHandle) -> Vec<crate::agent::AgentSessionInfo> {
 pub(crate) fn agent_fleet_snapshot(app: &AppHandle) -> Vec<crate::agent::AgentSession> {
     let agent_manager = app.state::<crate::agent::AgentManager>();
     let interactive_manager = app.state::<crate::agent::InteractiveSessionManager>();
+    let interactive = interactive_manager.list().unwrap_or_default();
+    let visibility = session_visibility_index(
+        app,
+        interactive
+            .iter()
+            .map(|session| session.logical_session_id.clone()),
+    );
     let mut sessions: Vec<crate::agent::AgentSession> = agent_manager
         .list_sessions()
         .into_iter()
         .map(crate::agent::AgentSession::from)
         .collect();
 
-    if let Ok(interactive) = interactive_manager.list() {
-        sessions.extend(
-            interactive
-                .into_iter()
-                .map(crate::agent::AgentSession::from),
-        );
-    }
+    sessions.extend(interactive.into_iter().map(|info| {
+        let logical_session_id = info.logical_session_id.clone();
+        let session = crate::agent::AgentSession::from(info);
+        match visibility.get(&logical_session_id) {
+            Some(visibility) => session.with_visibility(
+                visibility.predecessor_session_id.clone(),
+                visibility.lineage.clone(),
+                visibility.recycle_status.clone(),
+            ),
+            None => session,
+        }
+    }));
 
     sessions.sort_by(|a, b| {
         b.started_at
@@ -3476,6 +3488,101 @@ pub(crate) fn emit_agent_fleet(app: &AppHandle) {
 #[tauri::command]
 pub fn list_agent_fleet(app: AppHandle) -> Vec<crate::agent::AgentSession> {
     agent_fleet_snapshot(&app)
+}
+
+#[derive(Clone, Default)]
+struct SessionVisibility {
+    predecessor_session_id: Option<String>,
+    lineage: Vec<crate::agent::SessionLineageEntry>,
+    recycle_status: Option<crate::agent::SessionRecycleStatus>,
+}
+
+fn session_visibility_index<I>(app: &AppHandle, logical_session_ids: I) -> HashMap<String, SessionVisibility>
+where
+    I: IntoIterator<Item = String>,
+{
+    let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
+        return HashMap::new();
+    };
+    let checkpoints = match db.with(crate::persistence::SessionCheckpointRepo::load_latest_all) {
+        Ok(checkpoints) => checkpoints,
+        Err(err) => {
+            log::warn!("agent fleet lineage checkpoint load failed: {err}");
+            return HashMap::new();
+        }
+    };
+    let checkpoint_by_logical: HashMap<String, crate::persistence::SessionCheckpointRecord> =
+        checkpoints
+            .into_iter()
+            .map(|checkpoint| (checkpoint.logical_session_id.clone(), checkpoint))
+            .collect();
+    let mut index = HashMap::new();
+
+    for logical_session_id in logical_session_ids {
+        let latest_checkpoint = checkpoint_by_logical.get(&logical_session_id);
+        let lineage = build_session_lineage(&logical_session_id, &checkpoint_by_logical);
+        let recycle_status = match db.with(|database| {
+            crate::persistence::SessionCheckpointRepo::load_latest_handoff_for_session(
+                database,
+                &logical_session_id,
+            )
+        }) {
+            Ok(Some(handoff)) => Some(crate::agent::SessionRecycleStatus::from(&handoff)),
+            Ok(None) => None,
+            Err(err) => {
+                log::warn!(
+                    "agent fleet recycle state load failed for {}: {}",
+                    logical_session_id,
+                    err
+                );
+                None
+            }
+        };
+        let predecessor_session_id =
+            latest_checkpoint.and_then(|checkpoint| checkpoint.predecessor_session_id.clone());
+        let visible_lineage = if lineage.len() > 1 { lineage } else { Vec::new() };
+
+        if predecessor_session_id.is_some() || !visible_lineage.is_empty() || recycle_status.is_some() {
+            index.insert(
+                logical_session_id,
+                SessionVisibility {
+                    predecessor_session_id,
+                    lineage: visible_lineage,
+                    recycle_status,
+                },
+            );
+        }
+    }
+
+    index
+}
+
+fn build_session_lineage(
+    logical_session_id: &str,
+    checkpoint_by_logical: &HashMap<String, crate::persistence::SessionCheckpointRecord>,
+) -> Vec<crate::agent::SessionLineageEntry> {
+    let mut current = Some(logical_session_id.to_string());
+    let mut seen = HashSet::new();
+    let mut lineage = Vec::new();
+
+    while let Some(id) = current {
+        if !seen.insert(id.clone()) {
+            break;
+        }
+        match checkpoint_by_logical.get(&id) {
+            Some(checkpoint) => {
+                current = checkpoint.predecessor_session_id.clone();
+                lineage.push(crate::agent::SessionLineageEntry::from_checkpoint(checkpoint));
+            }
+            None => {
+                lineage.push(crate::agent::SessionLineageEntry::unresolved(id));
+                break;
+            }
+        }
+    }
+
+    lineage.reverse();
+    lineage
 }
 
 /// Route a prompt to the best model

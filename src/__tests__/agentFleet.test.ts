@@ -108,6 +108,32 @@ describe("agent fleet projection", () => {
         cli: "codex",
         backend: "sidecar",
         pty_id: "pty-1",
+        predecessor_session_id: "logical-parent",
+        lineage: [
+          {
+            logical_session_id: "logical-parent",
+            checkpoint_seq: 2,
+            pty_id: "pty-parent",
+            status: "retiring",
+            updated_at: 20,
+          },
+          {
+            logical_session_id: "logical-u1",
+            checkpoint_seq: 3,
+            pty_id: "pty-1",
+            status: "waiting_approval",
+            predecessor_session_id: "logical-parent",
+            updated_at: 35,
+          },
+        ],
+        recycle_status: {
+          predecessor_id: "logical-parent",
+          successor_id: "logical-u1",
+          handoff_seq: 1,
+          state: "predecessor_retired",
+          correlation_id: "session-handoff-logical-parent-1",
+          updated_at: 36,
+        },
       },
     ]);
 
@@ -119,9 +145,21 @@ describe("agent fleet projection", () => {
       prompt: "",
       ptyId: "pty-1",
       logicalSessionId: "logical-u1",
+      predecessorSessionId: "logical-parent",
+      handoffFrom: "logical-parent",
       lastActivity: 35,
       turnCount: 4,
       contextRemaining: expect.objectContaining({ usedPct: 95, hard: true }),
+      lineage: [
+        expect.objectContaining({ logicalSessionId: "logical-parent", checkpointSeq: 2 }),
+        expect.objectContaining({ logicalSessionId: "logical-u1", predecessorSessionId: "logical-parent" }),
+      ],
+      recycleStatus: expect.objectContaining({
+        predecessorId: "logical-parent",
+        successorId: "logical-u1",
+        state: "predecessor_retired",
+        handoffSeq: 1,
+      }),
     });
   });
 

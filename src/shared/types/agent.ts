@@ -25,6 +25,25 @@ export interface ContextRemainingWire {
 }
 export type AgentStatus = "idle" | "thinking" | "coding" | "waiting" | "error" | "done" | "generating";
 
+export interface AgentLineageEntry {
+  logicalSessionId: string;
+  checkpointSeq?: number;
+  ptyId?: string;
+  status?: string;
+  predecessorSessionId?: string;
+  updatedAt?: number;
+}
+
+export interface AgentRecycleStatus {
+  predecessorId: string;
+  successorId: string;
+  handoffSeq: number;
+  state: string;
+  correlationId: string;
+  failureReason?: string;
+  updatedAt: number;
+}
+
 export interface WorktreeInfo {
   name: string;
   path: string;
@@ -80,6 +99,12 @@ export interface AgentSession {
   role?: import("../lib/orchestrator").OrchestraRoleId;
   /** Optional parent session id when spawned via handoff. */
   handoffFrom?: string;
+  /** Durable predecessor logical session id from session_checkpoints. */
+  predecessorSessionId?: string;
+  /** Durable logical-session lineage from session_checkpoints.predecessor_session_id. */
+  lineage?: AgentLineageEntry[];
+  /** Latest durable recycle/handoff state involving this logical session. */
+  recycleStatus?: AgentRecycleStatus;
   /** Human or automation owner responsible for the run. */
   owner?: string;
   /** Workspace or worktree scope the run is allowed to operate in. */
