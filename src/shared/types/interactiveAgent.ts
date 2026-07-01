@@ -1,9 +1,12 @@
+import type { ContextRemainingWire } from "./agent";
+
 /** Which AI CLI backs this session */
 export type AgentCliType = "claude" | "gemini" | "codex" | string;
 
 /** Metadata for a live interactive agent session (mirrors Rust InteractiveSessionInfo) */
 export interface InteractiveSession {
   id: string;
+  logical_session_id?: string;
   pty_id: string;
   backend?: "sidecar" | "native" | string;
   cli: AgentCliType;
@@ -23,6 +26,9 @@ export interface InteractiveSession {
   cost: number;
   tokens_used: number;
   started_at: number;
+  last_activity?: number;
+  turn_count?: number;
+  context_remaining?: ContextRemainingWire | null;
 }
 
 /** Result from spawn_interactive_agent IPC */

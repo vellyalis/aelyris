@@ -415,6 +415,81 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE INDEX IF NOT EXISTS idx_symbol_ownership_lease
             ON symbol_ownership_claims(lease_expires_at);
 
+        -- WU-RT-1 RT-1c: visible CLI session lifecycle checkpoints. These rows
+        -- keep logical session identity separate from transient PTY ids so a
+        -- recycled visible agent can restore metadata after restart.
+        CREATE TABLE IF NOT EXISTS session_checkpoints (
+            logical_session_id     TEXT NOT NULL,
+            checkpoint_seq         INTEGER NOT NULL,
+            pty_id                 TEXT NOT NULL,
+            cli                    TEXT NOT NULL,
+            model                  TEXT NOT NULL,
+            cwd                    TEXT NOT NULL,
+            worktree_branch        TEXT,
+            worktree_path          TEXT,
+            repo_path              TEXT,
+            status                 TEXT NOT NULL,
+            cost                   REAL NOT NULL DEFAULT 0,
+            tokens_used            INTEGER NOT NULL DEFAULT 0,
+            started_at             INTEGER NOT NULL,
+            last_activity          INTEGER NOT NULL,
+            turn_count             INTEGER NOT NULL DEFAULT 0,
+            context_remaining_json TEXT,
+            summary_json           TEXT,
+            summary_path           TEXT,
+            inflight_ref           TEXT,
+            predecessor_session_id TEXT,
+            created_at             INTEGER NOT NULL,
+            updated_at             INTEGER NOT NULL,
+            PRIMARY KEY (logical_session_id, checkpoint_seq)
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_checkpoints_latest
+            ON session_checkpoints(logical_session_id, checkpoint_seq DESC);
+        CREATE INDEX IF NOT EXISTS idx_session_checkpoints_lineage
+            ON session_checkpoints(predecessor_session_id);
+
+        -- WU-RT-1 RT-1c: durable handoff intent/state rows. RT-1d will advance
+        -- these states before any irreversible predecessor retire.
+        CREATE TABLE IF NOT EXISTS session_handoffs (
+            predecessor_id TEXT NOT NULL,
+            successor_id   TEXT NOT NULL,
+            handoff_seq    INTEGER NOT NULL,
+            state          TEXT NOT NULL DEFAULT 'pending_summary' CHECK (
+                state IN (
+                    'pending_summary', 'checkpointed', 'successor_spawning',
+                    'successor_spawned', 'successor_acked',
+                    'predecessor_retired', 'failed'
+                )
+            ),
+            correlation_id TEXT NOT NULL,
+            checkpoint_seq INTEGER,
+            summary_path   TEXT,
+            failure_reason TEXT,
+            created_at     INTEGER NOT NULL,
+            updated_at     INTEGER NOT NULL,
+            PRIMARY KEY (predecessor_id, handoff_seq)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_session_handoffs_correlation
+            ON session_handoffs(correlation_id);
+        CREATE INDEX IF NOT EXISTS idx_session_handoffs_state
+            ON session_handoffs(state);
+        CREATE TRIGGER IF NOT EXISTS trg_session_handoffs_immutable
+        BEFORE UPDATE ON session_handoffs
+        FOR EACH ROW WHEN
+               NEW.predecessor_id IS NOT OLD.predecessor_id
+            OR NEW.successor_id   IS NOT OLD.successor_id
+            OR NEW.handoff_seq    IS NOT OLD.handoff_seq
+            OR NEW.correlation_id IS NOT OLD.correlation_id
+            OR NEW.created_at     IS NOT OLD.created_at
+        BEGIN
+            SELECT RAISE(ABORT, 'session_handoffs: handoff-defining columns are immutable');
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_session_handoffs_no_delete
+        BEFORE DELETE ON session_handoffs
+        FOR EACH ROW
+        BEGIN
+            SELECT RAISE(ABORT, 'session_handoffs: rows are permanent (append-only)');
+        END;
         -- P0-3 world-release hardening: durable, IMMUTABLE merge intents. The MCP
         -- merge approval path (aelyris.request_merge -> aelyris.review.approve) kept
         -- intents in a RAM Vec and let the approver supply repo/source/target, so
@@ -579,6 +654,41 @@ mod tests {
             )
             .unwrap();
         assert_eq!(symbol, "f");
+
+        conn.execute(
+            "INSERT INTO session_checkpoints
+             (logical_session_id, checkpoint_seq, pty_id, cli, model, cwd, status,
+              started_at, last_activity, turn_count, created_at, updated_at)
+             VALUES ('logical-a', 1, 'pty-a', 'claude', 'sonnet', 'C:/repo', 'idle', 1, 2, 3, 4, 4)",
+            [],
+        )
+        .unwrap();
+        let checkpoint_status: String = conn
+            .query_row(
+                "SELECT status FROM session_checkpoints
+                 WHERE logical_session_id = 'logical-a' AND checkpoint_seq = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(checkpoint_status, "idle");
+
+        conn.execute(
+            "INSERT INTO session_handoffs
+             (predecessor_id, successor_id, handoff_seq, state, correlation_id, created_at, updated_at)
+             VALUES ('logical-a', 'logical-b', 1, 'pending_summary', 'corr-a', 10, 10)",
+            [],
+        )
+        .unwrap();
+        let handoff_state: String = conn
+            .query_row(
+                "SELECT state FROM session_handoffs
+                 WHERE predecessor_id = 'logical-a' AND handoff_seq = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(handoff_state, "pending_summary");
     }
 
     #[test]

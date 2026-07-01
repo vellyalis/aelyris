@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-pub const AGENT_RUN_STATUS_NAMES: [&str; 9] = [
+pub const AGENT_RUN_STATUS_NAMES: [&str; 11] = [
     "spawning",
     "thinking",
     "coding",
     "running_tests",
     "waiting_approval",
     "blocked",
+    "summarizing",
+    "retiring",
     "idle",
     "done",
     "error",
@@ -22,6 +24,8 @@ pub enum AgentRunStatus {
     RunningTests,
     WaitingApproval,
     Blocked,
+    Summarizing,
+    Retiring,
     Idle,
     Done,
     Error,
@@ -36,6 +40,8 @@ impl AgentRunStatus {
             Self::RunningTests => "running_tests",
             Self::WaitingApproval => "waiting_approval",
             Self::Blocked => "blocked",
+            Self::Summarizing => "summarizing",
+            Self::Retiring => "retiring",
             Self::Idle => "idle",
             Self::Done => "done",
             Self::Error => "error",
@@ -54,6 +60,8 @@ impl FromStr for AgentRunStatus {
             "running_tests" => Ok(Self::RunningTests),
             "waiting_approval" | "waiting" => Ok(Self::WaitingApproval),
             "blocked" => Ok(Self::Blocked),
+            "summarizing" => Ok(Self::Summarizing),
+            "retiring" => Ok(Self::Retiring),
             "idle" => Ok(Self::Idle),
             "done" => Ok(Self::Done),
             "error" => Ok(Self::Error),
@@ -75,6 +83,8 @@ mod tests {
             AgentRunStatus::RunningTests,
             AgentRunStatus::WaitingApproval,
             AgentRunStatus::Blocked,
+            AgentRunStatus::Summarizing,
+            AgentRunStatus::Retiring,
             AgentRunStatus::Idle,
             AgentRunStatus::Done,
             AgentRunStatus::Error,

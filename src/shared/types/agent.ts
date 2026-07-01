@@ -1,3 +1,28 @@
+export type TelemetryConfidence = "exact" | "parsed" | "estimated" | "unknown";
+
+export interface ContextRemaining {
+  /** CLI-reported remaining context percentage, or null when only proxy telemetry exists. */
+  pct: number | null;
+  /** Usage percentage derived from pct; feeds the existing ContextGauge thresholds. */
+  usedPct: number | null;
+  confidence: TelemetryConfidence;
+  source: string;
+  updatedAt: number;
+  warn: boolean;
+  hard: boolean;
+}
+
+export interface ContextRemainingWire {
+  pct?: number | null;
+  used_pct?: number | null;
+  usedPct?: number | null;
+  confidence?: TelemetryConfidence;
+  source?: string;
+  updated_at?: number | null;
+  updatedAt?: number | null;
+  warn?: boolean;
+  hard?: boolean;
+}
 export type AgentStatus = "idle" | "thinking" | "coding" | "waiting" | "error" | "done" | "generating";
 
 export interface WorktreeInfo {
@@ -31,11 +56,15 @@ export type AgentCloseState = "active" | "collectable" | "collected";
 
 export interface AgentSession {
   id: string;
+  logicalSessionId?: string;
   name: string;
   status: AgentStatus;
   model: string;
   prompt: string;
   startedAt: number;
+  lastActivity?: number;
+  turnCount?: number;
+  contextRemaining?: ContextRemaining;
   logs: AgentLog[];
   cost: number;
   tokensUsed: number;

@@ -1,3 +1,4 @@
+use super::context_lifecycle::ContextRemaining;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -13,6 +14,7 @@ pub enum AgentRunMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSession {
     pub id: String,
+    pub logical_session_id: Option<String>,
     pub run_mode: AgentRunMode,
     pub status: AgentRunStatus,
     pub model: String,
@@ -22,6 +24,9 @@ pub struct AgentSession {
     pub cost: f64,
     pub tokens_used: u64,
     pub started_at: Option<u64>,
+    pub last_activity: Option<u64>,
+    pub turn_count: Option<u64>,
+    pub context_remaining: Option<ContextRemaining>,
     pub cli: Option<String>,
     pub backend: Option<String>,
     pub pty_id: Option<String>,
@@ -40,6 +45,7 @@ impl From<AgentSessionInfo> for AgentSession {
     fn from(info: AgentSessionInfo) -> Self {
         Self {
             id: info.id,
+            logical_session_id: None,
             run_mode: AgentRunMode::Headless,
             status: Self::parse_status(&info.status),
             model: info.model,
@@ -49,6 +55,9 @@ impl From<AgentSessionInfo> for AgentSession {
             cost: info.cost,
             tokens_used: info.tokens_used,
             started_at: Some(info.started_at),
+            last_activity: None,
+            turn_count: None,
+            context_remaining: None,
             cli: None,
             backend: None,
             pty_id: None,
@@ -67,6 +76,7 @@ impl From<InteractiveSessionInfo> for AgentSession {
             .or_else(|| Some(info.cwd.clone()));
         Self {
             id: info.id,
+            logical_session_id: Some(info.logical_session_id),
             run_mode: AgentRunMode::Interactive,
             status: Self::parse_status(&info.status),
             model: info.model,
@@ -76,6 +86,9 @@ impl From<InteractiveSessionInfo> for AgentSession {
             cost: info.cost,
             tokens_used: info.tokens_used,
             started_at: Some(info.started_at),
+            last_activity: Some(info.last_activity),
+            turn_count: Some(info.turn_count),
+            context_remaining: info.context_remaining,
             cli: Some(cli_name(&info.cli)),
             backend: Some(info.backend),
             pty_id: Some(info.pty_id),
@@ -126,6 +139,7 @@ mod tests {
     fn maps_interactive_session_to_unified_contract() {
         let session = AgentSession::from(InteractiveSessionInfo {
             id: "i1".to_string(),
+            logical_session_id: "logical-i1".to_string(),
             pty_id: "pty-1".to_string(),
             backend: "sidecar".to_string(),
             cli: AgentCli::Codex,
@@ -140,6 +154,9 @@ mod tests {
             cost: 0.0,
             tokens_used: 0,
             started_at: 123,
+            last_activity: 130,
+            turn_count: 2,
+            context_remaining: Some(super::ContextRemaining::parsed_claude_grid(22.0, 130)),
         });
 
         assert_eq!(session.run_mode, AgentRunMode::Interactive);
@@ -157,6 +174,7 @@ mod tests {
     fn preserves_absent_interactive_prompt_and_custom_cli_name() {
         let session = AgentSession::from(InteractiveSessionInfo {
             id: "i2".to_string(),
+            logical_session_id: "logical-i2".to_string(),
             pty_id: "pty-2".to_string(),
             backend: "native".to_string(),
             cli: AgentCli::Custom("aider".to_string()),
@@ -171,6 +189,9 @@ mod tests {
             cost: 0.0,
             tokens_used: 0,
             started_at: 456,
+            last_activity: 456,
+            turn_count: 0,
+            context_remaining: None,
         });
 
         assert_eq!(session.prompt, None);

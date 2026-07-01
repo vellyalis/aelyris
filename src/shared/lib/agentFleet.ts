@@ -1,4 +1,5 @@
-import type { AgentSession, AgentStatus } from "../types/agent";
+import { normalizeContextRemaining } from "./contextTelemetry";
+import type { AgentSession, AgentStatus, ContextRemainingWire } from "../types/agent";
 import { normalizeAgentRunStatus, type AgentRunStatus } from "../types/agentStatus";
 import type { InteractiveSession } from "../types/interactiveAgent";
 
@@ -40,6 +41,7 @@ export interface AgentFleetSession extends AgentSession {
 
 export interface BackendAgentFleetSession {
   id: string;
+  logical_session_id?: string | null;
   run_mode: AgentFleetRuntime;
   status: AgentRunStatus | string;
   model: string;
@@ -49,6 +51,9 @@ export interface BackendAgentFleetSession {
   cost: number;
   tokens_used: number;
   started_at?: number | null;
+  last_activity?: number | null;
+  turn_count?: number | null;
+  context_remaining?: ContextRemainingWire | null;
   cli?: string | null;
   backend?: string | null;
   pty_id?: string | null;
@@ -63,8 +68,10 @@ export function agentRunStatusToLegacyStatus(status: AgentRunStatus): AgentStatu
     case "blocked":
       return "waiting";
     case "spawning":
+    case "retiring":
       return "thinking";
     case "running_tests":
+    case "summarizing":
       return "coding";
     default:
       return status;
@@ -93,6 +100,10 @@ export function interactiveToFleetSession(session: InteractiveSession): AgentFle
     model: session.model,
     prompt: session.initial_prompt ?? "",
     startedAt: session.started_at,
+    logicalSessionId: session.logical_session_id ?? session.id,
+    lastActivity: session.last_activity,
+    turnCount: session.turn_count,
+    contextRemaining: normalizeContextRemaining(session.context_remaining),
     // Interactive sessions carry no structured headless telemetry yet; expose an
     // empty log array so log-rendering surfaces can map() without guards.
     logs: [],
@@ -122,6 +133,10 @@ export function backendToFleetSession(session: BackendAgentFleetSession): AgentF
     model: session.model,
     prompt: session.prompt ?? "",
     startedAt: session.started_at ?? 0,
+    logicalSessionId: session.logical_session_id ?? undefined,
+    lastActivity: session.last_activity ?? undefined,
+    turnCount: session.turn_count ?? undefined,
+    contextRemaining: normalizeContextRemaining(session.context_remaining),
     logs: [],
     cost: session.cost,
     tokensUsed: session.tokens_used,

@@ -10,10 +10,14 @@ pub mod decision_repo;
 pub mod event_repo;
 pub mod merge_repo;
 pub mod ownership_repo;
+pub mod session_checkpoint_repo;
 pub mod task_repo;
 
 pub use decision_repo::DecisionRepo;
 pub use event_repo::EventRepo;
 pub use merge_repo::MergeRepo;
 pub use ownership_repo::OwnershipRepo;
+pub use session_checkpoint_repo::{
+    SessionCheckpointRecord, SessionCheckpointRepo, SessionHandoffRecord, SessionHandoffState,
+};
 pub use task_repo::TaskRepo;

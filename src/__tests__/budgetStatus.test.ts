@@ -31,6 +31,25 @@ describe("getBudgetWarning", () => {
     expect(getBudgetWarning(makeSession({ tokensUsed: 175_000 }))).toBe("context");
   });
 
+
+  it("uses runtime context remaining telemetry for context warnings", () => {
+    expect(
+      getBudgetWarning(
+        makeSession({
+          tokensUsed: 0,
+          contextRemaining: {
+            pct: 10,
+            usedPct: 90,
+            confidence: "parsed",
+            source: "claude_grid_context_left",
+            updatedAt: 1,
+            warn: true,
+            hard: false,
+          },
+        }),
+      ),
+    ).toBe("context");
+  });
   it("cost wins over context when both exceed", () => {
     expect(getBudgetWarning(makeSession({ cost: 5, tokensUsed: 190_000 }))).toBe("cost");
   });

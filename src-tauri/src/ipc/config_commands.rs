@@ -30,7 +30,10 @@ fn wallpaper_dest_name(bytes: &[u8], src: &Path) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
-    let hash_hex = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let hash_hex = digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     let ext = src
         .extension()
         .and_then(|e| e.to_str())

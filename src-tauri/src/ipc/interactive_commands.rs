@@ -1,14 +1,24 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::broadcast;
 
+use crate::agent::context_lifecycle::{
+    parse_claude_context_remaining_from_grid, unix_now_secs, ContextRemaining,
+};
 use crate::agent::output_monitor;
+use crate::agent::session_lifecycle::{
+    build_summary_prompt, canonical_summary_files_for_checkpoint, next_summary_seq,
+    parse_redacted_summary, read_redacted_summary, summary_files, wait_for_done_marker,
+    SessionSummaryDoc, SummaryValidationContext, SummaryValidationReport,
+};
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
 use crate::ghostdiff::{self, LayerRegistry, LayerTint, WatcherPool};
+use crate::persistence::{SessionCheckpointRecord, SessionCheckpointRepo};
 use crate::pty::{ExitInfo, PtyManager};
-use crate::pty_sidecar::PtySidecarState;
+use crate::pty_sidecar::{PtySidecarClient, PtySidecarState};
 use crate::term::NativeTerminalRegistry;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -146,6 +156,7 @@ pub async fn spawn_interactive_agent(
 
     let info = InteractiveSessionInfo {
         id: session_id.clone(),
+        logical_session_id: session_id.clone(),
         pty_id: pty_id.clone(),
         backend: backend.clone(),
         cli: cli.clone(),
@@ -164,6 +175,9 @@ pub async fn spawn_interactive_agent(
         cost: 0.0,
         tokens_used: 0,
         started_at: now,
+        last_activity: now,
+        turn_count: 0,
+        context_remaining: Some(ContextRemaining::unknown_proxy(&cli, now)),
     };
 
     let session_mgr = app.state::<InteractiveSessionManager>();
@@ -355,6 +369,366 @@ pub async fn end_session_and_remove_worktree(app: AppHandle, id: String) -> Resu
     Ok(())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSummarizeResult {
+    pub session_id: String,
+    pub logical_session_id: String,
+    pub handoff_seq: u64,
+    pub summary_path: String,
+    pub done_path: String,
+    pub redaction_count: usize,
+    pub validation: SummaryValidationReport,
+    pub summary: SessionSummaryDoc,
+}
+
+#[tauri::command]
+pub async fn session_summarize(
+    app: AppHandle,
+    session_id: String,
+    reason: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<SessionSummarizeResult, String> {
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let info = find_interactive_session(&session_mgr, &session_id)?;
+    if info.status != "idle" {
+        return Err(format!(
+            "session_summarize requires an idle session; {} is {}",
+            info.id, info.status
+        ));
+    }
+
+    let worktree_path = info.worktree_path.as_deref().unwrap_or(&info.cwd);
+    let dir = crate::agent::session_lifecycle::handoff_dir(worktree_path);
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("create handoff directory failed: {err}"))?;
+    let seq = next_summary_seq(&dir, &info.logical_session_id);
+    let files = summary_files(worktree_path, &info.logical_session_id, seq);
+    let reason = reason.unwrap_or_else(|| "manual".to_string());
+    let prompt = build_summary_prompt(&info.logical_session_id, seq, &files, &reason);
+
+    session_mgr.update_status(&info.id, "summarizing")?;
+    emit_interactive_sessions(&app, &session_mgr);
+
+    let request = format!("{}\r\n", prompt);
+    if let Err(err) = write_interactive_input(&app, &info, request.as_bytes()).await {
+        let _ = session_mgr.update_status(&info.id, "blocked");
+        emit_interactive_sessions(&app, &session_mgr);
+        return Err(format!("session_summarize prompt injection failed: {err}"));
+    }
+
+    let timeout =
+        std::time::Duration::from_millis(timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000));
+    if let Err(err) = wait_for_done_marker(&files.done_path, timeout).await {
+        let _ = session_mgr.update_status(&info.id, "blocked");
+        emit_interactive_sessions(&app, &session_mgr);
+        return Err(err);
+    }
+
+    let context = build_summary_validation_context(&app, &info);
+    let (redacted, validation) = match read_redacted_summary(&files, &context) {
+        Ok(result) => result,
+        Err(err) => {
+            let _ = session_mgr.update_status(&info.id, "blocked");
+            emit_interactive_sessions(&app, &session_mgr);
+            return Err(err);
+        }
+    };
+
+    session_mgr.update_status(&info.id, "idle")?;
+    emit_interactive_sessions(&app, &session_mgr);
+
+    Ok(SessionSummarizeResult {
+        session_id: info.id,
+        logical_session_id: info.logical_session_id,
+        handoff_seq: seq,
+        summary_path: files.summary_path.display().to_string(),
+        done_path: files.done_path.display().to_string(),
+        redaction_count: redacted.redaction_count,
+        validation,
+        summary: redacted.summary,
+    })
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCheckpointResult {
+    pub session_id: String,
+    pub logical_session_id: String,
+    pub checkpoint_seq: u64,
+    pub summary_path: Option<String>,
+    pub inflight_ref: Option<String>,
+    pub redaction_count: usize,
+    pub identity_context_persisted: bool,
+    pub checkpoint: SessionCheckpointRecord,
+}
+
+#[tauri::command]
+pub fn session_checkpoint(
+    app: AppHandle,
+    session_id: String,
+    summary_json: Option<Value>,
+    summary_seq: Option<u64>,
+    inflight_ref: Option<String>,
+    predecessor_session_id: Option<String>,
+) -> Result<SessionCheckpointResult, String> {
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let info = find_interactive_session(&session_mgr, &session_id)?;
+    let summary = checkpoint_summary_from_inputs(&app, &info, summary_json, summary_seq)?;
+    let db = app
+        .try_state::<crate::db::ManagedDb>()
+        .ok_or_else(|| "session_checkpoint requires database state".to_string())?;
+    let checkpoint_seq =
+        db.with(|d| SessionCheckpointRepo::next_checkpoint_seq(d, &info.logical_session_id))?;
+    let now = unix_now_secs();
+    let record = SessionCheckpointRecord {
+        logical_session_id: info.logical_session_id.clone(),
+        checkpoint_seq,
+        pty_id: info.pty_id.clone(),
+        cli: agent_cli_label(&info.cli).to_string(),
+        model: info.model.clone(),
+        cwd: info.cwd.clone(),
+        worktree_branch: info.worktree_branch.clone(),
+        worktree_path: info.worktree_path.clone(),
+        repo_path: info.repo_path.clone(),
+        status: info.status.clone(),
+        cost: info.cost,
+        tokens_used: info.tokens_used,
+        started_at: info.started_at,
+        last_activity: info.last_activity,
+        turn_count: info.turn_count,
+        context_remaining: info.context_remaining.clone(),
+        summary_json: summary.summary_json.clone(),
+        summary_path: summary.summary_path.clone(),
+        inflight_ref: inflight_ref.or(summary.inflight_ref),
+        predecessor_session_id,
+        created_at: now,
+        updated_at: now,
+    };
+    let checkpoint = db.with(|d| SessionCheckpointRepo::upsert_checkpoint(d, &record))?;
+    let identity_context_persisted = persist_agent_identity_context(&app, &info, &checkpoint);
+    Ok(SessionCheckpointResult {
+        session_id: info.id,
+        logical_session_id: checkpoint.logical_session_id.clone(),
+        checkpoint_seq: checkpoint.checkpoint_seq,
+        summary_path: checkpoint.summary_path.clone(),
+        inflight_ref: checkpoint.inflight_ref.clone(),
+        redaction_count: summary.redaction_count,
+        identity_context_persisted,
+        checkpoint,
+    })
+}
+
+pub async fn restore_interactive_sessions(
+    app: &AppHandle,
+    sidecar: PtySidecarClient,
+) -> Result<usize, String> {
+    let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
+        return Ok(0);
+    };
+    let checkpoints = db.with(SessionCheckpointRepo::load_latest_all)?;
+    if checkpoints.is_empty() {
+        return Ok(0);
+    }
+    let live = sidecar.list_info().await?;
+    let live_ids: std::collections::HashSet<String> =
+        live.into_iter().map(|info| info.id).collect();
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+    let mut restored = 0usize;
+
+    for checkpoint in checkpoints {
+        if checkpoint.status == "done" || !live_ids.contains(&checkpoint.pty_id) {
+            continue;
+        }
+        if session_mgr.get(&checkpoint.pty_id)?.is_some() {
+            continue;
+        }
+        let cli = agent_cli_from_label(&checkpoint.cli);
+        let info = InteractiveSessionInfo {
+            id: checkpoint.pty_id.clone(),
+            logical_session_id: checkpoint.logical_session_id.clone(),
+            pty_id: checkpoint.pty_id.clone(),
+            backend: "sidecar".to_string(),
+            cli: cli.clone(),
+            status: checkpoint.status.clone(),
+            model: checkpoint.model.clone(),
+            initial_prompt: None,
+            approval_prompt: None,
+            cwd: checkpoint.cwd.clone(),
+            worktree_branch: checkpoint.worktree_branch.clone(),
+            worktree_path: checkpoint.worktree_path.clone(),
+            repo_path: checkpoint.repo_path.clone(),
+            cost: checkpoint.cost,
+            tokens_used: checkpoint.tokens_used,
+            started_at: checkpoint.started_at,
+            last_activity: checkpoint.last_activity,
+            turn_count: checkpoint.turn_count,
+            context_remaining: checkpoint.context_remaining.clone(),
+        };
+        session_mgr.register(info)?;
+        if let Err(err) = native_registry.create(&checkpoint.pty_id, 120, 30) {
+            log::debug!(
+                "restore_interactive_sessions native create skipped for {}: {}",
+                checkpoint.pty_id,
+                err
+            );
+        }
+        // `adopt_sidecar_terminals` already wires the surviving sidecar PTY to
+        // the native renderer and output buffers. Re-subscribing here would
+        // double-render and double-parse every byte; RT-1c only restores the
+        // interactive session/status metadata over that adopted stream.
+        restored = restored.saturating_add(1);
+    }
+
+    if restored > 0 {
+        emit_interactive_sessions(app, &session_mgr);
+    }
+    Ok(restored)
+}
+
+struct CheckpointSummaryInput {
+    summary_json: Option<Value>,
+    summary_path: Option<String>,
+    inflight_ref: Option<String>,
+    redaction_count: usize,
+}
+
+fn checkpoint_summary_from_inputs(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+    summary_json: Option<Value>,
+    summary_seq: Option<u64>,
+) -> Result<CheckpointSummaryInput, String> {
+    if summary_json.is_some() && summary_seq.is_some() {
+        return Err(
+            "session_checkpoint accepts either summary_json or summary_seq, not both".to_string(),
+        );
+    }
+    let Some(raw) = summary_json
+        .map(|value| serde_json::to_string(&value))
+        .transpose()
+        .map_err(|err| format!("serialize checkpoint summary_json failed: {err}"))?
+        .or_else(|| None)
+    else {
+        if let Some(seq) = summary_seq {
+            return checkpoint_summary_from_backend_file(app, info, seq);
+        }
+        return Ok(CheckpointSummaryInput {
+            summary_json: None,
+            summary_path: None,
+            inflight_ref: None,
+            redaction_count: 0,
+        });
+    };
+    checkpoint_summary_from_raw(app, info, raw, None)
+}
+
+fn checkpoint_summary_from_backend_file(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+    seq: u64,
+) -> Result<CheckpointSummaryInput, String> {
+    let worktree_path = info.worktree_path.as_deref().unwrap_or(&info.cwd);
+    let files =
+        canonical_summary_files_for_checkpoint(worktree_path, &info.logical_session_id, seq)?;
+    let summary_path = files.summary_path.display().to_string();
+    let context = build_summary_validation_context(app, info);
+    let (redacted, _validation) = read_redacted_summary(&files, &context)?;
+    let inflight_ref = redacted.summary.in_flight_diff.r#ref.clone();
+    Ok(CheckpointSummaryInput {
+        summary_json: Some(redacted.summary_json),
+        summary_path: Some(summary_path),
+        inflight_ref,
+        redaction_count: redacted.redaction_count,
+    })
+}
+
+fn checkpoint_summary_from_raw(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+    raw: String,
+    summary_path: Option<String>,
+) -> Result<CheckpointSummaryInput, String> {
+    let context = build_summary_validation_context(app, info);
+    let (redacted, _validation) = parse_redacted_summary(&raw, &context)?;
+    let inflight_ref = redacted.summary.in_flight_diff.r#ref.clone();
+    Ok(CheckpointSummaryInput {
+        summary_json: Some(redacted.summary_json),
+        summary_path,
+        inflight_ref,
+        redaction_count: redacted.redaction_count,
+    })
+}
+
+fn persist_agent_identity_context(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+    checkpoint: &SessionCheckpointRecord,
+) -> bool {
+    let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
+        return false;
+    };
+    let context_usage_json = serde_json::json!({
+        "schema": "aelyris.context_usage.v1",
+        "source": "session_checkpoint",
+        "logicalSessionId": &checkpoint.logical_session_id,
+        "ptyId": &checkpoint.pty_id,
+        "checkpointSeq": checkpoint.checkpoint_seq,
+        "status": &checkpoint.status,
+        "turnCount": checkpoint.turn_count,
+        "lastActivity": checkpoint.last_activity,
+        "contextRemaining": &checkpoint.context_remaining,
+        "updatedAt": checkpoint.updated_at,
+    });
+    let record = crate::db::AgentIdentityRecord {
+        session_id: checkpoint.logical_session_id.clone(),
+        workspace_id: "runtime-visible-agent".to_string(),
+        provider: agent_cli_label(&info.cli).to_string(),
+        purpose: "visible_agent".to_string(),
+        worktree_path: info
+            .worktree_path
+            .clone()
+            .or_else(|| Some(info.cwd.clone())),
+        context_usage_json,
+        auth_state: "unknown".to_string(),
+        install_state: "runtime".to_string(),
+        binary_source: "visible_pty".to_string(),
+        profile_source: "runtime".to_string(),
+        usage_limits_json: serde_json::json!({}),
+        guardrail_profile: "runtime_core".to_string(),
+        updated_at: String::new(),
+    };
+    match db.with(|d| d.upsert_agent_identity(&record).map(|_| ())) {
+        Ok(()) => true,
+        Err(err) => {
+            log::warn!(
+                "session_checkpoint context_usage_json persistence failed for {}: {}",
+                checkpoint.logical_session_id,
+                err
+            );
+            false
+        }
+    }
+}
+
+fn agent_cli_label(cli: &AgentCli) -> &str {
+    match cli {
+        AgentCli::Claude => "claude",
+        AgentCli::Gemini => "gemini",
+        AgentCli::Codex => "codex",
+        AgentCli::Custom(_) => "custom",
+    }
+}
+
+fn agent_cli_from_label(value: &str) -> AgentCli {
+    match value.to_ascii_lowercase().as_str() {
+        "claude" => AgentCli::Claude,
+        "gemini" => AgentCli::Gemini,
+        "codex" => AgentCli::Codex,
+        other if other.starts_with("custom:") => AgentCli::Custom(other[7..].to_string()),
+        other => AgentCli::Custom(other.to_string()),
+    }
+}
 /// List all interactive sessions
 #[tauri::command]
 pub fn list_interactive_agents(app: AppHandle) -> Result<Vec<InteractiveSessionInfo>, String> {
@@ -363,6 +737,59 @@ pub fn list_interactive_agents(app: AppHandle) -> Result<Vec<InteractiveSessionI
 }
 
 // --- Internal helpers ---
+
+fn find_interactive_session(
+    session_mgr: &InteractiveSessionManager,
+    id_or_logical_id: &str,
+) -> Result<InteractiveSessionInfo, String> {
+    if let Some(info) = session_mgr.get(id_or_logical_id)? {
+        return Ok(info);
+    }
+    session_mgr
+        .list()?
+        .into_iter()
+        .find(|info| info.logical_session_id == id_or_logical_id)
+        .ok_or_else(|| format!("interactive session not found: {id_or_logical_id}"))
+}
+
+async fn write_interactive_input(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+    data: &[u8],
+) -> Result<(), String> {
+    if let Some(client) = app
+        .try_state::<PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        return client.write(&info.pty_id, data).await;
+    }
+    app.state::<PtyManager>().write(&info.pty_id, data)
+}
+
+fn build_summary_validation_context(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+) -> SummaryValidationContext {
+    let repo_path = info
+        .repo_path
+        .as_deref()
+        .or(info.worktree_path.as_deref())
+        .unwrap_or(&info.cwd);
+    let git_status = crate::git::git_status(repo_path).ok();
+    let tasks = app
+        .try_state::<Arc<crate::task::TaskManager>>()
+        .map(|manager| manager.list())
+        .unwrap_or_default();
+    let decisions = app
+        .try_state::<Arc<crate::context_store::ContextStoreManager>>()
+        .map(|manager| manager.all())
+        .unwrap_or_default();
+    SummaryValidationContext {
+        git_status,
+        tasks,
+        decisions,
+    }
+}
 
 async fn close_interactive_pty(app: &AppHandle, pty_id: &str) {
     if let Some(client) = app
@@ -557,6 +984,25 @@ async fn run_output_monitor(
                     let result = parser.parse_chunk(&clean);
 
                     let mut changed = false;
+                    if matches!(cli, &AgentCli::Claude) {
+                        if let Some(snapshot) = native_registry.snapshot(session_id) {
+                            if let Some(context_remaining) =
+                                parse_claude_context_remaining_from_grid(&snapshot, unix_now_secs())
+                            {
+                                match session_mgr
+                                    .update_context_remaining(session_id, context_remaining)
+                                {
+                                    Ok(()) => changed = true,
+                                    Err(err) => {
+                                        log::warn!(
+                                            "interactive context remaining update skipped: {}",
+                                            err
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if let Some(detected) = result.status.as_ref() {
                         if let Some(status) = detected.to_agent_run_status() {
@@ -582,7 +1028,8 @@ async fn run_output_monitor(
                             // so it is only ever SET here, on the gate itself.
                             if *detected == output_monitor::DetectedStatus::WaitingPermission {
                                 if let Some(prompt) = result.approval_prompt.clone() {
-                                    match session_mgr.set_approval_prompt(session_id, Some(prompt)) {
+                                    match session_mgr.set_approval_prompt(session_id, Some(prompt))
+                                    {
                                         Ok(true) => changed = true,
                                         Ok(false) => {}
                                         Err(err) => {

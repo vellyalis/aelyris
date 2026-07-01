@@ -392,10 +392,7 @@ mod tests {
         assert_eq!(event.kind, "command_risk_decision");
         assert_eq!(event.source, "command-risk-gate");
         let payload = event.payload_json.to_string();
-        assert!(
-            !payload.contains(&fake_key),
-            "no raw secret: {payload}"
-        );
+        assert!(!payload.contains(&fake_key), "no raw secret: {payload}");
         assert!(payload.contains("[REDACTED]"));
         assert!(payload.contains("commandHash"));
         assert!(payload.contains("\"decision\":\"approved\""));

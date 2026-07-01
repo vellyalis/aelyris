@@ -492,13 +492,22 @@ pub fn run() {
                         log::info!("PTY sidecar connected in background");
                         let app_handle = sidecar_adopt_app.clone();
                         tauri::async_runtime::spawn(async move {
-                            match ipc::adopt_sidecar_terminals(&app_handle, client).await {
+                            match ipc::adopt_sidecar_terminals(&app_handle, client.clone()).await {
                                 Ok(count) if count > 0 => {
                                     log::info!("PTY sidecar adopted {count} existing terminal(s)")
                                 }
                                 Ok(_) => {}
                                 Err(err) => {
                                     log::warn!("PTY sidecar terminal adoption failed: {err}")
+                                }
+                            }
+                            match ipc::restore_interactive_sessions(&app_handle, client).await {
+                                Ok(count) if count > 0 => {
+                                    log::info!("Restored {count} interactive session checkpoint(s)")
+                                }
+                                Ok(_) => {}
+                                Err(err) => {
+                                    log::warn!("Interactive session checkpoint restore failed: {err}")
                                 }
                             }
                         });
@@ -1159,6 +1168,8 @@ pub fn run() {
             ipc::stop_interactive_agent,
             ipc::end_session_and_remove_worktree,
             ipc::list_interactive_agents,
+            ipc::session_summarize,
+            ipc::session_checkpoint,
             // Auto-repair pipeline (Phase 3A-1)
             ipc::list_repair_jobs,
             ipc::trigger_repair_manual,

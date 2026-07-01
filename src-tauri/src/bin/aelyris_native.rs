@@ -6,9 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use aelyris_lib::config::{
-    load_config, save_config, MoodMaterialOverrideConfig, WallpaperConfig,
-};
+use aelyris_lib::config::{load_config, save_config, MoodMaterialOverrideConfig, WallpaperConfig};
 use aelyris_lib::db::{
     AgentIdentityRecord, Database, HistorySearchEntryRecord, ModePreservationSnapshotRecord,
     WorkspaceItemRecord,
@@ -570,8 +568,12 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
     let surface_width = u32::from(frame.cell_width_px) * u32::from(frame.cols).max(1);
     let surface_height = u32::from(frame.cell_height_px) * u32::from(frame.rows).max(1);
     let allow_ligatures = load_config().appearance.ligatures;
-    let plan =
-        build_winit_wgpu_terminal_draw_plan(&frame, surface_width, surface_height, allow_ligatures)?;
+    let plan = build_winit_wgpu_terminal_draw_plan(
+        &frame,
+        surface_width,
+        surface_height,
+        allow_ligatures,
+    )?;
 
     write_font_atlas_png(&png_path, &plan.font_atlas)?;
     let png_bytes =
@@ -5587,7 +5589,10 @@ fn native_settings_window_proof(
     _alpha: u8,
     _visible: bool,
 ) -> Result<Value, String> {
-    Err("aelyris-native settings-window-proof is currently implemented for Windows only".to_string())
+    Err(
+        "aelyris-native settings-window-proof is currently implemented for Windows only"
+            .to_string(),
+    )
 }
 
 #[cfg(target_os = "windows")]

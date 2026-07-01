@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseFileChangeEvent } from "../lib/agentFileChanges";
+import { normalizeContextRemaining } from "../lib/contextTelemetry";
 import {
   createAgentTelemetryRecoverySession,
   loadAgentTelemetrySnapshot,
@@ -14,10 +15,11 @@ import type { OrchestraRoleId } from "../lib/orchestrator";
 import type { WorkforceGuardrailProfile } from "../lib/rightRailWorkforce";
 import { isTauriRuntime } from "../lib/tauriRuntime";
 import { parseWatchdogDecision, watchdogDecisionToLog } from "../lib/watchdogDecision";
-import type { AgentLog, AgentSession, AgentStatus } from "../types/agent";
+import type { AgentLog, AgentSession, AgentStatus, ContextRemainingWire } from "../types/agent";
 
 interface AgentSessionRaw {
   id: string;
+  logical_session_id?: string | null;
   status: string;
   model: string;
   prompt: string;
@@ -25,6 +27,9 @@ interface AgentSessionRaw {
   workspace_scope?: string;
   cost: number;
   tokens_used: number;
+  last_activity?: number | null;
+  turn_count?: number | null;
+  context_remaining?: ContextRemainingWire | null;
 }
 
 interface AgentTelemetrySnapshotRaw {
@@ -73,11 +78,15 @@ function mergeAgentSessions(
     const meta = roleMeta.get(r.id);
     return {
       id: r.id,
+      logicalSessionId: r.logical_session_id ?? existing?.logicalSessionId,
       name: existing?.name ?? sessionNameFromCwd(r.cwd),
       status: r.status as AgentStatus,
       model: r.model,
       prompt: r.prompt,
       startedAt: existing?.startedAt ?? Date.now(),
+      lastActivity: r.last_activity ?? existing?.lastActivity,
+      turnCount: r.turn_count ?? existing?.turnCount,
+      contextRemaining: normalizeContextRemaining(r.context_remaining) ?? existing?.contextRemaining,
       logs: existing?.logs ?? [],
       cost: r.cost,
       tokensUsed: r.tokens_used,
@@ -120,6 +129,10 @@ function mergeRestoredTelemetry(prev: AgentSession[], restored: AgentSession[]):
       logs: existing.logs.length > 0 ? existing.logs : (durable?.logs ?? []),
       role: existing.role ?? durable?.role,
       handoffFrom: existing.handoffFrom ?? durable?.handoffFrom,
+      logicalSessionId: existing.logicalSessionId ?? durable?.logicalSessionId,
+      lastActivity: existing.lastActivity ?? durable?.lastActivity,
+      turnCount: existing.turnCount ?? durable?.turnCount,
+      contextRemaining: existing.contextRemaining ?? durable?.contextRemaining,
       filesChanged: existing.filesChanged ?? durable?.filesChanged,
       changedFileDetails: existing.changedFileDetails ?? durable?.changedFileDetails,
       owner: existing.owner ?? durable?.owner,

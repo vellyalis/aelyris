@@ -26,6 +26,8 @@ describe("AgentRunStatus contract", () => {
     expect(normalizeAgentRunStatus("waiting")).toBe("waiting_approval");
     expect(normalizeAgentRunStatus("generating")).toBe("coding");
     expect(normalizeAgentRunStatus("thinking")).toBe("thinking");
+    expect(normalizeAgentRunStatus("summarizing")).toBe("summarizing");
+    expect(normalizeAgentRunStatus("retiring")).toBe("retiring");
     expect(normalizeAgentRunStatus("unknown")).toBeNull();
   });
 });

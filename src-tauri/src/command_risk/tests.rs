@@ -187,11 +187,7 @@ fn secrets_are_counted_and_redacted_in_the_preview() {
     assert!(r.classes.contains(&CommandRiskClass::SecretBearing));
     // The persisted preview must NOT contain the raw secret.
     assert!(r.preview.contains("[REDACTED]"), "{}", r.preview);
-    assert!(
-        !r.preview.contains(&fake_key),
-        "{}",
-        r.preview
-    );
+    assert!(!r.preview.contains(&fake_key), "{}", r.preview);
     // secret-bearing alone is review, not deny.
     assert_eq!(r.severity, CommandRiskSeverity::Review);
 }
