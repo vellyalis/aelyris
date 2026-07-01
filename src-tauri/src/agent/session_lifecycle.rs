@@ -101,6 +101,13 @@ pub struct SessionSummaryFiles {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct SessionAckFile {
+    pub handoff_dir: PathBuf,
+    pub ack_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RedactedSessionSummary {
     pub summary: SessionSummaryDoc,
     pub summary_json: Value,
@@ -182,6 +189,21 @@ pub fn summary_files(
         handoff_dir: dir,
         summary_path,
         done_path,
+    }
+}
+
+pub fn successor_ack_file(
+    worktree_path: impl AsRef<Path>,
+    successor_logical_session_id: &str,
+) -> SessionAckFile {
+    let dir = handoff_dir(worktree_path);
+    let ack_path = dir.join(format!(
+        "{}.ack",
+        sanitize_handoff_id(successor_logical_session_id)
+    ));
+    SessionAckFile {
+        handoff_dir: dir,
+        ack_path,
     }
 }
 
@@ -294,6 +316,35 @@ Redact credentials before writing. Do not put secret values, tokens, private key
         seq = seq,
         summary_path = files.summary_path.display(),
         done_path = files.done_path.display()
+    )
+}
+
+pub fn build_successor_seed_prompt(
+    predecessor_logical_session_id: &str,
+    successor_logical_session_id: &str,
+    summary_path: &Path,
+    ack_path: &Path,
+    reason: &str,
+) -> String {
+    format!(
+        r#"Aelyris session_handoff continuation.
+Reason: {reason}
+Predecessor logical session: {predecessor}
+Successor logical session: {successor}
+
+First, read this checkpoint summary file:
+{summary_path}
+
+After you have read it and loaded the continuing task context, write this ack file:
+{ack_path}
+
+Do not delete or move the predecessor worktree. Continue from the summary's nextAction and preserve any inFlightDiff ref named there.
+"#,
+        reason = reason,
+        predecessor = predecessor_logical_session_id,
+        successor = successor_logical_session_id,
+        summary_path = summary_path.display(),
+        ack_path = ack_path.display()
     )
 }
 
@@ -747,6 +798,19 @@ mod tests {
     }
 
     #[test]
+    fn successor_ack_file_is_sanitized_under_handoff_dir() {
+        let ack = successor_ack_file("C:/repo", "agent/next:one");
+        assert_eq!(
+            ack.ack_path,
+            PathBuf::from("C:/repo")
+                .join(".aelyris")
+                .join("handoff")
+                .join("agent_next_one.ack")
+        );
+        assert!(ack.ack_path.starts_with(handoff_dir("C:/repo")));
+    }
+
+    #[test]
     fn checkpoint_summary_files_are_backend_built_and_canonical() {
         let temp = tempfile::tempdir().unwrap();
         let files = summary_files(temp.path(), "agent-1", 3);
@@ -796,6 +860,21 @@ mod tests {
         assert!(prompt.contains(SUMMARY_SCHEMA));
         assert!(prompt.contains(".aelyris"));
         assert!(prompt.contains("done marker"));
+        assert!(!prompt.contains("capture_pane"));
+    }
+
+    #[test]
+    fn successor_seed_prompt_names_summary_and_ack_files() {
+        let prompt = build_successor_seed_prompt(
+            "agent-1",
+            "agent-2",
+            &PathBuf::from("C:/repo/.aelyris/handoff/agent-1.1.json"),
+            &PathBuf::from("C:/repo/.aelyris/handoff/agent-2.ack"),
+            "context_pressure",
+        );
+        assert!(prompt.contains("session_handoff"));
+        assert!(prompt.contains("agent-1.1.json"));
+        assert!(prompt.contains("agent-2.ack"));
         assert!(!prompt.contains("capture_pane"));
     }
 }

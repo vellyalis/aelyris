@@ -510,6 +510,15 @@ pub fn run() {
                                     log::warn!("Interactive session checkpoint restore failed: {err}")
                                 }
                             }
+                            match ipc::reconcile_session_handoffs_on_boot(&app_handle).await {
+                                Ok(count) if count > 0 => {
+                                    log::info!("Reconciled {count} session handoff(s) after restart")
+                                }
+                                Ok(_) => {}
+                                Err(err) => {
+                                    log::warn!("Session handoff boot reconcile failed: {err}")
+                                }
+                            }
                         });
                     }
                     Err(err) => log::warn!("PTY sidecar state update failed: {err}"),
@@ -1170,6 +1179,7 @@ pub fn run() {
             ipc::list_interactive_agents,
             ipc::session_summarize,
             ipc::session_checkpoint,
+            ipc::session_handoff,
             // Auto-repair pipeline (Phase 3A-1)
             ipc::list_repair_jobs,
             ipc::trigger_repair_manual,

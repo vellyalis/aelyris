@@ -91,6 +91,7 @@
     "verify:runtime-core:context-proxy": "node scripts/verify-context-proxy.mjs",
     "verify:runtime-core:self-summary": "node scripts/verify-self-summary.mjs",
     "verify:runtime-core:session-checkpoint": "node scripts/verify-session-checkpoint-restore.mjs",
+    "verify:runtime-core:session-handoff": "node scripts/verify-session-handoff-no-loss.mjs",
     "verify:final-goal-audit": "node scripts/verify-final-goal-audit.mjs",
     "verify:goal:completion-matrix": "node scripts/verify-goal-completion-matrix.mjs",
     "verify:goal:safe": "node scripts/verify-final-goal-safe.mjs",

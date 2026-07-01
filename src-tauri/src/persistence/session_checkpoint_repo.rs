@@ -114,6 +114,18 @@ impl SessionCheckpointRepo {
         nonnegative_u64("checkpoint_seq", next)
     }
 
+    pub fn next_handoff_seq(db: &Database, predecessor_id: &str) -> Result<u64, String> {
+        let next: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COALESCE(MAX(handoff_seq), 0) + 1 FROM session_handoffs WHERE predecessor_id = ?1",
+                params![predecessor_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("load next handoff seq for {predecessor_id}: {e}"))?;
+        nonnegative_u64("handoff_seq", next)
+    }
+
     pub fn upsert_checkpoint(
         db: &Database,
         checkpoint: &SessionCheckpointRecord,
@@ -677,6 +689,10 @@ mod tests {
                 .unwrap()
                 .len(),
             1
+        );
+        assert_eq!(
+            SessionCheckpointRepo::next_handoff_seq(&db, "logical-a").unwrap(),
+            2
         );
     }
 

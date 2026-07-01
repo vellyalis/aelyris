@@ -1543,7 +1543,9 @@ impl Database {
             self.conn
                 .execute(
                     "DELETE FROM audit_event_journal
-                 WHERE workspace_id = ?1 AND sequence < ?2",
+                 WHERE workspace_id = ?1
+                   AND sequence < ?2
+                   AND kind NOT IN ('session_handoff', 'context_recycled')",
                     params![workspace_id, before_sequence],
                 )
                 .map_err(|e| format!("Compact audit journal: {}", e))? as i64;
@@ -3080,6 +3082,23 @@ mod tests {
             .unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].sequence, second.sequence);
+
+        let governance = db
+            .append_audit_journal_event(&journal_event(
+                "workspace-a",
+                Some("trace-1"),
+                "session_handoff",
+                serde_json::json!({ "phase": "committing" }),
+            ))
+            .unwrap();
+        let after_governance_compact = db
+            .compact_audit_event_journal("workspace-a", governance.sequence + 1)
+            .unwrap();
+        assert_eq!(after_governance_compact.compacted_count, 1);
+        let governance_trace = db.get_audit_trace("trace-1", Some("workspace-a")).unwrap();
+        assert!(governance_trace
+            .iter()
+            .any(|record| record.kind == "session_handoff"));
 
         let after_compact = db
             .append_audit_journal_event(&journal_event(

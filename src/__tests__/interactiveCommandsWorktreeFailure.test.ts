@@ -25,7 +25,11 @@ describe("interactive command worktree removal failure handling", () => {
   it("routes interactive AI CLI sessions through the sidecar command boundary first", () => {
     const src = Object.values(sources)[0];
 
-    const fnMatch = src.match(/pub async fn spawn_interactive_agent[\s\S]*?^}/m);
+    const wrapperMatch = src.match(/pub async fn spawn_interactive_agent[\s\S]*?^}/m);
+    expect(wrapperMatch).not.toBeNull();
+    expect(wrapperMatch?.[0] ?? "").toContain("spawn_interactive_agent_internal");
+
+    const fnMatch = src.match(/async fn spawn_interactive_agent_internal[\s\S]*?^}/m);
     expect(fnMatch).not.toBeNull();
     const body = fnMatch?.[0] ?? "";
 
