@@ -155,6 +155,13 @@ Headless prompt delivery:
 
 - `-p <prompt>` is allowed only in `AgentManager`, `claude_oneshot`, and explicitly headless MCP tools.
 
+Loop-dispatched prompt context:
+
+- `run_step` and `run_step_visible` MUST build the same prompt prefix contract.
+- Prefix order is stable: Context Store ADR decisions, then repo-local `AGENTS.md` guidelines, then active symbol ownership, then the task title/description.
+- The `AGENTS.md` section is read from the project root and capped before insertion. Missing `AGENTS.md` contributes no section and is not an error.
+- The repo guideline section is informational prompt context only. It must not change run mode, worktree ownership, tool permission, or visible-vs-headless launch rules.
+
 ### 3.3 Presentation modes
 
 `visible_pty` still needs a presentation target.
@@ -351,6 +358,7 @@ New / updated gates:
 
 - Static grep gate: `agent_command_spec` and `agent_shell_command_spec` must not contain `-p` / `--print`.
 - Static doc gate: docs must not claim interactive prompt delivery uses `-p`.
+- Rust unit gate: `loop_ports` covers repo guideline header present/missing/capped behavior and proves headless plus visible pane prompt ordering.
 - Frontend unit gate: Orchestra dispatch enqueues central pane mounts for all successful visible spawns.
 - Live gate: `scripts/verify-orchestra-center-panes.mjs`.
 - Existing live gates remain:
