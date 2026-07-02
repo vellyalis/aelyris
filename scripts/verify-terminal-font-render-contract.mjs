@@ -27,6 +27,7 @@ const SOURCE_PATHS = [
   "src/__tests__/NativeTerminalArea.test.tsx",
   "src/__tests__/TerminalCanvas.test.tsx",
   "src/__tests__/TerminalFontSettingsContract.test.ts",
+  "src/__tests__/terminalColors.test.ts",
 ];
 
 function source(path) {
@@ -85,6 +86,7 @@ const rustSettings = source("src-tauri/src/config/settings.rs");
 const nativeTerminalAreaTest = source("src/__tests__/NativeTerminalArea.test.tsx");
 const terminalCanvasTest = source("src/__tests__/TerminalCanvas.test.tsx");
 const sourceContractTest = source("src/__tests__/TerminalFontSettingsContract.test.ts");
+const terminalColorsTest = source("src/__tests__/terminalColors.test.ts");
 
 const sourceCutoffMs = Math.max(mtime("scripts/verify-terminal-font-render-contract.mjs"), ...SOURCE_PATHS.map(mtime));
 
@@ -92,9 +94,11 @@ const runtimePaneNeedles = [
   "terminalFontFamily = useAppStore((s) => s.terminalFontFamily)",
   "terminalFontSize = useAppStore((s) => s.terminalFontSize)",
   "terminalTextClarity = useAppStore((s) => s.terminalTextClarity)",
-  "useTerminalCellMetrics(terminalFontSize, terminalFontFamily)",
+  "terminalLineHeight = useAppStore((s) => s.terminalLineHeight)",
+  "useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)",
   "fontSize={terminalFontSize}",
   "fontFamily={terminalFontFamily}",
+  "lineHeight={terminalLineHeight}",
   "textClarity={terminalTextClarity}",
 ];
 
@@ -196,12 +200,10 @@ const checks = [
       "useTerminalRasterBackground",
       "TERMINAL_RASTER_BG_FALLBACK",
       "--terminal-raster-bg",
-      "forceOpaqueCssColor",
       "prevCanvasGeometryRef",
       "canvasGeometryChanged",
       "devicePixelRatio: canvasDevicePixelRatio",
       'textClarity = "solid"',
-      'textClarity === "solid"',
       'textClarity === "glass"',
       "data-terminal-text-clarity={textClarity}",
       'textCtx.fontKerning = "none"',
@@ -209,7 +211,15 @@ const checks = [
     ]) &&
       hasAll(terminalCanvasGeometry, ["snapCanvasTextCoord", "canvasBitmapSize", "canvasCssSize"]) &&
       hasAll(terminalPaint, ["snapCanvasTextCoord", "enhanceTerminalTextColor", "dimAlphaForTextClarity"]) &&
-      hasAll(terminalColors, ["forceOpaqueCssColor", "minimumTerminalContrastRatio", "dimAlphaForTextClarity"]) &&
+      hasAll(terminalColors, [
+        "forceOpaqueCssColor",
+        "minimumTerminalContrastRatio",
+        "dimAlphaForTextClarity",
+        'textClarity === "solid"',
+        "minimumContrast <= 0",
+        "const opaqueColor = fg.a < 1 ? forceOpaqueCssColor(color) : color",
+        "return opaqueColor",
+      ]) &&
       hasAll(repaintDecision, ["flags.canvasGeometryChanged", "flags.rowContentChanged"]) &&
       !terminalCanvas.includes('imageRendering: "pixelated"') &&
       !terminalPaint.includes('imageRendering: "pixelated"'),
@@ -303,7 +313,8 @@ const checks = [
       "terminal_surface_opacity: terminalSurfaceOpacity",
       "terminalFontFamily = useAppStore((s) => s.terminalFontFamily)",
       "terminalTextClarity = useAppStore((s) => s.terminalTextClarity)",
-      "useTerminalCellMetrics(terminalFontSize, terminalFontFamily)",
+      "terminalLineHeight = useAppStore((s) => s.terminalLineHeight)",
+      "useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)",
       "snapPaneRectToDevicePixels",
       "forceOpaqueCssColor",
       "enhanceTerminalTextColor",
@@ -315,6 +326,11 @@ const checks = [
         "clears rows then paints an in-canvas raster backing before glyphs",
         "rgba(3, 10, 22, 1)",
         "boosts low-contrast text in solid clarity mode",
+      ]) &&
+      hasAll(terminalColorsTest, [
+        "forces translucent legible glyph colours opaque outside glass mode",
+        'enhanceTerminalTextColor("rgba(255, 255, 255, 0.8)", "#000000", "solid")',
+        'enhanceTerminalTextColor("rgba(255, 255, 255, 0.8)", "#000000", "balanced")',
       ]),
     "source-level regression coverage records the settings-to-rendering contract and default sharp raster paint path",
   ),

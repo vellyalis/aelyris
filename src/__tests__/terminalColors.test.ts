@@ -86,6 +86,15 @@ describe("enhanceTerminalTextColor", () => {
     expect(enhanceTerminalTextColor("#ffffff", "#000000", "solid")).toBe("#ffffff");
   });
 
+  it("forces translucent legible glyph colours opaque outside glass mode", () => {
+    expect(enhanceTerminalTextColor("rgba(255, 255, 255, 0.8)", "#000000", "solid")).toBe(
+      "rgba(255, 255, 255, 1)",
+    );
+    expect(enhanceTerminalTextColor("rgba(255, 255, 255, 0.8)", "#000000", "balanced")).toBe(
+      "rgba(255, 255, 255, 1)",
+    );
+  });
+
   it("passes through colours it cannot parse", () => {
     expect(enhanceTerminalTextColor("var(--ctp-text)", "#000000", "solid")).toBe("var(--ctp-text)");
   });

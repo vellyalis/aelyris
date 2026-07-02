@@ -484,6 +484,7 @@ const terminalFontSettingsContractTestSource = readFileSync(
   join(ROOT, "src", "__tests__", "TerminalFontSettingsContract.test.ts"),
   "utf8",
 );
+const terminalColorsTestSource = readFileSync(join(ROOT, "src", "__tests__", "terminalColors.test.ts"), "utf8");
 const useImageMetricsTestSource = readFileSync(join(ROOT, "src", "__tests__", "useImageMetrics.test.tsx"), "utf8");
 const appSilentBugsTestSource = readFileSync(join(ROOT, "src", "__tests__", "AppSilentBugs.test.ts"), "utf8");
 const themePaletteTestSource = readFileSync(join(ROOT, "src", "__tests__", "themePalette.test.ts"), "utf8");
@@ -873,6 +874,8 @@ const terminalCanvasCrispText =
   terminalPaintSource.includes("snapCanvasTextCoord") &&
   terminalPaintSource.includes("shouldClampGlyphToCell") &&
   terminalPaintSource.includes("enhanceTerminalTextColor") &&
+  terminalColorsSource.includes("forceOpaqueCssColor") &&
+  terminalColorsSource.includes("const opaqueColor = fg.a < 1 ? forceOpaqueCssColor(color) : color") &&
   terminalColorsSource.includes("minimumTerminalContrastRatio") &&
   terminalColorsSource.includes("dimAlphaForTextClarity") &&
   terminalMetricsSource.includes("snapTerminalCssPixel") &&
@@ -910,25 +913,28 @@ const terminalFontRenderContractSourcePass =
   terminalFontRenderContractSource.includes("src/features/terminal/terminalPaint.ts") &&
   terminalFontRenderContractSource.includes("src/features/terminal/terminalColors.ts") &&
   terminalFontRenderContractSource.includes("src/features/terminal/repaintDecision.ts") &&
+  terminalFontRenderContractSource.includes("src/__tests__/terminalColors.test.ts") &&
   terminalFontRenderContractSource.includes("pane-mount-pixel-grid") &&
   terminalFontSettingsContractTestSource.includes("terminal font settings contract") &&
   terminalFontSettingsContractTestSource.includes("terminal_font_family: terminalFontFamily") &&
+  terminalFontSettingsContractTestSource.includes("terminalLineHeight = useAppStore((s) => s.terminalLineHeight)") &&
   settingsSource.includes("terminal_font_family: terminalFontFamily") &&
   settingsSource.includes("terminal_text_clarity: terminalTextClarity") &&
   settingsSource.includes("terminal_surface_opacity: terminalSurfaceOpacity") &&
   settingsSource.includes("surfaceOpacity: terminalSurfaceOpacity") &&
   nativeTerminalAreaSource.includes("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)") &&
   nativeTerminalAreaSource.includes("textClarity={terminalTextClarity}") &&
-  nativeTerminalAreaSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily)") &&
+  nativeTerminalAreaSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)") &&
   agentTerminalSource.includes("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)") &&
   agentTerminalSource.includes("textClarity={terminalTextClarity}") &&
-  agentTerminalSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily)") &&
-  terminalCanvasSource.includes("forceOpaqueCssColor") &&
+  agentTerminalSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)") &&
   terminalPaintSource.includes("enhanceTerminalTextColor") &&
+  terminalColorsSource.includes("forceOpaqueCssColor") &&
+  terminalColorsSource.includes("return opaqueColor") &&
+  terminalColorsTestSource.includes("forces translucent legible glyph colours opaque outside glass mode") &&
   terminalColorsSource.includes("minimumTerminalContrastRatio") &&
   terminalColorsSource.includes("dimAlphaForTextClarity") &&
   terminalCanvasSource.includes('textClarity = "solid"') &&
-  terminalCanvasSource.includes('textClarity === "solid"') &&
   terminalCanvasSource.includes("data-terminal-text-clarity={textClarity}");
 const terminalFontRenderContractFresh =
   terminalFontRenderContract?.ok === true &&
@@ -941,6 +947,7 @@ const terminalFontRenderContractFresh =
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/repaintDecision.ts") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/pane-tree/PaneTreeRenderer.tsx") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/__tests__/TerminalFontSettingsContract.test.ts") &&
+  terminalFontRenderContract?.sourcePaths?.includes?.("src/__tests__/terminalColors.test.ts") &&
   mtimeMs(terminalFontRenderContractPath) + 5_000 >=
     Math.max(
       mtimeMs(join(ROOT, "scripts", "verify-terminal-font-render-contract.mjs")),
@@ -958,6 +965,7 @@ const terminalFontRenderContractFresh =
       mtimeMs(join(ROOT, "src", "features", "terminal", "terminalMetrics.ts")),
       mtimeMs(join(ROOT, "src", "shared", "store", "appStore.ts")),
       mtimeMs(join(ROOT, "src", "__tests__", "TerminalFontSettingsContract.test.ts")),
+      mtimeMs(join(ROOT, "src", "__tests__", "terminalColors.test.ts")),
     );
 const terminalRenderFidelityBlockers = [
   ...(terminalCanvasDprBacked ? [] : ["terminal canvas backing store is not device-pixel-ratio backed"]),
