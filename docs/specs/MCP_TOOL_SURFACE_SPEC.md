@@ -211,6 +211,20 @@ and MUST be reconciled when the capability layer is built:
 The MCP tools serialize whatever the capability layer emits; this table is the
 contract the capability layer must converge on so both faces see one enum.
 
+### 3.7 Intent Bus domain (durable pre-fact deliberation)
+
+H3 persistence rule: `aelyris.intent.*` reads and writes go through the single
+`IntentBus` manager, which hydrates from the SQLite `intents` table before the
+MCP HTTP server binds and writes through on real changes. The in-memory manager
+remains the hot owner; SQLite is the restart source of truth.
+
+| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
+|------|-----------|---------|------------|-------|
+| `aelyris.intent.propose` | **params** `{ agentId: string, proposal: string, targets?: string[] }` -> **return** `{ intent: Intent }` | `intent::IntentBus::propose` via `src-tauri/src/api/mcp.rs` | FREE | Declares a proposal before acting and persists it best-effort through `persistence::IntentRepo`; write errors are logged but do not roll back the live in-memory proposal. |
+| `aelyris.intent.list` | **params** `{}` -> **return** `{ intents: Intent[] }` | `intent::IntentBus::open` | FREE | Returns open deliberations from the hydrated manager. |
+| `aelyris.intent.all` | **params** `{}` -> **return** `{ intents: Intent[] }` | `intent::IntentBus::all` | FREE | Returns every hydrated intent in proposal order, including accepted/rejected/superseded rows. |
+| `aelyris.intent.resolve` | **params** `{ id: string, status: "accepted"\|"rejected"\|"superseded" }` -> **return** `{ intent: Intent\|null }` | `intent::IntentBus::resolve` | FREE | Updates a deliberation status through the same manager; the status transition is persisted on real change and restored across restart. |
+
 ---
 
 ## 4. Gate enforcement

@@ -309,6 +309,20 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS intents (
+            id           TEXT PRIMARY KEY,
+            agent_id     TEXT NOT NULL,
+            proposal     TEXT NOT NULL,
+            targets_json TEXT NOT NULL DEFAULT '[]',
+            status       TEXT NOT NULL DEFAULT 'open' CHECK (
+                status IN ('open', 'accepted', 'rejected', 'superseded')
+            ),
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))
+        );
+        CREATE INDEX IF NOT EXISTS idx_intents_status_created
+            ON intents(status, created_at);
+
         CREATE TABLE IF NOT EXISTS tasks (
             id               TEXT PRIMARY KEY,
             title            TEXT NOT NULL,
@@ -602,6 +616,22 @@ mod tests {
             )
             .unwrap();
         assert_eq!(value, "jwt");
+
+        conn.execute(
+            "INSERT INTO intents
+             (id, agent_id, proposal, targets_json, status, created_at)
+             VALUES ('intent-1', 'agent-a', 'extract AuthService', '[\"src/auth.rs\"]', 'open', 100)",
+            [],
+        )
+        .unwrap();
+        let intent_status: String = conn
+            .query_row(
+                "SELECT status FROM intents WHERE id = 'intent-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(intent_status, "open");
 
         // P1 Task tables: a task plus a dependency edge survive insert/select.
         conn.execute("INSERT INTO tasks (id, title) VALUES ('a', 'A')", [])

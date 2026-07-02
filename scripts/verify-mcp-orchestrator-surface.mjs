@@ -11,7 +11,6 @@ const read = (relativePath) =>
 const api = read("src-tauri/src/api/mod.rs");
 const apiMcp = read("src-tauri/src/api/mcp.rs");
 const lib = read("src-tauri/src/lib.rs");
-const controlMod = read("src-tauri/src/control/mod.rs");
 const merge = read("src-tauri/src/control/merge.rs");
 const gitMod = read("src-tauri/src/git/mod.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
@@ -145,8 +144,9 @@ const checks = [
       // intent, claimed via the DB compare-and-swap.
       !apiMcp.includes("crate::git::perform_merge(&repo_path, &source_branch, &target_branch)") &&
       apiMcp.includes("APPROVE_ALLOWED") &&
-      apiMcp.includes("crate::git::perform_merge_bound(") &&
-      apiMcp.includes(".claim_for_merge(&intent_id, now)") &&
+      apiMcp.includes("crate::control::merge::approve_durable_intent(") &&
+      merge.includes("crate::git::perform_merge_bound(") &&
+      merge.includes(".claim_for_merge(intent_id, now)") &&
       gitMerge.includes("pub fn perform_merge_bound"),
     detail:
       "reviewer approve binds to the stored immutable intent (intentId only), CAS-claims, and runs an OID-bound merge; reject resolves without merging",

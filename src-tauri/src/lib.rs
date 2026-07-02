@@ -281,6 +281,18 @@ pub fn run() {
                 }
             }
 
+            fn restore_intent_bus(app: &tauri::AppHandle, db: &db::ManagedDb) {
+                let intents = app
+                    .state::<std::sync::Arc<intent::IntentBus>>()
+                    .inner()
+                    .clone();
+                match intents.attach_db(std::sync::Arc::new(db.clone())) {
+                    Ok(n) if n > 0 => log::info!("intent bus: restored {n} intent(s) from disk"),
+                    Ok(_) => {}
+                    Err(err) => log::warn!("intent bus: restore from disk failed: {err}"),
+                }
+            }
+
             // Restore the autonomy TaskGraph so an interrupted build survives a
             // restart: load the persisted graph, collapse volatile in-flight
             // (Running/Review) tasks to Pending (their worker died at crash) and
@@ -387,6 +399,7 @@ pub fn run() {
                     log::info!("Database initialized at {:?}", db_path);
                     let managed = db::ManagedDb::new(database);
                     restore_context_store(app.handle(), &managed);
+                    restore_intent_bus(app.handle(), &managed);
                     restore_task_graph(app.handle(), &managed);
                     restore_knowledge_graph(app.handle(), &managed);
                     restore_ownership(app.handle(), &managed);
@@ -405,6 +418,7 @@ pub fn run() {
                         );
                         let managed = db::ManagedDb::new(mem_db);
                         restore_context_store(app.handle(), &managed);
+                        restore_intent_bus(app.handle(), &managed);
                         restore_task_graph(app.handle(), &managed);
                         restore_knowledge_graph(app.handle(), &managed);
                         restore_ownership(app.handle(), &managed);
@@ -427,6 +441,20 @@ pub fn run() {
                     }
                 }
                 Err(e) => log::error!("Context store persistence unavailable: {}", e),
+            }
+
+            // Runtime Hardening H3: make Intent Bus deliberations durable. This
+            // follows the Context Store pattern: own connection, hydrate before
+            // the MCP HTTP server binds, loud-fail to in-memory only.
+            match Database::open(&db_path) {
+                Ok(intent_db) => {
+                    let intents = app.state::<std::sync::Arc<intent::IntentBus>>();
+                    match intents.attach_db(std::sync::Arc::new(db::ManagedDb::new(intent_db))) {
+                        Ok(n) => log::info!("Intent Bus restored {} intent(s)", n),
+                        Err(e) => log::error!("Intent Bus restore failed: {}", e),
+                    }
+                }
+                Err(e) => log::error!("Intent Bus persistence unavailable: {}", e),
             }
 
             // Runtime Hardening P1: make the Task Graph durable the same way.
