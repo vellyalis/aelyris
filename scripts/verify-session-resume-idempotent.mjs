@@ -29,7 +29,7 @@ function appearsInOrder(text, needles) {
   return true;
 }
 
-const commands = read("src-tauri/src/ipc/interactive_commands.rs");
+const commands = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
 const lifecycle = read("src-tauri/src/agent/session_lifecycle.rs");
 const repo = read("src-tauri/src/persistence/session_checkpoint_repo.rs");
 const lib = read("src-tauri/src/lib.rs");

@@ -20,13 +20,13 @@ function between(text, start, end) {
 }
 
 const lifecycle = read("src-tauri/src/agent/session_lifecycle.rs");
-const commands = read("src-tauri/src/ipc/interactive_commands.rs");
+const commands = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
 const status = read("src-tauri/src/agent/status.rs");
 const agentStatus = read("src/shared/types/agentStatus.ts");
 const agentFleet = read("src/shared/lib/agentFleet.ts");
 const lib = read("src-tauri/src/lib.rs");
 const gitignore = read(".gitignore");
-const sessionSummarizeBlock = between(commands, "pub async fn session_summarize", "/// List all interactive sessions");
+const sessionSummarizeBlock = between(commands, "pub async fn session_summarize", "pub struct SessionCheckpointResult");
 
 const checks = [
   check(

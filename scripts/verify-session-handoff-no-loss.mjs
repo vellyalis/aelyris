@@ -29,7 +29,8 @@ function appearsInOrder(text, needles) {
   return true;
 }
 
-const commands = read("src-tauri/src/ipc/interactive_commands.rs");
+const commands = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
+const interactiveCommands = read("src-tauri/src/ipc/interactive_commands.rs");
 const lifecycle = read("src-tauri/src/agent/session_lifecycle.rs");
 const repo = read("src-tauri/src/persistence/session_checkpoint_repo.rs");
 const eventBus = read("src-tauri/src/event_bus/mod.rs");
@@ -40,7 +41,11 @@ const safeGate = read("scripts/verify-final-goal-safe.mjs");
 
 const handoffBlock = between(commands, "pub async fn session_handoff", "pub async fn restore_interactive_sessions");
 const helperBlock = between(commands, "const RUNTIME_WORKSPACE_ID", "fn find_interactive_session");
-const spawnWrapper = between(commands, "pub async fn spawn_interactive_agent", "async fn run_session_summarize");
+const spawnWrapper = between(
+  interactiveCommands,
+  "pub async fn spawn_interactive_agent",
+  "pub async fn stop_interactive_agent",
+);
 
 const checks = [
   check(
@@ -55,8 +60,8 @@ const checks = [
     spawnWrapper.includes("spawn_interactive_agent_internal") &&
       spawnWrapper.includes("logical_session_id_override") &&
       commands.includes("logical_session_id_override: Some(successor_logical_session_id.clone())") &&
-      commands.includes(".logical_session_id_override") &&
-      commands.includes(".unwrap_or_else(|| session_id.clone())"),
+      spawnWrapper.includes(".logical_session_id_override") &&
+      spawnWrapper.includes(".unwrap_or_else(|| session_id.clone())"),
     "successor logical_session_id is preassigned before spawn and is independent of the PTY id",
   ),
   check(
