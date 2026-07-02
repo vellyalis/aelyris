@@ -59,6 +59,8 @@
     "verify:production:suspend:native-cycle": "node scripts/verify-real-os-suspend-evidence.mjs --native-primary --launch-native-primary --cycle",
     "verify:production:suspend:native-user-cycle": "node scripts/verify-real-os-suspend-evidence.mjs --native-primary --launch-native-primary --user-sleep-cycle",
     "verify:terminal:font-render": "node scripts/verify-terminal-font-render-contract.mjs",
+    "verify:renderer:parity": "node scripts/verify-renderer-parity.mjs",
+    "verify:renderer:perf": "node scripts/verify-renderer-perf.mjs",
     "verify:terminal:native-input": "node scripts/verify-native-terminal-input-host.mjs",
     "verify:terminal:command-evidence": "node scripts/verify-live-command-evidence.mjs",
     "verify:terminal:multipane-command-evidence": "node scripts/verify-multipane-command-evidence.mjs",
