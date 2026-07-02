@@ -1,12 +1,20 @@
 # UI Token Dial Spec — Tier-1 "Dial Up"
 
-Status: PROPOSED (apply-ready change list, NOT applied)
+Status: APPLIED (verified 2026-07-02) — kept as design rationale record
 Author: design engineering
 Date: 2026-06-13
 Scope: `src/styles/global.css` `:root` token register + the three consumer
 sites that resolve these tokens (`WorkspaceTabs.module.css`,
 `AgentInspector.module.css`, and the `.mode-rail*` / `.right-panel*` rules that
 live inside `global.css` itself).
+
+> **STATUS (2026-07-02):** every proposal below is applied in
+> `src/styles/global.css` — border alphas 0.10/0.16 (now `global.css:38-39`),
+> `--surface-selected` (~`:289`), `--tracking-kicker: 0.04em` (~`:475`), the
+> lifted `--type-*` role aliases (~`:505-512`), and zero `font-weight: 800+`
+> declarations remain. In-body `global.css:N` pointers and "current value"
+> figures describe the **June pre-change file** and are stale; treat this
+> document as the rationale record for the values now in the tree.
 
 > HARD CONSTRAINT: This document is analysis + documentation only. No source
 > file under `src/` or `src-tauri/` is edited by this task. Every "current

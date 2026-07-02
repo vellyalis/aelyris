@@ -6,20 +6,25 @@
 > and autonomy is bounded by verifier gates (this is alpha). A Reviewer agent
 > (reviewer ≠ implementer) can advance `request_merge` to `done` only after all
 > quality gates are green, and tool-approval can be auto-decided within a policy
-> envelope that keeps an auto-deny floor for catastrophic/irreversible ops. The
-> §3.5 / §4 "GATED / never returns done / human clicks grant / never auto-merges
-> main" content describes the **earlier v1 gate model** — treat it as historical on
-> the *merge* and *human-grant* axes; these mechanics are rewritten during Batch E/G.
-> Automated, non-blocking compensating controls and human post-hoc override remain.
+> envelope that keeps an auto-deny floor for catastrophic/irreversible ops.
+>
+> **2026-07-02: §3 and §4 regenerated from the implementation.** An audit found
+> the previous §3 catalog (~13 designed tools) and the previous §4.4 invariant
+> ("no MCP tool can decide a merge") no longer matched the shipped code. §3 is
+> now generated from `src-tauri/src/api/mcp.rs`; §4 now describes the shipped
+> bounded-autonomy merge model (durable OID-bound merge intents +
+> reviewer-authority verbs). The earlier "never returns done / human clicks
+> grant / never merges main" mechanics are historical for the *merge* axis.
 
-Status: Draft / binding design alignment
+Status: Aligned to implementation (regenerated 2026-07-02)
 Audience: backend (Rust) + orchestration engineering
 Scope: the **AI-facing** projection of the Aelyris Control API.
 
-> **HARD SCOPE NOTE:** This document is analysis + design only. It maps a proposed
-> `aelyris` MCP server onto real backend code. File:line references are to the
-> current tree on branch `codex/release-hardening-quality-gates`. Nothing here is
-> implemented yet beyond what the "maps to" column cites as existing.
+> **SCOPE NOTE:** §3 and §4 of this document describe the tool surface that is
+> **implemented** in `src-tauri/src/api/mcp.rs` and served over the daemon's
+> `/mcp/*` routes. File references are to the current tree; line numbers are
+> intentionally omitted because they drift — use the cited symbol names. The
+> runtime source of truth for the catalog is `GET /mcp/tools/list`.
 
 ---
 
@@ -32,238 +37,368 @@ intent layer). Two clients ("faces") project onto it:
 
 | Face | Consumer | Transport | Status |
 |------|----------|-----------|--------|
-| Face 1 — Cockpit UI | Human operator | Tauri IPC (`invoke`) | Exists. `src-tauri/src/lib.rs:520-690` registers ~68 commands consumed by the React frontend. |
-| **Face 2 — Orchestrator AI** | Opus 4.8 orchestrator (or operator's Claude Code / Codex session) | **`aelyris` MCP server** | **This spec.** Partial precedent exists at `src-tauri/src/api/mod.rs:964-966` (`/mcp/*` routes). |
+| Face 1 — Cockpit UI | Human operator | Tauri IPC (`invoke`) | Exists. The `tauri::generate_handler![...]` block in `src-tauri/src/lib.rs` registers 212 IPC handlers as of 2026-07-02 (count drifts; the block is the source of truth). |
+| **Face 2 — Orchestrator AI** | An orchestrator model (or the operator's AI CLI session) | **`aelyris` MCP surface** | Implemented. `src-tauri/src/api/mcp.rs` defines the catalog (`tool_names`), the schemas (`tools_list`), and the dispatcher (`tools_call`); `src-tauri/src/api/mod.rs` wires the `/mcp/contract`, `/mcp/tools/list`, `/mcp/tools/call`, and `/mcp` (JSON-RPC) routes. |
 
 The capability layer is built **once**; both faces consume it. A tool in this
-catalog is not new business logic — it is a thin MCP adapter over an existing
-IPC handler or backend `fn`. Where a row says **NEW**, the underlying capability
-itself does not yet exist and must be built in the capability layer first (and
-then it gets a Tauri IPC binding for Face 1 too).
+catalog is not new business logic — it is a thin MCP adapter over a shared
+backend `fn` (mostly under `src-tauri/src/control/`), and most capabilities
+also have a Tauri IPC binding for Face 1 (e.g. the merge verbs are mirrored by
+the four commands in `src-tauri/src/ipc/merge_commands.rs`).
 
 ### 1.2 Who connects
 
 Two deployment shapes, same tool catalog:
 
-1. **Operator-attached** — the operator's existing `claude` / `codex` CLI session
-   (already a long-lived process; see `AgentCli` at
-   `src-tauri/src/agent/interactive.rs:65`) adds `aelyris` as an MCP server in its
-   own config. The operator drives Aelyris from the same chat they already use.
-2. **Embedded orchestrator** — an in-app Opus 4.8 orchestrator process that Aelyris
-   spawns and points at the `aelyris` MCP server. This is the "dispatch a fleet,
-   poll, request a gated merge" loop (worked example in §6).
+1. **Operator-attached** — the operator's existing AI CLI session (already a
+   long-lived process; see `AgentCli` at `src-tauri/src/agent/interactive.rs`)
+   adds `aelyris` as an MCP server in its own config. The operator drives
+   Aelyris from the same chat they already use.
+2. **Embedded orchestrator** — an in-app orchestrator process that Aelyris
+   points at the `aelyris` MCP surface. This is the "dispatch a fleet, poll,
+   request a gated merge" loop (worked example in §6).
 
-In both shapes the MCP server is a **face over the capability layer**, never a
+In both shapes the MCP surface is a **face over the capability layer**, never a
 second source of truth. The session truth source remains
-`rust-pty-manager` / `rust-mux-manager` exactly as the daemon contract already
-claims (`src-tauri/src/api/mod.rs:1858-1863`).
+`rust-pty-manager` / `rust-mux-manager` exactly as the daemon contract claims
+(the `claims` block in `contract()`, `src-tauri/src/api/mcp.rs`).
 
 ---
 
 ## 2. Transport
 
-### 2.1 Recommendation: stdio for local single-operator
+### 2.1 Implemented transport: loopback HTTP (+ JSON-RPC endpoint)
 
-The default and recommended transport is **stdio**. Rationale:
+The transport implemented today is **loopback HTTP JSON**: the contract
+endpoint reports `"transport": "local-http-json"` (`contract()` in
+`src-tauri/src/api/mcp.rs`). Two shapes are served:
 
-- Aelyris is a **local-only**, single-operator desktop app (Tauri). The MCP
-  client and server run on the same machine under the same user.
-- stdio needs no port, no token, no loopback exposure — the OS process boundary
-  is the trust boundary. This is strictly safer than opening another TCP port.
-- It matches how `claude` / `codex` already attach MCP servers.
+- Plain HTTP: `GET /mcp/contract`, `GET /mcp/tools/list`, `POST /mcp/tools/call`.
+- Native MCP JSON-RPC: `POST /mcp` handles `initialize` / `tools/list` /
+  `tools/call` / `ping` (`mcp_rpc()`, protocol version `2024-11-05`).
 
-### 2.2 Option: Streamable HTTP (reuse the daemon auth/token pattern)
+stdio remains a reasonable future option for local single-operator use (no
+port, no token, OS process boundary as trust boundary) but is **not
+implemented**; do not claim it.
 
-When the orchestrator is **out-of-process** (embedded Opus running as its own
-process, or a remote-but-loopback driver), a **Streamable HTTP** MCP transport is
-the fallback. It does **not** need new auth machinery — it reuses the daemon's
-existing pattern verbatim:
+### 2.2 Auth: the daemon token pattern
 
-| Concern | Existing mechanism | File:line |
-|---------|--------------------|-----------|
-| Bearer token | `AELYRIS_API_TOKEN` env var; random UUID generated + logged once if unset | `src-tauri/src/api/mod.rs:676-689` |
-| Constant-time compare | `subtle::ConstantTimeEq` via `ct_eq` | `src-tauri/src/api/mod.rs:710-739` |
-| Loopback bind only | `SocketAddr::from(([127,0,0,1], port))` | `src-tauri/src/api/mod.rs:990-992` |
-| Per-IP rate limit | `RateLimiter` token bucket, REST + WS buckets | `src-tauri/src/api/mod.rs:336-501` |
-| Session cap | `MAX_PTY_SESSIONS = 32` | `src-tauri/src/api/mod.rs:98` |
-| Sidecar token-file precedent | `aelyris-pty-server.token` file | `src-tauri/src/pty_sidecar.rs:17` |
+The HTTP transport needs no new auth machinery — it reuses the daemon's
+existing pattern (all in `src-tauri/src/api/mod.rs`):
 
-The daemon **already exposes a non-webview MCP-shaped HTTP surface** today:
-`/mcp/contract`, `/mcp/tools/list`, `/mcp/tools/call`
-(`src-tauri/src/api/mod.rs:964-966`, handlers at `1842-1926`). That surface is
-read-mostly (`terminal.list`, `terminal.capture`, `mux.workspaces.list`,
-`mux.workspace.get`, `mux.workspace.safeInput` — `src-tauri/src/api/mod.rs:1734-1742`).
-The `aelyris.mcp.v1` catalog in §3 **supersedes and extends** that prototype with the
-full worktree/agent/diff/gate surface.
+| Concern | Existing mechanism |
+|---------|--------------------|
+| Bearer token | `AELYRIS_API_TOKEN` env var; random token generated + logged once if unset |
+| Constant-time compare | `subtle::ConstantTimeEq` |
+| Loopback bind only | server binds `127.0.0.1` only |
+| Per-IP rate limit | `RateLimiter` token bucket, REST + WS buckets |
+| Session cap | `MAX_PTY_SESSIONS = 32` |
+| Sidecar token-file precedent | `aelyris-pty-server.token` file (`src-tauri/src/pty_sidecar.rs`) |
 
-### 2.3 Loopback safety rules (HTTP transport only)
+### 2.3 Loopback safety rules
 
-- Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)
+- Bind `127.0.0.1` only — never `0.0.0.0`.
 - Require `Authorization: Bearer <token>` on every call (`auth_middleware`,
-  `src-tauri/src/api/mod.rs:741-804`).
+  `src-tauri/src/api/mod.rs`).
 - Reuse the existing typed error envelope (§5).
 - The MCP tool surface is **single-token, single-tenant** — same assumption the
-  ticket/rate-limit code already documents (`src-tauri/src/api/mod.rs:560-565`).
+  rate-limit code documents.
 
 ---
 
 ## 3. Tool catalog (`aelyris.mcp.v1`)
 
-Conventions for the **I/O** column: parameters are the MCP `inputSchema`
-properties; the return is the JSON shape the tool resolves to. Types mirror the
-Rust structs that already serialize across IPC, so the wire shape is not new.
+> **Generated from `src-tauri/src/api/mcp.rs` on 2026-07-02.** The catalog
+> (`tool_names()`), the advertised schemas (`tools_list()`), and the dispatch
+> handlers (`tools_call()`) are locked together by the drift test
+> `catalog_and_schemas_list_exactly_the_same_verbs` in the same file. The
+> runtime source of truth is `GET /mcp/tools/list`; if this table and the
+> running daemon disagree, the daemon wins.
 
-Conventions for **FREE / GATED** (the safety boundary, see §4):
+**63 verbs** as of 2026-07-02: 5 unprefixed terminal/mux verbs plus 58
+`aelyris.*` verbs.
+
+**Face notes column** reflects the `safety` annotation each schema carries in
+`tools_list()`:
+
 - **FREE** — the orchestrator may call it directly; it mutates only isolated /
-  observable state (a worktree, an agent PTY, a pane, a read-only diff).
-- **GATED** — the orchestrator may only *enqueue an intent* and *observe*; the
-  grant authority is the watchdog policy engine + human inbox, never the tool.
+  observable coordination state (a worktree, a claim, a graph row, a stream).
+- **GATED** — the call is bounded by a policy engine, a durable intent store,
+  or a live cost cap; it cannot directly perform the privileged end action.
+- **GATED (observe-only)** — read-only view of pending decisions
+  (`GATED_OBSERVE_ONLY` in code).
+- **REVIEWER AUTHORITY** — the verb **is** a decision: it resolves a durable
+  merge intent (approve → real gated git merge, reject → resolved without
+  merging). See §4 for the exact boundaries.
+- The five terminal/mux verbs carry no `safety` field in code; their notes
+  describe their behavior directly.
 
-### 3.1 Worktree domain
+Additionally, **every** verb dispatched through `tools_call()` first passes the
+P5 governance choke point (`state.governance.authorize(actor, verb)`); a policy
+denial is durably audited and returned as a generic 403 (`ApiError::Forbidden`).
 
-| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
-|------|-----------|---------|------------|-------|
-| `aelyris.list_worktrees` | **params** `{ repoPath: string }` → **return** `{ worktrees: WorktreeInfo[] }` where `WorktreeInfo = { name, path, branch, is_main, head_sha, status: "Clean"\|"Modified"\|"Conflicted" }` | `git::list_worktrees` `src-tauri/src/git/worktree.rs:29`; IPC `ipc::list_worktrees` `src-tauri/src/lib.rs:565` | FREE | Pure read. Includes the main worktree first (`worktree.rs:34-58`). |
-| `aelyris.create_worktree` | **params** `{ repoPath: string, branch: string }` → **return** `WorktreeInfo` | `git::create_worktree` `src-tauri/src/git/worktree.rs:203`; IPC `ipc::create_worktree` `src-tauri/src/lib.rs:566` | FREE | Branch name MUST pass the **one shared validator** (`validate_branch_name` `worktree.rs:173`). Worktree path is deterministic via the **one shared worktree-path fn** (`predict_worktree_path` `worktree.rs:195`). Creating an isolated worktree is non-destructive to `main`. |
-| `aelyris.remove_worktree` | **params** `{ repoPath: string, branch: string, deleteBranch?: boolean }` → **return** `{ ok: true }` | `git::remove_worktree` `src-tauri/src/git/worktree.rs:120`; IPC `ipc::remove_worktree` `src-tauri/src/lib.rs:567` | FREE | Force-removes via `git worktree remove --force` (`worktree.rs:127-131`) then prunes. Destroys only the *isolated* worktree, never `main`'s working tree, so it stays FREE. Branch deletion guarded by `show-ref` re-check (`worktree.rs:151-166`). |
+### 3.1 Terminal (2)
 
-### 3.2 Agent (fleet) domain
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `terminal.list` | List live native PTY sessions. | — | Read-only. |
+| `terminal.capture` | Capture bounded scrollback from a live PTY session. | `sessionId`; opt `lines` (1–10000), `clean` | Read-only, byte/line-capped. |
 
-`AgentSession` is the unified backend session. On the interactive PTY path it is
-`InteractiveSessionInfo` (`src-tauri/src/agent/interactive.rs:135`):
-`{ id, pty_id, backend, cli, status, model, initial_prompt, cwd, worktree_branch, worktree_path, repo_path, cost, tokens_used, started_at }`.
+### 3.2 Mux (3)
 
-| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
-|------|-----------|---------|------------|-------|
-| `aelyris.spawn_agent` | **params** `{ role?: string, task: string, model?: string, repoPath: string, branch?: string, cols?: u16, rows?: u16 }` → **return** `SpawnResult = { session_id, pty_id, worktree_path: string\|null, backend }` | `spawn_interactive_agent` `src-tauri/src/ipc/interactive_commands.rs:52`; IPC `ipc::spawn_interactive_agent` `src-tauri/src/lib.rs:673` | FREE | `model` selects the CLI via `AgentCli::from_model` (`interactive.rs:98`); `task` → `initial_prompt` as an interactive prompt (positional/env delivery, **never `-p` / `--print` on the visible PTY path**). When `branch` is set, a worktree is auto-created (`interactive_commands.rs:83-95`) and mirrored as a ghost-diff layer (`interactive_commands.rs:196-222`). **`role` is a NEW field** — today role lives only in the frontend `AgentSession` (`src/shared/types/agent.ts:51`), so the capability layer must thread it into `InteractiveSessionInfo`. Spawning an agent in an isolated worktree is FREE; the agent itself is still subject to watchdog gating on *its* tool calls (§4.3). See `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md` for the visible-vs-headless runtime boundary. |
-| `aelyris.stop_agent` | **params** `{ sessionId: string, removeWorktree?: boolean }` → **return** `{ ok: true }` | `stop_interactive_agent` `src-tauri/src/ipc/interactive_commands.rs:292`; or `end_session_and_remove_worktree` `:331` when `removeWorktree=true`. IPC `:674-675` | FREE | Closes PTY, tears down native engine + ghost layer, unregisters session. `removeWorktree=true` additionally removes the worktree (`interactive_commands.rs:360-369`) — still FREE because it only deletes the *isolated* worktree. |
-| `aelyris.fleet_status` | **params** `{}` → **return** `{ sessions: AgentSession[] }` (the `InteractiveSessionInfo[]` list) | `list_interactive_agents` `src-tauri/src/ipc/interactive_commands.rs:381`; IPC `ipc::list_interactive_agents` `src-tauri/src/lib.rs:676`. Live status maintained by `run_output_monitor` `interactive_commands.rs:424` | FREE | The fleet view. `status` is the run-status string set by the output monitor: `thinking`/`coding`/`idle`/`done`/`waiting`/`unknown` (`interactive_commands.rs:464-472`). See §3.6 for `AgentRunStatus` enum alignment. Frontend consumes the same data via the unified `useAgentFleet` hook (today `useAgentManager`, `src/shared/hooks/useAgentManager.ts`). |
-| `aelyris.send_steer` | **params** `{ target: string, text: string }` → **return** `{ accepted: u32 }` | `send_keys_by_target` `src-tauri/src/ipc/commands.rs:5313`; IPC `ipc::send_keys_by_target` `src-tauri/src/lib.rs:639` | FREE | Mid-run guidance: writes keystrokes to a running agent's PTY. `target` resolves by exact PTY id, `@role`/`role:` prefix, or pane name (collision rejected) via `resolve_send_target` (`commands.rs:5325`). Payload validated by `validate_keys_payload` (`commands.rs:5318`). Every write is audited (`record_audit_event`, `commands.rs:5408`). FREE because steering an isolated agent does not bypass any human gate — the agent's downstream tool calls are still gated. |
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `mux.workspaces.list` | List Rust mux workspaces and pane counts. | — | Read-only. |
+| `mux.workspace.get` | Return the Rust-owned mux graph for one workspace. | `workspaceId` | Read-only. |
+| `mux.workspace.safeInput` | Send bounded input to all live panes in a workspace. | `workspaceId`, `text` (≤1 MiB); opt `approvalId` | Mutating, command-risk gated (P0-4): a `review`-classified command is refused without an `approvalId` minted for that exact command + target set; `deny` (destructive) is always refused. |
 
-### 3.3 Pane domain
+### 3.3 Worktree (5)
 
-| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
-|------|-----------|---------|------------|-------|
-| `aelyris.split_pane` | **params** `{ workspaceId: string, targetPaneId: string, axis: "horizontal"\|"vertical", shell?: string, cwd?: string, title?: string, cols?: u16, rows?: u16 }` → **return** `{ paneId: string }` | `mux_split_pane` `src-tauri/src/ipc/commands.rs:2511`; IPC `ipc::mux_split_pane` `src-tauri/src/lib.rs:540`. HTTP precedent `POST /mux/workspaces/{id}/panes/split` `src-tauri/src/api/mod.rs:928` | FREE | Layout only. `axis` parsed by `parse_mux_axis` (`commands.rs:2525`); `cwd` validated by `validate_path` (`commands.rs:2531`). Routes through the sidecar when present (`commands.rs:2534-2550`). |
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.worktree.validate` | Validate an orchestrator worktree branch name. | `branchName` | FREE, read-only. |
+| `aelyris.worktree.predictPath` | Predict the isolated worktree path for a branch. | `repoPath`, `branchName` | FREE, read-only. |
+| `aelyris.worktree.list` | List git worktrees for a repository. | `repoPath` | FREE, read-only. |
+| `aelyris.worktree.create` | Create an isolated agent worktree. | `repoPath`, `branchName` | FREE, mutating (isolated worktree only, never `main`'s working tree). |
+| `aelyris.worktree.remove` | Remove an isolated agent worktree. | `repoPath`, `worktreeName`; opt `deleteBranch` | FREE, mutating (isolated worktree only). |
 
-### 3.4 Diff domain
+### 3.4 Fleet & agent runtime (6)
 
-The agent's work is mirrored as a ghost-diff **layer** keyed by `session_id`
-(`src-tauri/src/ipc/interactive_commands.rs:196-222`,
-`ghostdiff::register_worktree_and_watch` `src-tauri/src/ghostdiff/mod.rs:41`).
-Two diff baselines exist in the layer model:
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.fleet_status` | Read the unified native-owned agent fleet snapshot. | — | FREE, read-only. |
+| `aelyris.route_agent` | Route a prompt to the recommended coding model profile. | `prompt`; opt `budgetRemaining` | FREE, read-only. |
+| `aelyris.spawn_agent` | Spawn a **headless** implementer agent (`control::agent::start_headless`, `src-tauri/src/control/agent.rs`). | `prompt`, `cwd`; opt `model`, `allowedTools`, `resumeId` | GATED: enforces the live cost cap (BR7, `cost.guard_spawn`) and refuses at the agent cap. **Headless only** — visible interactive panes are a different path (Tauri IPC `spawn_interactive_agent`, `src-tauri/src/ipc/interactive_commands.rs`); see `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md` for that runtime boundary. |
+| `aelyris.stop_agent` | Stop a running headless agent session by id. | `sessionId` | GATED (headless sessions only). |
+| `aelyris.pane_send_input` | Send bounded input to a live pane/terminal id. | `terminalId`, `text` (≤1 MiB); opt `approvalId` | FREE annotation in code, but command-risk gated (P0-4) exactly like `mux.workspace.safeInput` — this is the agent-injection path the gate exists to catch. |
+| `aelyris.agent_diff` | Read an agent-owned GhostDiff layer without mutating files. | `sessionId`; opt `path`, `against` (`base`\|`target`), `targetBranch` | FREE, read-only. |
 
-- **vs base** — the worktree's own HEAD/base SHA. `LayerContent::Diff { base_revision, files }`
-  computed by `diff_engine::compute_diff(worktree_path, base_sha)`
-  (`ghostdiff/mod.rs:72`, `:91`); base captured by `capture_head_sha` (`mod.rs:50`).
-- **vs target** — an arbitrary branch comparison. `LayerSource::BranchComparison { repo_path, base_branch, head_branch }`
-  (`src-tauri/src/ghostdiff/layer.rs:40-47`) runs `git diff base..head`.
+### 3.5 Agent coordination (4)
 
-| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
-|------|-----------|---------|------------|-------|
-| `aelyris.agent_diff` | **params** `{ sessionId: string, against?: "base"\|"target", targetBranch?: string }` → **return** `{ source, content: { kind: "diff", base_revision, files: FileDelta[] } }` where `FileDelta = { path, ... hunks }` (`ghostdiff/layer.rs:86`) | `against:"base"` → existing worktree-layer diff (`ghostdiff/mod.rs:41`, layer keyed by `sessionId`). `against:"target"` → `LayerSource::BranchComparison` (`ghostdiff/layer.rs:40`). A read accessor over the `LayerRegistry` snapshot (`ghostdiff/registry.rs`, re-exported `ghostdiff/mod.rs:28`) is **NEW** as an MCP/IPC read tool. | FREE | Pure read of the diff overlay. `against` defaults to `"base"`. For `"target"`, `targetBranch` is required and goes through the same branch validator. No file content is mutated. This is how the orchestrator *observes* an agent's progress before deciding to request a merge (§4). |
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.agent.report_activity` | Report what an agent is touching right now (file/symbol/action); publishes `agent_activity` (BR5). | `sessionId`, `action`; opt `file`, `symbol` | FREE, mutating coordination state. |
+| `aelyris.agent.report_blocker` | Report an agent is stuck; marks it blocked and publishes `blocker_raised` (BR5). | `sessionId`, `summary`; opt `needs` | FREE, mutating coordination state. |
+| `aelyris.agent.steer_avoid` | Typed steer: tell a live agent to avoid symbols other agents currently own, derived from the live symbol-ownership map (not raw pane text). | `sessionId`; opt `files` | FREE. Errors if the target is not a live agent; publishes `steer_avoid`. |
+| `aelyris.agent.activity` | Read the whole fleet's live activity snapshot. | — | FREE, read-only. |
 
-### 3.5 Approval & merge domain (GATED — the safety boundary)
+### 3.6 Task graph, orchestrator & supervisor (6)
 
-These tools NEVER complete the privileged action. They enqueue an **intent** that
-the watchdog policy engine + human inbox resolve. See §4.
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.task.create` | Create a Task Graph node (BR4); `owner` is the implementer identity used by the reviewer≠implementer merge gate; binds source/target branches. | `id`, `title`; opt `description`, `owner`, `model`, `priority`, `dependencies`, `outputs`, `sourceBranch`, `targetBranch` | FREE, mutating task state. |
+| `aelyris.task.list` | List every Task Graph node with lifecycle status, owner, dependencies, branch bindings. | — | FREE, read-only. |
+| `aelyris.task.transition` | Transition a task to a new lifecycle state (lifecycle-validated). | `id`, `to` (pending/ready/running/blocked/review/done/failed) | FREE, mutating task state. |
+| `aelyris.orchestrator.plan` | Read the next scheduling decision (dispatch set + loop state). | opt `activeAgents` | FREE, read-only. |
+| `aelyris.orchestrator.step` | Drive one autonomy step (BR9): reassign crashed tasks, dispatch ready tasks as headless agents, and **merge** review-passing tasks into their target branch when gates are green and reviewer ≠ owner; `gateCommands` decide the objective gates mechanically in each worktree. | `repoPath`, `reviewerId`; opt `activeAgents`, `gates`, `gateCommands` | REVIEWER AUTHORITY — this verb can perform real merges via the review path (`review::review`, `src-tauri/src/review/mod.rs`, which blocks a self-review). |
+| `aelyris.supervisor.health` | Read the Architect-level health verdict of the autonomy loop with machine-readable directives. | opt `activeAgents` | FREE, read-only. |
 
-| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
-|------|-----------|---------|------------|-------|
-| `aelyris.request_approval` | **params** `{ sessionId: string, tool: string, summary?: string, risk?: "low"\|"medium"\|"high"\|"critical" }` → **return** `{ intentId: string, status: "auto_approved"\|"auto_denied"\|"pending", rule?: string }` | Watchdog evaluation `WatchdogEngine::evaluate` `src-tauri/src/watchdog/engine.rs:30` → `WatchdogDecision::{AutoApprove,AutoDeny,AskUser}` (`engine.rs:7-14`). `AskUser` surfaces to the human inbox as a `permission_required` decision (`src/shared/lib/decisionInbox.ts:5-12`). The enqueue/observe IPC pair is **NEW**; the *decision engine* exists. | **GATED** | The orchestrator submits a request; the **engine** decides. Low-risk patterns auto-approve (`engine.rs:35-47`), unmatched → `AskUser` → routes to the human Decision Inbox (`src/features/decision-inbox/DecisionInboxPanel.tsx`). The tool returns the **decision status**, it does not *make* the decision. No `grant` parameter exists by construction. |
-| `aelyris.list_pending_approvals` | **params** `{}` → **return** `{ pending: HumanDecisionItem[] }` (`src/shared/lib/decisionInbox.ts:25-43`) | Derived from the decision inbox model (`buildDecisionInbox`, `src/shared/lib/decisionInbox.ts`), fed by agent watchdog events (`watchdog-decision-{sessionId}`, `src-tauri/src/ipc/commands.rs:4269-4292`) and audit events. A read IPC/MCP accessor is **NEW**. | **GATED (observe-only)** | Read-only poll of the human queue. Returns `pending` items only; the orchestrator uses this to *wait* for a human/engine decision. It cannot resolve an item. |
-| `aelyris.request_merge` | **params** `{ sessionId: string, sourceBranch: string, targetBranch: string }` → **return** `{ intentId: string, status: "queued", stagedCommitSha?: string }` | **NEW.** No merge-to-`main` command exists in the codebase today (confirmed: only `git_commit`/`git_push`/`git_stage` IPC, and `remove_worktree`). Must be built as a **staging** capability: commit the worktree, then enqueue a `merge_conflict_strategy`/`destructive_operation` decision (`src/shared/lib/decisionInbox.ts:5-12`). | **GATED** | NEVER fast-forwards or merges to `main`. It *stages* the agent's branch and enqueues a human/engine decision. Returns `status:"queued"`, never `"done"`. The actual merge is performed only after a human grant via the Cockpit UI (Face 1). The orchestrator polls `list_pending_approvals` for resolution. |
+### 3.7 Events (3)
 
-### 3.6 `AgentRunStatus` alignment (shared name)
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.event.recent` | Recent fleet coordination events across all channels (bounded ring). | — | FREE, read-only. |
+| `aelyris.event.by_channel` | Recent events on one channel. | `channel` (planning/backend/frontend/database/review/system) | FREE, read-only. |
+| `aelyris.event.since` | No-loss cursor subscribe (BR5/P3): every event with `seq > afterSeq`; survives restart. | opt `afterSeq`, `limit` (≤1000) | FREE, read-only. Preferred for reliable orchestration. |
 
-The binding design mandates one `AgentRunStatus` enum
-`{ spawning, thinking, coding, running_tests, waiting_approval, blocked, idle, done, error }`,
-with the TS union derived. The current backend strings are a **subset / near-match**
-and MUST be reconciled when the capability layer is built:
+### 3.8 Context / ADR (4)
 
-| `AgentRunStatus` (target) | Current backend string | Source |
-|---------------------------|------------------------|--------|
-| `spawning` | (implicit at spawn) | `interactive_commands.rs:174` initial status |
-| `thinking` | `"thinking"` | `interactive_commands.rs:466` |
-| `coding` | `"coding"` | `interactive_commands.rs:467` |
-| `running_tests` | (NEW — not yet detected) | — |
-| `waiting_approval` | `"waiting"` | `interactive_commands.rs:470` (`WaitingPermission`) |
-| `blocked` | (NEW) | — |
-| `idle` | `"idle"` | `interactive_commands.rs:468` |
-| `done` | `"done"` | `interactive_commands.rs:469`, `:526` |
-| `error` | `"error"` | frontend `AgentStatus` `src/shared/types/agent.ts:1` |
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.context.set` | Set a project decision in the shared Context Store / ADR (BR6); publishes `decision_changed`; injected into every dispatched agent's prompt. | `key`, `value` | FREE, mutating shared state. |
+| `aelyris.context.get` | Read one project decision. | `key` | FREE, read-only. |
+| `aelyris.context.all` | The full shared ADR snapshot. | — | FREE, read-only. |
+| `aelyris.context.remove` | Remove a project decision; publishes `decision_changed`. | `key` | FREE, mutating shared state. |
 
-The MCP tools serialize whatever the capability layer emits; this table is the
-contract the capability layer must converge on so both faces see one enum.
+### 3.9 Knowledge graph (8)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.knowledge.add_node` | Add a node (symbol/module) to the code Knowledge Graph. | `id`; opt `kind`, `file` | FREE, mutating graph state. |
+| `aelyris.knowledge.add_edge` | Record a dependency edge (`dependent` → `dependency`); unknown endpoints auto-created. | `dependent`, `dependency` | FREE, mutating graph state. |
+| `aelyris.knowledge.remove_node` | Remove a node and every edge touching it. | `id` | FREE, mutating graph state. |
+| `aelyris.knowledge.remove_edge` | Remove a single dependency edge. | `dependent`, `dependency` | FREE, mutating graph state. |
+| `aelyris.knowledge.dependencies` | Direct dependencies of a node. | `id` | FREE, read-only. |
+| `aelyris.knowledge.dependents` | Direct dependents of a node. | `id` | FREE, read-only. |
+| `aelyris.knowledge.impact` | Blast radius: the transitive dependents of a node. | `id` | FREE, read-only. |
+| `aelyris.knowledge.graph` | The whole graph: every node + edge. | — | FREE, read-only. |
+
+### 3.10 Intent bus (4)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.intent.propose` | Declare an intent **before** acting (pre-fact half of the Event Bus); publishes `intent_declared`. | `agentId`, `proposal`; opt `targets` | FREE, mutating coordination state. |
+| `aelyris.intent.list` | Open (still-deliberating) intents. | — | FREE, read-only. |
+| `aelyris.intent.all` | Every intent with its status. | — | FREE, read-only. |
+| `aelyris.intent.resolve` | Resolve an intent to a terminal status (accepted/rejected/superseded). | `id`, `status` | FREE, mutating coordination state. |
+
+### 3.11 File ownership (4)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.ownership.assign` | Claim a path pattern for an agent (BR8): exact, `dir/*`, or `dir/**`. | `agentId`, `pattern` | FREE, mutating ownership state; returns resulting conflicts. |
+| `aelyris.ownership.owner_of` | The agent that owns a path, if any. | `path` | FREE, read-only. |
+| `aelyris.ownership.claims` | All current file-ownership claims. | — | FREE, read-only. |
+| `aelyris.ownership.conflicts` | All current cross-agent ownership conflicts. | — | FREE, read-only. |
+
+### 3.12 Symbol ownership (8)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.symbol.claim` | Claim a symbol range inside a file (finer than file ownership); overlap semantics depend on `confidence` (lsp/parser block, diff-hunk warns). | `claimId`, `agentId`, `path`, `symbol`, `startLine`, `endLine`, `mode`, `confidence`; opt `taskId`, `leaseSecs` | FREE, lease-based mutating state. |
+| `aelyris.symbol.refresh` | Extend a live claim's lease (heartbeat). | `claimId`; opt `leaseSecs` | FREE. |
+| `aelyris.symbol.release` | Release one claim by id. | `claimId` | FREE. |
+| `aelyris.symbol.release_task` | Release all claims a task held (call on merge/fail). | `taskId` | FREE. |
+| `aelyris.symbol.claims` | All live symbol claims (expired leases swept). | — | FREE, read-only. |
+| `aelyris.symbol.conflicts` | All live cross-agent symbol overlaps (block + warn). | — | FREE, read-only. |
+| `aelyris.symbol.claim_from_diff` | Derive claims from a `git diff` (confidence diff-hunk; idempotent per span). | `agentId`, `diff` (≤1 MiB); opt `taskId`, `mode`, `leaseSecs` | FREE. |
+| `aelyris.symbol.claim_from_source` | Derive claims by parsing file source (tree-sitter: Rust/TS/TSX) into exact ranges (confidence parser); unparseable input yields no claims (`fallback:true` → file-level exclusivity). | `agentId`, `path`, `source` (≤1 MiB); opt `taskId`, `mode`, `leaseSecs` | FREE. |
+
+### 3.13 Shared brain (1)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.shared_brain.snapshot` | Unified snapshot: live agents, pane/event activity, file+symbol ownership, unresolved durable merge intents, blockers, project decisions — one backend formatter. | opt `workspaceId` | FREE, read-only. |
+
+### 3.14 Approval (2)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.request_approval` | Request policy/human approval for a held agent tool call. **This never grants approval**: the watchdog engine decides auto_approved / auto_denied, or the item goes `pending` to the human queue. | `sessionId`, `tool`; opt `summary`, `risk` | GATED. Handler: `control::approval::evaluate` over `WatchdogEngine` (`src-tauri/src/api/mcp.rs`). No `grant` parameter exists. |
+| `aelyris.list_pending_approvals` | Observe pending approval items **and** unresolved durable merge intents. Returns `{ pending, mergeIntents, grantToolExposed:false }`. | — | GATED (observe-only). Merge intents are synthesized from the durable store (`state.merge_store.list_unresolved`), not a RAM queue; a read can never cause a merge. |
+
+### 3.15 Review / merge (3)
+
+| Verb | Purpose | Key params | Face notes |
+|------|---------|-----------|------------|
+| `aelyris.request_merge` | Queue a **durable** merge intent — never merges by itself. Canonicalizes `repoPath` and resolves the source/target branch-tip OIDs at request time; the immutable intent row is bound to those exact commits. Idempotent per (`taskId`, source OID, target OID). | `taskId`, `repoPath`, `sourceBranch`, `targetBranch`; opt `sessionId` | GATED, fail-closed: errors if the durable store (`merge_intent::store::MergeIntentStore`) is not attached — no RAM fallback a restart would lose (P0-3). |
+| `aelyris.review.approve` | Reviewer authority: approve a durable merge intent **by id** and perform the real gated git merge (fast-forward/3-way) into its bound target (`control::merge::approve_durable_intent` → `git::perform_merge_bound`). | `intentId`; opt `verdict` (must equal `"approve"`), `gatesDigest` | REVIEWER AUTHORITY. Accepts **only** `intentId`/`verdict`/`gatesDigest` — any other field (including repo/source/target) is rejected explicitly, so a caller can never re-point the merge. Bound tips are re-validated: already-merged target → idempotent `AlreadyMerged`; moved tips → `needs_reconcile`, no merge. Reviewer identity + gates digest are recorded on the row. |
+| `aelyris.review.reject` | Reviewer authority: reject a durable merge intent by id, resolving it without merging. | `intentId`; opt `reason` | REVIEWER AUTHORITY. Cannot reject an in-flight (`merging`) or already-resolved intent (conditional durable UPDATE is the arbiter). Rejects unknown fields. |
+
+### 3.16 `AgentRunStatus` (shared name)
+
+The binding design's one shared `AgentRunStatus` enum is implemented in Rust at
+`src-tauri/src/agent/status.rs`:
+`{ Spawning, Thinking, Coding, RunningTests, WaitingApproval, Blocked, Idle, Done, Error }`.
+The agent output monitor (`src-tauri/src/agent/output_monitor.rs`,
+`DetectedStatus`) maps detected PTY output states onto it. The MCP tools
+serialize whatever the capability layer emits; the TS union on Face 1 must stay
+derived from this enum.
 
 ---
 
-## 4. Gate enforcement
+## 4. Gate enforcement (bounded autonomy)
 
-This is the **critical safety boundary**. The gate model:
+This is the **critical safety boundary**. The shipped model is **bounded
+autonomy**, not "no AI can ever decide":
 
-> worktree / agent / pane / diff = **FREE** tools an AI may call.
-> approval + merge-to-main = **GATED**: the AI may request / observe / route them
-> but MUST NOT grant them. The **grant authority is the watchdog policy engine**
-> (`src-tauri/src/watchdog/`): low-risk auto-approve, high-risk routes to the
-> human approval inbox.
+> Coordination verbs (worktree / fleet / task / events / ownership / context /
+> knowledge / intent) are **FREE**.
+> Tool approvals stay gated behind the watchdog policy engine + human inbox —
+> no MCP verb can grant them.
+> Merges flow through **durable, OID-bound merge intents**: an AI Reviewer
+> **can** execute a real git merge, but only by approving a stored intent by
+> id, only into the commits captured at request time, only with recorded
+> reviewer identity and gate evidence, and (on the autonomy-loop path) only
+> when reviewer ≠ implementer and the mechanical gates are green.
 
-### 4.1 What a GATED tool does (and does not) do
+### 4.1 The three decision authorities
 
-| GATED tool returns | GATED tool NEVER returns |
-|--------------------|--------------------------|
-| `{ status: "pending" }` (engine said `AskUser`) | `{ status: "done" }` for a human-gated action |
-| `{ status: "queued" }` (intent staged, awaiting decision) | a tool parameter named `grant`, `approve`, or `force` |
-| `{ status: "auto_approved", rule }` (engine matched a low-risk auto rule) | the ability to mutate `main` |
-| `{ status: "auto_denied", rule }` (engine matched a deny rule) | — |
+| Authority | What it decides | Where |
+|-----------|-----------------|-------|
+| Watchdog policy engine | Tool-approval requests: auto-approve / auto-deny / ask-user by rule match | `src-tauri/src/watchdog/engine.rs`, driven from `aelyris.request_approval` and from the per-agent output monitor |
+| Human (Face 1) | `pending` tool approvals in the Decision Inbox; merge intents via the mirrored IPC commands (`src-tauri/src/ipc/merge_commands.rs`: `merge_intents_pending`, `request_merge_intent`, `approve_merge_intent`, `merge_diff`) | Cockpit UI |
+| Reviewer authority (AI or human) | Durable merge intents: `aelyris.review.approve` / `aelyris.review.reject`, and the loop merge inside `aelyris.orchestrator.step` | `src-tauri/src/control/merge.rs`, `src-tauri/src/review/mod.rs` |
 
-The orchestrator's only follow-up is to **poll** `aelyris.list_pending_approvals`
-(or `aelyris.fleet_status` for the `waiting_approval` run status). It never resolves
-its own request.
-
-### 4.2 The grant path (who can actually say yes)
+### 4.2 The durable merge-intent lifecycle
 
 ```
-orchestrator (Face 2)                 watchdog engine                 human (Face 1)
-  aelyris.request_approval ───────────▶ WatchdogEngine::evaluate
-                                       (engine.rs:30)
-                                         │
-              AutoApprove {rule} ◀───────┤  low-risk pattern match (engine.rs:35-47)
-              AutoDeny   {rule} ◀───────┤  deny pattern match
-                                         │
-              status:"pending" ◀─────────┘  AskUser ──▶ Decision Inbox
-                                                        (DecisionInboxPanel.tsx)
-                                                          │
-                                                          ▼  human clicks grant
-                                                        privileged action executes
-                                                        (Cockpit UI / Face 1 only)
+request_merge                       review.approve                    git
+  │  canonicalize repoPath            │  intentId only —                │
+  │  resolve source/target OIDs       │  unknown fields rejected        │
+  ▼                                   ▼                                 │
+[queued] ──(CAS claim_for_merge)──▶ [merging] ── perform_merge_bound ──▶ merged
+  │                                   │            (tips re-checked)     │
+  │ review.reject                     │ tips moved / repo unreadable     ▼
+  ▼                                   ▼                              [conflict]
+[rejected]                       [needs_reconcile]
 ```
 
-- The watchdog rules live at `~/.aelyris/watchdog.json`
-  (`src-tauri/src/watchdog/mod.rs:13-30`); patterns are glob-matched
-  (`engine.rs:64-107`). Only the operator edits these (via the Watchdog rule
-  dialog, Face 1). The orchestrator cannot add an auto-approve rule for itself —
-  rule mutation is not in the MCP catalog.
-- `AskUser` → the item shows up in the human Decision Inbox as one of the
-  `HumanDecisionType` values (`src/shared/lib/decisionInbox.ts:5-12`). Only a
-  human action there resolves it.
+- **Immutable binding:** the intent row stores `repo_path` (canonicalized at
+  request time), `source_branch`/`target_branch`, and `source_oid`/
+  `target_oid`/`merge_base_oid` resolved at request time
+  (`aelyris.request_merge` handler; `control::merge::request_durable_intent`).
+  Approval reads repo/source/target **from the stored row, never the caller**.
+- **OID CAS:** `approve_durable_intent` re-validates the bound tips before
+  merging. A target that already contains the source OID resolves idempotently
+  (`AlreadyMerged`); moved tips return `StaleTips` and the intent becomes
+  `needs_reconcile` — no merge happens on drifted branches
+  (`src-tauri/src/control/merge.rs`, `git::perform_merge_bound`).
+- **Single in-flight claim:** `store.claim_for_merge` is a conditional durable
+  UPDATE — a second concurrent approve of the same intent is refused. The
+  in-process `MergeQueue` additionally serializes at most one in-flight merge
+  per target branch (`control/merge.rs` tests).
+- **Durability, fail-closed:** both `request_merge` and the review verbs error
+  when the SQLite-backed `MergeIntentStore` is not attached; there is no RAM
+  fallback (P0-3).
+- **Recorded evidence:** approval writes `reviewer_id` and the optional
+  `gatesDigest` onto the row (`store.record_approval`) before any git work.
 
-### 4.3 Defense in depth: spawned agents are themselves gated
+### 4.3 Defense in depth
 
-`aelyris.spawn_agent` is FREE, but the spawned agent's *own* tool calls flow
-through the same watchdog evaluation: the agent output monitor parses each tool
-use and runs `watchdog.evaluate(tool_name)` (`src-tauri/src/ipc/commands.rs:4304-4352`),
-emitting `approved` / `denied` / `manual`. So even a fleet dispatched freely by
-the orchestrator cannot escalate past the human gate — every privileged tool the
-*sub-agents* attempt is independently evaluated.
+- **Reviewer ≠ implementer:** the autonomy-loop merge path
+  (`aelyris.orchestrator.step` → `review::review`,
+  `src-tauri/src/review/mod.rs`) refuses a self-review: a task whose reviewer
+  equals its implementer (`owner` from `aelyris.task.create`) is Blocked, never
+  merged. Mechanical `gateCommands` results are authoritative over a reviewer's
+  claimed verdict, so a red branch cannot merge on that path.
+- **Spawned agents are themselves gated:** an agent's own tool calls flow
+  through the same watchdog evaluation (`watchdog.evaluate(tool_name)` in
+  `src-tauri/src/ipc/commands.rs`), emitting approved/denied/manual — a fleet
+  dispatched freely cannot escalate past the tool-approval gate.
+- **Command-risk gate on injected input:** `aelyris.pane_send_input` and
+  `mux.workspace.safeInput` refuse `review`-classified commands without a
+  matching `approvalId` and always refuse `deny`-classified (destructive)
+  commands (P0-4, `command_risk::gate`).
+- **Governance choke point:** every MCP verb passes
+  `state.governance.authorize` before dispatch; denials are durably audited and
+  returned as a generic 403 (P5, `tools_call` in `src-tauri/src/api/mcp.rs`).
+- **Rule mutation is not in the catalog:** watchdog rules live in the
+  operator-edited config (`src-tauri/src/watchdog/`); no MCP verb adds or edits
+  an auto-approve rule.
 
-### 4.4 Invariant (must hold in tests)
+### 4.4 Invariants (must hold in tests)
 
-> There exists no MCP tool, and no tool parameter, by which the orchestrator can
-> transition a `permission_required` / `merge_conflict_strategy` /
-> `destructive_operation` decision from `pending` to `decided`. The only writers
-> of that transition are (a) the watchdog engine's auto rules and (b) a human
-> action in Face 1.
+The safety invariant is **not** "no MCP tool can decide a merge" — that was the
+earlier v1 gate model and it does not describe the shipped code
+(`aelyris.review.approve` → `control::merge::approve_durable_intent` →
+`git::perform_merge_bound` performs a real merge). The invariants that must
+hold, and that the test suites in `src-tauri/src/api/mcp.rs` and
+`src-tauri/src/control/merge.rs` pin, are:
+
+1. **No merge without a stored intent.** The only MCP path to a merge is
+   approving an existing durable intent by `intentId`. `aelyris.request_merge`
+   never merges (it only creates/returns the queued row), and
+   `aelyris.review.approve` rejects every field other than
+   `intentId`/`verdict`/`gatesDigest`, so a caller can never supply or re-point
+   repo/source/target.
+2. **Merges are commit-bound.** Approval merges exactly the OIDs captured at
+   request time or does not merge at all: moved tips → `needs_reconcile`;
+   already-contained source → idempotent `AlreadyMerged`; repo unreadable →
+   `needs_reconcile`.
+3. **Approval is attributed.** A successful approve records a non-empty
+   `reviewer_id` (and `gatesDigest` when supplied) on the durable row before
+   the merge executes; on the autonomy-loop path reviewer ≠ implementer is
+   enforced (`review::review` blocks self-review).
+4. **At most one in-flight decision per intent, and per target branch on the
+   queue.** The CAS `claim_for_merge` refuses a second approve; `MergeQueue`
+   refuses a second in-flight merge into the same target.
+5. **Tool approvals still have no grant verb.** There is no MCP tool, and no
+   tool parameter, by which the orchestrator can transition a
+   `permission_required` decision from `pending` to decided. The only writers
+   of that transition remain the watchdog engine's auto rules and a human
+   action in Face 1 (`aelyris.list_pending_approvals` reports
+   `grantToolExposed: false`).
 
 ---
 
@@ -272,111 +407,121 @@ the orchestrator cannot escalate past the human gate — every privileged tool t
 ### 5.1 Typed errors (mirror the daemon)
 
 The MCP surface reuses the daemon's typed error envelope so both faces fail
-identically. `ApiError` (`src-tauri/src/api/mod.rs:839-885`) serializes as
+identically. `ApiError` (`src-tauri/src/api/mod.rs`) serializes as
 `{ "error": string, "code": string }` with a stable `code`:
 
 | MCP error code | HTTP status (HTTP transport) | `ApiError` variant | When |
 |----------------|------------------------------|--------------------|------|
-| `not_found` | 404 | `NotFound` | unknown `sessionId` / `workspaceId` / worktree |
-| `bad_request` | 400 | `BadRequest` | invalid branch name, bad axis, missing arg, oversized payload |
+| `not_found` | 404 | `NotFound` | unknown `sessionId` / `workspaceId` / intent / worktree |
+| `bad_request` | 400 | `BadRequest` | invalid branch name, missing arg, unknown approve field, oversized payload |
 | `conflict` | 409 | `Conflict` | worktree/branch already exists |
 | `unauthorized` | 401 | `Unauthorized` | missing/bad bearer token (HTTP transport) |
+| `forbidden` | 403 | `Forbidden` | governance policy denial (P5) or command-risk refusal |
 | `rate_limited` | 429 | `RateLimited` | token-bucket exhausted (HTTP transport) |
-| `internal` | 500 | `Internal` | lock poisoned, git failure, sidecar error |
+| `internal` | 500 | `Internal` | lock poisoned, git failure, persistence not attached |
 
 PTY-layer errors are mapped without string-matching via `map_pty_err`
-(`src-tauri/src/api/mod.rs:889-895`).
+(`src-tauri/src/api/mod.rs`).
 
 ### 5.2 Input validation at the boundary
 
 All validation reuses existing, single-source validators (no re-implementation):
 
-- Branch names → `validate_branch_name` (`src-tauri/src/git/worktree.rs:173`) — the
-  **one shared branch-name validator** the binding design mandates. (Note: the
-  spawn path has a near-duplicate inline check at `interactive_commands.rs:67-80`
-  that should be collapsed onto the shared validator when the capability layer
-  lands.)
-- Worktree paths → `predict_worktree_path` (`worktree.rs:195`) — the **one shared
-  worktree-path fn**.
-- `cwd` → `validate_api_cwd` / `normalize_api_cwd` (`api/mod.rs:1339-1458`): rejects
-  `..`, UNC, NUL, and system dirs (`is_dangerous_api_cwd`, `:1430`).
-- Steering payload → `validate_keys_payload` (`commands.rs:5318`).
-- MCP arg coercion → `json_arg_string` / `json_arg_usize` / `json_arg_bool`
-  (`api/mod.rs:1744-1781`).
+- Branch names → `validate_branch_name` (`src-tauri/src/git/worktree.rs`) — the
+  one shared branch-name validator.
+- Worktree paths → `predict_worktree_path` (`src-tauri/src/git/worktree.rs`) —
+  the one shared worktree-path fn.
+- Repo paths on the merge path → canonicalized (`std::fs::canonicalize`) and
+  directory-checked at request time, then stored immutably on the intent.
+- MCP arg coercion → `arg_string` / `arg_string_raw` / `arg_usize` /
+  `arg_bool` / `arg_optional_*` (`src-tauri/src/api/mcp.rs`); payload-bearing
+  args (`diff`, `source`, pane `text`) are byte-capped at 1 MiB, locked to the
+  WS frame bound by the test `input_schema_maxlength_matches_ws_frame_bound`.
+- Reviewer verbs additionally hard-reject unknown fields in the handler because
+  the dispatcher does not enforce the advertised schema (see §3.15 notes).
 
 ### 5.3 Versioned schema
 
-- Schema id: **`aelyris.mcp.v1`**. The existing prototype uses
-  `aelyris.mcp.server.v1` (`api/mod.rs:1844`, `:1869`); `aelyris.mcp.v1` is the
-  forward-compatible umbrella for the full catalog.
-- `tools/list` advertises per-tool `inputSchema` (JSON Schema, `additionalProperties:false`)
-  exactly as the prototype already does (`api/mod.rs:1867-1921`).
+- The implemented contract/schema id is **`aelyris.mcp.server.v1`**
+  (`contract()` and `tools_list()` in `src-tauri/src/api/mcp.rs`);
+  `aelyris.mcp.v1` remains the forward-compatible umbrella name this document
+  uses for the catalog.
+- `tools/list` advertises per-tool `inputSchema` (JSON Schema,
+  `additionalProperties: false`) plus the `safety` annotation.
 - New tool *additions* are minor (v1.x). Removing/renaming a tool, changing a
-  `FREE`↔`GATED` classification, or changing a return shape is a **major** bump
-  (`aelyris.mcp.v2`), since reclassifying a gate is a safety-relevant change.
-- A `contract` endpoint/handshake mirrors `mcp_contract` (`api/mod.rs:1842`) and
-  reports `schema`, `tools`, and the `claims` block asserting
-  `webviewRequiredForToolCalls:false` (`api/mod.rs:1858-1863`) — i.e. the MCP face
-  works headless, without the React webview.
+  safety classification, or changing a return shape is a **major** bump, since
+  reclassifying a gate is a safety-relevant change. (This already happened
+  once: the merge axis moved from "GATED, never decides" to
+  "REVIEWER_AUTHORITY, durable-intent bound" — the change this document's
+  2026-07-02 banner records.)
+- The `contract` endpoint reports `schema`, `tools`, and the `claims` block
+  asserting `webviewRequiredForToolCalls: false` — the MCP face works headless,
+  without the React webview.
 
 ---
 
-## 6. Worked example: Opus orchestrator dispatching 3 agents
+## 6. Worked example: orchestrator dispatching and merging a task
 
-Goal: implement three independent modules in parallel, observe, then request a
-gated merge of the one that's ready. All FREE calls run without human friction;
-the merge is GATED.
+Goal: run one task through the bounded-autonomy loop with the verbs as
+implemented. Coordination calls run without human friction; the merge is
+durable-intent bound.
 
 ```
-# 1. Dispatch a fleet — three FREE spawns, each in its own worktree.
-→ aelyris.spawn_agent { role:"impl", task:"build auth module",  model:"opus",   repoPath:"C:/proj", branch:"feat/auth" }
-← { session_id:"s-a1", pty_id:"s-a1", worktree_path:"C:/proj-feat/auth", backend:"sidecar" }
-→ aelyris.spawn_agent { role:"impl", task:"build cache layer",   model:"sonnet", repoPath:"C:/proj", branch:"feat/cache" }
-← { session_id:"s-b2", ... }
-→ aelyris.spawn_agent { role:"impl", task:"build api routes",    model:"sonnet", repoPath:"C:/proj", branch:"feat/api" }
-← { session_id:"s-c3", ... }
+# 1. Record the world-model decision agents must align to (FREE).
+→ aelyris.context.set { key:"auth_method", value:"jwt" }
 
-# 2. Poll the fleet (FREE) until status settles.
+# 2. Create a task with an implementer identity and branch bindings (FREE).
+→ aelyris.task.create { id:"t-auth", title:"build auth module", owner:"agent-impl-1",
+                        sourceBranch:"feat/auth", targetBranch:"main",
+                        outputs:["src/auth.rs"] }
+
+# 3. Create the isolated worktree and spawn a HEADLESS implementer (GATED by cost cap).
+→ aelyris.worktree.create { repoPath:"C:/proj", branchName:"feat/auth" }
+→ aelyris.spawn_agent { prompt:"implement the auth module per the ADR",
+                        cwd:"C:/proj-worktrees/feat-auth", model:"sonnet" }
+← { sessionId:"h-a1", spawned:true }
+
+# 4. Observe without screen-scraping (FREE): fleet, no-loss events, diff overlay.
 → aelyris.fleet_status {}
-← { sessions:[
-    { id:"s-a1", status:"done",    worktree_branch:"feat/auth",  cost:0.42, ... },
-    { id:"s-b2", status:"coding",  worktree_branch:"feat/cache", ... },
-    { id:"s-c3", status:"waiting_approval", worktree_branch:"feat/api", ... } ] }
+→ aelyris.event.since { afterSeq: 0 }
+→ aelyris.agent_diff { sessionId:"h-a1", against:"target", targetBranch:"main" }
 
-# 3. Inspect the finished agent's diff (FREE, observe-only).
-→ aelyris.agent_diff { sessionId:"s-a1", against:"target", targetBranch:"main" }
-← { source:{ kind:"branchComparison", baseBranch:"main", headBranch:"feat/auth" },
-    content:{ kind:"diff", base_revision:"main", files:[ { path:"src/auth.rs", ... } ] } }
+# 5. Coordinate parallel lanes (FREE): claims + typed steer.
+→ aelyris.symbol.claim_from_source { agentId:"agent-impl-1", path:"src/auth.rs", source:"..." }
+→ aelyris.agent.steer_avoid { sessionId:"h-a1", files:["src/auth.rs"] }
 
-# 4. Steer the still-coding agent (FREE).
-→ aelyris.send_steer { target:"s-b2", text:"use the existing LRU in shared/lib, don't add a dep\r" }
-← { accepted:1 }
+# 6. Request a DURABLE merge intent (GATED — never merges by itself).
+→ aelyris.request_merge { taskId:"t-auth", repoPath:"C:/proj",
+                          sourceBranch:"feat/auth", targetBranch:"main" }
+← { intentId:"merge:t-auth:…", status:"queued",
+    intent:{ sourceOid:"abc1234", targetOid:"def5678", ... } }
+   # The intent row is immutable and bound to these exact commits.
 
-# 5. s-c3 is waiting on a human gate — observe, do NOT grant.
+# 7. Observe pending decisions (GATED, observe-only).
 → aelyris.list_pending_approvals {}
-← { pending:[ { id:"d-9", type:"permission_required", sessionId:"s-c3",
-               risk:"high", status:"pending", title:"write outside workspace" } ] }
-   # The orchestrator records this and moves on. It cannot resolve d-9.
+← { pending:[...], mergeIntents:[{ intentId:"merge:t-auth:…", state:"queued" }],
+    grantToolExposed:false }
 
-# 6. Request a GATED merge of the ready branch. This STAGES — it never merges main.
-→ aelyris.request_merge { sessionId:"s-a1", sourceBranch:"feat/auth", targetBranch:"main" }
-← { intentId:"m-7", status:"queued", stagedCommitSha:"abc1234" }
-   # status:"queued", NOT "done". A human grants in the Cockpit UI; the engine
-   # never auto-merges to main.
+# 8. Reviewer authority resolves the intent (REVIEWER AUTHORITY).
+#    Either the loop merges it mechanically when gates are green and
+#    reviewer != owner:
+→ aelyris.orchestrator.step { repoPath:"C:/proj", reviewerId:"agent-reviewer-1",
+                              gateCommands:{ test:["pnpm","test"] } }
+#    ... or a reviewer approves the stored intent BY ID (no repo/source/target
+#    accepted — they come from the immutable row; moved tips => needs_reconcile):
+→ aelyris.review.approve { intentId:"merge:t-auth:…", gatesDigest:"sha256:…" }
+← { intentId:"merge:t-auth:…", status:"merged", outcome:{ ... } }
 
-# 7. Poll for the human decision (observe-only loop).
-→ aelyris.list_pending_approvals {}
-← { pending:[ { id:"m-7", type:"merge_conflict_strategy", status:"pending", risk:"high" } ] }
-   # ... repeat until the human resolves it in Face 1; m-7 leaves `pending`.
-
-# 8. Clean up the merged worktree (FREE).
-→ aelyris.stop_agent { sessionId:"s-a1", removeWorktree:true }
-← { ok:true }
+# 9. Clean up (FREE).
+→ aelyris.symbol.release_task { taskId:"t-auth" }
+→ aelyris.worktree.remove { repoPath:"C:/proj", worktreeName:"feat-auth" }
 ```
 
 Key takeaways the example demonstrates:
-- Steps 1-4, 8 are FREE — the orchestrator runs the whole fan-out/observe/steer
-  loop with zero human friction.
-- Steps 5-7 are GATED — every privileged transition is `pending`/`queued`, and the
-  only resolver is the watchdog engine or a human in Face 1. The orchestrator's
-  role is strictly request + observe + poll.
+- Steps 1-5, 9 are FREE coordination — the orchestrator runs the whole
+  fan-out/observe/steer loop with zero human friction.
+- Steps 6-8 are the bounded merge path: the request creates a durable,
+  commit-bound intent; only reviewer-authority verbs resolve it; approval is
+  attributed (reviewer id + gates digest) and re-validates the bound tips
+  before any git mutation. Tool approvals (`aelyris.request_approval`) remain
+  decidable only by the watchdog engine or a human — no grant verb exists.

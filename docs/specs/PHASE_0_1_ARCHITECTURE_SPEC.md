@@ -1,5 +1,12 @@
 # Phase 0 + Phase 1 Architecture Spec — Runtime Unification & Worktree Auto-Wiring
 
+> **STATUS (2026-07-02): LANDED** — the architecture described here shipped in June
+> 2026 (`src-tauri/src/control/` domain layer with agent/approval/diff/merge/pane/
+> worktree modules, the `src-tauri/src/ipc/` split into 30+ files, status/session
+> contracts). The body below is the original design narrative and describes the
+> **pre-implementation** state; do not use it as a task list. Current entry points:
+> [docs/requirements.md](../requirements.md), [docs/specs/README.md](README.md).
+
 > ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
 > requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
 > autonomy** model: agents can dispatch, review, and merge through **gated controls**,
@@ -86,6 +93,8 @@ Aelyris runs agents through **two fully parallel stacks** that never share a mod
 Everything in §0 is a symptom of the same structural gap: **Aelyris's capabilities exist
 only as scattered `#[tauri::command]` functions that are reachable from exactly one caller —
 the webview.** `commands.rs` alone is 6795 lines / 140 commands
+(2026-07-02: now 4413 lines / 39 commands after the §2.1 split; the full
+`generate_handler!` list at `lib.rs:967` registers ~212 commands)
 (`src-tauri/src/ipc/commands.rs:1`, registered at `lib.rs:526`), with more in
 `interactive_commands.rs` and `ghostdiff_commands.rs`. There is no transport-agnostic seam:
 the command bodies mix IPC marshalling, `AppHandle` state lookups, and the actual capability
@@ -332,7 +341,7 @@ out of the fleet; `useInteractiveAgent()` selects `runMode==="interactive"`. Thi
 
 ## 2. God-file decomposition
 
-### 2.1 `commands.rs` (6795 lines, **140** `#[tauri::command]`)
+### 2.1 `commands.rs` (6795 lines, **140** `#[tauri::command]`) *(2026-07-02: split landed — now 4413 lines / 39 commands, rest moved to sibling `ipc/*_commands.rs` files)*
 
 The file already clusters by domain (confirmed by reading the `pub fn` index). Split along
 the existing seams into a `src-tauri/src/ipc/commands/` module. Each new file gets a
@@ -616,7 +625,7 @@ The capability layer has exactly two clients:
 - Router (implemented, under-wired): `src-tauri/src/agent/router.rs:10,43`
 - Worktree validator + path fns: `src-tauri/src/git/worktree.rs:173,195,203`; duplicate inline validator `interactive_commands.rs:67-80`; extra callers `lib.rs:406`, `watchdog/auto_repair.rs:274`
 - Interactive spawn (worktree+ghostdiff+monitor in one call): `src-tauri/src/ipc/interactive_commands.rs:52,82-95,196-222`
-- `commands.rs` size + handler list: 6795 lines, 140 commands; registered at `src-tauri/src/lib.rs:526`
+- `commands.rs` size + handler list: 6795 lines, 140 commands; registered at `src-tauri/src/lib.rs:526` *(2026-07-02: now 4413 lines / 39 commands; handler list at `lib.rs:967`, ~212 commands)*
 - Frontend hooks: `useAgentManager` `src/shared/hooks/useAgentManager.ts:150`; `useInteractiveAgent` `useInteractiveAgent.ts:12`; wired in App at `src/App.tsx:2818,2822`
 - Orchestra dispatch: `src/App.tsx:4762-4813`; prompt builder `src/shared/lib/orchestrator.ts:262`
 - Duplicate right-rail Agents blocks: `src/App.tsx:6436,6524,6726`
