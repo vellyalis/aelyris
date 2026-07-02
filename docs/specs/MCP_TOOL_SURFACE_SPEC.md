@@ -330,8 +330,48 @@ All validation reuses existing, single-source validators (no re-implementation):
 - `cwd` → `validate_api_cwd` / `normalize_api_cwd` (`api/mod.rs:1339-1458`): rejects
   `..`, UNC, NUL, and system dirs (`is_dangerous_api_cwd`, `:1430`).
 - Steering payload → `validate_keys_payload` (`commands.rs:5318`).
-- MCP arg coercion → `json_arg_string` / `json_arg_usize` / `json_arg_bool`
-  (`api/mod.rs:1744-1781`).
+- MCP tool dispatch validates the advertised `inputSchema` before handler
+  dispatch; per-verb `arg_string` / `arg_usize` / `arg_bool` coercion remains as
+  defense in depth.
+
+### 5.2.1 Runtime inputSchema enforcement
+
+`tools/call` must enforce the same `inputSchema` that `tools/list` advertises
+before any verb dispatch. The built-in validator intentionally supports only the
+schema subset the catalog uses: object roots, `properties`, `required`,
+`additionalProperties:false` or schema objects, primitive `type`s, arrays with
+`items`, `enum`, `minimum`/`maximum`, `maxLength`, and `description` metadata.
+The Rust drift test `every_catalog_schema_is_in_the_enforced_subset` fails if a
+future catalog entry adds unsupported JSON Schema features.
+
+On violation, native MCP returns a normal tool result with `isError:true` and
+`structuredContent` carrying:
+
+```json
+{
+  "schema_violation": {
+    "verb": "aelyris.task.transition",
+    "missing": ["to"],
+    "wrong_type": [{ "field": "id", "expected": "string", "got": "integer" }],
+    "unknown": ["extra"]
+  }
+}
+```
+
+The HTTP `/mcp/tools/call` shape mirrors this as `ok:false` with the same
+`error.schema_violation` payload. This is deliberately machine-correctable:
+an orchestrator can fix missing, mistyped, or unknown arguments in one retry
+without reading logs.
+
+### 5.2.2 Bounded MCP pending queue
+
+`mcp_pending` is a live in-memory queue for non-durable approval requests. It is
+bounded by `MAX_MCP_PENDING = 500`; durable merge intents remain in
+`MergeIntentStore` and are not part of this cap. When a new pending item would
+exceed the cap, the runtime drops the oldest item, logs `tracing::warn!`, and
+publishes a system-channel `EscalationRaised` EventBus event with
+`source:"mcp_pending"`, `reason:"queue_overflow"`, `droppedId`, `newId`, and
+`cap`. Overflow is therefore observable instead of silently consuming RAM.
 
 ### 5.3 Versioned schema
 

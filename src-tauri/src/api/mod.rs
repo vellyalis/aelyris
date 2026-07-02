@@ -148,6 +148,12 @@ pub struct McpPendingDecision {
     pub status: String,
 }
 
+/// Hard cap on in-memory MCP approval decisions. Durable merge intents live in
+/// `MergeIntentStore`; this queue is only the live, non-durable approval inbox
+/// projection, so overflow evicts the oldest item loudly instead of growing
+/// without bound under an authenticated runaway caller.
+pub const MAX_MCP_PENDING: usize = 500;
+
 /// Runtime state shared by all handlers.
 ///
 /// Cloning is cheap: `PtyManager` wraps an `Arc<Mutex<...>>` internally, and
