@@ -427,6 +427,7 @@ fn spawn_specs(
                         adr_header,
                         guidelines_header,
                         &ownership_section(ownership, task),
+                        "",
                     ),
                     cwd: task_worktree_cwd(task, repo_path),
                     // Route to the task's explicit `model` if set, else its
@@ -445,20 +446,21 @@ fn spawn_specs(
 /// the shared ADR header (the world-model), the repo guidelines, AND the
 /// active-symbol-ownership section (the claims OTHER work holds on this task's
 /// files), so every agent works informed rather than blind. Shared by the
-/// headless and visible-pane spec builders so both inject the same prompt. Empty
-/// headers contribute nothing.
+/// headless and visible-pane spec builders so prompt ownership stays centralized.
+/// Empty headers contribute nothing.
 fn task_agent_prompt(
     task: &crate::task::graph::Task,
     adr_header: &str,
     guidelines_header: &str,
     ownership_section: &str,
+    completion_section: &str,
 ) -> String {
     let task_prompt = if task.description.trim().is_empty() {
         task.title.clone()
     } else {
         format!("{}\n\n{}", task.title, task.description)
     };
-    format!("{adr_header}{guidelines_header}{ownership_section}{task_prompt}")
+    format!("{adr_header}{guidelines_header}{ownership_section}{completion_section}{task_prompt}")
 }
 
 /// The active-ownership prompt section for `task` (§6.4): the live WRITE claims OTHER
@@ -497,6 +499,23 @@ fn task_worktree_cwd(task: &crate::task::graph::Task, repo_path: &str) -> String
     }
 }
 
+/// Completion marker contract for visible pane agents. The marker path is
+/// backend-built from the worktree plus a sanitized task id; the prompt tells the
+/// agent what to write, but the runtime never trusts an agent-supplied path.
+fn completion_marker_section(task_id: &str, cwd: &str) -> String {
+    let marker = crate::control::pane_fleet::done_marker_path(cwd, task_id)
+        .display()
+        .to_string();
+    let relative = crate::control::pane_fleet::done_marker_relative_path(task_id);
+    format!(
+        "[Completion marker]\n\
+Create this file as your LAST action, after all edits, declared outputs, and self-checks are complete:\n\
+{marker}\n\
+The relative marker path is {relative}. Create parent directories if needed and write exactly: done\n\
+Do not create the marker while work is still in progress. If blocked, leave the marker absent and state the blocker visibly.\n\n"
+    )
+}
+
 /// Default visible-pane geometry for a loop-dispatched agent. Wide enough for a
 /// CLI agent's output to read well in a fleet-grid tile; the frontend resizes
 /// the PTY to the real tile size once the pane mounts. `pub(crate)` so the IPC
@@ -516,8 +535,9 @@ struct PaneSpawnSpec {
     cols: u16,
     rows: u16,
     /// The task's declared output paths (relative to `cwd`). The visible fleet's
-    /// structural completion signal: an interactive agent never exits, so it is
-    /// reported done once these all exist in its worktree (see `PaneFleet`).
+    /// legacy completion fallback: an interactive agent should create its done
+    /// marker as the primary signal, and `PaneFleet` only accepts output files
+    /// after an idle grace window.
     outputs: Vec<String>,
 }
 
@@ -535,6 +555,8 @@ fn pane_spawn_specs(
         .list()
         .into_iter()
         .map(|task| {
+            let cwd = task_worktree_cwd(task, repo_path);
+            let completion = completion_marker_section(&task.id, &cwd);
             (
                 task.id.clone(),
                 PaneSpawnSpec {
@@ -543,8 +565,9 @@ fn pane_spawn_specs(
                         adr_header,
                         guidelines_header,
                         &ownership_section(ownership, task),
+                        &completion,
                     ),
-                    cwd: task_worktree_cwd(task, repo_path),
+                    cwd,
                     model: task.agent_model(),
                     cols: PANE_COLS,
                     rows: PANE_ROWS,
@@ -558,8 +581,9 @@ fn pane_spawn_specs(
 /// Dispatches a ready task by spawning its implementer agent in a **visible PTY
 /// pane** (1 pane = 1 agent) through the shared `PaneFleet`. The CLI command is
 /// resolved from the task's model + prompt via `agent_shell_command_spec` (the
-/// interactive TUI inside a PowerShell pane); completion is sensed structurally
-/// from declared outputs (the interactive TUI never exits). This is the visible
+/// interactive TUI inside a PowerShell pane); completion is sensed from an
+/// explicit done marker, with declared outputs as a delayed compatibility
+/// fallback because the interactive TUI never exits. This is the visible
 /// counterpart of `AgentDispatcher`. The AgentInspector's hand-spawned agents use
 /// the sibling `agent_command_spec` (interactive TUI, launched directly).
 struct PaneDispatcher<'a> {
@@ -578,8 +602,9 @@ impl Dispatcher for PaneDispatcher<'_> {
         // Loop workers run INSIDE a visible PowerShell pane (split pane → shell →
         // AI CLI), as the live INTERACTIVE TUI (not headless -p), autonomous (own
         // worktree) so they auto-accept edits and build. Because the interactive
-        // session never exits, completion is sensed structurally from the task's
-        // declared outputs appearing in the worktree (passed to the fleet here).
+        // session never exits, completion is sensed through the done marker
+        // injected into the prompt; declared outputs remain a delayed fallback
+        // for legacy agents (passed to the fleet here).
         let (program, args, env) =
             crate::agent::interactive::agent_shell_command_spec(model, &spec.prompt, true)?;
         self.fleet.spawn(
@@ -1668,6 +1693,34 @@ mod tests {
 
         let visible = pane_spawn_specs(&graph, "/repo", &adr_header, guidelines_header, None);
         assert_dispatch_context_order(&visible.get("t").unwrap().prompt);
+    }
+
+    #[test]
+    fn visible_dispatch_prompt_includes_backend_built_done_marker_contract() {
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("task/one:two", "Build login")).unwrap();
+
+        let visible = pane_spawn_specs(&graph, "/repo", "", "", None);
+        let prompt = &visible.get("task/one:two").unwrap().prompt;
+
+        assert!(prompt.contains("[Completion marker]"), "{prompt}");
+        assert!(prompt.contains("LAST action"), "{prompt}");
+        assert!(
+            prompt.contains(".aelyris/done/task_one_two.done"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("write exactly: done"), "{prompt}");
+        assert!(!prompt.contains("capture_pane"), "{prompt}");
+
+        let headless = spawn_specs(&graph, "/repo", "", "", None);
+        assert!(
+            !headless
+                .get("task/one:two")
+                .unwrap()
+                .prompt
+                .contains("[Completion marker]"),
+            "headless completion remains exit-based"
+        );
     }
 
     #[test]

@@ -20,11 +20,20 @@
 //! `timed_out` (-> killed + recovery). See
 //! docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md (BR9).
 
-use std::collections::HashMap;
+use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::orchestrator::autonomy::Completions;
 use crate::pty::PtyManager;
+
+/// Backward-compatible output-file fallback window for legacy agents that do not
+/// know the explicit done-marker contract yet. Marker files are still the
+/// primary completion signal; output files alone must stay stable long enough to
+/// avoid killing an agent after its first save.
+const OUTPUTS_FALLBACK_GRACE_SECS: u64 = 30;
+const PANE_IDLE_CAPTURE_LINES: usize = 20;
 
 /// Current Unix epoch in seconds, for each pane's wall-clock start stamp.
 fn now_secs() -> u64 {
@@ -42,6 +51,35 @@ fn mark_failed(exit: &Arc<Mutex<Option<bool>>>) {
     }
 }
 
+/// Relative marker path injected into loop-dispatched visible agents. The task id
+/// is sanitized by the session-lifecycle helper used for handoff files so the
+/// agent never controls a path component.
+pub(crate) fn done_marker_relative_path(task_id: &str) -> String {
+    format!(
+        ".aelyris/done/{}.done",
+        crate::agent::session_lifecycle::sanitize_handoff_id(task_id)
+    )
+}
+
+/// Absolute marker path under the pane worktree. The path is backend-built from a
+/// fixed directory plus a sanitized file name; no user-supplied marker path is
+/// trusted.
+pub(crate) fn done_marker_path(worktree_path: &str, task_id: &str) -> PathBuf {
+    Path::new(worktree_path)
+        .join(".aelyris")
+        .join("done")
+        .join(format!(
+            "{}.done",
+            crate::agent::session_lifecycle::sanitize_handoff_id(task_id)
+        ))
+}
+
+fn output_signature(output: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    output.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// One dispatched pane: the visible terminal running its agent, when it started
 /// (for the hang budget), and a slot the waiter thread fills with the exit
 /// outcome (`Some(succeeded)` once the process exits; `None` while running).
@@ -51,21 +89,24 @@ struct PaneRun {
     /// `Some(true)` = clean exit (code 0); `Some(false)` = non-zero exit / wait
     /// failure; `None` = still running. Written once by the waiter thread.
     exit: Arc<Mutex<Option<bool>>>,
-    /// The agent's worktree (its cwd), and the task's declared output paths
-    /// relative to it. An INTERACTIVE agent (the visible TUI) never exits, so the
-    /// exit slot never fills; instead the pane is "done" once all these outputs
-    /// exist on disk — the structural completion signal for the visible fleet.
-    /// Empty `outputs` ⇒ no structural signal (the pane rides the exit/timeout path).
+    /// The agent's worktree (its cwd), the task's declared output paths relative
+    /// to it, and the explicit done marker the agent is instructed to create as
+    /// its last action. The marker is the primary completion signal for visible
+    /// TUI agents that do not exit; outputs are only a delayed fallback.
     worktree_path: String,
     outputs: Vec<String>,
+    done_marker_path: PathBuf,
+    outputs_ready_since: Option<u64>,
+    last_output_signature: Option<u64>,
+    output_idle_since: Option<u64>,
 }
 
-/// Whether every declared output path exists under the worktree. The structural
-/// completion signal for interactive agents (which never exit): the work product
-/// is on disk. Empty `outputs` is NOT "ready" — the caller must guard that so a
-/// task declaring no outputs is not reported done the instant it is dispatched.
+/// Whether every declared output path exists under the worktree. Empty `outputs`
+/// is NOT "ready" — the caller must guard that so a task declaring no outputs is
+/// not reported done the instant it is dispatched. This is only the legacy
+/// fallback; the explicit done marker wins.
 fn outputs_present(worktree_path: &str, outputs: &[String]) -> bool {
-    let root = std::path::Path::new(worktree_path);
+    let root = Path::new(worktree_path);
     // `is_file`, not `exists`: a declared output is a work-product FILE. `exists`
     // also returns true for a directory, so an agent that creates an output dir
     // (e.g. `dist/`) before writing into it would be reported done — and its TUI
@@ -165,6 +206,10 @@ impl PaneFleet {
                 exit,
                 worktree_path: cwd.to_string(),
                 outputs,
+                done_marker_path: done_marker_path(cwd, task_id),
+                outputs_ready_since: None,
+                last_output_signature: None,
+                output_idle_since: None,
             },
         );
         Ok(terminal_id)
@@ -202,34 +247,62 @@ impl PaneFleet {
             runs.iter()
                 .map(|(task_id, run)| RunSnapshot {
                     task_id: task_id.clone(),
+                    terminal_id: run.terminal_id.clone(),
                     exit: run.exit.lock().ok().and_then(|slot| *slot),
                     started_at: run.started_at,
                     worktree_path: run.worktree_path.clone(),
                     outputs: run.outputs.clone(),
+                    done_marker_path: run.done_marker_path.clone(),
+                    output_fallback: OutputFallbackState {
+                        outputs_ready_since: run.outputs_ready_since,
+                        last_output_signature: run.last_output_signature,
+                        output_idle_since: run.output_idle_since,
+                    },
                 })
                 .collect()
         };
 
         let mut completions = classify(&snapshot, timeout_secs, now);
 
-        // Structural completion for INTERACTIVE agents: the visible TUI never
-        // exits, so the exit-slot sensor above never fires for it and the task
-        // would otherwise wait out the full hang timeout. A still-running pane
-        // (within budget) whose task has produced all its declared outputs on
-        // disk is done — report it succeeded and kill the now-idle TUI process.
-        // `exit.is_none()` keeps this disjoint from classify's exit-based
-        // succeeded/failed, so a task is never reported twice.
-        let outputs_ready: std::collections::HashSet<String> = snapshot
+        // Completion for INTERACTIVE agents: the visible TUI usually never exits,
+        // so the exit-slot sensor above never fires for normal work. The primary
+        // completion signal is a backend-built done marker created as the agent's
+        // LAST action. Output-file presence is only a compatibility fallback, and
+        // it must remain present while the pane's recent output tail is stable for
+        // a grace window; a first save must not kill an in-flight refactor.
+        let mut state_updates: Vec<(String, OutputFallbackState)> = Vec::new();
+        let mut live_done: HashSet<String> = HashSet::new();
+        for run in snapshot
             .iter()
-            .filter(|run| {
-                run.exit.is_none()
-                    && now.saturating_sub(run.started_at) <= timeout_secs
-                    && !run.outputs.is_empty()
-                    && outputs_present(&run.worktree_path, &run.outputs)
-            })
-            .map(|run| run.task_id.clone())
-            .collect();
-        completions.succeeded.extend(outputs_ready.iter().cloned());
+            .filter(|run| run.exit.is_none() && now.saturating_sub(run.started_at) <= timeout_secs)
+        {
+            if run.done_marker_path.is_file() {
+                live_done.insert(run.task_id.clone());
+                continue;
+            }
+
+            let outputs_present_now =
+                !run.outputs.is_empty() && outputs_present(&run.worktree_path, &run.outputs);
+            let output_signature = if outputs_present_now {
+                self.pty
+                    .capture(&run.terminal_id, PANE_IDLE_CAPTURE_LINES, true)
+                    .ok()
+                    .map(|output| output_signature(&output))
+            } else {
+                None
+            };
+            let updated = update_output_fallback_state(
+                run.output_fallback,
+                outputs_present_now,
+                output_signature,
+                now,
+            );
+            if output_fallback_done(&updated, now, OUTPUTS_FALLBACK_GRACE_SECS) {
+                live_done.insert(run.task_id.clone());
+            }
+            state_updates.push((run.task_id.clone(), updated));
+        }
+        completions.succeeded.extend(live_done.iter().cloned());
 
         // Re-acquire the lock only to remove the reported tasks and collect the
         // terminals to act on; the PTY I/O happens AFTER the lock drops so a pane
@@ -244,6 +317,13 @@ impl PaneFleet {
                 .runs
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for (task, state) in state_updates {
+                if let Some(run) = runs.get_mut(&task) {
+                    run.outputs_ready_since = state.outputs_ready_since;
+                    run.last_output_signature = state.last_output_signature;
+                    run.output_idle_since = state.output_idle_since;
+                }
+            }
             for task in &completions.timed_out {
                 if let Some(run) = runs.remove(task) {
                     to_kill.push(run.terminal_id);
@@ -257,7 +337,7 @@ impl PaneFleet {
                 if let Some(run) = runs.remove(task) {
                     // Outputs-ready panes are still alive (interactive TUI) → kill;
                     // exit-observed panes already terminated → reap.
-                    if outputs_ready.contains(task) {
+                    if live_done.contains(task) {
                         to_kill.push(run.terminal_id);
                     } else {
                         to_reap.push(run.terminal_id);
@@ -282,11 +362,57 @@ impl PaneFleet {
 #[derive(Clone)]
 struct RunSnapshot {
     task_id: String,
+    terminal_id: String,
     /// `Some(true)` clean exit, `Some(false)` non-zero exit, `None` still running.
     exit: Option<bool>,
     started_at: u64,
     worktree_path: String,
     outputs: Vec<String>,
+    done_marker_path: PathBuf,
+    output_fallback: OutputFallbackState,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct OutputFallbackState {
+    outputs_ready_since: Option<u64>,
+    last_output_signature: Option<u64>,
+    output_idle_since: Option<u64>,
+}
+
+fn update_output_fallback_state(
+    previous: OutputFallbackState,
+    outputs_present_now: bool,
+    output_signature: Option<u64>,
+    now: u64,
+) -> OutputFallbackState {
+    if !outputs_present_now {
+        return OutputFallbackState::default();
+    }
+
+    let outputs_ready_since = previous.outputs_ready_since.or(Some(now));
+    let (last_output_signature, output_idle_since) = match output_signature {
+        Some(signature) if previous.last_output_signature == Some(signature) => {
+            (Some(signature), previous.output_idle_since.or(Some(now)))
+        }
+        Some(signature) => (Some(signature), Some(now)),
+        None => (previous.last_output_signature, None),
+    };
+
+    OutputFallbackState {
+        outputs_ready_since,
+        last_output_signature,
+        output_idle_since,
+    }
+}
+
+fn output_fallback_done(state: &OutputFallbackState, now: u64, grace_secs: u64) -> bool {
+    state
+        .outputs_ready_since
+        .is_some_and(|since| now.saturating_sub(since) >= grace_secs)
+        && state
+            .output_idle_since
+            .is_some_and(|since| now.saturating_sub(since) >= grace_secs)
+        && state.last_output_signature.is_some()
 }
 
 /// Pure completion/timeout decision over the current panes — the part the loop's
@@ -317,10 +443,13 @@ mod tests {
     fn run(task: &str, exit: Option<bool>, started_at: u64) -> RunSnapshot {
         RunSnapshot {
             task_id: task.to_string(),
+            terminal_id: format!("term-{task}"),
             exit,
             started_at,
             worktree_path: String::new(),
             outputs: Vec::new(),
+            done_marker_path: PathBuf::new(),
+            output_fallback: OutputFallbackState::default(),
         }
     }
 
@@ -468,19 +597,76 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn done_marker_path_is_backend_built_and_sanitized() {
+        let root = PathBuf::from("C:/repo");
+        let path = done_marker_path(root.to_str().unwrap(), "../task/one:two");
+        let done_dir = root.join(".aelyris").join("done");
+
+        assert!(path.starts_with(&done_dir));
+        assert!(path.ends_with(".._task_one_two.done"));
+        assert!(!path
+            .strip_prefix(done_dir)
+            .unwrap()
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir)));
+        assert_eq!(
+            done_marker_relative_path("../task/one:two"),
+            ".aelyris/done/.._task_one_two.done"
+        );
+    }
+
+    #[test]
+    fn output_fallback_waits_for_outputs_and_idle_grace() {
+        let first =
+            update_output_fallback_state(OutputFallbackState::default(), true, Some(10), 100);
+        assert!(!output_fallback_done(
+            &first,
+            100 + OUTPUTS_FALLBACK_GRACE_SECS - 1,
+            OUTPUTS_FALLBACK_GRACE_SECS
+        ));
+
+        let stable =
+            update_output_fallback_state(first, true, Some(10), 100 + OUTPUTS_FALLBACK_GRACE_SECS);
+        assert!(output_fallback_done(
+            &stable,
+            100 + OUTPUTS_FALLBACK_GRACE_SECS,
+            OUTPUTS_FALLBACK_GRACE_SECS
+        ));
+    }
+
+    #[test]
+    fn output_fallback_resets_when_output_changes_or_disappears() {
+        let first =
+            update_output_fallback_state(OutputFallbackState::default(), true, Some(10), 100);
+        let changed =
+            update_output_fallback_state(first, true, Some(11), 100 + OUTPUTS_FALLBACK_GRACE_SECS);
+        assert!(
+            !output_fallback_done(
+                &changed,
+                100 + OUTPUTS_FALLBACK_GRACE_SECS,
+                OUTPUTS_FALLBACK_GRACE_SECS
+            ),
+            "new pane output means the pane is not idle yet"
+        );
+
+        let missing = update_output_fallback_state(changed, false, None, 200);
+        assert_eq!(missing, OutputFallbackState::default());
+    }
+
     /// The defining behavior of the visible fleet: an INTERACTIVE agent never
     /// exits, so the exit-slot sensor stays `None` forever. Proof that the pane
-    /// is still reported done — structurally — once its declared output appears
-    /// in the worktree, and the now-idle process is killed + forgotten. Without
-    /// this, every interactive agent would wedge in Running until the hang
-    /// timeout. Uses a real non-exiting PTY process so the exit path genuinely
-    /// never fires (a pure-classifier test could not catch a broken integration).
+    /// is reported done immediately once its explicit done marker appears, and
+    /// the now-idle process is killed + forgotten. Without this, every
+    /// interactive agent would wedge in Running until the hang timeout. Uses a
+    /// real non-exiting PTY process so the exit path genuinely never fires (a
+    /// pure-classifier test could not catch a broken integration).
     #[cfg(windows)]
     #[test]
-    fn poll_reports_interactive_pane_done_when_outputs_appear() {
+    fn poll_reports_interactive_pane_done_when_marker_appears() {
         use std::time::{Duration, Instant};
 
-        let work = std::env::temp_dir().join(format!("aelyris-interactive-{}", now_secs()));
+        let work = std::env::temp_dir().join(format!("aelyris-marker-{}", now_secs()));
         std::fs::create_dir_all(&work).unwrap();
         let cwd = work.to_string_lossy().to_string();
 
@@ -502,11 +688,11 @@ mod tests {
                 24,
                 &cwd,
                 HashMap::new(),
-                vec!["BUILT.md".to_string()],
+                Vec::new(),
             )
             .expect("spawn interactive-like pane");
 
-        // Before the output exists: the pane is running, the exit slot is None,
+        // Before the marker exists: the pane is running, the exit slot is None,
         // and a generous budget keeps it off the timeout path -> reported as
         // neither done nor failed.
         let c = fleet.poll_completions(3600, now_secs());
@@ -516,13 +702,15 @@ mod tests {
         );
         assert!(fleet.terminal_of("task-build").is_some());
 
-        // The agent "produces" its declared output.
-        std::fs::write(work.join("BUILT.md"), "done").unwrap();
+        // The agent creates its explicit marker as its last action.
+        let marker = done_marker_path(&cwd, "task-build");
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(marker, "done").unwrap();
 
-        // Now the structural sensor fires: succeeded, even though the process is
-        // still alive (and is killed by the poll).
+        // Now the marker sensor fires: succeeded, even though the process is still
+        // alive (and is killed by the poll).
         let c = fleet.poll_completions(3600, now_secs());
-        assert_eq!(c.succeeded, ["task-build"], "outputs present -> succeeded");
+        assert_eq!(c.succeeded, ["task-build"], "marker present -> succeeded");
         assert!(c.failed.is_empty() && c.timed_out.is_empty());
 
         // Reported once: the binding is gone and a re-poll is empty (it was
@@ -535,6 +723,54 @@ mod tests {
             again = fleet.poll_completions(3600, now_secs());
         }
         assert!(again.succeeded.is_empty(), "no double-report");
+
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn poll_reports_outputs_only_done_after_idle_grace() {
+        let work = std::env::temp_dir().join(format!("aelyris-outputs-grace-{}", now_secs()));
+        std::fs::create_dir_all(&work).unwrap();
+        let cwd = work.to_string_lossy().to_string();
+
+        let fleet = PaneFleet::new(PtyManager::new());
+        let argv = vec![
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            "Start-Sleep -Seconds 120".to_string(),
+        ];
+        fleet
+            .spawn(
+                "task-build",
+                "powershell",
+                &argv,
+                80,
+                24,
+                &cwd,
+                HashMap::new(),
+                vec!["BUILT.md".to_string()],
+            )
+            .expect("spawn interactive-like pane");
+
+        std::fs::write(work.join("BUILT.md"), "done").unwrap();
+
+        let observed_at = now_secs();
+        let first = fleet.poll_completions(3600, observed_at);
+        assert!(
+            first.succeeded.is_empty() && first.failed.is_empty() && first.timed_out.is_empty(),
+            "outputs appearing alone must not complete the pane before grace"
+        );
+        assert!(fleet.terminal_of("task-build").is_some());
+
+        let second = fleet.poll_completions(3600, observed_at + OUTPUTS_FALLBACK_GRACE_SECS);
+        assert_eq!(
+            second.succeeded,
+            ["task-build"],
+            "outputs-only fallback completes after idle grace"
+        );
+        assert!(fleet.terminal_of("task-build").is_none());
 
         let _ = std::fs::remove_dir_all(&work);
     }

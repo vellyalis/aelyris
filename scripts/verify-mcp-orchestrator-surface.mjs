@@ -235,12 +235,13 @@ const checks = [
       // the shared store each step — no agent runs on stale context (③).
       loopPorts.includes("build_adr_header(&context.all())") &&
       loopPorts.includes("let guidelines_header = build_guidelines_header(&repo_path);") &&
-      // Every dispatched prompt carries BOTH the current ADR (world-model) AND the
-      // repo rules + active symbol-ownership section (A6 §6.4) — the agent runs
-      // blind to neither the shared decisions, repository guide, nor who owns
-      // which symbols in its files.
+      // Every dispatched prompt carries the current ADR (world-model), repo rules,
+      // active symbol-ownership section (A6 §6.4), and the optional visible-pane
+      // completion contract through one prompt owner — the agent runs blind to
+      // neither the shared decisions, repository guide, file ownership, nor its
+      // explicit done-marker duty when present.
       loopPorts.includes(
-        'format!("{adr_header}{guidelines_header}{ownership_section}{task_prompt}")',
+        'format!("{adr_header}{guidelines_header}{ownership_section}{completion_section}{task_prompt}")',
       ) &&
       loopPorts.includes("fn ownership_section(") &&
       // Rejected/stale work is re-dispatched (with the fresh ADR) via the shared
