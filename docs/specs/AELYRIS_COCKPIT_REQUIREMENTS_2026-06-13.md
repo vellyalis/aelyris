@@ -1,5 +1,13 @@
 # Aelyris Cockpit Requirements — AI Agent OS v1.0 superset
 
+> **STATUS (2026-07-02): HISTORICAL REQUIREMENTS SNAPSHOT.** The autonomy model
+> described in some sections (full-auto, no human gate, "never pauses") was
+> superseded by the bounded-autonomy model in
+> [docs/requirements.md](../requirements.md) (gated merges, human approval
+> surfaces). Where this document conflicts with `docs/requirements.md`,
+> `requirements.md` wins. Binding Requirement IDs (BR1-BR9 etc.) remain valid
+> reference anchors — code and verifiers cite them.
+
 Status: Active implementation requirements
 Version: 2.0 (AI Agent OS v1.0 superset)
 Originally: 2026-06-13 · Revised: 2026-06-15
@@ -49,7 +57,7 @@ capability layer** (Aelyris Control API); they are two faces over one set of
 domain functions, never separate ad hoc command paths. The product target is a
 native-first hybrid terminal running 3–4 coding agents in parallel by default.
 
-**Autonomy model (full auto).** The loop runs end-to-end with **no human gate in
+**Autonomy model (full auto).** *(superseded — see banner)* The loop runs end-to-end with **no human gate in
 its critical path** — including merge-to-`main`. The human is a **monitor with
 optional, non-blocking post-hoc override/rollback**, never a required step.
 Every safety control is **automated and non-blocking**: all-green quality gates

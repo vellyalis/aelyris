@@ -1,5 +1,7 @@
 # 03 — 詳細実装計画（Phase別・TDD・ゲート）
 
+> **STATUS (2026-07-02): program completed June 2026 (see [00_README.md](00_README.md) tracker); the ⬜ checkboxes below were never back-filled and do not indicate open work.**
+
 > 親: [`00_README.md`](00_README.md) ／ 前: [`02_SPEC.md`](02_SPEC.md) ／ 次: [`04_DEBT_AND_MODULARITY.md`](04_DEBT_AND_MODULARITY.md)
 >
 > 各タスクは **RED（テスト先行）→ GREEN（最小実装）→ ゲート緑** の順。完了で `⬜→✅`＋コミット。
