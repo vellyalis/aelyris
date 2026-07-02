@@ -45,6 +45,10 @@ export interface TerminalGpuPaintContext {
   textureProgram: GlProgram;
   commands: DrawCommand[];
   atlasTextures: Map<number, WebGLTexture>;
+  /** Atlas page generation last uploaded to the GPU, keyed by page index.
+   * Skips the (expensive) full-page texImage2D when the page raster is
+   * unchanged since the previous upload. */
+  atlasTextureGenerations: Map<number, number>;
   imageTextures: WeakMap<ImageBitmap, WebGLTexture>;
   width: number;
   height: number;
@@ -74,6 +78,7 @@ export function createTerminalGpuPaintContext(
     textureProgram: createTextureProgram(gl),
     commands: [],
     atlasTextures: new Map(),
+    atlasTextureGenerations: new Map(),
     imageTextures: new WeakMap(),
     width: canvas.width,
     height: canvas.height,
@@ -224,7 +229,14 @@ export function paintSearchBands(
     const y = vr * height;
     const w = (m.endCol - m.startCol + 1) * width;
     if (w <= 0) continue;
-    queueRect(context, x, y, w, height, colorToRgba(isActive ? SEARCH_ACTIVE_BG : SEARCH_MATCH_BG, isActive ? 0.65 : 0.4));
+    queueRect(
+      context,
+      x,
+      y,
+      w,
+      height,
+      colorToRgba(isActive ? SEARCH_ACTIVE_BG : SEARCH_MATCH_BG, isActive ? 0.65 : 0.4),
+    );
   }
 }
 
@@ -363,7 +375,14 @@ export function paintCursor(
       queueRect(context, x + width - 1, y, 1, height, colorToRgba(CURSOR_COLOR));
       return;
     case "underline":
-      queueRect(context, x, y + height - UNDERLINE_INSET_FROM_BOTTOM, width, UNDERLINE_INSET_FROM_BOTTOM, colorToRgba(CURSOR_COLOR));
+      queueRect(
+        context,
+        x,
+        y + height - UNDERLINE_INSET_FROM_BOTTOM,
+        width,
+        UNDERLINE_INSET_FROM_BOTTOM,
+        colorToRgba(CURSOR_COLOR),
+      );
       return;
     case "beam":
       queueRect(context, x, y, 2, height, colorToRgba(CURSOR_COLOR));
@@ -490,7 +509,17 @@ function queueTextureQuad(
   context.commands.push({ kind: "texture", texture, vertices, mask });
 }
 
-function pushColoredQuad(vertices: number[], x: number, y: number, width: number, height: number, r: number, g: number, b: number, a: number) {
+function pushColoredQuad(
+  vertices: number[],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  r: number,
+  g: number,
+  b: number,
+  a: number,
+) {
   vertices.push(
     x,
     y,
@@ -538,8 +567,32 @@ function drawCommands(context: TerminalGpuPaintContext) {
   const textureBuffer = gl.createBuffer();
   if (!rectBuffer || !textureBuffer) throw new Error("WebGL2 buffer allocation failed");
 
-  const { textureProgram } = context;
+  // Merge ADJACENT commands that share GL state (rects together; glyphs with
+  // the same texture+mask together) into one buffer upload + one draw call.
+  // Only adjacent commands merge, so queue order — and therefore z-order — is
+  // preserved exactly. Without this, every glyph is its own draw call and a
+  // full-grid repaint issues thousands of bufferData/drawArrays round trips.
+  const batched: DrawCommand[] = [];
   for (const command of context.commands) {
+    const last = batched[batched.length - 1];
+    const mergeable =
+      last &&
+      last.kind === command.kind &&
+      (command.kind === "rect" ||
+        (last.kind === "texture" && last.texture === command.texture && last.mask === command.mask));
+    if (mergeable) {
+      for (const v of command.vertices) last.vertices.push(v);
+      continue;
+    }
+    batched.push(
+      command.kind === "rect"
+        ? { kind: "rect", vertices: command.vertices.slice() }
+        : { kind: "texture", texture: command.texture, mask: command.mask, vertices: command.vertices.slice() },
+    );
+  }
+
+  const { textureProgram } = context;
+  for (const command of batched) {
     if (command.kind === "rect") {
       gl.useProgram(rectProgram.program);
       gl.uniform2f(rectProgram.uniforms.u_resolution, context.width, context.height);
@@ -549,7 +602,14 @@ function drawCommands(context: TerminalGpuPaintContext) {
       gl.enableVertexAttribArray(rectProgram.attributes.a_position);
       gl.vertexAttribPointer(rectProgram.attributes.a_position, 2, gl.FLOAT, false, rectStride, 0);
       gl.enableVertexAttribArray(rectProgram.attributes.a_color);
-      gl.vertexAttribPointer(rectProgram.attributes.a_color, 4, gl.FLOAT, false, rectStride, 2 * Float32Array.BYTES_PER_ELEMENT);
+      gl.vertexAttribPointer(
+        rectProgram.attributes.a_color,
+        4,
+        gl.FLOAT,
+        false,
+        rectStride,
+        2 * Float32Array.BYTES_PER_ELEMENT,
+      );
       gl.drawArrays(gl.TRIANGLES, 0, command.vertices.length / 6);
       continue;
     }
@@ -593,10 +653,15 @@ function textureForAtlasEntry(context: TerminalGpuPaintContext, entry: GlyphAtla
   if (!texture) {
     texture = createTexture(context.gl);
     context.atlasTextures.set(entry.pageIndex, texture);
+    context.atlasTextureGenerations.delete(entry.pageIndex);
   }
-  const surface = context.atlas.getPageSurface(entry.pageIndex);
-  if (!surface) throw new Error(`missing glyph atlas page ${entry.pageIndex}`);
-  uploadTexture(context.gl, texture, surface as TexImageSource);
+  const generation = context.atlas.getPageGeneration(entry.pageIndex);
+  if (context.atlasTextureGenerations.get(entry.pageIndex) !== generation) {
+    const surface = context.atlas.getPageSurface(entry.pageIndex);
+    if (!surface) throw new Error(`missing glyph atlas page ${entry.pageIndex}`);
+    uploadTexture(context.gl, texture, surface as TexImageSource);
+    context.atlasTextureGenerations.set(entry.pageIndex, generation);
+  }
   return texture;
 }
 

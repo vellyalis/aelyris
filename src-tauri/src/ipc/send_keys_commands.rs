@@ -175,6 +175,15 @@ pub async fn resolve_interactive_approval(
     let keystroke: &[u8] = approval_resolution_keystroke(approve);
 
     let session_mgr = app.state::<InteractiveSessionManager>();
+
+    // Serialize the gate-check + PTY write per terminal (same contract as the
+    // other input verbs) so a concurrent write cannot reorder on the PTY.
+    // The stale-approval fingerprint check MUST run while holding this lock:
+    // verifying before acquiring it leaves a window where a concurrent write
+    // changes the prompt between the check and the keystroke landing.
+    let write_order = terminal_write_order_lock(&terminal_id);
+    let _write_guard = write_order.lock().await;
+
     verify_current_interactive_approval(
         &session_mgr,
         &terminal_id,
@@ -196,11 +205,6 @@ pub async fn resolve_interactive_approval(
             "redacted": true,
         }),
     );
-
-    // Serialize the gate-check + PTY write per terminal (same contract as the
-    // other input verbs) so a concurrent write cannot reorder on the PTY.
-    let write_order = terminal_write_order_lock(&terminal_id);
-    let _write_guard = write_order.lock().await;
     let bytes = gate_ipc_input(
         &app,
         &terminal_id,

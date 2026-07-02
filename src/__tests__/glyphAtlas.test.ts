@@ -79,4 +79,33 @@ describe("GlyphAtlas", () => {
     atlas.getOrInsert(baseKey);
     expect(atlas.getCounters()).toMatchObject({ hits: 1, misses: 0, evictions: 0, glyphs: 1 });
   });
+
+  it("bumps the page generation only when the page raster changes", () => {
+    const atlas = atlasForTests();
+    expect(atlas.getPageGeneration(0)).toBe(0);
+
+    atlas.getOrInsert(baseKey);
+    const afterInsert = atlas.getPageGeneration(0);
+    expect(afterInsert).toBeGreaterThan(0);
+
+    // A cache hit draws nothing new — GPU consumers must be able to skip
+    // re-uploading the page texture.
+    atlas.getOrInsert({ ...baseKey });
+    expect(atlas.getPageGeneration(0)).toBe(afterInsert);
+
+    atlas.getOrInsert({ ...baseKey, text: "B" });
+    const afterSecondInsert = atlas.getPageGeneration(0);
+    expect(afterSecondInsert).toBeGreaterThan(afterInsert);
+
+    atlas.clear();
+    expect(atlas.getPageGeneration(0)).toBeGreaterThan(afterSecondInsert);
+  });
+
+  it("bumps the page generation when eviction clears a page", () => {
+    const atlas = atlasForTests({ pageSize: 16, maxPages: 1, width: 12, height: 12 });
+    atlas.getOrInsert(baseKey);
+    const beforeEvict = atlas.getPageGeneration(0);
+    atlas.getOrInsert({ ...baseKey, text: "B" });
+    expect(atlas.getPageGeneration(0)).toBeGreaterThan(beforeEvict);
+  });
 });

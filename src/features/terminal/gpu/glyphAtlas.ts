@@ -62,6 +62,9 @@ interface AtlasPage {
   rowHeight: number;
   lastUsed: number;
   entryKeys: Set<string>;
+  /** Bumped whenever the page's raster content changes (insert/clear/evict), so
+   * GPU consumers can skip re-uploading an unchanged page texture. */
+  generation: number;
 }
 
 const DEFAULT_PAGE_SIZE = 1024;
@@ -134,6 +137,7 @@ export class GlyphAtlas {
     page.cursorX += bitmap.width + this.padding * 2;
     page.rowHeight = Math.max(page.rowHeight, bitmap.height + this.padding * 2);
     page.lastUsed = ++this.clock;
+    page.generation += 1;
     return entry;
   }
 
@@ -159,12 +163,17 @@ export class GlyphAtlas {
       page.rowHeight = 0;
       page.entryKeys.clear();
       page.lastUsed = ++this.clock;
+      page.generation += 1;
     }
     this.entries.clear();
   }
 
   getPageSurface(pageIndex: number): GlyphAtlasSurface | null {
     return this.pages[pageIndex]?.surface ?? null;
+  }
+
+  getPageGeneration(pageIndex: number): number {
+    return this.pages[pageIndex]?.generation ?? 0;
   }
 
   private pageFor(width: number, height: number): AtlasPage {
@@ -209,6 +218,7 @@ export class GlyphAtlas {
       rowHeight: 0,
       lastUsed: ++this.clock,
       entryKeys: new Set(),
+      generation: 0,
     };
     this.pages.push(page);
     return page;
@@ -227,6 +237,7 @@ export class GlyphAtlas {
     page.rowHeight = 0;
     page.entryKeys.clear();
     page.lastUsed = ++this.clock;
+    page.generation += 1;
     return page;
   }
 

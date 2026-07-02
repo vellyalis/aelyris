@@ -100,6 +100,18 @@ const checks = [
       sendKeys.includes("stable_text_key_matches_decision_inbox_vectors"),
     "stale approval errors are typed and cross-language prompt fingerprint vectors are tested",
   ),
+  record(
+    "approval-fingerprint-checked-inside-write-lock",
+    (() => {
+      const fnStart = sendKeys.indexOf("pub async fn resolve_interactive_approval");
+      if (fnStart < 0) return false;
+      const body = sendKeys.slice(fnStart);
+      const lockAt = body.indexOf("write_order.lock().await");
+      const verifyAt = body.indexOf("verify_current_interactive_approval(");
+      return lockAt >= 0 && verifyAt >= 0 && lockAt < verifyAt;
+    })(),
+    "resolve_interactive_approval acquires the per-terminal write lock BEFORE the stale-approval fingerprint re-check (no check-then-lock TOCTOU)",
+  ),
 ];
 
 const ok = checks.every((check) => check.ok);
