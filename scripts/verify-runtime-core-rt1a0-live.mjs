@@ -7,6 +7,7 @@ const OUT = join(ROOT, ".codex-auto", "quality", "runtime-core-rt1a0-live.json")
 const REQUIRED_PROVIDERS = ["claude", "codex", "gemini"];
 const FORMAL_MATRIX_FIXTURE = "src-tauri/src/agent/__fixtures__/rt1a0-provider-matrix.json";
 const LEGACY_CLAUDE_FIXTURE = "src-tauri/src/agent/__fixtures__/rt1a0-claude-live-fixtures.json";
+const H6_COST_TOKEN_PLAN_SPEC = "docs/specs/CONTEXT_SESSION_LIFECYCLE_SPEC.md";
 const CDP_PORT = Number(process.env.AELYRIS_WEBVIEW2_CDP_PORT ?? 9222);
 const CONSENT_VALUE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
 const TELEMETRY_CONFIDENCE = new Set(["exact", "parsed", "estimated", "unknown"]);
@@ -227,6 +228,18 @@ function contextTelemetry(row, provider, evidencePathExists) {
   };
 }
 
+function stableCostTokenLineCandidate(value) {
+  const textValue = String(value ?? "");
+  if (!textValue.trim()) return false;
+  return (
+    /\b(input|output|cache|total)\s+tokens?\b/i.test(textValue) ||
+    /\b\d[\d,]*(?:\.\d+)?\s+tokens?\b/i.test(textValue) ||
+    /[↑↓]\s*\d[\d,]*(?:\.\d+)?\s+tokens?\b/i.test(textValue) ||
+    /\btokens?\s+used\s*[:=]\s*[1-9]\d*/i.test(textValue) ||
+    /\bcost\b.*(?:\$|usd)|(?:\$|usd).*\bcost\b/i.test(textValue)
+  );
+}
+
 function validateProvider(provider, row, matrixRedacted) {
   if (!row) {
     return {
@@ -365,8 +378,67 @@ function validateMatrixFixture() {
   return { meta, legacyClaude, data, parseError, providerMatrix, checks };
 }
 
+function h6CostTokenDecision(fixture) {
+  const specMeta = fileMeta(H6_COST_TOKEN_PLAN_SPEC);
+  const specText = specMeta.exists ? read(H6_COST_TOKEN_PLAN_SPEC) : "";
+  const rows = normalizeProviderRows(fixture.data);
+  const evidence = rows.map((row) => {
+    const provider = text(row?.provider).toLowerCase();
+    const artifactPath = artifactPathFor(row);
+    let visibleExcerpt = "";
+    let artifactReadError = null;
+    if (artifactPath && artifactExists(artifactPath)) {
+      try {
+        const artifact = readJson(artifactPath);
+        visibleExcerpt = text(artifact.visibleExcerpt);
+      } catch (error) {
+        artifactReadError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    return {
+      provider,
+      artifactPath: artifactPath || null,
+      artifactReadError,
+      hasFormalCostTokenLine: stableCostTokenLineCandidate(visibleExcerpt),
+    };
+  });
+  const stableSurfaceProviders = evidence
+    .filter((entry) => entry.hasFormalCostTokenLine)
+    .map((entry) => entry.provider);
+  const hasStableSurface = stableSurfaceProviders.length > 0;
+  const designStopDocumented =
+    /H6 cost\/token capture decision/i.test(specText) &&
+    /parse_claude_cost_tokens_from_grid/.test(specText) &&
+    /AELYRIS_RT1A0_ALLOW_TOKEN_SPEND/.test(specText) &&
+    /\/cost/.test(specText) &&
+    /term_snapshot\/GridSnapshot/.test(specText) &&
+    /bottom|画面下部/i.test(specText);
+  const checks = [
+    check(
+      "h6-cost-token-formal-fixture-surface-classified",
+      !hasStableSurface,
+      "formal RT-1a0 provider matrix artifacts do not contain a stable visible cost/token line; H6 must stop at design until prompt-gated capture lands",
+      { stableSurfaceProviders, evidence },
+    ),
+    check(
+      "h6-cost-token-design-stop-documented",
+      designStopDocumented,
+      "owning context/session lifecycle spec documents the H6 design-stop and exact prompt-gated capture plan",
+      { spec: specMeta },
+    ),
+  ];
+  return {
+    status: hasStableSurface ? "implementation-required" : "design-stop-pending-prompt-gated-capture",
+    stableSurfaceProviders,
+    evidence,
+    spec: specMeta,
+    checks,
+  };
+}
+
 const cdp = await canConnect(CDP_PORT);
 const fixture = validateMatrixFixture();
+const costTokenDecision = h6CostTokenDecision(fixture);
 const logs = logEvidence();
 const fixtureOk = fixture.checks.every((item) => item.ok);
 const webviewBlocked = logs.some((entry) => entry.webviewFatal === true);
@@ -375,6 +447,7 @@ const tokenConsentEnvPresent = process.env.AELYRIS_RT1A0_ALLOW_TOKEN_SPEND === C
 
 const checks = [
   ...fixture.checks,
+  ...costTokenDecision.checks,
   check(
     "safe-verifier-does-not-spend-tokens",
     true,
@@ -439,6 +512,20 @@ const artifact = {
       "context/usage telemetry confidence exact|parsed|estimated|unknown",
     ],
     supplementalOnly: ["capture_pane(stripAnsiCodes:true)", "REST /commands probes", "raw PTY bytes"],
+  },
+  costTokenTelemetry: {
+    h6: costTokenDecision.status,
+    stableSurfaceProviders: costTokenDecision.stableSurfaceProviders,
+    evidence: costTokenDecision.evidence,
+    designSpec: costTokenDecision.spec,
+    nextCapture: {
+      provider: "claude",
+      command: "spawn_interactive_agent(model=sonnet, initialPrompt=<H6 telemetry probe>) followed by /cost",
+      measurement: "term_snapshot/GridSnapshot",
+      gridRegion: "rows from the /cost input line through the next prompt, plus the bottom 4 status rows",
+      consentEnv: "AELYRIS_RT1A0_ALLOW_TOKEN_SPEND",
+      requiredConsentValue: CONSENT_VALUE,
+    },
   },
   checks,
   logs,

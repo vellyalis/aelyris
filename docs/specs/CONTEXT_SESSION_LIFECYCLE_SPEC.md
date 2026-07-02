@@ -1,6 +1,6 @@
 # Context & Session Lifecycle Spec (Runtime Core)
 
-作成: 2026-06-30 ／ 改訂: 2026-07-01 (rev3, RT-1a0 provider matrix / standing token consent 反映)
+作成: 2026-06-30 ／ 改訂: 2026-07-02 (rev4, H6 cost/token capture design stop 反映)
 WU: WU-RT-1
 対象: 長時間動き続ける可視 CLI エージェント群のコンテキスト汚染を防ぎ、Runtime がコンテキスト/セッションのライフサイクル（計測・要約・引継ぎ・再開・リセット）を統治する境界仕様。OS のメモリ管理/プロセス管理に相当する Runtime Core 機能。
 実装手順: [CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md](./CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md)（codex 向け cold-start handoff）。
@@ -115,6 +115,39 @@ CLI が context を所有するため直接計測不可。**一次は頑健 prox
 
 ### 5.3 ★実機 spike（RT-1a0, 必須前提）
 (3) の残量行フォーマット、provider 別 telemetry の有無、許可メニュー構造（§PRE-2）、数字キー確定挙動は**実 Claude/Codex/Gemini CLI の visible bytes/grid で未確定**。native backend/packaged build で CDP スモーク採取し fixture 化してから RT-1a の gate を確定（[project_surface2_plumbing_done] の sidecar/native 制約参照）。token spending は standing owner consent 済みだが、provider/model/command/artifact を記録し、secret/token file/transcript は永続化しない。strip_ansi は不完全（CSI-letter のみ、`\x1b[?…` DEC private・OSC `\x1b]…\x07`・alt-screen を落とさない）→ grid 読取を使うか strip を強化。
+
+### 5.4 H6 cost/token capture decision（2026-07-02）
+H6 の cost/token parser は **design-stop** とする。現行の正式 fixture
+`src-tauri/src/agent/__fixtures__/rt1a0-provider-matrix.json` は
+`captureMode=no-token-startup-visible-pty` で、Claude/Codex/Gemini すべて
+`tokenSpendingPromptExecuted=false`、`tokensUsed=0`。対応する redacted artifact
+（`.codex-auto/runtime-core/rt1a0-provider-{claude,codex,gemini}.json`）の
+`visibleExcerpt` も startup/status 表示のみで、numeric cost、input/output/cache/total
+token、または `/cost` 応答 block を含まない。Claude startup の
+`[USAGE_QUOTA_REDACTED]` は quota 表示であり、cost/token parser の根拠にしない。
+
+補足 artifact（例: `.codex-auto/runtime-core/rt1a0-rest-claude-menu-wait.json`）には
+Claude TUI の transient status line として `↑/↓ ... tokens` 形式が見える箇所があるが、
+これは正式 provider matrix ではなく、REST/commands probe 由来で、cost surface も持たない。
+したがって `parse_claude_cost_tokens_from_grid`、visible session cost/token feed、BR7 cap bind は
+この rev では実装しない。生 PTY byte や incidental transcript から正規表現を作らない。
+
+実装へ進むための capture plan:
+1. Provider はまず Claude に限定する。環境は
+   `AELYRIS_ENABLE_WEBVIEW2_CDP=1`、
+   `AELYRIS_RT1A0_ALLOW_TOKEN_SPEND=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS`、
+   `AELYRIS_AUTH_PROMPT_PROVIDER=claude` を明示し、provider/model/command/artifact を記録する。
+2. `spawn_interactive_agent(model=sonnet, initialPrompt=<H6 telemetry probe>)` で visible PTY を起動し、
+   idle 後に Claude の `/cost` を送る。snapshot は `term_snapshot/GridSnapshot` を使い、parser
+   candidate は `/cost` 入力行から次の prompt までの block と、画面下部 4 行の status line に限定する。
+3. Artifact には redacted `visibleExcerpt`、grid row/column range、numeric value の単位
+   （input/output/cache/total tokens、USD cost など）、および `tokenSpendingPromptExecuted=true`
+   を保存する。secret、token file、secret-bearing transcript は保存しない。
+4. Codex/Gemini は同じ capture harness で provider-native の usage/cost command または stable status
+   line を探す。formal fixture で surface が証明できない場合は `Unknown` のままにする。
+5. 実装 acceptance は、同一 provider の少なくとも 2 つの grid snapshot で同じ label/region から
+   numeric value を復元できること、fixture-backed unit test が `Parsed` と cap-trip を証明すること、
+   headless regex path が従来どおり残ること。
 
 ---
 
@@ -246,6 +279,7 @@ docs/README.md 方針で**必須**。`ProcessGateRunner`（`src-tauri/src/contro
 ---
 
 ## 改訂履歴
+- rev4 (2026-07-02): H6 design-stop を明記。正式 RT-1a0 provider matrix には cost/token line が無いため、visible cost/token parser と BR7 bind は prompt-gated `/cost`/statusline GridSnapshot capture が入るまで未実装に留める。
 - rev3 (2026-07-01): RT-1a0 を Claude-only spike から Claude/Codex/Gemini provider matrix に拡張。token-spending prompt/probe は standing owner consent 済みとし、provider/model/command/artifact 記録と secret/token file 非永続化を必須化。
 - rev2 (2026-06-30): 敵対デザインレビュー38件（critical6/high14/medium11/low7）反映。中核変更: ①要約/ack を **TUI スクレイプ→ファイル経由**（critical）②後継読込確認を **EventBus→ack ファイル＋liveness**（critical）③**耐久 intent 行＋state 機械（merge_intent 方式）**で double-spawn/audit 順序/crash 復旧（critical×3）④**in-flight 未コミット作業の保全＋worktree 非削除退役**（critical/high）⑤**Rust 境界 redaction**（critical/high）⑥計測は **grid 読取・robust proxy 一次・provider-honest 正直化**（high）⑦**verifier に audit no-loss 追加**（high）⑧**lineage SoR=checkpoints 表**・compaction 除外（high/medium）。line:citation drift 修正。
 
