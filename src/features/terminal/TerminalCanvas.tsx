@@ -8,9 +8,22 @@ import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { formatFallbackError, reportFallback } from "../../shared/lib/fallbackTelemetry";
 import { TERMINAL_COMMAND_EVIDENCE_EVENT, type TerminalCommandEvidenceDetail } from "../../shared/lib/terminalEvidence";
-import type { TerminalCursorStyle, TerminalTextClarity } from "../../shared/store/appStore";
+import {
+  type TerminalCursorStyle,
+  type TerminalRendererMode,
+  type TerminalTextClarity,
+  useAppStore,
+} from "../../shared/store/appStore";
 import type { CursorShape, GridSnapshot } from "../../shared/types/terminal";
 import { estimateScrollbackMemoryBytes, publishTerminalPerformanceSample } from "../analytics/performanceObservatory";
+import {
+  findAiCliInputAnchor,
+  hasAiCliScreenSignature,
+  isParkedAiCliCursor,
+  isVisibleCursor,
+  terminalCellSpan,
+} from "./aiInputAnchor";
+import * as gpuPaint from "./gpu/terminalPaintGpu";
 import {
   clampTerminalCursor,
   IME_DIAGNOSTIC_EVENT,
@@ -31,17 +44,14 @@ import {
   type WriteBytesFn,
 } from "./hooks/useCanvasIME";
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
-import {
-  findAiCliInputAnchor,
-  hasAiCliScreenSignature,
-  isParkedAiCliCursor,
-  isVisibleCursor,
-  terminalCellSpan,
-} from "./aiInputAnchor";
-import { canvasBitmapSize, canvasCssSize, currentCanvasDevicePixelRatio } from "./terminalCanvasGeometry";
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
 import { shouldRepaintRow } from "./repaintDecision";
+import type { AnyMatch } from "./search";
+import { rowSelection, type SelectionRange } from "./selection";
+import styles from "./TerminalArea.module.css";
+import { canvasBitmapSize, canvasCssSize, currentCanvasDevicePixelRatio } from "./terminalCanvasGeometry";
+import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics } from "./terminalMetrics";
 import {
   paintCursor,
   paintGhostSuggestion,
@@ -52,10 +62,6 @@ import {
   paintSelectionBand,
 } from "./terminalPaint";
 import { buildMatchesKey, buildRowMask, hasPrintableAfterCursor, rowsCoveredByLink } from "./terminalRowDirty";
-import type { AnyMatch } from "./search";
-import { rowSelection, type SelectionRange } from "./selection";
-import styles from "./TerminalArea.module.css";
-import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics } from "./terminalMetrics";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
 const WEBVIEW_IME_FALLBACK_TEST_ID = ["terminal", "ime", "textarea"].join("-");
@@ -305,10 +311,15 @@ export function TerminalCanvas({
   onRegisterNav,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gpuContextRef = useRef<gpuPaint.TerminalGpuPaintContext | null>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [inputSurfaceEl, setInputSurfaceEl] = useState<HTMLDivElement | null>(null);
   const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(null);
   const useNativeInputSurface = nativeTerminalInputSurfaceEnabled();
+  const terminalRendererMode = useAppStore((s) => s.terminalRendererMode);
+  const [webglFallback, setWebglFallback] = useState(false);
+  const effectiveRendererMode: TerminalRendererMode =
+    terminalRendererMode === "webgl2" && !webglFallback ? "webgl2" : "canvas2d";
   // Alias kept so existing mouse-related effects (selection, link hover)
   // read the canvas element under their original name.
   const inputEl = canvasEl;
@@ -368,6 +379,36 @@ export function TerminalCanvas({
   useEffect(() => {
     renderPerfRef.current = { lastPaintAt: 0, droppedRenderFrames: 0 };
   }, []);
+
+  useEffect(() => {
+    gpuContextRef.current = null;
+    if (terminalRendererMode !== "webgl2") {
+      setWebglFallback(false);
+      return;
+    }
+    setWebglFallback(false);
+  }, [terminalRendererMode]);
+
+  useEffect(() => {
+    if (!canvasEl || terminalRendererMode !== "webgl2") return;
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      gpuContextRef.current = null;
+      setWebglFallback(true);
+      reportFallback(
+        {
+          source: "terminal.renderer",
+          operation: "webglcontextlost",
+          severity: "warning",
+          message: "Terminal WebGL2 renderer context was lost; falling back to Canvas2D for this session.",
+          userVisible: true,
+        },
+        { throttleMs: 30_000 },
+      );
+    };
+    canvasEl.addEventListener("webglcontextlost", handleContextLost);
+    return () => canvasEl.removeEventListener("webglcontextlost", handleContextLost);
+  }, [canvasEl, terminalRendererMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -712,16 +753,47 @@ export function TerminalCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const isGpuRenderer = effectiveRendererMode === "webgl2";
+    let gpuCtx: gpuPaint.TerminalGpuPaintContext | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
 
-    ctx.setTransform?.(canvasDevicePixelRatio, 0, 0, canvasDevicePixelRatio, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    configureTerminalCanvasText(ctx);
+    if (isGpuRenderer) {
+      gpuCtx = gpuContextRef.current;
+      if (!gpuCtx || gpuCtx.canvas !== canvas) {
+        gpuCtx = gpuPaint.createTerminalGpuPaintContext(canvas, { devicePixelRatio: canvasDevicePixelRatio });
+        if (!gpuCtx) {
+          setWebglFallback(true);
+          reportFallback(
+            {
+              source: "terminal.renderer",
+              operation: "create_webgl2_context",
+              severity: "warning",
+              message: "Terminal WebGL2 renderer is unavailable; falling back to Canvas2D for this session.",
+              userVisible: true,
+            },
+            { throttleMs: 30_000 },
+          );
+          return;
+        }
+        gpuContextRef.current = gpuCtx;
+      }
+      gpuCtx.devicePixelRatio = canvasDevicePixelRatio;
+      gpuPaint.beginGpuFrame(gpuCtx);
+    } else {
+      ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform?.(canvasDevicePixelRatio, 0, 0, canvasDevicePixelRatio, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      configureTerminalCanvasText(ctx);
+    }
 
     if (!snapshot) {
-      ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.flushGpuFrame(gpuCtx);
+      } else {
+        ctx?.clearRect?.(0, 0, canvasWidth, canvasHeight);
+      }
       prevSnapshotRef.current = null;
       prevCanvasGeometryRef.current = {
         cellWidth: cellMetrics.width,
@@ -774,10 +846,10 @@ export function TerminalCanvas({
     const ghostChanged = ghost !== prevGhostRef.current;
     if (ghostChanged) cursorDirtyRows.add(cursor.row);
 
-    ctx.textBaseline = "top";
+    if (ctx) ctx.textBaseline = "top";
 
-    if (dimsChanged || canvasGeometryChanged || backgroundChanged) {
-      ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
+    if (!isGpuRenderer && (dimsChanged || canvasGeometryChanged || backgroundChanged)) {
+      ctx?.clearRect?.(0, 0, canvasWidth, canvasHeight);
     }
 
     const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows, scrollback.scrollOffset);
@@ -803,6 +875,7 @@ export function TerminalCanvas({
       // exactly what we want (the whole viewport must repaint).
       const rowContentChanged = !prev || prev.cells[row] !== rowCells;
       if (
+        !isGpuRenderer &&
         !backgroundChanged &&
         !shouldRepaintRow({
           dimsChanged,
@@ -817,33 +890,87 @@ export function TerminalCanvas({
       ) {
         continue;
       }
-      paintRow(
-        ctx,
-        rowCells,
-        row,
-        cellMetrics,
-        fontSize,
-        fontFamily,
-        canvasDevicePixelRatio,
-        rasterBackground,
-        textClarity,
-      );
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.paintRow(
+          gpuCtx,
+          rowCells,
+          row,
+          cellMetrics,
+          fontSize,
+          fontFamily,
+          canvasDevicePixelRatio,
+          rasterBackground,
+          textClarity,
+        );
+      } else if (ctx) {
+        paintRow(
+          ctx,
+          rowCells,
+          row,
+          cellMetrics,
+          fontSize,
+          fontFamily,
+          canvasDevicePixelRatio,
+          rasterBackground,
+          textClarity,
+        );
+      }
       // Search bands paint over both live and history rows — viewportRowOf
       // does the routing so a history match becomes visible the moment the
       // user scrolls its row into view.
-      paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics, snapshot.rows, scrollback.scrollOffset);
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.paintSearchBands(
+          gpuCtx,
+          row,
+          searchMatches,
+          activeSearchMatch,
+          cellMetrics,
+          snapshot.rows,
+          scrollback.scrollOffset,
+        );
+      } else if (ctx) {
+        paintSearchBands(
+          ctx,
+          row,
+          searchMatches,
+          activeSearchMatch,
+          cellMetrics,
+          snapshot.rows,
+          scrollback.scrollOffset,
+        );
+      }
       if (!scrolledUp) {
         if (inNew) {
-          paintSelectionBand(ctx, row, inNew, cellMetrics);
+          if (isGpuRenderer && gpuCtx) {
+            gpuPaint.paintSelectionBand(gpuCtx, row, inNew, cellMetrics);
+          } else if (ctx) {
+            paintSelectionBand(ctx, row, inNew, cellMetrics);
+          }
         }
-        paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.paintLinkUnderline(gpuCtx, row, hoveredLink, snapshot.cols, cellMetrics);
+        } else if (ctx) {
+          paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
+        }
       }
     }
 
     // Ghost suggestion band — paint BEFORE the cursor so the cursor block
     // (if block-shape) covers its first glyph just like on a real shell.
     if (!scrolledUp && ghost && !hasPrintableAfterCursor(snapshot)) {
-      paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily, canvasDevicePixelRatio);
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.paintGhostSuggestion(
+          gpuCtx,
+          snapshot,
+          ghost,
+          cellMetrics,
+          fontSize,
+          fontFamily,
+          canvasDevicePixelRatio,
+        );
+      } else if (ctx) {
+        paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily, canvasDevicePixelRatio);
+      }
     }
 
     // Cursor only makes sense on the live view — suppress it when
@@ -855,7 +982,11 @@ export function TerminalCanvas({
         preferredShape === snapshot.cursor.shape
           ? snapshot
           : { ...snapshot, cursor: { ...snapshot.cursor, shape: preferredShape } };
-      paintCursor(ctx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.paintCursor(gpuCtx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
+      } else if (ctx) {
+        paintCursor(ctx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
+      }
     }
 
     // Inline image overlays last so they sit on top of cell glyphs
@@ -865,7 +996,15 @@ export function TerminalCanvas({
     // anchors are live-grid coordinates and would mis-render on the
     // composite scrollback view.
     if (!scrolledUp && snapshot.images && snapshot.images.length > 0) {
-      paintImages(ctx, snapshot.images, imageBitmaps, cellMetrics);
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.paintImages(gpuCtx, snapshot.images, imageBitmaps, cellMetrics);
+      } else if (ctx) {
+        paintImages(ctx, snapshot.images, imageBitmaps, cellMetrics);
+      }
+    }
+
+    if (isGpuRenderer && gpuCtx) {
+      gpuPaint.flushGpuFrame(gpuCtx);
     }
 
     const paintFinishedAt =
@@ -877,14 +1016,15 @@ export function TerminalCanvas({
       renderPerfRef.current.droppedRenderFrames += Math.max(0, Math.floor(frameIntervalMs / targetFrameMs) - 1);
     }
     renderPerfRef.current.lastPaintAt = paintFinishedAt;
+    const performanceRenderer = effectiveRendererMode === "webgl2" ? "webgl" : "canvas2d";
     publishTerminalPerformanceSample({
       terminalId,
       sampledAt: Date.now(),
       fps: frameIntervalMs > 0 ? Math.min(240, 1_000 / frameIntervalMs) : null,
       frameMs: Math.max(0, paintFinishedAt - paintStartedAt),
       droppedRenderFrames: renderPerfRef.current.droppedRenderFrames,
-      renderer: "canvas2d",
-      webglFallback: true,
+      renderer: performanceRenderer,
+      webglFallback: terminalRendererMode === "webgl2" && effectiveRendererMode === "canvas2d",
       cols: snapshot.cols,
       rows: snapshot.rows,
       scrollbackRows: scrollback.historySize,
@@ -930,6 +1070,8 @@ export function TerminalCanvas({
     canvasHeight,
     textClarity,
     cursorStyle,
+    terminalRendererMode,
+    effectiveRendererMode,
   ]);
 
   useEffect(() => {
@@ -1119,6 +1261,7 @@ export function TerminalCanvas({
       onPaste={handleNativeInputSurfacePaste}
     >
       <canvas
+        key={effectiveRendererMode}
         ref={(node) => {
           canvasRef.current = node;
           setCanvasEl(node);
@@ -1128,6 +1271,8 @@ export function TerminalCanvas({
         height={canvasBitmapHeight}
         data-testid="terminal-canvas"
         data-terminal-id={terminalId}
+        data-terminal-renderer={effectiveRendererMode}
+        data-terminal-webgl-fallback={webglFallback ? "true" : "false"}
         // `-1` keeps the canvas programmatically focus-able (tests /
         // external `canvas.focus()` callers still work and flow through
         // `onFocus` to the textarea) without giving it native click-to-

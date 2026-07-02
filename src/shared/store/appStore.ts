@@ -45,6 +45,7 @@ const TERMINAL_TEXT_CLARITY_KEY = "aelyris:terminalTextClarity";
 const TERMINAL_SURFACE_OPACITY_KEY = "aelyris:terminalSurfaceOpacity";
 const TERMINAL_LINE_HEIGHT_KEY = "aelyris:terminalLineHeight";
 const TERMINAL_LIGATURES_KEY = "aelyris:terminalLigatures";
+const TERMINAL_RENDERER_MODE_KEY = "aelyris:terminalRendererMode";
 const TERMINAL_CURSOR_STYLE_KEY = "aelyris:terminalCursorStyle";
 const TERMINAL_CURSOR_BLINK_KEY = "aelyris:terminalCursorBlink";
 const DEFAULT_SHELL_KEY = "aelyris:defaultShell";
@@ -60,6 +61,8 @@ const DEFAULT_TERMINAL_TEXT_CLARITY: TerminalTextClarity = "solid";
 const DEFAULT_TERMINAL_SURFACE_OPACITY = 0.82;
 const DEFAULT_TERMINAL_LINE_HEIGHT = 1.25;
 const DEFAULT_TERMINAL_LIGATURES = true;
+export type TerminalRendererMode = "canvas2d" | "webgl2";
+const DEFAULT_TERMINAL_RENDERER_MODE: TerminalRendererMode = "canvas2d";
 export type TerminalCursorStyle = "bar" | "block" | "underline";
 const DEFAULT_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = "bar";
 const DEFAULT_TERMINAL_CURSOR_BLINK = true;
@@ -202,6 +205,20 @@ function loadTerminalLigatures(): boolean {
   }
 }
 
+export function sanitizeTerminalRendererMode(value: unknown): TerminalRendererMode {
+  return value === "webgl2" ? "webgl2" : DEFAULT_TERMINAL_RENDERER_MODE;
+}
+
+function loadTerminalRendererMode(): TerminalRendererMode {
+  try {
+    const raw = localStorage.getItem(TERMINAL_RENDERER_MODE_KEY);
+    return raw == null ? DEFAULT_TERMINAL_RENDERER_MODE : sanitizeTerminalRendererMode(raw);
+  } catch (err) {
+    reportStorageFailure("load_terminal_renderer_mode", err, "info");
+    return DEFAULT_TERMINAL_RENDERER_MODE;
+  }
+}
+
 export function sanitizeTerminalCursorStyle(value: unknown): TerminalCursorStyle {
   return value === "bar" || value === "block" || value === "underline" ? value : DEFAULT_TERMINAL_CURSOR_STYLE;
 }
@@ -278,9 +295,7 @@ function loadUiFontFamily(): string {
 }
 
 export function sanitizeWindowEffect(value: unknown): WindowEffect {
-  return value === "transparent" || value === "mica" || value === "acrylic"
-    ? value
-    : DEFAULT_WINDOW_EFFECT;
+  return value === "transparent" || value === "mica" || value === "acrylic" ? value : DEFAULT_WINDOW_EFFECT;
 }
 
 function loadWindowEffect(): WindowEffect {
@@ -516,6 +531,8 @@ interface AppState {
   terminalLineHeight: number;
   /** Whether the native shaper is allowed to form font ligatures. */
   terminalLigatures: boolean;
+  /** Experimental terminal paint backend. WebGL2 is opt-in and falls back to Canvas2D on context loss. */
+  terminalRendererMode: TerminalRendererMode;
   setTerminalAppearance: (appearance: {
     fontFamily?: string;
     fontSize?: number;
@@ -523,6 +540,7 @@ interface AppState {
     surfaceOpacity?: number;
     lineHeight?: number;
     ligatures?: boolean;
+    rendererMode?: TerminalRendererMode;
   }) => void;
   /** User-preferred cursor style; seeds the rendered cursor when the program hasn't set one. */
   cursorStyle: TerminalCursorStyle;
@@ -1013,7 +1031,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   terminalSurfaceOpacity: loadTerminalSurfaceOpacity(),
   terminalLineHeight: loadTerminalLineHeight(),
   terminalLigatures: loadTerminalLigatures(),
-  setTerminalAppearance: ({ fontFamily, fontSize, textClarity, surfaceOpacity, lineHeight, ligatures }) => {
+  terminalRendererMode: loadTerminalRendererMode(),
+  setTerminalAppearance: ({
+    fontFamily,
+    fontSize,
+    textClarity,
+    surfaceOpacity,
+    lineHeight,
+    ligatures,
+    rendererMode,
+  }) => {
     const patch: Partial<
       Pick<
         AppState,
@@ -1023,6 +1050,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         | "terminalSurfaceOpacity"
         | "terminalLineHeight"
         | "terminalLigatures"
+        | "terminalRendererMode"
       >
     > = {};
     if (fontFamily !== undefined) patch.terminalFontFamily = sanitizeTerminalFontFamily(fontFamily);
@@ -1031,6 +1059,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (surfaceOpacity !== undefined) patch.terminalSurfaceOpacity = sanitizeTerminalSurfaceOpacity(surfaceOpacity);
     if (lineHeight !== undefined) patch.terminalLineHeight = sanitizeTerminalLineHeight(lineHeight);
     if (ligatures !== undefined) patch.terminalLigatures = ligatures;
+    if (rendererMode !== undefined) patch.terminalRendererMode = sanitizeTerminalRendererMode(rendererMode);
     if (Object.keys(patch).length === 0) return;
     set(patch);
     try {
@@ -1051,6 +1080,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       if (patch.terminalLigatures !== undefined) {
         localStorage.setItem(TERMINAL_LIGATURES_KEY, patch.terminalLigatures ? "1" : "0");
+      }
+      if (patch.terminalRendererMode !== undefined) {
+        localStorage.setItem(TERMINAL_RENDERER_MODE_KEY, patch.terminalRendererMode);
       }
     } catch (err) {
       reportStorageFailure("persist_terminal_appearance", err);
