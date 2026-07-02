@@ -9,6 +9,7 @@ const sourcePaths = {
   packageJson: "package.json",
   orchestrator: "src/shared/lib/orchestrator.ts",
   orchestraDispatch: "src/shared/lib/orchestraDispatch.ts",
+  orchestraHook: "src/features/orchestrator/useOrchestraDispatch.ts",
   orchestraDialog: "src/shared/ui/OrchestraDialog.tsx",
   app: "src/App.tsx",
   ipcCommands: "src-tauri/src/ipc/commands.rs",
@@ -101,6 +102,7 @@ function isEnvironmentBlockedCheck(check) {
 const packageJson = read(sourcePaths.packageJson);
 const orchestrator = read(sourcePaths.orchestrator);
 const orchestraDispatch = read(sourcePaths.orchestraDispatch);
+const orchestraHook = read(sourcePaths.orchestraHook);
 const orchestraDialog = read(sourcePaths.orchestraDialog);
 const app = read(sourcePaths.app);
 const ipcCommands = read(sourcePaths.ipcCommands);
@@ -141,27 +143,31 @@ const laneIds = ["build", "verify", "review", "docs"];
 const checks = [];
 const appDispatchEvidence = {
   hasRightRailOrchestraCallback: hasPattern(
-    app,
+    orchestraHook,
     /const\s+handleStartRightRailOrchestra\s*=\s*useCallback\s*\(\s*async\s*\(\)\s*=>/,
   ),
-  opensOrchestraDialog: app.includes("showOrchestra({"),
-  defaultsToImplementTestReview: app.includes('defaultRoles: ["implementer", "tester", "reviewer"]'),
-  buildsRolePrompts: app.includes("buildOrchestraPrompts({"),
+  opensOrchestraDialog: orchestraHook.includes("showOrchestra({"),
+  defaultsToImplementTestReview: orchestraHook.includes('defaultRoles: ["implementer", "tester", "reviewer"]'),
+  buildsRolePrompts: orchestraHook.includes("buildOrchestraPrompts({"),
   derivesChangedFilesOnce:
-    hasPattern(app, /const\s+changedFiles\s*=\s*rightRailAllChangedFiles\.map\(\(file\)\s*=>\s*file\.path\);/) &&
-    hasPattern(app, /buildOrchestraPrompts\(\{[\s\S]*?changedFiles,/),
-  carriesPendingDecisionContext: app.includes("pendingDecisionCount: decisionInbox.pendingCount"),
-  carriesExistingSessionContext: app.includes("existingSessionCount: sessions.length + interactiveSessions.length"),
+    hasPattern(
+      orchestraHook,
+      /const\s+changedFiles\s*=\s*rightRailAllChangedFiles\.map\(\(file\)\s*=>\s*file\.path\);/,
+    ) && hasPattern(orchestraHook, /buildOrchestraPrompts\(\{[\s\S]*?changedFiles,/),
+  carriesPendingDecisionContext: orchestraHook.includes("pendingDecisionCount: decisionInboxPendingCount"),
+  carriesExistingSessionContext: orchestraHook.includes(
+    "existingSessionCount: sessionsCount + interactiveSessionCount",
+  ),
   routesThroughRustRouter:
-    app.includes("routeOrchestraPrompts(") &&
-    hasPattern(app, /tauriInvoke<OrchestraRoutingDecision>\("route_agent",\s*\{\s*prompt\s*\}\)/),
+    orchestraHook.includes("routeOrchestraPrompts(") &&
+    hasPattern(orchestraHook, /tauriInvoke<OrchestraRoutingDecision>\("route_agent",\s*\{\s*prompt\s*\}\)/),
   launchesInteractiveSessions:
-    app.includes("launchOrchestraPrompts(") &&
-    app.includes("launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession)"),
+    orchestraHook.includes("launchOrchestraPrompts(") &&
+    orchestraHook.includes("launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession)"),
   launchOptionsCarryBranch:
     orchestraDispatch.includes("branchName: prompt.branchName") &&
     hasPattern(app, /handleStartInteractiveSession\s*=\s*useCallback\([\s\S]*?branchName\?:\s*string/),
-  routesOperatorToSessions: app.includes('setRightRailFocusWidget("sessions")'),
+  routesOperatorToSessions: orchestraHook.includes('setRightRailFocusWidget("sessions")'),
 };
 
 add(
@@ -271,7 +277,7 @@ add(
     orchestraDispatch.includes("initialPrompt: prompt.prompt") &&
     orchestraDispatch.includes("branchName: prompt.branchName") &&
     orchestratorTest.includes("normalizes Claude router model names for interactive CLI dispatch") &&
-    app.includes('"route_agent", { prompt }') &&
+    orchestraHook.includes('"route_agent", { prompt }') &&
     // Whitespace/line-ending tolerant: the source uses CRLF, so an LF-literal
     // `catch {\n...}` substring never matched. Assert the behavior (catch falls
     // back to the raw prompt) instead of an exact byte sequence.

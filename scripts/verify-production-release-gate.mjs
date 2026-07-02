@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +40,16 @@ function run(label, command, commandArgs) {
   });
 }
 
+async function assertSupplyChainReleaseClean() {
+  const artifactPath = path.join(repoRoot, ".codex-auto", "release-doctor", "supply-chain-audit.json");
+  const data = JSON.parse(await readFile(artifactPath, "utf8"));
+  if (data?.status !== "pass") {
+    throw new Error(
+      `Supply-chain audit is ${data?.status ?? "missing"}, not release-clean. Classified upstream-bound or environment-blocked supply-chain states are acceptable for goal handoff, but not for the production release gate.`,
+    );
+  }
+}
+
 async function main() {
   const releaseGateArgs = ["scripts/verify-release-gate.mjs"];
   if (freshIme) releaseGateArgs.push("--with-ime");
@@ -65,6 +76,7 @@ async function main() {
   ]);
   await run("Production risk closure evidence", pnpm, ["verify:production:close-risks"]);
   await run("Supply-chain audit", pnpm, ["verify:supply-chain"]);
+  await assertSupplyChainReleaseClean();
   await run("Strict release doctor after risk closure", pnpm, [
     "verify:release:doctor",
     "--",

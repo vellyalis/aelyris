@@ -53,7 +53,7 @@ function writeArtifact() {
 
 function isEnvironmentUnavailable() {
   return report.errors.some((error) =>
-    /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
+    /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \((?:null|\d+)\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
       String(error),
     ),
   );

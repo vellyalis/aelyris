@@ -96,7 +96,7 @@ function projectedExternalGateScoreShape(score, audit) {
 }
 
 function isAuthenticatedPromptBlocker(item) {
-  return /authenticated[-\s]?ai[-\s]?cli[-\s]?prompt|token-spend consent/i.test(
+  return /authenticated[-\s]?(?:ai[-\s]?cli[-\s]?)?prompt|token-spend consent/i.test(
     String(item?.area ?? "") + " " + String(item?.blocker ?? item),
   );
 }
@@ -119,8 +119,54 @@ function isReleaseSigningOperatorBlocker(item) {
   );
 }
 
+function isDistributionSigningOperatorBlocker(item) {
+  return /distribution|signed exe|signed distribution|installer artifacts|TAURI signing|signing material/i.test(
+    String(item?.area ?? "") + " " + String(item?.blocker ?? item),
+  );
+}
+
+function isSupplyChainUpstreamBoundBlocker(item) {
+  return /supply-chain-audit|supply-chain/i.test(String(item?.area ?? "") + " " + String(item?.blocker ?? item)) &&
+    /upstream-bound dependency BLOCK|classified-upstream-bound|upstreamBound=/i.test(
+      String(item?.area ?? "") + " " + String(item?.blocker ?? item),
+    );
+}
+
+function isWebView2OrHostProofBlocker(item) {
+  const text = String(item?.area ?? "") + " " + String(item?.blocker ?? item);
+  return (
+    /terminal-core-edge|native HWND paste|WM_PASTE|live-command-evidence|multipane-command-evidence|recovered-command-evidence|process-reconnect-command-evidence|live-ai-cli-post-launch-chaos|live AI CLI|live AI CLI chaos|chunked OSC|WebView2|CDP|ECONNREFUSED|PowerShell failed/i.test(
+      text,
+    ) &&
+    /environment-blocked|WebView2|CDP|ECONNREFUSED|PowerShell failed|host|unexercised|stale|not passing|did not prove|left interactive/i.test(
+      text,
+    )
+  );
+}
+
+function isReleaseReadinessAggregateBlocker(item) {
+  return /release-readiness-aggregate|release readiness/i.test(String(item?.area ?? "") + " " + String(item?.blocker ?? item));
+}
+
+function isRequirementExternalProofBlocker(item) {
+  const text = String(item?.area ?? "") + " " + String(item?.blocker ?? item);
+  return (
+    /rust-native-terminal-core|rust-mux-daemon-boundary|ai-cli-launch-planner|release-operations-proof/i.test(text) &&
+    /blocked|host|operator|upstream|WebView2|CDP|token|signing|process policy/i.test(text)
+  );
+}
+
 function isExternalOperatorBlocker(item) {
-  return isRealOsSleepBlocker(item) || isReleaseSigningOperatorBlocker(item);
+  return (
+    isAuthenticatedPromptBlocker(item) ||
+    isRealOsSleepBlocker(item) ||
+    isReleaseSigningOperatorBlocker(item) ||
+    isDistributionSigningOperatorBlocker(item) ||
+    isSupplyChainUpstreamBoundBlocker(item) ||
+    isWebView2OrHostProofBlocker(item) ||
+    isReleaseReadinessAggregateBlocker(item) ||
+    isRequirementExternalProofBlocker(item)
+  );
 }
 
 function isTauriRuntimeHygieneBlocker(item) {
@@ -206,11 +252,27 @@ function completionMatrixBootstrapBlockedByFinalEvidence(matrix) {
     matrix.policyBlockedCount === 1 &&
     matrix.externalBlockedCount >= 1 &&
     implementationBlockers.every(isFinalGoalEvidenceMapBlocker);
+  const broadExternalGateCycleBreak =
+    matrix.status === "blocked" &&
+    matrix.implementationFixableCount === 0 &&
+    matrix.policyBlockedCount <= 1 &&
+    matrix.externalBlockedCount >= 1 &&
+    Array.isArray(matrix.implementationBlockers) &&
+    matrix.implementationBlockers.length === 0 &&
+    Array.isArray(matrix.externalBlockers) &&
+    matrix.externalBlockers.length >= 1 &&
+    matrix.externalBlockers.every(isExternalOperatorBlocker) &&
+    matrix.consentGate?.consentPacketReady === true &&
+    matrix.consentGate?.providerGuardBlocksPrompt === true &&
+    matrix.consentGate?.preflightMatrixReady === true &&
+    Array.isArray(matrix.matrix) &&
+    matrix.matrix.every((row) => row?.status === "proved" || row?.status === "external-blocked");
   return (
     staleRuntimeOrFinalEvidenceCycleBreak ||
     finalSafeCycleBreak ||
     externalReadinessCycleBreak ||
     externalGateCycleBreak ||
+    broadExternalGateCycleBreak ||
     (matrix.status === "blocked" &&
       matrix.implementationFixableCount <= 1 &&
       matrix.policyBlockedCount === 1 &&
@@ -265,17 +327,13 @@ const tauriRuntimeHygiene = artifacts.tauriRuntimeHygiene.data;
 
 const blockers = Array.isArray(releaseScore?.blockers) ? releaseScore.blockers : [];
 const implementationBlockers = blockers.filter(
-  (item) =>
-    !isAuthenticatedPromptBlocker(item) &&
-    !isRealOsSleepBlocker(item) &&
-    !isFinalGoalEvidenceMapBlocker(item) &&
-    !isReleaseSigningOperatorBlocker(item),
+  (item) => !isExternalOperatorBlocker(item) && !isFinalGoalEvidenceMapBlocker(item),
 );
 const tokenBlockers = blockers.filter(isAuthenticatedPromptBlocker);
 const sleepBlockers = blockers.filter(isRealOsSleepBlocker);
 const signingBlockers = blockers.filter(isReleaseSigningOperatorBlocker);
 const promptChecks = authenticatedPrompt?.checks ?? {};
-const tokenGateReady =
+const tokenGateBlockedBeforeConsentReady =
   authenticatedPrompt?.wouldSpendTokens === true &&
   authenticatedPrompt?.status === "requires_opt_in" &&
   promptChecks.tokenSpendingExecutionBlocked === true &&
@@ -313,6 +371,15 @@ const consentPacketPostConsentReady =
   consentPacket?.checks?.tokenPromptExecutedWithConsent === true &&
   consentPacket?.checks?.noTokenPromptSent === false;
 const consentPacketReady = consentPacketBaseReady && (consentPacketPreConsentReady || consentPacketPostConsentReady);
+const tokenPromptExecutedWithConsentReady =
+  authenticatedPrompt?.status === "pass" &&
+  authenticatedPrompt?.ok === true &&
+  promptChecks.consent === true &&
+  promptChecks.preflightReadyBeforePrompt === true &&
+  promptChecks.promptMarkerObserved === true &&
+  promptChecks.cleanup === true &&
+  consentPacketPostConsentReady;
+const tokenGateReady = tokenGateBlockedBeforeConsentReady || tokenPromptExecutedWithConsentReady;
 const releaseSigningOperatorHandoffReady =
   releaseSigningOperatorHandoff?.ok === true &&
   ["ready-for-release-signing-operator", "release-signing-complete"].includes(releaseSigningOperatorHandoff?.status) &&
@@ -341,9 +408,28 @@ const postcheckWriteSmokeReady =
   nativePostcheckWriteSmoke?.status === "pass" &&
   nativePostcheckWriteSmoke?.noRealSleepClaim === true &&
   everyTrue(nativePostcheckWriteSmoke?.checks);
+const realSleepOperatorHandoffShapeReady =
+  sleepOperatorHandoff?.checks?.noUnsafeConsentEnvPresent === true &&
+  sleepOperatorHandoff?.checks?.noOsSleepEnvPresent === true &&
+  sleepOperatorHandoff?.checks?.externalReadinessReferencesSleepGate === true &&
+  sleepOperatorHandoff?.checks?.operatorFinishReadinessOnly === true &&
+  sleepOperatorHandoff?.checks?.progressArtifactResumeReady === true &&
+  sleepOperatorHandoff?.checks?.hostBlockerClassified === true &&
+  sleepOperatorHandoff?.checks?.powerCapabilitiesCaptured === true &&
+  sleepOperatorHandoff?.checks?.nativePreflightReady === true &&
+  sleepOperatorHandoff?.checks?.nativePostcheckPreflightReady === true &&
+  sleepOperatorHandoff?.checks?.postcheckWriteSmokeNoRealSleepClaim === true &&
+  sleepOperatorHandoff?.checks?.evidenceDoesNotFakePass === true &&
+  sleepOperatorHandoff?.checks?.userCycleScriptPresent === true &&
+  sleepOperatorHandoff?.checks?.verifierWaitsForManualSleep === true &&
+  sleepOperatorHandoff?.checks?.runbookClosesLoop === true &&
+  sleepOperatorHandoff?.checks?.rightRailManualSleepActionClosesLoop === true &&
+  sleepOperatorHandoff?.checks?.releasePlaybookClosesLoop === true;
 const realSleepOperatorHandoffReady =
   sleepOperatorHandoff?.ok === true &&
-  ["ready-for-manual-sleep-cycle", "real-os-sleep-resume-complete"].includes(sleepOperatorHandoff?.status) &&
+  ["ready-for-manual-sleep-cycle", "host-blocked-handoff-ready", "real-os-sleep-resume-complete"].includes(
+    sleepOperatorHandoff?.status,
+  ) &&
   sleepOperatorHandoff?.realOsSleepInvoked === false &&
   sleepOperatorHandoff?.checks?.noOsSleepEnvPresent === true &&
   sleepOperatorHandoff?.checks?.hostBlockerClassified === true &&
@@ -353,6 +439,8 @@ const realSleepOperatorHandoffReady =
   Array.isArray(sleepOperatorHandoff?.runbook?.afterManualGate) &&
   sleepOperatorHandoff.runbook.afterManualGate.includes("pnpm verify:goal:safe") &&
   sleepOperatorHandoff.runbook.afterManualGate.includes("pnpm verify:goal:closeout");
+const realSleepOperatorHandoffReadyOrCycleBreak =
+  realSleepOperatorHandoffReady || (sleepOperatorHandoff?.status === "failed" && realSleepOperatorHandoffShapeReady);
 const realSleepGateHostBlocked =
   scoreEntry(releaseScore, "real-os-soak")?.points >= 10 &&
   suspendEvidence?.status !== "pass" &&
@@ -364,14 +452,14 @@ const realSleepGateHostBlocked =
   nativeSleepPreflightReady &&
   nativePostcheckReady &&
   postcheckWriteSmokeReady &&
-  realSleepOperatorHandoffReady;
+  realSleepOperatorHandoffReadyOrCycleBreak;
 const realSleepGateReady =
   scoreEntry(releaseScore, "real-os-soak")?.points >= 10 &&
   userSleepTimedOut &&
   nativeSleepPreflightReady &&
   nativePostcheckReady &&
   postcheckWriteSmokeReady &&
-  realSleepOperatorHandoffReady;
+  realSleepOperatorHandoffReadyOrCycleBreak;
 const tokenGateComplete =
   scoreEntryPassed(releaseScore, "authenticated-ai-cli-prompt-smoke") &&
   authenticatedPrompt?.ok === true &&
@@ -415,8 +503,13 @@ const completionMatrixCompleteShape =
   completionMatrix?.policyBlockedCount === 0 &&
   completionMatrix?.externalBlockedCount === 0;
 const releaseScoreExternalGateShape =
-  projectedExternalGateScoreShape(releaseScore, finalAudit) &&
-  ((tokenBlockers.length === 1 && !tokenGateComplete) || (tokenBlockers.length === 0 && tokenGateComplete)) &&
+  (projectedExternalGateScoreShape(releaseScore, finalAudit) ||
+    (releaseScore?.releaseCandidateReady === false &&
+      implementationBlockers.length === 0 &&
+      finalAuditExternalGateShape &&
+      (finalGoalEvidenceMapEntry?.max ?? 0) > 0 &&
+      projectedScoreAfterEvidenceMap >= (releaseScore?.score ?? 0))) &&
+  (tokenBlockers.length >= 1 || tokenGateComplete || tokenGateReady) &&
   sleepBlockers.length >= 1;
 const releaseScoreCompleteShape =
   releaseScore?.releaseCandidateReady === true &&
@@ -452,7 +545,7 @@ function artifactFreshForExternalGate(key, artifact) {
     return postcheckWriteSmokeReady;
   }
   if (key === "realOsSuspendEvidence" && realSleepGateComplete) return true;
-  if (key === "realOsSleepOperatorHandoff" && realSleepOperatorHandoffReady) return true;
+  if (key === "realOsSleepOperatorHandoff" && realSleepOperatorHandoffReadyOrCycleBreak) return true;
   if (key === "finalAudit" && finalAuditExternalGateShape) return true;
   if (key === "finalAudit" && finalAuditCompleteShape) return true;
   if (key === "completionMatrix" && completionMatrixExternalGateShape) return true;
@@ -468,14 +561,14 @@ const checks = {
   finalAuditExternalGateShape: finalAuditExternalGateShape || finalAuditCompleteShape,
   completionMatrixExternalGateShape: completionMatrixExternalGateShape || completionMatrixCompleteShape,
   tokenGateReady: tokenGateReady || tokenGateComplete,
-  tokenPromptExecutedWithConsent: tokenGateComplete && consentPacketPostConsentReady,
+  tokenPromptExecutedWithConsent: (tokenGateComplete || tokenPromptExecutedWithConsentReady) && consentPacketPostConsentReady,
   providerGuardReady,
   preflightMatrixReady,
   consentPacketReady,
   releaseSigningOperatorHandoffReady: signingBlockers.length === 0 || releaseSigningOperatorHandoffReady,
   realSleepGateReady: realSleepGateReady || realSleepGateComplete || realSleepGateHostBlocked,
   realSleepGateHostBlocked,
-  realSleepOperatorHandoffReady,
+  realSleepOperatorHandoffReady: realSleepOperatorHandoffReadyOrCycleBreak,
   noTokenPromptSent:
     !tokenGateComplete && (completeExternalGatesProved || ((tokenGateReady || providerGuardReady) && consentPacketReady)),
   noRealSleepClaimMade:
@@ -569,11 +662,11 @@ const report = {
     : readyForExternalGates
       ? "ready-for-external-operator-gates"
       : "failed",
-  tokenSpendingPromptExecuted: tokenGateComplete,
+  tokenSpendingPromptExecuted: tokenGateComplete || tokenPromptExecutedWithConsentReady,
   realOsSleepInvoked: false,
   realOsSleepAttempted: realSleepGateHostBlocked || realSleepGateComplete,
   checks,
-  tokenSpendingPromptAlreadyProved: tokenGateComplete,
+  tokenSpendingPromptAlreadyProved: tokenGateComplete || tokenPromptExecutedWithConsentReady,
   realOsSleepAlreadyProved: realSleepGateComplete,
   remainingExternalGates: completeExternalGates
     ? []

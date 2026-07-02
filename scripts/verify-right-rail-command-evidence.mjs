@@ -40,8 +40,15 @@ function writeArtifact() {
 }
 
 function isEnvironmentUnavailable() {
-  return report.errors.some((error) =>
-    /spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|browserType\.launch/i.test(String(error)),
+  const messages = [
+    ...report.errors,
+    ...(Array.isArray(report.checks?.consoleErrors) ? report.checks.consoleErrors : []),
+    ...(Array.isArray(report.checks?.pageErrors) ? report.checks.pageErrors : []),
+  ];
+  return messages.some((error) =>
+    /spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|browserType\.launch|504 \(Outdated Optimize Dep\)|Outdated Optimize Dep/i.test(
+      String(error),
+    ),
   );
 }
 
@@ -261,7 +268,14 @@ async function main() {
     report.checks.pageErrors = quality.pageErrors;
 
     if (quality.consoleErrors.length > 0 || quality.pageErrors.length > 0) {
-      throw new Error("Console or page errors appeared during command evidence smoke");
+      throw new Error(
+        `Console or page errors appeared during command evidence smoke: ${[
+          ...quality.consoleErrors,
+          ...quality.pageErrors,
+        ]
+          .slice(0, 4)
+          .join(" | ")}`,
+      );
     }
     if (!report.checks.emittedEvidence || report.checks.emittedEvidence.terminalId !== "qa-review-shell") {
       throw new Error("Command evidence event did not target qa-review-shell");

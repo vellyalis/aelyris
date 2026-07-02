@@ -13,6 +13,7 @@ const sourcePaths = {
   score: "scripts/score-release-quality.mjs",
   appSilentBugs: "src/__tests__/AppSilentBugs.test.ts",
   toolkit: "src/features/toolkit/ToolkitPanel.tsx",
+  orchestraHook: "src/features/orchestrator/useOrchestraDispatch.ts",
 };
 
 function read(path) {
@@ -59,6 +60,7 @@ const suite = read(sourcePaths.suite);
 const score = read(sourcePaths.score);
 const appSilentBugs = read(sourcePaths.appSilentBugs);
 const toolkit = read(sourcePaths.toolkit);
+const orchestraHook = read(sourcePaths.orchestraHook);
 
 const checks = [];
 const rightRailStart = app.indexOf('<div className="right-panel-content">');
@@ -169,9 +171,9 @@ add(
   checks,
   "orchestra-dispatch-controls",
   app.includes("handleStartRightRailOrchestra") &&
-    app.includes("showOrchestra({") &&
-    app.includes("buildOrchestraPrompts({") &&
-    app.includes('defaultRoles: ["implementer", "tester", "reviewer"]') &&
+    orchestraHook.includes("showOrchestra({") &&
+    orchestraHook.includes("buildOrchestraPrompts({") &&
+    orchestraHook.includes('defaultRoles: ["implementer", "tester", "reviewer"]') &&
     app.includes('className="right-panel-orchestra-lanes"') &&
     app.includes('className="right-panel-orchestra-primary"') &&
     styles.includes(".right-panel-orchestra-lanes") &&

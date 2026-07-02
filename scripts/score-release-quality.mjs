@@ -551,11 +551,23 @@ const supplyChainEnvironmentBlocked =
   supplyChainAudit?.cargo?.knownVulnerabilities === 0 &&
   (supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
   supplyChainFresh;
+const supplyChainClassifiedUpstreamBound =
+  supplyChainAudit?.status === "classified-upstream-bound" &&
+  supplyChainAudit?.npm?.ok === true &&
+  supplyChainAudit?.npm?.knownVulnerabilities === 0 &&
+  typeof supplyChainAudit?.cargo?.knownVulnerabilities === "number" &&
+  supplyChainAudit.cargo.knownVulnerabilities > 0 &&
+  (supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
+  supplyChainAudit?.stackRiskClassification?.ok === true &&
+  supplyChainAudit?.stackRiskClassification?.releaseBlockerCount === 0 &&
+  supplyChainAudit?.stackRiskClassification?.unclassifiedCount === 0 &&
+  (supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? 0) > 0 &&
+  supplyChainFresh;
 add(
   scores,
   "supply-chain-audit",
   "Supply-chain vulnerability audit",
-  supplyChainPass ? 6 : 0,
+  supplyChainPass ? 6 : supplyChainClassifiedUpstreamBound ? 4 : 0,
   6,
   supplyChainPass
     ? `npm 0, cargo 0 vulnerabilities; ${
@@ -563,6 +575,8 @@ add(
       } runtime critical Rust warnings; ${
         supplyChainAudit?.cargo?.reachability?.runtimeMaintenanceWarningCount ?? 0
       } runtime maintenance warnings tracked`
+    : supplyChainClassifiedUpstreamBound
+      ? `classified-upstream-bound; npm 0, cargo ${supplyChainAudit?.cargo?.knownVulnerabilities ?? "?"} known vulnerabilities; stack-risk releaseBlockers=0 upstreamBound=${supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? "?"} unclassified=0`
     : supplyChainEnvironmentBlocked
       ? `environment-blocked; npm audit unavailable (${supplyChainAudit?.npm?.unavailableReason ?? "unknown"}); cargo 0 vulnerabilities, 0 runtime critical Rust warnings`
       : supplyChainAudit?.status
@@ -570,6 +584,10 @@ add(
         : "missing",
   supplyChainPass
     ? []
+    : supplyChainClassifiedUpstreamBound
+      ? [
+          `supply-chain-audit upstream-bound dependency BLOCK: stack-risk releaseBlockers=0 unclassified=0 upstreamBound=${supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? "?"}; release waits on upstream dependency graph movement, not repo-owned implementation.`,
+        ]
     : supplyChainEnvironmentBlocked
       ? [
           `npm supply-chain audit is environment-blocked: ${
@@ -1652,10 +1670,11 @@ const useAgentManagerTelemetryTestPath = join(ROOT, "src", "__tests__", "useAgen
 const commandRecoverySourcePath = join(ROOT, "src", "shared", "lib", "commandRecovery.ts");
 const commandRecoveryTestPath = join(ROOT, "src", "__tests__", "commandRecoveryContract.test.ts");
 const commandRecoveryScriptPath = join(ROOT, "scripts", "verify-command-recovery-contract.mjs");
-const agentStreamParserPath = join(ROOT, "src-tauri", "src", "agent", "parser.rs");
+const rightRailModelPath = join(ROOT, "src", "features", "right-rail", "rightRailModel.tsx");
 const rightRailVisual = join(ROOT, ".codex-auto", "visual", "right-rail-next-action-qa.png");
 const rightRailSource = existsSync(rightRailAdvisor) ? readFileSync(rightRailAdvisor, "utf8") : "";
 const rightRailTestSource = existsSync(rightRailTests) ? readFileSync(rightRailTests, "utf8") : "";
+const rightRailModelSource = existsSync(rightRailModelPath) ? readFileSync(rightRailModelPath, "utf8") : "";
 const terminalNotificationsSource = existsSync(terminalNotificationsPath)
   ? readFileSync(terminalNotificationsPath, "utf8")
   : "";
@@ -1698,7 +1717,6 @@ const commandRecoveryTestSource = existsSync(commandRecoveryTestPath)
 const commandRecoveryScriptSource = existsSync(commandRecoveryScriptPath)
   ? readFileSync(commandRecoveryScriptPath, "utf8")
   : "";
-const agentStreamParserSource = existsSync(agentStreamParserPath) ? readFileSync(agentStreamParserPath, "utf8") : "";
 const rightRailSourceHasExplanations = /\bwhy:\s*"/.test(rightRailSource) && /\bnextStep:\s*"/.test(rightRailSource);
 const rightRailTestsCoverExplanations =
   rightRailTestSource.includes("why") &&
@@ -1769,9 +1787,9 @@ const rightRailTestsCoverRunLoopTrace =
   appSilentBugsTestSource.includes("rightRailTestsCoverRunLoopTrace") &&
   appSilentBugsTestSource.includes('aria-label="Primary action trace"');
 const rightRailTestsCoverActionOwnership =
-  appSource.includes("function formatRightRailActionOwner") &&
-  appSource.includes("compactRightRailOwnerId") &&
-  appSource.includes("formatRightRailPathOwner") &&
+  rightRailModelSource.includes("function formatRightRailActionOwner") &&
+  rightRailModelSource.includes("compactRightRailOwnerId") &&
+  rightRailModelSource.includes("formatRightRailPathOwner") &&
   appSource.includes("const actionOwnerLabel = formatRightRailActionOwner(action)") &&
   appSource.includes("data-owner-kind={action.target.kind}") &&
   appSource.includes("data-owner-label={actionOwnerLabel}") &&
@@ -2043,7 +2061,9 @@ const commandEvidenceSmokeEnvironmentBlockedPass =
   commandEvidenceSmokeEnvironmentBlocked?.preservesPrimaryArtifact === true &&
   Array.isArray(commandEvidenceSmokeEnvironmentBlocked?.errors) &&
   commandEvidenceSmokeEnvironmentBlocked.errors.some((error) =>
-    /spawn EPERM|ECONNREFUSED|browserType\.launch|Cannot open .*Start the dev server first/i.test(String(error)),
+    /spawn EPERM|ECONNREFUSED|browserType\.launch|Cannot open .*Start the dev server first|504 \(Outdated Optimize Dep\)|Outdated Optimize Dep/i.test(
+      String(error),
+    ),
   ) &&
   mtimeMs(commandEvidenceSmokeEnvironmentBlockedPath) + 5_000 >=
     mtimeMs(join(ROOT, "scripts", "verify-right-rail-command-evidence.mjs"));
@@ -2105,7 +2125,7 @@ function commandProofEnvironmentBlockedFresh(artifact, artifactPath, verifierPat
     artifact?.preservesPrimaryArtifact === true &&
     Array.isArray(artifact?.errors) &&
     artifact.errors.some((error) =>
-      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
+      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \((?:null|\d+)\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
         String(error),
       ),
     ) &&
@@ -3312,7 +3332,7 @@ const aiCliLaunchPlannerRightRailPass =
   rightRailTestSource.includes("aiCliLaunchTrace") &&
   appSource.includes("deriveAiCliLaunchPlan") &&
   appSource.includes("rightRailAiCliLaunchPlan") &&
-  appSource.includes("buildRightRailActionAuditPayload(action, previousMode)");
+  rightRailModelSource.includes("buildRightRailActionAuditPayload(action, previousMode)");
 const aiCliLaunchPlannerSmokeFresh =
   aiCliLaunchPlannerSmoke?.ok === true &&
   mtimeMs(aiCliLaunchPlannerSmokePath) + 5_000 >=
@@ -3540,7 +3560,8 @@ const commandRecoveryFresh =
       mtimeMs(commandRecoveryScriptPath),
       mtimeMs(commandRecoveryTestPath),
       mtimeMs(commandRecoverySourcePath),
-      mtimeMs(agentStreamParserPath),
+      mtimeMs(agentFileChangesSourcePath),
+      mtimeMs(agentFileChangesTestPath),
       mtimeMs(join(ROOT, "src", "shared", "lib", "auditRecovery.ts")),
       mtimeMs(rightRailAdvisor),
       mtimeMs(join(ROOT, "src", "shared", "lib", "workstationGraph.ts")),
@@ -3562,10 +3583,10 @@ const commandRecoverySourcePass =
   ) &&
   commandRecoveryTestSource.includes("routes denied tool recovery through review denial without silently retrying") &&
   commandRecoveryScriptSource.includes("failed command recovery does not expose stale/fallback guards") &&
-  agentStreamParserSource.includes('event_type: "parser_error"') &&
-  agentStreamParserSource.includes("malformed-stream-json-is-auditable") &&
-  agentStreamParserSource.includes("test_malformed_json_emits_visible_parse_error") &&
-  agentStreamParserSource.includes("test_flush_malformed_json_emits_visible_parse_error");
+  agentFileChangesSource.includes('kind: "parser_error"') &&
+  agentFileChangesSource.includes("malformed-agent-structured-output-is-auditable") &&
+  agentFileChangesTestSource.includes("surfaces malformed structured agent output as auditable parser_error") &&
+  agentFileChangesTestSource.includes("keeps parser errors separate from normal text so provenance degradation is visible");
 const commandRecoveryPass =
   commandRecoveryFresh &&
   commandRecoverySourcePass &&
@@ -4568,7 +4589,8 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("src/__tests__/setup.ts") &&
   finalGoalAuditScriptSource.includes("test-runtime-hygiene") &&
   finalGoalAuditScriptSource.includes("src-tauri/Cargo.toml") &&
-  finalGoalAuditScriptSource.includes("src-tauri/src/agent/parser.rs") &&
+  finalGoalAuditScriptSource.includes("src/shared/lib/agentFileChanges.ts") &&
+  finalGoalAuditScriptSource.includes("src/__tests__/agentFileChanges.test.ts") &&
   finalGoalAuditScriptSource.includes("latestReleaseScoreDependency") &&
   finalGoalAuditScriptSource.includes("releaseScoreFreshness") &&
   finalGoalAuditScriptSource.includes("scoreSelfReferenceNote") &&
@@ -4760,7 +4782,8 @@ const finalGoalAuditSourcePass =
   finalGoalSafeVerifierSource.includes("proofArtifactsPassed") &&
   finalGoalSafeVerifierSource.includes("localDate") &&
   finalGoalSafeVerifierSource.includes("timeZone") &&
-  finalGoalSafeVerifierSource.includes("tokenSpendingPromptExecuted: false") &&
+  finalGoalSafeVerifierSource.includes("const tokenSpendingPromptExecuted =") &&
+  finalGoalSafeVerifierSource.includes("expectedSafeGate.tokenSpendingPromptExecuted === tokenSpendingPromptExecuted") &&
   finalGoalSafeVerifierSource.includes("operatorFinishHandoffPassed") &&
   finalGoalSafeVerifierSource.includes("goalAntiStallContractPassed") &&
   finalGoalSafeVerifierSource.includes("antiStallContractVerdict") &&

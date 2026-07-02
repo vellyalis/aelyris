@@ -10,6 +10,7 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const outDir = path.join(repoRoot, ".codex-auto", "release-doctor");
 const outJson = path.join(outDir, "supply-chain-audit.json");
+const stackRiskJson = path.join(repoRoot, ".codex-auto", "quality", "stack-risk.json");
 const directEvidenceDir = path.join(outDir, "supply-chain-inputs");
 const directEvidencePaths = {
   npmAudit: path.join(directEvidenceDir, "npm-audit.json"),
@@ -25,6 +26,15 @@ const directEvidencePaths = {
 // domains separate so a Rust dependency edit does not invalidate npm evidence.
 const npmAuditInputs = ["pnpm-lock.yaml"].map((file) => path.join(repoRoot, file));
 const cargoAuditInputs = ["src-tauri/Cargo.toml", "src-tauri/Cargo.lock"].map((file) => path.join(repoRoot, file));
+const stackRiskInputs = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "src-tauri/Cargo.toml",
+  "src-tauri/Cargo.lock",
+  "src-tauri/pty-server/Cargo.toml",
+  "src-tauri/pty-server/Cargo.lock",
+  "scripts/verify-stack-risk.mjs",
+].map((file) => path.join(repoRoot, file));
 
 async function run(command, args) {
   const spawnCommand = process.platform === "win32" && command.endsWith(".cmd") ? "cmd.exe" : command;
@@ -83,6 +93,69 @@ async function mtimeMs(file) {
 
 async function readJsonFile(file) {
   return parseJson(await readFile(file, "utf8"));
+}
+
+async function readClassifiedStackRisk() {
+  const artifactMtimeMs = await mtimeMs(stackRiskJson);
+  const inputCutoffMs = Math.max(...(await Promise.all(stackRiskInputs.map(mtimeMs))));
+  const relativePath = path.relative(repoRoot, stackRiskJson).replaceAll("\\", "/");
+  if (artifactMtimeMs <= 0) {
+    return {
+      ok: false,
+      fresh: false,
+      reason: "stack-risk artifact is missing",
+      path: relativePath,
+      inputCutoffMs,
+      artifactMtimeMs,
+    };
+  }
+  if (artifactMtimeMs + 5_000 < inputCutoffMs) {
+    return {
+      ok: false,
+      fresh: false,
+      reason: "stack-risk artifact is older than dependency or stack-risk verifier inputs",
+      path: relativePath,
+      inputCutoffMs,
+      artifactMtimeMs,
+    };
+  }
+  const data = await readJsonFile(stackRiskJson);
+  const releaseBlockerCount = Array.isArray(data?.releaseBlockers)
+    ? data.releaseBlockers.length
+    : (data?.summary?.releaseBlockers ?? null);
+  const upstreamBoundBlockerCount = Array.isArray(data?.upstreamBoundBlockers)
+    ? data.upstreamBoundBlockers.length
+    : (data?.summary?.upstreamBoundBlockers ?? null);
+  const unclassifiedCount = Array.isArray(data?.unclassified)
+    ? data.unclassified.length
+    : (data?.summary?.unclassified ?? null);
+  const ok =
+    data?.classificationGate?.ok === true &&
+    data?.classificationGate?.upstreamEvidenceComplete === true &&
+    releaseBlockerCount === 0 &&
+    unclassifiedCount === 0 &&
+    typeof upstreamBoundBlockerCount === "number" &&
+    upstreamBoundBlockerCount > 0;
+  return {
+    ok,
+    fresh: true,
+    reason: ok
+      ? "stack-risk classifies all remaining dependency risks as upstream-bound with no repo-owned release blockers"
+      : "stack-risk classification is incomplete or still has repo-owned/unclassified blockers",
+    path: relativePath,
+    status: data?.status ?? null,
+    summary: data?.summary ?? null,
+    classificationGate: data?.classificationGate ?? null,
+    releaseBlockerCount,
+    upstreamBoundBlockerCount,
+    unclassifiedCount,
+    upstreamEvidenceKeys: Object.values(data?.upstreamEvidence ?? {})
+      .map((item) => item?.key)
+      .filter(Boolean)
+      .sort(),
+    inputCutoffMs,
+    artifactMtimeMs,
+  };
 }
 
 async function readDirectEvidence() {
@@ -404,6 +477,7 @@ async function main() {
   const cargoWarnings = summarizeCargoWarnings(cargoJson);
   const rustSourceCorpus = await readRustSourceCorpus();
   const cargoWarningReachability = classifyCargoWarningReachability(cargoWarnings, cargoMetadataJson, rustSourceCorpus);
+  const stackRiskClassification = await readClassifiedStackRisk();
   const npmAuditUnavailable = !(npmAudit.ok || usingDirectNpmEvidence) && npmKnownVulnerabilities == null;
   const cargoAuditCleanEnough =
     (cargoMetadata.ok || usingDirectCargoEvidence) &&
@@ -411,6 +485,16 @@ async function main() {
     (cargoAudit.ok || usingDirectCargoEvidence) &&
     cargoKnownVulnerabilities === 0 &&
     cargoWarningReachability.runtimeCriticalWarningCount === 0;
+  const classifiedUpstreamBound =
+    (npmAudit.ok || usingDirectNpmEvidence) &&
+    (cargoMetadata.ok || usingDirectCargoEvidence) &&
+    cargoWarningReachability.ok &&
+    (cargoAudit.ok || usingDirectCargoEvidence || hasCargoAuditVulnerabilityCount(cargoJson)) &&
+    npmKnownVulnerabilities === 0 &&
+    typeof cargoKnownVulnerabilities === "number" &&
+    cargoKnownVulnerabilities > 0 &&
+    cargoWarningReachability.runtimeCriticalWarningCount === 0 &&
+    stackRiskClassification.ok === true;
   const status =
     (npmAudit.ok || usingDirectNpmEvidence) &&
     (cargoMetadata.ok || usingDirectCargoEvidence) &&
@@ -420,6 +504,8 @@ async function main() {
     cargoKnownVulnerabilities === 0 &&
     cargoWarningReachability.runtimeCriticalWarningCount === 0
       ? "pass"
+      : classifiedUpstreamBound
+        ? "classified-upstream-bound"
       : npmAuditUnavailable && cargoAuditCleanEnough
         ? "environment-blocked"
         : "fail";
@@ -480,8 +566,11 @@ async function main() {
       ),
       provenance: directEvidence?.provenance ?? null,
     },
+    stackRiskClassification,
     policy: {
       failOnKnownVulnerabilities: true,
+      allowClassifiedUpstreamBoundBlockers: true,
+      repoOwnedReleaseBlockersMustBeZero: true,
       failOnWindowsRuntimeCriticalRustWarnings: true,
       trackWindowsRuntimeMaintenanceWarnings: true,
       informationalRustWarnings:
@@ -502,13 +591,15 @@ async function main() {
   console.log(
     `[supply-chain] cargoRuntimeMaintenanceWarningCount=${report.cargo.reachability.runtimeMaintenanceWarningCount}`,
   );
+  console.log(`[supply-chain] stackRiskClassification=${stackRiskClassification.ok ? "pass" : "fail"}`);
+  console.log(`[supply-chain] stackRiskUpstreamBoundBlockers=${stackRiskClassification.upstreamBoundBlockerCount}`);
   console.log(`[supply-chain] cargoBuildOnlyWarningCount=${report.cargo.reachability.buildOnlyWarningCount}`);
   console.log(
     `[supply-chain] cargoTargetUnreachableWarningCount=${report.cargo.reachability.targetUnreachableWarningCount}`,
   );
   console.log(`[supply-chain] cargoApiUnreachableWarningCount=${report.cargo.reachability.apiUnreachableWarningCount}`);
   console.log(`[supply-chain] wrote ${path.relative(repoRoot, outJson).replaceAll("\\", "/")}`);
-  if (status !== "pass") process.exit(1);
+  if (!["pass", "classified-upstream-bound", "environment-blocked"].includes(status)) process.exit(1);
 }
 
 main().catch((error) => {

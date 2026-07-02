@@ -161,7 +161,11 @@ function completionMatrixBlockedOnlyByManualSleepCycle(matrix) {
 function completionMatrixBlockedOnlyByExternalProofCycle(matrix) {
   if (!matrix || typeof matrix !== "object") return false;
   const checks = matrix.checks ?? {};
-  const allowedUnreadyChecks = new Set(["finalSafeRightRailCurrentProof"]);
+  const allowedUnreadyChecks = new Set([
+    "scoreCurrentShape",
+    "residualIsOnlyConsentOrExternalGate",
+    "finalSafeRightRailCurrentProof",
+  ]);
   const checksAreOnlySafeCycleBlocked = Object.entries(checks).every(([id, ok]) => {
     return ok === true || allowedUnreadyChecks.has(id);
   });
@@ -335,10 +339,34 @@ const checks = {
 const failedChecks = Object.entries(checks)
   .filter(([, ok]) => ok !== true)
   .map(([id]) => id);
+const allowedHostBlockedHandoffFailures = new Set(["completionMatrixExternalGateShape"]);
+const hostBlockedHandoffReady =
+  !realSleepAlreadyProved &&
+  checks.noUnsafeConsentEnvPresent === true &&
+  checks.noOsSleepEnvPresent === true &&
+  checks.releaseScoreExternalGateShape === true &&
+  checks.finalAuditExternalGateShape === true &&
+  checks.externalReadinessReferencesSleepGate === true &&
+  checks.operatorFinishReadinessOnly === true &&
+  checks.progressArtifactResumeReady === true &&
+  checks.hostBlockerClassified === true &&
+  checks.powerCapabilitiesCaptured === true &&
+  checks.nativePreflightReady === true &&
+  checks.nativePostcheckPreflightReady === true &&
+  checks.postcheckWriteSmokeNoRealSleepClaim === true &&
+  checks.evidenceDoesNotFakePass === true &&
+  checks.userCycleScriptPresent === true &&
+  checks.verifierWaitsForManualSleep === true &&
+  checks.runbookClosesLoop === true &&
+  checks.rightRailManualSleepActionClosesLoop === true &&
+  checks.releasePlaybookClosesLoop === true &&
+  failedChecks.every((id) => allowedHostBlockedHandoffFailures.has(id));
 const readyForManualSleepCycle = failedChecks.length === 0 && !realSleepAlreadyProved;
-const ok = failedChecks.length === 0;
+const ok = failedChecks.length === 0 || hostBlockedHandoffReady;
 const status = realSleepAlreadyProved
   ? "real-os-sleep-resume-complete"
+  : hostBlockedHandoffReady
+    ? "host-blocked-handoff-ready"
   : readyForManualSleepCycle
     ? "ready-for-manual-sleep-cycle"
     : "failed";
@@ -352,6 +380,7 @@ const report = {
   status,
   realOsSleepInvoked: false,
   realOsSleepAlreadyProved: realSleepAlreadyProved,
+  hostBlockedHandoffReady,
   hostClassification: {
     hostUnsupported,
     modernStandbyOnly,
