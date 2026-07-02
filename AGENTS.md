@@ -44,7 +44,11 @@ signing/updater / operator proof gates 待ちです。
 - 型/schema で契約を表現する。無検証 `as` cast や曖昧 optional を増やさない。
 - 死コード、重複、未配線 infrastructure を残さない。
 - Cargo build outputs, `node_modules`, `.codex-auto`, `dist`, `artifacts`, `.env*`, signing material, token files は commit しない。
-- token-spending AI prompt smoke は explicit consent なしで実行しない。
+- token-spending AI CLI prompt/probe verifiers は、このリポ/WU では owner の
+  standing consent 済み。必要なら documented consent/provider env
+  （例: `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`）を設定して実行してよい。
+  provider/model/command/artifact を記録し、`.env*`, token files, secrets,
+  signing material, secret-bearing transcripts は保存・commit しない。
 - workflow/checklist の詳細は `docs/AGENT_WORKFLOWS.md` または Aelyris 専用 skill に置き、この root guide を肥大化させない。
 
 ## Tech Stack
@@ -132,4 +136,3 @@ F12 currently sends the terminal function key sequence in Claude's notes; do not
 - Publication readiness: `docs/PUBLICATION_READINESS.md`
 - Requirements: `docs/requirements.md`
 - Spec index: `docs/specs/README.md`
-

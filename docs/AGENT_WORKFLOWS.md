@@ -32,7 +32,7 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 - Do not enable hooks that rewrite files or inject hidden session behavior.
 - Keep `.claude/skills` as Aelyris-specific workflows. They are not product capability proof.
 - Machine gates and local verifier outputs outrank reviewer-agent opinions.
-- Token-spending AI prompt smoke requires explicit operator consent.
+- Token-spending AI CLI prompt/probe verifiers have standing operator consent for this repo/WU. Use the documented provider/consent env vars when required, record provider/model/command/artifact evidence, and never persist secrets, token files, signing material, or secret-bearing transcripts.
 
 ## Skill Design Rules
 

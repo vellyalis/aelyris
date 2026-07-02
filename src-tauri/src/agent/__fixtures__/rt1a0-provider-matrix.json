@@ -1,0 +1,107 @@
+{
+  "schema": "aelyris.rt1a0.provider-matrix/v1",
+  "capturedAt": "2026-07-01T07:01:43.278Z",
+  "redacted": true,
+  "captureMode": "no-token-startup-visible-pty",
+  "providers": [
+    {
+      "provider": "claude",
+      "command": "spawn_interactive_agent(model=sonnet, initialPrompt=null) -> claude --model sonnet",
+      "model": "sonnet",
+      "capture": {
+        "spawn": "spawn_interactive_agent",
+        "snapshot": "term_snapshot/GridSnapshot",
+        "artifactPath": ".codex-auto/runtime-core/rt1a0-provider-claude.json",
+        "backend": "sidecar",
+        "cdp": "127.0.0.1:9222"
+      },
+      "launch": {
+        "ok": true,
+        "status": "idle",
+        "cli": "claude",
+        "tokensUsed": 0,
+        "nonBlankCells": 719,
+        "providerSignal": true,
+        "reconnectOnly": false
+      },
+      "tokenSpendingPromptExecuted": false,
+      "permissionMenu": {
+        "status": "not_observed",
+        "reason": "No token-spending prompt was executed by this RT-1a0 startup capture; permission-menu behavior remains a separate prompt-gated proof."
+      },
+      "contextTelemetry": {
+        "confidence": "estimated",
+        "source": "status_time_turn_proxy",
+        "fallback": true,
+        "providerSpecificFixture": false
+      },
+      "redacted": true
+    },
+    {
+      "provider": "codex",
+      "command": "spawn_interactive_agent(model=codex-mini, initialPrompt=null) -> codex",
+      "model": "codex-mini",
+      "capture": {
+        "spawn": "spawn_interactive_agent",
+        "snapshot": "term_snapshot/GridSnapshot",
+        "artifactPath": ".codex-auto/runtime-core/rt1a0-provider-codex.json",
+        "backend": "sidecar",
+        "cdp": "127.0.0.1:9222"
+      },
+      "launch": {
+        "ok": true,
+        "status": "idle",
+        "cli": "codex",
+        "tokensUsed": 0,
+        "nonBlankCells": 302,
+        "providerSignal": true,
+        "reconnectOnly": false
+      },
+      "tokenSpendingPromptExecuted": false,
+      "permissionMenu": {
+        "status": "not_observed",
+        "reason": "No token-spending prompt was executed by this RT-1a0 startup capture; permission-menu behavior remains a separate prompt-gated proof."
+      },
+      "contextTelemetry": {
+        "confidence": "unknown",
+        "source": "status_time_turn_proxy",
+        "fallback": true,
+        "providerSpecificFixture": false
+      },
+      "redacted": true
+    },
+    {
+      "provider": "gemini",
+      "command": "spawn_interactive_agent(model=gemini-2.5-pro, initialPrompt=null) -> gemini",
+      "model": "gemini-2.5-pro",
+      "capture": {
+        "spawn": "spawn_interactive_agent",
+        "snapshot": "term_snapshot/GridSnapshot",
+        "artifactPath": ".codex-auto/runtime-core/rt1a0-provider-gemini.json",
+        "backend": "sidecar",
+        "cdp": "127.0.0.1:9222"
+      },
+      "launch": {
+        "ok": true,
+        "status": "idle",
+        "cli": "gemini",
+        "tokensUsed": 0,
+        "nonBlankCells": 779,
+        "providerSignal": true,
+        "reconnectOnly": false
+      },
+      "tokenSpendingPromptExecuted": false,
+      "permissionMenu": {
+        "status": "not_observed",
+        "reason": "No token-spending prompt was executed by this RT-1a0 startup capture; permission-menu behavior remains a separate prompt-gated proof."
+      },
+      "contextTelemetry": {
+        "confidence": "unknown",
+        "source": "status_time_turn_proxy",
+        "fallback": true,
+        "providerSpecificFixture": false
+      },
+      "redacted": true
+    }
+  ]
+}

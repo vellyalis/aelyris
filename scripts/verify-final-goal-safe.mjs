@@ -29,6 +29,7 @@ const STEP_FALLBACK_ARTIFACTS = {
   "runtime-core-self-summary": [".codex-auto/quality/runtime-core-self-summary.json"],
   "runtime-core-session-checkpoint": [".codex-auto/quality/session-checkpoint-restore.json"],
   "runtime-core-session-handoff": [".codex-auto/quality/session-handoff-no-loss.json"],
+  "runtime-core-session-resume": [".codex-auto/quality/session-resume-idempotent.json"],
   "release-hygiene-contract": [".codex-auto/quality/release-hygiene-contract.json"],
   "supply-chain-audit": [".codex-auto/release-doctor/supply-chain-audit.json"],
   "production-build": [".codex-auto/quality/production-bundle-budget.json"],
@@ -1026,6 +1027,53 @@ function tauriRuntimeHygieneVerdict(data) {
   };
 }
 
+function runtimeCoreRt1a0LiveVerdict(data) {
+  const requiredProviders = Array.isArray(data?.requiredProviders)
+    ? data.requiredProviders
+    : ["claude", "codex", "gemini"];
+  const providerMatrix = Array.isArray(data?.providerMatrix) ? data.providerMatrix : [];
+  const missingProviders = Array.isArray(data?.missingProviders)
+    ? data.missingProviders
+    : requiredProviders.filter((provider) => !providerMatrix.some((entry) => entry?.provider === provider));
+  const allProvidersPresent = requiredProviders.every((provider) =>
+    providerMatrix.some((entry) => entry?.provider === provider),
+  );
+  const allProvidersReady = requiredProviders.every((provider) => {
+    const row = providerMatrix.find((entry) => entry?.provider === provider);
+    return row?.ok === true && row?.status === "ready";
+  });
+  const fixturePath = data?.fixture?.path ?? data?.formalCaptureContract?.fixturePath;
+  const fixtureReady = data?.fixture?.exists === true && typeof fixturePath === "string" && fixturePath.length > 0;
+  const cdpStateRecorded = data?.cdp?.host === "127.0.0.1" && typeof data?.cdp?.port === "number";
+  const captureContractReady =
+    data?.formalCaptureContract?.spawn === "spawn_interactive_agent" &&
+    String(data?.formalCaptureContract?.measurement ?? "").includes("GridSnapshot") &&
+    Array.isArray(data?.formalCaptureContract?.providers) &&
+    requiredProviders.every((provider) => data.formalCaptureContract.providers.includes(provider));
+  const ok =
+    data?.ok === true &&
+    data?.status === "pass-rt1a0-provider-matrix" &&
+    fixtureReady &&
+    cdpStateRecorded &&
+    captureContractReady &&
+    allProvidersPresent &&
+    allProvidersReady;
+  return {
+    ok,
+    status: ok ? "pass-current-rt1a0-provider-matrix" : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "RT-1a0 records a redacted live provider matrix for claude, codex, and gemini using spawn_interactive_agent plus term_snapshot/GridSnapshot",
+    reason: ok
+      ? "RT-1a0 provider matrix is complete and fixture-backed for all required providers"
+      : `RT-1a0 provider matrix is incomplete or host-blocked; missing providers: ${missingProviders.join(", ") || "unknown"}`,
+    requiredProviders,
+    missingProviders,
+    providerMatrix,
+    fixture: data?.fixture ?? null,
+    cdp: data?.cdp ?? null,
+  };
+}
+
 function rightRailStaleUrlTruthVerdict(data) {
   const normal = data?.checks?.normalRuntime ?? {};
   const visualQa = data?.checks?.visualQaRuntime ?? {};
@@ -1419,6 +1467,11 @@ function artifactMeta(path, verdictFor) {
     bootstrapOnly: verdict.bootstrapOnly,
     semanticFreshness: verdict.semanticFreshness ?? null,
     cycleBoundary: verdict.cycleBoundary ?? null,
+    requiredProviders: verdict.requiredProviders,
+    missingProviders: verdict.missingProviders,
+    providerMatrix: verdict.providerMatrix,
+    fixture: verdict.fixture,
+    cdp: verdict.cdp,
     generatedAt: data?.generatedAt ?? data?.finishedAt ?? data?.completedAt ?? null,
     mtimeMs: stats.mtimeMs,
   };
@@ -1695,26 +1748,14 @@ const steps = [
     "verify-release-signing-operator-handoff.mjs",
   ),
   runStep("tauri-runtime-hygiene", "Tauri runtime hygiene", "verify-tauri-runtime-hygiene.mjs"),
-  runStep(
-    "runtime-core-preconditions",
-    "Runtime Core approval preconditions",
-    "verify-runtime-core-preconditions.mjs",
-  ),
+  runStep("runtime-core-preconditions", "Runtime Core approval preconditions", "verify-runtime-core-preconditions.mjs"),
   runStep(
     "runtime-core-rt1a0-live",
-    "Runtime Core RT-1a0 live Claude fixture gate",
+    "Runtime Core RT-1a0 live provider matrix gate",
     "verify-runtime-core-rt1a0-live.mjs",
   ),
-  runStep(
-    "runtime-core-context-proxy",
-    "Runtime Core RT-1a context proxy",
-    "verify-context-proxy.mjs",
-  ),
-  runStep(
-    "runtime-core-self-summary",
-    "Runtime Core RT-1b self summary",
-    "verify-self-summary.mjs",
-  ),
+  runStep("runtime-core-context-proxy", "Runtime Core RT-1a context proxy", "verify-context-proxy.mjs"),
+  runStep("runtime-core-self-summary", "Runtime Core RT-1b self summary", "verify-self-summary.mjs"),
   runStep(
     "runtime-core-session-checkpoint",
     "Runtime Core RT-1c session checkpoint restore",
@@ -1724,6 +1765,11 @@ const steps = [
     "runtime-core-session-handoff",
     "Runtime Core RT-1d session handoff no-loss",
     "verify-session-handoff-no-loss.mjs",
+  ),
+  runStep(
+    "runtime-core-session-resume",
+    "Runtime Core RT-1e session resume/reset idempotency",
+    "verify-session-resume-idempotent.mjs",
   ),
   runStep("release-hygiene-contract", "Release hygiene contract", "verify-release-hygiene-contract.mjs"),
   runStep("supply-chain-audit", "Supply-chain vulnerability audit", "verify-supply-chain.mjs"),
@@ -2102,6 +2148,7 @@ const proofArtifacts = {
     realOsSleepOperatorHandoffVerdict,
   ),
   tauriRuntimeHygiene: artifactMeta(".codex-auto/quality/tauri-runtime-hygiene.json", tauriRuntimeHygieneVerdict),
+  runtimeCoreRt1a0Live: artifactMeta(".codex-auto/quality/runtime-core-rt1a0-live.json", runtimeCoreRt1a0LiveVerdict),
   releaseHygieneContract: artifactMeta(
     ".codex-auto/quality/release-hygiene-contract.json",
     releaseHygieneContractVerdict,

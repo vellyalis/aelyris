@@ -1,6 +1,6 @@
 # Context & Session Lifecycle Spec (Runtime Core)
 
-作成: 2026-06-30 ／ 改訂: 2026-06-30 (rev2, 敵対デザインレビュー38件反映)
+作成: 2026-06-30 ／ 改訂: 2026-07-01 (rev3, RT-1a0 provider matrix / standing token consent 反映)
 WU: WU-RT-1
 対象: 長時間動き続ける可視 CLI エージェント群のコンテキスト汚染を防ぎ、Runtime がコンテキスト/セッションのライフサイクル（計測・要約・引継ぎ・再開・リセット）を統治する境界仕様。OS のメモリ管理/プロセス管理に相当する Runtime Core 機能。
 実装手順: [CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md](./CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md)（codex 向け cold-start handoff）。
@@ -13,7 +13,7 @@ WU: WU-RT-1
 > 2. 運用モデル＝**可視対話 CLI エージェント**（claude/codex/gemini を PTY で起動）。Runtime は context window を所有しない。handoff は透過差し替えではなく**「要約付きの新ペイン起動→旧ペイン退役、状態は永続から継続」の可視リサイクル**。
 > 3. ★**rev2 の中核訂正**: エージェントとの構造化データ授受は **TUI スクレイプではなくファイル経由**（agent はファイルを書ける対話エージェント）。要約も後継の読込確認も**ファイル/grid 経由**で行う。生 PTY バイトの再構成（alt-screen スクロール・redraw・strip_ansi 不完全・8192 buffer 上限）には依存しない。
 > 4. ★**rev2**: 不可逆操作（退役）の前に**耐久 handoff-intent 行**（merge_intent パターン：intent→CAS→boot reconcile）を必ず置く。audit も退役**前**に発行。これで double-spawn・両退役・un-audited 破棄・crash 半完了を防ぐ。
-> 5. **計測の現実**: visible CLI は token 直読不可。一次トリガは**頑健な proxy（status 遷移・wall-clock・ターン数）**。Claude TUI の「% context left」行は**補強**（出現が遅延/on-demand で warn を駆動しきれない・実機未確定）。**Claude-first**で正直に（Codex/Gemini は時間/ターン fallback、confidence=unknown）。
+> 5. **計測の現実**: visible CLI は token 直読不可。一次トリガは**頑健な proxy（status 遷移・wall-clock・ターン数）**。Claude TUI の「% context left」行は**補強**（出現が遅延/on-demand で warn を駆動しきれない・実機未確定）。RT-1a0 は Claude/Codex/Gemini の live fixture matrix を採取し、provider-specific telemetry が証明できない CLI は時間/ターン fallback、confidence=unknown と正直に扱う。
 > 6. **計測は grid 読取**（`term_snapshot`/GridSnapshot）優先。生バイト正規表現（現 `output_monitor.rs`）は live TUI でほぼ発火せず信頼できない（スモークの thinking 固定の実原因。sidecar feed 自体は生存）。
 > 7. **検証ゲート必須**（docs/README.md）。no-loss handoff verifier は **context 無損失 AND audit 無損失**の両方を assert しない限り「実装済み」と言わない。
 
@@ -106,7 +106,7 @@ CLI が context を所有するため直接計測不可。**一次は頑健 prox
 5. FE プロキシ: `agentContextPercent=tokensUsed/getMaxTokens`（`src/shared/lib/workstationSummary.ts:48`、per-model `src/shared/types/model.ts` MODEL_OPTIONS：Claude 200k/Codex 192k/Gemini 1M）。(4) が弱い分これも弱い。`TelemetryConfidence`（exact|parsed|estimated|unknown）でラベル。
 
 ### 5.1 per-CLI（正直スコープ）
-`GeminiParser`/`CodexParser`（`output_monitor.rs`）は usage を一切抽出しない（`DetectedUsage::default`）。∴ **Claude-first**: Claude は (3)+(1)(2)、**Codex/Gemini は (1)(2) 時間/ターン fallback・confidence=unknown**。§0 と整合（「全 CLI のコンテキスト汚染を防ぐ」は当面 Claude のみ完全達成、他は fallback）。per-CLI 残量検出は follow-on。
+`GeminiParser`/`CodexParser`（`output_monitor.rs`）は usage を一切抽出しない（`DetectedUsage::default`）。∴ **provider-honest**: RT-1a0 で Claude/Codex/Gemini の live fixture matrix を採取し、Claude は (3)+(1)(2) を狙う。Codex/Gemini は provider-specific fixture が exact/parsed telemetry を証明するまで (1)(2) 時間/ターン fallback・confidence=unknown。§0 と整合（「全 CLI のコンテキスト汚染を防ぐ」は全 CLI で fallback 保護を持ち、完全な残量検出は provider proof ごとに昇格）。per-CLI 残量検出は follow-on。
 
 ### 5.2 閾値ポリシー（既存と重複させない, rev2）
 - **既存の `contextWarnPct`（既定 85, `src/shared/lib/budgetStatus.ts`）と `ContextGauge` 閾値（60/80/95, `src/shared/ui/ContextGauge.tsx`）を再利用**。新たな warn80/hard92 定数を増やさない。warn=既存 warn、hard=auto-compact 直前（実機確定）。
@@ -114,7 +114,7 @@ CLI が context を所有するため直接計測不可。**一次は頑健 prox
 - per-session の window 割合は `src-tauri/src/cost/mod.rs` の `over_budget` 決定パターンを per-session 版で踏襲（`CostCaps` は fleet 上限＝別軸）。
 
 ### 5.3 ★実機 spike（RT-1a0, 必須前提）
-(3) の残量行フォーマットと許可メニュー構造（§PRE-2）と数字キー確定挙動は**実 Claude バイトで未確定**。native backend/packaged build で CDP スモーク採取し fixture 化してから RT-1a の gate を確定（[project_surface2_plumbing_done] の sidecar/native 制約参照）。strip_ansi は不完全（CSI-letter のみ、`\x1b[?…` DEC private・OSC `\x1b]…\x07`・alt-screen を落とさない）→ grid 読取を使うか strip を強化。
+(3) の残量行フォーマット、provider 別 telemetry の有無、許可メニュー構造（§PRE-2）、数字キー確定挙動は**実 Claude/Codex/Gemini CLI の visible bytes/grid で未確定**。native backend/packaged build で CDP スモーク採取し fixture 化してから RT-1a の gate を確定（[project_surface2_plumbing_done] の sidecar/native 制約参照）。token spending は standing owner consent 済みだが、provider/model/command/artifact を記録し、secret/token file/transcript は永続化しない。strip_ansi は不完全（CSI-letter のみ、`\x1b[?…` DEC private・OSC `\x1b]…\x07`・alt-screen を落とさない）→ grid 読取を使うか strip を強化。
 
 ---
 
@@ -200,8 +200,8 @@ docs/README.md 方針で**必須**。`ProcessGateRunner`（`src-tauri/src/contro
 - **audit 無損失（rev2 追加）**: handoff 後 `audit_event_journal` に `session_handoff`（hash 連鎖・append-only）が lineage `correlation_id` 付きで存在 AND `get_audit_trace(correlation_id)` が返る。これが無いとガバナンス穴が緑で出荷される。
 - **crash 安全**: 各 state で crash 注入 → resume が「両退役なし／二重 spawn なし／worktree 非削除」で一意収束。
 - 範テスト: Task restore の `restore_tests`/`graph_survives_a_simulated_restart_via_db`/`restore_regates_a_dependent_and_never_dispatches_it_before_its_dependency`。
-- `reset_context`（§4.5）も対象に含める（または sibling verifier）。
-- ★実機: §5.3 の spike（残量行・メニュー構造）を実 Claude で確定。
+- `reset_context`（§4.5）も対象に含める。RT-1e は sibling verifier `scripts/verify-session-resume-idempotent.mjs` で `session_resume` の冪等収束・ack 再確認・identity mismatch fail-closed と、`session_reset_context` が bare spawn/stop ではなく no-loss handoff 規律を再利用することを assert する。
+- ★実機: §5.3 の spike（provider 別 telemetry・残量行・メニュー構造）を実 Claude/Codex/Gemini fixture matrix で確定。
 
 ---
 
@@ -246,7 +246,8 @@ docs/README.md 方針で**必須**。`ProcessGateRunner`（`src-tauri/src/contro
 ---
 
 ## 改訂履歴
-- rev2 (2026-06-30): 敵対デザインレビュー38件（critical6/high14/medium11/low7）反映。中核変更: ①要約/ack を **TUI スクレイプ→ファイル経由**（critical）②後継読込確認を **EventBus→ack ファイル＋liveness**（critical）③**耐久 intent 行＋state 機械（merge_intent 方式）**で double-spawn/audit 順序/crash 復旧（critical×3）④**in-flight 未コミット作業の保全＋worktree 非削除退役**（critical/high）⑤**Rust 境界 redaction**（critical/high）⑥計測は **grid 読取・robust proxy 一次・Claude-first 正直化**（high）⑦**verifier に audit no-loss 追加**（high）⑧**lineage SoR=checkpoints 表**・compaction 除外（high/medium）。line:citation drift 修正。
+- rev3 (2026-07-01): RT-1a0 を Claude-only spike から Claude/Codex/Gemini provider matrix に拡張。token-spending prompt/probe は standing owner consent 済みとし、provider/model/command/artifact 記録と secret/token file 非永続化を必須化。
+- rev2 (2026-06-30): 敵対デザインレビュー38件（critical6/high14/medium11/low7）反映。中核変更: ①要約/ack を **TUI スクレイプ→ファイル経由**（critical）②後継読込確認を **EventBus→ack ファイル＋liveness**（critical）③**耐久 intent 行＋state 機械（merge_intent 方式）**で double-spawn/audit 順序/crash 復旧（critical×3）④**in-flight 未コミット作業の保全＋worktree 非削除退役**（critical/high）⑤**Rust 境界 redaction**（critical/high）⑥計測は **grid 読取・robust proxy 一次・provider-honest 正直化**（high）⑦**verifier に audit no-loss 追加**（high）⑧**lineage SoR=checkpoints 表**・compaction 除外（high/medium）。line:citation drift 修正。
 
 ## 参照
 - [CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md] codex 向け実装 handoff。

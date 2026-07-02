@@ -1180,6 +1180,8 @@ pub fn run() {
             ipc::session_summarize,
             ipc::session_checkpoint,
             ipc::session_handoff,
+            ipc::session_resume,
+            ipc::session_reset_context,
             // Auto-repair pipeline (Phase 3A-1)
             ipc::list_repair_jobs,
             ipc::trigger_repair_manual,

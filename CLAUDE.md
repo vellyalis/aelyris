@@ -21,7 +21,7 @@ If this file conflicts with `AGENTS.md` or the current claim policy, follow
 - Do not claim release readiness from old score snapshots. Regenerate with `pnpm verify:quality-score` and `pnpm verify:goal:safe` when readiness matters.
 - Visible agent work must use interactive/visible PTY paths. Do not route human-visible panes through `-p` / `--print`.
 - Keep `package.json` as `"private": true` unless npm publication is explicitly planned.
-- Do not run token-spending authenticated AI prompt smoke tests without the documented explicit consent environment variables.
+- Token-spending authenticated AI CLI prompt/probe verifiers have standing owner consent for this repo/WU. Use the documented provider/consent env vars when required, record provider/model/command/artifact evidence, and never persist secrets, token files, signing material, or secret-bearing transcripts.
 - Do not run `cargo test` and `pnpm test` in parallel on Windows.
 - Treat `.claude/skills` as Aelyris-specific workflow helpers, not product capability proof. Use verifier commands for claims.
 

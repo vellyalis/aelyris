@@ -595,6 +595,30 @@ pub struct SessionHandoffResult {
     pub handoff: SessionHandoffRecord,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionResumeResult {
+    pub requested_logical_session_id: Option<String>,
+    pub reconciled_handoffs: usize,
+    pub unresolved_before: usize,
+    pub unresolved_after: usize,
+    pub adopted_logical_session_id: Option<String>,
+    pub checkpoint_seq: Option<u64>,
+    pub ack_reconfirmed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionResetContextResult {
+    pub reset_context: bool,
+    pub predecessor_session_id: String,
+    pub successor_session_id: String,
+    pub predecessor_logical_session_id: String,
+    pub successor_logical_session_id: String,
+    pub worktree_deleted: bool,
+    pub handoff: SessionHandoffResult,
+}
+
 #[tauri::command]
 pub async fn session_handoff(
     app: AppHandle,
@@ -944,6 +968,190 @@ pub async fn session_handoff(
         handoff,
     })
 }
+
+#[tauri::command]
+pub async fn session_resume(
+    app: AppHandle,
+    logical_session_id: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<SessionResumeResult, String> {
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let unresolved = {
+        let db = app
+            .try_state::<crate::db::ManagedDb>()
+            .ok_or_else(|| "session_resume requires database state".to_string())?;
+        db.with(SessionCheckpointRepo::list_unresolved_handoffs)?
+    };
+    let requested = logical_session_id
+        .as_deref()
+        .map(crate::agent::session_lifecycle::sanitize_handoff_id);
+    let _ack_recheck_timeout_ms = timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000);
+
+    let relevant: Vec<SessionHandoffRecord> = unresolved
+        .iter()
+        .filter(|handoff| {
+            requested
+                .as_deref()
+                .map(|id| handoff.predecessor_id == id || handoff.successor_id == id)
+                .unwrap_or(true)
+        })
+        .cloned()
+        .collect();
+
+    let target_checkpoint = if let Some(id) = requested.as_deref() {
+        latest_session_checkpoint(&app, id)?
+    } else {
+        None
+    };
+    let target_live = if let Some(id) = requested.as_deref() {
+        find_interactive_session_optional(&session_mgr, id)?
+    } else {
+        None
+    };
+
+    if let (Some(checkpoint), Some(live)) = (&target_checkpoint, &target_live) {
+        if checkpoint.pty_id != live.pty_id
+            || checkpoint.logical_session_id != live.logical_session_id
+        {
+            return Err(format!(
+                "session_resume identity mismatch for {}: checkpoint pty/logical {} / {} != live {} / {}",
+                checkpoint.logical_session_id,
+                checkpoint.pty_id,
+                checkpoint.logical_session_id,
+                live.pty_id,
+                live.logical_session_id
+            ));
+        }
+    }
+    if requested.is_some()
+        && relevant.is_empty()
+        && target_checkpoint.is_none()
+        && target_live.is_none()
+    {
+        return Err(format!(
+            "session_resume has no checkpoint, live session, or unresolved handoff for {}",
+            requested.as_deref().unwrap_or_default()
+        ));
+    }
+
+    let mut reconciled = 0usize;
+    let mut ack_reconfirmed = false;
+    for handoff in &relevant {
+        if matches!(
+            handoff.state,
+            SessionHandoffState::SuccessorSpawned | SessionHandoffState::SuccessorAcked
+        ) {
+            ack_reconfirmed = true;
+        }
+        if reconcile_one_session_handoff_on_boot(&app, handoff).await? {
+            reconciled = reconciled.saturating_add(1);
+        }
+    }
+
+    let unresolved_after = app
+        .try_state::<crate::db::ManagedDb>()
+        .ok_or_else(|| "session_resume requires database state".to_string())?
+        .with(SessionCheckpointRepo::list_unresolved_handoffs)?
+        .into_iter()
+        .filter(|handoff| {
+            requested
+                .as_deref()
+                .map(|id| handoff.predecessor_id == id || handoff.successor_id == id)
+                .unwrap_or(true)
+        })
+        .count();
+
+    let mut adopted_logical_session_id = None;
+    for handoff in &relevant {
+        if let Some(successor) =
+            find_interactive_session_optional(&session_mgr, &handoff.successor_id)?
+        {
+            adopted_logical_session_id = Some(successor.logical_session_id);
+            break;
+        }
+    }
+    if adopted_logical_session_id.is_none() {
+        adopted_logical_session_id = target_live
+            .as_ref()
+            .map(|info| info.logical_session_id.clone())
+            .or_else(|| requested.clone());
+    }
+
+    Ok(SessionResumeResult {
+        requested_logical_session_id: requested,
+        reconciled_handoffs: reconciled,
+        unresolved_before: relevant.len(),
+        unresolved_after,
+        adopted_logical_session_id,
+        checkpoint_seq: target_checkpoint.map(|checkpoint| checkpoint.checkpoint_seq),
+        ack_reconfirmed,
+    })
+}
+
+#[tauri::command]
+pub async fn session_reset_context(
+    app: AppHandle,
+    session_id: String,
+    timeout_ms: Option<u64>,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> Result<SessionResetContextResult, String> {
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let predecessor = find_interactive_session(&session_mgr, &session_id)?;
+    if matches!(predecessor.status.as_str(), "done" | "error") {
+        return Err(format!(
+            "session_reset_context requires a live session; {} is {}",
+            predecessor.id, predecessor.status
+        ));
+    }
+
+    let handoff = session_handoff(
+        app.clone(),
+        session_id,
+        Some("reset_context".to_string()),
+        timeout_ms,
+        cols,
+        rows,
+    )
+    .await?;
+    append_session_lifecycle_audit(
+        &app,
+        &predecessor,
+        &handoff.handoff,
+        "context_recycled",
+        "reset_context",
+        serde_json::json!({
+            "resetContext": true,
+            "predecessorEqualsSelf": true,
+            "worktreeDeleted": false,
+            "successorLogicalSessionId": &handoff.successor_logical_session_id,
+        }),
+    )?;
+    publish_session_lifecycle_event(
+        &app,
+        crate::event_bus::AgentEventKind::ContextRecycled,
+        serde_json::json!({
+            "phase": "reset_context",
+            "predecessorLogicalSessionId": &handoff.predecessor_logical_session_id,
+            "successorLogicalSessionId": &handoff.successor_logical_session_id,
+            "handoffSeq": handoff.handoff_seq,
+            "correlationId": &handoff.correlation_id,
+            "worktreeDeleted": false,
+            "resetContext": true,
+        }),
+    );
+
+    Ok(SessionResetContextResult {
+        reset_context: true,
+        predecessor_session_id: handoff.predecessor_session_id.clone(),
+        successor_session_id: handoff.successor_session_id.clone(),
+        predecessor_logical_session_id: handoff.predecessor_logical_session_id.clone(),
+        successor_logical_session_id: handoff.successor_logical_session_id.clone(),
+        worktree_deleted: false,
+        handoff,
+    })
+}
+
 pub async fn restore_interactive_sessions(
     app: &AppHandle,
     sidecar: PtySidecarClient,
