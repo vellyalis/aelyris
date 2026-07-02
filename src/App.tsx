@@ -15,8 +15,10 @@ import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
 import { UpdateBanner } from "./features/app/UpdateBanner";
 import { useAppMenus } from "./features/app/useAppMenus";
+import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
+import { useOrchestraDispatch } from "./features/orchestrator/useOrchestraDispatch";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { TERMINAL_PREFIX_COMMAND_EVENT } from "./features/terminal/hooks/useCanvasIME";
 import type { PaneSwitcherEntry } from "./features/terminal/pane-tree";
@@ -234,7 +236,6 @@ import {
   parseAuthenticatedPromptPreflightMatrixReport,
 } from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
-import { buildDecisionInbox, type DecisionWorkflowStatus, type HumanDecisionItem } from "./shared/lib/decisionInbox";
 import {
   EDITOR_OPEN_MODE_CHANGE_EVENT,
   EDITOR_OPEN_MODE_STORAGE_KEY,
@@ -250,12 +251,7 @@ import {
   reportInvokeFailure,
 } from "./shared/lib/fallbackTelemetry";
 import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
-import {
-  launchOrchestraPrompts,
-  type OrchestraRoutingDecision,
-  routeOrchestraPrompts,
-} from "./shared/lib/orchestraDispatch";
-import { buildOrchestraPrompts, ORCHESTRA_ROLES, type OwnershipPromptSection } from "./shared/lib/orchestrator";
+import { ORCHESTRA_ROLES } from "./shared/lib/orchestrator";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,
@@ -295,7 +291,7 @@ import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
-import { OrchestraDialog, showOrchestra } from "./shared/ui/OrchestraDialog";
+import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { ToastProvider } from "./shared/ui/Toast";
@@ -746,12 +742,6 @@ export function App() {
     agents: PaneAgentSpawnRequest["agents"][number][];
     sequence: number;
   } | null>(null);
-  // Role → { mounted pty id, tab it was mounted in } for the most recent
-  // orchestra dispatch, so a role lane card can focus its central pane in the
-  // correct tab even after the operator switches tabs (WU-VP-1 DoD#6).
-  const [orchestraRolePanes, setOrchestraRolePanes] = useState<Map<string, { terminalId: string; tabId: string }>>(
-    () => new Map(),
-  );
   // Always-current active tab id read by the identity-stable mountAgentPtyInPane
   // below, so the agent-event listener does not have to re-subscribe per tab.
   const activeTabIdRef = useRef(activeTabId);
@@ -922,7 +912,6 @@ export function App() {
   );
   const auditStream = useAuditEvents({ enabled: visualAuditEvents === undefined, limit: 40, pollMs: 3_000 });
   const operationalAuditEvents = visualAuditEvents ?? auditStream.entries;
-  const [workflowStatuses, setWorkflowStatuses] = useState<DecisionWorkflowStatus[]>([]);
   const selectedOperationalPaneTarget = useMemo(
     () =>
       selectedOperationalPane
@@ -1481,40 +1470,6 @@ export function App() {
     }, 5_000);
   }, [projectPath]);
   useEffect(() => {
-    let active = true;
-    if (!projectPath || !isTauriRuntime()) {
-      setWorkflowStatuses([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) => invoke<DecisionWorkflowStatus[]>("list_running_workflows", { projectPath }))
-        .then((statuses) => {
-          if (active) setWorkflowStatuses(statuses);
-        })
-        .catch((err) => {
-          if (!active) return;
-          reportInvokeFailure({
-            source: "app",
-            operation: "list_running_workflows",
-            err,
-            severity: "warning",
-          });
-        });
-    };
-
-    refresh();
-    const interval = window.setInterval(refresh, 30_000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [projectPath]);
-
-  useEffect(() => {
     if (!projectPath) return;
     setWorkspaceThreadRunState(projectPath, activeTabId, {
       status: "active",
@@ -1789,15 +1744,14 @@ export function App() {
       }),
     [rightRailActiveSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
   );
-  const decisionInbox = useMemo(
-    () =>
-      buildDecisionInbox({
-        sessions: rightRailSessions,
-        auditEvents: scopedOperationalAuditEvents,
-        workflows: workflowStatuses,
-      }),
-    [rightRailSessions, scopedOperationalAuditEvents, workflowStatuses],
-  );
+  const { decisionInbox, handleDecideDecision, workflowStatuses } = useDecisionInbox({
+    projectPath,
+    refreshAgentFleet,
+    rightRailSessions,
+    rightRailUsesFixtures,
+    scopedOperationalAuditEvents,
+    showRightRailRouteConfirmation,
+  });
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
     ? activeAgent.status === "thinking" || activeAgent.status === "generating"
@@ -2254,54 +2208,6 @@ export function App() {
       handleSelectSession(sessionId);
     },
     [fleetSessions, handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
-  );
-
-  // Resolve a waiting interactive agent gate from the Decision Inbox. Only a
-  // confirmed Claude selectable MENU carries a captured prompt, prompt key, and
-  // ptyId. The backend re-checks that same prompt key before writing the menu
-  // keystroke through the P0-4 gate (approve = option 1, deny = Esc) and audits
-  // it. We do NOT clear the item: it leaves the inbox when the agent re-emits
-  // its run status.
-  const handleDecideDecision = useCallback(
-    async (item: HumanDecisionItem, decision: "approve" | "deny") => {
-      if (rightRailUsesFixtures) {
-        showRightRailRouteConfirmation({
-          widget: "decision-inbox",
-          title: decision === "approve" ? "Approval preview" : "Denial preview",
-          detail: "Fixture session — no live agent to signal.",
-        });
-        return;
-      }
-      const ptyId = item.ptyId;
-      if (!ptyId) {
-        toast.error("No live agent pane", "This decision has no addressable agent terminal.");
-        return;
-      }
-      try {
-        await tauriInvoke("resolve_interactive_approval", {
-          terminalId: ptyId,
-          decision,
-          expectedPromptKey: item.approvalPromptKey,
-        });
-        showRightRailRouteConfirmation({
-          widget: "decision-inbox",
-          title: decision === "approve" ? "Approval sent" : "Denial sent",
-          detail: item.title,
-        });
-      } catch (err) {
-        const message = String(err);
-        if (message.includes("stale_approval")) {
-          toast.error("Approval changed", "The agent prompt changed before this decision was delivered.");
-          await refreshAgentFleet();
-          throw err;
-        }
-        toast.error("Decision delivery failed", message);
-        // Re-throw so the inbox row re-enables its buttons for a retry instead
-        // of latching on a delivery that never reached the agent.
-        throw err;
-      }
-    },
-    [refreshAgentFleet, rightRailUsesFixtures, showRightRailRouteConfirmation],
   );
 
   const handleRightRailAction = useCallback(
@@ -3090,108 +2996,21 @@ export function App() {
           .join(" "),
       }
     : null;
-  const handleStartRightRailOrchestra = useCallback(async () => {
-    if (!projectPath) {
-      toast.error("No workspace", "Open a project before dispatching an agent team.");
-      return;
-    }
-    const defaultTask =
-      rightRailPrimaryAction?.nextStep ??
-      (rightRailAllChangedFiles.length > 0
-        ? `Finish and review ${rightRailAllChangedFiles.length} changed file${
-            rightRailAllChangedFiles.length === 1 ? "" : "s"
-          } in ${projectName}.`
-        : `Plan and implement the next parallel development task for ${projectName}.`);
-    const changedFiles = rightRailAllChangedFiles.map((file) => file.path);
-    // Fetch the SAME backend-rendered ownership context the loop injects (SSOT) so the
-    // hand-launched roles are warned off the symbols other agents own. Browser-dev (no
-    // backend) simply skips the consult — the launch path itself requires Tauri. A real
-    // Tauri/backend FAILURE is different: it must NOT be collapsed into "0 claims"
-    // (= looks parallel-safe). Track it separately so the dialog warns safety is UNKNOWN.
-    let ownershipContext: OwnershipPromptSection | undefined;
-    let ownershipUnavailable = false;
-    if (isTauriRuntime()) {
-      try {
-        ownershipContext = await tauriInvoke<OwnershipPromptSection>("symbol_ownership_prompt_section", {
-          files: changedFiles,
-          forAgent: null,
-        });
-      } catch (error) {
-        ownershipContext = undefined;
-        ownershipUnavailable = true;
-        console.error("[Orchestra] symbol_ownership_prompt_section failed", error);
-      }
-    }
-    const result = await showOrchestra({
-      defaultTask,
-      defaultRoles: ["implementer", "tester", "reviewer"],
-      activeClaimCount: ownershipContext?.claimCount ?? 0,
-      ownershipUnavailable,
-    });
-    if (!result || result.roles.length === 0) return;
-    const prompts = buildOrchestraPrompts({
-      task: result.task,
-      roles: result.roles,
-      projectPath,
-      changedFiles,
-      pendingDecisionCount: decisionInbox.pendingCount,
-      existingSessionCount: sessions.length + interactiveSessions.length,
-      ownershipContext,
-    });
-    const routedPrompts = await routeOrchestraPrompts(
-      prompts,
-      (prompt) => tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt }),
-      isTauriRuntime(),
-    );
-    const launches = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
-    if (launches.length === 0) {
-      toast.error("Orchestra dispatch failed", "No agent session could be started.");
-      return;
-    }
-    // Mount each launched role as a live central pane (WU-VP-1) in one tiling
-    // pass, and remember role → pane so its lane card can focus it (DoD#6).
-    mountAgentPtyInPane(
-      launches.map((launch) => ({
-        terminalId: launch.terminalId,
-        model: launch.model,
-        backend: launch.backend === "sidecar" ? "sidecar" : "native",
-        durability: launch.backend === "sidecar" ? "tmux-durable" : "degraded",
-        spawnedAt: new Date().toISOString(),
-        ...(launch.roleId ? { roleId: launch.roleId } : {}),
-        ...(launch.branchName ? { branchName: launch.branchName } : {}),
-      })),
-      activeTabId,
-    );
-    setOrchestraRolePanes((prev) => {
-      const next = new Map(prev);
-      for (const launch of launches) next.set(launch.roleId, { terminalId: launch.terminalId, tabId: activeTabId });
-      return next;
-    });
-    // spawn_interactive_agent selects each spawned session, and the main tab's
-    // pane tree only renders while no interactive session is selected — so the
-    // last-spawned agent tab would hide the panes we just mounted. Clear the
-    // selection so the operator lands on the tiled role panes, not an agent tab.
-    selectInteractiveSession("");
-    setRightRailMode("command");
-    setRightRailFocusWidget("sessions");
-    toast.success(
-      "Orchestra dispatched",
-      `${launches.length} agent${launches.length === 1 ? "" : "s"} launched in role-scoped panes.`,
-    );
-  }, [
+  const { handleStartRightRailOrchestra, orchestraRolePanes } = useOrchestraDispatch({
     activeTabId,
-    decisionInbox.pendingCount,
+    decisionInboxPendingCount: decisionInbox.pendingCount,
     handleStartInteractiveSession,
-    interactiveSessions.length,
+    interactiveSessionCount: interactiveSessions.length,
     mountAgentPtyInPane,
     projectName,
     projectPath,
     rightRailAllChangedFiles,
-    rightRailAllChangedFiles.length,
-    rightRailPrimaryAction?.nextStep,
+    rightRailPrimaryActionNextStep: rightRailPrimaryAction?.nextStep,
     selectInteractiveSession,
-    sessions.length,
-  ]);
+    sessionsCount: sessions.length,
+    setRightRailFocusWidget,
+    setRightRailMode,
+  });
   const renderRightRailDestinationPrompt = (widget: string) =>
     rightRailDestinationPrompt?.widget === widget ? (
       <RightRailDestinationPromptCard prompt={rightRailDestinationPrompt} />

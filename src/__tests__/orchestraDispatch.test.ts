@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   launchOrchestraPrompts,
-  routeOrchestraPrompts,
   type OrchestraRoutingDecision,
+  routeOrchestraPrompts,
 } from "../shared/lib/orchestraDispatch";
 import type { OrchestraPrompt } from "../shared/lib/orchestrator";
 
@@ -29,11 +29,7 @@ function decision(model: string): OrchestraRoutingDecision {
 
 describe("routeOrchestraPrompts", () => {
   it("normalizes routed Claude model names", async () => {
-    const routed = await routeOrchestraPrompts(
-      [prompt()],
-      async () => decision("claude-opus"),
-      true,
-    );
+    const routed = await routeOrchestraPrompts([prompt()], async () => decision("claude-opus"), true);
 
     expect(routed[0].model).toBe("opus");
   });
@@ -44,9 +40,13 @@ describe("routeOrchestraPrompts", () => {
     ).resolves.toMatchObject([{ model: "haiku" }]);
 
     await expect(
-      routeOrchestraPrompts([prompt({ model: "sonnet" })], async () => {
-        throw new Error("router unavailable");
-      }, true),
+      routeOrchestraPrompts(
+        [prompt({ model: "sonnet" })],
+        async () => {
+          throw new Error("router unavailable");
+        },
+        true,
+      ),
     ).resolves.toMatchObject([{ model: "sonnet" }]);
   });
 });
@@ -85,11 +85,17 @@ describe("App orchestra → central pane wiring", () => {
     string,
     string
   >;
+  const hookSources = import.meta.glob("../features/orchestrator/useOrchestraDispatch.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>;
   const src = Object.values(sources)[0] ?? "";
+  const orchestraHookSrc = Object.values(hookSources)[0] ?? "";
 
   it("mounts orchestra launches as central panes instead of discarding a count", () => {
-    expect(src).toContain("const launches = await launchOrchestraPrompts(");
-    expect(src).toMatch(/mountAgentPtyInPane\(\s*\n?\s*launches\.map/);
+    expect(orchestraHookSrc).toContain("const launches = await launchOrchestraPrompts(");
+    expect(orchestraHookSrc).toMatch(/mountAgentPtyInPane\(\s*\n?\s*launches\.map/);
   });
 
   it("routes the autonomous loop path through the same unified mount (WU-VP-2)", () => {

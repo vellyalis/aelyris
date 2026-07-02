@@ -33,6 +33,20 @@ function getRightRailModelSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailModel.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getDecisionInboxHookSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
+    /\r\n/g,
+    "\n",
+  );
+}
+
+function getOrchestraDispatchHookSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/orchestrator/useOrchestraDispatch.ts"), "utf8").replace(
+    /\r\n/g,
+    "\n",
+  );
+}
+
 function getTerminalNotificationsSource(): string {
   return readFileSync(join(process.cwd(), "src/shared/hooks/useTerminalNotifications.ts"), "utf8");
 }
@@ -1592,6 +1606,7 @@ describe("App right rail composition", () => {
 
   it("keeps the right rail orchestra-first instead of front-loading telemetry detail", () => {
     const src = getSrc();
+    const orchestraHookSrc = getOrchestraDispatchHookSource();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const suite = readFileSync(join(process.cwd(), "scripts/verify-right-rail-suite.mjs"), "utf8");
@@ -1608,8 +1623,10 @@ describe("App right rail composition", () => {
     expect(src).toContain("Review lane:");
     expect(src).toContain("rightRailOrchestraLanes");
     expect(src).toContain("handleStartRightRailOrchestra");
-    expect(src).toContain("showOrchestra({");
-    expect(src).toContain("buildOrchestraPrompts({");
+    expect(src).toContain("useOrchestraDispatch({");
+    expect(orchestraHookSrc).toContain("showOrchestra({");
+    expect(orchestraHookSrc).toContain("buildOrchestraPrompts({");
+    expect(orchestraHookSrc).toContain('tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt })');
     expect(src).toContain('className="right-panel-advanced-drawer"');
     expect(src).toContain('className="right-panel-evidence-drawer"');
     expect(src).toContain('className="right-panel-health-drawer"');
@@ -1882,17 +1899,19 @@ describe("App right rail composition", () => {
     expect(densityShells).toHaveLength(2);
     expect(src).toContain("const scopedOperationalAuditEvents = useMemo(");
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
-    expect(src).toContain("buildDecisionInbox({");
+    const decisionInboxHookSrc = getDecisionInboxHookSource();
+    expect(src).toContain("useDecisionInbox({");
+    expect(decisionInboxHookSrc).toContain("buildDecisionInbox({");
     expect(src).toContain("decisionInbox.pendingCount");
     // Surface 2: the Decision Inbox must keep an actionable Approve/Deny path that
     // delivers the human decision to the live agent PTY via the gated backend
     // resolver. If any of these wirings is dropped the surface degrades to a
     // read-only list.
-    expect(src).toContain("const handleDecideDecision = useCallback(");
-    expect(src).toContain('tauriInvoke("resolve_interactive_approval", {');
-    expect(src).toContain("expectedPromptKey: item.approvalPromptKey");
-    expect(src).toContain('message.includes("stale_approval")');
-    expect(src).toContain("await refreshAgentFleet()");
+    expect(decisionInboxHookSrc).toContain("const handleDecideDecision = useCallback(");
+    expect(decisionInboxHookSrc).toContain('tauriInvoke("resolve_interactive_approval", {');
+    expect(decisionInboxHookSrc).toContain("expectedPromptKey: item.approvalPromptKey");
+    expect(decisionInboxHookSrc).toContain('message.includes("stale_approval")');
+    expect(decisionInboxHookSrc).toContain("await refreshAgentFleet()");
     expect(src).toContain("onDecide={handleDecideDecision}");
     expect(src).toContain("deriveRightRailEdgeScore");
     expect(src).toContain("const rightRailEdgeScore = deriveRightRailEdgeScore({");
