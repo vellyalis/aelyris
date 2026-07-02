@@ -3,7 +3,6 @@ pub mod context_lifecycle;
 pub mod interactive;
 mod oneshot;
 pub mod output_monitor;
-pub mod parser;
 pub mod router;
 pub mod session;
 pub mod session_lifecycle;
