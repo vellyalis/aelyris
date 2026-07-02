@@ -31,6 +31,20 @@ signing/updater / operator proof gates 待ちです。
 5. `docs/AGENT_WORKFLOWS.md` - agent/skill workflow routing.
 6. `docs/specs/README.md` - active spec index.
 
+## Active Work Orders
+
+完了または明示的に廃止されるまで、実装・レビュー・進捗監査・session clear handoff
+を始める前に以下を毎回明示的に読む。該当しない作業でも、読んだうえで
+対象外と判断する。
+
+1. `refactor-instructions.md` - Debt Paydown Wave 1 + CX-4 Approval Safety.
+2. `hardening-instructions.md` - Verifier Integrity + Lifecycle API Face + Shared-Brain Hardening.
+3. `renderer-instructions.md` - Stage 1 GPU Renderer.
+
+実行順は `refactor -> hardening -> renderer`。同時実行は禁止。3書は
+`package.json`、`scripts/`、`src/features/terminal/` などを共有しうるため、
+1つの work order/phase だけを選び、対象ファイルを明示して進める。
+
 実装を始める前に `docs/specs/README.md` を読み、Work Unit を1つ選び、その WU が指定する spec 節と対象ファイルだけを開く。
 
 ## Work Rules

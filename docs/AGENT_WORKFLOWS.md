@@ -7,7 +7,9 @@ skill, verifier, or review gate should drive a task.
 
 1. `AGENTS.md` - shared repo policy and current claim boundary.
 2. `docs/requirements.md` - stable requirements and machine-truth policy.
-3. `docs/specs/README.md` - active spec index.
+3. Root active work orders - read `refactor-instructions.md`,
+   `hardening-instructions.md`, and `renderer-instructions.md` explicitly until
+   they are completed or retired.
 4. `docs/specs/README.md` - active spec index and current Work Unit routing.
 5. This file - operational routing for agents and skills.
 
@@ -21,6 +23,7 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 | Public readiness or release claim check | `aelyris-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
 | Current proof and gate classification | `aelyris-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
 | Previous-turn Claude stop gate | `aelyris-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
+| Active audit work orders | `refactor-instructions.md` -> `hardening-instructions.md` -> `renderer-instructions.md` | one phase at a time, one commit per phase, no concurrent execution |
 | One scoped Work Unit or vertical slice | `docs/specs/README.md` plus the relevant phase/spec section and owner module verifier | implementation plan and focused checks |
 | Large drift-prone implementation | `codex-guided-implementation` | increment plan, read-only review gates, explicit boundaries |
 | MCP runtime orchestration | `aelyris-orchestrate` | local-only runtime loop; no public release claim |
