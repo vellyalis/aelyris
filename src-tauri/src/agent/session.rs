@@ -90,6 +90,11 @@ pub struct AgentSession {
     pub cli: Option<String>,
     pub backend: Option<String>,
     pub pty_id: Option<String>,
+    /// The captured permission-menu prompt while an interactive session is
+    /// `waiting_approval`. Must ride the unified fleet snapshot: the right
+    /// rail consumes THIS contract (not the interactive list), and the
+    /// Decision Inbox only surfaces a gate when the prompt is present.
+    pub approval_prompt: Option<String>,
     pub predecessor_session_id: Option<String>,
     pub lineage: Vec<SessionLineageEntry>,
     pub recycle_status: Option<SessionRecycleStatus>,
@@ -136,6 +141,7 @@ impl From<AgentSessionInfo> for AgentSession {
             cli: None,
             backend: None,
             pty_id: None,
+            approval_prompt: None,
             predecessor_session_id: None,
             lineage: Vec::new(),
             recycle_status: None,
@@ -170,6 +176,7 @@ impl From<InteractiveSessionInfo> for AgentSession {
             cli: Some(cli_name(&info.cli)),
             backend: Some(info.backend),
             pty_id: Some(info.pty_id),
+            approval_prompt: info.approval_prompt,
             predecessor_session_id: None,
             lineage: Vec::new(),
             recycle_status: None,
@@ -229,7 +236,7 @@ mod tests {
             status: "waiting".to_string(),
             model: "codex".to_string(),
             initial_prompt: Some("review".to_string()),
-            approval_prompt: None,
+            approval_prompt: Some("Bash(git push origin main) · Do you want to proceed?".to_string()),
             cwd: "C:/repo".to_string(),
             worktree_branch: Some("agent/review".to_string()),
             worktree_path: Some("C:/repo/.worktrees/agent-review".to_string()),
@@ -247,6 +254,12 @@ mod tests {
         assert_eq!(session.prompt.as_deref(), Some("review"));
         assert_eq!(session.cli.as_deref(), Some("codex"));
         assert_eq!(session.pty_id.as_deref(), Some("pty-1"));
+        // The unified fleet snapshot is what the right rail / Decision Inbox
+        // consume — dropping the captured menu here silently kills the inbox.
+        assert_eq!(
+            session.approval_prompt.as_deref(),
+            Some("Bash(git push origin main) · Do you want to proceed?")
+        );
         assert_eq!(session.predecessor_session_id, None);
         assert!(session.lineage.is_empty());
         assert_eq!(

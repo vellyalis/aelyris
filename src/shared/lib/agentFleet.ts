@@ -82,6 +82,7 @@ export interface BackendAgentFleetSession {
   cli?: string | null;
   backend?: string | null;
   pty_id?: string | null;
+  approval_prompt?: string | null;
   predecessor_session_id?: string | null;
   lineage?: BackendSessionLineageEntry[] | null;
   recycle_status?: BackendSessionRecycleStatus | null;
@@ -207,6 +208,9 @@ export function backendToFleetSession(session: BackendAgentFleetSession): AgentF
     backend: session.backend ?? undefined,
     cli: session.cli ?? undefined,
     ptyId: session.pty_id ?? undefined,
+    // Without this, a waiting_approval gate reaches the rail with no captured
+    // menu and the Decision Inbox (which requires approvalPrompt) never mounts.
+    approvalPrompt: session.approval_prompt ?? undefined,
     predecessorSessionId,
     lineage,
     recycleStatus,
