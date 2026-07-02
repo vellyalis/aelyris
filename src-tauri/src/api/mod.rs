@@ -51,6 +51,8 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
+#[cfg(not(test))]
+use tauri::AppHandle;
 use thiserror::Error;
 use tokio::sync::{broadcast, Mutex as AsyncMutex, Notify};
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -154,6 +156,10 @@ pub struct McpPendingDecision {
 pub struct ApiState {
     pub pty: PtyManager,
     pub mux: Arc<Mutex<MuxManager>>,
+    /// Tauri app handle for MCP verbs that are deliberately thin adapters over
+    /// existing IPC commands. `None` in sidecar mode means those verbs fail closed.
+    #[cfg(not(test))]
+    pub app_handle: Option<AppHandle>,
     pub agent_manager: Option<AgentManager>,
     pub ghost_layers: Option<Arc<LayerRegistry>>,
     /// Shared cost-cap owner (same instance as the Tauri-managed one) so the
@@ -236,6 +242,8 @@ impl ApiState {
         Self {
             pty,
             mux: Arc::new(Mutex::new(MuxManager::new())),
+            #[cfg(not(test))]
+            app_handle: None,
             agent_manager: None,
             ghost_layers: None,
             cost_manager: None,
@@ -306,6 +314,12 @@ impl ApiState {
 
     pub fn with_mux(mut self, mux: Arc<Mutex<MuxManager>>) -> Self {
         self.mux = mux;
+        self
+    }
+
+    #[cfg(not(test))]
+    pub fn with_app_handle(mut self, app_handle: AppHandle) -> Self {
+        self.app_handle = Some(app_handle);
         self
     }
 

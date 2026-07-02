@@ -14,6 +14,7 @@ const outPath = path.join(repoRoot, ".codex-auto", "quality", "stack-risk.json")
 const windowsTarget = "x86_64-pc-windows-msvc";
 const reviewBy = "2026-08-15";
 const allowUpstreamBound = process.argv.includes("--allow-upstream-bound");
+const quickXmlUpstreamBoundAdvisories = new Set(["RUSTSEC-2026-0194", "RUSTSEC-2026-0195"]);
 
 const cargoScopes = [
   {
@@ -256,7 +257,10 @@ async function collectTauriUrlpatternUpstreamEvidence() {
 
 async function collectQuickXmlUpstreamEvidence(risks) {
   const quickXmlRisks = risks.filter(
-    (risk) => risk.package === "quick-xml" && risk.kind === "vulnerability" && risk.advisoryId === "RUSTSEC-2026-0194",
+    (risk) =>
+      risk.package === "quick-xml" &&
+      risk.kind === "vulnerability" &&
+      quickXmlUpstreamBoundAdvisories.has(risk.advisoryId),
   );
   const uniqueRisks = [...new Map(quickXmlRisks.map((risk) => [`${risk.scopeId}:${risk.version}`, risk])).values()];
   const probes = await Promise.all(
@@ -310,7 +314,7 @@ async function collectQuickXmlUpstreamEvidence(risks) {
         ? "upstream-bound"
         : "unknown",
     patchedVersion: "0.41.0",
-    advisoryId: "RUSTSEC-2026-0194",
+    advisoryIds: [...quickXmlUpstreamBoundAdvisories],
     probes,
   };
 }
@@ -567,7 +571,11 @@ function baseClassification(risk) {
 
 function releasePathClassification(risk, tauriUrlpatternUpstreamEvidence = null, quickXmlUpstreamEvidence = null) {
   const advisory = risk.advisoryId ?? "";
-  if (risk.package === "quick-xml" && risk.kind === "vulnerability" && advisory === "RUSTSEC-2026-0194") {
+  if (
+    risk.package === "quick-xml" &&
+    risk.kind === "vulnerability" &&
+    quickXmlUpstreamBoundAdvisories.has(advisory)
+  ) {
     const upstreamBound = quickXmlUpstreamEvidence?.verdict === "upstream-bound";
     return {
       status: "classified",

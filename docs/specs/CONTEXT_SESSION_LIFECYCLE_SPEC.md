@@ -19,13 +19,13 @@ WU: WU-RT-1
 
 公開 API（概念 → 実 verb、衝突回避で `session_*`。`snapshot`=端末グリッド、`checkpoint`=workflow-phase と別物）:
 
-| 概念 | 実 IPC/MCP verb | 役割 |
-|---|---|---|
-| `checkpoint()` | `session_checkpoint` | session 状態＋要約 ref を耐久化（redaction 済） |
-| `summarize()` | `session_summarize` | 退役エージェント本人に**ファイルへ**構造化要約を書かせ Runtime が読取・検証 |
-| `handoff()` | `session_handoff` | intent 行→checkpoint→後継 spawn(seed)→後継 ack ファイル→旧退役 を fail-closed/冪等で |
-| `resume()` | `session_resume` | crash/再起動後、intent 行＋checkpoint から一意収束で再構成（冪等） |
-| `reset_context()` | `session_reset_context` | 同 worktree への handoff-to-self（§7/§9 と同一規律で実行＝bare spawn+stop 禁止） |
+| 概念 | IPC command | MCP tool | 役割 |
+|---|---|---|---|
+| `checkpoint()` | `session_checkpoint` | `aelyris.session.checkpoint` | session 状態＋要約 ref を耐久化（redaction 済） |
+| `summarize()` | `session_summarize` | `aelyris.session.summarize` | 退役エージェント本人に**ファイルへ**構造化要約を書かせ Runtime が読取・検証 |
+| `handoff()` | `session_handoff` | `aelyris.session.handoff` | intent 行→checkpoint→後継 spawn(seed)→後継 ack ファイル→旧退役 を fail-closed/冪等で |
+| `resume()` | `session_resume` | `aelyris.session.resume` | crash/再起動後、intent 行＋checkpoint から一意収束で再構成（冪等） |
+| `reset_context()` | `session_reset_context` | `aelyris.session.reset_context` | 同 worktree への handoff-to-self（§7/§9 と同一規律で実行＝bare spawn+stop 禁止） |
 
 非ゴール（§2.3）: headless `-p` パスの context 管理、CLI 内部 compaction の代替/上書き、汎用 RAG/長期記憶。
 

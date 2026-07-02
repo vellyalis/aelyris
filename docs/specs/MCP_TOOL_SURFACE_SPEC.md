@@ -140,6 +140,21 @@ Conventions for **FREE / GATED** (the safety boundary, see §4):
 | `aelyris.fleet_status` | **params** `{}` → **return** `{ sessions: AgentSession[] }` (the `InteractiveSessionInfo[]` list) | `list_interactive_agents` `src-tauri/src/ipc/interactive_commands.rs:381`; IPC `ipc::list_interactive_agents` `src-tauri/src/lib.rs:676`. Live status maintained by `run_output_monitor` `interactive_commands.rs:424` | FREE | The fleet view. `status` is the run-status string set by the output monitor: `thinking`/`coding`/`idle`/`done`/`waiting`/`unknown` (`interactive_commands.rs:464-472`). See §3.6 for `AgentRunStatus` enum alignment. Frontend consumes the same data via the unified `useAgentFleet` hook (today `useAgentManager`, `src/shared/hooks/useAgentManager.ts`). |
 | `aelyris.send_steer` | **params** `{ target: string, text: string }` → **return** `{ accepted: u32 }` | `send_keys_by_target` `src-tauri/src/ipc/commands.rs:5313`; IPC `ipc::send_keys_by_target` `src-tauri/src/lib.rs:639` | FREE | Mid-run guidance: writes keystrokes to a running agent's PTY. `target` resolves by exact PTY id, `@role`/`role:` prefix, or pane name (collision rejected) via `resolve_send_target` (`commands.rs:5325`). Payload validated by `validate_keys_payload` (`commands.rs:5318`). Every write is audited (`record_audit_event`, `commands.rs:5408`). FREE because steering an isolated agent does not bypass any human gate — the agent's downstream tool calls are still gated. |
 
+### 3.2.1 Session lifecycle domain (GATED)
+
+These rows mirror the shipped `/mcp/tools/list` catalog entries added in H2 and
+are locked in code by `catalog_and_schemas_list_exactly_the_same_verbs`. Every
+tool delegates to the same `src-tauri/src/ipc/interactive_commands.rs`
+function as the IPC face and returns the existing serialized result struct.
+
+| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
+|------|-----------|---------|------------|-------|
+| `aelyris.session.summarize` | **params** `{ session_id: string, reason?: string, timeout_ms?: integer }` → **return** `SessionSummarizeResult` | `ipc::session_summarize` | **GATED** | Injects the self-summary prompt into a live visible agent PTY; unknown/non-idle sessions and summary validation failures return the IPC error message through the MCP tool error. |
+| `aelyris.session.checkpoint` | **params** `{ session_id: string, summary_json?: object, summary_seq?: integer, inflight_ref?: string, predecessor_session_id?: string }` → **return** `SessionCheckpointResult` | `ipc::session_checkpoint` | **GATED** | Persists the same checkpoint record as IPC; caller-provided paths are not accepted, so SEC-1 containment remains backend-owned. |
+| `aelyris.session.handoff` | **params** `{ session_id: string, reason?: string, timeout_ms?: integer, cols?: integer, rows?: integer }` → **return** `SessionHandoffResult` | `ipc::session_handoff` | **GATED** | Runs the no-loss transaction: durable intent, summary, checkpoint, successor spawn, ack, audit, predecessor retire. |
+| `aelyris.session.resume` | **params** `{ logical_session_id?: string, timeout_ms?: integer }` → **return** `SessionResumeResult` | `ipc::session_resume` | **GATED** | Reconciles durable handoff rows and preserves the IPC fail-closed identity mismatch behavior. |
+| `aelyris.session.reset_context` | **params** `{ session_id: string, timeout_ms?: integer, cols?: integer, rows?: integer }` → **return** `SessionResetContextResult` | `ipc::session_reset_context` | **GATED** | Recycles the session through handoff-to-self; it does not remove the worktree. |
+
 ### 3.3 Pane domain
 
 | Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |

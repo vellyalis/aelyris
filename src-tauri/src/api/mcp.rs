@@ -1,5 +1,7 @@
 use axum::{extract::State, Json};
 use serde::Deserialize;
+#[cfg(not(test))]
+use serde::Serialize;
 
 use super::mux::{send_workspace_input, workspace_summary};
 use super::{ApiError, ApiResult, ApiState, McpPendingDecision, WS_MAX_INPUT_FRAME_BYTES};
@@ -28,6 +30,11 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.route_agent",
         "aelyris.pane_send_input",
         "aelyris.agent_diff",
+        "aelyris.session.summarize",
+        "aelyris.session.checkpoint",
+        "aelyris.session.handoff",
+        "aelyris.session.resume",
+        "aelyris.session.reset_context",
         "aelyris.request_approval",
         "aelyris.list_pending_approvals",
         "aelyris.request_merge",
@@ -127,6 +134,199 @@ fn arg_usize(
     };
     usize::try_from(value)
         .map_err(|_| ApiError::BadRequest(format!("MCP argument `{key}` is too large")))
+}
+
+#[cfg(not(test))]
+fn arg_optional_u64(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<u64>> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    value
+        .as_u64()
+        .map(Some)
+        .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` must be an integer")))
+}
+
+#[cfg(not(test))]
+fn arg_optional_u16(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<u16>> {
+    let Some(value) = arg_optional_u64(args, key)? else {
+        return Ok(None);
+    };
+    u16::try_from(value)
+        .map(Some)
+        .map_err(|_| ApiError::BadRequest(format!("MCP argument `{key}` is too large")))
+}
+
+#[cfg(not(test))]
+fn arg_optional_object_value(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<serde_json::Value>> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    if value.is_object() {
+        return Ok(Some(value.clone()));
+    }
+    Err(ApiError::BadRequest(format!(
+        "MCP argument `{key}` must be an object"
+    )))
+}
+
+#[cfg(not(test))]
+fn mcp_app_handle(state: &ApiState) -> ApiResult<tauri::AppHandle> {
+    state.app_handle.clone().ok_or_else(|| {
+        ApiError::Internal(
+            "session lifecycle runtime is not attached to this MCP process".to_string(),
+        )
+    })
+}
+
+#[cfg(not(test))]
+fn mcp_result_value<T: Serialize>(result: T) -> ApiResult<serde_json::Value> {
+    serde_json::to_value(result)
+        .map_err(|err| ApiError::Internal(format!("serialize MCP result failed: {err}")))
+}
+
+#[cfg(test)]
+fn test_mcp_session_lifecycle_unattached() -> ApiResult<serde_json::Value> {
+    Err(ApiError::Internal(
+        "session lifecycle runtime is not attached to this MCP process".to_string(),
+    ))
+}
+
+#[cfg(not(test))]
+async fn mcp_session_summarize(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let reason = arg_optional_string(args, "reason");
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let result = crate::ipc::session_summarize(app, session_id, reason, timeout_ms)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_summarize(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+fn mcp_session_checkpoint(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let summary_json = arg_optional_object_value(args, "summary_json")?;
+    let summary_seq = arg_optional_u64(args, "summary_seq")?;
+    let inflight_ref = arg_optional_string(args, "inflight_ref");
+    let predecessor_session_id = arg_optional_string(args, "predecessor_session_id");
+    let result = crate::ipc::session_checkpoint(
+        app,
+        session_id,
+        summary_json,
+        summary_seq,
+        inflight_ref,
+        predecessor_session_id,
+    )
+    .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+fn mcp_session_checkpoint(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_session_handoff(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let reason = arg_optional_string(args, "reason");
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let cols = arg_optional_u16(args, "cols")?;
+    let rows = arg_optional_u16(args, "rows")?;
+    let result = crate::ipc::session_handoff(app, session_id, reason, timeout_ms, cols, rows)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_handoff(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_session_resume(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let logical_session_id = arg_optional_string(args, "logical_session_id");
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let result = crate::ipc::session_resume(app, logical_session_id, timeout_ms)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_resume(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_session_reset_context(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let cols = arg_optional_u16(args, "cols")?;
+    let rows = arg_optional_u16(args, "rows")?;
+    let result = crate::ipc::session_reset_context(app, session_id, timeout_ms, cols, rows)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_reset_context(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
 }
 
 fn arg_bool(args: &serde_json::Map<String, serde_json::Value>, key: &str, default: bool) -> bool {
@@ -385,6 +585,84 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "path": { "type": "string" },
                         "against": { "type": "string", "enum": ["base", "target"] },
                         "targetBranch": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.summarize",
+                "description": "Inject the no-loss self-summary prompt into a live interactive session and return the existing SessionSummarizeResult JSON.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "reason": { "type": "string" },
+                        "timeout_ms": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.checkpoint",
+                "description": "Persist a session checkpoint through the same lifecycle runtime used by the IPC session_checkpoint command.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "summary_json": { "type": "object" },
+                        "summary_seq": { "type": "integer" },
+                        "inflight_ref": { "type": "string" },
+                        "predecessor_session_id": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.handoff",
+                "description": "Run the no-loss handoff transaction: summarize, checkpoint, spawn successor, ack, audit, then retire the predecessor.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "reason": { "type": "string" },
+                        "timeout_ms": { "type": "integer" },
+                        "cols": { "type": "integer" },
+                        "rows": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.resume",
+                "description": "Reconcile unresolved durable session handoffs and adopt a requested logical session when identity checks pass.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "logical_session_id": { "type": "string" },
+                        "timeout_ms": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.reset_context",
+                "description": "Recycle a live session through the same no-loss handoff discipline, preserving the worktree.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "timeout_ms": { "type": "integer" },
+                        "cols": { "type": "integer" },
+                        "rows": { "type": "integer" }
                     },
                     "additionalProperties": false
                 }
@@ -1198,6 +1476,21 @@ pub(super) async fn tools_call(
                 "snapshot": crate::control::diff::list_layers(layers),
                 "file": file,
             })
+        }
+        "aelyris.session.summarize" => {
+            mcp_session_summarize(&state, &args).await?
+        }
+        "aelyris.session.checkpoint" => {
+            mcp_session_checkpoint(&state, &args)?
+        }
+        "aelyris.session.handoff" => {
+            mcp_session_handoff(&state, &args).await?
+        }
+        "aelyris.session.resume" => {
+            mcp_session_resume(&state, &args).await?
+        }
+        "aelyris.session.reset_context" => {
+            mcp_session_reset_context(&state, &args).await?
         }
         "aelyris.request_approval" => {
             let session_id = arg_string(&args, "sessionId")?;
@@ -2599,6 +2892,93 @@ mod tests {
             catalog.difference(&schemas).collect::<Vec<_>>(),
             schemas.difference(&catalog).collect::<Vec<_>>(),
         );
+    }
+
+    #[test]
+    fn session_lifecycle_verbs_are_gated_and_schema_exact() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let tools = listed["tools"].as_array().expect("tools is an array");
+        let expected = [
+            ("aelyris.session.summarize", vec!["session_id"]),
+            ("aelyris.session.checkpoint", vec!["session_id"]),
+            ("aelyris.session.handoff", vec!["session_id"]),
+            ("aelyris.session.resume", vec![]),
+            ("aelyris.session.reset_context", vec!["session_id"]),
+        ];
+
+        for (verb, required) in expected {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(verb))
+                .unwrap_or_else(|| panic!("{verb} present in tools_list"));
+            assert_eq!(tool["safety"], serde_json::json!("GATED"));
+            assert_eq!(
+                tool["inputSchema"]["additionalProperties"],
+                serde_json::json!(false),
+                "{verb} must reject unknown lifecycle args",
+            );
+            let actual_required = tool["inputSchema"]
+                .get("required")
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|item| item.as_str().unwrap().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            assert_eq!(actual_required, required, "{verb} required args drifted");
+        }
+    }
+
+    #[test]
+    fn session_lifecycle_mcp_verbs_go_through_governance_before_runtime() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+        use std::sync::Arc;
+
+        struct DenyLifecycle;
+        impl AccessControl for DenyLifecycle {
+            fn authorize(&self, _actor: &str, verb: &str) -> AccessDecision {
+                if verb.starts_with("aelyris.session.") {
+                    AccessDecision::Deny(format!("{verb} blocked"))
+                } else {
+                    AccessDecision::Allow
+                }
+            }
+        }
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_governance(Arc::new(Governance::with_access(Box::new(DenyLifecycle))));
+        let body = ToolCallBody {
+            name: "aelyris.session.resume".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::Forbidden(_))));
+    }
+
+    #[test]
+    fn session_lifecycle_mcp_fails_closed_without_app_handle() {
+        use crate::pty::PtyManager;
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let body = ToolCallBody {
+            name: "aelyris.session.resume".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        match result {
+            Err(ApiError::Internal(message)) => assert!(
+                message.contains("session lifecycle runtime is not attached"),
+                "{message}"
+            ),
+            other => panic!("expected fail-closed missing runtime error, got {other:?}"),
+        }
     }
 
     /// The pane-input byte ceiling lives once in `WS_MAX_INPUT_FRAME_BYTES`
