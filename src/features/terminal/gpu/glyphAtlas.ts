@@ -11,6 +11,8 @@ export interface GlyphBitmap {
   width: number;
   height: number;
   advanceWidth: number;
+  offsetX?: number;
+  offsetY?: number;
   drawTo(surface: GlyphAtlasSurface, x: number, y: number): void;
 }
 
@@ -31,6 +33,8 @@ export interface GlyphAtlasEntry {
   u1: number;
   v1: number;
   advanceWidth: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 export interface GlyphAtlasCounters {
@@ -122,6 +126,8 @@ export class GlyphAtlas {
       u1: (x + bitmap.width) / this.pageSize,
       v1: (y + bitmap.height) / this.pageSize,
       advanceWidth: bitmap.advanceWidth,
+      offsetX: bitmap.offsetX ?? 0,
+      offsetY: bitmap.offsetY ?? 0,
     };
     this.entries.set(stableKey, entry);
     page.entryKeys.add(stableKey);
@@ -155,6 +161,10 @@ export class GlyphAtlas {
       page.lastUsed = ++this.clock;
     }
     this.entries.clear();
+  }
+
+  getPageSurface(pageIndex: number): GlyphAtlasSurface | null {
+    return this.pages[pageIndex]?.surface ?? null;
   }
 
   private pageFor(width: number, height: number): AtlasPage {
@@ -231,21 +241,24 @@ function rasterizeGlyphWithCanvas(key: GlyphAtlasKey): GlyphBitmap {
   measure.font = font;
   measure.textBaseline = "top";
   const metrics = measure.measureText(key.text);
+  const glyphPadding = Math.max(2, Math.ceil(dpr * 2));
   const width = Math.max(1, Math.ceil(metrics.width));
   const height = Math.max(1, Math.ceil(fontSizePx * 1.35));
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = width + glyphPadding * 2;
+  canvas.height = height + glyphPadding * 2;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("GlyphAtlas could not create a 2D raster context");
   ctx.font = font;
   ctx.textBaseline = "top";
   ctx.fillStyle = "white";
-  ctx.fillText(key.text, 0, 0);
+  ctx.fillText(key.text, glyphPadding, glyphPadding);
   return {
-    width,
-    height,
+    width: canvas.width,
+    height: canvas.height,
     advanceWidth: metrics.width / dpr,
+    offsetX: glyphPadding,
+    offsetY: glyphPadding,
     drawTo(surface, x, y) {
       const target = surface as HTMLCanvasElement;
       const targetCtx = target.getContext?.("2d");

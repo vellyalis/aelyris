@@ -13,9 +13,10 @@ import {
   paintSearchBands,
   paintSelectionBand,
 } from "../src/features/terminal/terminalPaint";
+import * as gpuPaint from "../src/features/terminal/gpu/terminalPaintGpu";
 import { TERMINAL_FONT_FAMILY, type TerminalCellMetrics } from "../src/features/terminal/terminalMetrics";
 
-type RendererMode = "canvas2d";
+type RendererMode = "canvas2d" | "webgl2";
 
 interface RendererParityResult {
   fixtureId: string;
@@ -26,6 +27,7 @@ interface RendererParityResult {
   maxChannelDelta: number;
   withinTolerance: boolean;
   opaqueSamples: Array<{ row: number; col: number; alpha: number; passed: boolean }>;
+  sampleDiffs: Array<{ x: number; y: number; canvas: number[]; gpu: number[] }>;
 }
 
 interface RendererParityReport {
@@ -33,7 +35,7 @@ interface RendererParityReport {
   status: "pending-gpu" | "pass" | "fail";
   ok: boolean;
   generatedAt: string;
-  comparison: "canvas2d-self";
+  comparison: "canvas2d-vs-webgl2";
   tolerances: typeof PARITY_TOLERANCES;
   fixtures: RendererParityResult[];
 }
@@ -68,8 +70,9 @@ interface RendererPerfReport {
 }
 
 const PARITY_TOLERANCES = {
-  perChannel: 0,
-  maxDifferingPixels: 0,
+  perChannel: 12,
+  maxDifferingPixelRatio: 0.12,
+  maxDifferingPixelsFloor: 64,
 } as const;
 
 const PERF_FRAMES = 1_000;
@@ -132,7 +135,7 @@ async function makeImageBitmaps(fixture: RendererFixture): Promise<Map<number, I
 }
 
 async function paintFixtureToImageData(fixture: RendererFixture, mode: RendererMode): Promise<ImageData> {
-  if (mode !== "canvas2d") throw new Error(`unsupported renderer mode: ${mode}`);
+  if (mode === "webgl2") return paintFixtureToGpuImageData(fixture);
   const snapshot = fixture.snapshot;
   const canvas = makeCanvas(snapshot);
   const ctx = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
@@ -174,12 +177,60 @@ async function paintFixtureToImageData(fixture: RendererFixture, mode: RendererM
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
+async function paintFixtureToGpuImageData(fixture: RendererFixture): Promise<ImageData> {
+  const snapshot = fixture.snapshot;
+  const canvas = makeCanvas(snapshot);
+  const context = gpuPaint.createTerminalGpuPaintContext(canvas, { devicePixelRatio: DEVICE_PIXEL_RATIO });
+  if (!context) throw new Error("WebGL2 unavailable for renderer parity harness");
+  gpuPaint.beginGpuFrame(context);
+
+  for (let row = 0; row < snapshot.rows; row++) {
+    gpuPaint.paintRow(
+      context,
+      snapshot.cells[row],
+      row,
+      METRICS,
+      FONT_SIZE,
+      FONT_FAMILY,
+      DEVICE_PIXEL_RATIO,
+      fixture.rasterBackground,
+      "solid",
+    );
+    gpuPaint.paintSearchBands(context, row, fixture.searchMatches, fixture.activeSearchMatch, METRICS, snapshot.rows, 0);
+    const band = fixture.selectionBands?.[row];
+    if (band) gpuPaint.paintSelectionBand(context, row, band, METRICS);
+    gpuPaint.paintLinkUnderline(context, row, fixture.hoveredLink ?? null, snapshot.cols, METRICS);
+  }
+
+  if (fixture.ghostSuggestion) {
+    gpuPaint.paintGhostSuggestion(
+      context,
+      snapshot,
+      fixture.ghostSuggestion,
+      METRICS,
+      FONT_SIZE,
+      FONT_FAMILY,
+      DEVICE_PIXEL_RATIO,
+    );
+  }
+  if (snapshot.cursor.visible) {
+    gpuPaint.paintCursor(context, snapshot, METRICS, DEVICE_PIXEL_RATIO);
+  }
+  if (snapshot.images?.length) {
+    gpuPaint.paintImages(context, snapshot.images, await makeImageBitmaps(fixture), METRICS);
+  }
+
+  gpuPaint.flushGpuFrame(context);
+  return gpuPaint.readGpuImageData(context);
+}
+
 function compareImageData(a: ImageData, b: ImageData) {
   if (a.width !== b.width || a.height !== b.height) {
     throw new Error(`image dimensions differ: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
   }
   let differingPixels = 0;
   let maxChannelDelta = 0;
+  const sampleDiffs: Array<{ x: number; y: number; canvas: number[]; gpu: number[] }> = [];
   for (let i = 0; i < a.data.length; i += 4) {
     const dr = Math.abs(a.data[i] - b.data[i]);
     const dg = Math.abs(a.data[i + 1] - b.data[i + 1]);
@@ -187,14 +238,28 @@ function compareImageData(a: ImageData, b: ImageData) {
     const da = Math.abs(a.data[i + 3] - b.data[i + 3]);
     const max = Math.max(dr, dg, db, da);
     maxChannelDelta = Math.max(maxChannelDelta, max);
-    if (max > PARITY_TOLERANCES.perChannel) differingPixels += 1;
+    if (max > PARITY_TOLERANCES.perChannel) {
+      differingPixels += 1;
+      if (sampleDiffs.length < 8) {
+        const pixel = i / 4;
+        sampleDiffs.push({
+          x: pixel % a.width,
+          y: Math.floor(pixel / a.width),
+          canvas: Array.from(a.data.slice(i, i + 4)),
+          gpu: Array.from(b.data.slice(i, i + 4)),
+        });
+      }
+    }
   }
+  const maxDifferingPixels = Math.max(
+    PARITY_TOLERANCES.maxDifferingPixelsFloor,
+    Math.floor(a.width * a.height * PARITY_TOLERANCES.maxDifferingPixelRatio),
+  );
   return {
     differingPixels,
     maxChannelDelta,
-    withinTolerance:
-      maxChannelDelta <= PARITY_TOLERANCES.perChannel &&
-      differingPixels <= PARITY_TOLERANCES.maxDifferingPixels,
+    sampleDiffs,
+    withinTolerance: differingPixels <= maxDifferingPixels,
   };
 }
 
@@ -218,7 +283,7 @@ async function runParity(): Promise<RendererParityReport> {
   const fixtures: RendererParityResult[] = [];
   for (const fixture of rendererFixtures) {
     const a = await paintFixtureToImageData(fixture, "canvas2d");
-    const b = await paintFixtureToImageData(fixture, "canvas2d");
+    const b = await paintFixtureToImageData(fixture, "webgl2");
     const diff = compareImageData(a, b);
     const opaqueSamples = sampleOpaqueCells(a, fixture);
     fixtures.push({
@@ -230,15 +295,16 @@ async function runParity(): Promise<RendererParityReport> {
       maxChannelDelta: diff.maxChannelDelta,
       withinTolerance: diff.withinTolerance && opaqueSamples.every((sample) => sample.passed),
       opaqueSamples,
+      sampleDiffs: diff.withinTolerance ? [] : diff.sampleDiffs,
     });
   }
   const ok = fixtures.every((fixture) => fixture.withinTolerance);
   return {
     version: 1,
-    status: ok ? "pending-gpu" : "fail",
+    status: ok ? "pass" : "fail",
     ok,
     generatedAt: new Date().toISOString(),
-    comparison: "canvas2d-self",
+    comparison: "canvas2d-vs-webgl2",
     tolerances: PARITY_TOLERANCES,
     fixtures,
   };
