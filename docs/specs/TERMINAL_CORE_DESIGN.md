@@ -111,17 +111,19 @@ Sketch (to be expanded into its own implementation order when entry criteria fir
 - Cross-platform future (if/when non-Windows targets matter): `skrifa` + `harfrust`-class stack is the candidate; decision deferred until a second OS target is real.
 - Stage 1 deliberately rides the browser's font rasterizer (no new font dependency at all).
 
-## 8. Measurement gates (initial targets — calibrate against the R1 baseline before enforcing)
+## 8. Measurement gates (initial targets — calibrate against the R1/R6 baseline before enforcing)
 
 | metric | how measured | Stage 0 baseline | Stage 1 target | Stage 2 target |
 |---|---|---|---|---|
-| full-grid repaint time (120x40, all-dirty) | perf harness, p95 over 1k frames | record in R1 | < 4 ms | < 1 ms |
-| scroll flood throughput (large-file `cat` fixture replay) | frames painted / source frames dropped | record in R1 | no dropped rows at 60fps | 120fps-capable |
-| key-echo paint latency (keydown → cell painted) | dev harness `performance.now()` bracketing | record in R1 | p99 < 33 ms | p99 < 16 ms |
-| soak (24h synthetic agent output) | RSS/heap growth + fps decay | record | < 10% decay, no leak trend | same |
-| atlas behavior | hit-rate + eviction churn counters | n/a | > 95% steady-state hit rate | same |
+| full-grid repaint time (120x40, all-dirty) | perf harness, p95 over 1k frames | R6 Canvas2D: 27.1 ms p95 / 21.949 ms avg (`.codex-auto/quality/renderer-perf.json`, 2026-07-02T14:56:35Z) | < 4 ms (not enforced until recalibrated) | < 1 ms |
+| scroll flood throughput (large-file `cat` fixture replay) | frames painted / source frames dropped | R6 Canvas2D: 229/240 frames over 60fps budget; 24.9 ms p95 / 20.478 ms avg | no dropped rows at 60fps | 120fps-capable |
+| key-echo paint latency (keydown → cell painted) | dev harness `performance.now()` bracketing | pending live input harness | p99 < 33 ms | p99 < 16 ms |
+| soak (24h synthetic agent output) | RSS/heap growth + fps decay | R5 WebGL2 short soak: 10,000 frames, decayRatio 0.746, no context loss/errors; 24h soak pending | < 10% decay, no leak trend | same |
+| atlas behavior | hit-rate + eviction churn counters | n/a; R6 WebGL2 sampled hit-rate 0.98 / 0.9786; R5 soak hit-rate 0.9996 | > 95% steady-state hit rate | same |
 
-Gate wiring: `pnpm verify:renderer:parity` (pixel-diff fixtures), `pnpm verify:renderer:perf` (emits `.codex-auto/quality/renderer-perf.json`; targets enforced only after baseline calibration commit). Numbers above are initial engineering targets, not marketing claims — claim policy applies.
+Gate wiring: `pnpm verify:renderer:parity` (pixel-diff fixtures), `pnpm verify:renderer:perf` (emits `.codex-auto/quality/renderer-perf.json`; targets enforced only after baseline calibration commit), `pnpm verify:renderer:transparency`, `pnpm verify:renderer:soak`, and `pnpm verify:terminal:font-render`. Numbers above are engineering targets, not marketing claims — claim policy applies.
+
+R6 decision note: Stage 1 remains opt-in. The current WebGL2 path passes parity/contract/transparency/short-soak gates, but the performance artifact records only a 48x12 sampled WebGL2 comparison because the current full-grid WebGL2 path does not complete inside the verifier budget. The artifact therefore proposes `canvas2d` as the default until a later optimization run produces owner-approved evidence to flip it.
 
 ## 9. Work-unit map
 
@@ -132,7 +134,7 @@ Gate wiring: `pnpm verify:renderer:parity` (pixel-diff fixtures), `pnpm verify:r
 | WU-TC-1c | WebGL2 renderer implementing the paint surface, feature-flagged | R3 |
 | WU-TC-1d | TerminalCanvas wiring + context-loss fallback | R4 |
 | WU-TC-1e | transparency parity + render-contract extension + soak | R5 |
-| WU-TC-1f | perf report vs targets; owner decides flag default | R6 (owner decision) |
+| WU-TC-1f | perf report vs targets; owner decides flag default | R6 complete; artifact proposes `canvas2d` default |
 | WU-TC-2x | Stage 2 spike: DComp visual + transparent-WebView2 layering proof | separate work order after entry criteria |
 
 Four-layer sync: this document is the design layer; `docs/specs/README.md` gains an index row and the traceability map gains the gate names in the same commit that lands the harness (R1).

@@ -21,7 +21,7 @@ async function main() {
     appType: "custom",
     logLevel: "error",
     optimizeDeps: {
-      entries: ["e2e/renderer-harness.html"],
+      entries: ["e2e/renderer-perf-harness.ts"],
     },
     server: { host: "127.0.0.1", port: 0 },
   });
@@ -31,7 +31,7 @@ async function main() {
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(
-        '<!doctype html><html><body><script type="module" src="/e2e/renderer-harness.ts"></script></body></html>',
+        '<!doctype html><html><body><script type="module" src="/e2e/renderer-perf-harness.ts"></script></body></html>',
       );
     });
     await server.listen();
@@ -47,11 +47,11 @@ async function main() {
     );
     await page.goto(`${baseUrl}__renderer_harness__`, { waitUntil: "commit", timeout: 120_000 });
     try {
-      await page.waitForFunction(() => Boolean(window.__AELYRIS_RENDERER_HARNESS__), null, { timeout: 120_000 });
+      await page.waitForFunction(() => Boolean(window.__AELYRIS_RENDERER_PERF_HARNESS__), null, { timeout: 120_000 });
     } catch (error) {
       throw new Error(`renderer harness did not initialize: ${error.message}\n${diagnostics.slice(-20).join("\n")}`);
     }
-    const report = await page.evaluate(async () => window.__AELYRIS_RENDERER_HARNESS__.runPerf());
+    const report = await page.evaluate(async () => window.__AELYRIS_RENDERER_PERF_HARNESS__.runPerf());
     writeJsonAtomic(OUT, report);
     console.log(JSON.stringify(report, null, 2));
     if (!report.ok) process.exitCode = 1;
