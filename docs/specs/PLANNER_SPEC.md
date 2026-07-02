@@ -1,5 +1,27 @@
 # Autonomous Planner & Orchestration Loop Spec (WU-5.1 / 5.2)
 
+> **Implementation status (2026-07-02, verified against code in this repo).**
+> Implemented today:
+>
+> - MCP orchestrator verbs `aelyris.orchestrator.plan` and
+>   `aelyris.orchestrator.step` (`src-tauri/src/api/mcp.rs`): `plan` computes a
+>   scheduling plan over the task graph under cost caps; `step` drives the
+>   dispatch → review → gated-merge cycle (with optional mechanical
+>   `gateCommands` run in each task's worktree).
+> - Plan validation: `validate_plan` (`src-tauri/src/task/planner.rs`).
+> - Objective → task-plan decomposition: `decompose_to_plan`
+>   (`src-tauri/src/task/decompose.rs`).
+> - Plan submission into the task graph: `TaskManager::submit_plan`
+>   (`src-tauri/src/task/manager.rs`).
+> - Replanning of failed tasks: `replan_into` (`src-tauri/src/task/replan.rs`)
+>   via `TaskManager::replan_failed_task`.
+>
+> Still design only (not implemented): an in-app planner UI, an in-process
+> conductor that runs the full loop unattended, and the LLM one-liner →
+> `scripts/fleet/wu-manifest.json` emission pass described in §1. Sections 1–2
+> below describe the target design; where they say a layer is missing, check the
+> modules above first.
+
 > ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
 > requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
 > autonomy** model: agents can dispatch, review, and merge through **gated controls**,
@@ -10,14 +32,21 @@
 > the *merge* and *human-grant* axes. The round/budget runaway guard, star comms, and
 > reviewer ≠ implementer rule remain.
 
-Status: Draft (docs only). The **capstone** of the autonomous team-dev loop.
+Status: partially implemented (see the implementation status banner above).
+The **capstone** of the autonomous team-dev loop.
 Owns: how throwing a one-line task at the orchestrator becomes requirements → WU decomposition →
 fleet dispatch → parallel impl/test/review → star-comms → sequential gated merge → repeat.
 
-> This is the **only missing layer** of the vision. Everything downstream already exists or is
-> being built: pane split + launch (`mux_split_pane` / fleet), the implementer/tester/reviewer
-> roles (Orchestra), star comms (`send_keys_by_target` / `.fleet/`), merge (`control/merge.rs`,
-> WU-3.x). The planner is the *front half* that produces work for them.
+> Much of this pipeline is now implemented in code: the MCP orchestrator verbs
+> (`aelyris.orchestrator.plan` / `aelyris.orchestrator.step`), plan validation
+> (`task/planner.rs`), decomposition (`task/decompose.rs`), plan submission
+> (`TaskManager::submit_plan`), and replanning (`task/replan.rs`) — see the
+> status banner. Everything downstream also exists or is being built: pane
+> split + launch (`mux_split_pane` / fleet), the implementer/tester/reviewer
+> roles (Orchestra), star comms (`send_keys_by_target` / `.fleet/`), merge
+> (`control/merge.rs`, WU-3.x). The remaining open items are the in-app planner
+> UI, the in-process conductor loop, and the LLM one-liner →
+> `wu-manifest.json` emission pass.
 
 ## 0. Insight
 
@@ -60,12 +89,27 @@ and emit the result as `scripts/fleet/wu-manifest.json` — the contract `fleet-
 
 - **5.1** depends on WU-0.1/0.2/0.3 (the fleet session model + manifest contract) and the Orchestra path.
 - **5.2** depends on 5.1 + WU-3.2 (merge queue) + the cockpit surfaces (2.1/2.2) for human supervision.
-- Build last — it assembles the whole stack. Until then, the **`aelyris-plan` skill** lets an orchestrator agent perform 5.1 manually (§5).
+- Build last — it assembles the whole stack. Until then, the implemented backend pipeline (§5) lets an orchestrator agent perform the planning half manually.
 
-## 5. Skill bridge (usable today, before the in-app feature exists)
+## 5. Manual bridge (before the in-app feature exists)
 
-The **`aelyris-plan`** project skill packages the 5.1 planning procedure so an orchestrator agent
-(Opus) can do it now: one-liner → spec + `wu-manifest.json` → hand to the `aelyris-fleet` skill for
-dispatch. It composes with `aelyris-fleet` (execution). Deeper planning patterns: `blueprint`
-(objective → construction plan + DAG), `ralphinho-rfc-pipeline` (RFC-driven multi-agent DAG +
-quality gates + merge queue), `devfleet` (plan → parallel dispatch → monitor).
+> Historical note: earlier revisions of this section pointed at `aelyris-plan`
+> and `aelyris-fleet` project skills under `.claude/skills/`. Those skills no
+> longer exist in this repository; do not look for them.
+
+Until the in-app planner UI and in-process conductor land, an orchestrator
+agent can drive the implemented backend pipeline directly:
+
+- Decompose an objective with `decompose_to_plan`
+  (`src-tauri/src/task/decompose.rs`), validate with `validate_plan`
+  (`src-tauri/src/task/planner.rs`), and submit with
+  `TaskManager::submit_plan` (`src-tauri/src/task/manager.rs`); these are
+  exposed to the app through the Tauri IPC commands in
+  `src-tauri/src/ipc/task_commands.rs` (e.g. `task_submit_plan`), while MCP
+  clients create tasks via `aelyris.task.create`.
+- Drive the loop with `aelyris.orchestrator.plan` /
+  `aelyris.orchestrator.step` (`src-tauri/src/api/mcp.rs`), which schedule
+  ready tasks, review finished agents, and perform gated merges.
+- For fleet-manifest-based dispatch, `scripts/fleet/wu-manifest.json` and
+  `scripts/fleet/fleet-dispatch.ps1` remain the manifest contract and
+  dispatcher.
