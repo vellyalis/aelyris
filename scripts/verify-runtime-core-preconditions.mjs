@@ -76,6 +76,30 @@ const checks = [
       sendKeys.includes("deny_keystroke_rejects_with_escape"),
     "Rust tests lock approve/deny keystroke bytes",
   ),
+  record(
+    "approval-resolution-rechecks-current-session",
+    sendKeys.includes("InteractiveSessionManager") &&
+      sendKeys.includes("verify_current_interactive_approval") &&
+      sendKeys.includes('session.status != "waiting_approval"') &&
+      sendKeys.includes("approval_prompt.as_deref()"),
+    "resolve_interactive_approval re-checks the live interactive session status and prompt before writing",
+  ),
+  record(
+    "approval-resolution-requires-prompt-fingerprint",
+    sendKeys.includes("expected_prompt_key: Option<String>") &&
+      sendKeys.includes("expected_prompt_key.as_deref()") &&
+      sendKeys.includes("expected prompt fingerprint is required") &&
+      decisionInbox.includes("approvalPromptKey: promptKey"),
+    "Decision Inbox passes a prompt fingerprint and the backend fails closed when it is absent",
+  ),
+  record(
+    "approval-resolution-stale-error-contract",
+    sendKeys.includes("stale_approval") &&
+      sendKeys.includes("prompt fingerprint changed") &&
+      sendKeys.includes("stable_text_key") &&
+      sendKeys.includes("stable_text_key_matches_decision_inbox_vectors"),
+    "stale approval errors are typed and cross-language prompt fingerprint vectors are tested",
+  ),
 ];
 
 const ok = checks.every((check) => check.ok);

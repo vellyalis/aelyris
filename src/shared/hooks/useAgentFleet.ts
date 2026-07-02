@@ -73,6 +73,26 @@ export function useAgentFleet() {
     };
   }, []);
 
+  const refreshAgentFleet = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    await Promise.all([
+      interactive.refreshSessions(),
+      invoke<BackendAgentFleetSession[]>("list_agent_fleet")
+        .then((sessions) => {
+          setBackendFleetSessions(mapBackendAgentFleetSessions(sessions));
+          setBackendFleetReady(true);
+        })
+        .catch((err) => {
+          reportInvokeFailure({
+            source: "agent-fleet",
+            operation: "list_agent_fleet",
+            err,
+            userVisible: false,
+          });
+        }),
+    ]);
+  }, [interactive]);
+
   const selectFleetSession = useCallback(
     (id: string) => {
       const session = fleetSessions.find((candidate) => candidate.id === id);
@@ -89,6 +109,7 @@ export function useAgentFleet() {
   return {
     fleetSessions,
     backendFleetSessions,
+    refreshAgentFleet,
     selectFleetSession,
     sessions: headless.sessions,
     activeSessionId: headless.activeSessionId,

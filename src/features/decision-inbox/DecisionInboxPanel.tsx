@@ -165,7 +165,9 @@ function DecisionRow({
   // Approve/Deny only for a pending agent gate that is keystroke-resolvable:
   // it must carry a live agent PTY id. Watchdog/blocked items without a ptyId
   // (e.g. headless runs) keep the Focus route only.
-  const canDecide = Boolean(onDecide && item.status === "pending" && item.source === "agent" && item.ptyId);
+  const canDecide = Boolean(
+    onDecide && item.status === "pending" && item.source === "agent" && item.ptyId && item.approvalPromptKey,
+  );
   // Latch a decision once delivered so the live PTY never receives duplicate
   // bytes. The item stays pending until the agent re-emits its run status, so a
   // re-click in that gap could answer the NEXT prompt — we keep both buttons

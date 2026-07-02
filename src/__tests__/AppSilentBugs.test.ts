@@ -1882,7 +1882,10 @@ describe("App right rail composition", () => {
     // resolver. If any of these wirings is dropped the surface degrades to a
     // read-only list.
     expect(src).toContain("const handleDecideDecision = useCallback(");
-    expect(src).toContain('tauriInvoke("resolve_interactive_approval", { terminalId: ptyId, decision })');
+    expect(src).toContain('tauriInvoke("resolve_interactive_approval", {');
+    expect(src).toContain("expectedPromptKey: item.approvalPromptKey");
+    expect(src).toContain('message.includes("stale_approval")');
+    expect(src).toContain("await refreshAgentFleet()");
     expect(src).toContain("onDecide={handleDecideDecision}");
     expect(src).toContain("deriveRightRailEdgeScore");
     expect(src).toContain("const rightRailEdgeScore = deriveRightRailEdgeScore({");

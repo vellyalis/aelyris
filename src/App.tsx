@@ -2993,6 +2993,7 @@ export function App() {
   const {
     sessions,
     fleetSessions,
+    refreshAgentFleet,
     activeSessionId,
     setActiveSessionId,
     startAgent,
@@ -4217,14 +4218,12 @@ export function App() {
     [fleetSessions, handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
   );
 
-  // Resolve a waiting interactive agent gate from the Decision Inbox. The safety
-  // contract lives in WHAT gets surfaced as resolvable, not in the backend: only
-  // a confirmed Claude selectable MENU carries a captured prompt + ptyId, so the
-  // backend `resolve_interactive_approval` always writes the MENU keystroke
-  // through the P0-4 gate (approve = Enter on the highlighted default, deny =
-  // Esc) and audits it. There is no y/n path — a y/n prompt is deliberately
-  // never surfaced as resolvable (it would need a different key). We do NOT clear
-  // the item: it leaves the inbox when the agent re-emits its run status.
+  // Resolve a waiting interactive agent gate from the Decision Inbox. Only a
+  // confirmed Claude selectable MENU carries a captured prompt, prompt key, and
+  // ptyId. The backend re-checks that same prompt key before writing the menu
+  // keystroke through the P0-4 gate (approve = option 1, deny = Esc) and audits
+  // it. We do NOT clear the item: it leaves the inbox when the agent re-emits
+  // its run status.
   const handleDecideDecision = useCallback(
     async (item: HumanDecisionItem, decision: "approve" | "deny") => {
       if (rightRailUsesFixtures) {
@@ -4241,20 +4240,30 @@ export function App() {
         return;
       }
       try {
-        await tauriInvoke("resolve_interactive_approval", { terminalId: ptyId, decision });
+        await tauriInvoke("resolve_interactive_approval", {
+          terminalId: ptyId,
+          decision,
+          expectedPromptKey: item.approvalPromptKey,
+        });
         showRightRailRouteConfirmation({
           widget: "decision-inbox",
           title: decision === "approve" ? "Approval sent" : "Denial sent",
           detail: item.title,
         });
       } catch (err) {
-        toast.error("Decision delivery failed", String(err));
+        const message = String(err);
+        if (message.includes("stale_approval")) {
+          toast.error("Approval changed", "The agent prompt changed before this decision was delivered.");
+          await refreshAgentFleet();
+          throw err;
+        }
+        toast.error("Decision delivery failed", message);
         // Re-throw so the inbox row re-enables its buttons for a retry instead
         // of latching on a delivery that never reached the agent.
         throw err;
       }
     },
-    [rightRailUsesFixtures, showRightRailRouteConfirmation],
+    [refreshAgentFleet, rightRailUsesFixtures, showRightRailRouteConfirmation],
   );
 
   const handleRightRailAction = useCallback(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentFleetSession } from "../shared/lib/agentFleet";
-import { buildDecisionInbox, isTrueHumanDecisionKind } from "../shared/lib/decisionInbox";
+import { buildDecisionInbox, isTrueHumanDecisionKind, stableTextKey } from "../shared/lib/decisionInbox";
 
 import type { AuditEventRecord } from "../shared/types/audit";
 
@@ -184,6 +184,7 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems[0]).toMatchObject({
       sessionId: "int-wait",
       ptyId: "pty-7",
+      approvalPromptKey: "ac2f40f5",
       // Classified from the captured command: `rm -rf` is destructive, so the
       // row keeps a critical badge instead of a flat medium "permission".
       type: "destructive_operation",
@@ -194,6 +195,11 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems[0].evidence).toContain("runStatus=waiting_approval");
     // The captured menu is shown so the human sees WHAT they approve (P2-A).
     expect(inbox.pendingItems[0].context).toContain("rm -rf dist");
+  });
+
+  it("keeps the approval prompt fingerprint aligned with the backend vector", () => {
+    expect(stableTextKey("Bash(rm -rf dist) · Do you want to proceed?")).toBe("ac2f40f5");
+    expect(stableTextKey("承認🔒")).toBe("b8c5e33a");
   });
 
   it("includes durable lineage and recycle state in interactive decision evidence", () => {

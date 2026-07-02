@@ -43,6 +43,7 @@ export interface HumanDecisionItem {
    * keystroke-resolvable agent items; absent for workflow/audit/headless items.
    */
   ptyId?: string;
+  approvalPromptKey?: string;
   workflowId?: string;
   taskId?: string;
   evidence: string[];
@@ -298,12 +299,13 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
     // (e.g. `Bash(rm -rf dist)`) keeps its critical risk badge instead of a flat
     // medium "permission" — the existing classifiers already encode that policy.
     const type = typeFromText(prompt) ?? "permission_required";
+    const promptKey = stableTextKey(prompt);
     decisions.push(
       createDecision({
         // The prompt fingerprint is part of the id so a NEW menu on the same
         // session remounts the inbox row (fresh Approve/Deny latch) instead of
         // reusing the stale, post-delivery disabled state of the previous gate.
-        id: `agent:${session.id}:interactive-approval:${stableTextKey(prompt)}`,
+        id: `agent:${session.id}:interactive-approval:${promptKey}`,
         type,
         status: "pending",
         source: "agent",
@@ -312,6 +314,7 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
         requestedAt: now,
         sessionId: session.id,
         ptyId: session.ptyId,
+        approvalPromptKey: promptKey,
         evidence: [
           `runStatus=${session.runStatus}`,
           ...lifecycleEvidence,
@@ -630,7 +633,7 @@ function normalizeKind(kind: string): string {
     .replace(/[-\s]+/g, "_");
 }
 
-function stableTextKey(value: string): string {
+export function stableTextKey(value: string): string {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
     hash ^= value.charCodeAt(i);
