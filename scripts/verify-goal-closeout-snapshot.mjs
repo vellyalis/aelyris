@@ -216,8 +216,10 @@ const checks = {
     finalizeSummary.audit?.implementationFixableCount === data.audit?.implementationFixableCount,
   externalGateReadinessIsSafeHandoff:
     data.externalGates?.ok === true &&
+    // Either no token-spending prompt ran, or it ran WITH proven consent —
+    // "either boolean value" would be a tautology, not a check.
     (data.externalGates?.tokenSpendingPromptExecuted === false ||
-      data.externalGates?.tokenSpendingPromptExecuted === true) &&
+      data.externalGates?.checks?.tokenPromptExecutedWithConsent === true) &&
     data.externalGates?.realOsSleepInvoked === false &&
     externalGateIds.includes("authenticated-ai-cli-prompt-smoke") &&
     externalGateIds.includes("release-signing-updater") &&

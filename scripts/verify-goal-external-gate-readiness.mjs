@@ -138,21 +138,40 @@ function isWebView2OrHostProofBlocker(item) {
     /terminal-core-edge|native HWND paste|WM_PASTE|live-command-evidence|multipane-command-evidence|recovered-command-evidence|process-reconnect-command-evidence|live-ai-cli-post-launch-chaos|live AI CLI|live AI CLI chaos|chunked OSC|WebView2|CDP|ECONNREFUSED|PowerShell failed/i.test(
       text,
     ) &&
-    /environment-blocked|WebView2|CDP|ECONNREFUSED|PowerShell failed|host|unexercised|stale|not passing|did not prove|left interactive/i.test(
+    // Only concrete, host-specific evidence phrases count as an external/host
+    // proof gap. Generic words (host/stale/did not prove) also appear in
+    // ordinary implementation-bug messages and would launder real bugs into
+    // the "not our problem" bucket.
+    /environment-blocked|WebView2|CDP endpoint|connectOverCDP|ECONNREFUSED|PowerShell failed \(null\)|host process policy/i.test(
       text,
     )
   );
 }
 
 function isReleaseReadinessAggregateBlocker(item) {
-  return /release-readiness-aggregate|release readiness/i.test(String(item?.area ?? "") + " " + String(item?.blocker ?? item));
+  const text = String(item?.area ?? "") + " " + String(item?.blocker ?? item);
+  // Mirror verify-final-goal-audit's status-aware rule: only the explicitly
+  // external/review claim states are external; the terminal `release` claim
+  // may report `block` (it aggregates the others), but any other claim at
+  // `block` is a real, repo-owned failure and must stay an implementation
+  // blocker.
+  return (
+    /release-readiness-aggregate|release readiness/i.test(text) &&
+    (/=(?:external-blocked|review)\b/i.test(text) ||
+      /release readiness aggregate gate is externally blocked/i.test(text) ||
+      /(?:^|[\s:])release=block\b/i.test(text))
+  );
 }
 
 function isRequirementExternalProofBlocker(item) {
   const text = String(item?.area ?? "") + " " + String(item?.blocker ?? item);
   return (
     /rust-native-terminal-core|rust-mux-daemon-boundary|ai-cli-launch-planner|release-operations-proof/i.test(text) &&
-    /blocked|host|operator|upstream|WebView2|CDP|token|signing|process policy/i.test(text)
+    // Same principle as above: require concrete external-gate phrases, not
+    // generic English words that can describe an internal bug.
+    /environment-blocked|WebView2|CDP endpoint|connectOverCDP|ECONNREFUSED|operator-owned|signing material|token-spending|explicit consent|host process policy|upstream-bound/i.test(
+      text,
+    )
   );
 }
 

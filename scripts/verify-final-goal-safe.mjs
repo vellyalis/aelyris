@@ -783,21 +783,18 @@ function nativeAiCliPostLaunchChaosVerdict(data) {
         row?.remainingSessionsAfterCleanup === 0
       );
     });
-  const finalAuditNativeFirstReady = audit?.operationalEvidence?.liveAiCliPostLaunchChaos?.nativeFirstReady === true;
-  const ok = contractPass && (sourceFresh || finalAuditNativeFirstReady);
+  // Freshness is non-negotiable: the final audit's nativeFirstReady flag
+  // carries no mtime check of its own, so accepting it as a substitute lets a
+  // stale artifact (invalidated by later code changes) keep passing. If this
+  // goes red, regenerate the artifact — don't route around the staleness gate.
+  const ok = contractPass && sourceFresh;
   return {
     ok,
-    status: ok
-      ? sourceFresh
-        ? "pass-current-native-ai-cli-chaos-contract"
-        : "pass-current-native-ai-cli-chaos-contract-via-final-audit"
-      : (data?.status ?? "stale-or-incomplete"),
+    status: ok ? "pass-current-native-ai-cli-chaos-contract" : (data?.status ?? "stale-or-incomplete"),
     expectation:
       "native sidecar AI CLI post-launch chaos proves prompt readiness, same-id PTY restart, input roundtrip, kill cleanup, and no session residue without WebView2/CDP",
     reason: ok
-      ? sourceFresh
-        ? "native AI CLI post-launch chaos is fresh and covers all providers plus PTY restart cleanup"
-        : "native AI CLI post-launch chaos contract is source-valid and final audit confirms native-first readiness while WebView2 live proof remains external-gated"
+      ? "native AI CLI post-launch chaos is fresh and covers all providers plus PTY restart cleanup"
       : "native AI CLI post-launch chaos is missing, stale, incomplete, or leaves post-launch residue",
   };
 }
@@ -1753,7 +1750,7 @@ function isExternalOperatorBlocker(value) {
   return (
     isHostSleepUnsupportedBlocker(value) ||
     isReleaseSigningOperatorBlocker(value) ||
-    /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|supply-chain.*upstream-bound|upstream-bound dependency BLOCK|mux live restore|release readiness aggregate gate is (?:currently )?(?:externally )?blocked|release readiness claim blocked: .*(?:external-blocked|review|block)|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|live AI CLI (?:post-launch )?chaos|native-first AI CLI post-launch chaos|authenticated AI CLI prompt smoke|authenticated prompt artifact|authenticated prompt .*executed-with-consent|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
+    /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|supply-chain.*upstream-bound|upstream-bound dependency BLOCK|mux live restore|release readiness aggregate gate is externally blocked|release readiness claim blocked: .*=(?:external-blocked|review)\b|release readiness claim blocked: release=block\b|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|live AI CLI (?:post-launch )?chaos|native-first AI CLI post-launch chaos|authenticated AI CLI prompt smoke|authenticated prompt artifact|authenticated prompt .*executed-with-consent|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
       text,
     )
   );
