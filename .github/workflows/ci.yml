@@ -1,0 +1,88 @@
+name: CI
+
+# v1 policy (docs/specs/QUALITY_REMEDIATION_PLAN_2026-07-02.md S2-1):
+# blocking = tsc + vitest + cargo test --lib; informational = biome/fmt/clippy/audits.
+# Everything runs on windows-latest: pnpm scripts use cmd `set` syntax and the
+# product (ConPTY, webview2-com, Win32 job objects) is Windows-targeted.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (tsc + vitest)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+      - name: Unit tests (vitest, forks pool for CI stability)
+        run: pnpm test -- --pool=forks
+      - name: Biome lint (informational until repo-wide CRLF drift is settled)
+        continue-on-error: true
+        run: pnpm exec biome lint src
+
+  rust:
+    name: Rust (cargo test --lib)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Lib tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: rustfmt check (informational)
+        continue-on-error: true
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Clippy (informational until proven green on a clean branch)
+        continue-on-error: true
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+  audit:
+    name: Dependency audits (informational)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: pnpm audit (prod)
+        continue-on-error: true
+        run: pnpm audit --prod
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        continue-on-error: true
+        working-directory: src-tauri
+        run: cargo audit
