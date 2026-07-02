@@ -85,6 +85,7 @@
     "verify:terminal:chunked-osc-live:safe": "node scripts/verify-chunked-osc-live-safe.mjs",
     "verify:tauri-runtime-hygiene": "node scripts/verify-tauri-runtime-hygiene.mjs",
     "verify:command-center-scenario": "node scripts/verify-command-center-scenario.mjs",
+    "verify:stack-risk": "node scripts/verify-stack-risk.mjs --allow-upstream-bound",
     "verify:command-recovery": "node scripts/verify-command-recovery-contract.mjs",
     "verify:runtime-core:preconditions": "node scripts/verify-runtime-core-preconditions.mjs",
     "capture:runtime-core:rt1a0-live": "node scripts/capture-rt1a0-provider-matrix.mjs",

@@ -254,6 +254,67 @@ async function collectTauriUrlpatternUpstreamEvidence() {
   };
 }
 
+async function collectQuickXmlUpstreamEvidence(risks) {
+  const quickXmlRisks = risks.filter(
+    (risk) => risk.package === "quick-xml" && risk.kind === "vulnerability" && risk.advisoryId === "RUSTSEC-2026-0194",
+  );
+  const uniqueRisks = [...new Map(quickXmlRisks.map((risk) => [`${risk.scopeId}:${risk.version}`, risk])).values()];
+  const probes = await Promise.all(
+    uniqueRisks.map(async (risk) => {
+      const scope = cargoScopes.find((item) => item.id === risk.scopeId);
+      if (!scope || !risk.version) {
+        return {
+          scopeId: risk.scopeId,
+          version: risk.version,
+          command: null,
+          ok: false,
+          expectedFailure: false,
+          rejectsCurrentRequirement: false,
+          stdoutTail: "",
+          stderrTail: "missing cargo scope or quick-xml version",
+        };
+      }
+      const args = [
+        "update",
+        "--manifest-path",
+        scope.manifestPath,
+        "-p",
+        `quick-xml@${risk.version}`,
+        "--precise",
+        "0.41.0",
+        "--dry-run",
+      ];
+      const result = await run(cargo, args);
+      const combinedOutput = `${result.stdout}\n${result.stderr}`;
+      return {
+        scopeId: scope.id,
+        version: risk.version,
+        command: commandLabel(cargo, args),
+        ok: result.ok,
+        expectedFailure: result.ok === false,
+        rejectsCurrentRequirement:
+          result.ok === false &&
+          /failed to select a version/i.test(combinedOutput) &&
+          /quick-xml = "\^0\.(37|38|39)/.test(combinedOutput) &&
+          /candidate versions found which didn't match: 0\.41\.0/.test(combinedOutput),
+        stdoutTail: result.stdout.slice(-2000),
+        stderrTail: result.stderr.slice(-4000),
+      };
+    }),
+  );
+  return {
+    key: "tauri-quick-xml-constraint",
+    verdict:
+      probes.length > 0 &&
+      probes.every((probe) => probe.expectedFailure === true && probe.rejectsCurrentRequirement === true)
+        ? "upstream-bound"
+        : "unknown",
+    patchedVersion: "0.41.0",
+    advisoryId: "RUSTSEC-2026-0194",
+    probes,
+  };
+}
+
 function parseJson(text) {
   try {
     return text?.trim() ? JSON.parse(text) : null;
@@ -504,8 +565,23 @@ function baseClassification(risk) {
   return null;
 }
 
-function releasePathClassification(risk, tauriUrlpatternUpstreamEvidence = null) {
+function releasePathClassification(risk, tauriUrlpatternUpstreamEvidence = null, quickXmlUpstreamEvidence = null) {
   const advisory = risk.advisoryId ?? "";
+  if (risk.package === "quick-xml" && risk.kind === "vulnerability" && advisory === "RUSTSEC-2026-0194") {
+    const upstreamBound = quickXmlUpstreamEvidence?.verdict === "upstream-bound";
+    return {
+      status: "classified",
+      gateDecision: upstreamBound ? "upstream-bound-blocker" : "release-blocker",
+      ownerDecision: upstreamBound
+        ? "Tauri's current plist and Windows notification transitives constrain quick-xml to 0.37/0.38/0.39; Cargo rejects the patched 0.41.0 under those upstream requirements."
+        : "quick-xml carries a RustSec vulnerability and the upstream-constraint probe did not prove a Cargo-incompatible patched version.",
+      replacementPlan:
+        "Move when Tauri/plist/tauri-winrt-notification accept quick-xml >=0.41.0, or remove/replace the affected Tauri notification/plist paths.",
+      evidenceKey: "tauri-quick-xml-constraint",
+      upstreamBound,
+      allowedUntil: null,
+    };
+  }
   if (risk.package === "git2" && risk.kind === "unsound") {
     return {
       status: "classified",
@@ -605,12 +681,21 @@ function releasePathClassification(risk, tauriUrlpatternUpstreamEvidence = null)
       allowedUntil: null,
     };
   }
+  if (risk.kind === "vulnerability") {
+    return {
+      status: "classified",
+      gateDecision: "release-blocker",
+      ownerDecision: "Known RustSec vulnerability finding.",
+      replacementPlan: "Upgrade, remove, or formally patch before release.",
+      allowedUntil: null,
+    };
+  }
   return null;
 }
 
-function classifyRisk(risk, tauriUrlpatternUpstreamEvidence = null) {
+function classifyRisk(risk, tauriUrlpatternUpstreamEvidence = null, quickXmlUpstreamEvidence = null) {
   const base = baseClassification(risk);
-  const classification = base ?? releasePathClassification(risk, tauriUrlpatternUpstreamEvidence);
+  const classification = base ?? releasePathClassification(risk, tauriUrlpatternUpstreamEvidence, quickXmlUpstreamEvidence);
   const classified = {
     ...risk,
     classification: classification ?? {
@@ -689,6 +774,7 @@ async function collectCargoScope(scope) {
     scope,
     audit: {
       ok: auditResult.ok && Boolean(auditJson),
+      parsed: Boolean(auditJson),
       exitCode: auditResult.exitCode,
       stderrTail: auditResult.stderr.slice(-2000),
       database: auditJson?.database ?? null,
@@ -739,18 +825,13 @@ async function main() {
         platform: "cargo-audit-vulnerability",
         dependencyPath: [],
       },
-      classification: {
-        status: "classified",
-        gateDecision: "release-blocker",
-        ownerDecision: "Known RustSec vulnerability finding.",
-        replacementPlan: "Upgrade, remove, or formally patch before release.",
-        allowedUntil: null,
-      },
     })),
   );
+  const quickXmlUpstreamEvidence = await collectQuickXmlUpstreamEvidence(vulnerabilityRisks);
   const classifiedRisks = dedupeRisks([
-    ...cargoResults.flatMap((result) => result.risks).map((risk) => classifyRisk(risk, tauriUrlpatternUpstreamEvidence)),
-    ...vulnerabilityRisks,
+    ...[...cargoResults.flatMap((result) => result.risks), ...vulnerabilityRisks].map((risk) =>
+      classifyRisk(risk, tauriUrlpatternUpstreamEvidence, quickXmlUpstreamEvidence),
+    ),
   ]);
   const npmRisk =
     npmKnownVulnerabilities == null || npmKnownVulnerabilities > 0
@@ -790,22 +871,29 @@ async function main() {
     upstreamBoundBlockers.length === 0
       ? "pass"
       : "fail";
-  const upstreamEvidenceComplete =
-    tauriUrlpatternUpstreamEvidence?.verdict === "upstream-bound" &&
-    tauriUrlpatternUpstreamEvidence?.dryRuns?.urlpatternLatest?.every(
-      (probe) => probe?.expectedFailure === true && probe?.rejectsCurrentRequirement === true,
-    ) === true &&
-    upstreamBoundBlockers.every(
-      (risk) =>
-        risk.classification?.upstreamBound === true &&
-        risk.classification?.evidenceKey === tauriUrlpatternUpstreamEvidence?.key,
-    );
+  const upstreamEvidenceReadyByKey = {
+    [tauriUrlpatternUpstreamEvidence?.key]:
+      tauriUrlpatternUpstreamEvidence?.verdict === "upstream-bound" &&
+      tauriUrlpatternUpstreamEvidence?.dryRuns?.urlpatternLatest?.every(
+        (probe) => probe?.expectedFailure === true && probe?.rejectsCurrentRequirement === true,
+      ) === true,
+    [quickXmlUpstreamEvidence?.key]:
+      quickXmlUpstreamEvidence?.verdict === "upstream-bound" &&
+      quickXmlUpstreamEvidence?.probes?.every(
+        (probe) => probe?.expectedFailure === true && probe?.rejectsCurrentRequirement === true,
+      ) === true,
+  };
+  const upstreamEvidenceComplete = upstreamBoundBlockers.every(
+    (risk) =>
+      risk.classification?.upstreamBound === true &&
+      upstreamEvidenceReadyByKey[risk.classification?.evidenceKey] === true,
+  );
   const classificationGate = {
     mode: allowUpstreamBound ? "allow-upstream-bound" : "strict-release",
     ok:
       npmResult.ok &&
       npmKnownVulnerabilities === 0 &&
-      cargoResults.every((result) => result.audit.ok && result.metadata.ok) &&
+      cargoResults.every((result) => result.audit.parsed === true && result.metadata.ok) &&
       unclassified.length === 0 &&
       releaseBlockers.length === 0 &&
       (upstreamBoundBlockers.length === 0 || (allowUpstreamBound && upstreamEvidenceComplete)),
@@ -822,10 +910,11 @@ async function main() {
       target: windowsTarget,
       releaseBar:
         "No unclassified, implementation-fixable, or upstream-bound unsound, unmaintained, deprecated, provenance-unknown, or vulnerability risk may remain in release-critical paths.",
-      packageJsonNotWired: true,
+      packageJsonWired: true,
     },
     upstreamEvidence: {
       tauriUrlpatternConstraint: tauriUrlpatternUpstreamEvidence,
+      quickXmlConstraint: quickXmlUpstreamEvidence,
     },
     npm: {
       ok: npmResult.ok && npmKnownVulnerabilities === 0,

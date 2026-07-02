@@ -729,9 +729,16 @@ const chunkedOscLiveEnvironmentBlockedReason =
   Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) && chunkedOscLiveEnvironmentBlocked.errors.length > 0
     ? chunkedOscLiveEnvironmentBlocked.errors.map((error) => String(error)).join("; ")
     : "WebView2/CDP live proof environment is unavailable";
-const nativeHwndPasteLiveFresh =
+const nativeHwndPasteLiveSourceFresh =
+  mtimeMs(nativeHwndPasteLivePath) + 5_000 >=
+  Math.max(
+    mtimeMs(join(ROOT, "scripts", "verify-native-hwnd-paste-live.mjs")),
+    mtimeMs(join(ROOT, "scripts", "verify-native-terminal-input-host.mjs")),
+    mtimeMs(join(ROOT, "src-tauri", "src", "term", "native_input.rs")),
+    mtimeMs(join(ROOT, "src-tauri", "src", "ipc", "commands.rs")),
+  );
+const nativeHwndPasteLiveCoreChecksPass =
   nativeHwndPasteLive?.ok === true &&
-  nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
   nativeHwndPasteLive?.checks?.wmPasteSentToNativeHwnd === true &&
   nativeHwndPasteLive?.checks?.singleLineLfNormalizedAndExecuted === true &&
   nativeHwndPasteLive?.checks?.destructivePasteBlockedBeforePty === true &&
@@ -739,14 +746,18 @@ const nativeHwndPasteLiveFresh =
   nativeHwndPasteLive?.checks?.guardEventCountAdvanced === true &&
   Array.isArray(nativeHwndPasteLive?.cases) &&
   nativeHwndPasteLive.cases.length >= 3 &&
-  nativeHwndPasteLive.cases.every((item) => item?.ok === true && item?.path === "native-input-hwnd-wm-paste") &&
-  mtimeMs(nativeHwndPasteLivePath) + 5_000 >=
-    Math.max(
-      mtimeMs(join(ROOT, "scripts", "verify-native-hwnd-paste-live.mjs")),
-      mtimeMs(join(ROOT, "scripts", "verify-native-terminal-input-host.mjs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "term", "native_input.rs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "ipc", "commands.rs")),
-    );
+  nativeHwndPasteLive.cases.every((item) => item?.ok === true && item?.path === "native-input-hwnd-wm-paste");
+const nativeHwndPasteLiveStrictFresh =
+  nativeHwndPasteLiveCoreChecksPass &&
+  nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
+  nativeHwndPasteLive?.degraded !== true &&
+  nativeHwndPasteLiveSourceFresh;
+const nativeHwndPasteLiveDegradedFresh =
+  nativeHwndPasteLiveCoreChecksPass &&
+  nativeHwndPasteLive?.status === "pass-degraded-no-cdp" &&
+  nativeHwndPasteLive?.degraded === true &&
+  nativeHwndPasteLiveSourceFresh;
+const nativeHwndPasteLiveFresh = nativeHwndPasteLiveStrictFresh;
 const terminalCoreSignals = [
   !hasXtermDependency,
   cargoTomlSource.includes("alacritty_terminal"),
@@ -815,7 +826,13 @@ const terminalCoreBoundaryBlockers = [
           : "chunked OSC inline image live proof is missing or stale",
       ]
     : []),
-  ...(!nativeHwndPasteLiveFresh ? ["native HWND paste live proof is missing or stale"] : []),
+  ...(!nativeHwndPasteLiveFresh
+    ? [
+        nativeHwndPasteLiveDegradedFresh
+          ? "native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof is not full release credit"
+          : "native HWND paste live proof is missing or stale",
+      ]
+    : []),
   ...(Array.isArray(rightRailSuite?.checks) && rightRailSuite.checks.some((check) => check.status === "skipped")
     ? ["native WebView2 terminal/rail CDP evidence is incomplete"]
     : []),
@@ -4531,6 +4548,7 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("nativeHwndPasteLivePath") &&
   finalGoalAuditScriptSource.includes("nativeHwndPasteLiveChecks") &&
   finalGoalAuditScriptSource.includes("pass-current-native-hwnd-paste-contract") &&
+  finalGoalAuditScriptSource.includes("pass-degraded-no-cdp") &&
   finalGoalAuditScriptSource.includes("scripts/verify-native-hwnd-paste-live.mjs") &&
   finalGoalAuditScriptSource.includes("docs/specs/README.md") &&
   finalGoalAuditScriptSource.includes("docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
@@ -4637,6 +4655,7 @@ const finalGoalAuditSourcePass =
   finalGoalSafeVerifierSource.includes("nativeHwndPasteLiveVerdict") &&
   finalGoalSafeVerifierSource.includes("native-hwnd-paste-live.json") &&
   finalGoalSafeVerifierSource.includes("pass-current-native-hwnd-paste-contract") &&
+  finalGoalSafeVerifierSource.includes("pass-degraded-no-cdp") &&
   finalGoalSafeVerifierSource.includes("nativeHwndPasteLivePassed") &&
   finalGoalSafeVerifierSource.includes("releaseHygieneContractVerdict") &&
   finalGoalSafeVerifierSource.includes("releaseHygieneClean") &&
@@ -4651,6 +4670,7 @@ const finalGoalAuditSourcePass =
   releaseHygieneContractSource.includes("markerHits") &&
   packageJsonSource.includes('"verify:terminal:chunked-osc-live"') &&
   packageJsonSource.includes('"verify:terminal:native-hwnd-paste"') &&
+  packageJsonSource.includes('"verify:stack-risk"') &&
   packageJsonSource.includes('"verify:goal:completion-matrix"') &&
   goalCompletionMatrixSource.includes("goal-completion-matrix.json") &&
   goalCompletionMatrixSource.includes("OBJECTIVE") &&
@@ -4673,6 +4693,8 @@ const finalGoalAuditSourcePass =
   nativeHwndPasteLiveSource.includes("native-hwnd-paste-live.json") &&
   nativeHwndPasteLiveSource.includes("WM_PASTE") &&
   nativeHwndPasteLiveSource.includes("pass-current-native-hwnd-paste-contract") &&
+  nativeHwndPasteLiveSource.includes("pass-degraded-no-cdp") &&
+  nativeHwndPasteLiveSource.includes("degraded") &&
   nativeHwndPasteLiveSource.includes("destructivePasteBlockedBeforePty") &&
   nativeHwndPasteLiveSource.includes("multilinePasteBlockedBeforePty") &&
   finalGoalSafeVerifierSource.includes("runPnpmStep") &&
@@ -5050,4 +5072,9 @@ const report = {
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
+if (nativeHwndPasteLiveDegradedFresh) {
+  console.warn(
+    "native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof did not receive full release credit.",
+  );
+}
 console.log(JSON.stringify(report, null, 2));

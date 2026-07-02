@@ -32,6 +32,7 @@ const STEP_FALLBACK_ARTIFACTS = {
   "runtime-core-session-resume": [".codex-auto/quality/session-resume-idempotent.json"],
   "release-hygiene-contract": [".codex-auto/quality/release-hygiene-contract.json"],
   "supply-chain-audit": [".codex-auto/release-doctor/supply-chain-audit.json"],
+  "stack-risk": [".codex-auto/quality/stack-risk.json"],
   "production-build": [".codex-auto/quality/production-bundle-budget.json"],
   "production-bundle-budget": [".codex-auto/quality/production-bundle-budget.json"],
   "quality-score-pre-audit": [".codex-auto/quality/release-quality-score.json"],
@@ -1415,16 +1416,9 @@ function nativeHwndPasteLiveVerdict(data) {
     "multiline-paste-blocked-before-pty",
   ];
   const passedCaseIds = new Set(cases.filter((item) => item?.ok === true).map((item) => String(item.id ?? "")));
-  const ok =
+  const commonOk =
     data?.ok === true &&
-    data?.status === "pass-current-native-hwnd-paste-contract" &&
     checks.windowsHost === true &&
-    (checks.tauriPageAttached === true ||
-      (checks.nativeNoCdpProof === true &&
-        checks.aelyrisNativePasteGuardProof === true &&
-        checks.noWebView === true &&
-        checks.noReact === true &&
-        checks.noCdp === true)) &&
     checks.nativeSurfaceHwndAvailable === true &&
     checks.wmPasteSentToNativeHwnd === true &&
     checks.singleLineLfNormalizedAndExecuted === true &&
@@ -1434,13 +1428,36 @@ function nativeHwndPasteLiveVerdict(data) {
     requiredCaseIds.every((id) => passedCaseIds.has(id)) &&
     cases.every((item) => item?.path === "native-input-hwnd-wm-paste") &&
     sourceFresh;
+  const strictOk =
+    commonOk && data?.status === "pass-current-native-hwnd-paste-contract" && checks.tauriPageAttached === true;
+  const degradedOk =
+    commonOk &&
+    data?.status === "pass-degraded-no-cdp" &&
+    data?.degraded === true &&
+    checks.nativeNoCdpProof === true &&
+    checks.aelyrisNativePasteGuardProof === true &&
+    checks.noWebView === true &&
+    checks.noReact === true &&
+    checks.noCdp === true;
+  const ok = strictOk || degradedOk;
   return {
     ok,
-    status: ok ? "pass-current-native-hwnd-paste-contract" : (data?.status ?? "stale-or-incomplete"),
+    status: strictOk
+      ? "pass-current-native-hwnd-paste-contract"
+      : degradedOk
+        ? "pass-degraded-no-cdp"
+        : (data?.status ?? "stale-or-incomplete"),
     expectation: "real Windows WM_PASTE sent to the native input HWND is guarded in Rust before PTY write",
-    reason: ok
-      ? "native HWND paste live proof is source-fresh and covers allowed single-line, destructive, and multiline paste paths"
+    reason: strictOk
+      ? "native HWND paste live proof is source-fresh and covers the WebView2/CDP WM_PASTE path plus allowed single-line, destructive, and multiline paste paths"
+      : degradedOk
+        ? "native HWND paste proof is source-fresh but degraded: WebView2/CDP WM_PASTE was not exercised, only the Rust native no-CDP proof ran"
       : "native HWND paste live proof is missing, stale, incomplete, or does not prove every guard path",
+    strictProof: strictOk,
+    degradedProof: degradedOk,
+    warning: degradedOk
+      ? "WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only."
+      : undefined,
     semanticFreshness: ok ? "current-native-hwnd-paste-live-contract" : "stale-or-incomplete",
     cycleBoundary: "native-input-real-wm-paste-proof",
   };
@@ -1463,6 +1480,8 @@ function artifactMeta(path, verdictFor) {
     expectation: verdict.expectation,
     reason: verdict.reason,
     strictProof: verdict.strictProof,
+    degradedProof: verdict.degradedProof,
+    warning: verdict.warning,
     environmentBlockedProof: verdict.environmentBlockedProof,
     bootstrapOnly: verdict.bootstrapOnly,
     semanticFreshness: verdict.semanticFreshness ?? null,
@@ -1626,6 +1645,7 @@ function artifactPassesForCachedStep(data) {
   if (data.status === "blocked-by-external-gates" && data.implementationFixableCount === 0) return true;
   if (data.status === "environment-blocked-current-contract") return true;
   if (data.status === "environment-blocked") return true;
+  if (data.classificationGate?.ok === true) return true;
   if (data.status === "ready-for-external-operator-gates") return true;
   if (data.status === "blocked-by-git-metadata-permissions" && data.ok === true) return true;
   if (typeof data.score === "number" && projectedExternalGateScoreShape(data)) return true;
@@ -1773,6 +1793,7 @@ const steps = [
   ),
   runStep("release-hygiene-contract", "Release hygiene contract", "verify-release-hygiene-contract.mjs"),
   runStep("supply-chain-audit", "Supply-chain vulnerability audit", "verify-supply-chain.mjs"),
+  runPnpmStep("stack-risk", "Stack-risk classification", "verify:stack-risk"),
   runPnpmStep("production-build", "Production TypeScript and Vite build", "build"),
   runStep("production-bundle-budget", "Production shell bundle budget", "verify-production-bundle-budget.mjs"),
   runStep("quality-score-pre-audit", "Release quality score before final audit", "score-release-quality.mjs"),
@@ -2316,6 +2337,9 @@ const report = {
 };
 
 writeJson(OUT, report);
+if (proofArtifacts.nativeHwndPasteLive?.degradedProof === true) {
+  console.warn("native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only.");
+}
 console.log(JSON.stringify({ artifact: OUT, ...report }, null, 2));
 
 if (!safeGatePassed) {

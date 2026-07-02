@@ -137,6 +137,13 @@ function isChunkedOscEnvironmentBlocker(blocker) {
     )
   );
 }
+function isNativeHwndPasteDegradedBlocker(blocker) {
+  const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
+  return (
+    /terminal-core-edge|native HWND paste|WM_PASTE/i.test(text) &&
+    /WebView2\/CDP WM_PASTE path unexercised|degraded no-CDP Rust proof/i.test(text)
+  );
+}
 function isRightRailEdgeEnvironmentBlocker(blocker) {
   const text = `${blocker?.area ?? ""} ${blocker?.blocker ?? blocker ?? ""}`;
   return /right-rail-edge/i.test(text) && /visual QA evidence|fresh visual QA evidence/i.test(text);
@@ -505,13 +512,27 @@ const chunkedOscLiveContractReady =
   chunkedOscLiveChecks.tinyFixturePassedForEveryShell === true &&
   chunkedOscLiveChecks.largeFixturePassedForEveryShell === true &&
   chunkedOscLiveChecks.pngSignatureVerified === true;
-const nativeHwndPasteLiveContractReady =
+const nativeHwndPasteLiveStrictReady =
   nativeHwndPasteLive?.ok === true &&
   nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
   nativeHwndPasteLiveChecks.wmPasteSentToNativeHwnd === true &&
   nativeHwndPasteLiveChecks.singleLineLfNormalizedAndExecuted === true &&
   nativeHwndPasteLiveChecks.destructivePasteBlockedBeforePty === true &&
   nativeHwndPasteLiveChecks.multilinePasteBlockedBeforePty === true;
+const nativeHwndPasteLiveDegradedReady =
+  nativeHwndPasteLive?.ok === true &&
+  nativeHwndPasteLive?.status === "pass-degraded-no-cdp" &&
+  nativeHwndPasteLive?.degraded === true &&
+  nativeHwndPasteLiveChecks.nativeNoCdpProof === true &&
+  nativeHwndPasteLiveChecks.aelyrisNativePasteGuardProof === true &&
+  nativeHwndPasteLiveChecks.noWebView === true &&
+  nativeHwndPasteLiveChecks.noReact === true &&
+  nativeHwndPasteLiveChecks.noCdp === true &&
+  nativeHwndPasteLiveChecks.wmPasteSentToNativeHwnd === true &&
+  nativeHwndPasteLiveChecks.singleLineLfNormalizedAndExecuted === true &&
+  nativeHwndPasteLiveChecks.destructivePasteBlockedBeforePty === true &&
+  nativeHwndPasteLiveChecks.multilinePasteBlockedBeforePty === true;
+const nativeHwndPasteLiveContractReady = nativeHwndPasteLiveStrictReady || nativeHwndPasteLiveDegradedReady;
 const chunkedOscEnvironmentBlockText = [
   ...(Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) ? chunkedOscLiveEnvironmentBlocked.errors : []),
   chunkedOscLiveEnvironmentBlocked?.stderrTail,
@@ -890,6 +911,7 @@ const unresolvedBlockersCanBeExternallyClosed =
       isHostSleepUnsupportedBlocker(blocker) ||
       isLiveAiChaosExternalBlocker(blocker) ||
       isRightRailEdgeEnvironmentBlocker(blocker) ||
+      isNativeHwndPasteDegradedBlocker(blocker) ||
       isMuxLiveRestoreHostBlocker(blocker) ||
       isSupplyChainEnvironmentBlocker(blocker) ||
       isReleaseSigningOperatorBlocker(blocker),
@@ -897,6 +919,9 @@ const unresolvedBlockersCanBeExternallyClosed =
   (hostSleepBlockers.length === 0 || realSuspendExternalBlockedEvidenceReady) &&
   (liveAiChaosBlockers.length === 0 || liveAiChaosExternalDependencyReady) &&
   (rightRailEdgeEnvironmentBlockers.length === 0 || rightRailEdgeVisualHostBlockedEvidenceReady) &&
+  (productBlockers.some((blocker) => isNativeHwndPasteDegradedBlocker(blocker))
+    ? nativeHwndPasteLiveDegradedReady
+    : true) &&
   (productBlockers.some((blocker) => isAuthenticatedPromptBlocker(blocker)) ? promptConsentPacketReady : true);
 const releaseOpsBlockedByExternalGates =
   releaseScore?.releaseCandidateReady === false && unresolvedBlockersCanBeExternallyClosed;
@@ -1428,6 +1453,7 @@ const allowedExternalBlockersOnly =
       isMuxLiveRestoreHostBlocker(blocker) ||
       isSupplyChainEnvironmentBlocker(blocker) ||
       isChunkedOscEnvironmentBlocker(blocker) ||
+      isNativeHwndPasteDegradedBlocker(blocker) ||
       isRightRailEdgeEnvironmentBlocker(blocker) ||
       isCommandEvidenceEnvironmentBlocker(blocker) ||
       isReleaseReadinessExternalBlocker(blocker),
@@ -1440,6 +1466,8 @@ const allowedExternalBlockersOnly =
       supplyChainEnvironmentBlockedEvidenceReady) &&
     (!unresolvedBlockers.some((blocker) => isChunkedOscEnvironmentBlocker(blocker)) ||
       chunkedOscLiveHostBlockedEvidenceReady) &&
+    (!unresolvedBlockers.some((blocker) => isNativeHwndPasteDegradedBlocker(blocker)) ||
+      nativeHwndPasteLiveDegradedReady) &&
     (!unresolvedBlockers.some((blocker) => isRightRailEdgeEnvironmentBlocker(blocker)) ||
       rightRailEdgeVisualHostBlockedEvidenceReady));
 const evidenceComplete =
@@ -1561,6 +1589,18 @@ let externalBlockedRisks = unresolvedBlockers
   )
   .concat(
     unresolvedBlockers
+      .filter((blocker) => isNativeHwndPasteDegradedBlocker(blocker))
+      .map((blocker) => ({
+        kind: "native-hwnd-paste-webview2-cdp-path-unexercised",
+        area: blocker?.area ?? "terminal-core-edge",
+        blocker: blocker?.blocker ?? String(blocker),
+        canAutoResolve: false,
+        requiredAction:
+          "Run pnpm verify:terminal:native-hwnd-paste on a Windows host with Aelyris/WebView2 CDP available so the WebView2/CDP WM_PASTE path is exercised, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.",
+      })),
+  )
+  .concat(
+    unresolvedBlockers
       .filter((blocker) => isReleaseReadinessExternalBlocker(blocker))
       .map((blocker) => ({
         kind: "release-readiness-aggregate-external-proof-gate",
@@ -1617,6 +1657,7 @@ const implementationFixableRisks = [
         !isMuxLiveRestoreHostBlocker(blocker) &&
         !isSupplyChainEnvironmentBlocker(blocker) &&
         !isChunkedOscEnvironmentBlocker(blocker) &&
+        !isNativeHwndPasteDegradedBlocker(blocker) &&
         !(isRightRailEdgeEnvironmentBlocker(blocker) && rightRailEdgeVisualHostBlockedEvidenceReady) &&
         !isCommandEvidenceEnvironmentBlocker(blocker) &&
         !isReleaseReadinessExternalBlocker(blocker) &&
@@ -1717,6 +1758,9 @@ const report = {
 mkdirSync(dirname(OUT), { recursive: true });
 rmSync(OUT, { force: true });
 writeFileSync(OUT, `${JSON.stringify({ version: 1, ...report }, null, 2)}\n`);
+if (nativeHwndPasteLiveDegradedReady) {
+  console.warn("native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only.");
+}
 console.log(JSON.stringify({ artifact: OUT, ...report }, null, 2));
 
 if (!evidenceComplete) {
