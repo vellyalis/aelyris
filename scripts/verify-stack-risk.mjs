@@ -213,16 +213,29 @@ async function collectTauriUrlpatternUpstreamEvidence() {
       }),
     ),
   ]);
+  // Two independent proofs that tauri-utils' constraint rejects latest urlpattern:
+  // (a) the registry-source Cargo.toml declares urlpattern "0.3" (requires the
+  //     crate source to be extracted in the local CARGO_HOME cache — true on dev
+  //     machines, NOT on fresh CI runners), or
+  // (b) every `cargo update -p urlpattern --precise <latest> --dry-run` probe
+  //     fails with Cargo's own "didn't match" rejection (works anywhere with
+  //     index access, including CI). Either proof is sufficient; without this,
+  //     CI misclassified the unic-* findings as fixable release blockers.
+  const registryTomlProvesConstraint =
+    urlpatternRequirement === "0.3" && latestUrlpatternAcceptedByTauriUtils === false;
+  const dryRunProvesConstraint =
+    urlpatternLatestDryRuns.length > 0 &&
+    urlpatternLatestDryRuns.every((probe) => probe.rejectsCurrentRequirement === true);
   return {
     key: "tauri-utils-urlpattern-constraint",
     verdict:
-      tauri.ok &&
-      tauriUtils.ok &&
-      urlpattern.ok &&
-      urlpatternRequirement === "0.3" &&
-      latestUrlpatternAcceptedByTauriUtils === false
+      tauri.ok && tauriUtils.ok && urlpattern.ok && (registryTomlProvesConstraint || dryRunProvesConstraint)
         ? "upstream-bound"
         : "needs-review",
+    verdictBasis: {
+      registryTomlProvesConstraint,
+      dryRunProvesConstraint,
+    },
     commands: {
       latestTauri: tauri.command,
       latestTauriUtils: tauriUtils.command,
@@ -966,6 +979,14 @@ async function main() {
         .join(",")}`,
     );
   }
+  console.log(
+    `[stack-risk] urlpatternEvidence verdict=${tauriUrlpatternUpstreamEvidence.verdict} basis=${JSON.stringify(
+      tauriUrlpatternUpstreamEvidence.verdictBasis,
+    )} cargoInfo tauri=${tauriUrlpatternUpstreamEvidence.latest?.tauri ?? "fail"} tauriUtils=${
+      tauriUrlpatternUpstreamEvidence.latest?.tauriUtils ?? "fail"
+    } urlpattern=${tauriUrlpatternUpstreamEvidence.latest?.urlpattern ?? "fail"}`,
+  );
+  console.log(`[stack-risk] quickXmlEvidence verdict=${quickXmlUpstreamEvidence.verdict}`);
   console.log(`[stack-risk] releaseBlockers=${releaseBlockers.length}`);
   console.log(`[stack-risk] upstreamBoundBlockers=${upstreamBoundBlockers.length}`);
   console.log(`[stack-risk] unclassified=${unclassified.length}`);
