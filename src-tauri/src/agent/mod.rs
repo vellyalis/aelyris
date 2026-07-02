@@ -7,7 +7,6 @@ pub mod router;
 pub mod session;
 pub mod session_lifecycle;
 pub mod status;
-pub mod watchdog;
 
 pub use claude::*;
 pub use interactive::{

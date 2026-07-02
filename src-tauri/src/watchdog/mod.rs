@@ -1,11 +1,9 @@
 pub mod auto_repair;
 pub mod engine;
-mod monitor;
 pub mod pane_watcher;
 mod rules;
 
 pub use auto_repair::{ErrorContext, RepairJobInfo, RepairNotification, RepairPhase};
-pub use monitor::SessionMonitor;
 pub use rules::{AutoApproveRule, AutoRepairConfig, WatchdogRules};
 
 use std::path::PathBuf;

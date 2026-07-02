@@ -3395,7 +3395,7 @@ pub fn start_agent(
                             }
                             log_ring.push_entry(
                                 effect.log_level.unwrap_or("INFO"),
-                                "aelyris_lib::agent::watchdog",
+                                "aelyris_lib::ipc::commands",
                                 format!("watchdog {}: {}", payload.decision, payload.tool),
                                 fields,
                             );
