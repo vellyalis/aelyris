@@ -29,6 +29,10 @@ function getRightRailAdvisorSource(): string {
   return readFileSync(join(process.cwd(), "src/shared/lib/rightRailAdvisor.ts"), "utf8");
 }
 
+function getRightRailModelSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailModel.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getTerminalNotificationsSource(): string {
   return readFileSync(join(process.cwd(), "src/shared/hooks/useTerminalNotifications.ts"), "utf8");
 }
@@ -1540,25 +1544,26 @@ describe("Release evidence gates", () => {
 describe("App right rail composition", () => {
   it("keeps the Aelyris mode rail visible and routed to the inspector", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const verifier = readFileSync(join(process.cwd(), "scripts/verify-mode-shell-refresh-contract.mjs"), "utf8");
 
-    expect(src).toContain("type ProductModeId");
-    expect(src).toContain("const PRODUCT_MODE_RAIL");
-    expect(src).toContain("const PRODUCT_MODE_ROUTES");
-    expect(src).toContain("const PRODUCT_MODE_INSPECTOR_SUMMARY");
-    expect(src).toContain("function formatInspectorProof");
-    expect(src).toContain('id: "terminal"');
-    expect(src).toContain('id: "agents"');
-    expect(src).toContain('id: "workspace"');
-    expect(src).toContain('id: "review"');
-    expect(src).toContain('id: "git"');
-    expect(src).toContain('id: "context"');
-    expect(src).toContain('id: "history"');
-    expect(src).toContain('id: "settings"');
-    expect(src).toContain('shortcut: "Alt+1"');
-    expect(src).toContain('shortcut: "Alt+8"');
+    expect(rightRailModelSrc).toContain("type ProductModeId");
+    expect(rightRailModelSrc).toContain("const PRODUCT_MODE_RAIL");
+    expect(rightRailModelSrc).toContain("const PRODUCT_MODE_ROUTES");
+    expect(rightRailModelSrc).toContain("const PRODUCT_MODE_INSPECTOR_SUMMARY");
+    expect(rightRailModelSrc).toContain("function formatInspectorProof");
+    expect(rightRailModelSrc).toContain('id: "terminal"');
+    expect(rightRailModelSrc).toContain('id: "agents"');
+    expect(rightRailModelSrc).toContain('id: "workspace"');
+    expect(rightRailModelSrc).toContain('id: "review"');
+    expect(rightRailModelSrc).toContain('id: "git"');
+    expect(rightRailModelSrc).toContain('id: "context"');
+    expect(rightRailModelSrc).toContain('id: "history"');
+    expect(rightRailModelSrc).toContain('id: "settings"');
+    expect(rightRailModelSrc).toContain('shortcut: "Alt+1"');
+    expect(rightRailModelSrc).toContain('shortcut: "Alt+8"');
     expect(src).toContain("handleProductModeSelect(mode.id)");
     expect(src).toContain('className="mode-rail"');
     expect(src).toContain("data-product-mode={mode.id}");
@@ -1637,25 +1642,26 @@ describe("App right rail composition", () => {
 
   it("labels ranked actions with the command-center run-loop phase", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
     const styles = getStyles();
     const advisor = getRightRailAdvisorSource();
     const score = readFileSync(join(process.cwd(), "scripts/score-release-quality.mjs"), "utf8");
 
-    expect(src).toContain("const RIGHT_RAIL_ACTION_PHASE");
+    expect(rightRailModelSrc).toContain("const RIGHT_RAIL_ACTION_PHASE");
     expect(src).toContain("FALLBACK_TELEMETRY_EVENT");
     expect(src).toContain("recordFallbackTelemetry(detail)");
     expect(src).toContain("fallbackTelemetryEvents");
     expect(src).toContain("recentFallbackEvents: fallbackTelemetryEvents");
-    expect(src).toContain('"plan-cli-launch": "Plan"');
-    expect(src).toContain('"ready-command": "Run"');
-    expect(src).toContain('"track-run": "Observe"');
-    expect(src).toContain('"parallel-run": "Route"');
-    expect(src).toContain('"review-queue": "Review"');
-    expect(src).toContain('"handoff-context": "Preserve"');
-    expect(src).toContain('"recover-attention": "Recover"');
-    expect(src).toContain("function formatRightRailActionOwner");
-    expect(src).toContain("compactRightRailOwnerId");
-    expect(src).toContain("formatRightRailPathOwner");
+    expect(rightRailModelSrc).toContain('"plan-cli-launch": "Plan"');
+    expect(rightRailModelSrc).toContain('"ready-command": "Run"');
+    expect(rightRailModelSrc).toContain('"track-run": "Observe"');
+    expect(rightRailModelSrc).toContain('"parallel-run": "Route"');
+    expect(rightRailModelSrc).toContain('"review-queue": "Review"');
+    expect(rightRailModelSrc).toContain('"handoff-context": "Preserve"');
+    expect(rightRailModelSrc).toContain('"recover-attention": "Recover"');
+    expect(rightRailModelSrc).toContain("function formatRightRailActionOwner");
+    expect(rightRailModelSrc).toContain("compactRightRailOwnerId");
+    expect(rightRailModelSrc).toContain("formatRightRailPathOwner");
     expect(src).toContain("const actionOwnerLabel = formatRightRailActionOwner(action)");
     expect(src).toContain("data-owner-kind={action.target.kind}");
     expect(src).toContain("data-owner-label={actionOwnerLabel}");
@@ -1836,6 +1842,7 @@ describe("App right rail composition", () => {
 
   it("keeps debug logs out of the default workstation rail", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -1901,46 +1908,48 @@ describe("App right rail composition", () => {
     expect(src).toContain("isRightRailWidgetId(item.focusWidget)");
     expect(src).toContain('className="right-panel-edge-score-action"');
     expect(src).toContain("onClick={() => handleOpenRightRailEdgeScoreItem(item)}");
-    expect(src).toContain('actionLabel: pendingDecisionCount > 0 ? "Open inbox" : "Inspect inbox"');
-    expect(src).toContain('focusWidget: "decision-inbox"');
-    expect(src).toContain("interface RightRailDestinationPrompt");
-    expect(src).toContain("function RightRailDestinationPromptCard");
+    expect(rightRailModelSrc).toContain('actionLabel: pendingDecisionCount > 0 ? "Open inbox" : "Inspect inbox"');
+    expect(rightRailModelSrc).toContain('focusWidget: "decision-inbox"');
+    expect(rightRailModelSrc).toContain("interface RightRailDestinationPrompt");
+    expect(rightRailModelSrc).toContain("function RightRailDestinationPromptCard");
     expect(src).toContain("const [rightRailDestinationPrompt, setRightRailDestinationPrompt]");
     expect(src).toContain("setRightRailDestinationPrompt({");
-    expect(src).toContain("promptTitle:");
-    expect(src).toContain("promptDetail:");
+    expect(rightRailModelSrc).toContain("promptTitle:");
+    expect(rightRailModelSrc).toContain("promptDetail:");
     expect(src).toContain("appendRightRailEdgeScoreInteractionAudit");
     expect(src).toContain("appendRightRailEdgeFeedbackStaleAudit");
-    expect(src).toContain(`kind: \`right_rail.edge_score.${templatePlaceholder("stage")}\``);
-    expect(src).toContain('stage: "clicked"');
-    expect(src).toContain('stage: "destination-reached"');
-    expect(src).toContain("interface RightRailEdgeScoreFeedbackEntry");
-    expect(src).toContain("axisId: string");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_LIMIT");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS");
-    expect(src).toContain("RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS");
+    expect(rightRailModelSrc).toContain(`kind: \`right_rail.edge_score.${templatePlaceholder("stage")}\``);
+    expect(rightRailModelSrc).toContain('stage: "clicked"');
+    expect(rightRailModelSrc).toContain('"clicked" | "destination-reached"');
+    expect(rightRailModelSrc).toContain("interface RightRailEdgeScoreFeedbackEntry");
+    expect(rightRailModelSrc).toContain("axisId: string");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_LIMIT");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS");
     expect(src).toContain("createRightRailEdgeScoreFeedbackEntry");
-    expect(src).toContain("axisId: item.id");
-    expect(src).toContain("rightRailWorkspaceStorageHash");
-    expect(src).toContain("rightRailEdgeFeedbackStorageKey");
-    expect(src).toContain("sanitizeRightRailEdgeFeedbackEntry");
-    expect(src).toContain("sanitizeRightRailEdgeFeedbackHistory");
-    expect(src).toContain("isSafeRightRailEdgeFeedbackAxisId");
-    expect(src).toContain("sanitizeRightRailEdgeFeedbackAxisLabel");
-    expect(src).toContain("Legacy axis");
-    expect(src).toContain("if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null");
-    expect(src).toContain("axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel)");
-    expect(src).toContain("readRightRailEdgeFeedbackHistoryState");
-    expect(src).toContain("writeRightRailEdgeFeedbackHistoryState");
-    expect(src).toContain("readRightRailEdgeFeedbackHistoryUrl");
-    expect(src).toContain("writeRightRailEdgeFeedbackHistoryUrl");
+    expect(rightRailModelSrc).toContain("axisId: item.id");
+    expect(rightRailModelSrc).toContain("rightRailWorkspaceStorageHash");
+    expect(rightRailModelSrc).toContain("rightRailEdgeFeedbackStorageKey");
+    expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackEntry");
+    expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackHistory");
+    expect(rightRailModelSrc).toContain("isSafeRightRailEdgeFeedbackAxisId");
+    expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackAxisLabel");
+    expect(rightRailModelSrc).toContain("Legacy axis");
+    expect(rightRailModelSrc).toContain("if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null");
+    expect(rightRailModelSrc).toContain(
+      "axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel)",
+    );
+    expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryState");
+    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryState");
+    expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryUrl");
+    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryUrl");
     expect(src).toContain("clearRightRailEdgeFeedbackHistory");
-    expect(src).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID");
-    expect(src).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID");
+    expect(rightRailModelSrc).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID");
+    expect(rightRailModelSrc).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID");
     expect(src).toContain("loadRightRailEdgeFeedbackHistory");
     expect(src).toContain("saveRightRailEdgeFeedbackHistory");
     expect(src).toContain("deriveRightRailEdgeFeedbackAxisSummary");
@@ -1948,10 +1957,10 @@ describe("App right rail composition", () => {
     expect(src).toContain("formatRightRailEdgeFeedbackStaleReason");
     expect(src).toContain("deriveRightRailEdgeFeedbackStaleEntries");
     expect(src).toContain("deriveRightRailEdgeRecommendationOutcome");
-    expect(src).toContain("interface RightRailEdgeNextBestAction");
-    expect(src).toContain("interface RightRailEdgeRecommendationOutcome");
-    expect(src).toContain("interface RightRailEdgeFeedbackAxisSummary");
-    expect(src).toContain("interface RightRailEdgeFeedbackResetNotice");
+    expect(rightRailModelSrc).toContain("interface RightRailEdgeNextBestAction");
+    expect(rightRailModelSrc).toContain("interface RightRailEdgeRecommendationOutcome");
+    expect(rightRailModelSrc).toContain("interface RightRailEdgeFeedbackAxisSummary");
+    expect(rightRailModelSrc).toContain("interface RightRailEdgeFeedbackResetNotice");
     expect(src).toContain("const [rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory]");
     expect(src).toContain("const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly]");
     expect(src).toContain("const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice]");
@@ -1970,28 +1979,28 @@ describe("App right rail composition", () => {
     expect(src).toContain('detail: "Workspace guidance was reset."');
     expect(src).toContain("setRightRailEdgeFeedbackResetNotice(null)");
     expect(src).toContain("window.clearTimeout(rightRailEdgeFeedbackResetNoticeTimerRef.current)");
-    expect(src).toContain("window.localStorage.removeItem(key)");
-    expect(src).toContain("delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]");
-    expect(src).toContain("url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
+    expect(rightRailModelSrc).toContain("window.localStorage.removeItem(key)");
+    expect(rightRailModelSrc).toContain("delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]");
+    expect(rightRailModelSrc).toContain("url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
     expect(src).toContain("setRightRailEdgeFeedbackHistory(loadRightRailEdgeFeedbackHistory(projectPath))");
     expect(src).toContain("saveRightRailEdgeFeedbackHistory(projectPath, rightRailEdgeFeedbackHistory)");
     expect(src).toContain("rightRailEdgeFeedbackSkipSaveKeyRef.current === key");
-    expect(src).toContain(
+    expect(rightRailModelSrc).toContain(
       "({ id, axisId, axisLabel, actionLabel, targetWidget, score, grade, previousScore, delta, trend, createdAt }) => ({",
     );
-    expect(src).toContain("axisId,");
-    expect(src).toContain("writeRightRailEdgeFeedbackHistoryState(key, persisted)");
-    expect(src).toContain("writeRightRailEdgeFeedbackHistoryUrl(key, persisted)");
-    expect(src).toContain("const stateHistory = readRightRailEdgeFeedbackHistoryState(key)");
-    expect(src).toContain("readRightRailEdgeFeedbackHistoryUrl(key)");
-    expect(src).toContain("if (persisted.length === 0)");
-    expect(src).toContain("JSON.stringify(persisted)");
+    expect(rightRailModelSrc).toContain("axisId,");
+    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryState(key, persisted)");
+    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryUrl(key, persisted)");
+    expect(rightRailModelSrc).toContain("const stateHistory = readRightRailEdgeFeedbackHistoryState(key)");
+    expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryUrl(key)");
+    expect(rightRailModelSrc).toContain("if (persisted.length === 0)");
+    expect(rightRailModelSrc).toContain("JSON.stringify(persisted)");
     expect(src).not.toContain("JSON.stringify(history)");
     expect(src).toContain(
       "const rightRailEdgeFeedbackAxisSummary = deriveRightRailEdgeFeedbackAxisSummary(rightRailEdgeFeedbackHistory)",
     );
-    expect(src).toContain("interface RightRailEdgeFeedbackStaleGroup");
-    expect(src).toContain("function deriveRightRailEdgeFeedbackStaleGroups(");
+    expect(rightRailModelSrc).toContain("interface RightRailEdgeFeedbackStaleGroup");
+    expect(rightRailModelSrc).toContain("function deriveRightRailEdgeFeedbackStaleGroups(");
     expect(src).toContain("const rightRailEdgeFeedbackStaleEntries = useMemo(");
     expect(src).toContain("deriveRightRailEdgeFeedbackStaleEntries(rightRailEdgeFeedbackHistory, rightRailEdgeScore)");
     expect(src).toContain("const rightRailEdgeFeedbackStaleIds = useMemo(");
@@ -2017,9 +2026,9 @@ describe("App right rail composition", () => {
     expect(src).toContain("Next best action");
     expect(src).toContain("rightRailEdgeRecommendationOutcome.status");
     expect(src).toContain("reachedAt");
-    expect(src).toContain("Destination reached");
-    expect(src).toContain("Action replayed");
-    expect(src).toContain("Recommendation changed");
+    expect(rightRailModelSrc).toContain("Destination reached");
+    expect(rightRailModelSrc).toContain("Action replayed");
+    expect(rightRailModelSrc).toContain("Recommendation changed");
     expect(src).toContain('rightRailEdgeNextBestAction.reason === "repeated-axis" ? "Repeated axis" : "Weakest axis"');
     expect(src).toContain('className="right-panel-edge-feedback"');
     expect(src).toContain('aria-label="Recent Edge score feedback"');
@@ -2063,7 +2072,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("(item) => item.id === entry.axisId || item.label === entry.axisLabel");
     expect(src).toContain("const staleReason = replayItem ? null : formatRightRailEdgeFeedbackStaleReason(entry)");
     expect(src).toContain('className="right-panel-edge-feedback-stale"');
-    expect(src).toContain("Stale axis:");
+    expect(rightRailModelSrc).toContain("Stale axis:");
     expect(src).toContain("if (replayItem) handleOpenRightRailEdgeScoreItem(replayItem)");
     expect(src).toContain("disabled={!replayItem}");
     expect(src).toContain(
@@ -2074,15 +2083,15 @@ describe("App right rail composition", () => {
     );
     expect(src).toContain("rightRailProjectPathRef.current = projectPath");
     expect(src).toContain("rightRailDestinationReachedTelemetryRef");
-    expect(src).toContain('privacy: "no command text, prompt text, file path, or user input captured"');
-    expect(src).toContain("targetWidget: item.focusWidget");
-    expect(src).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
-    expect(src).toContain("if (!allowDebugUrlFallback) return []");
-    expect(src).toContain("if (shouldMirrorRightRailEdgeFeedbackHistoryUrl())");
+    expect(rightRailModelSrc).toContain('privacy: "no command text, prompt text, file path, or user input captured"');
+    expect(rightRailModelSrc).toContain("targetWidget: item.focusWidget");
+    expect(rightRailModelSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
+    expect(rightRailModelSrc).toContain("if (!allowDebugUrlFallback) return []");
+    expect(rightRailModelSrc).toContain("if (shouldMirrorRightRailEdgeFeedbackHistoryUrl())");
     expect(src).not.toContain("promptDetail: item.promptDetail,");
     expect(src).not.toContain("promptText");
-    const staleAudit = src.match(
-      /async function appendRightRailEdgeFeedbackStaleAudit[\s\S]*?\n}\n\nfunction formatRightRailRecoveryDetail/,
+    const staleAudit = rightRailModelSrc.match(
+      /async function appendRightRailEdgeFeedbackStaleAudit[\s\S]*?\n}\n\nexport function formatRightRailRecoveryDetail/,
     );
     expect(staleAudit).not.toBeNull();
     const staleAuditBody = staleAudit?.[0] ?? "";
@@ -2098,19 +2107,21 @@ describe("App right rail composition", () => {
     expect(staleAuditBody).not.toContain("promptDetail");
     expect(staleAuditBody).not.toContain("filePath");
     expect(src).toContain("const renderRightRailDestinationPrompt = (widget: string)");
-    expect(src).toContain('className="right-panel-destination-prompt"');
-    expect(src).toContain(`aria-label={\`${templatePlaceholder("prompt.axisLabel")} remediation prompt\`}`);
+    expect(rightRailModelSrc).toContain('className="right-panel-destination-prompt"');
+    expect(rightRailModelSrc).toContain(
+      `aria-label={\`${templatePlaceholder("prompt.axisLabel")} remediation prompt\`}`,
+    );
     expect(src).toContain('{renderRightRailDestinationPrompt("decision-inbox")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("review-queue")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("audit-timeline")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("reliability")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("live-panes")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("processes")}');
-    expect(src).toContain("Weakest:");
-    expect(src).toContain(
+    expect(rightRailModelSrc).toContain("Weakest:");
+    expect(rightRailModelSrc).toContain(
       'blockedReason: "Destructive file-system write requires explicit approval before deleting generated output."',
     );
-    expect(src).toContain('nextActor: "human"');
+    expect(rightRailModelSrc).toContain('nextActor: "human"');
     expect(src).toContain('widget="decision-inbox"');
     expect(src).toContain("<DecisionInboxPanel");
     expect(src).toContain("onOpenWorkflow={handleOpenDecisionWorkflow}");
@@ -2119,7 +2130,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("const [rightRailRouteConfirmation, setRightRailRouteConfirmation]");
     expect(src).toContain("showRightRailRouteConfirmation");
     expect(src).toContain("focusConfirmation={");
-    expect(src).toContain("right-panel-widget-focus-confirmation");
+    expect(rightRailModelSrc).toContain("right-panel-widget-focus-confirmation");
     expect(src).toContain("setSelectedAuditTraceFilter(traceId)");
     expect(src).toContain("const rightRailGraph = useMemo(");
     expect(src).toContain("buildWorkstationGraph({");
@@ -2150,12 +2161,15 @@ describe("App right rail composition", () => {
 
   it("keeps right rail tabs operable with the ARIA keyboard pattern", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
 
-    expect(src).toContain("function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null");
-    expect(src).toContain('key === "ArrowRight" || key === "ArrowDown"');
-    expect(src).toContain('key === "ArrowLeft" || key === "ArrowUp"');
-    expect(src).toContain('if (key === "Home") return RIGHT_RAIL_MODES[0]?.id ?? null');
-    expect(src).toContain('if (key === "End") return RIGHT_RAIL_MODES.at(-1)?.id ?? null');
+    expect(rightRailModelSrc).toContain(
+      "function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null",
+    );
+    expect(rightRailModelSrc).toContain('key === "ArrowRight" || key === "ArrowDown"');
+    expect(rightRailModelSrc).toContain('key === "ArrowLeft" || key === "ArrowUp"');
+    expect(rightRailModelSrc).toContain('if (key === "Home") return RIGHT_RAIL_MODES[0]?.id ?? null');
+    expect(rightRailModelSrc).toContain('if (key === "End") return RIGHT_RAIL_MODES.at(-1)?.id ?? null');
     expect(src).toContain("const handleRightRailModeKeyDown = useCallback");
     expect(src).toContain("setRightRailMode(nextMode)");
     expect(src).toContain(
@@ -2178,6 +2192,7 @@ describe("App right rail composition", () => {
 
   it("keeps right rail action results visible inside the rail instead of toast-only feedback", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
     const advisor = getRightRailAdvisorSource();
 
     expect(src).toContain(
@@ -2186,17 +2201,17 @@ describe("App right rail composition", () => {
     expect(src).toContain(
       "const [rightRailActionHistory, setRightRailActionHistory] = useState<RightRailActionResult[]>([])",
     );
-    expect(src).toContain("RIGHT_RAIL_ACTION_HISTORY_LIMIT");
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_ACTION_HISTORY_LIMIT");
     expect(src).toContain("const [rightRailGuardrailSelection, setRightRailGuardrailSelection]");
     expect(src).toContain("RIGHT_RAIL_GUARDRAIL_OPTIONS");
-    expect(src).toContain("RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY");
-    expect(src).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync"');
-    expect(src).toContain("loadRightRailGuardrailSelection");
-    expect(src).toContain("saveRightRailGuardrailSelection");
-    expect(src).toContain("saveRightRailGuardrailSelectionToNativeConfig");
-    expect(src).toContain("hydrateRightRailGuardrailSelectionFromConfig");
-    expect(src).toContain("right_rail_guardrail_profile");
-    expect(src).toContain('operation: "save_right_rail_guardrail_config"');
+    expect(rightRailModelSrc).toContain("RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY");
+    expect(rightRailModelSrc).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync"');
+    expect(rightRailModelSrc).toContain("loadRightRailGuardrailSelection");
+    expect(rightRailModelSrc).toContain("saveRightRailGuardrailSelection");
+    expect(rightRailModelSrc).toContain("saveRightRailGuardrailSelectionToNativeConfig");
+    expect(rightRailModelSrc).toContain("hydrateRightRailGuardrailSelectionFromConfig");
+    expect(rightRailModelSrc).toContain("right_rail_guardrail_profile");
+    expect(rightRailModelSrc).toContain('operation: "save_right_rail_guardrail_config"');
     expect(src).toContain('rightRailGuardrailSelection === "Auto"');
     expect(src).toContain("rightRailGuardrailProfileRef.current = rightRailGuardrailProfile");
     expect(src).toContain("allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join");
@@ -2221,20 +2236,20 @@ describe("App right rail composition", () => {
     expect(src).toContain('role="status"');
     expect(src).toContain('aria-live="polite"');
     expect(src).toContain("rightRailActionResult.detail");
-    expect(src).toContain("payloadJson: buildRightRailActionAuditPayload(action, previousMode)");
+    expect(rightRailModelSrc).toContain("payloadJson: buildRightRailActionAuditPayload(action, previousMode)");
     expect(advisor).toContain("evidence: action.execution.evidence");
     expect(advisor).toContain("target: action.target");
     expect(src).toContain(`Evidence: ${templatePlaceholder("action.execution.evidence")}`);
     expect(src).toContain("{action.target.label}");
     expect(src).toContain("action.execution.evidence");
-    expect(src).toContain("Promise<AuditJournalEventRecord | null>");
+    expect(rightRailModelSrc).toContain("Promise<AuditJournalEventRecord | null>");
     expect(src).toContain("appendRightRailActionOutcomeAudit");
     expect(src).toContain("formatRightRailRecoveryDetail");
     expect(src).toContain("showRecoverableActionResult");
-    expect(src).toContain("append_right_rail_action_outcome_audit");
-    expect(src).toContain("Recovery:");
-    expect(src).toContain("auditEventId: auditRecord?.id ?? null");
-    expect(src).toContain("auditCorrelationId: auditRecord?.correlationId ?? null");
+    expect(rightRailModelSrc).toContain("append_right_rail_action_outcome_audit");
+    expect(rightRailModelSrc).toContain("Recovery:");
+    expect(rightRailModelSrc).toContain("auditEventId: auditRecord?.id ?? null");
+    expect(rightRailModelSrc).toContain("auditCorrelationId: auditRecord?.correlationId ?? null");
     expect(src).toContain("const handleOpenRightRailActionAudit = useCallback");
     expect(src).toContain("const handleOpenRightRailOutcomeSource = useCallback");
     expect(src).toContain("rightRailModeForOutcomeWidget");
@@ -2251,23 +2266,24 @@ describe("App right rail composition", () => {
 
   it("persists secondary right rail widget collapse preferences without hiding core flows", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
 
     expect(src).toContain("type RightRailWidgetId");
-    expect(src).toContain("function RightRailWidgetFrame");
-    expect(src).toContain("loadRightRailWidgetOpen");
-    expect(src).toContain("saveRightRailWidgetOpen");
-    expect(src).toContain('const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:"');
-    expect(src).toContain('const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync"');
-    expect(src).toContain("hydrateRightRailWidgetOpenFromConfig");
-    expect(src).toContain("saveRightRailWidgetOpenToNativeConfig");
-    expect(src).toContain("right_rail_widgets");
-    expect(src).toContain('operation: "save_right_rail_widget_config"');
-    expect(src).toContain("if (!forceOpen) return");
-    expect(src).toContain("saveRightRailWidgetOpen(widget, true)");
-    expect(src).toContain("right-panel-widget-frame-header");
+    expect(rightRailModelSrc).toContain("function RightRailWidgetFrame");
+    expect(rightRailModelSrc).toContain("loadRightRailWidgetOpen");
+    expect(rightRailModelSrc).toContain("saveRightRailWidgetOpen");
+    expect(rightRailModelSrc).toContain('const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:"');
+    expect(rightRailModelSrc).toContain('const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync"');
+    expect(rightRailModelSrc).toContain("hydrateRightRailWidgetOpenFromConfig");
+    expect(rightRailModelSrc).toContain("saveRightRailWidgetOpenToNativeConfig");
+    expect(rightRailModelSrc).toContain("right_rail_widgets");
+    expect(rightRailModelSrc).toContain('operation: "save_right_rail_widget_config"');
+    expect(rightRailModelSrc).toContain("if (!forceOpen) return");
+    expect(rightRailModelSrc).toContain("saveRightRailWidgetOpen(widget, true)");
+    expect(rightRailModelSrc).toContain("right-panel-widget-frame-header");
     expect(src).toContain('widget="workflow"');
     expect(src).toContain('widget="toolkit"');
     expect(src).toContain('widget="context"');
@@ -2343,21 +2359,22 @@ describe("App right rail composition", () => {
 
   it("keeps a dev-only negative path fixture for native right rail release smoke", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
 
-    expect(src).toContain('negativePath: "missing-diff" | "stale-pane" | null');
-    expect(src).toContain('params.get("negativePath") ?? params.get("rightRailNegativePath")');
-    expect(src).toContain("function createDevVisualQaNegativePathAction");
-    expect(src).toContain('label: "QA missing diff"');
-    expect(src).toContain('reason: "Negative-path fixture intentionally omits a file target."');
-    expect(src).toContain('evidence: "QA URL requested a missing diff target fixture."');
-    expect(src).toContain('auditEvent: "right_rail.qa_missing_diff.opened"');
-    expect(src).toContain('operation: "open-primary-diff"');
-    expect(src).toContain('label: "QA stale pane"');
-    expect(src).toContain('targetPaneRole: "__qa_missing_pane__"');
-    expect(src).toContain('reason: "Negative-path fixture intentionally points at a stale pane role."');
-    expect(src).toContain('evidence: "QA URL requested a stale pane target fixture."');
-    expect(src).toContain('auditEvent: "right_rail.qa_stale_pane.opened"');
-    expect(src).toContain('operation: "focus-pane"');
+    expect(rightRailModelSrc).toContain('negativePath: "missing-diff" | "stale-pane" | null');
+    expect(rightRailModelSrc).toContain('params.get("negativePath") ?? params.get("rightRailNegativePath")');
+    expect(rightRailModelSrc).toContain("function createDevVisualQaNegativePathAction");
+    expect(rightRailModelSrc).toContain('label: "QA missing diff"');
+    expect(rightRailModelSrc).toContain('reason: "Negative-path fixture intentionally omits a file target."');
+    expect(rightRailModelSrc).toContain('evidence: "QA URL requested a missing diff target fixture."');
+    expect(rightRailModelSrc).toContain('auditEvent: "right_rail.qa_missing_diff.opened"');
+    expect(rightRailModelSrc).toContain('operation: "open-primary-diff"');
+    expect(rightRailModelSrc).toContain('label: "QA stale pane"');
+    expect(rightRailModelSrc).toContain('targetPaneRole: "__qa_missing_pane__"');
+    expect(rightRailModelSrc).toContain('reason: "Negative-path fixture intentionally points at a stale pane role."');
+    expect(rightRailModelSrc).toContain('evidence: "QA URL requested a stale pane target fixture."');
+    expect(rightRailModelSrc).toContain('auditEvent: "right_rail.qa_stale_pane.opened"');
+    expect(rightRailModelSrc).toContain('operation: "focus-pane"');
     expect(src).toContain(
       "const rightRailNegativePathAction = createDevVisualQaNegativePathAction(devVisualQa.negativePath)",
     );
@@ -2377,22 +2394,23 @@ describe("App right rail composition", () => {
 describe("App visual QA bootstrap", () => {
   it("has a dev-only project view entrypoint for browser-based UI inspection", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
 
-    expect(src).toContain("function readDevVisualQaState()");
-    expect(src).toContain("function isExplicitDevVisualQaRequest()");
-    expect(src).toContain("import.meta.env.DEV");
-    expect(src).toContain('params.get("aelyrisVisualQa") === "1"');
-    expect(src).not.toContain('window.localStorage.getItem("aelyris:visualQa") === "1"');
-    expect(src).toContain('params.get("diagnostics") === "1"');
-    expect(src).toContain("railScenarioParam");
-    expect(src).toContain("usesDeprecatedStateAlias");
-    expect(src).toContain("hasUrlEdgeLoop");
+    expect(rightRailModelSrc).toContain("function readDevVisualQaState()");
+    expect(rightRailModelSrc).toContain("function isExplicitDevVisualQaRequest()");
+    expect(rightRailModelSrc).toContain("import.meta.env.DEV");
+    expect(rightRailModelSrc).toContain('params.get("aelyrisVisualQa") === "1"');
+    expect(rightRailModelSrc).not.toContain('window.localStorage.getItem("aelyris:visualQa") === "1"');
+    expect(rightRailModelSrc).toContain('params.get("diagnostics") === "1"');
+    expect(rightRailModelSrc).toContain("railScenarioParam");
+    expect(rightRailModelSrc).toContain("usesDeprecatedStateAlias");
+    expect(rightRailModelSrc).toContain("hasUrlEdgeLoop");
     expect(src).toContain("rightRailTruthNotice");
     expect(src).toContain('className="right-panel-truth-notice"');
     expect(src).toContain("Visual QA simulation");
     expect(src).toContain("runtime truth is unchanged");
-    expect(src).toContain('requestedRail === "command"');
-    expect(src).toContain('requestedRail === "review"');
+    expect(rightRailModelSrc).toContain('requestedRail === "command"');
+    expect(rightRailModelSrc).toContain('requestedRail === "review"');
     expect(src).toContain("createDevVisualQaPanes");
     expect(src).toContain("visualTerminalPaneTargets");
     expect(src).toContain("setRightRailMode(devVisualQa.railMode)");
@@ -2402,6 +2420,7 @@ describe("App visual QA bootstrap", () => {
 
   it("keeps stale URL debug state separated from runtime truth", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const script = readFileSync(join(process.cwd(), "scripts/verify-right-rail-stale-url-truth.mjs"), "utf8");
     const score = readFileSync(join(process.cwd(), "scripts/score-release-quality.mjs"), "utf8");
@@ -2411,10 +2430,10 @@ describe("App visual QA bootstrap", () => {
     expect(src).toContain("runtime truth is unchanged");
     expect(src).toContain("edgeLoop is replay evidence, not current runtime state.");
     expect(src).toContain("Use railState instead of the deprecated state alias.");
-    expect(src).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
-    expect(src).toContain("function shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
-    expect(src).toContain("url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
-    expect(src).toContain("shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
+    expect(rightRailModelSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
+    expect(rightRailModelSrc).toContain("function shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
+    expect(rightRailModelSrc).toContain("url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
+    expect(rightRailModelSrc).toContain("shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
     expect(packageJson).toContain(
       '"verify:right-rail-stale-url": "node scripts/verify-right-rail-stale-url-truth.mjs"',
     );
@@ -2445,6 +2464,7 @@ describe("App config bootstrap", () => {
 describe("App active terminal routing", () => {
   it("does not send workstation commands to the first backend terminal implicitly", () => {
     const src = getSrc();
+    const rightRailModelSrc = getRightRailModelSource();
 
     expect(src).toContain("interface ActiveTerminalTarget");
     expect(src).toContain("const activeTerminalTarget = useMemo<ActiveTerminalTarget>");
@@ -2454,7 +2474,7 @@ describe("App active terminal routing", () => {
     expect(src).toContain("const writeToActiveTerminal = useCallback");
     expect(src).toContain("No active terminal");
     expect(src).toContain("activeTerminalTarget.terminalId");
-    expect(src).toContain(`return \`${templatePlaceholder("shellLabel")} · starting\``);
+    expect(rightRailModelSrc).toContain(`return \`${templatePlaceholder("shellLabel")} · starting\``);
     expect(src).not.toContain("no active pane");
     expect(src).not.toContain('invoke<string[]>("list_terminals")');
     expect(src).not.toContain("terminals[0]");

@@ -226,17 +226,24 @@ describe("AgentInspector tab routing", () => {
   });
 
   it("keeps app session tab routing anchored on explicit workspace paths", () => {
-    const sources = import.meta.glob("../App.tsx", {
+    const appSources = import.meta.glob("../App.tsx", {
       query: "?raw",
       import: "default",
       eager: true,
     }) as Record<string, string>;
-    const src = Object.values(sources)[0] ?? "";
+    const rightRailModelSources = import.meta.glob("../features/right-rail/rightRailModel.tsx", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    const appSrc = Object.values(appSources)[0] ?? "";
+    const rightRailModelSrc = Object.values(rightRailModelSources)[0] ?? "";
 
-    expect(src).toContain("function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean");
-    expect(src).toContain("session.workspaceScope");
-    expect(src).toContain("session.worktree?.path");
-    expect(src).not.toContain("agent.prompt.includes");
+    expect(rightRailModelSrc).toContain("function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean");
+    expect(rightRailModelSrc).toContain("session.workspaceScope");
+    expect(rightRailModelSrc).toContain("session.worktree?.path");
+    expect(appSrc).toContain("sessionTabMatches(agent, t.cwd)");
+    expect(appSrc).not.toContain("agent.prompt.includes");
   });
 
   it("parallel tab still renders parallel panes", () => {

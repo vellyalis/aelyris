@@ -13,11 +13,12 @@ function read(path: string): string {
 describe("terminal font settings contract", () => {
   it("hydrates config font settings into the runtime terminal store", () => {
     const app = read("src/App.tsx");
+    const rightRailModel = read("src/features/right-rail/rightRailModel.tsx");
 
-    expect(app).toContain("terminal_font_family?: string");
-    expect(app).toContain("font_size?: number");
-    expect(app).toContain('terminal_text_clarity?: "glass" | "balanced" | "solid"');
-    expect(app).toContain("terminal_surface_opacity?: number");
+    expect(rightRailModel).toContain("terminal_font_family?: string");
+    expect(rightRailModel).toContain("font_size?: number");
+    expect(rightRailModel).toContain('terminal_text_clarity?: "glass" | "balanced" | "solid"');
+    expect(rightRailModel).toContain("terminal_surface_opacity?: number");
     expect(app).toContain("store.setTerminalAppearance({");
     expect(app).toContain("fontFamily: cfg.appearance.terminal_font_family");
     expect(app).toContain("fontSize: cfg.appearance.font_size");
