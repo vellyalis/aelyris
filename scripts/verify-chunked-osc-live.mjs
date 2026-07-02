@@ -47,6 +47,8 @@ for (const f of [FIXTURE_TINY, FIXTURE_LARGE]) {
 
 const CDP = process.env.AELYRIS_TAURI_CDP ?? "http://127.0.0.1:9222";
 const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_TAURI_PAGE_TIMEOUT_MS ?? "15000", 10);
+const SHELL_READY_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_CHUNKED_OSC_SHELL_READY_TIMEOUT_MS ?? "30000", 10);
+const IMAGE_WAIT_MS = Number.parseInt(process.env.AELYRIS_CHUNKED_OSC_IMAGE_WAIT_MS ?? "15000", 10);
 
 const browser = await chromium.connectOverCDP(CDP);
 
@@ -86,6 +88,25 @@ const call = (cmd, args) =>
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function snapshotText(snap) {
+  return (snap?.cells ?? [])
+    .map((row) => row.map((cell) => cell?.ch ?? " ").join("").trimEnd())
+    .join("\n");
+}
+
+async function waitForShellReady(id, shell) {
+  const deadline = Date.now() + SHELL_READY_TIMEOUT_MS;
+  let text = "";
+  while (Date.now() < deadline) {
+    const snap = await call("term_snapshot", { id });
+    text = snapshotText(snap);
+    if (shell === "powershell" && /PS\s+.*>\s*$/m.test(text)) return text;
+    if (shell === "gitbash" && /\n\$\s*$/m.test(text)) return text;
+    await sleep(250);
+  }
+  throw new Error(`shell did not become ready for ${shell}; sample=${text.slice(-600)}`);
+}
+
 /** Spawn a shell, run the emitter, poll for images, assert round-trip. */
 async function runCase({ label, shell, command }) {
   const tid = await call("spawn_terminal", {
@@ -96,12 +117,10 @@ async function runCase({ label, shell, command }) {
   });
   console.log(`[${label}] spawned ${shell} terminal: ${tid}`);
   try {
-    // Let the prompt settle so the emitter's output lands cleanly.
-    await sleep(800);
+    await waitForShellReady(tid, shell);
     await call("write_terminal", { id: tid, data: `${command}\r` });
 
-    // Poll up to 8 s for an images entry to surface.
-    const deadline = Date.now() + 8000;
+    const deadline = Date.now() + IMAGE_WAIT_MS;
     let snap = null;
     while (Date.now() < deadline) {
       snap = await call("term_snapshot", { id: tid });
@@ -109,7 +128,7 @@ async function runCase({ label, shell, command }) {
       await sleep(150);
     }
     if (!snap?.images?.length) {
-      const failure = "no images surfaced after 8 s";
+      const failure = `no images surfaced after ${IMAGE_WAIT_MS} ms`;
       console.error(`[${label}] FAIL — ${failure}`);
       return { label, shell, ok: false, failure };
     }
@@ -177,29 +196,37 @@ async function runCase({ label, shell, command }) {
 const psPath = resolve(REPO_ROOT, "scripts/aelyris-imgcat.ps1");
 const shPath = resolve(REPO_ROOT, "scripts/aelyris-imgcat.sh");
 
+function pathForGitBash(path) {
+  const normalized = path.replace(/\\/g, "/");
+  const match = /^([A-Za-z]):(\/.*)$/.exec(normalized);
+  if (!match) return normalized;
+  return `/${match[1].toLowerCase()}${match[2]}`;
+}
+
 const cases = [
+  // Windows ConPTY can drop a child process' first output packet when it
+  // is pure OSC control bytes. The shell-level anchor keeps the proof on
+  // the real PTY path while preventing the first BEGIN frame from being
+  // lost before the engine can parse it.
   {
     label: "powershell + 1x1",
     shell: "powershell",
-    command: `powershell -NoProfile -ExecutionPolicy Bypass -File "${psPath}" "${FIXTURE_TINY}"`,
+    command: `Write-Host "." -NoNewline; powershell -NoProfile -ExecutionPolicy Bypass -File "${psPath}" "${FIXTURE_TINY}"`,
   },
   {
     label: "powershell + 32x32",
     shell: "powershell",
-    command: `powershell -NoProfile -ExecutionPolicy Bypass -File "${psPath}" "${FIXTURE_LARGE}"`,
+    command: `Write-Host "." -NoNewline; powershell -NoProfile -ExecutionPolicy Bypass -File "${psPath}" "${FIXTURE_LARGE}"`,
   },
   {
     label: "gitbash + 1x1",
     shell: "gitbash",
-    // Convert backslashes for bash. The fixture path is already POSIX-
-    // friendly because it lives under the repo, but the absolute repo
-    // root may have backslashes when REPO_ROOT was resolved on Windows.
-    command: `bash '${shPath.replace(/\\/g, "/")}' '${FIXTURE_TINY.replace(/\\/g, "/")}'`,
+    command: `printf '.\\n'; bash '${pathForGitBash(shPath)}' '${pathForGitBash(FIXTURE_TINY)}'`,
   },
   {
     label: "gitbash + 32x32",
     shell: "gitbash",
-    command: `bash '${shPath.replace(/\\/g, "/")}' '${FIXTURE_LARGE.replace(/\\/g, "/")}'`,
+    command: `printf '.\\n'; bash '${pathForGitBash(shPath)}' '${pathForGitBash(FIXTURE_LARGE)}'`,
   },
 ];
 

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -12,6 +13,7 @@ const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const outPath = path.join(repoRoot, ".codex-auto", "quality", "stack-risk.json");
 const windowsTarget = "x86_64-pc-windows-msvc";
 const reviewBy = "2026-08-15";
+const allowUpstreamBound = process.argv.includes("--allow-upstream-bound");
 
 const cargoScopes = [
   {
@@ -55,6 +57,201 @@ async function run(command, args) {
       stderr: error.stderr ?? error.message ?? String(error),
     };
   }
+}
+
+function commandLabel(command, args) {
+  return [command, ...args].join(" ");
+}
+
+function parseCargoInfoVersion(stdout) {
+  return /^version:\s*([^\s]+)/m.exec(stdout ?? "")?.[1] ?? null;
+}
+
+function parseCargoUpdateDryRun(stdout) {
+  return (stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .map((line) => {
+      const updating = /^Updating\s+([^\s]+)\s+v([^\s]+)\s+->\s+v([^\s]+)/.exec(line);
+      if (updating) {
+        return { action: "updating", package: updating[1], from: updating[2], to: updating[3] };
+      }
+      const adding = /^Adding\s+([^\s]+)\s+v([^\s]+)/.exec(line);
+      if (adding) {
+        return { action: "adding", package: adding[1], from: null, to: adding[2] };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+async function findRegistryCargoToml(crateName, version) {
+  if (!crateName || !version) return null;
+  const cargoHome = process.env.CARGO_HOME ? path.resolve(process.env.CARGO_HOME) : path.join(homedir(), ".cargo");
+  const registrySrc = path.join(cargoHome, "registry", "src");
+  const indexDirs = await readdir(registrySrc, { withFileTypes: true }).catch(() => []);
+  for (const dirent of indexDirs) {
+    if (!dirent.isDirectory()) continue;
+    const candidate = path.join(registrySrc, dirent.name, `${crateName}-${version}`, "Cargo.toml");
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function extractCargoDependencyVersion(cargoTomlSource, dependencyName) {
+  if (!cargoTomlSource || !dependencyName) return null;
+  const escapedName = dependencyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const blockPattern = new RegExp(`\\[dependencies\\.${escapedName}\\][\\s\\S]*?(?=\\n\\[|$)`);
+  const block = blockPattern.exec(cargoTomlSource)?.[0] ?? "";
+  return /^\s*version\s*=\s*"([^"]+)"/m.exec(block)?.[1] ?? null;
+}
+
+function cargoCaretRangeDescription(requirement) {
+  const version = String(requirement ?? "").replace(/^\^/, "");
+  const match = /^0\.(\d+)(?:\.(\d+))?$/.exec(version);
+  if (!match) return null;
+  const minor = Number(match[1]);
+  const patch = Number(match[2] ?? "0");
+  return `>=0.${minor}.${patch}, <0.${minor + 1}.0`;
+}
+
+function cargoCaretZeroMinorAccepts(requirement, version) {
+  const reqMatch = /^0\.(\d+)(?:\.(\d+))?$/.exec(String(requirement ?? "").replace(/^\^/, ""));
+  const versionMatch = /^0\.(\d+)\.(\d+)/.exec(String(version ?? ""));
+  if (!reqMatch || !versionMatch) return null;
+  return Number(reqMatch[1]) === Number(versionMatch[1]);
+}
+
+async function readRegistryCargoToml(crateName, version) {
+  const cargoTomlPath = await findRegistryCargoToml(crateName, version);
+  if (!cargoTomlPath) {
+    return { path: null, source: "" };
+  }
+  return {
+    path: normalizePath(cargoTomlPath),
+    source: await readFile(cargoTomlPath, "utf8"),
+  };
+}
+
+async function cargoInfo(crateName) {
+  const args = ["info", crateName];
+  const result = await run(cargo, args);
+  return {
+    command: commandLabel(cargo, args),
+    ok: result.ok,
+    exitCode: result.exitCode,
+    version: parseCargoInfoVersion(result.stdout),
+    stdoutTail: result.stdout.slice(-2000),
+    stderrTail: result.stderr.slice(-2000),
+  };
+}
+
+async function collectTauriUrlpatternUpstreamEvidence() {
+  const [tauri, tauriUtils, urlpattern] = await Promise.all([
+    cargoInfo("tauri"),
+    cargoInfo("tauri-utils"),
+    cargoInfo("urlpattern"),
+  ]);
+  const [tauriUtilsCargoToml, urlpatternCargoToml] = await Promise.all([
+    readRegistryCargoToml("tauri-utils", tauriUtils.version),
+    readRegistryCargoToml("urlpattern", urlpattern.version),
+  ]);
+  const urlpatternRequirement = extractCargoDependencyVersion(tauriUtilsCargoToml.source, "urlpattern");
+  const urlpatternCaretRange = cargoCaretRangeDescription(urlpatternRequirement);
+  const latestUrlpatternAcceptedByTauriUtils = cargoCaretZeroMinorAccepts(urlpatternRequirement, urlpattern.version);
+  const [tauriLatestDryRuns, urlpatternLatestDryRuns] = await Promise.all([
+    Promise.all(
+      cargoScopes.map(async (scope) => {
+        const args = tauri.version
+          ? ["update", "--manifest-path", scope.manifestPath, "-p", "tauri", "--precise", tauri.version, "--dry-run"]
+          : ["update", "--manifest-path", scope.manifestPath, "-p", "tauri", "--dry-run"];
+        const result = await run(cargo, args);
+        return {
+          scopeId: scope.id,
+          command: commandLabel(cargo, args),
+          ok: result.ok,
+          exitCode: result.exitCode,
+          updates: parseCargoUpdateDryRun(`${result.stdout}\n${result.stderr}`),
+          stdoutTail: result.stdout.slice(-4000),
+          stderrTail: result.stderr.slice(-2000),
+        };
+      }),
+    ),
+    Promise.all(
+      cargoScopes.map(async (scope) => {
+        const args = urlpattern.version
+          ? [
+              "update",
+              "--manifest-path",
+              scope.manifestPath,
+              "-p",
+              "urlpattern",
+              "--precise",
+              urlpattern.version,
+              "--dry-run",
+            ]
+          : ["update", "--manifest-path", scope.manifestPath, "-p", "urlpattern", "--dry-run"];
+        const result = await run(cargo, args);
+        const combinedOutput = `${result.stdout}\n${result.stderr}`;
+        return {
+          scopeId: scope.id,
+          command: commandLabel(cargo, args),
+          ok: result.ok,
+          expectedFailure: result.ok === false,
+          exitCode: result.exitCode,
+          rejectsCurrentRequirement:
+            result.ok === false &&
+            /failed to select a version/i.test(combinedOutput) &&
+            /urlpattern = "\^0\.3"/.test(combinedOutput) &&
+            new RegExp(`candidate versions found which didn't match: ${urlpattern.version.replaceAll(".", "\\.")}`).test(
+              combinedOutput,
+            ),
+          stdoutTail: result.stdout.slice(-2000),
+          stderrTail: result.stderr.slice(-4000),
+        };
+      }),
+    ),
+  ]);
+  return {
+    key: "tauri-utils-urlpattern-constraint",
+    verdict:
+      tauri.ok &&
+      tauriUtils.ok &&
+      urlpattern.ok &&
+      urlpatternRequirement === "0.3" &&
+      latestUrlpatternAcceptedByTauriUtils === false
+        ? "upstream-bound"
+        : "needs-review",
+    commands: {
+      latestTauri: tauri.command,
+      latestTauriUtils: tauriUtils.command,
+      latestUrlpattern: urlpattern.command,
+      tauriLatestDryRuns: tauriLatestDryRuns.map((probe) => probe.command),
+      urlpatternLatestDryRuns: urlpatternLatestDryRuns.map((probe) => probe.command),
+    },
+    latest: {
+      tauri: tauri.version,
+      tauriUtils: tauriUtils.version,
+      urlpattern: urlpattern.version,
+    },
+    tauriUtils: {
+      registryCargoToml: tauriUtilsCargoToml.path,
+      urlpatternRequirement,
+      cargoCaretRange: urlpatternCaretRange,
+      latestUrlpatternAcceptedByRequirement: latestUrlpatternAcceptedByTauriUtils,
+    },
+    urlpattern: {
+      registryCargoToml: urlpatternCargoToml.path,
+      usesUnicCrates: /unic-/i.test(urlpatternCargoToml.source),
+      usesIcuProperties: /icu_properties/i.test(urlpatternCargoToml.source),
+    },
+    dryRuns: {
+      tauriLatest: tauriLatestDryRuns,
+      urlpatternLatest: urlpatternLatestDryRuns,
+    },
+    conclusion:
+      "Latest Tauri still resolves through latest tauri-utils with urlpattern 0.3; Cargo rejects urlpattern 0.6.0 under the current tauri-utils ^0.3 requirement. urlpattern 0.6.0 is available and uses maintained ICU crates, but it is outside tauri-utils' current Cargo requirement.",
+  };
 }
 
 function parseJson(text) {
@@ -307,7 +504,7 @@ function baseClassification(risk) {
   return null;
 }
 
-function releasePathClassification(risk) {
+function releasePathClassification(risk, tauriUrlpatternUpstreamEvidence = null) {
   const advisory = risk.advisoryId ?? "";
   if (risk.package === "git2" && risk.kind === "unsound") {
     return {
@@ -394,22 +591,26 @@ function releasePathClassification(risk) {
     return null;
   }
   if (risk.kind === "unmaintained" && /^unic-/.test(risk.package ?? "")) {
+    const upstreamBound = tauriUrlpatternUpstreamEvidence?.verdict === "upstream-bound";
     return {
       status: "classified",
-      gateDecision: "release-blocker",
-      ownerDecision:
-        "Tauri's Windows runtime graph still pins tauri-utils -> urlpattern ^0.3, whose Unicode identifier stack depends on unmaintained unic-* crates.",
+      gateDecision: upstreamBound ? "upstream-bound-blocker" : "release-blocker",
+      ownerDecision: upstreamBound
+        ? "Tauri's Windows runtime graph still resolves tauri-utils -> urlpattern ^0.3, whose Unicode identifier stack depends on unmaintained unic-* crates; current latest Tauri/tauri-utils does not expose a Cargo-compatible urlpattern 0.6+ path."
+        : "Tauri's Windows runtime graph resolves tauri-utils -> urlpattern ^0.3, but the latest-upstream constraint probe did not complete; keep this as a fixable release blocker until the verifier proves it is upstream-bound.",
       replacementPlan:
         "Move when Tauri accepts urlpattern 0.6+ or another maintained URLPattern implementation; urlpattern 0.6.0 uses icu_properties but does not satisfy tauri-utils' current ^0.3 constraint.",
+      evidenceKey: "tauri-utils-urlpattern-constraint",
+      upstreamBound,
       allowedUntil: null,
     };
   }
   return null;
 }
 
-function classifyRisk(risk) {
+function classifyRisk(risk, tauriUrlpatternUpstreamEvidence = null) {
   const base = baseClassification(risk);
-  const classification = base ?? releasePathClassification(risk);
+  const classification = base ?? releasePathClassification(risk, tauriUrlpatternUpstreamEvidence);
   const classified = {
     ...risk,
     classification: classification ?? {
@@ -514,7 +715,10 @@ async function main() {
   const npmResult = await run(pnpm, ["audit", "--json"]);
   const npmJson = parseJson(npmResult.stdout);
   const npmKnownVulnerabilities = npmVulnerabilityCount(npmJson);
-  const cargoResults = await Promise.all(cargoScopes.map(collectCargoScope));
+  const [cargoResults, tauriUrlpatternUpstreamEvidence] = await Promise.all([
+    Promise.all(cargoScopes.map(collectCargoScope)),
+    collectTauriUrlpatternUpstreamEvidence(),
+  ]);
   const vulnerabilityRisks = cargoResults.flatMap((result) =>
     (result.audit.vulnerabilities?.list ?? []).map((item) => ({
       source: "cargo-audit",
@@ -545,7 +749,7 @@ async function main() {
     })),
   );
   const classifiedRisks = dedupeRisks([
-    ...cargoResults.flatMap((result) => result.risks).map(classifyRisk),
+    ...cargoResults.flatMap((result) => result.risks).map((risk) => classifyRisk(risk, tauriUrlpatternUpstreamEvidence)),
     ...vulnerabilityRisks,
   ]);
   const npmRisk =
@@ -573,15 +777,43 @@ async function main() {
       : [];
   const allRisks = [...classifiedRisks, ...npmRisk];
   const releaseBlockers = allRisks.filter((risk) => risk.classification?.gateDecision === "release-blocker");
+  const upstreamBoundBlockers = allRisks.filter(
+    (risk) => risk.classification?.gateDecision === "upstream-bound-blocker",
+  );
   const unclassified = allRisks.filter((risk) => risk.classification?.status === "unclassified");
   const status =
     npmResult.ok &&
     npmKnownVulnerabilities === 0 &&
     cargoResults.every((result) => result.audit.ok && result.metadata.ok) &&
     unclassified.length === 0 &&
-    releaseBlockers.length === 0
+    releaseBlockers.length === 0 &&
+    upstreamBoundBlockers.length === 0
       ? "pass"
       : "fail";
+  const upstreamEvidenceComplete =
+    tauriUrlpatternUpstreamEvidence?.verdict === "upstream-bound" &&
+    tauriUrlpatternUpstreamEvidence?.dryRuns?.urlpatternLatest?.every(
+      (probe) => probe?.expectedFailure === true && probe?.rejectsCurrentRequirement === true,
+    ) === true &&
+    upstreamBoundBlockers.every(
+      (risk) =>
+        risk.classification?.upstreamBound === true &&
+        risk.classification?.evidenceKey === tauriUrlpatternUpstreamEvidence?.key,
+    );
+  const classificationGate = {
+    mode: allowUpstreamBound ? "allow-upstream-bound" : "strict-release",
+    ok:
+      npmResult.ok &&
+      npmKnownVulnerabilities === 0 &&
+      cargoResults.every((result) => result.audit.ok && result.metadata.ok) &&
+      unclassified.length === 0 &&
+      releaseBlockers.length === 0 &&
+      (upstreamBoundBlockers.length === 0 || (allowUpstreamBound && upstreamEvidenceComplete)),
+    upstreamEvidenceComplete,
+    releaseBlockers: releaseBlockers.length,
+    upstreamBoundBlockers: upstreamBoundBlockers.length,
+    unclassified: unclassified.length,
+  };
   const report = {
     version: 1,
     generatedAt,
@@ -589,8 +821,11 @@ async function main() {
     policy: {
       target: windowsTarget,
       releaseBar:
-        "No unclassified unsound, unmaintained, deprecated, provenance-unknown, or vulnerability risk may remain in release-critical paths.",
+        "No unclassified, implementation-fixable, or upstream-bound unsound, unmaintained, deprecated, provenance-unknown, or vulnerability risk may remain in release-critical paths.",
       packageJsonNotWired: true,
+    },
+    upstreamEvidence: {
+      tauriUrlpatternConstraint: tauriUrlpatternUpstreamEvidence,
     },
     npm: {
       ok: npmResult.ok && npmKnownVulnerabilities === 0,
@@ -606,13 +841,16 @@ async function main() {
     summary: {
       totalRisks: allRisks.length,
       releaseBlockers: releaseBlockers.length,
+      upstreamBoundBlockers: upstreamBoundBlockers.length,
       unclassified: unclassified.length,
       allowedTargetOnly: allRisks.filter((risk) => risk.classification?.gateDecision === "allowed-target-only").length,
       allowedBuildOnly: allRisks.filter((risk) => risk.classification?.gateDecision === "allowed-build-only-temporary")
         .length,
       allowedDevOnly: allRisks.filter((risk) => risk.classification?.gateDecision === "allowed-dev-only").length,
     },
+    classificationGate,
     releaseBlockers,
+    upstreamBoundBlockers,
     unclassified,
     risks: allRisks,
   };
@@ -632,7 +870,9 @@ async function main() {
     );
   }
   console.log(`[stack-risk] releaseBlockers=${releaseBlockers.length}`);
+  console.log(`[stack-risk] upstreamBoundBlockers=${upstreamBoundBlockers.length}`);
   console.log(`[stack-risk] unclassified=${unclassified.length}`);
+  console.log(`[stack-risk] classificationGate=${classificationGate.ok ? "pass" : "fail"} mode=${classificationGate.mode}`);
   console.log(`[stack-risk] wrote ${rel(outPath)}`);
   if (releaseBlockers.length > 0) {
     for (const blocker of releaseBlockers.slice(0, 12)) {
@@ -643,7 +883,16 @@ async function main() {
       );
     }
   }
-  if (status !== "pass") process.exit(1);
+  if (upstreamBoundBlockers.length > 0) {
+    for (const blocker of upstreamBoundBlockers.slice(0, 12)) {
+      console.log(
+        `[stack-risk] upstream-bound ${blocker.scopeId ?? "npm"} ${blocker.kind} ${blocker.package ?? "npm"} ${
+          blocker.version ?? ""
+        } -> ${blocker.classification.replacementPlan}`,
+      );
+    }
+  }
+  if (status !== "pass" && !classificationGate.ok) process.exit(1);
 }
 
 main().catch((error) => {

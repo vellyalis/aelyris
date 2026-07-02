@@ -162,6 +162,17 @@ async function waitForTerminal(page, terminalId) {
   throw new Error(`Terminal ${terminalId} was not listed by the backend: ${JSON.stringify(ids)}`);
 }
 
+async function waitForShellReady(page, terminalId) {
+  const deadline = Date.now() + 30000;
+  let text = "";
+  while (Date.now() < deadline) {
+    text = await gridText(page, terminalId);
+    if (/PS\s+.*>\s*$/m.test(text)) return text;
+    await sleep(250);
+  }
+  throw new Error(`Terminal ${terminalId} did not become shell-ready; sample=${text.slice(-600)}`);
+}
+
 async function gridText(page, terminalId) {
   return await page.evaluate(
     async ({ id }) => {
@@ -231,10 +242,11 @@ async function main() {
       cwd: PROJECT_PATH,
     });
     await waitForTerminal(page, terminalId);
+    await waitForShellReady(page, terminalId);
     report.checks.terminalId = terminalId;
 
     const marker = `AELYRIS_RECOVERED_EVIDENCE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
-    const command = `Write-Output "${marker}"`;
+    const command = `echo ${marker}`;
     await call(page, "send_keys", { terminalId, data: `${command}\r` });
     await waitForGridText(page, terminalId, marker);
 

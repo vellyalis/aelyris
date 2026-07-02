@@ -1365,6 +1365,7 @@ fn derive_capability(method: &Method, route: &str) -> String {
         ("DELETE", "/sessions/{id}") => "session.close",
         ("POST", "/sessions/{id}/resize") => "session.resize",
         ("POST", "/sessions/{id}/input") => "session.input",
+        ("POST", "/sessions/{id}/input-approval") => "session.input_approval",
         ("GET", "/sessions/{id}/capture") => "session.capture",
         ("GET", "/sessions/{id}/search") => "session.search",
         ("POST", "/sessions/{id}/stream-ticket") => "session.stream_ticket",
@@ -1574,6 +1575,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/sessions/{id}", delete(close_session))
         .route("/sessions/{id}/resize", post(resize_session))
         .route("/sessions/{id}/input", post(send_session_input))
+        .route(
+            "/sessions/{id}/input-approval",
+            post(mint_session_input_approval),
+        )
         .route("/sessions/{id}/capture", get(capture_session_output))
         .route("/sessions/{id}/search", get(search_session_scrollback))
         .route("/sessions/{id}/stream-ticket", post(issue_stream_ticket))
@@ -1789,6 +1794,27 @@ struct InputBody {
 }
 
 #[derive(Deserialize)]
+struct InputApprovalBody {
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InputApprovalResponse {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approval_id: Option<String>,
+    severity: &'static str,
+    requires_approval: bool,
+    catastrophic: bool,
+    preview: String,
+    command_hash: String,
+    source_kind: &'static str,
+    session_id: String,
+    target_scope_hash: String,
+}
+
+#[derive(Deserialize)]
 struct CaptureQuery {
     #[serde(default = "default_capture_lines")]
     lines: usize,
@@ -1906,6 +1932,17 @@ async fn create_command_session(
         .map_err(ApiError::Internal)?;
     if !state.pty.reap_child_on_exit(&id) {
         log::warn!("api: command PTY {} was created without an exit reaper", id);
+    }
+    if let Err(err) = mux::sync_command_spawn(
+        &state,
+        &id,
+        &body.program,
+        cwd.as_deref(),
+        body.cols,
+        body.rows,
+    ) {
+        let _ = state.pty.close(&id);
+        return Err(err);
     }
     Ok(Json(CreateSessionResponse { id }))
 }
@@ -2068,6 +2105,7 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
             "session-crud",
             "command-session",
             "session-input",
+            "session-input-approval",
             "session-capture",
             "websocket-stream",
             "stream-ticket",
@@ -2200,6 +2238,144 @@ async fn send_session_input(
         })?;
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn mint_session_input_approval(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<InputApprovalBody>,
+) -> ApiResult<Json<InputApprovalResponse>> {
+    let bytes = body.text.as_bytes();
+    if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "input frame exceeds {} bytes",
+            WS_MAX_INPUT_FRAME_BYTES
+        )));
+    }
+    if !state.pty.contains(&id) {
+        return Err(ApiError::NotFound(id));
+    }
+    let targets = synchronized_input_targets(&state, &id)?.unwrap_or_else(|| vec![id.clone()]);
+    let client_id = client_id_from_headers(&headers)?;
+    for target_id in &targets {
+        state
+            .controller_leases
+            .ensure_can_control(target_id, client_id.as_deref())?;
+    }
+    mint_command_input_approval(&state, "rest-session-input", &id, &targets, &body.text)
+        .map(Json)
+}
+
+fn approval_command_from_input(text: &str) -> ApiResult<&str> {
+    let Some(first_terminator) = text.bytes().position(|b| b == b'\r' || b == b'\n') else {
+        let command = text.trim_end_matches(|c| c == '\r' || c == '\n');
+        if command.trim().is_empty() {
+            return Err(ApiError::BadRequest(
+                "input approval requires one non-empty command line".to_string(),
+            ));
+        }
+        return Ok(command);
+    };
+    let command = &text[..first_terminator];
+    if command.trim().is_empty() {
+        return Err(ApiError::BadRequest(
+            "input approval requires one non-empty command line".to_string(),
+        ));
+    }
+    let tail = &text[first_terminator..];
+    if tail.trim_matches(|c| c == '\r' || c == '\n')
+        .trim()
+        .is_empty()
+    {
+        Ok(command)
+    } else {
+        Err(ApiError::BadRequest(
+            "input approval accepts exactly one command line".to_string(),
+        ))
+    }
+}
+
+fn mint_command_input_approval(
+    state: &ApiState,
+    source_kind: &'static str,
+    session_id: &str,
+    target_ids: &[String],
+    text: &str,
+) -> ApiResult<InputApprovalResponse> {
+    let command = approval_command_from_input(text)?;
+    let target_refs = target_ids.iter().map(String::as_str).collect::<Vec<_>>();
+    let target_scope_hash = crate::command_risk::approval::target_scope_hash(&target_refs);
+    let command_hash = crate::command_risk::approval::command_hash(command)
+        .as_str()
+        .to_string();
+    let Some(gate) = state.command_risk_gate.as_ref() else {
+        return Ok(InputApprovalResponse {
+            status: "unguarded",
+            approval_id: None,
+            severity: "allow",
+            requires_approval: false,
+            catastrophic: false,
+            preview: command.to_string(),
+            command_hash,
+            source_kind,
+            session_id: session_id.to_string(),
+            target_scope_hash,
+        });
+    };
+    let options = crate::command_risk::CommandRiskOptions::default();
+    match crate::command_risk::approval::mint_command_approval(
+        gate.registry(),
+        &options,
+        source_kind,
+        session_id,
+        command,
+        &target_scope_hash,
+    ) {
+        crate::command_risk::approval::MintOutcome::NoApprovalNeeded => {
+            Ok(InputApprovalResponse {
+                status: "no_approval_needed",
+                approval_id: None,
+                severity: "allow",
+                requires_approval: false,
+                catastrophic: false,
+                preview: command.to_string(),
+                command_hash,
+                source_kind,
+                session_id: session_id.to_string(),
+                target_scope_hash,
+            })
+        }
+        crate::command_risk::approval::MintOutcome::Minted {
+            approval_id,
+            report,
+        } => Ok(InputApprovalResponse {
+            status: "approval_minted",
+            approval_id: Some(approval_id),
+            severity: report.severity.as_str(),
+            requires_approval: report.requires_approval,
+            catastrophic: false,
+            preview: report.preview,
+            command_hash,
+            source_kind,
+            session_id: session_id.to_string(),
+            target_scope_hash,
+        }),
+        crate::command_risk::approval::MintOutcome::Catastrophic { report } => {
+            Err(ApiError::CommandRiskBlocked(Box::new(
+                crate::command_risk::gate::GateDenial {
+                    reason: "destructive command refused; approval not minted".to_string(),
+                    severity: Some(report.severity),
+                    classes: report.classes,
+                    preview: report.preview,
+                    command_hash: Some(command_hash),
+                    source_kind: source_kind.to_string(),
+                    target_scope_hash,
+                    catastrophic: true,
+                },
+            )))
+        }
+    }
 }
 
 fn synchronized_input_targets(state: &ApiState, id: &str) -> ApiResult<Option<Vec<String>>> {
@@ -2752,6 +2928,110 @@ mod tests {
         let token = "with space/plus+and%25";
         let encoded = "with%20space%2Fplus%2Band%2525";
         assert_eq!(percent_decode(encoded), token);
+    }
+
+    #[test]
+    fn input_approval_command_text_accepts_exactly_one_line() {
+        assert_eq!(approval_command_from_input("git status").unwrap(), "git status");
+        assert_eq!(
+            approval_command_from_input("BOUNDARY_INPUT_CODEX_x80x\r").unwrap(),
+            "BOUNDARY_INPUT_CODEX_x80x"
+        );
+        assert_eq!(approval_command_from_input("/exit\r\n").unwrap(), "/exit");
+        assert!(matches!(
+            approval_command_from_input("\r"),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            approval_command_from_input("one\rtwo"),
+            Err(ApiError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn rest_input_approval_mints_single_use_review_token() {
+        let gate = std::sync::Arc::new(crate::command_risk::gate::CommandRiskGate::new(Some(
+            std::sync::Arc::new(crate::db::ManagedDb::new(
+                crate::db::Database::open_memory().unwrap(),
+            )),
+        )));
+        let state = ApiState::new(PtyManager::new(), AuthConfig::disabled())
+            .with_command_risk_gate(Some(gate.clone()));
+        let targets = vec!["term-1".to_string()];
+        let approval = mint_command_input_approval(
+            &state,
+            "rest-session-input",
+            "term-1",
+            &targets,
+            "BOUNDARY_INPUT_CODEX_x80x",
+        )
+        .unwrap();
+
+        assert_eq!(approval.status, "approval_minted");
+        let approval_id = approval.approval_id.expect("review input mints approval");
+        let writable = gate_command_input(
+            &state,
+            "rest-session-input",
+            "term-1",
+            &targets,
+            Some(&approval_id),
+            b"BOUNDARY_INPUT_CODEX_x80x\r",
+            crate::command_risk::gate::GateMode::HoldUntilApproved,
+        )
+        .unwrap();
+        assert_eq!(writable, b"BOUNDARY_INPUT_CODEX_x80x\r");
+
+        let replay = gate_command_input(
+            &state,
+            "rest-session-input",
+            "term-1",
+            &targets,
+            Some(&approval_id),
+            b"BOUNDARY_INPUT_CODEX_x80x\r",
+            crate::command_risk::gate::GateMode::HoldUntilApproved,
+        )
+        .unwrap_err();
+        match replay {
+            ApiError::CommandRiskBlocked(denial) => {
+                assert_eq!(denial.reason, "command requires an approval id");
+            }
+            other => panic!("expected replay command-risk denial, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rest_input_approval_refuses_catastrophic_commands() {
+        let gate = std::sync::Arc::new(crate::command_risk::gate::CommandRiskGate::new(Some(
+            std::sync::Arc::new(crate::db::ManagedDb::new(
+                crate::db::Database::open_memory().unwrap(),
+            )),
+        )));
+        let state = ApiState::new(PtyManager::new(), AuthConfig::disabled())
+            .with_command_risk_gate(Some(gate));
+        let targets = vec!["term-1".to_string()];
+        let err = mint_command_input_approval(
+            &state,
+            "rest-session-input",
+            "term-1",
+            &targets,
+            "rm -rf /tmp/aelyris-danger",
+        )
+        .unwrap_err();
+        match err {
+            ApiError::CommandRiskBlocked(denial) => {
+                assert!(denial.catastrophic);
+                assert!(denial.command_hash.is_some());
+            }
+            other => panic!("expected command-risk denial, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn input_approval_route_has_stable_governance_capability() {
+        assert_eq!(
+            derive_capability(&Method::POST, "/sessions/{id}/input-approval"),
+            "session.input_approval"
+        );
     }
 
     #[test]

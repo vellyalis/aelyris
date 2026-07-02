@@ -39,7 +39,7 @@ pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
     let branch = repo
         .head()
         .ok()
-        .and_then(|h| h.shorthand().map(String::from))
+        .and_then(|h| h.shorthand().ok().map(String::from))
         .unwrap_or_else(|| "HEAD".to_string());
 
     // Upstream tracking info — best-effort. Detached HEAD, no upstream

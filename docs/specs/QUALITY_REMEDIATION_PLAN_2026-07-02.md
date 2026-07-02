@@ -51,22 +51,37 @@ Sources: five-track audit run on 2026-07-02 against branch `feat/wu-rt-1-context
 
 ---
 
-## Sprint 2 — CI + supply chain  [partially delivered with this plan]
+## Sprint 2 — CI + supply-chain / stack hardening  [release-blocking]
 
-**Problem.** 100+ local verifiers but no automated executor; an archived YAML crate on a shipping path; no dependency-update automation; no crash reporting.
+**Problem.** 100+ local verifiers but no automated executor; supply-chain quality is not yet at the bar required for a robust terminal/runtime product. The latest local checks still show no known npm or RustSec vulnerability findings, but that is not enough: RustSec informational warnings currently include direct or runtime-adjacent `unsound` / `unmaintained` dependencies, and the plan must treat those as release blockers until classified or removed.
+
+**Current audit evidence (2026-07-02 JST; refresh before acting).**
+
+- `pnpm audit --json`: 0 known vulnerabilities across the npm dependency graph.
+- `cargo audit --file src-tauri/Cargo.lock --json`: 0 vulnerability findings, but informational warnings include `git2 0.20.4` unsound advisories, unmaintained `ttf-parser 0.21.1` via `fontdue`, and target-all GTK/GLib warnings through Tauri's Linux/WebKitGTK graph.
+- `cargo audit --file src-tauri/pty-server/Cargo.lock --json`: 0 vulnerability findings, but informational warnings include unsound / unmaintained transitive crates that must be classified for the sidecar lockfile too.
+- `cargo tree --manifest-path src-tauri/Cargo.toml -i git2`: `git2 v0.20.4` is a direct Aelyris dependency; crates.io current is `0.21.0`.
+- `cargo tree --manifest-path src-tauri/Cargo.toml -i serde_yaml`: `serde_yaml v0.9.34+deprecated` is a direct Aelyris dependency.
+- `cargo tree --manifest-path src-tauri/Cargo.toml -i portable-pty`: `portable-pty v0.8.1` is direct and vendored from `src-tauri/vendor/portable-pty-0.8.1`; crates.io current is `0.9.0`.
+- `cargo tree --manifest-path src-tauri/Cargo.toml -i ttf-parser`: `ttf-parser v0.21.1` enters through `fontdue v0.9.3`, which is on the native renderer proof path.
+
+**Policy.** A release candidate may not rely on an unclassified `unsound`, `unmaintained`, deprecated, or provenance-unknown dependency in the terminal runtime, persistence, security, update, or distribution path. If a warning is target-only or build-only, the repo must say that with `cargo tree` evidence and a gate that keeps the classification fresh.
 
 **Tasks.**
 | id | task | detail |
 |---|---|---|
 | S2-1 | GitHub Actions CI | `.github/workflows/ci.yml` (added alongside this plan). v1 blocking jobs: frontend (tsc + vitest, windows-latest — `pnpm test` uses cmd `set` syntax and vitest flakes under threads pool on loaded machines, so CI pins `--pool=forks`), rust (`cargo test --lib`, windows-latest, cached). Informational (non-blocking) steps: biome lint (repo-wide CRLF drift), cargo fmt/clippy, `cargo audit`, `pnpm audit --prod`. CI activates once this file reaches GitHub (push/PR). |
 | S2-2 | Tighten CI | Promote clippy `-D warnings` and biome to blocking once the repo passes them on a clean branch; add `pnpm verify:release:hygiene` job for PRs to main. |
-| S2-3 | Replace `serde_yaml` (archived upstream) | `src-tauri/Cargo.toml:99`, used by workflow definitions. Options: `serde_yaml_ng` (drop-in) or migrate workflow files to TOML (`toml` already a dependency). Include round-trip tests for existing workflow files. |
-| S2-4 | Dependency automation | Add `renovate.json` (or enable Dependabot) grouping patch updates; requires operator to install the GitHub app — flagged as operator step. |
-| S2-5 | Vendored `portable-pty` provenance | Diff `src-tauri/vendor/portable-pty-0.8.1` against upstream 0.8.1; write `src-tauri/vendor/README.md` stating whether it is pristine-pinned or patched (and why); track upstream 0.9.x as a deliberate decision. |
-| S2-6 | Crash visibility (design first) | Decide: minimal Rust panic hook writing minidump/log locally (no network) vs opt-in reporting. Local-only capture is compatible with the privacy posture; spec it before coding. |
+| S2-3 | Make stack-risk classification a gate | Add a deterministic verifier that reads both Rust lockfiles plus npm audit output and fails on any unclassified `unsound`, `unmaintained`, deprecated, or provenance-unknown dependency in release paths. Classification must include source path, target/platform relevance, owner decision, and replacement plan. |
+| S2-4 | Upgrade `git2` | Move direct `git2` to `>=0.21.0` to clear RustSec unsound advisories; regenerate both relevant lockfiles if the pty sidecar resolves it too; include a smoke test around the local git operations actually used by Aelyris. |
+| S2-5 | Replace `serde_yaml` (deprecated upstream) | `src-tauri/Cargo.toml:99`, used by workflow definitions. Preferred first move: `serde_yaml_ng` if it is drop-in enough; fallback: migrate workflow files to TOML (`toml` already a dependency). Include round-trip tests for existing workflow files and prove `cargo tree -i serde_yaml` is empty. |
+| S2-6 | Vendored `portable-pty` provenance / update decision | Diff `src-tauri/vendor/portable-pty-0.8.1` against upstream 0.8.1; write `src-tauri/vendor/README.md` stating whether it is pristine-pinned or patched (and why). Evaluate `portable-pty 0.9.0` against ConPTY/job-object behavior before deciding to keep the vendor fork. |
+| S2-7 | Native font stack decision | `fontdue -> ttf-parser` now carries an unmaintained warning. Decide whether the renderer proof path should move to DirectWrite-backed rasterization / `skrifa` / another maintained font path. Until then, do not treat the current font proof as final production renderer proof. |
+| S2-8 | Dependency automation | Add `renovate.json` (or enable Dependabot) grouping patch updates; requires operator to install the GitHub app — flagged as operator step. |
+| S2-9 | Crash visibility (design first) | Decide: minimal Rust panic hook writing minidump/log locally (no network) vs opt-in reporting. Local-only capture is compatible with the privacy posture; spec it before coding. |
 
-**Acceptance.** CI runs green on a PR; `cargo tree -i serde_yaml` empty; vendor README exists.
-**Effort.** S2-1 delivered now; S2-2..S2-5 ~1 session total.
+**Acceptance.** CI runs green on a PR; `pnpm audit --json` reports 0 vulnerabilities; both Rust lockfiles have no vulnerability findings and no unclassified `unsound` warnings; `cargo tree -i git2` shows `>=0.21.0`; `cargo tree -i serde_yaml` is empty; `src-tauri/vendor/README.md` exists; the native font stack has either a maintained implementation or an explicit blocker artifact.
+**Effort.** S2-1 is partially delivered; S2-3..S2-7 should be treated as a release-blocking sprint, not a background cleanup.
 
 ---
 
@@ -108,4 +123,4 @@ Sources: five-track audit run on 2026-07-02 against branch `feat/wu-rt-1-context
 ## Appendix — audit scorecard (2026-07-02, /50 per doc)
 
 requirements.md 43 · CONTEXT_SESSION_LIFECYCLE_SPEC 43 · docs/README.md 41 · CSL_IMPLEMENTATION 38 · WU_RT_1_CONTINUATION 38 · AGENT_MESSAGE_BUS 34 · UI_TOKEN_DIAL 34 · COCKPIT_UX 32 · TYPE_BRIDGE 32 · hardening/ 31-32 · specs/README 30 · VISIBLE_AGENT_PANE 29 · PLANNER 26 · COCKPIT_REQUIREMENTS 24 · TRACEABILITY 24 · PHASE_0_1 23 · MCP_TOOL_SURFACE 16.
-Tech stack: sound (0 known vulnerabilities at audit; one archived dependency: serde_yaml). Debt trend: growing; largest safe win = S3-1.
+Tech stack: not release-sound yet. Current audit evidence shows 0 known vulnerability findings, but that is weaker than the product bar: direct `git2 0.20.4` has RustSec unsound advisories, direct `serde_yaml` is deprecated, direct vendored `portable-pty 0.8.1` lacks recorded provenance/update decision, and `fontdue -> ttf-parser` is unmaintained on the native renderer proof path. Debt trend: growing; largest safe code-shape win = S3-1, but largest release-safety win = S2-3..S2-7.

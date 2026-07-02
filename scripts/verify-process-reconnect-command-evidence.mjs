@@ -188,7 +188,7 @@ function powershell(command) {
 function findAelyrisPids() {
   const output = powershell(`
     Get-Process Aelyris -ErrorAction SilentlyContinue |
-      Where-Object { $_.Path -and ($_.Path -like '*Aelyris*target*debug*Aelyris.exe' -or $_.Path -like '*Aelyris*target*release*Aelyris.exe') } |
+      Where-Object { $_.Path -and ($_.Path -like '*target*debug*Aelyris.exe' -or $_.Path -like '*target*release*Aelyris.exe') } |
       Select-Object -ExpandProperty Id
   `);
   return output
@@ -317,7 +317,7 @@ async function waitForShellReady(page, terminalId) {
   let text = "";
   while (Date.now() < deadline) {
     text = await gridText(page, terminalId);
-    if (/PS\s+.*>\s*$/m.test(text) || text.includes("PowerShell")) return text;
+    if (/PS\s+.*>\s*$/m.test(text)) return text;
     await sleep(250);
   }
   throw new Error(`Terminal ${terminalId} did not become shell-ready; sample=${text.slice(-600)}`);
@@ -373,7 +373,7 @@ function startDebugApp() {
   }
   return spawn(DEBUG_APP_EXE, [], {
     cwd: join(ROOT, "src-tauri"),
-    env: { ...process.env, AELYRIS_API_TOKEN: TOKEN },
+    env: { ...process.env, AELYRIS_API_TOKEN: TOKEN, AELYRIS_ENABLE_WEBVIEW2_CDP: "1" },
     stdio: "ignore",
     windowsHide: true,
   });
@@ -418,7 +418,7 @@ async function main() {
     report.checks.terminalId = terminalId;
 
     const firstMarker = `AELYRIS_PROCESS_RECONNECT_BEFORE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
-    const firstCommand = `Write-Output "${firstMarker}"`;
+    const firstCommand = `echo ${firstMarker}`;
     await call(first.page, "send_keys", { terminalId, data: `${firstCommand}\r` });
     await waitForGridText(first.page, terminalId, firstMarker);
     const liveBefore = await waitForBlock(first.page, "term_command_blocks", terminalId, firstMarker);
@@ -444,7 +444,7 @@ async function main() {
 
     const splitBeforeMarker =
       `AELYRIS_PROCESS_RECONNECT_SPLIT_BEFORE_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
-    const splitBeforeCommand = `Write-Output "${splitBeforeMarker}"`;
+    const splitBeforeCommand = `echo ${splitBeforeMarker}`;
     await call(first.page, "send_keys", { terminalId: splitTerminalId, data: `${splitBeforeCommand}\r` });
     await waitForGridText(first.page, splitTerminalId, splitBeforeMarker);
     const splitLiveBefore = await waitForBlock(first.page, "term_command_blocks", splitTerminalId, splitBeforeMarker);
@@ -493,7 +493,7 @@ async function main() {
     report.checks.splitRecoveredBlock = splitRecovered.block;
 
     const secondMarker = `AELYRIS_PROCESS_RECONNECT_AFTER_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
-    const secondCommand = `Write-Output "${secondMarker}"`;
+    const secondCommand = `echo ${secondMarker}`;
     await call(second.page, "send_keys", { terminalId, data: `${secondCommand}\r` });
     await waitForGridText(second.page, terminalId, secondMarker);
     const afterRestart = await waitForBlock(second.page, "term_command_blocks", terminalId, secondMarker);
@@ -510,7 +510,7 @@ async function main() {
 
     const splitAfterMarker =
       `AELYRIS_PROCESS_RECONNECT_SPLIT_AFTER_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
-    const splitAfterCommand = `Write-Output "${splitAfterMarker}"`;
+    const splitAfterCommand = `echo ${splitAfterMarker}`;
     await call(second.page, "send_keys", { terminalId: splitTerminalId, data: `${splitAfterCommand}\r` });
     await waitForGridText(second.page, splitTerminalId, splitAfterMarker);
     const splitAfterRestart = await waitForBlock(second.page, "term_command_blocks", splitTerminalId, splitAfterMarker);
