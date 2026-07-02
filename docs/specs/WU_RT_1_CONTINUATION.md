@@ -35,14 +35,16 @@ time until they are completed or retired.
 ## Active Work Order Priority
 
 1. `refactor-instructions.md`
-   - First target: Phase 0 baseline, then Phase 1 CX-4 stale approval safety.
-   - This closes the approval TOCTOU hole before broader hardening.
-   - One phase = one commit. Stage explicit paths only.
+   - Status: complete on this branch; re-check current machine truth only.
+   - Do not restart refactor phases unless a verifier shows a regression.
 
 2. `hardening-instructions.md`
-   - Starts only after refactor is complete or its report is filed.
+   - Current target: hardening completion audit from H1 through H8.
    - API/core priority lives here: H1 verifier integrity, H2 `session_*` MCP
      face, H8 MCP schema enforcement and queue bounds.
+   - RT-1e resume/reset_context evidence is guarded by
+     `scripts/verify-session-resume-idempotent.mjs`; rerun with
+     `pnpm verify:runtime-core:session-resume`.
 
 3. `renderer-instructions.md`
    - Intended to run after refactor and hardening.
@@ -62,6 +64,10 @@ Last confirmed in this handoff:
 - `git status -sb` after push: branch synced to origin before this doc refresh.
 - Baseline pushed commit before this doc refresh:
   `71af0b0 docs: track active work orders`.
+- Refactor work order phases are complete on this branch; next cleared-session
+  target is hardening completion audit.
+- RT-1e resume/reset_context gate:
+  `scripts/verify-session-resume-idempotent.mjs` / `.codex-auto/quality/session-resume-idempotent.json`.
 - Renderer R0-R6 work exists in recent branch history:
   - `347636c test: add renderer parity and perf harness`
   - `984554c feat: add terminal glyph atlas`
@@ -80,7 +86,7 @@ Use them as local evidence only after rerunning the owning verifier.
 Pasteable goal for the cleared session:
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> refactor-instructions.md -> hardening-instructions.md -> renderer-instructions.md -> docs/specs/WU_RT_1_CONTINUATION.md を順に読み、active work order の優先順に従って refactor-instructions.md Phase 0 から開始して。Phase 0 baseline を記録し、Phase 1 CX-4 stale approval safety までを最初の実装対象にする。1フェーズ=1コミット、明示 stage、gate 緑、main/PR/force push 禁止。renderer は既に進んでいるので、今は refactor -> hardening を優先。
+/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> refactor-instructions.md -> hardening-instructions.md -> renderer-instructions.md -> docs/specs/WU_RT_1_CONTINUATION.md を順に読み、refactor は完了済みとして current machine truth だけ再確認。その後 hardening-instructions.md の H1 から H8 までを existing commits / current source / gates / artifacts で completion audit し、未完・弱証拠・赤 gate があれば one phase = one commit で順に埋める。明示 stage、gate 緑、main/PR/force push 禁止。
 ```
 
 Suggested first commands:
@@ -98,7 +104,8 @@ Get-Content -Raw renderer-instructions.md
 Get-Content -Raw docs\specs\WU_RT_1_CONTINUATION.md
 ```
 
-Then execute `refactor-instructions.md` Phase 0 exactly:
+Then start hardening completion audit with the already-landed refactor work
+treated as baseline evidence:
 
 ```powershell
 git status --short
