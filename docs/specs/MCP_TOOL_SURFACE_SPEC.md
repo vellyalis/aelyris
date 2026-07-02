@@ -18,8 +18,10 @@ Scope: the **AI-facing** projection of the Aelyris Control API.
 
 > **HARD SCOPE NOTE:** This document is analysis + design only. It maps a proposed
 > `aelyris` MCP server onto real backend code. File:line references are to the
-> current tree on branch `codex/release-hardening-quality-gates`. Nothing here is
-> implemented yet beyond what the "maps to" column cites as existing.
+> current tree on branch `feat/wu-rt-1-context-lifecycle`. Many catalog entries
+> are implemented and locked by MCP catalog/schema drift tests; rows marked
+> design-target remain future work and must not be claimed without a matching
+> source/gate reference.
 
 ---
 
@@ -187,7 +189,7 @@ the watchdog policy engine + human inbox resolve. See §4.
 |------|-----------|---------|------------|-------|
 | `aelyris.request_approval` | **params** `{ sessionId: string, tool: string, summary?: string, risk?: "low"\|"medium"\|"high"\|"critical" }` → **return** `{ intentId: string, status: "auto_approved"\|"auto_denied"\|"pending", rule?: string }` | Watchdog evaluation `WatchdogEngine::evaluate` `src-tauri/src/watchdog/engine.rs:30` → `WatchdogDecision::{AutoApprove,AutoDeny,AskUser}` (`engine.rs:7-14`). `AskUser` surfaces to the human inbox as a `permission_required` decision (`src/shared/lib/decisionInbox.ts:5-12`). The enqueue/observe IPC pair is **NEW**; the *decision engine* exists. | **GATED** | The orchestrator submits a request; the **engine** decides. Low-risk patterns auto-approve (`engine.rs:35-47`), unmatched → `AskUser` → routes to the human Decision Inbox (`src/features/decision-inbox/DecisionInboxPanel.tsx`). The tool returns the **decision status**, it does not *make* the decision. No `grant` parameter exists by construction. |
 | `aelyris.list_pending_approvals` | **params** `{}` → **return** `{ pending: HumanDecisionItem[] }` (`src/shared/lib/decisionInbox.ts:25-43`) | Derived from the decision inbox model (`buildDecisionInbox`, `src/shared/lib/decisionInbox.ts`), fed by agent watchdog events (`watchdog-decision-{sessionId}`, `src-tauri/src/ipc/commands.rs:4269-4292`) and audit events. A read IPC/MCP accessor is **NEW**. | **GATED (observe-only)** | Read-only poll of the human queue. Returns `pending` items only; the orchestrator uses this to *wait* for a human/engine decision. It cannot resolve an item. |
-| `aelyris.request_merge` | **params** `{ sessionId: string, sourceBranch: string, targetBranch: string }` → **return** `{ intentId: string, status: "queued", stagedCommitSha?: string }` | **NEW.** No merge-to-`main` command exists in the codebase today (confirmed: only `git_commit`/`git_push`/`git_stage` IPC, and `remove_worktree`). Must be built as a **staging** capability: commit the worktree, then enqueue a `merge_conflict_strategy`/`destructive_operation` decision (`src/shared/lib/decisionInbox.ts:5-12`). | **GATED** | NEVER fast-forwards or merges to `main`. It *stages* the agent's branch and enqueues a human/engine decision. Returns `status:"queued"`, never `"done"`. The actual merge is performed only after a human grant via the Cockpit UI (Face 1). The orchestrator polls `list_pending_approvals` for resolution. |
+| `aelyris.request_merge` | **params** `{ taskId?: string, sessionId?: string, repoPath: string, sourceBranch: string, targetBranch: string }` → **return** `{ intentId, status, intent }` | Implemented in `src-tauri/src/api/mcp.rs` through the durable `MergeIntentStore` and `src-tauri/src/control/merge.rs`. It captures repo/source/target branch tips and OIDs at request time and is idempotent per reviewed branch state. | **GATED** | Queues a durable, OID-bound merge intent. It does not by itself merge or re-point branches. The real merge path is `aelyris.review.approve`, which approves a stored intent by id, rejects override fields, re-validates bound tips, and uses `perform_merge_bound`; moved tips become `needs_reconcile` rather than silently merging unreviewed code. |
 
 ### 3.6 `AgentRunStatus` alignment (shared name)
 

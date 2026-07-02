@@ -60,12 +60,19 @@ and emit the result as `scripts/fleet/wu-manifest.json` — the contract `fleet-
 
 - **5.1** depends on WU-0.1/0.2/0.3 (the fleet session model + manifest contract) and the Orchestra path.
 - **5.2** depends on 5.1 + WU-3.2 (merge queue) + the cockpit surfaces (2.1/2.2) for human supervision.
-- Build last — it assembles the whole stack. Until then, the **`aelyris-plan` skill** lets an orchestrator agent perform 5.1 manually (§5).
+- Build last — it assembles the whole stack. Until then, use the implemented
+  orchestrator MCP/IPC face (`aelyris.orchestrator.plan` and
+  `aelyris.orchestrator.step`) plus the manifest contract for manual operator
+  supervision.
 
-## 5. Skill bridge (usable today, before the in-app feature exists)
+## 5. Operator bridge (usable today, before the full in-app loop exists)
 
-The **`aelyris-plan`** project skill packages the 5.1 planning procedure so an orchestrator agent
-(Opus) can do it now: one-liner → spec + `wu-manifest.json` → hand to the `aelyris-fleet` skill for
-dispatch. It composes with `aelyris-fleet` (execution). Deeper planning patterns: `blueprint`
-(objective → construction plan + DAG), `ralphinho-rfc-pipeline` (RFC-driven multi-agent DAG +
-quality gates + merge queue), `devfleet` (plan → parallel dispatch → monitor).
+The current bridge is the implemented orchestrator surface, not a separate
+project-skill dependency:
+
+- `aelyris.orchestrator.plan` turns a task into a structured plan/manifest.
+- `aelyris.orchestrator.step` advances dispatch/review/merge using current gate
+  evidence and reviewer != implementer rules.
+- The operator can still supervise the loop manually by reading the generated
+  manifest, dispatching a bounded batch, and rerunning the gate commands before
+  any merge approval.

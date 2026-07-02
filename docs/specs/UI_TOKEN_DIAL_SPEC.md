@@ -1,6 +1,7 @@
 # UI Token Dial Spec — Tier-1 "Dial Up"
 
-Status: PROPOSED (apply-ready change list, NOT applied)
+Status: Historical design note; verify current token values in `src/styles/global.css`
+and the right-rail visual gates before using this as implementation guidance.
 Author: design engineering
 Date: 2026-06-13
 Scope: `src/styles/global.css` `:root` token register + the three consumer
@@ -8,10 +9,9 @@ sites that resolve these tokens (`WorkspaceTabs.module.css`,
 `AgentInspector.module.css`, and the `.mode-rail*` / `.right-panel*` rules that
 live inside `global.css` itself).
 
-> HARD CONSTRAINT: This document is analysis + documentation only. No source
-> file under `src/` or `src-tauri/` is edited by this task. Every "current
-> value" below is grounded in a real `file:line`. The actual edits are a
-> separate, reviewed change.
+> HARD CONSTRAINT: This document records the token dial design rationale. Treat
+> file:line references as historical anchors and regenerate current source truth
+> with the verifier commands in §8 before making or claiming UI changes.
 
 ---
 

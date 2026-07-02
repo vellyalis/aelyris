@@ -2,18 +2,23 @@
 
 Updated: 2026-07-03 JST
 
-Purpose: keep the next cleared Codex/Claude/Gemini session pointed at the
-current active work orders instead of the older RT-1-only handoff.
+Purpose: keep the next cleared Codex/Claude/Gemini session pointed at current
+machine truth after the refactor and hardening closeout work, without reviving
+older RT-1-only task lists.
 
 ## Current Branch
 
 - Repo: `C:\Users\owner\Aether_Terminal`
 - Branch: `feat/wu-rt-1-context-lifecycle`
-- Baseline pushed commit before this continuation refresh:
-  `71af0b0 docs: track active work orders`
-- Push status at update time: synced with `origin/feat/wu-rt-1-context-lifecycle`
-- Worktree at update time: clean except this continuation refresh while it is
-  being committed.
+- Latest completed local commits before this documentation correction:
+  - `df92a59 docs: refresh hardening machine truth`
+  - `f59fda4 fix: align hardening gates with current evidence`
+  - `602c81d docs: align hardening continuation gate`
+- Push status: not pushed by Codex. Recheck with `git status --short --branch`
+  before any next action.
+- Known pre-existing dirty file at this refresh: `scripts/verify-stack-risk.mjs`
+  may contain stack-risk proof-basis hardening. Do not overwrite it. If still
+  present, classify and commit it as its own phase before unrelated work.
 
 Do not push to `main`, do not force-push, and do not open or merge a PR from an
 agent session. Owner controls merge timing.
@@ -21,62 +26,69 @@ agent session. Owner controls merge timing.
 ## Mandatory Read Order After Session Clear
 
 1. `AGENTS.md`
-2. `docs/requirements.md`
-3. `docs/AGENT_WORKFLOWS.md`
-4. `docs/specs/README.md`
-5. `refactor-instructions.md`
-6. `hardening-instructions.md`
-7. `renderer-instructions.md`
-8. This file
+2. `docs/README.md`
+3. `docs/requirements.md`
+4. `docs/AGENT_WORKFLOWS.md`
+5. `docs/specs/README.md`
+6. This file
 
-The root active work orders are now tracked and must be read explicitly every
-time until they are completed or retired.
+Read the root work-order files only when the selected next action needs their
+details. `refactor-instructions.md` and `hardening-instructions.md` are no
+longer the next implementation target unless a current verifier shows a
+repo-owned regression.
 
-## Active Work Order Priority
+## Work Order State
 
 1. `refactor-instructions.md`
    - Status: complete on this branch; re-check current machine truth only.
    - Do not restart refactor phases unless a verifier shows a regression.
 
 2. `hardening-instructions.md`
-   - Current target: hardening completion audit from H1 through H8.
-   - API/core priority lives here: H1 verifier integrity, H2 `session_*` MCP
-     face, H8 MCP schema enforcement and queue bounds.
-   - RT-1e resume/reset_context evidence is guarded by
-     `scripts/verify-session-resume-idempotent.mjs`; rerun with
-     `pnpm verify:runtime-core:session-resume`.
+   - Status: H1-H8 repo-owned completion audit is closed out locally.
+   - Current proof shape: no implementation-fixable or policy blockers remain.
+   - Remaining blockers are classified as external/operator/upstream gates.
+   - Do not restart H1-H8 unless a verifier regresses from the current contract.
 
 3. `renderer-instructions.md`
-   - Intended to run after refactor and hardening.
-   - R0-R6 renderer work already exists on this branch. Treat renderer as
-     follow-up correction/reporting unless the owner explicitly reopens it.
+   - Status: follow-up work order, not a hidden prerequisite for claiming the
+     hardening closeout.
+   - R0-R6 renderer work already exists on this branch. Treat renderer as the
+     next selectable implementation work only if the owner explicitly chooses it.
 
-Do not run these work orders concurrently. They can touch shared files such as
+Do not run work orders concurrently. They can touch shared files such as
 `package.json`, `scripts/`, and terminal feature code.
 
 ## Current Machine Truth
 
-This continuation doc is not a release-readiness claim. Fresh verifier artifacts
-must be regenerated before claiming quality, readiness, or score.
+This continuation doc is not itself release-readiness proof. Fresh verifier
+artifacts must be regenerated before claiming quality, readiness, or score.
 
-Last confirmed in this handoff:
+Last confirmed machine truth for the hardening closeout:
 
-- `git status -sb` after push: branch synced to origin before this doc refresh.
-- Baseline pushed commit before this doc refresh:
-  `71af0b0 docs: track active work orders`.
-- Refactor work order phases are complete on this branch; next cleared-session
-  target is hardening completion audit.
-- RT-1e resume/reset_context gate:
-  `scripts/verify-session-resume-idempotent.mjs` / `.codex-auto/quality/session-resume-idempotent.json`.
-- Renderer R0-R6 work exists in recent branch history:
-  - `347636c test: add renderer parity and perf harness`
-  - `984554c feat: add terminal glyph atlas`
-  - `b92666d feat: add webgl terminal paint path`
-  - `e57c43e feat: wire webgl terminal renderer flag`
-  - `759045e test: add renderer transparency and soak gates`
-  - `c2edb07 chore: record renderer perf default proposal`
-  - `754b426 fix(review): close renderer + approval HIGH findings from whole-branch review`
-- Active work orders were tracked in `71af0b0`.
+- `pnpm verify:quality-score` -> `71/100` (`249/351`), grade `D`,
+  `releaseCandidateReady=false`.
+- `pnpm verify:final-goal-audit` -> `blocked-by-external-gates`,
+  `implementationFixableCount=0`, `policyBlockedCount=0`,
+  `externalBlockedCount=27`.
+- `pnpm verify:goal:safe` -> required proof registry `28/28`,
+  `blocked-by-external-gates`, no failed steps, no non-consent blockers.
+- `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.
+- `pnpm verify:goal:docs` -> `pass-current-goal-docs-contract`.
+- RT-1e resume/reset_context remains owned by
+  `scripts/verify-session-resume-idempotent.mjs` and package script
+  `pnpm verify:runtime-core:session-resume`; keep this verifier green when
+  editing continuation docs because it checks that the resume/reset scope is
+  still discoverable.
+
+The remaining release blockers are external/operator/upstream gates, especially:
+
+- `authenticated-ai-cli-prompt-smoke` / `authenticated-ai-cli-consent-packet`
+  with documented provider env such as
+  `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- release signing/updater material.
+- real Windows sleep/resume proof.
+- WebView2/CDP host proof.
+- upstream dependency movement for supply-chain findings.
 
 Known caution: older generated `.codex-auto/quality/*` artifacts may be stale.
 Use them as local evidence only after rerunning the owning verifier.
@@ -86,7 +98,7 @@ Use them as local evidence only after rerunning the owning verifier.
 Pasteable goal for the cleared session:
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> refactor-instructions.md -> hardening-instructions.md -> renderer-instructions.md -> docs/specs/WU_RT_1_CONTINUATION.md を順に読み、refactor は完了済みとして current machine truth だけ再確認。その後 hardening-instructions.md の H1 から H8 までを existing commits / current source / gates / artifacts で completion audit し、未完・弱証拠・赤 gate があれば one phase = one commit で順に埋める。明示 stage、gate 緑、main/PR/force push 禁止。
+/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/README.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/WU_RT_1_CONTINUATION.md を順に読み、current machine truth を確認する。refactor と hardening H1-H8 は repo-owned completion audit 済みとして再実装しない。git status に scripts/verify-stack-risk.mjs の未コミット差分が残っていれば、それを別 phase として検証・commit する。その後は renderer follow-up または外部/operator gate handoff のどちらか1つだけを選ぶ。明示 stage、one phase = one commit、main/PR/force push 禁止。
 ```
 
 Suggested first commands:
@@ -95,25 +107,14 @@ Suggested first commands:
 git status --short --branch
 git log --oneline -8
 Get-Content -Raw AGENTS.md
+Get-Content -Raw docs\README.md
 Get-Content -Raw docs\requirements.md
 Get-Content -Raw docs\AGENT_WORKFLOWS.md
 Get-Content -Raw docs\specs\README.md
-Get-Content -Raw refactor-instructions.md
-Get-Content -Raw hardening-instructions.md
-Get-Content -Raw renderer-instructions.md
 Get-Content -Raw docs\specs\WU_RT_1_CONTINUATION.md
+pnpm verify:goal:docs
+pnpm verify:goal:closeout
 ```
 
-Then start hardening completion audit with the already-landed refactor work
-treated as baseline evidence:
-
-```powershell
-git status --short
-git log --oneline -3
-pnpm exec tsc --noEmit
-pnpm test
-cargo test --manifest-path src-tauri/Cargo.toml --lib
-```
-
-Do not start by rerunning `pnpm verify:goal:safe`; it is broader than the next
-work order and can obscure the Phase 0 regression baseline.
+Do not begin by reopening old RT-1 or hardening phase tables. If a current gate
+turns red, fix that concrete current failure as the next phase.

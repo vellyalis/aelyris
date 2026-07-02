@@ -15,7 +15,7 @@ Sources: five-track audit run on 2026-07-02 against branch `feat/wu-rt-1-context
 
 ## Sprint 0 — Close the open approval-safety gap (CX-4)  [smallest, do first]
 
-**Problem.** `resolve_interactive_approval` (`src-tauri/src/ipc/send_keys_commands.rs:103-151` at audit time) writes the approval keystroke (Enter/Esc) to a PTY without re-verifying that the target session is *still* in `waiting_approval` and *still* showing the same prompt that the operator saw. A stale click can approve a different, newer prompt. This was a declared pre-commit gate (CX-4 in `docs/specs/CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md` §1) and is currently not implemented.
+**Problem at audit time.** `resolve_interactive_approval` (`src-tauri/src/ipc/send_keys_commands.rs:103-151` at audit time) wrote the approval keystroke (Enter/Esc) to a PTY without re-verifying that the target session was *still* in `waiting_approval` and *still* showing the same prompt that the operator saw. A stale click could approve a different, newer prompt. Before acting on this sprint, check the current CX-4 gate row in `docs/specs/CONTEXT_SESSION_LIFECYCLE_IMPLEMENTATION.md` and the current verifier artifacts rather than this historical audit text.
 
 **Tasks.**
 | id | task | detail |
@@ -33,20 +33,20 @@ Sources: five-track audit run on 2026-07-02 against branch `feat/wu-rt-1-context
 
 ## Sprint 1 — Documentation truth restoration
 
-**Problem.** Docs are accurate at write time but rot afterward, in both directions: optimistic lies (a spec asserting "no MCP tool can merge" while `aelyris.review.approve` → `perform_merge_bound` performs a real gated merge) and pessimistic lies (traceability doc baked with score 35/100 grade D while the 2026-07-01 artifact reports 78/100 grade C).
+**Problem.** Docs are accurate at write time but rot afterward, in both directions: optimistic lies (a spec asserting no MCP merge path while `aelyris.review.approve` -> `perform_merge_bound` performs a real gated merge) and pessimistic lies (traceability docs baking stale score digits instead of pointing at freshly generated artifacts).
 
 **Tasks.**
 | id | doc | action |
 |---|---|---|
 | S1-1 | `docs/specs/MCP_TOOL_SURFACE_SPEC.md` | Rewrite §4.4 to the shipped bounded-autonomy model (durable merge intent, reviewer≠implementer, OID CAS, gates digest; cite `src-tauri/src/control/merge.rs`). Fix §3.2 `spawn_agent` (headless `start_headless`, real params). Fix stale "no merge command exists" (§ around :175). Regenerate the verb catalog from `/mcp/tools/list` output (~55 verbs, not ~13); prefer a generated table over prose. |
-| S1-2 | `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md` | Remove ALL hand-baked numbers (35/100, 124/351, fixable counts) — replace with "run `pnpm verify:quality-score`; read `.codex-auto/quality/release-quality-score.json`". Delete the dangling `FULL_NATIVE_RUST_FINAL_GOAL.md` reference; fix nonexistent verifier names (`verify:mux-tmux-grade-contract` → `verify:mux-durability-contract`; `verify:native-daily-driver-terminal` → `verify:native-operator-primary-terminal`); fix dead `requirements.md` anchors. |
-| S1-3 | Shipped-work banners (cheap, honest) | Add a dated "SHIPPED — historical; do not use as a task list" banner + pointer to the current owner doc, to: `docs/specs/PHASE_0_1_ARCHITECTURE_SPEC.md`, `docs/specs/COCKPIT_UX_SPEC.md`, `docs/specs/UI_TOKEN_DIAL_SPEC.md` (header currently says "PROPOSED / NOT applied" — everything is applied), `docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md` (also reconcile its full-auto wording to the bounded model), `docs/hardening/*` (fix `00_README.md` phase-map cell that still says P1 not-started while its own tracker shows P1-5a PASS; stamp `03_IMPLEMENTATION_PLAN.md`). |
-| S1-4 | `docs/specs/PLANNER_SPEC.md` | Remove the nonexistent `aelyris-plan`/`aelyris-fleet` skill instructions; document the implemented `aelyris.orchestrator.plan/step` verbs instead. |
+| S1-2 | `docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md` | Remove hand-baked score digits and fix stale verifier names; prefer "run `pnpm verify:quality-score`; read `.codex-auto/quality/release-quality-score.json`" for current truth. |
+| S1-3 | Shipped-work banners (cheap, honest) | Add dated historical/status banners plus pointers to the current owner docs for `docs/specs/PHASE_0_1_ARCHITECTURE_SPEC.md`, `docs/specs/COCKPIT_UX_SPEC.md`, `docs/specs/UI_TOKEN_DIAL_SPEC.md`, `docs/specs/AELYRIS_COCKPIT_REQUIREMENTS_2026-06-13.md`, and `docs/hardening/*`. Reconcile older full-auto wording to the bounded model and make phase maps defer to current verifier artifacts. |
+| S1-4 | `docs/specs/PLANNER_SPEC.md` | Remove obsolete project-skill bridge instructions; document the implemented `aelyris.orchestrator.plan/step` verbs instead. |
 | S1-5 | `[BLOCKED-BY-RT1]` WU-RT-1 doc consolidation | After the branch lands: fold `WU_RT_1_CONTINUATION.md` away (it is a hand-written status file, which repo policy forbids); keep SPEC (contract) + IMPLEMENTATION (procedure + gate-status column with evidence pointers). Update stale gate rows (SEC-1 is fixed with tests — say so; RT-1a0 descope note). |
 | S1-6 | Roadmap generated view (the recurrence fix) | Implement the already-agreed design: hand-written `docs/roadmap/work-units.json` (topology only: id/dependsOn/specRefs/gateIds; banned words: done/ready/green/%), generator+verifier `scripts/verify-project-roadmap.mjs` reading `.codex-auto/quality/*` → emits `project-roadmap-status.{json,md}`; nodes without a dedicated gate render as `unverified`, stale gates demote to `stale-proof`. Wire `pnpm verify:project-roadmap` into `verify:goal:safe` `[BLOCKED-BY-RT1: package.json]` — until then expose it as a standalone script. Add the one-line "read the generated roadmap first" pointer to `AGENTS.md`/`CLAUDE.md` when those files are clean. |
 | S1-7 | Terminal-core design doc | New `docs/specs/TERMINAL_CORE_DESIGN.md`: PTY/sidecar/registry-split, VT engine (alacritty_terminal), snapshot/diff pipeline, Canvas2D shipping renderer + wgpu promotion criteria. This closes the "pillar 1 has no design doc" gap and becomes the anchor for Sprint 4 renderer work. |
 
-**Acceptance.** `pnpm verify:requirements-spec-design-traceability` green; a grep gate that fails on the two known lie-patterns (hand-baked score digits in the traceability doc; "No merge-to-main command exists"); `verify:project-roadmap` runs green.
+**Acceptance.** `pnpm verify:requirements-spec-design-traceability` green; a grep gate that fails on known stale documentation patterns (hand-baked score digits in the traceability doc and stale MCP merge-absence claims); `verify:project-roadmap` runs green.
 **Effort.** 1–2 sessions. S1-1..S1-4 and S1-7 are safe now (files not in the WU-RT-1 dirty set — re-check `git status` first).
 
 ---

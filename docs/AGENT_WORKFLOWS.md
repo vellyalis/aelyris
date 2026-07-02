@@ -7,14 +7,20 @@ skill, verifier, or review gate should drive a task.
 
 1. `AGENTS.md` - shared repo policy and current claim boundary.
 2. `docs/requirements.md` - stable requirements and machine-truth policy.
-3. Root active work orders - read `refactor-instructions.md`,
-   `hardening-instructions.md`, and `renderer-instructions.md` explicitly until
-   they are completed or retired.
+3. Root work orders - read `refactor-instructions.md`,
+   `hardening-instructions.md`, and `renderer-instructions.md` explicitly for
+   status, but do not restart completed orders unless a current verifier shows a
+   regression.
 4. `docs/specs/README.md` - active spec index and current Work Unit routing.
 5. This file - operational routing for agents and skills.
 
 If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
+
+Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
+reports `71/100` (`249/351`), grade `D`, `releaseCandidateReady=false`.
+The hardening H1-H8 repo-owned completion audit is closed out locally; remaining
+release blockers are external/operator/upstream gates.
 
 ## Workflow Routing
 
@@ -23,11 +29,11 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 | Public readiness or release claim check | `aelyris-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
 | Current proof and gate classification | `aelyris-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
 | Previous-turn Claude stop gate | `aelyris-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
-| Active audit work orders | `refactor-instructions.md` -> `hardening-instructions.md` -> `renderer-instructions.md` | one phase at a time, one commit per phase, no concurrent execution |
+| Root work-order status | `refactor-instructions.md` and `hardening-instructions.md` are complete on this branch; `renderer-instructions.md` is the next selectable follow-up only if reopened | one phase at a time, one commit per phase, no concurrent execution |
 | One scoped Work Unit or vertical slice | `docs/specs/README.md` plus the relevant phase/spec section and owner module verifier | implementation plan and focused checks |
 | Large drift-prone implementation | `codex-guided-implementation` | increment plan, read-only review gates, explicit boundaries |
 | MCP runtime orchestration | `aelyris-orchestrate` | local-only runtime loop; no public release claim |
-| Legacy worktree fleet path | `aelyris-fleet` | fallback/manual workflow only; prefer MCP runtime when available |
+| Legacy worktree dispatch path | older fleet scripts | fallback/manual workflow only; prefer MCP runtime when available |
 
 ## Public Hygiene Rules
 

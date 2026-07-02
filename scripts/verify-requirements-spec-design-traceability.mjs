@@ -118,7 +118,7 @@ const releasePercentText =
     : null;
 const releaseGrade = typeof artifacts.releaseQuality?.grade === "string" ? artifacts.releaseQuality.grade : null;
 const releaseReadinessClaims = artifacts.releaseReadiness?.claims ?? {};
-const blocksProductClaim = (value) => value === "block" || value === "external-blocked";
+const blocksProductClaim = (value) => value === "block" || value === "review" || value === "external-blocked";
 const productClaimGatesAllBlocked =
   blocksProductClaim(releaseReadinessClaims.tmux) &&
   blocksProductClaim(releaseReadinessClaims.sharedWorkspace) &&
@@ -230,7 +230,7 @@ const checks = [
       artifacts.releaseQuality?.releaseCandidateReady === false &&
       blocksProductClaim(artifacts.releaseReadiness?.status) &&
       productClaimGatesAllBlocked,
-    "current artifacts block tmux/shared-agent-workspace/native-terminal/release overclaims instead of allowing stale green evidence",
+    "current artifacts block or review-gate tmux/shared-agent-workspace/native-terminal/release overclaims instead of allowing stale green evidence",
     {
       currentReadinessStatus: artifacts.currentReadiness?.status ?? null,
       releaseCandidateReady: artifacts.releaseQuality?.releaseCandidateReady ?? null,
