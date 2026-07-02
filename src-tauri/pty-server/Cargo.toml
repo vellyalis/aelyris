@@ -7,3 +7,6 @@ edition = "2021"
 aelyris_lib = { package = "aelyris", path = ".." }
 log = "0.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[patch.crates-io]
+portable-pty = { path = "../vendor/portable-pty-0.8.1" }
