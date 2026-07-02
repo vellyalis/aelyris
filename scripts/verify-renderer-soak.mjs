@@ -5,7 +5,7 @@ import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
 const ROOT = resolve(process.cwd());
-const OUT = join(ROOT, ".codex-auto", "quality", "renderer-parity.json");
+const OUT = join(ROOT, ".codex-auto", "quality", "renderer-soak.json");
 
 function writeJsonAtomic(path, value) {
   mkdirSync(dirname(path), { recursive: true });
@@ -51,7 +51,7 @@ async function main() {
     } catch (error) {
       throw new Error(`renderer harness did not initialize: ${error.message}\n${diagnostics.slice(-20).join("\n")}`);
     }
-    const report = await page.evaluate(async () => window.__AELYRIS_RENDERER_HARNESS__.runParity());
+    const report = await page.evaluate(async () => window.__AELYRIS_RENDERER_HARNESS__.runSoak());
     writeJsonAtomic(OUT, report);
     console.log(JSON.stringify(report, null, 2));
     if (!report.ok) process.exitCode = 1;

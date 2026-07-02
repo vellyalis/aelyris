@@ -3,7 +3,9 @@ import {
   type RendererFixture,
   rendererFixtures,
 } from "../src/features/terminal/__fixtures__/rendererFixtures";
-import type { GridSnapshot } from "../src/shared/types/terminal";
+import { GlyphAtlas } from "../src/features/terminal/gpu/glyphAtlas";
+import * as gpuPaint from "../src/features/terminal/gpu/terminalPaintGpu";
+import { TERMINAL_FONT_FAMILY, type TerminalCellMetrics } from "../src/features/terminal/terminalMetrics";
 import {
   paintCursor,
   paintGhostSuggestion,
@@ -13,8 +15,7 @@ import {
   paintSearchBands,
   paintSelectionBand,
 } from "../src/features/terminal/terminalPaint";
-import * as gpuPaint from "../src/features/terminal/gpu/terminalPaintGpu";
-import { TERMINAL_FONT_FAMILY, type TerminalCellMetrics } from "../src/features/terminal/terminalMetrics";
+import type { GridSnapshot } from "../src/shared/types/terminal";
 
 type RendererMode = "canvas2d" | "webgl2";
 
@@ -69,6 +70,61 @@ interface RendererPerfReport {
   };
 }
 
+interface RendererTransparencyReport {
+  version: 1;
+  status: "pass" | "fail";
+  ok: boolean;
+  generatedAt: string;
+  comparison: "canvas2d-vs-webgl2";
+  fixtureId: string;
+  terminalRect: { x: 0; y: 0; width: number; height: number };
+  canvasSize: { width: number; height: number };
+  regions: Array<{
+    id: string;
+    pixels: number;
+    canvasNonTransparentPixels: number;
+    gpuNonTransparentPixels: number;
+    alphaMismatchPixels: number;
+    passed: boolean;
+  }>;
+  operatorSignoff: {
+    required: true;
+    reason: string;
+  };
+}
+
+interface RendererSoakReport {
+  version: 1;
+  status: "pass" | "fail";
+  ok: boolean;
+  generatedAt: string;
+  renderer: "webgl2";
+  frames: number;
+  grid: { cols: number; rows: number };
+  timing: {
+    firstWindowAverageMs: number;
+    lastWindowAverageMs: number;
+    decayRatio: number;
+    p95Ms: number;
+    maxMs: number;
+  };
+  atlas: {
+    before: ReturnType<GlyphAtlas["getCounters"]>;
+    after: ReturnType<GlyphAtlas["getCounters"]>;
+    hitRate: number;
+    pagesWithinLimit: boolean;
+    glyphsBounded: boolean;
+    evictionProbe: {
+      before: ReturnType<GlyphAtlas["getCounters"]>;
+      after: ReturnType<GlyphAtlas["getCounters"]>;
+      observed: boolean;
+    };
+  };
+  contextLossEvents: string[];
+  frameErrors: string[];
+  checks: Array<{ id: string; passed: boolean; detail: string }>;
+}
+
 const PARITY_TOLERANCES = {
   perChannel: 12,
   maxDifferingPixelRatio: 0.12,
@@ -79,6 +135,11 @@ const PERF_FRAMES = 1_000;
 const SCROLL_FRAMES = 240;
 const PERF_COLS = 120;
 const PERF_ROWS = 40;
+const TRANSPARENCY_MARGIN_PX = 32;
+const SOAK_FRAMES = 10_000;
+const SOAK_WINDOW_FRAMES = 1_000;
+const SOAK_COLS = 12;
+const SOAK_ROWS = 4;
 const METRICS: TerminalCellMetrics = { width: 10, height: 18 };
 const FONT_SIZE = 14;
 const FONT_FAMILY = TERMINAL_FONT_FAMILY;
@@ -99,12 +160,18 @@ function configureText(ctx: CanvasRenderingContext2D) {
   textCtx.textRendering = "auto";
 }
 
-function makeCanvas(snapshot: GridSnapshot): HTMLCanvasElement {
+interface PaintFixtureOptions {
+  marginRight?: number;
+  marginBottom?: number;
+  atlas?: GlyphAtlas;
+}
+
+function makeCanvas(snapshot: GridSnapshot, options: PaintFixtureOptions = {}): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  canvas.width = snapshot.cols * METRICS.width * DEVICE_PIXEL_RATIO;
-  canvas.height = snapshot.rows * METRICS.height * DEVICE_PIXEL_RATIO;
-  canvas.style.width = `${snapshot.cols * METRICS.width}px`;
-  canvas.style.height = `${snapshot.rows * METRICS.height}px`;
+  canvas.width = snapshot.cols * METRICS.width * DEVICE_PIXEL_RATIO + (options.marginRight ?? 0);
+  canvas.height = snapshot.rows * METRICS.height * DEVICE_PIXEL_RATIO + (options.marginBottom ?? 0);
+  canvas.style.width = `${canvas.width}px`;
+  canvas.style.height = `${canvas.height}px`;
   return canvas;
 }
 
@@ -134,10 +201,14 @@ async function makeImageBitmaps(fixture: RendererFixture): Promise<Map<number, I
   return bitmaps;
 }
 
-async function paintFixtureToImageData(fixture: RendererFixture, mode: RendererMode): Promise<ImageData> {
-  if (mode === "webgl2") return paintFixtureToGpuImageData(fixture);
+async function paintFixtureToImageData(
+  fixture: RendererFixture,
+  mode: RendererMode,
+  options: PaintFixtureOptions = {},
+): Promise<ImageData> {
+  if (mode === "webgl2") return paintFixtureToGpuImageData(fixture, options);
   const snapshot = fixture.snapshot;
-  const canvas = makeCanvas(snapshot);
+  const canvas = makeCanvas(snapshot, options);
   const ctx = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
   if (!ctx) throw new Error("2D canvas unavailable");
   ctx.setTransform(DEVICE_PIXEL_RATIO, 0, 0, DEVICE_PIXEL_RATIO, 0, 0);
@@ -177,10 +248,16 @@ async function paintFixtureToImageData(fixture: RendererFixture, mode: RendererM
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-async function paintFixtureToGpuImageData(fixture: RendererFixture): Promise<ImageData> {
+async function paintFixtureToGpuImageData(
+  fixture: RendererFixture,
+  options: PaintFixtureOptions = {},
+): Promise<ImageData> {
   const snapshot = fixture.snapshot;
-  const canvas = makeCanvas(snapshot);
-  const context = gpuPaint.createTerminalGpuPaintContext(canvas, { devicePixelRatio: DEVICE_PIXEL_RATIO });
+  const canvas = makeCanvas(snapshot, options);
+  const context = gpuPaint.createTerminalGpuPaintContext(canvas, {
+    devicePixelRatio: DEVICE_PIXEL_RATIO,
+    atlas: options.atlas,
+  });
   if (!context) throw new Error("WebGL2 unavailable for renderer parity harness");
   gpuPaint.beginGpuFrame(context);
 
@@ -196,7 +273,15 @@ async function paintFixtureToGpuImageData(fixture: RendererFixture): Promise<Ima
       fixture.rasterBackground,
       "solid",
     );
-    gpuPaint.paintSearchBands(context, row, fixture.searchMatches, fixture.activeSearchMatch, METRICS, snapshot.rows, 0);
+    gpuPaint.paintSearchBands(
+      context,
+      row,
+      fixture.searchMatches,
+      fixture.activeSearchMatch,
+      METRICS,
+      snapshot.rows,
+      0,
+    );
     const band = fixture.selectionBands?.[row];
     if (band) gpuPaint.paintSelectionBand(context, row, band, METRICS);
     gpuPaint.paintLinkUnderline(context, row, fixture.hoveredLink ?? null, snapshot.cols, METRICS);
@@ -350,7 +435,9 @@ async function runPerf(): Promise<RendererPerfReport> {
   const scrollSamples = await measureFrames(SCROLL_FRAMES, (frame) => {
     const snapshot = createDenseAsciiSnapshot(PERF_COLS, PERF_ROWS);
     snapshot.cells.shift();
-    snapshot.cells.push(createDenseAsciiSnapshot(PERF_COLS, 1).cells[0].map((cell) => ({ ...cell, ch: `${frame % 10}` })));
+    snapshot.cells.push(
+      createDenseAsciiSnapshot(PERF_COLS, 1).cells[0].map((cell) => ({ ...cell, ch: `${frame % 10}` })),
+    );
     return snapshot;
   });
   const frameBudgetMs = 1_000 / 60;
@@ -384,11 +471,253 @@ async function runPerf(): Promise<RendererPerfReport> {
   };
 }
 
+function inspectTransparentRegion(
+  id: string,
+  canvasImage: ImageData,
+  gpuImage: ImageData,
+  rect: { x: number; y: number; width: number; height: number },
+) {
+  let pixels = 0;
+  let canvasNonTransparentPixels = 0;
+  let gpuNonTransparentPixels = 0;
+  let alphaMismatchPixels = 0;
+  const x1 = Math.min(canvasImage.width, rect.x + rect.width);
+  const y1 = Math.min(canvasImage.height, rect.y + rect.height);
+  for (let y = Math.max(0, rect.y); y < y1; y++) {
+    for (let x = Math.max(0, rect.x); x < x1; x++) {
+      const index = (y * canvasImage.width + x) * 4 + 3;
+      const canvasAlpha = canvasImage.data[index] ?? 0;
+      const gpuAlpha = gpuImage.data[index] ?? 0;
+      pixels += 1;
+      if (canvasAlpha !== 0) canvasNonTransparentPixels += 1;
+      if (gpuAlpha !== 0) gpuNonTransparentPixels += 1;
+      if (canvasAlpha !== gpuAlpha) alphaMismatchPixels += 1;
+    }
+  }
+  return {
+    id,
+    pixels,
+    canvasNonTransparentPixels,
+    gpuNonTransparentPixels,
+    alphaMismatchPixels,
+    passed:
+      pixels > 0 && canvasNonTransparentPixels === 0 && gpuNonTransparentPixels === 0 && alphaMismatchPixels === 0,
+  };
+}
+
+async function runTransparencyProof(): Promise<RendererTransparencyReport> {
+  const fixture = rendererFixtures.find((item) => item.id === "overlays") ?? rendererFixtures[0];
+  const terminalWidth = fixture.snapshot.cols * METRICS.width * DEVICE_PIXEL_RATIO;
+  const terminalHeight = fixture.snapshot.rows * METRICS.height * DEVICE_PIXEL_RATIO;
+  const options = { marginRight: TRANSPARENCY_MARGIN_PX, marginBottom: TRANSPARENCY_MARGIN_PX };
+  const canvasImage = await paintFixtureToImageData(fixture, "canvas2d", options);
+  const gpuImage = await paintFixtureToImageData(fixture, "webgl2", options);
+  const regions = [
+    inspectTransparentRegion("right-transparent-margin", canvasImage, gpuImage, {
+      x: terminalWidth + 2,
+      y: 0,
+      width: TRANSPARENCY_MARGIN_PX - 2,
+      height: canvasImage.height,
+    }),
+    inspectTransparentRegion("bottom-transparent-margin", canvasImage, gpuImage, {
+      x: 0,
+      y: terminalHeight + 2,
+      width: canvasImage.width,
+      height: TRANSPARENCY_MARGIN_PX - 2,
+    }),
+    inspectTransparentRegion("corner-transparent-margin", canvasImage, gpuImage, {
+      x: terminalWidth + 2,
+      y: terminalHeight + 2,
+      width: TRANSPARENCY_MARGIN_PX - 2,
+      height: TRANSPARENCY_MARGIN_PX - 2,
+    }),
+  ];
+  const ok = regions.every((region) => region.passed);
+  return {
+    version: 1,
+    status: ok ? "pass" : "fail",
+    ok,
+    generatedAt: new Date().toISOString(),
+    comparison: "canvas2d-vs-webgl2",
+    fixtureId: fixture.id,
+    terminalRect: { x: 0, y: 0, width: terminalWidth, height: terminalHeight },
+    canvasSize: { width: canvasImage.width, height: canvasImage.height },
+    regions,
+    operatorSignoff: {
+      required: true,
+      reason:
+        "Chromium can prove WebGL/Canvas alpha preservation in a transparent page; final DWM/WebView2 see-through parity remains an operator screenshot sign-off.",
+    },
+  };
+}
+
+function mutateSoakSnapshot(snapshot: GridSnapshot, frame: number): GridSnapshot {
+  const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+-./:<=>?[]_{}~";
+  for (let row = 0; row < snapshot.rows; row++) {
+    for (let col = 0; col < snapshot.cols; col++) {
+      const cell = snapshot.cells[row][col];
+      cell.ch = glyphs[(frame + row * snapshot.cols + col) % glyphs.length];
+    }
+  }
+  snapshot.cursor = {
+    row: frame % snapshot.rows,
+    col: (frame * 7) % snapshot.cols,
+    shape: frame % 2 === 0 ? "block" : "beam",
+    blinking: false,
+    visible: true,
+  };
+  return snapshot;
+}
+
+async function runSoak(): Promise<RendererSoakReport> {
+  const snapshot = createDenseAsciiSnapshot(SOAK_COLS, SOAK_ROWS);
+  const atlas = new GlyphAtlas({ pageSize: 128, maxPages: 4 });
+  const canvas = makeCanvas(snapshot);
+  const contextLossEvents: string[] = [];
+  const frameErrors: string[] = [];
+  canvas.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    contextLossEvents.push(`lost@${performance.now().toFixed(3)}`);
+  });
+  const context = gpuPaint.createTerminalGpuPaintContext(canvas, { devicePixelRatio: DEVICE_PIXEL_RATIO, atlas });
+  if (!context) throw new Error("WebGL2 unavailable for renderer soak harness");
+  const before = context.atlas.getCounters();
+  const frameTimes: number[] = [];
+  const evictionProbeAtlas = new GlyphAtlas({
+    pageSize: 32,
+    maxPages: 1,
+    padding: 1,
+    createSurface: (size) => ({ width: size, height: size }),
+    clearSurface: () => {},
+    rasterizeGlyph: (key) => ({
+      width: 14,
+      height: 14,
+      advanceWidth: 14,
+      offsetX: key.bold ? 1 : 0,
+      offsetY: key.italic ? 1 : 0,
+      drawTo: () => {},
+    }),
+  });
+  const evictionProbeBefore = evictionProbeAtlas.getCounters();
+  for (let i = 0; i < 12; i++) {
+    evictionProbeAtlas.getOrInsert({
+      text: String.fromCharCode(65 + i),
+      fontFamily: FONT_FAMILY,
+      fontSize: 12,
+      dpr: DEVICE_PIXEL_RATIO,
+    });
+  }
+  const evictionProbeAfter = evictionProbeAtlas.getCounters();
+
+  for (let frame = 0; frame < SOAK_FRAMES; frame++) {
+    mutateSoakSnapshot(snapshot, frame);
+    const startedAt = performance.now();
+    try {
+      gpuPaint.beginGpuFrame(context);
+      for (let row = 0; row < snapshot.rows; row++) {
+        gpuPaint.paintRow(
+          context,
+          snapshot.cells[row],
+          row,
+          METRICS,
+          12,
+          FONT_FAMILY,
+          DEVICE_PIXEL_RATIO,
+          "rgba(3, 10, 22, 0.92)",
+          "solid",
+        );
+      }
+      gpuPaint.paintCursor(context, snapshot, METRICS, DEVICE_PIXEL_RATIO);
+      gpuPaint.flushGpuFrame(context);
+    } catch (error) {
+      frameErrors.push(error instanceof Error ? error.message : String(error));
+      break;
+    }
+    frameTimes.push(performance.now() - startedAt);
+    if (frame % 250 === 0) await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+
+  const after = context.atlas.getCounters();
+  const firstWindow = frameTimes.slice(0, SOAK_WINDOW_FRAMES);
+  const lastWindow = frameTimes.slice(-SOAK_WINDOW_FRAMES);
+  const firstWindowAverageMs = average(firstWindow);
+  const lastWindowAverageMs = average(lastWindow);
+  const decayRatio = firstWindowAverageMs > 0 ? Number((lastWindowAverageMs / firstWindowAverageMs).toFixed(3)) : 0;
+  const totalLookups = after.hits + after.misses;
+  const hitRate = totalLookups > 0 ? Number((after.hits / totalLookups).toFixed(4)) : 0;
+  const checks = [
+    {
+      id: "completed-10k-frames",
+      passed: frameTimes.length === SOAK_FRAMES,
+      detail: `${frameTimes.length}/${SOAK_FRAMES} frames completed`,
+    },
+    {
+      id: "no-context-loss",
+      passed: contextLossEvents.length === 0,
+      detail: `${contextLossEvents.length} context loss events`,
+    },
+    {
+      id: "no-frame-errors",
+      passed: frameErrors.length === 0,
+      detail: frameErrors[0] ?? "no frame errors",
+    },
+    {
+      id: "stable-frame-time",
+      passed: decayRatio <= 1.1,
+      detail: `last/first average frame-time ratio ${decayRatio}`,
+    },
+    {
+      id: "bounded-atlas-pages",
+      passed: after.pages <= 4 && after.glyphs <= 256,
+      detail: `${after.pages} pages, ${after.glyphs} glyphs`,
+    },
+    {
+      id: "atlas-eviction-probe",
+      passed: evictionProbeAfter.evictions > evictionProbeBefore.evictions,
+      detail: `${evictionProbeAfter.evictions - evictionProbeBefore.evictions} evicted glyph entries`,
+    },
+  ];
+  const ok = checks.every((check) => check.passed);
+  return {
+    version: 1,
+    status: ok ? "pass" : "fail",
+    ok,
+    generatedAt: new Date().toISOString(),
+    renderer: "webgl2",
+    frames: SOAK_FRAMES,
+    grid: { cols: SOAK_COLS, rows: SOAK_ROWS },
+    timing: {
+      firstWindowAverageMs,
+      lastWindowAverageMs,
+      decayRatio,
+      p95Ms: percentile(frameTimes, 95),
+      maxMs: Number(Math.max(...frameTimes).toFixed(3)),
+    },
+    atlas: {
+      before,
+      after,
+      hitRate,
+      pagesWithinLimit: after.pages <= 4,
+      glyphsBounded: after.glyphs <= 256,
+      evictionProbe: {
+        before: evictionProbeBefore,
+        after: evictionProbeAfter,
+        observed: evictionProbeAfter.evictions > evictionProbeBefore.evictions,
+      },
+    },
+    contextLossEvents,
+    frameErrors,
+    checks,
+  };
+}
+
 declare global {
   interface Window {
     __AELYRIS_RENDERER_HARNESS__: {
       runParity: typeof runParity;
       runPerf: typeof runPerf;
+      runTransparencyProof: typeof runTransparencyProof;
+      runSoak: typeof runSoak;
     };
   }
 }
@@ -396,4 +725,6 @@ declare global {
 window.__AELYRIS_RENDERER_HARNESS__ = {
   runParity,
   runPerf,
+  runTransparencyProof,
+  runSoak,
 };

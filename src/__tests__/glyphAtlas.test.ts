@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GlyphAtlas, glyphAtlasKey, type GlyphAtlasKey } from "../features/terminal/gpu/glyphAtlas";
+import { GlyphAtlas, type GlyphAtlasKey, glyphAtlasKey } from "../features/terminal/gpu/glyphAtlas";
 
 const baseKey: GlyphAtlasKey = {
   text: "A",
@@ -48,6 +48,17 @@ describe("GlyphAtlas", () => {
     expect(dpr2.key).not.toBe(dpr1.key);
     expect(dpr2.width).toBeGreaterThan(dpr1.width);
     expect(atlas.getCounters()).toMatchObject({ hits: 0, misses: 2, glyphs: 2 });
+  });
+
+  it("wraps to a new row before a glyph would overflow the atlas page width", () => {
+    const atlas = atlasForTests({ pageSize: 32, maxPages: 1, width: 12, height: 10 });
+    atlas.getOrInsert({ ...baseKey, text: "A" });
+    atlas.getOrInsert({ ...baseKey, text: "B" });
+    const wrapped = atlas.getOrInsert({ ...baseKey, text: "C" });
+
+    expect(wrapped.x).toBe(1);
+    expect(wrapped.y).toBe(13);
+    expect(wrapped.x + wrapped.width).toBeLessThanOrEqual(32);
   });
 
   it("evicts the least recently used page when the page budget is full", () => {

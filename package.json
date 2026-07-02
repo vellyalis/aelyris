@@ -61,6 +61,8 @@
     "verify:terminal:font-render": "node scripts/verify-terminal-font-render-contract.mjs",
     "verify:renderer:parity": "node scripts/verify-renderer-parity.mjs",
     "verify:renderer:perf": "node scripts/verify-renderer-perf.mjs",
+    "verify:renderer:transparency": "node scripts/verify-renderer-transparency.mjs",
+    "verify:renderer:soak": "node scripts/verify-renderer-soak.mjs",
     "verify:terminal:native-input": "node scripts/verify-native-terminal-input-host.mjs",
     "verify:terminal:command-evidence": "node scripts/verify-live-command-evidence.mjs",
     "verify:terminal:multipane-command-evidence": "node scripts/verify-multipane-command-evidence.mjs",

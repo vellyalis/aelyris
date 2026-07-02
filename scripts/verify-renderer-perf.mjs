@@ -30,7 +30,9 @@ async function main() {
     server.middlewares.use("/__renderer_harness__", (_req, res) => {
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.end('<!doctype html><html><body><script type="module" src="/e2e/renderer-harness.ts"></script></body></html>');
+      res.end(
+        '<!doctype html><html><body><script type="module" src="/e2e/renderer-harness.ts"></script></body></html>',
+      );
     });
     await server.listen();
     const baseUrl = server.resolvedUrls?.local?.[0];
@@ -43,9 +45,9 @@ async function main() {
     page.on("requestfailed", (request) =>
       diagnostics.push(`requestfailed: ${request.url()} ${request.failure()?.errorText ?? "unknown"}`),
     );
-    await page.goto(`${baseUrl}__renderer_harness__`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(`${baseUrl}__renderer_harness__`, { waitUntil: "commit", timeout: 120_000 });
     try {
-      await page.waitForFunction(() => Boolean(window.__AELYRIS_RENDERER_HARNESS__), null, { timeout: 60_000 });
+      await page.waitForFunction(() => Boolean(window.__AELYRIS_RENDERER_HARNESS__), null, { timeout: 120_000 });
     } catch (error) {
       throw new Error(`renderer harness did not initialize: ${error.message}\n${diagnostics.slice(-20).join("\n")}`);
     }

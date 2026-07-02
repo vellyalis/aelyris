@@ -175,7 +175,13 @@ export class GlyphAtlas {
     }
 
     for (const page of this.pages) {
-      if (this.canPlace(page, paddedWidth, paddedHeight)) return page;
+      if (this.canPlaceCurrentRow(page, paddedWidth, paddedHeight)) return page;
+      if (this.canPlaceNextRow(page, paddedWidth, paddedHeight)) {
+        page.cursorX = 0;
+        page.cursorY += page.rowHeight;
+        page.rowHeight = 0;
+        return page;
+      }
     }
 
     if (this.pages.length < this.maxPages) {
@@ -185,9 +191,12 @@ export class GlyphAtlas {
     return this.evictLeastRecentlyUsedPage();
   }
 
-  private canPlace(page: AtlasPage, paddedWidth: number, paddedHeight: number): boolean {
-    if (page.cursorX + paddedWidth <= this.pageSize && page.cursorY + paddedHeight <= this.pageSize) return true;
-    const nextRowY = page.cursorY + Math.max(page.rowHeight, paddedHeight);
+  private canPlaceCurrentRow(page: AtlasPage, paddedWidth: number, paddedHeight: number): boolean {
+    return page.cursorX + paddedWidth <= this.pageSize && page.cursorY + paddedHeight <= this.pageSize;
+  }
+
+  private canPlaceNextRow(page: AtlasPage, paddedWidth: number, paddedHeight: number): boolean {
+    const nextRowY = page.cursorY + page.rowHeight;
     return paddedWidth <= this.pageSize && nextRowY + paddedHeight <= this.pageSize;
   }
 
