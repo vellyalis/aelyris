@@ -2,7 +2,7 @@
 
 Status: active implementation index
 Last updated: 2026-06-27 JST
-Last reviewed: 2026-06-29 JST
+Last reviewed: 2026-07-03 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
@@ -64,6 +64,12 @@ The locally generated `.codex-auto/quality/*.json` artifacts are the current
 machine truth. They override stale prose, older promotion gates, and historical
 green snapshots.
 
+Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
+reports `71/100` (`249/351`), grade `D`, `releaseCandidateReady=false`.
+The final-goal audit is `blocked-by-external-gates` with
+`implementationFixableCount=0`, `policyBlockedCount=0`, and
+`externalBlockedCount=27`; Aelyris remains alpha and not release-ready.
+
 ## Documentation Maintenance Rule
 
 Every implementation workstream must keep these four layers synchronized:
@@ -75,5 +81,3 @@ Every implementation workstream must keep these four layers synchronized:
 
 If code changes create or remove a blocker, update the relevant design/status
 section and verifier artifact in the same work unit.
-
-

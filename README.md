@@ -13,6 +13,13 @@ auditable review/merge gates.
 > claim is backed by a verifier you can run yourself. Expect rough edges; APIs
 > are moving.
 
+Current machine truth, refreshed 2026-07-03 JST: `pnpm verify:quality-score`
+currently reports `71/100` (`249/351`), grade `D`,
+`releaseCandidateReady=false`. The final-goal audit is
+`blocked-by-external-gates` with `implementationFixableCount=0`,
+`policyBlockedCount=0`, and `externalBlockedCount=27`; Aelyris remains alpha
+and not release-ready.
+
 ## Why now
 
 AI has made writing code the easy part. A new wave of builders — many of them not

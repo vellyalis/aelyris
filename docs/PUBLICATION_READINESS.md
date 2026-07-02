@@ -12,6 +12,13 @@ the current limitations visible. Aelyris is alpha and does not claim production
 readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
+Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
+reports `71/100` (`249/351`), grade `D`, `releaseCandidateReady=false`.
+The current final-goal audit is `blocked-by-external-gates` with
+`implementationFixableCount=0`, `policyBlockedCount=0`, and
+`externalBlockedCount=27`; safe proof registry coverage is `28/28`. This is not
+release-ready.
+
 Regenerate the machine evidence locally before release decisions:
 
 ```powershell
