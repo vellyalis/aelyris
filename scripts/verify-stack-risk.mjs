@@ -137,14 +137,52 @@ async function readRegistryCargoToml(crateName, version) {
 async function cargoInfo(crateName) {
   const args = ["info", crateName];
   const result = await run(cargo, args);
-  return {
+  const fromCargo = parseCargoInfoVersion(result.stdout);
+  const info = {
     command: commandLabel(cargo, args),
     ok: result.ok,
     exitCode: result.exitCode,
-    version: parseCargoInfoVersion(result.stdout),
+    version: fromCargo,
+    versionSource: fromCargo ? "cargo-info" : null,
     stdoutTail: result.stdout.slice(-2000),
     stderrTail: result.stderr.slice(-2000),
   };
+  if (!info.version) {
+    // `cargo info` is environment-sensitive (observed failing on fresh CI
+    // runners while plain `cargo update` works). The sparse index is the same
+    // upstream source of truth, so fall back to it directly.
+    const fallback = await fetchCrateLatestFromSparseIndex(crateName);
+    if (fallback) {
+      info.version = fallback;
+      info.versionSource = "sparse-index-fallback";
+    }
+  }
+  return info;
+}
+
+async function fetchCrateLatestFromSparseIndex(crateName) {
+  try {
+    const name = String(crateName).toLowerCase();
+    const prefix =
+      name.length === 1
+        ? `1/${name}`
+        : name.length === 2
+          ? `2/${name}`
+          : name.length === 3
+            ? `3/${name[0]}/${name}`
+            : `${name.slice(0, 2)}/${name.slice(2, 4)}/${name}`;
+    const response = await fetch(`https://index.crates.io/${prefix}`);
+    if (!response.ok) return null;
+    const versions = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.yanked !== true);
+    const stable = versions.filter((entry) => !String(entry.vers).includes("-"));
+    return (stable.at(-1) ?? versions.at(-1))?.vers ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function collectTauriUrlpatternUpstreamEvidence() {
@@ -226,13 +264,18 @@ async function collectTauriUrlpatternUpstreamEvidence() {
   const dryRunProvesConstraint =
     urlpatternLatestDryRuns.length > 0 &&
     urlpatternLatestDryRuns.every((probe) => probe.rejectsCurrentRequirement === true);
+  // Latest-version knowledge may come from `cargo info` or the sparse-index
+  // fallback; either way the probes below did real work against it, so gate on
+  // the versions being known rather than on `cargo info`'s exit status.
+  const latestVersionsKnown = Boolean(tauri.version && tauriUtils.version && urlpattern.version);
   return {
     key: "tauri-utils-urlpattern-constraint",
     verdict:
-      tauri.ok && tauriUtils.ok && urlpattern.ok && (registryTomlProvesConstraint || dryRunProvesConstraint)
+      latestVersionsKnown && (registryTomlProvesConstraint || dryRunProvesConstraint)
         ? "upstream-bound"
         : "needs-review",
     verdictBasis: {
+      latestVersionsKnown,
       registryTomlProvesConstraint,
       dryRunProvesConstraint,
     },
@@ -982,9 +1025,9 @@ async function main() {
   console.log(
     `[stack-risk] urlpatternEvidence verdict=${tauriUrlpatternUpstreamEvidence.verdict} basis=${JSON.stringify(
       tauriUrlpatternUpstreamEvidence.verdictBasis,
-    )} cargoInfo tauri=${tauriUrlpatternUpstreamEvidence.latest?.tauri ?? "fail"} tauriUtils=${
-      tauriUrlpatternUpstreamEvidence.latest?.tauriUtils ?? "fail"
-    } urlpattern=${tauriUrlpatternUpstreamEvidence.latest?.urlpattern ?? "fail"}`,
+    )} latest tauri=${tauriUrlpatternUpstreamEvidence.latest?.tauri ?? "unknown"} tauriUtils=${
+      tauriUrlpatternUpstreamEvidence.latest?.tauriUtils ?? "unknown"
+    } urlpattern=${tauriUrlpatternUpstreamEvidence.latest?.urlpattern ?? "unknown"}`,
   );
   console.log(`[stack-risk] quickXmlEvidence verdict=${quickXmlUpstreamEvidence.verdict}`);
   console.log(`[stack-risk] releaseBlockers=${releaseBlockers.length}`);
