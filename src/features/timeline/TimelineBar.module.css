@@ -8,7 +8,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2);
-  min-height: 24px;
+  min-height: var(--terminal-chrome-timeline-height);
   box-sizing: border-box;
   background:
     linear-gradient(180deg, var(--terminal-chrome-bg-focus), var(--terminal-chrome-bg)),

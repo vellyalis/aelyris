@@ -541,12 +541,12 @@ describe("design token usage", () => {
     const terminalAreaRule = terminalAreaSource.match(/\.terminalArea\s*{[\s\S]*?}/)?.[0] ?? "";
     const viewportRule = terminalAreaSource.match(/\.terminalViewport\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(mountRule).toContain("gap: var(--space-1)");
-    expect(mountRule).toContain("padding: 0");
+    expect(mountRule).toContain("gap: var(--terminal-chrome-gap)");
+    expect(mountRule).toContain("padding: var(--terminal-chrome-mount-padding)");
     expect(mountRule).not.toContain("padding: var(--space-2)");
     expect(activeMountRule).toContain("inset 0 0 0 1px");
-    expect(terminalAreaRule).toContain("padding: 0");
-    expect(viewportRule).toContain("padding: 4px");
+    expect(terminalAreaRule).toContain("padding: var(--terminal-chrome-area-padding)");
+    expect(viewportRule).toContain("padding: var(--terminal-canvas-gutter)");
   });
 
   it("keeps terminal water effects free of generated-looking screen glints", () => {
@@ -699,7 +699,7 @@ describe("design token usage", () => {
     expect(src).not.toContain("GitBranch");
     expect(src).not.toContain("styles.branch");
     expect(cssSource).not.toContain(".branch");
-    expect(barRule).toContain("min-height: 18px");
+    expect(barRule).toContain("min-height: var(--terminal-chrome-header-height)");
     expect(shellRule).toContain("background: transparent");
     expect(shellRule).toContain("box-shadow: none");
   });

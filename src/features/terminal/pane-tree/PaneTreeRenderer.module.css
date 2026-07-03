@@ -28,7 +28,7 @@
 .terminalMount {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--terminal-chrome-gap);
   overflow: hidden;
   z-index: 1;
   box-sizing: border-box;
@@ -41,7 +41,7 @@
   --text-secondary: var(--terminal-ui-secondary);
   --text-muted: var(--terminal-ui-muted);
   color: var(--terminal-ui-primary);
-  padding: 0;
+  padding: var(--terminal-chrome-mount-padding);
   border-radius: calc(var(--radius-lg) + 2px);
   background:
     radial-gradient(ellipse at 48% -12%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 42%),
