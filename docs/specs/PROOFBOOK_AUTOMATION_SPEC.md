@@ -468,6 +468,145 @@ Acceptance:
   MCP verbs, roadmap, and `/goal` packets.
 - No product claim says Proofbooks are implemented.
 
+### PB-1D - Detailed Design Gate: Schema, Parser, And Validation
+
+Status: required before PB-1 runtime code. PB-1D is a docs/verifier gate only.
+It does not create `src-tauri/src/proofbook`, IPC handlers, MCP verbs, a runner,
+run ledgers, UI, DB tables, or executable Proofbooks.
+
+PB-1D owner scope:
+
+- Design files touched by PB-1D:
+  `docs/specs/PROOFBOOK_AUTOMATION_SPEC.md` and
+  `scripts/verify-proofbook-spec.mjs`.
+- Future PB-1 implementation spine:
+  `src-tauri/src/proofbook/mod.rs`,
+  `src-tauri/src/proofbook/types.rs`,
+  `src-tauri/src/proofbook/errors.rs`,
+  `src-tauri/src/proofbook/parser.rs`, and
+  `src-tauri/src/proofbook/validator.rs`.
+- Future PB-1 adapter scope:
+  `src-tauri/src/ipc/proofbook_commands.rs`,
+  `src-tauri/src/ipc/mod.rs`, and `src-tauri/src/lib.rs` only for
+  list/validate/read-summary IPC wiring.
+- Explicitly out of PB-1:
+  `runner.rs`, `ledger.rs`, `agent_step.rs`, `settlement.rs`, `distill.rs`,
+  `evidence_store.rs`, `src-tauri/src/api/mcp.rs`, frontend UI files, database
+  migrations, external command execution, and any Proofbook run state.
+
+Module boundary for `src-tauri/src/proofbook`:
+
+- `mod.rs` exports the schema/parser/validator contract and typed errors. It
+  must not own Tauri state, MCP catalog registration, process spawning, shell
+  command policy, or UI-specific DTOs.
+- `types.rs` owns serializable schema types:
+  `ProofbookDefinition`, `ProofbookInputSpec`, `ProofbookSecretRef`,
+  `ProofbookStep`, `ProofbookStepKind`, `ProofbookDependency`,
+  `ProofbookSettlement`, `ProofbookSummary`, and `ProofbookValidationReport`.
+- `errors.rs` owns `ProofbookError`, `ProofbookErrorCode`, and structured
+  error fields. The error code is stable API for IPC callers and future MCP
+  adapters; the message is diagnostic only.
+- `parser.rs` owns discovery and YAML parsing from
+  `.aelyris/proofbooks/*.proofbook.yaml` and
+  `.aelyris/proofbooks/*.proofbook.yml` under a contained project root. It may
+  use the existing `serde_yaml` dependency. It must not resolve secrets,
+  execute commands, call MCP tools, spawn agents, or write run artifacts.
+- `validator.rs` owns static validation over parsed definitions: schema
+  version, ids, step taxonomy, dependency graph, settlement, secrets, and path
+  containment metadata. It returns a validation report and never mutates
+  workspace state.
+
+PB-1 schema contract:
+
+- Accepted schema version is exactly `aelyris.proofbook.v1`.
+- Definition ids and step ids are ASCII slug identifiers:
+  `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`. Titles and descriptions are user text but
+  must not participate in path construction.
+- Step kinds are the planned taxonomy:
+  `shell`, `verifier`, `mcpTool`, `agentSession`, `http`, `manualGate`,
+  `waitFor`, `fanOut`, `subProofbook`, `evidence.write`, and `evidence.read`.
+  PB-1 validates definitions containing those kinds but does not execute any of
+  them.
+- `dependsOn` references must point to existing step ids, the dependency graph
+  must be acyclic, and settlement must name at least one required step or
+  required artifact.
+- Secret values are always references. Literal token-like values, private keys,
+  and inline secret strings fail validation with `invalid_secret_ref`.
+
+Typed error taxonomy:
+
+| Code | When it is emitted |
+| --- | --- |
+| `invalid_project_path` | The project root is missing, non-canonical, or not a directory. |
+| `path_outside_project` | A Proofbook path or artifact path escapes the project root. |
+| `proofbook_dir_missing` | `.aelyris/proofbooks` does not exist for list/read. |
+| `io_error` | A definition file cannot be read. |
+| `yaml_parse_error` | YAML cannot be parsed into the schema shape. |
+| `unsupported_schema_version` | `schema` is absent or not `aelyris.proofbook.v1`. |
+| `missing_required_field` | A required definition, step, or settlement field is absent. |
+| `invalid_identifier` | A definition id or step id violates the slug contract. |
+| `duplicate_id` | A step, input, or secret id is declared more than once. |
+| `unknown_step_type` | A step type is not in the planned Proofbook taxonomy. |
+| `missing_dependency` | `dependsOn` references a step that is not defined. |
+| `cycle_detected` | The step graph contains a cycle. |
+| `missing_settlement` | Settlement is absent or has no required proof target. |
+| `invalid_secret_ref` | A secret is inline, malformed, or not a reference. |
+| `runtime_not_available` | Any PB-1 surface is asked to run, resume, cancel, or mutate a Proofbook. |
+
+Every error carries `code`, `message`, optional `definitionId`, optional
+`stepId`, optional `field`, and optional `path`. IPC adapters serialize the
+structured error unchanged. Future MCP adapters must wrap the same structure
+instead of string-parsing messages.
+
+No-runner and fail-closed boundary:
+
+- PB-1 cannot create `runId`, write `.aelyris/proofbook-runs`, execute
+  `shell`/`verifier` commands, call MCP tools, issue HTTP requests, spawn or
+  attach agent sessions, wait on live conditions, fan out branches, run
+  subProofbooks, write Evidence Store records, or distill traces.
+- PB-1 IPC may list definitions and return validation reports only. Any
+  `run`, `resume`, `cancel`, `approve_gate`, `reject_gate`, `create`, `update`,
+  or `distill` shaped request must return `runtime_not_available` or must not
+  be registered at all.
+- Recognized future step types are parseable for static validation but remain
+  non-executable until their owning PB phase. Unsupported step types fail
+  validation; unsupported runtime attempts fail closed and never produce a
+  passed ledger or success artifact.
+
+Focused Rust test matrix for PB-1:
+
+- valid minimal `.proofbook.yaml` parses and validates with a stable summary,
+- `.proofbook.yml` and `.proofbook.yaml` discovery stays under
+  `.aelyris/proofbooks`,
+- unsupported schema version returns `unsupported_schema_version`,
+- unknown step type returns `unknown_step_type`,
+- duplicate step/input/secret ids return `duplicate_id`,
+- missing dependency returns `missing_dependency`,
+- dependency cycle returns `cycle_detected`,
+- missing or empty settlement returns `missing_settlement`,
+- inline secret-like value returns `invalid_secret_ref`,
+- path traversal outside the project returns `path_outside_project`,
+- IPC list/validate serializes structured validation reports,
+- any PB-1 execution-shaped request fails with `runtime_not_available` or has
+  no registered command.
+
+Verifier and artifact expectations:
+
+- PB-1D keeps using `pnpm verify:proofbook:spec`, which writes
+  `.codex-auto/quality/proofbook-spec.json`. The artifact must contain a
+  passing `spec-pb1d-detailed-design` check before PB-1 implementation starts.
+- PB-1 implementation must add focused Rust tests under the proofbook modules
+  and pass `cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib`.
+- PB-1 must not add a success artifact that implies Proofbooks can run. Any new
+  verifier artifact must describe schema/parser/validator readiness only.
+
+PB-1D claim boundary:
+
+After PB-1D, the only safe claim is that the PB-1 schema/parser/validator
+design gate is documented and verifier-checked. Proofbook definitions still
+cannot run, Proofbooks are still a proposal/design target, and no runner, UI,
+MCP Proofbook verbs, or distillation capability is implemented.
+
 ### PB-1 — Schema, Parser, And Validation
 
 Scope: no execution.
@@ -475,9 +614,11 @@ Scope: no execution.
 Files:
 
 - `src-tauri/src/proofbook/types.rs`
+- `src-tauri/src/proofbook/errors.rs`
 - `src-tauri/src/proofbook/parser.rs`
 - `src-tauri/src/proofbook/validator.rs`
 - `src-tauri/src/proofbook/mod.rs`
+- `src-tauri/src/ipc/proofbook_commands.rs` for list/validate IPC only
 - `src-tauri/src/lib.rs`
 - focused Rust tests
 
@@ -486,7 +627,9 @@ Acceptance:
 - Parses `.aelyris/proofbooks/*.proofbook.yaml`.
 - Rejects cycles, unknown step types, missing dependencies, missing settlement,
   invalid secret refs, and unsupported schema versions.
-- Lists project Proofbooks through IPC only.
+- Lists and validates project Proofbooks through IPC only.
+- Does not register run/resume/cancel/mutate commands and does not write run
+  ledgers.
 
 ### PB-2 — Run Ledger And Deterministic Steps
 

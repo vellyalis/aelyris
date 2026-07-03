@@ -161,6 +161,60 @@ const requiredPhaseFailClosedClauses = [
   "Evidence Store is a projection only",
 ];
 const missingPhaseFailClosedClauses = missingFromNormalized(spec, requiredPhaseFailClosedClauses);
+const requiredPb1dClauses = [
+  "### PB-1D - Detailed Design Gate: Schema, Parser, And Validation",
+  "PB-1D is a docs/verifier gate only.",
+  "It does not create `src-tauri/src/proofbook`, IPC handlers, MCP verbs, a runner, run ledgers, UI, DB tables, or executable Proofbooks.",
+  "`src-tauri/src/proofbook/types.rs`",
+  "`src-tauri/src/proofbook/errors.rs`",
+  "`src-tauri/src/proofbook/parser.rs`",
+  "`src-tauri/src/proofbook/validator.rs`",
+  "`src-tauri/src/ipc/proofbook_commands.rs`",
+  "`runner.rs`, `ledger.rs`, `agent_step.rs`, `settlement.rs`, `distill.rs`,",
+  "`src-tauri/src/api/mcp.rs`, frontend UI files, database migrations, external command execution, and any Proofbook run state.",
+  "`mod.rs` exports the schema/parser/validator contract and typed errors.",
+  "`types.rs` owns serializable schema types:",
+  "`errors.rs` owns `ProofbookError`, `ProofbookErrorCode`, and structured error fields.",
+  "`parser.rs` owns discovery and YAML parsing from `.aelyris/proofbooks/*.proofbook.yaml`",
+  "`validator.rs` owns static validation over parsed definitions",
+  "Accepted schema version is exactly `aelyris.proofbook.v1`.",
+  "Definition ids and step ids are ASCII slug identifiers:",
+  "Step kinds are the planned taxonomy:",
+  "Secret values are always references.",
+  "Typed error taxonomy:",
+  "Every error carries `code`, `message`, optional `definitionId`, optional `stepId`, optional `field`, and optional `path`.",
+  "No-runner and fail-closed boundary:",
+  "PB-1 cannot create `runId`, write `.aelyris/proofbook-runs`, execute",
+  "PB-1 IPC may list definitions and return validation reports only.",
+  "Recognized future step types are parseable for static validation but remain non-executable until their owning PB phase.",
+  "Focused Rust test matrix for PB-1:",
+  "valid minimal `.proofbook.yaml` parses and validates with a stable summary",
+  "any PB-1 execution-shaped request fails with `runtime_not_available`",
+  "Verifier and artifact expectations:",
+  "passing `spec-pb1d-detailed-design` check before PB-1 implementation starts.",
+  "cargo test --manifest-path src-tauri\\Cargo.toml proofbook --lib",
+  "PB-1D claim boundary:",
+  "Proofbook definitions still cannot run",
+];
+const pb1dErrorCodes = [
+  "`invalid_project_path`",
+  "`path_outside_project`",
+  "`proofbook_dir_missing`",
+  "`io_error`",
+  "`yaml_parse_error`",
+  "`unsupported_schema_version`",
+  "`missing_required_field`",
+  "`invalid_identifier`",
+  "`duplicate_id`",
+  "`unknown_step_type`",
+  "`missing_dependency`",
+  "`cycle_detected`",
+  "`missing_settlement`",
+  "`invalid_secret_ref`",
+  "`runtime_not_available`",
+];
+const missingPb1dClauses = missingFromNormalized(spec, requiredPb1dClauses);
+const missingPb1dErrorCodes = missingFrom(spec, pb1dErrorCodes);
 const goalPacketsWithoutDesignGate = roadmapIds
   .filter((id) => id !== "PB-0")
   .filter((id) => {
@@ -274,6 +328,12 @@ const checks = [
     missingPhaseFailClosedClauses.length === 0,
     "Proofbook roadmap keeps unsupported future behavior fail-closed and prevents fake success across PB-1 through PB-7",
     { missingPhaseFailClosedClauses },
+  ),
+  check(
+    "spec-pb1d-detailed-design",
+    missingPb1dClauses.length === 0 && missingPb1dErrorCodes.length === 0,
+    "Proofbook spec defines PB-1D schema/parser/validator ownership, typed errors, no-runner boundary, test matrix, verifier artifact, and claim boundary before PB-1 runtime code",
+    { missingPb1dClauses, missingPb1dErrorCodes },
   ),
   check(
     "spec-goal-packets",
