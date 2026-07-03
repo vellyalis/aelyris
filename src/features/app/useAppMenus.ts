@@ -21,11 +21,16 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { PRODUCT_NAME } from "../../shared/constants/product";
-import type { ShellType, TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { formatOperationalPaneChoice, resolveOperationalPaneChoice } from "../../shared/lib/operationalPaneSelection";
+import {
+  acceptedTerminalWrites,
+  type SendKeysBatchResult,
+  skippedTerminalWrites,
+} from "../../shared/lib/sendKeysResult";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
+import type { ShellType, TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import type { CommandItem } from "../command-palette/CommandPalette";
@@ -186,11 +191,16 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           placeholder: "command or text",
         });
         if (!text?.trim()) return;
-        const count = await invoke<number>("send_keys_by_target", {
+        const result = await invoke<SendKeysBatchResult>("send_keys_by_target", {
           target: trimmedTarget,
           data: normalizeCommandInput(text),
         });
-        toast.success("Sent to pane", `${count} target${count === 1 ? "" : "s"}`);
+        const count = acceptedTerminalWrites(result);
+        const skipped = skippedTerminalWrites(result).length;
+        toast.success(
+          "Sent to pane",
+          `${count} target${count === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped` : ""}`,
+        );
       } catch (e) {
         toast.error("Send to pane failed", String(e));
       }
@@ -250,8 +260,13 @@ export function useAppMenus(opts: UseAppMenusOptions) {
             return;
           }
         }
-        const count = await invoke<number>("broadcast_keys", { data: normalizeCommandInput(text) });
-        toast.success("Broadcast sent", `${count} pane${count === 1 ? "" : "s"}`);
+        const result = await invoke<SendKeysBatchResult>("broadcast_keys", { data: normalizeCommandInput(text) });
+        const count = acceptedTerminalWrites(result);
+        const skipped = skippedTerminalWrites(result).length;
+        toast.success(
+          "Broadcast sent",
+          `${count} pane${count === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped` : ""}`,
+        );
       } catch (e) {
         toast.error("Broadcast failed", String(e));
       }

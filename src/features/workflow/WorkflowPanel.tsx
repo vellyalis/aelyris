@@ -5,6 +5,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { StartAgentMeta } from "../../shared/hooks/useAgentFleet";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import type { OrchestraRoleId } from "../../shared/lib/orchestrator";
+import { acceptedTerminalWrites, type SendKeysBatchResult } from "../../shared/lib/sendKeysResult";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
@@ -405,10 +406,11 @@ export function WorkflowPanel({ projectPath, sessions = [], onStartAgent, onDest
         const targetPane = phase.target_pane?.trim();
         if (targetPane) {
           if (!(await confirmWorkflowPaneTarget(targetPane))) return;
-          const sent = await invoke<number>("send_keys_by_target", {
+          const result = await invoke<SendKeysBatchResult>("send_keys_by_target", {
             target: targetPane,
             data: normalizeCommandInput(phase.prompt),
           });
+          const sent = acceptedTerminalWrites(result);
           await invoke("workflow_set_agent", {
             workflowId,
             agentSessionId: paneSessionId(targetPane),

@@ -124,7 +124,7 @@ describe("WorkflowPanel agent completion bridge", () => {
     const src = getSrc();
 
     expect(src).toContain("target_pane: string | null");
-    expect(src).toContain('invoke<number>("send_keys_by_target"');
+    expect(src).toContain('invoke<SendKeysBatchResult>("send_keys_by_target"');
     expect(src).toContain('import { normalizeCommandInput } from "../../shared/lib/terminalInput"');
     expect(src).toContain('import { showConfirm } from "../../shared/ui/ConfirmDialog"');
     expect(src).toContain("confirmWorkflowPaneTarget(targetPane)");

@@ -1,13 +1,17 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { MousePointer2, PlugZap, RadioTower, Send, Terminal } from "lucide-react";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-
-import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { useLivePanes } from "../../shared/hooks/useLivePanes";
 import type { Invoke } from "../../shared/hooks/useLogStream";
+import {
+  acceptedTerminalWrites,
+  type SendKeysBatchResult,
+  skippedTerminalWrites,
+} from "../../shared/lib/sendKeysResult";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
 import type { PaneEntry } from "../../shared/types/pane";
+import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -431,8 +435,10 @@ async function sendToPane(
         const liveRoleCount = countLiveRoleTargets(livePane.target.slice(1));
         if (!(await confirmRoleBroadcast(livePane.target.slice(1), liveRoleCount))) return;
       }
-      const count = await call<number>("send_keys_by_target", { target: livePane.target, data });
-      toast.success("Sent to pane", `${count} target${count === 1 ? "" : "s"}`);
+      const result = await call<SendKeysBatchResult>("send_keys_by_target", { target: livePane.target, data });
+      const count = acceptedTerminalWrites(result);
+      const skipped = skippedTerminalWrites(result).length;
+      toast.success("Sent to pane", `${count} target${count === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped` : ""}`);
       return;
     }
     if (!livePane.terminalId || livePane.terminalId !== pane.terminalId) {
@@ -508,8 +514,10 @@ async function sendToRole(role: string, invoke?: Invoke, countLiveRoleTargets: (
   }
   try {
     const call = invoke ?? (await Promise.resolve({ invoke: tauriInvoke })).invoke;
-    const count = await call<number>("send_keys_by_role", { role, data: normalizeCommandInput(text) });
-    toast.success("Broadcast sent", `${count} pane${count === 1 ? "" : "s"}`);
+    const result = await call<SendKeysBatchResult>("send_keys_by_role", { role, data: normalizeCommandInput(text) });
+    const count = acceptedTerminalWrites(result);
+    const skipped = skippedTerminalWrites(result).length;
+    toast.success("Broadcast sent", `${count} pane${count === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped` : ""}`);
   } catch (error) {
     toast.error("Broadcast failed", error instanceof Error ? error.message : String(error));
   }

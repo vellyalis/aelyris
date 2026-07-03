@@ -5,9 +5,9 @@ use tauri::{AppHandle, Manager};
 use crate::agent::{InteractiveSessionInfo, InteractiveSessionManager};
 
 use super::commands::{
-    capture_if_enter, gate_ipc_input, record_audit_event, sanitize_audit_error,
-    save_submitted_command_history, sync_mux_pane_name, sync_mux_pane_role, terminal_ids_async,
-    terminal_write_async, terminal_write_order_lock, validate_keys_payload, OutputBufferRegistry,
+    OutputBufferRegistry, capture_if_enter, gate_ipc_input, record_audit_event,
+    sanitize_audit_error, save_submitted_command_history, sync_mux_pane_name, sync_mux_pane_role,
+    terminal_ids_async, terminal_write_async, terminal_write_order_lock, validate_keys_payload,
 };
 
 /// The P0-4 gate mode for the send-keys family: these are the PROGRAMMATIC injection verbs
@@ -16,6 +16,68 @@ use super::commands::{
 const SEND_KEYS_GATE_MODE: crate::command_risk::gate::GateMode =
     crate::command_risk::gate::GateMode::HoldUntilApproved;
 const SEND_KEYS_SOURCE: &str = "ipc-send-keys";
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedTerminalWrite {
+    terminal_id: String,
+    reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalWriteBatchResult {
+    accepted: u32,
+    skipped: Vec<SkippedTerminalWrite>,
+}
+
+impl TerminalWriteBatchResult {
+    fn new(accepted: u32, skipped: Vec<SkippedTerminalWrite>) -> Self {
+        Self { accepted, skipped }
+    }
+}
+
+fn waiting_approval_write_skip(
+    session_mgr: &InteractiveSessionManager,
+    terminal_id: &str,
+) -> Result<Option<SkippedTerminalWrite>, String> {
+    let session = session_mgr
+        .list()?
+        .into_iter()
+        .find(|session| session.pty_id == terminal_id && session.status == "waiting_approval");
+    Ok(session.map(|_| SkippedTerminalWrite {
+        terminal_id: terminal_id.to_string(),
+        reason: "waiting_approval".to_string(),
+    }))
+}
+
+fn reject_targeted_waiting_approval(
+    session_mgr: &InteractiveSessionManager,
+    terminal_id: &str,
+) -> Result<(), String> {
+    if waiting_approval_write_skip(session_mgr, terminal_id)?.is_some() {
+        return Err(format!(
+            "blocked_waiting_approval: terminal {terminal_id} is at an approval gate; use the Decision Inbox or aelyris.approval.resolve"
+        ));
+    }
+    Ok(())
+}
+
+fn record_waiting_approval_skip(app: &AppHandle, terminal_id: &str, action: &str) {
+    record_audit_event(
+        app,
+        "agent",
+        action,
+        "warn",
+        Some("terminal"),
+        Some(terminal_id),
+        "Pane input skipped because the terminal is waiting at an approval gate",
+        serde_json::json!({
+            "reason": "waiting_approval",
+            "redacted": true,
+        }),
+    );
+}
 
 /// Send keystrokes to a specific terminal pane. Mirrors `write_terminal`'s
 /// snapshot hook so Orchestra agents that drive a pane through this IPC
@@ -29,6 +91,8 @@ pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Res
     let raw = data.into_bytes();
     let write_order = terminal_write_order_lock(&terminal_id);
     let _write_guard = write_order.lock().await;
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    reject_targeted_waiting_approval(&session_mgr, &terminal_id)?;
     let bytes = gate_ipc_input(
         &app,
         &terminal_id,
@@ -85,11 +149,7 @@ pub async fn send_keys(app: AppHandle, terminal_id: String, data: String) -> Res
 /// human typing on the same pane.
 const DECISION_APPROVAL_SOURCE: &str = "ipc-decision-approval";
 fn approval_resolution_keystroke(approve: bool) -> &'static [u8] {
-    if approve {
-        b"1"
-    } else {
-        b"\x1b"
-    }
+    if approve { b"1" } else { b"\x1b" }
 }
 
 fn stable_text_key(value: &str) -> String {
@@ -167,7 +227,7 @@ pub async fn resolve_interactive_approval(
         other => {
             return Err(format!(
                 "invalid decision '{other}' (expected approve|deny)"
-            ))
+            ));
         }
     };
 
@@ -268,7 +328,10 @@ pub fn command_blocks(
 /// successfully written pane also gets its own snapshot captured when the
 /// payload ends a command, so the timeline stays consistent across panes.
 #[tauri::command]
-pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String> {
+pub async fn broadcast_keys(
+    app: AppHandle,
+    data: String,
+) -> Result<TerminalWriteBatchResult, String> {
     validate_keys_payload(&data)?;
     let ids = terminal_ids_async(&app).await;
     if ids.is_empty() {
@@ -294,12 +357,19 @@ pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String>
     }
     let mut count: u32 = 0;
     let mut last_error: Option<String> = None;
+    let mut skipped: Vec<SkippedTerminalWrite> = Vec::new();
+    let session_mgr = app.state::<InteractiveSessionManager>();
     for id in &ids {
         // P0-4: gate each pane's write independently (its own synchronized scope); a denied
         // submission is refused for that pane while benign panes still receive input. The
         // per-terminal lock keeps each pane's gate + write atomic so writes never reorder.
         let write_order = terminal_write_order_lock(id);
         let _write_guard = write_order.lock().await;
+        if let Some(skip) = waiting_approval_write_skip(&session_mgr, id)? {
+            record_waiting_approval_skip(&app, id, "broadcast_keys_skipped_waiting_approval");
+            skipped.push(skip);
+            continue;
+        }
         let writable = match gate_ipc_input(
             &app,
             id,
@@ -329,6 +399,8 @@ pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String>
         "terminal",
         if count > 0 {
             "broadcast_keys"
+        } else if !skipped.is_empty() {
+            "broadcast_keys_skipped_waiting_approval"
         } else {
             "broadcast_keys_failed"
         },
@@ -337,22 +409,25 @@ pub async fn broadcast_keys(app: AppHandle, data: String) -> Result<u32, String>
         None,
         if count > 0 {
             "Broadcast input sent"
+        } else if !skipped.is_empty() {
+            "Broadcast input skipped for panes at approval gates"
         } else {
             "Broadcast input failed"
         },
         serde_json::json!({
             "targets": ids.len(),
             "accepted": count,
+            "skipped": &skipped,
             "bytes": data.len(),
             "containsEnter": data.as_bytes().contains(&b'\r'),
             "error": last_error.as_deref().map(sanitize_audit_error),
             "redacted": true,
         }),
     );
-    if count == 0 {
+    if count == 0 && skipped.is_empty() {
         return Err(last_error.unwrap_or_else(|| "No pane accepted input".to_string()));
     }
-    Ok(count)
+    Ok(TerminalWriteBatchResult::new(count, skipped))
 }
 
 /// Rename a terminal pane (for send-keys-by-name)
@@ -403,6 +478,8 @@ pub async fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Re
     let raw = data.into_bytes();
     let write_order = terminal_write_order_lock(&terminal_id);
     let _write_guard = write_order.lock().await;
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    reject_targeted_waiting_approval(&session_mgr, &terminal_id)?;
     let bytes = gate_ipc_input(
         &app,
         &terminal_id,
@@ -458,7 +535,11 @@ pub async fn send_keys_by_name(app: AppHandle, name: String, data: String) -> Re
 /// Send keystrokes to every pane assigned a role. Role sends are intentionally
 /// scoped broadcasts because several panes may share a workstation role.
 #[tauri::command]
-pub async fn send_keys_by_role(app: AppHandle, role: String, data: String) -> Result<u32, String> {
+pub async fn send_keys_by_role(
+    app: AppHandle,
+    role: String,
+    data: String,
+) -> Result<TerminalWriteBatchResult, String> {
     validate_keys_payload(&data)?;
     let pane_registry = app.state::<crate::pty::PaneRegistry>();
     let terminal_ids = pane_registry.find_by_role(&role);
@@ -494,7 +575,7 @@ pub async fn send_keys_by_target(
     app: AppHandle,
     target: String,
     data: String,
-) -> Result<u32, String> {
+) -> Result<TerminalWriteBatchResult, String> {
     validate_keys_payload(&data)?;
     let trimmed = target.trim();
     if trimmed.is_empty() {
@@ -552,15 +633,22 @@ async fn write_to_terminals(
     app: &AppHandle,
     terminal_ids: Vec<String>,
     data: &[u8],
-) -> Result<u32, String> {
+) -> Result<TerminalWriteBatchResult, String> {
     let mut count: u32 = 0;
     let mut last_error: Option<String> = None;
+    let mut skipped: Vec<SkippedTerminalWrite> = Vec::new();
     let target_count = terminal_ids.len();
+    let session_mgr = app.state::<InteractiveSessionManager>();
     for terminal_id in terminal_ids {
         // P0-4: gate each target independently; a denied submission is refused for that pane.
         // The per-terminal lock keeps each target's gate + write atomic so writes never reorder.
         let write_order = terminal_write_order_lock(&terminal_id);
         let _write_guard = write_order.lock().await;
+        if let Some(skip) = waiting_approval_write_skip(&session_mgr, &terminal_id)? {
+            record_waiting_approval_skip(app, &terminal_id, "send_keys_skipped_waiting_approval");
+            skipped.push(skip);
+            continue;
+        }
         let writable = match gate_ipc_input(
             app,
             &terminal_id,
@@ -585,7 +673,7 @@ async fn write_to_terminals(
             Err(err) => last_error = Some(err),
         }
     }
-    if count == 0 {
+    if count == 0 && skipped.is_empty() {
         let err = last_error.unwrap_or_else(|| "No pane accepted input".to_string());
         record_audit_event(
             app,
@@ -616,12 +704,13 @@ async fn write_to_terminals(
         serde_json::json!({
             "targets": target_count,
             "accepted": count,
+            "skipped": &skipped,
             "bytes": data.len(),
             "containsEnter": data.contains(&b'\r'),
             "redacted": true,
         }),
     );
-    Ok(count)
+    Ok(TerminalWriteBatchResult::new(count, skipped))
 }
 
 /// List all registered panes with metadata
@@ -635,11 +724,12 @@ pub async fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEn
 #[cfg(test)]
 mod tests {
     use super::{
-        approval_resolution_keystroke, stable_text_key, verify_current_interactive_approval,
+        approval_resolution_keystroke, reject_targeted_waiting_approval, stable_text_key,
+        verify_current_interactive_approval, waiting_approval_write_skip,
     };
     use crate::agent::{
-        context_lifecycle::ContextRemaining, AgentCli, InteractiveSessionInfo,
-        InteractiveSessionManager,
+        AgentCli, InteractiveSessionInfo, InteractiveSessionManager,
+        context_lifecycle::ContextRemaining,
     };
 
     fn make_interactive_session(
@@ -754,5 +844,51 @@ mod tests {
         .unwrap();
 
         verify_current_interactive_approval(&mgr, "pty-1", Some(&stable_text_key(prompt))).unwrap();
+    }
+
+    #[test]
+    fn broadcast_guard_skips_waiting_approval_panes_and_reports_reason() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_interactive_session(
+            "s1",
+            "pty-approval",
+            "waiting_approval",
+            Some("Bash(npm test) · Do you want to proceed?"),
+        ))
+        .unwrap();
+
+        let skip = waiting_approval_write_skip(&mgr, "pty-approval")
+            .unwrap()
+            .expect("waiting approval pane should be skipped");
+        assert_eq!(skip.terminal_id, "pty-approval");
+        assert_eq!(skip.reason, "waiting_approval");
+    }
+
+    #[test]
+    fn targeted_send_rejects_waiting_approval_panes_with_typed_error() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_interactive_session(
+            "s1",
+            "pty-approval",
+            "waiting_approval",
+            Some("Bash(npm test) · Do you want to proceed?"),
+        ))
+        .unwrap();
+
+        let err = reject_targeted_waiting_approval(&mgr, "pty-approval").unwrap_err();
+        assert!(err.contains("blocked_waiting_approval"));
+        assert!(err.contains("aelyris.approval.resolve"));
+    }
+
+    #[test]
+    fn waiting_approval_guard_leaves_plain_shell_panes_unaffected() {
+        let mgr = InteractiveSessionManager::new();
+
+        assert!(
+            waiting_approval_write_skip(&mgr, "plain-shell")
+                .unwrap()
+                .is_none()
+        );
+        reject_targeted_waiting_approval(&mgr, "plain-shell").unwrap();
     }
 }

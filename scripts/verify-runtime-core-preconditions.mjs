@@ -14,6 +14,8 @@ function record(id, ok, detail) {
 
 const outputMonitor = read("src-tauri/src/agent/output_monitor.rs");
 const sendKeys = read("src-tauri/src/ipc/send_keys_commands.rs");
+const paneFleet = read("src-tauri/src/control/pane_fleet.rs");
+const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const decisionInbox = read("src/shared/lib/decisionInbox.ts");
 const panel = read("src/features/decision-inbox/DecisionInboxPanel.tsx");
 const decisionInboxTest = read("src/__tests__/decisionInbox.test.ts");
@@ -65,7 +67,9 @@ const checks = [
   ),
   record(
     "approve-keystroke-selects-option-one",
-    /fn approval_resolution_keystroke\(approve: bool\)[\s\S]*?if approve\s*\{\s*b"1"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(sendKeys) &&
+    /fn approval_resolution_keystroke\(approve: bool\)[\s\S]*?if approve\s*\{\s*b"1"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(
+      sendKeys,
+    ) &&
       sendKeys.includes("approval_resolution_keystroke(approve)") &&
       !/if approve\s*\{\s*b"\\r"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(sendKeys),
     "Approve sends option 1 explicitly; Deny sends Escape",
@@ -111,6 +115,33 @@ const checks = [
       return lockAt >= 0 && verifyAt >= 0 && lockAt < verifyAt;
     })(),
     "resolve_interactive_approval acquires the per-terminal write lock BEFORE the stale-approval fingerprint re-check (no check-then-lock TOCTOU)",
+  ),
+  record(
+    "write-paths-block-targeted-waiting-approval",
+    sendKeys.includes("blocked_waiting_approval") &&
+      sendKeys.includes("reject_targeted_waiting_approval") &&
+      sendKeys.includes("waiting_approval_write_skip") &&
+      sendKeys.includes('session.status == "waiting_approval"'),
+    "targeted send-key paths fail closed when the pane is waiting at an approval gate",
+  ),
+  record(
+    "fanout-write-paths-skip-and-report-waiting-approval",
+    sendKeys.includes("TerminalWriteBatchResult") &&
+      sendKeys.includes("SkippedTerminalWrite") &&
+      sendKeys.includes("record_waiting_approval_skip") &&
+      sendKeys.includes("broadcast_keys_skipped_waiting_approval") &&
+      sendKeys.includes("send_keys_skipped_waiting_approval") &&
+      sendKeys.includes('"skipped": &skipped'),
+    "fan-out write paths skip waiting-approval panes, return skipped entries, and audit each skipped pane",
+  ),
+  record(
+    "done-marker-path-includes-terminal-id",
+    paneFleet.includes("done_marker_path(worktree_path: &str, task_id: &str, terminal_id: &str)") &&
+      paneFleet.includes('"{}-{}.done"') &&
+      paneFleet.includes("done_marker_collision_uses_terminal_id_discriminator") &&
+      loopPorts.includes("completion_marker_section(task_id: &str, cwd: &str, terminal_id: &str)") &&
+      loopPorts.includes("spawn_with_terminal_id"),
+    "visible-fleet done marker path includes the terminal id and prompt generation uses the same backend-built path",
   ),
 ];
 
