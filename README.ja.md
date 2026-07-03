@@ -32,6 +32,13 @@ Rust でゼロから書かれています。
 各行は、実行できるチェックに裏づけられたアーキテクチャ上の性質を指しています——
 [検証](#検証) を参照。
 
+現在の機械的真実（2026-07-03 JST 更新）: `pnpm verify:quality-score` は現在
+`71/100`（`249/351`）、グレード `D`、`releaseCandidateReady=false` を報告して
+います。final-goal 監査は `blocked-by-external-gates`
+（`implementationFixableCount=0`、`policyBlockedCount=0`、
+`externalBlockedCount=27`）。Aelyris はアルファのままで、リリース可能では
+ありません。
+
 ## なぜ今か
 
 AI のおかげで「コードを書く」こと自体は簡単になりました。ボトルネックは別の場所に
