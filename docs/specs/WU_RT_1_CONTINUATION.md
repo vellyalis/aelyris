@@ -1,6 +1,6 @@
 # Aelyris Next Session Continuation
 
-Updated: 2026-07-03 JST
+Updated: 2026-07-04 JST
 
 Purpose: keep the next cleared Codex/Claude/Gemini session pointed at current
 machine truth after the refactor and hardening closeout work, without reviving
@@ -83,11 +83,11 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `81/100` (`283/351`), grade `C`,
+- `pnpm verify:quality-score` -> `83/100` (`293/351`), grade `C`,
   `releaseCandidateReady=false`.
 - `pnpm verify:final-goal-audit` -> `blocked-by-external-gates`,
   `implementationFixableCount=0`, `policyBlockedCount=0`,
-  `externalBlockedCount=20`.
+  `externalBlockedCount=13`.
 - `pnpm verify:goal:safe` -> required proof registry `28/28`,
   `blocked-by-external-gates`, no failed steps, no non-consent blockers.
 - `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.

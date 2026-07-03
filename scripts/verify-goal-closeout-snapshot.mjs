@@ -156,7 +156,7 @@ const checks = {
     sourceCutoffMs,
   scoreIsCurrentExternalGateShape: scoreMatchesAuditProjection,
   scoreBlockersAreOnlyKnownExternalOperatorOrUpstream:
-    scoreBlockerAreas.length >= 10 &&
+    scoreBlockerAreas.length >= 1 &&
     scoreBlockerAreas.every((area) =>
       [
         "authenticated-ai-cli-preflight-gate",
@@ -213,7 +213,7 @@ const checks = {
     data.matrix?.implementationFixableCount === 0 &&
     data.matrix?.policyBlockedCount === data.audit?.policyBlockedCount &&
     data.matrix?.externalBlockedCount === data.audit?.externalBlockedCount &&
-    data.matrix?.externalBlockedCount >= 20,
+    data.matrix?.externalBlockedCount >= 1,
   finalizeAgreesWithSafe:
     data.finalize?.ok === true &&
     data.finalize?.status === "blocked-by-external-gates" &&

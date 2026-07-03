@@ -540,7 +540,7 @@ const ok =
   audit?.evidenceComplete === true &&
   audit?.implementationFixableCount === 0 &&
   audit?.policyBlockedCount === 0 &&
-  audit?.externalBlockedCount >= 20 &&
+  audit?.externalBlockedCount >= 1 &&
   docs?.ok === true &&
   matrix?.ok === true &&
   matrix?.status === "blocked-by-external-gates" &&

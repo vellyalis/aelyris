@@ -29,10 +29,10 @@ pnpm verify:quality-score
 pnpm verify:goal:safe
 ```
 
-Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-reports `81/100` (`283/351`), grade `C`, `releaseCandidateReady=false`.
+Current machine truth refreshed 2026-07-04 JST: `pnpm verify:quality-score`
+reports `83/100` (`293/351`), grade `C`, `releaseCandidateReady=false`.
 The final-goal audit is `blocked-by-external-gates` with no implementation-
-fixable or policy blockers and 20 external/operator/upstream blockers; this
+fixable or policy blockers and 13 external/operator/upstream blockers; this
 still does not make Aelyris release-ready.
 
 Do not use older score mentions in historical progress files as current release

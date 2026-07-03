@@ -32,11 +32,11 @@ they are written from scratch in Rust for exactly this job.
 Every row names an architectural property with a runnable check behind it —
 see [Verification](#verification).
 
-Current machine truth, refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-currently reports `81/100` (`283/351`), grade `C`,
+Current machine truth, refreshed 2026-07-04 JST: `pnpm verify:quality-score`
+currently reports `83/100` (`293/351`), grade `C`,
 `releaseCandidateReady=false`. The final-goal audit is
 `blocked-by-external-gates` with `implementationFixableCount=0`,
-`policyBlockedCount=0`, and `externalBlockedCount=20`; Aelyris remains alpha
+`policyBlockedCount=0`, and `externalBlockedCount=13`; Aelyris remains alpha
 and not release-ready.
 
 ## Why now
