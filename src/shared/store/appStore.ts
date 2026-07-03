@@ -584,6 +584,9 @@ interface AppState {
    *  writes here. Clamped to [260, 480] in the setter. */
   rightPanelWidth: number;
   setRightPanelWidth: (v: number) => void;
+  /** Zen mode hides side rails and top chrome while keeping the status bar visible. */
+  zenMode: boolean;
+  setZenMode: (v: boolean | ((prev: boolean) => boolean)) => void;
 
   // UI visibility
   paletteVisible: boolean;
@@ -1226,6 +1229,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return { rightPanelWidth: clamped };
     }),
+  zenMode: false,
+  setZenMode: (v) => set((s) => ({ zenMode: toggleOrSet(v, s.zenMode) })),
 
   // UI
   paletteVisible: false,

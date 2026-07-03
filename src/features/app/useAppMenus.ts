@@ -12,6 +12,7 @@ import {
   Globe,
   History,
   Info,
+  Maximize2,
   RadioTower,
   Search,
   Send,
@@ -21,11 +22,11 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { PRODUCT_NAME } from "../../shared/constants/product";
-import type { ShellType, TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { formatOperationalPaneChoice, resolveOperationalPaneChoice } from "../../shared/lib/operationalPaneSelection";
 import { normalizeCommandInput } from "../../shared/lib/terminalInput";
 import { toast } from "../../shared/store/toastStore";
+import type { ShellType, TerminalPaneTarget } from "../../shared/types/terminalPane";
 import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import { showPrompt } from "../../shared/ui/PromptDialog";
 import type { CommandItem } from "../command-palette/CommandPalette";
@@ -73,6 +74,7 @@ interface UseAppMenusOptions {
   setWebInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setPrInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setMergeQueueVisible: (v: boolean | ((p: boolean) => boolean)) => void;
+  setZenMode?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export function useAppMenus(opts: UseAppMenusOptions) {
@@ -111,6 +113,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     setWebInspectorVisible,
     setPrInspectorVisible,
     setMergeQueueVisible,
+    setZenMode,
   } = opts;
 
   // Compare Branch action extracted so the palette entry and the View menu
@@ -562,6 +565,16 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         action: disableImeTrace,
       },
       {
+        id: "toggle-zen-mode",
+        label: "Toggle Zen Mode",
+        description: "Hide side rails and top chrome while keeping the status bar visible",
+        shortcut: "Ctrl+Shift+M",
+        category: "View",
+        icon: Maximize2,
+        keywords: ["focus", "minimal", "chrome", "rails"],
+        action: () => setZenMode?.((v: boolean) => !v),
+      },
+      {
         id: "open-settings",
         label: "Open Settings",
         description: "Edit preferences and model config",
@@ -709,6 +722,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       setSettingsVisible,
       setWatchdogVisible,
       setWebInspectorVisible,
+      setZenMode,
     ],
   );
 
@@ -776,6 +790,8 @@ export function useAppMenus(opts: UseAppMenusOptions) {
           { label: "Search in Files", shortcut: "Ctrl+Shift+F", action: () => setSearchVisible(true) },
           { divider: true, label: "" },
           { label: "Compare Branch...", action: compareBranch },
+          { divider: true, label: "" },
+          { label: "Toggle Zen Mode", shortcut: "Ctrl+Shift+M", action: () => setZenMode?.((v: boolean) => !v) },
           { divider: true, label: "" },
           { label: "Web Inspector", action: () => setWebInspectorVisible((v) => !v) },
           { label: "Pull Requests", action: () => setPrInspectorVisible((v) => !v) },
@@ -849,6 +865,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       setPaletteVisible,
       setSearchVisible,
       setWebInspectorVisible,
+      setZenMode,
       setPrInspectorVisible,
       setMergeQueueVisible,
       setSettingsVisible,

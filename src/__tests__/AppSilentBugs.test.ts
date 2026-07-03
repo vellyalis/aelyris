@@ -1895,8 +1895,15 @@ describe("App right rail composition", () => {
     expect(src).toContain("filterWorkspaceScopedEvents");
     expect(src).toContain("const workspaceProfile = useMemo(");
     const densityShells =
-      src.match(/className="app-container" data-density=\{workspaceProfile\.visualDensity\}/g) ?? [];
+      src.match(/className="app-container"[\s\S]{0,180}?data-density=\{workspaceProfile\.visualDensity\}/g) ?? [];
     expect(densityShells).toHaveLength(2);
+    const zenShells = src.match(/data-zen-mode=\{zenMode \? "true" : "false"\}/g) ?? [];
+    expect(zenShells).toHaveLength(2);
+    expect(src).toContain("{!zenMode && (");
+    expect(src).toMatch(
+      /className=\{`left-panel\$\{sidebarCollapsed \|\| zenMode \? " left-panel-collapsed" : ""\}`\}/,
+    );
+    expect(src).toContain('data-zen-hidden={zenMode ? "true" : undefined}');
     expect(src).toContain("const scopedOperationalAuditEvents = useMemo(");
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
     const decisionInboxHookSrc = getDecisionInboxHookSource();

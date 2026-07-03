@@ -52,6 +52,7 @@ beforeEach(() => {
     fallbackTelemetryEvents: [],
     moodPresetId: DEFAULT_MOOD_PRESET,
     appWindowOpacity: 0.95,
+    zenMode: false,
     moodMaterialOverrides: {},
     wallpaperSettingsByMood: {
       "aelyris-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
@@ -108,6 +109,15 @@ describe("appStore — UI visibility", () => {
     setSettingsVisible(true);
     expect(useAppStore.getState().paletteVisible).toBe(true);
     expect(useAppStore.getState().settingsVisible).toBe(true);
+  });
+
+  it("toggles zenMode without changing persisted sidebar state", () => {
+    const { setZenMode } = useAppStore.getState();
+    setZenMode(true);
+    expect(useAppStore.getState().zenMode).toBe(true);
+    setZenMode((prev) => !prev);
+    expect(useAppStore.getState().zenMode).toBe(false);
+    expect(localStorage.getItem("aelyris:sidebarCollapsed")).toBeNull();
   });
 });
 

@@ -1297,6 +1297,10 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
+.right-panel[data-zen-hidden="true"] {
+  display: none;
+}
+
 .right-panel::before {
   content: "";
   position: absolute;

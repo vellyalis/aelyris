@@ -1,9 +1,9 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
-import type { ShellType } from "../types/terminalPane";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import { reportFallback } from "../lib/fallbackTelemetry";
 import { toast } from "../store/toastStore";
+import type { ShellType } from "../types/terminalPane";
 import { showPrompt } from "../ui/PromptDialog";
 import { isEditableTarget } from "./useEditableTargetGuard";
 
@@ -33,6 +33,8 @@ interface UseKeyboardShortcutsOptions {
   /** Toggle the left sidebar (Ctrl+B). Optional so legacy
    *  consumers without the new chrome cluster keep working. */
   setSidebarCollapsed?: (v: boolean | ((prev: boolean) => boolean)) => void;
+  /** Toggle Zen mode (Ctrl+Shift+M) without disturbing persisted rail widths. */
+  setZenMode?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -59,6 +61,7 @@ export function useKeyboardShortcuts({
   focusPreviousPane,
   setHelpVisible,
   setSidebarCollapsed,
+  setZenMode,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -119,6 +122,9 @@ export function useKeyboardShortcuts({
         showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => {
           if (p) handleStartAgent(p);
         });
+      } else if (e.ctrlKey && e.shiftKey && e.key === "M") {
+        e.preventDefault();
+        setZenMode?.((v: boolean) => !v);
       } else if (e.ctrlKey && e.shiftKey && e.key === "`") {
         e.preventDefault();
         openPaneSwitcher?.();
@@ -228,5 +234,6 @@ export function useKeyboardShortcuts({
     focusPreviousPane,
     setHelpVisible,
     setSidebarCollapsed,
+    setZenMode,
   ]);
 }
