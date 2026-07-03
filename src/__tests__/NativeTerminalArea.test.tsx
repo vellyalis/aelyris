@@ -6,8 +6,14 @@ import {
   IME_DIAGNOSTIC_STORAGE_KEY,
   type ImeDiagnosticDetail,
 } from "../features/terminal/hooks/useCanvasIME";
-import { commandHistoryTextFromSubmittedInput, NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
+import {
+  commandHistoryTextFromSubmittedInput,
+  NativeTerminalArea,
+  shouldMountTimelineBar,
+} from "../features/terminal/NativeTerminalArea";
+import type { ActiveSnapshotOverlay } from "../features/timeline/TimelineBar";
 import { useTerminalSnapshot } from "../shared/hooks/useTerminalSnapshot";
+import type { SnapshotSummary } from "../shared/types/snapshot";
 
 vi.mock("../shared/hooks/useTerminalSnapshot", () => ({
   useTerminalSnapshot: vi.fn(() => null),
@@ -185,6 +191,34 @@ describe("NativeTerminalArea", () => {
     expect(nativeTerminalAreaSource).not.toContain("styles.previewPrompt");
   });
 
+  it("mounts the timeline bar only when snapshots or an overlay exist", () => {
+    const summary: SnapshotSummary = {
+      id: "snap-1",
+      sessionId: "term-1",
+      capturedAt: 1,
+      trigger: { kind: "userMarked" },
+      cols: 80,
+      rows: 24,
+    };
+    const overlay: ActiveSnapshotOverlay = {
+      layerId: "layer-1",
+      snapshotId: "snap-1",
+      grid: {
+        cols: 1,
+        rows: 1,
+        cells: [[{ ch: " ", fg: 0, bg: 0, attrs: 0 }]],
+        cursor: { row: 0, col: 0, shape: "block", blinking: false, visible: true },
+      },
+    };
+    expect(shouldMountTimelineBar([], null)).toBe(false);
+    expect(shouldMountTimelineBar([summary], null)).toBe(true);
+    expect(shouldMountTimelineBar([], overlay)).toBe(true);
+    expect(nativeTerminalAreaSource).toContain(
+      "const shouldRenderTimelineBar = shouldMountTimelineBar(timelineSnapshots, snapshotOverlay)",
+    );
+    expect(nativeTerminalAreaSource).toContain("{shouldRenderTimelineBar && (");
+  });
+
   it("shows a startup state instead of a blank pane while the PTY starts", async () => {
     const spawn = deferred<string>();
     const spawnPty = vi.fn(() => spawn.promise);
@@ -203,6 +237,17 @@ describe("NativeTerminalArea", () => {
     });
 
     await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+  });
+
+  it("does not mount the timeline bar for an empty live terminal", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-empty-timeline");
+
+    const { container } = render(
+      <NativeTerminalArea shell="powershell" spawnPty={spawnPty} subscribeOutput={async () => () => {}} />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    expect(container.querySelector("[data-testid='timeline-bar']")).toBeNull();
   });
 
   it("attaches an existing PTY without spawning a replacement", async () => {

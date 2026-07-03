@@ -102,6 +102,7 @@ export function PaneTreeRenderer({
 }: PaneTreeRendererProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
+  const [snapshotMarkHandlers, setSnapshotMarkHandlers] = useState<Map<string, () => void>>(new Map());
 
   // Accumulate all leaves ever seen (never remove — React handles unmount via key removal)
   const leavesRef = useRef(new Map<string, LeafInfo>());
@@ -112,6 +113,16 @@ export function PaneTreeRenderer({
   // PTY on restore, losing the previous shell/CLI state.
   const initializedRef = useRef(new Set<string>());
   const currentLeaves = useMemo(() => collectLeaves(tree), [tree]);
+  const registerSnapshotMarkHandler = useCallback((paneId: string, handler: (() => void) | null) => {
+    setSnapshotMarkHandlers((prev) => {
+      const current = prev.get(paneId);
+      if (current === handler || (!current && !handler)) return prev;
+      const next = new Map(prev);
+      if (handler) next.set(paneId, handler);
+      else next.delete(paneId);
+      return next;
+    });
+  }, []);
 
   // Update the accumulated leaf map
   const currentIds = new Set<string>();
@@ -398,6 +409,7 @@ export function PaneTreeRenderer({
               onSplitDown={() => onSplit(leaf.id, "down")}
               syncMode={synchronizedPanes}
               onToggleSync={() => onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on")}
+              onMarkSnapshot={snapshotMarkHandlers.get(leaf.id)}
               onToggleMaximize={() => onToggleMaximize(leaf.id)}
               onClose={canClose ? () => onClose(leaf.id) : undefined}
             />
@@ -409,6 +421,7 @@ export function PaneTreeRenderer({
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
                 onLifecycleChange={(lifecycle) => onPaneLifecycleChange?.(leaf.id, lifecycle)}
                 restartRequest={restartPaneRequest?.paneId === leaf.id ? restartPaneRequest : null}
+                onSnapshotMarkHandlerChange={(handler) => registerSnapshotMarkHandler(leaf.id, handler)}
               />
             ) : shouldHoldForAttach ? (
               <div className={styles.lifecyclePlaceholder} data-lifecycle={lifecycle}>

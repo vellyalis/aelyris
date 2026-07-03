@@ -1,4 +1,4 @@
-import { Bookmark, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
 import { type SnapshotSummary, triggerLabel } from "../../shared/types/snapshot";
@@ -12,9 +12,6 @@ export interface ActiveSnapshotOverlay {
 }
 
 export interface TimelineBarProps {
-  /** PTY session id whose snapshots are being displayed. Null hides the
-   *  Mark button (but the bar itself still renders the empty hint). */
-  terminalId: string | null;
   /**
    * Snapshots to render, oldest-to-newest. Lifted from the parent so a
    * single `useSnapshots(terminalId)` subscription lives at the terminal
@@ -31,8 +28,6 @@ export interface TimelineBarProps {
   onSelectSnapshot: (summary: SnapshotSummary) => void;
   /** Invoked when the user wants to dismiss the currently-active overlay. */
   onDismissOverlay: () => void;
-  /** Explicit bookmark button — label is omitted at MVP. */
-  onMarkSnapshot?: () => void;
 }
 
 /**
@@ -43,14 +38,7 @@ export interface TimelineBarProps {
  * render a subtle "No snapshots yet" hint instead of an empty row so the
  * user knows the feature is wired.
  */
-export function TimelineBar({
-  terminalId,
-  snapshots,
-  activeOverlay,
-  onSelectSnapshot,
-  onDismissOverlay,
-  onMarkSnapshot,
-}: TimelineBarProps) {
+export function TimelineBar({ snapshots, activeOverlay, onSelectSnapshot, onDismissOverlay }: TimelineBarProps) {
   const handleClick = useCallback(
     (summary: SnapshotSummary) => {
       if (activeOverlay?.snapshotId === summary.id) {
@@ -102,17 +90,6 @@ export function TimelineBar({
             );
           })}
         </div>
-      )}
-      {onMarkSnapshot && terminalId && (
-        <button
-          type="button"
-          className={styles.markBtn}
-          onClick={onMarkSnapshot}
-          aria-label="Bookmark current terminal state"
-        >
-          <Bookmark size={10} aria-hidden="true" />
-          Mark
-        </button>
       )}
       {activeOverlay && (
         <div className={styles.activePill} role="status" aria-live="polite">

@@ -74,6 +74,8 @@ interface NativeTerminalAreaProps {
   /** Override for tests — opens any other URL via the OS handler.
    *  Defaults to `tauri-plugin-opener.openUrl`. */
   openExternal?: (url: string) => Promise<void> | void;
+  /** Registers the current terminal snapshot bookmark action with the pane header. */
+  onSnapshotMarkHandlerChange?: (handler: (() => void) | null) => void;
 }
 
 /**
@@ -146,6 +148,13 @@ function shellDisplayName(shell: ShellType): string {
 const PREVIEW_TERMINAL_ID = "browser-preview-terminal";
 const NAMED_FOREGROUND = 256;
 const NAMED_BACKGROUND = 257;
+
+export function shouldMountTimelineBar(
+  snapshots: readonly SnapshotSummary[],
+  activeOverlay: ActiveSnapshotOverlay | null,
+): boolean {
+  return snapshots.length > 0 || activeOverlay !== null;
+}
 
 function previewCell(ch = " ", attrs = 0): CellSnapshot {
   return { ch, fg: NAMED_FOREGROUND, bg: NAMED_BACKGROUND, attrs };
@@ -354,6 +363,7 @@ export function NativeTerminalArea({
   forceRestartPty = defaultForceRestart,
   openInEditor,
   openExternal,
+  onSnapshotMarkHandlerChange,
 }: NativeTerminalAreaProps) {
   const previewMode = !isTauriRuntime();
   const terminalFontFamily = useAppStore((s) => s.terminalFontFamily);
@@ -481,6 +491,15 @@ export function NativeTerminalArea({
   const handleMarkSnapshot = useCallback(() => {
     void markSnapshot();
   }, [markSnapshot]);
+
+  useEffect(() => {
+    if (previewMode || !terminalId) {
+      onSnapshotMarkHandlerChange?.(null);
+      return;
+    }
+    onSnapshotMarkHandlerChange?.(handleMarkSnapshot);
+    return () => onSnapshotMarkHandlerChange?.(null);
+  }, [handleMarkSnapshot, onSnapshotMarkHandlerChange, previewMode, terminalId]);
 
   // Backend-initiated removal (ghost-diff panel X, dismiss IPC from another
   // caller). Listener is registered once at mount and reads the overlay ref
@@ -1268,6 +1287,7 @@ export function NativeTerminalArea({
   const diagnosticCandidate = formatCandidateRect(lastImeDiagnostic);
   const diagnosticLastEvent = formatImeEventSummary(lastImeDiagnostic);
   const imeInputBarCollapsed = !(lastImeDiagnostic?.active || lastImeDiagnostic?.composing);
+  const shouldRenderTimelineBar = shouldMountTimelineBar(timelineSnapshots, snapshotOverlay);
   const startupMessage =
     spawnStatus === "failed"
       ? `Failed to start ${shellDisplayName(shell)}${spawnError ? `: ${spawnError}` : ""}`
@@ -1336,14 +1356,14 @@ export function NativeTerminalArea({
           </button>
         </div>
       )}
-      <TimelineBar
-        terminalId={terminalId}
-        snapshots={timelineSnapshots}
-        activeOverlay={snapshotOverlay}
-        onSelectSnapshot={selectSnapshot}
-        onDismissOverlay={dismissSnapshotOverlay}
-        onMarkSnapshot={handleMarkSnapshot}
-      />
+      {shouldRenderTimelineBar && (
+        <TimelineBar
+          snapshots={timelineSnapshots}
+          activeOverlay={snapshotOverlay}
+          onSelectSnapshot={selectSnapshot}
+          onDismissOverlay={dismissSnapshotOverlay}
+        />
+      )}
       {exitInfo && (
         <div
           className={`${styles.exitBanner} ${exitInfo.crashed ? styles.exitBannerCrashed : ""}`}

@@ -1,5 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ArrowLeftRight, Columns2, Maximize2, Minimize2, Pencil, Rows2, Tag, X } from "lucide-react";
+import { ArrowLeftRight, Bookmark, Columns2, Maximize2, Minimize2, Pencil, Rows2, Tag, X } from "lucide-react";
 import { memo } from "react";
 import { lastCommandEnd, usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import { usePtyLag } from "../../shared/hooks/usePtyLag";
@@ -28,6 +28,7 @@ interface TerminalInfoBarProps {
   onToggleMaximize?: () => void;
   syncMode?: boolean;
   onToggleSync?: () => void;
+  onMarkSnapshot?: () => void;
   onSplitRight?: () => void;
   onSplitDown?: () => void;
   onClose?: () => void;
@@ -48,6 +49,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   onToggleMaximize,
   syncMode,
   onToggleSync,
+  onMarkSnapshot,
   onSplitRight,
   onSplitDown,
   onClose,
@@ -181,6 +183,17 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
           title={syncMode ? "Disable Sync Input" : "Sync Input to All Panes"}
         >
           <ArrowLeftRight size={12} aria-hidden="true" />
+        </button>
+      )}
+      {onMarkSnapshot && (
+        <button
+          type="button"
+          className={styles.toggleBtn}
+          onClick={onMarkSnapshot}
+          aria-label="Bookmark current terminal state"
+          title="Bookmark current terminal state"
+        >
+          <Bookmark size={12} aria-hidden="true" />
         </button>
       )}
       {onToggleMaximize && (

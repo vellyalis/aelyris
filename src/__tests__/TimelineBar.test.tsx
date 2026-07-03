@@ -38,15 +38,7 @@ function grid(): GridSnapshot {
 
 describe("TimelineBar", () => {
   it("keeps the empty state quiet when there are no snapshots", () => {
-    render(
-      <TimelineBar
-        terminalId="t1"
-        snapshots={[]}
-        activeOverlay={null}
-        onSelectSnapshot={() => {}}
-        onDismissOverlay={() => {}}
-      />,
-    );
+    render(<TimelineBar snapshots={[]} activeOverlay={null} onSelectSnapshot={() => {}} onDismissOverlay={() => {}} />);
     expect(screen.getByTestId("timeline-bar")).toBeTruthy();
     expect(screen.queryByText(/No snapshots yet/i)).toBeNull();
   });
@@ -58,7 +50,6 @@ describe("TimelineBar", () => {
     ];
     const { container } = render(
       <TimelineBar
-        terminalId="t1"
         snapshots={snapshots}
         activeOverlay={null}
         onSelectSnapshot={() => {}}
@@ -79,7 +70,6 @@ describe("TimelineBar", () => {
     const snapshots = [snap({ id: "x" })];
     const { container } = render(
       <TimelineBar
-        terminalId="t1"
         snapshots={snapshots}
         activeOverlay={null}
         onSelectSnapshot={onSelect}
@@ -105,7 +95,6 @@ describe("TimelineBar", () => {
     };
     const { container } = render(
       <TimelineBar
-        terminalId="t1"
         snapshots={snapshots}
         activeOverlay={overlay}
         onSelectSnapshot={onSelect}
@@ -128,7 +117,6 @@ describe("TimelineBar", () => {
     };
     render(
       <TimelineBar
-        terminalId="t1"
         snapshots={[snap({ id: "x" })]}
         activeOverlay={overlay}
         onSelectSnapshot={() => {}}
@@ -140,36 +128,6 @@ describe("TimelineBar", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the mark button only when onMarkSnapshot is provided and terminal is live", () => {
-    const onMark = vi.fn();
-    const { rerender } = render(
-      <TimelineBar
-        terminalId={null}
-        snapshots={[]}
-        activeOverlay={null}
-        onSelectSnapshot={() => {}}
-        onDismissOverlay={() => {}}
-        onMarkSnapshot={onMark}
-      />,
-    );
-    // terminalId null → no mark button.
-    expect(screen.queryByLabelText(/Bookmark/i)).toBeNull();
-
-    rerender(
-      <TimelineBar
-        terminalId="t1"
-        snapshots={[]}
-        activeOverlay={null}
-        onSelectSnapshot={() => {}}
-        onDismissOverlay={() => {}}
-        onMarkSnapshot={onMark}
-      />,
-    );
-    const btn = screen.getByLabelText(/Bookmark/i);
-    fireEvent.click(btn);
-    expect(onMark).toHaveBeenCalledTimes(1);
-  });
-
   it("sets aria-selected on the active tick only", () => {
     const snapshots = [snap({ id: "a" }), snap({ id: "b" }), snap({ id: "c" })];
     const overlay: ActiveSnapshotOverlay = {
@@ -179,7 +137,6 @@ describe("TimelineBar", () => {
     };
     const { container } = render(
       <TimelineBar
-        terminalId="t1"
         snapshots={snapshots}
         activeOverlay={overlay}
         onSelectSnapshot={() => {}}
