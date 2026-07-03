@@ -93,9 +93,9 @@ and emit the result as `scripts/fleet/wu-manifest.json` — the contract `fleet-
 
 ## 5. Manual bridge (before the in-app feature exists)
 
-> Historical note: earlier revisions of this section pointed at `aelyris-plan`
-> and `aelyris-fleet` project skills under `.claude/skills/`. Those skills no
-> longer exist in this repository; do not look for them.
+> Historical note: earlier revisions of this section pointed at obsolete
+> planner/fleet project skills under `.claude/skills/`. Those skills no longer
+> exist in this repository; do not look for them.
 
 Until the in-app planner UI and in-process conductor land, an orchestrator
 agent can drive the implemented backend pipeline directly:

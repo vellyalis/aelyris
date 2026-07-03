@@ -14,10 +14,10 @@ auditable review/merge gates.
 > are moving.
 
 Current machine truth, refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-currently reports `71/100` (`249/351`), grade `D`,
+currently reports `74/100` (`259/351`), grade `D`,
 `releaseCandidateReady=false`. The final-goal audit is
 `blocked-by-external-gates` with `implementationFixableCount=0`,
-`policyBlockedCount=0`, and `externalBlockedCount=27`; Aelyris remains alpha
+`policyBlockedCount=0`, and `externalBlockedCount=20`; Aelyris remains alpha
 and not release-ready.
 
 ## Why now

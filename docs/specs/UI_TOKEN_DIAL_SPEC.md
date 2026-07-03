@@ -16,10 +16,10 @@ live inside `global.css` itself).
 > figures describe the **June pre-change file** and are stale; treat this
 > document as the rationale record for the values now in the tree.
 
-> HARD CONSTRAINT: This document is analysis + documentation only. No source
-> file under `src/` or `src-tauri/` is edited by this task. Every "current
-> value" below is grounded in a real `file:line`. The actual edits are a
-> separate, reviewed change.
+> HARD CONSTRAINT: This document is now a rationale record for an applied
+> source change. Treat in-body "current value" rows as June baseline evidence,
+> and verify live implementation truth from `src/styles/global.css` plus the
+> right-rail and visual gates before making or claiming additional UI changes.
 
 ---
 

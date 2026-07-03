@@ -1745,11 +1745,50 @@ function isReleaseSigningOperatorBlocker(value) {
   );
 }
 
+function isExternallyExplainedReleaseReadinessParentBlocker(value) {
+  const text = `${value?.area ?? ""} ${value?.blocker ?? value ?? ""}`;
+  if (
+    !/release-readiness-aggregate/i.test(text) ||
+    !/release readiness aggregate gate is currently blocked/i.test(text)
+  ) {
+    return false;
+  }
+
+  const scoreArtifact = readJson(".codex-auto/quality/release-quality-score.json");
+  const aggregateArtifact = readJson(".codex-auto/quality/release-readiness-aggregate.json");
+  const finalAuditArtifact = readJson(".codex-auto/quality/final-goal-audit.json");
+  const residual = finalAuditArtifact?.residualRiskRegister ?? {};
+  const detailedAggregateBlockers = (Array.isArray(scoreArtifact?.blockers) ? scoreArtifact.blockers : []).filter(
+    (item) => {
+      const blockerText = `${item?.area ?? ""} ${item?.blocker ?? item ?? ""}`;
+      return /release-readiness-aggregate/i.test(blockerText) && /release readiness claim blocked:/i.test(blockerText);
+    },
+  );
+  const detailedBlockersAreExternallyClassified =
+    detailedAggregateBlockers.length > 0 &&
+    detailedAggregateBlockers.every((item) => {
+      const blockerText = `${item?.area ?? ""} ${item?.blocker ?? item ?? ""}`;
+      return /release readiness claim blocked: .*=(?:external-blocked|review)\b|release readiness claim blocked: release=block\b/i.test(
+        blockerText,
+      );
+    });
+
+  return (
+    aggregateArtifact?.status === "block" &&
+    finalAuditArtifact?.status === "blocked-by-external-gates" &&
+    finalAuditArtifact?.evidenceComplete === true &&
+    (finalAuditArtifact?.implementationFixableCount ?? residual.implementationFixableCount) === 0 &&
+    (finalAuditArtifact?.externalBlockedCount ?? residual.externalBlockedCount ?? 0) > 0 &&
+    detailedBlockersAreExternallyClassified
+  );
+}
+
 function isExternalOperatorBlocker(value) {
   const text = `${value?.area ?? ""} ${value?.blocker ?? value ?? ""}`;
   return (
     isHostSleepUnsupportedBlocker(value) ||
     isReleaseSigningOperatorBlocker(value) ||
+    isExternallyExplainedReleaseReadinessParentBlocker(value) ||
     /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|supply-chain.*upstream-bound|upstream-bound dependency BLOCK|mux live restore|release readiness aggregate gate is externally blocked|release readiness claim blocked: .*=(?:external-blocked|review)\b|release readiness claim blocked: release=block\b|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|live AI CLI (?:post-launch )?chaos|native-first AI CLI post-launch chaos|authenticated AI CLI prompt smoke|authenticated prompt artifact|authenticated prompt .*executed-with-consent|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
       text,
     )
@@ -1835,8 +1874,8 @@ const steps = [
     "Real OS sleep operator handoff",
     "verify-real-os-sleep-operator-handoff.mjs",
   ),
-  runStep("external-gate-readiness", "External operator gate readiness", "verify-goal-external-gate-readiness.mjs"),
   runStep("goal-completion-matrix", "Goal completion requirement matrix", "verify-goal-completion-matrix.mjs"),
+  runStep("external-gate-readiness", "External operator gate readiness", "verify-goal-external-gate-readiness.mjs"),
   runStep("operator-finish-handoff", "Safe operator finish handoff", "verify-goal-operator-finish.mjs"),
   runStep("git-finalization-readiness", "Git finalization readiness handoff", "verify-git-finalization-readiness.mjs"),
 ];
