@@ -370,6 +370,7 @@ export function PaneTreeRenderer({
         const shouldHoldForAttach = endedLifecycle && (!agent || !terminalId);
         const shouldMount =
           !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
+        const shouldShowPaneHeader = currentLeaves.length > 1 && !maximizedPaneId;
 
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: the terminal mount itself claims focus without changing keyboard semantics.
@@ -393,26 +394,28 @@ export function PaneTreeRenderer({
             }
             onMouseDown={() => onFocusPane(leaf.id)}
           >
-            <TerminalInfoBar
-              shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
-              cwd={leaf.cwd}
-              terminalId={terminalId}
-              paneTitle={leaf.title}
-              paneRole={leaf.role}
-              activeAgent={agent ? { model: agent.model, status: agent.status } : null}
-              isActive={isActive}
-              isMaximized={isMaximized}
-              onRenamePane={(title) => onRenamePane(leaf.id, title)}
-              onCyclePaneRole={() => onCyclePaneRole(leaf.id)}
-              onSetPaneRole={(role) => onSetPaneRole(leaf.id, role)}
-              onSplitRight={() => onSplit(leaf.id, "right")}
-              onSplitDown={() => onSplit(leaf.id, "down")}
-              syncMode={synchronizedPanes}
-              onToggleSync={() => onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on")}
-              onMarkSnapshot={snapshotMarkHandlers.get(leaf.id)}
-              onToggleMaximize={() => onToggleMaximize(leaf.id)}
-              onClose={canClose ? () => onClose(leaf.id) : undefined}
-            />
+            {shouldShowPaneHeader && (
+              <TerminalInfoBar
+                shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
+                cwd={leaf.cwd}
+                terminalId={terminalId}
+                paneTitle={leaf.title}
+                paneRole={leaf.role}
+                activeAgent={agent ? { model: agent.model, status: agent.status } : null}
+                isActive={isActive}
+                isMaximized={isMaximized}
+                onRenamePane={(title) => onRenamePane(leaf.id, title)}
+                onCyclePaneRole={() => onCyclePaneRole(leaf.id)}
+                onSetPaneRole={(role) => onSetPaneRole(leaf.id, role)}
+                onSplitRight={() => onSplit(leaf.id, "right")}
+                onSplitDown={() => onSplit(leaf.id, "down")}
+                syncMode={synchronizedPanes}
+                onToggleSync={() => onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on")}
+                onMarkSnapshot={snapshotMarkHandlers.get(leaf.id)}
+                onToggleMaximize={() => onToggleMaximize(leaf.id)}
+                onClose={canClose ? () => onClose(leaf.id) : undefined}
+              />
+            )}
             {shouldMount ? (
               <NativeTerminalArea
                 shell={leaf.shell as ShellKind}

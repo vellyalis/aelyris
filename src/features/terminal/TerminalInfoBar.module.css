@@ -3,7 +3,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 22px;
+  min-height: 18px;
   padding: 1px var(--space-2);
   background:
     linear-gradient(180deg, var(--terminal-chrome-bg-focus), var(--terminal-chrome-bg)),

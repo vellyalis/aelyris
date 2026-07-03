@@ -699,7 +699,7 @@ describe("design token usage", () => {
     expect(src).not.toContain("GitBranch");
     expect(src).not.toContain("styles.branch");
     expect(cssSource).not.toContain(".branch");
-    expect(barRule).toContain("min-height: 22px");
+    expect(barRule).toContain("min-height: 18px");
     expect(shellRule).toContain("background: transparent");
     expect(shellRule).toContain("box-shadow: none");
   });
