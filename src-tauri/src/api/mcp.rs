@@ -44,6 +44,7 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.approval.resolve",
         "aelyris.request_merge",
         "aelyris.spawn_agent",
+        "aelyris.agent.spawn_visible",
         "aelyris.stop_agent",
         "aelyris.review.approve",
         "aelyris.review.reject",
@@ -375,6 +376,55 @@ fn approval_resolve_error_payload(err: &str) -> serde_json::Value {
     } else {
         serde_json::json!({ "error": err })
     }
+}
+
+#[cfg(not(test))]
+async fn mcp_spawn_visible(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<serde_json::Value, String>> {
+    let app = mcp_app_handle(state)?;
+    let cwd = arg_string(args, "cwd")?;
+    let model = arg_optional_string(args, "model");
+    let initial_prompt = arg_optional_string(args, "initialPrompt");
+    let branch_name = arg_optional_string(args, "branchName");
+    let cols = arg_optional_u16(args, "cols")?.unwrap_or(120);
+    let rows = arg_optional_u16(args, "rows")?.unwrap_or(30);
+    match crate::ipc::spawn_interactive_agent_internal(
+        app,
+        cwd,
+        model,
+        initial_prompt,
+        branch_name,
+        cols,
+        rows,
+        crate::ipc::SpawnInteractiveAgentOptions::default(),
+    )
+    .await
+    {
+        Ok(result) => Ok(Ok(mcp_result_value(result)?)),
+        Err(err) => Ok(Err(err)),
+    }
+}
+
+#[cfg(test)]
+async fn mcp_spawn_visible(
+    _state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<serde_json::Value, String>> {
+    let cwd = arg_string(args, "cwd")?;
+    let _model = arg_optional_string(args, "model");
+    let _initial_prompt = arg_optional_string(args, "initialPrompt");
+    let _branch_name = arg_optional_string(args, "branchName");
+    if cwd == "cost-deny" {
+        return Ok(Err("cost cap denied: test".to_string()));
+    }
+    Ok(Ok(serde_json::json!({
+        "session_id": "session-visible",
+        "pty_id": "pty-visible",
+        "worktree_path": null,
+        "backend": "sidecar",
+    })))
 }
 
 fn arg_bool(args: &serde_json::Map<String, serde_json::Value>, key: &str, default: bool) -> bool {
@@ -828,6 +878,24 @@ fn build_tools_list_value() -> serde_json::Value {
                         "model": { "type": "string" },
                         "allowedTools": { "type": "array", "items": { "type": "string" } },
                         "resumeId": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.agent.spawn_visible",
+                "description": "Spawn the same visible interactive TUI agent as the cockpit path. Enforces the live cost cap (BR7) and returns SpawnResult.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["cwd"],
+                    "properties": {
+                        "cwd": { "type": "string" },
+                        "model": { "type": "string" },
+                        "initialPrompt": { "type": "string" },
+                        "branchName": { "type": "string" },
+                        "cols": { "type": "integer", "minimum": 20, "maximum": 500 },
+                        "rows": { "type": "integer", "minimum": 10, "maximum": 200 }
                     },
                     "additionalProperties": false
                 }
@@ -2111,6 +2179,15 @@ pub(super) async fn tools_call(
             .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "sessionId": session_id, "spawned": true })
         }
+        "aelyris.agent.spawn_visible" => match mcp_spawn_visible(&state, &args).await? {
+            Ok(value) => value,
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    serde_json::json!({ "error": err }),
+                ));
+            }
+        },
         "aelyris.stop_agent" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
@@ -3476,6 +3553,76 @@ mod tests {
         assert_eq!(
             missing_prompt["error"]["schema_violation"]["missing"],
             serde_json::json!(["expectedPromptKey"])
+        );
+    }
+
+    #[test]
+    fn spawn_visible_mcp_schema_and_tool_error_contract() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        );
+
+        let call = |arguments: serde_json::Value| {
+            let body = ToolCallBody {
+                name: "aelyris.agent.spawn_visible".to_string(),
+                arguments,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("tool call response")
+                .0
+        };
+
+        let Json(listed) = rt.block_on(tools_list());
+        let tool = listed["tools"]
+            .as_array()
+            .expect("tools is an array")
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("aelyris.agent.spawn_visible"))
+            .expect("spawn_visible is listed");
+        assert_eq!(tool["safety"], serde_json::json!("GATED"));
+        assert_eq!(tool["inputSchema"]["required"], serde_json::json!(["cwd"]));
+        assert_eq!(
+            tool["inputSchema"]["additionalProperties"],
+            serde_json::json!(false)
+        );
+
+        let ok = call(serde_json::json!({
+            "cwd": "C:/repo",
+            "cols": 120,
+            "rows": 30
+        }));
+        assert_eq!(ok["ok"], serde_json::json!(true));
+        assert_eq!(
+            ok["result"]["session_id"],
+            serde_json::json!("session-visible")
+        );
+        assert_eq!(ok["result"]["pty_id"], serde_json::json!("pty-visible"));
+        assert_eq!(ok["result"]["backend"], serde_json::json!("sidecar"));
+
+        let denied = call(serde_json::json!({ "cwd": "cost-deny" }));
+        assert_eq!(denied["ok"], serde_json::json!(false));
+        assert!(
+            denied["error"]["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("cost cap denied")),
+            "{denied:?}"
+        );
+
+        let low_cols = call(serde_json::json!({
+            "cwd": "C:/repo",
+            "cols": 19,
+            "rows": 30
+        }));
+        assert_eq!(low_cols["ok"], serde_json::json!(false));
+        assert_eq!(
+            low_cols["error"]["schema_violation"]["wrong_type"][0]["field"],
+            serde_json::json!("cols")
+        );
+        assert_eq!(
+            low_cols["error"]["schema_violation"]["wrong_type"][0]["expected"],
+            serde_json::json!("integer >= 20")
         );
     }
 

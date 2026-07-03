@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::broadcast;
 
 use crate::agent::context_lifecycle::{
-    parse_claude_context_remaining_from_grid, unix_now_secs, ContextRemaining,
+    ContextRemaining, parse_claude_context_remaining_from_grid, unix_now_secs,
 };
 use crate::agent::output_monitor;
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
@@ -75,14 +75,14 @@ pub async fn spawn_interactive_agent(
 }
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct SpawnInteractiveAgentOptions {
+pub(crate) struct SpawnInteractiveAgentOptions {
     pub(super) logical_session_id_override: Option<String>,
     pub(super) inherited_worktree_branch: Option<String>,
     pub(super) inherited_worktree_path: Option<String>,
     pub(super) inherited_repo_path: Option<String>,
 }
 
-pub(super) async fn spawn_interactive_agent_internal(
+pub(crate) async fn spawn_interactive_agent_internal(
     app: AppHandle,
     cwd: String,
     model: Option<String>,
