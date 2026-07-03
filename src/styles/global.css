@@ -949,8 +949,8 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 .app-container[data-density="dense"] {
   --density-mode: dense;
   --density-rail-inset: 6px;
-  --density-panel-gap: 6px;
-  --density-panel-padding: 6px;
+  --density-panel-gap: 4px;
+  --density-panel-padding: 4px;
   --density-widget-gap: 5px;
   --terminal-chrome-header-height: 18px;
   --terminal-chrome-timeline-height: 24px;
