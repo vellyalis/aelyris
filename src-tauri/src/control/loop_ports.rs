@@ -502,11 +502,11 @@ fn task_worktree_cwd(task: &crate::task::graph::Task, repo_path: &str) -> String
 /// Completion marker contract for visible pane agents. The marker path is
 /// backend-built from the worktree plus a sanitized task id; the prompt tells the
 /// agent what to write, but the runtime never trusts an agent-supplied path.
-fn completion_marker_section(task_id: &str, cwd: &str) -> String {
-    let marker = crate::control::pane_fleet::done_marker_path(cwd, task_id)
+fn completion_marker_section(task_id: &str, cwd: &str, terminal_id: &str) -> String {
+    let marker = crate::control::pane_fleet::done_marker_path(cwd, task_id, terminal_id)
         .display()
         .to_string();
-    let relative = crate::control::pane_fleet::done_marker_relative_path(task_id);
+    let relative = crate::control::pane_fleet::done_marker_relative_path(task_id, terminal_id);
     format!(
         "[Completion marker]\n\
 Create this file as your LAST action, after all edits, declared outputs, and self-checks are complete:\n\
@@ -529,7 +529,10 @@ pub(crate) const PANE_ROWS: u16 = 32;
 /// visible terminal.
 #[derive(Debug, Clone)]
 struct PaneSpawnSpec {
-    prompt: String,
+    task: crate::task::graph::Task,
+    adr_header: String,
+    guidelines_header: String,
+    ownership_section: String,
     cwd: String,
     model: Option<String>,
     cols: u16,
@@ -539,6 +542,19 @@ struct PaneSpawnSpec {
     /// marker as the primary signal, and `PaneFleet` only accepts output files
     /// after an idle grace window.
     outputs: Vec<String>,
+}
+
+impl PaneSpawnSpec {
+    fn prompt_for_terminal(&self, terminal_id: &str) -> String {
+        let completion = completion_marker_section(&self.task.id, &self.cwd, terminal_id);
+        task_agent_prompt(
+            &self.task,
+            &self.adr_header,
+            &self.guidelines_header,
+            &self.ownership_section,
+            &completion,
+        )
+    }
 }
 
 /// Like `spawn_specs` but for the visible-pane runtime: each ready task becomes a
@@ -556,17 +572,13 @@ fn pane_spawn_specs(
         .into_iter()
         .map(|task| {
             let cwd = task_worktree_cwd(task, repo_path);
-            let completion = completion_marker_section(&task.id, &cwd);
             (
                 task.id.clone(),
                 PaneSpawnSpec {
-                    prompt: task_agent_prompt(
-                        task,
-                        adr_header,
-                        guidelines_header,
-                        &ownership_section(ownership, task),
-                        &completion,
-                    ),
+                    task: task.clone(),
+                    adr_header: adr_header.to_string(),
+                    guidelines_header: guidelines_header.to_string(),
+                    ownership_section: ownership_section(ownership, task),
                     cwd,
                     model: task.agent_model(),
                     cols: PANE_COLS,
@@ -605,9 +617,12 @@ impl Dispatcher for PaneDispatcher<'_> {
         // session never exits, completion is sensed through the done marker
         // injected into the prompt; declared outputs remain a delayed fallback
         // for legacy agents (passed to the fleet here).
+        let terminal_id = uuid::Uuid::new_v4().to_string();
+        let prompt = spec.prompt_for_terminal(&terminal_id);
         let (program, args, env) =
-            crate::agent::interactive::agent_shell_command_spec(model, &spec.prompt, true)?;
-        self.fleet.spawn(
+            crate::agent::interactive::agent_shell_command_spec(model, &prompt, true)?;
+        self.fleet.spawn_with_terminal_id(
+            &terminal_id,
             task_id,
             &program,
             &args,
@@ -1692,7 +1707,12 @@ mod tests {
         assert_dispatch_context_order(&headless.get("t").unwrap().prompt);
 
         let visible = pane_spawn_specs(&graph, "/repo", &adr_header, guidelines_header, None);
-        assert_dispatch_context_order(&visible.get("t").unwrap().prompt);
+        assert_dispatch_context_order(
+            &visible
+                .get("t")
+                .unwrap()
+                .prompt_for_terminal("terminal-123"),
+        );
     }
 
     #[test]
@@ -1701,12 +1721,15 @@ mod tests {
         graph.add(Task::new("task/one:two", "Build login")).unwrap();
 
         let visible = pane_spawn_specs(&graph, "/repo", "", "", None);
-        let prompt = &visible.get("task/one:two").unwrap().prompt;
+        let prompt = visible
+            .get("task/one:two")
+            .unwrap()
+            .prompt_for_terminal("terminal-123");
 
         assert!(prompt.contains("[Completion marker]"), "{prompt}");
         assert!(prompt.contains("LAST action"), "{prompt}");
         assert!(
-            prompt.contains(".aelyris/done/task_one_two.done"),
+            prompt.contains(".aelyris/done/task_one_two-terminal-123.done"),
             "{prompt}"
         );
         assert!(prompt.contains("write exactly: done"), "{prompt}");
@@ -1828,7 +1851,7 @@ mod tests {
             specs
                 .get("t")
                 .unwrap()
-                .prompt
+                .prompt_for_terminal("terminal-123")
                 .contains("@other owns login in src/auth.rs"),
             "visible pane prompt must carry active claims"
         );
@@ -1837,7 +1860,7 @@ mod tests {
         assert!(none_specs
             .get("t")
             .unwrap()
-            .prompt
+            .prompt_for_terminal("terminal-123")
             .contains("Symbol ownership unavailable"));
     }
 
