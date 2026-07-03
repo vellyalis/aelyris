@@ -18,7 +18,7 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
 
 Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-reports `74/100` (`259/351`), grade `D`, `releaseCandidateReady=false`.
+reports `81/100` (`283/351`), grade `C`, `releaseCandidateReady=false`.
 The hardening H1-H8 repo-owned completion audit is closed out locally; remaining
 release blockers are external/operator/upstream gates.
 

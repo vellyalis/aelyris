@@ -13,7 +13,7 @@ readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
 Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-reports `74/100` (`259/351`), grade `D`, `releaseCandidateReady=false`.
+reports `81/100` (`283/351`), grade `C`, `releaseCandidateReady=false`.
 The current final-goal audit is `blocked-by-external-gates` with
 `implementationFixableCount=0`, `policyBlockedCount=0`, and
 `externalBlockedCount=20`; safe proof registry coverage is `28/28`. This is not
@@ -53,6 +53,10 @@ Remaining gate classes:
 - live command, multipane command, recovered command, and process reconnect
   evidence,
 - authenticated AI CLI prompt smoke. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt/probe execution has standing owner consent for this repo/WU when `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` or the documented provider env is set. Evidence must record provider/model/command/artifact; secrets, token files, signing material, and secret-bearing transcripts must not be persisted or committed.
+
+`pnpm verify:goal:finalize` excludes git finalization by default. Optional git
+finalization requires `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` and is not required
+for product/safe/finalize evidence.
 
 ## Publish Checklist
 

@@ -30,7 +30,7 @@ pnpm verify:goal:safe
 ```
 
 Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-reports `74/100` (`259/351`), grade `D`, `releaseCandidateReady=false`.
+reports `81/100` (`283/351`), grade `C`, `releaseCandidateReady=false`.
 The final-goal audit is `blocked-by-external-gates` with no implementation-
 fixable or policy blockers and 20 external/operator/upstream blockers; this
 still does not make Aelyris release-ready.

@@ -2103,17 +2103,10 @@ pub async fn native_terminal_input_drain(
     let drained = rx
         .recv_timeout(Duration::from_secs(2))
         .map_err(|err| format!("native input drain timed out: {err}"))??;
-    let Some((terminal_id, text)) = drained else {
+    let Some((terminal_id, text, source)) = drained else {
         return Ok(host.status());
     };
-    commit_native_terminal_input(
-        &app,
-        host,
-        terminal_id,
-        text,
-        "native-input-surface".to_string(),
-    )
-    .await
+    commit_native_terminal_input(&app, host, terminal_id, text, source).await
 }
 
 #[tauri::command]
@@ -2201,11 +2194,12 @@ async fn commit_native_terminal_input(
         );
         return Err(err);
     }
-    // P0-4: gate native input by its kind. A full submit (the app's own command-center) and a
-    // clipboard paste are complete payloads -> classify atomically (deny refused; review
-    // allowed under the local Balanced policy). Raw keystroke sources need char echo ->
-    // echo-preserving mode (a catastrophic submission's Enter becomes Ctrl-C). The
-    // keystroke source_kind is stable per kind so one terminal's pending line shares one mirror.
+    // P0-4: gate native input by its kind. The app's command-center is a full submit and
+    // classifies atomically. Clipboard paste is a programmatic complete-line stream, so it
+    // uses hold-until-approved semantics like send_keys: nothing reaches the PTY until the
+    // pasted line terminator is allowed. Raw keystroke sources need char echo ->
+    // echo-preserving mode (a catastrophic submission's Enter becomes Ctrl-C). The source_kind
+    // is stable per kind so one terminal's pending line shares one mirror.
     let (gate_source, gate_mode) = match source.as_str() {
         "command-center" => (
             "ipc-native-command-center",
@@ -2213,7 +2207,7 @@ async fn commit_native_terminal_input(
         ),
         "native-clipboard-paste" => (
             "ipc-native-paste",
-            crate::command_risk::gate::GateMode::Atomic,
+            crate::command_risk::gate::GateMode::HoldUntilApproved,
         ),
         _ => (
             "ipc-native-keystroke",
@@ -3497,7 +3491,10 @@ struct SessionVisibility {
     recycle_status: Option<crate::agent::SessionRecycleStatus>,
 }
 
-fn session_visibility_index<I>(app: &AppHandle, logical_session_ids: I) -> HashMap<String, SessionVisibility>
+fn session_visibility_index<I>(
+    app: &AppHandle,
+    logical_session_ids: I,
+) -> HashMap<String, SessionVisibility>
 where
     I: IntoIterator<Item = String>,
 {
@@ -3540,9 +3537,16 @@ where
         };
         let predecessor_session_id =
             latest_checkpoint.and_then(|checkpoint| checkpoint.predecessor_session_id.clone());
-        let visible_lineage = if lineage.len() > 1 { lineage } else { Vec::new() };
+        let visible_lineage = if lineage.len() > 1 {
+            lineage
+        } else {
+            Vec::new()
+        };
 
-        if predecessor_session_id.is_some() || !visible_lineage.is_empty() || recycle_status.is_some() {
+        if predecessor_session_id.is_some()
+            || !visible_lineage.is_empty()
+            || recycle_status.is_some()
+        {
             index.insert(
                 logical_session_id,
                 SessionVisibility {
@@ -3572,7 +3576,9 @@ fn build_session_lineage(
         match checkpoint_by_logical.get(&id) {
             Some(checkpoint) => {
                 current = checkpoint.predecessor_session_id.clone();
-                lineage.push(crate::agent::SessionLineageEntry::from_checkpoint(checkpoint));
+                lineage.push(crate::agent::SessionLineageEntry::from_checkpoint(
+                    checkpoint,
+                ));
             }
             None => {
                 lineage.push(crate::agent::SessionLineageEntry::unresolved(id));

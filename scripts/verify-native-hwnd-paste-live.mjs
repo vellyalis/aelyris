@@ -403,7 +403,7 @@ function makeCases(token) {
     {
       id: "single-line-lf-normalized-and-executed",
       message: "single-line LF paste is allowed, normalized to Enter, drained through Rust, and visibly executed",
-      text: `$m='AELYRIS_SAFE'+'_ ${token}'.Replace(' ',''); Write-Output $m\n`,
+      text: `echo ${safeMarker}\n`,
       outputMarker: safeMarker,
       expectedAction: "allowed",
       expectedReason: "single-line paste normalized by native input guard",
@@ -413,7 +413,7 @@ function makeCases(token) {
     {
       id: "destructive-commented-paste-blocked-before-pty",
       message: "paste text containing a destructive command signature is blocked before any PTY write",
-      text: `$m='AELYRIS_BLOCK'+'_ ${token}'.Replace(' ',''); Write-Output $m # git reset --hard HEAD\n`,
+      text: `echo ${blockedMarker} # git reset --hard HEAD\n`,
       outputMarker: blockedMarker,
       expectedAction: "blocked",
       expectedReason: "destructive command paste blocked by native input guard",
@@ -423,9 +423,7 @@ function makeCases(token) {
     {
       id: "multiline-paste-blocked-before-pty",
       message: "multi-line paste is blocked until an explicit UI confirmation path exists",
-      text:
-        `$m='AELYRIS_MULTI_A'+'_ ${token}'.Replace(' ',''); Write-Output $m\n` +
-        `$m='AELYRIS_MULTI_B'+'_ ${token}'.Replace(' ',''); Write-Output $m\n`,
+      text: `echo ${multiMarkerA}\necho ${multiMarkerB}\n`,
       outputMarker: multiMarkerA,
       secondaryOutputMarker: multiMarkerB,
       expectedAction: "blocked",

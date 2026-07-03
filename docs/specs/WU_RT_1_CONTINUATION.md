@@ -32,6 +32,24 @@ agent session. Owner controls merge timing.
 5. `docs/specs/README.md`
 6. This file
 
+### Fable / World-Class Continuation Override
+
+If the next request mentions `Fable`, `world-class`, `Fable返答後`, or
+`P1 command evidence`, this file is not the primary entrypoint. Use the
+local-only Fable continuation instead:
+
+1. `.claude/agent-memory-local/CLAUDE_MUST_READ_FABLE_REVIEW_WORLD_CLASS_BLOCKERS_LOCAL_ONLY.md`
+2. `.claude/agent-memory-local/CLAUDE_MUST_READ_NEXT_SESSION_FABLE_WORLD_CLASS_IMPLEMENTATION_LOCAL_ONLY.md`
+3. `docs/specs/README.md`
+4. The current generated artifacts and verifier commands listed in that
+   local-only handoff.
+
+Those local-only files are intentionally ignored and must not be committed or
+moved into tracked docs. Their current default next Work Unit is P1 Command
+Evidence Durability: command identity, scrollback anchors, split-pane evidence,
+and reconnect/recovery evidence. Do not redirect that continuation to UI
+density or generic release documentation unless the local handoff is missing.
+
 Read the root work-order files only when the selected next action needs their
 details. `refactor-instructions.md` and `hardening-instructions.md` are no
 longer the next implementation target unless a current verifier shows a
@@ -65,7 +83,7 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `74/100` (`259/351`), grade `D`,
+- `pnpm verify:quality-score` -> `81/100` (`283/351`), grade `C`,
   `releaseCandidateReady=false`.
 - `pnpm verify:final-goal-audit` -> `blocked-by-external-gates`,
   `implementationFixableCount=0`, `policyBlockedCount=0`,
@@ -74,6 +92,9 @@ Last confirmed machine truth for the hardening closeout:
   `blocked-by-external-gates`, no failed steps, no non-consent blockers.
 - `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.
 - `pnpm verify:goal:docs` -> `pass-current-goal-docs-contract`.
+- `pnpm verify:goal:finalize` excludes git finalization by default; optional
+  git finalization requires `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` and is not
+  required for product/safe/finalize evidence.
 - RT-1e resume/reset_context remains owned by
   `scripts/verify-session-resume-idempotent.mjs` and package script
   `pnpm verify:runtime-core:session-resume`; keep this verifier green when
@@ -114,6 +135,20 @@ Get-Content -Raw docs\specs\README.md
 Get-Content -Raw docs\specs\WU_RT_1_CONTINUATION.md
 pnpm verify:goal:docs
 pnpm verify:goal:closeout
+```
+
+If the session is the Fable/world-class continuation, use this command block
+instead:
+
+```powershell
+git status --short --branch
+Get-Content -Raw .claude\agent-memory-local\CLAUDE_MUST_READ_FABLE_REVIEW_WORLD_CLASS_BLOCKERS_LOCAL_ONLY.md
+Get-Content -Raw .claude\agent-memory-local\CLAUDE_MUST_READ_NEXT_SESSION_FABLE_WORLD_CLASS_IMPLEMENTATION_LOCAL_ONLY.md
+pnpm verify:terminal:font-render
+pnpm verify:terminal:command-evidence
+pnpm verify:terminal:multipane-command-evidence
+pnpm verify:terminal:recovered-command-evidence
+pnpm verify:terminal:process-reconnect-command-evidence
 ```
 
 Do not begin by reopening old RT-1 or hardening phase tables. If a current gate
