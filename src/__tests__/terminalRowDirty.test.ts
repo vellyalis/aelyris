@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type LinkSpan } from "../features/terminal/links";
+import type { LinkSpan } from "../features/terminal/links";
 import {
   buildMatchesKey,
   buildRowMask,
