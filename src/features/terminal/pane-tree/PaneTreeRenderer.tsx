@@ -363,11 +363,13 @@ export function PaneTreeRenderer({
         // live identity so the pane reads as a fleet member, not a blank shell.
         const agent = agentMeta?.get(terminalId ?? leaf.id);
         const endedLifecycle = lifecycle === "detached" || lifecycle === "exited" || lifecycle === "crashed";
+        const shouldRecoverDetachedLonePane =
+          lifecycle === "detached" && !terminalId && currentLeaves.length === 1 && terminalIds.size === 0;
         const shouldSuspendForLeaf = suspendTerminalMounts && lifecycle !== "starting" && lifecycle !== "restarting";
         // A finished AGENT pane keeps its terminal mounted (not the "Ended pane"
         // placeholder) so claude's final output stays visible — the fleet persists
         // for review instead of vanishing the moment the agent exits.
-        const shouldHoldForAttach = endedLifecycle && (!agent || !terminalId);
+        const shouldHoldForAttach = endedLifecycle && !shouldRecoverDetachedLonePane && (!agent || !terminalId);
         const shouldMount =
           !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
         const shouldShowPaneHeader = currentLeaves.length > 1 && !maximizedPaneId;

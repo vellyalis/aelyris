@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PaneTreeRenderer } from "../features/terminal/pane-tree/PaneTreeRenderer";
-import type { PaneNode, PaneRole, SplitDirection } from "../features/terminal/pane-tree/types";
+import type { PaneLifecycleState, PaneNode, PaneRole, SplitDirection } from "../features/terminal/pane-tree/types";
 
 vi.mock("../features/terminal/NativeTerminalArea", () => ({
   NativeTerminalArea: () => <div data-testid="native-terminal-area" />,
@@ -36,13 +36,60 @@ const splitPane: PaneNode = {
   },
 };
 
-function renderPaneTree(tree: PaneNode, maximizedPaneId: string | null = null) {
+const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+
+function makeRect(width = 960, height = 540): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    width,
+    height,
+    top: 0,
+    right: width,
+    bottom: height,
+    left: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+class ImmediateResizeObserver implements ResizeObserver {
+  private readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+
+  observe(target: Element) {
+    this.callback([{ target, contentRect: makeRect() } as ResizeObserverEntry], this);
+  }
+
+  unobserve() {}
+
+  disconnect() {}
+}
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", ImmediateResizeObserver);
+  HTMLElement.prototype.getBoundingClientRect = () => makeRect();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+});
+
+function renderPaneTree(
+  tree: PaneNode,
+  maximizedPaneId: string | null = null,
+  paneLifecycleStates?: Map<string, PaneLifecycleState>,
+) {
   return render(
     <PaneTreeRenderer
       tree={tree}
       activePaneId="pane-a"
       maximizedPaneId={maximizedPaneId}
       terminalIds={new Map()}
+      paneLifecycleStates={paneLifecycleStates}
       onFocusPane={vi.fn()}
       onSplit={vi.fn<(id: string, direction: SplitDirection) => void>()}
       onClose={vi.fn()}
@@ -74,5 +121,12 @@ describe("PaneTreeRenderer terminal density chrome", () => {
     renderPaneTree(splitPane, "pane-a");
 
     expect(screen.queryByTestId("terminal-info-bar")).toBeNull();
+  });
+
+  it("mounts a lone detached pane so restore state cannot block startup", async () => {
+    renderPaneTree(singlePane, null, new Map([["pane-a", "detached"]]));
+
+    await waitFor(() => expect(screen.getByTestId("native-terminal-area")).toBeTruthy());
+    expect(screen.queryByText("Detached pane")).toBeNull();
   });
 });
