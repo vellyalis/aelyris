@@ -118,3 +118,38 @@ product claim — the owner reviews and merges.
 ```text
 /goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/PRODUCT_DIRECTION_PROPOSALS_2026-07-03.md -> docs/specs/FLEET_API_HARDENING_SPEC.md -> fleet-api-instructions.md を順に読み、fleet-api-instructions.md の Phase F0 から F7 を完遂しろ（F8 は任意）。ブランチは feat/wu-fa-1-fleet-api を main から切る。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。SPEC §3.1 の委譲ルール厳守（cockpit 内部関数の再実装禁止）。既存テスト・検証器の弱体化禁止。main への push / force push / PR 作成禁止、完了したら feature branch を push して fleet-api-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
 ```
+
+## Result
+
+Date: 2026-07-03 JST
+Branch: `feat/wu-fa-1-fleet-api`
+Base: `main` at `131782c`
+Push scope: feature branch only; no main push, no force push, no PR.
+
+Phases completed:
+
+- F0 baseline: `654d04b chore: record fleet api baseline`
+- F1 C2 marker collision: `78a8f88 fix: make visible done markers collision-proof`
+- F2 C1 broadcast stale-approval guard: `513bcc3 fix: guard fleet writes at approval gates`
+- F3 C3 catalog memoization: `08ce72e perf: memoize mcp tool schemas`
+- F4 A1 `aelyris.approval.resolve`: `b3a8a57 feat: expose approval resolve over mcp`
+- F5 A2 `aelyris.agent.spawn_visible`: `505f492 feat: expose visible agent spawn over mcp`
+- F6 A3b short pane ids `%N`: `26316e3 feat: add short pane ids`
+- F7 A4 `aelys` bridge + self-target + report: `25fa3ee feat: add aelys mcp pane bridge`
+- F8 notify-on-exit: skipped; optional stretch phase and not required for F0-F7 completion.
+
+Final gates run after F7:
+
+- `cargo build --manifest-path src-tauri\Cargo.toml --bin aelys`: PASS
+- `cargo test --manifest-path src-tauri\Cargo.toml --bin aelys`: PASS, 7 tests
+- `cargo test --manifest-path src-tauri\Cargo.toml --lib`: PASS, 1155 tests
+- `pnpm exec tsc --noEmit`: PASS
+- `pnpm test`: PASS, 200 files / 1907 tests
+- `node scripts\verify-runtime-core-preconditions.mjs`: PASS, `pass-runtime-core-preconditions`
+- `pnpm verify:release:hygiene`: PASS, `pass-current-release-hygiene-contract`
+
+Files touched:
+
+- Rust API/MCP/CLI/core: `src-tauri/src/api/mcp.rs`, `src-tauri/src/api/mod.rs`, `src-tauri/src/bin/aelys.rs`, `src-tauri/src/ipc/send_keys_commands.rs`, `src-tauri/src/ipc/interactive_commands.rs`, `src-tauri/src/ipc/commands.rs`, `src-tauri/src/pty/registry.rs`, `src-tauri/src/pty/manager.rs`, `src-tauri/src/control/pane_fleet.rs`, `src-tauri/src/control/loop_ports.rs`, `src-tauri/src/agent/session.rs`, `src-tauri/src/shared_brain.rs`
+- Frontend contracts/UI/tests: `src/shared/types/agent.ts`, `src/shared/types/interactiveAgent.ts`, `src/shared/types/pane.ts`, `src/shared/lib/agentFleet.ts`, `src/shared/hooks/useLivePanes.ts`, `src/features/context/LivePanesPanel.tsx`, `src/features/app/useAppMenus.ts`, `src/features/workflow/WorkflowPanel.tsx`, `src/features/terminal/TerminalInfoBar.tsx`, `src/features/terminal/TerminalInfoBar.module.css`, `src/features/terminal/pane-tree/types.ts`, `src/features/terminal/pane-tree/PaneTreeContainer.tsx`, `src/features/terminal/pane-tree/PaneTreeRenderer.tsx`, `src/App.tsx`
+- Verifiers/tests/report: `scripts/verify-runtime-core-preconditions.mjs`, `src/__tests__/WorkflowPanelRace.test.tsx`, `src/__tests__/TerminalInfoBarExitDot.test.tsx`, `src/__tests__/agentFleet.test.ts`, `fleet-api-instructions.md`
