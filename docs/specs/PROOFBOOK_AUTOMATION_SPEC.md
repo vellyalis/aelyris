@@ -376,6 +376,80 @@ the source Proofbook without an explicit update action.
 
 ## 11. Roadmap
 
+### Development Method — Design-First Gates
+
+PB-1 through PB-7 must not jump directly from roadmap text to implementation.
+Each implementation phase has a required **PB-ND detailed design gate** before
+runtime/UI code for that phase may land. The design gate is its own phase and
+keeps the same repo rule: one phase = one explicit commit.
+
+The PB-ND gate must update this spec, or the owning spec named by this spec,
+with enough detail that implementation cannot create a parallel half-built
+automation stack. At minimum it must define:
+
+- owner modules and exact file scope,
+- schema/data model changes and typed error taxonomy,
+- lifecycle or state-machine transitions,
+- restart/replay/persistence behavior where relevant,
+- unsupported cases and fail-closed behavior,
+- verifier commands, artifact paths, and focused test matrix,
+- migration/compatibility/debt boundaries,
+- claim boundary and stop conditions.
+
+Runtime implementation for PB-N is not in scope until PB-ND is green. If the
+design changes during implementation, the same phase must update the design and
+verifier before claiming the code complete. A phase that adds code without its
+PB-ND design gate is incomplete even if tests pass.
+
+Proofbook development is **contract-first, existing-spine vertical slices**.
+The single Proofbook contract spine is `src-tauri/src/proofbook`; IPC, MCP, and
+UI are adapters only. Every PB implementation phase must be one mergeable
+vertical slice over that spine: schema/validator, executor or adapter,
+ledger/proof output, focused tests, and verifier coverage. No phase may add a
+second dispatcher, command policy, persistence authority, proof format,
+frontend-only executable schema, or MCP catalog path.
+
+Unsupported future step types must fail closed with explicit
+`unsupported_step_type` or `not_implemented` status; they must never fake
+success, write placeholder ledger success, or silently no-op. UI work must trail
+backend contracts: it may render validated Rust ledger/run state and request
+governed actions, but it must not create executable mock flows that bypass the
+runner contract.
+
+Authority delegation matrix:
+
+| Step or surface | Required Aelyris authority path |
+| --- | --- |
+| `shell` / `verifier` | Existing command-risk policy plus repo proof artifact chain. |
+| `mcpTool` | Existing schema-enforced `tools/call` path, governance, and audit. |
+| `agentSession` | Existing visible pane/session lifecycle runtime; headless only for planner/reviewer/batch. |
+| `http` | Bounded request path with secret references and GATED external execution unless read-only. |
+| `manualGate` | Existing auditable decision/gate model; no auto-approval replacement. |
+| `waitFor` | Bounded polling over files/artifacts/MCP results with timeout and interval. |
+| `fanOut` | Existing or mirrored ownership/conflict preflight; overlapping write lanes serialize or reject. |
+| `subProofbook` | Child run ledger with lineage and max-depth enforcement. |
+| `evidence.write` / `evidence.read` | Run ledger and artifact refs first; Evidence Store is only a later projection. |
+| Distillation | Proposed diff plus risk summary only; no automatic source mutation. |
+| IPC/MCP/UI adapters | Delegate to Rust proofbook contracts and runner state; no duplicate source of truth. |
+
+Phase fail-closed contracts:
+
+- PB-1 implementation cannot add a runner or execute a Proofbook.
+- PB-2 executes only `shell`, `verifier`, `waitFor`, and `manualGate`; MCP,
+  HTTP, agent, fan-out, subProofbook, and distill steps remain explicit
+  `not_implemented`/`unsupported_step_type`.
+- PB-3 may add runtime MCP tool steps and list/get/validate/run/status/cancel
+  verbs, but create/update/distill stay excluded until PB-6.
+- PB-6 emits patch proposals only; accept/update remains a separate GATED
+  mutation path and source Proofbooks are never mutated automatically.
+- PB-7 keeps raw run ledgers as primary evidence; Evidence Store is a
+  projection only and must preserve artifact hashes and redaction boundaries.
+
+Each PB phase exits debt-zero: no orphan stubs, TODO placeholders, unused
+compatibility layers, duplicate schemas, fake-success paths, or alternate
+dispatchers may remain unless they name a PB owner, removal phase, and verifier
+check.
+
 ### PB-0 — Spec And Contract Guards
 
 Scope: docs only plus source-scan verifier.
@@ -543,43 +617,43 @@ Use one packet at a time. Do not run phases concurrently.
 ### PB-1 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-1 を実装する。読み順は AGENTS.md -> docs/specs/PROOFBOOK_AUTOMATION_SPEC.md -> src-tauri/src/workflow/types.rs -> src-tauri/src/workflow/parser.rs -> src-tauri/src/workflow/executor.rs。対象は src-tauri/src/proofbook/* の新規schema/parser/validator、src-tauri/src/lib.rs のmodule wiring、必要なIPC list/validateだけ。実行runnerは作らない。cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib を通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-1 を進める。まず PB-1D detailed design gate として schema/parser/validator/error taxonomy/module ownership/test matrix/no-runner boundary を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-1D が green になるまで runtime code に入らない。PB-1 実装時の読み順は AGENTS.md -> docs/specs/PROOFBOOK_AUTOMATION_SPEC.md -> src-tauri/src/workflow/types.rs -> src-tauri/src/workflow/parser.rs -> src-tauri/src/workflow/executor.rs。対象は src-tauri/src/proofbook/* の新規schema/parser/validator、src-tauri/src/lib.rs のmodule wiring、必要なIPC list/validateだけ。実行runnerは作らない。cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib を通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-2 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-2 run ledger と deterministic steps を実装する。対象は src-tauri/src/proofbook/runner.rs, ledger.rs, src-tauri/src/ipc/proofbook_commands.rs, src/features/proofbook/* の最小run/status UI。shell/verifier/waitFor/manualGate だけを実行可能にし、MCP/HTTP/agent/fanOut/distillは拒否または未実装エラーにする。ledgerはstdout/stderr artifact ref, exitCode, artifact hash, redactionCount, residualBlockersを記録する。cargo test proofbook --lib と pnpm test の関連テストを通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-2 run ledger と deterministic steps を進める。まず PB-2D detailed design gate として runner/ledger state machine, artifact hashing/redaction, manualGate pause/resume, unsupported MCP/HTTP/agent/fanOut/distill fail-closed behavior, UI minimum contract, verifier artifacts を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-2D が green になるまで runner/UI code に入らない。対象は src-tauri/src/proofbook/runner.rs, ledger.rs, src-tauri/src/ipc/proofbook_commands.rs, src/features/proofbook/* の最小run/status UI。shell/verifier/waitFor/manualGate だけを実行可能にし、MCP/HTTP/agent/fanOut/distillは拒否または未実装エラーにする。ledgerはstdout/stderr artifact ref, exitCode, artifact hash, redactionCount, residualBlockersを記録する。cargo test proofbook --lib と pnpm test の関連テストを通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-3 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-3 MCP integration を実装する。対象は src-tauri/src/api/mcp.rs, src-tauri/src/proofbook/runner.rs, docs/specs/MCP_TOOL_SURFACE_SPEC.md。mcpTool step は既存 tools_call/schema/governance 経路にdelegateし、GATED toolは waiting_gate と pending decision id をledgerに記録する。aelyris.proofbook.list/get/validate/run/status/cancel を追加し、catalog/schema drift, schema_violation, governance denial testsを追加する。cargo test --manifest-path src-tauri\Cargo.toml mcp --lib を通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-3 MCP integration を進める。まず PB-3D detailed design gate として tools_call delegate seam, inputSchema/governance path, waiting_gate ledger contract, pending decision shape, MCP catalog drift tests, mutation-verb exclusion を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md と docs/specs/MCP_TOOL_SURFACE_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-3D が green になるまで MCP/runtime code に入らない。対象は src-tauri/src/api/mcp.rs, src-tauri/src/proofbook/runner.rs, docs/specs/MCP_TOOL_SURFACE_SPEC.md。mcpTool step は既存 tools_call/schema/governance 経路にdelegateし、GATED toolは waiting_gate と pending decision id をledgerに記録する。aelyris.proofbook.list/get/validate/run/status/cancel を追加し、catalog/schema drift, schema_violation, governance denial testsを追加する。cargo test --manifest-path src-tauri\Cargo.toml mcp --lib を通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-4 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-4 agentSession step を実装する。対象は src-tauri/src/proofbook/agent_step.rs, runner.rs, src/features/proofbook/*。implementation role は visible PTY をdefaultにし、headlessは planner/reviewer/batch に限定する。session id, pane id, worktree, model, cost/token, lifecycle artifact refsをledgerへ記録する。VISIBLE_AGENT_PANE_RUNTIME_SPEC.md のclaim境界を壊さない。focused Rust/TS tests と pnpm verify:goal:docs を通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-4 agentSession step を進める。まず PB-4D detailed design gate として visible-vs-headless policy, pane/session/worktree linkage, lifecycle artifact refs, cost/token unknown handling, stop/error semantics, UI proof surface を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md と必要なら VISIBLE_AGENT_PANE_RUNTIME_SPEC.md に明示し、pnpm verify:proofbook:spec と pnpm verify:goal:docs を通す。PB-4D が green になるまで agent/runtime/UI code に入らない。対象は src-tauri/src/proofbook/agent_step.rs, runner.rs, src/features/proofbook/*。implementation role は visible PTY をdefaultにし、headlessは planner/reviewer/batch に限定する。session id, pane id, worktree, model, cost/token, lifecycle artifact refsをledgerへ記録する。VISIBLE_AGENT_PANE_RUNTIME_SPEC.md のclaim境界を壊さない。focused Rust/TS tests と pnpm verify:goal:docs を通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-5 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-5 fanOut/subProofbook/settlement を実装する。対象は src-tauri/src/proofbook/runner.rs, validator.rs, ledger.rs と最小UI。fanOutはconcurrency capとsettlement必須、subProofbookはmax depth 10、parallel write lanesはownership/conflict preflightで拒否する。部分失敗を failed / blocked-by-policy / blocked-by-external-gates に分類してledgerへ残す。focused testsを通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-5 fanOut/subProofbook/settlement を進める。まず PB-5D detailed design gate として concurrency cap, branch ownership/conflict preflight, settlement state machine, partial failure classification, child-run lineage, max-depth enforcement, UI run graph contract を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-5D が green になるまで parallel runner/UI code に入らない。対象は src-tauri/src/proofbook/runner.rs, validator.rs, ledger.rs と最小UI。fanOutはconcurrency capとsettlement必須、subProofbookはmax depth 10、parallel write lanesはownership/conflict preflightで拒否する。部分失敗を failed / blocked-by-policy / blocked-by-external-gates に分類してledgerへ残す。focused testsを通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-6 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-6 Distill を実装する。成功run ledgerから deterministic step rewrite proposal を生成するだけで、source Proofbookは自動変更しない。verifier/gate削除、secret inline、visible実装agentの無断headless化を拒否する。提案diffとrisk summaryをUI/APIで表示し、acceptは別GATED updateにする。focused testsと pnpm verify:proofbook:spec を通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-6 Distill を進める。まず PB-6D detailed design gate として trace input contract, rewrite rules, forbidden weakening checks, proposed diff format, risk summary schema, GATED accept/update boundary, MCP mutation verbs を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md と docs/specs/MCP_TOOL_SURFACE_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-6D が green になるまで distill/API/UI code に入らない。成功run ledgerから deterministic step rewrite proposal を生成するだけで、source Proofbookは自動変更しない。verifier/gate削除、secret inline、visible実装agentの無断headless化を拒否する。提案diffとrisk summaryをUI/APIで表示し、acceptは別GATED updateにする。focused testsと pnpm verify:proofbook:spec を通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-7 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-7 Evidence Store projection を実装する。対象は src-tauri/src/proofbook/evidence_store.rs, ledger.rs, 必要なら src-tauri/src/db/migrations.rs, src/features/proofbook/*, scripts/verify-proofbook-evidence-store.mjs。run ledgerを一次証拠として保ち、Evidence Storeは検索/集計用projectionに限定する。natural-key upsert、queryable run history、artifact hash preservation、secret/redaction safetyを検証する。focused Rust/TS tests と pnpm verify:proofbook:spec を通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-7 Evidence Store projection を進める。まず PB-7D detailed design gate として ledger-as-primary-evidence rule, projection schema, natural-key upsert semantics, SQLite migration decision, query/read model, artifact hash preservation, redaction/secret safety を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-7D が green になるまで evidence store/DB/UI code に入らない。対象は src-tauri/src/proofbook/evidence_store.rs, ledger.rs, 必要なら src-tauri/src/db/migrations.rs, src/features/proofbook/*, scripts/verify-proofbook-evidence-store.mjs。run ledgerを一次証拠として保ち、Evidence Storeは検索/集計用projectionに限定する。natural-key upsert、queryable run history、artifact hash preservation、secret/redaction safetyを検証する。focused Rust/TS tests と pnpm verify:proofbook:spec を通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ## 13. Subagent Audit Prompts

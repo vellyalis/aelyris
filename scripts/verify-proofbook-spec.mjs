@@ -39,6 +39,7 @@ const mcpVerbs = [
 ];
 
 const roadmapIds = ["PB-0", "PB-1", "PB-2", "PB-3", "PB-4", "PB-5", "PB-6", "PB-7"];
+const detailedDesignIds = ["PB-1D", "PB-2D", "PB-3D", "PB-4D", "PB-5D", "PB-6D", "PB-7D"];
 
 function fullPath(path) {
   return join(ROOT, path);
@@ -97,6 +98,77 @@ const missingStepTypes = missingFrom(spec, stepTypes);
 const missingMcpVerbs = missingFrom(spec, mcpVerbs);
 const missingRoadmapSections = roadmapIds.filter((id) => !new RegExp(`### ${id}\\b`).test(spec));
 const missingGoalPackets = roadmapIds.filter((id) => !new RegExp(`### ${id} \`/goal\``).test(spec));
+const missingDetailedDesignIds = detailedDesignIds.filter((id) => !spec.includes(id));
+const requiredDevelopmentMethodClauses = [
+  "PB-1 through PB-7 must not jump directly from roadmap text to implementation.",
+  "Each implementation phase has a required **PB-ND detailed design gate** before runtime/UI code for that phase may land.",
+  "The design gate is its own phase and keeps the same repo rule: one phase = one explicit commit.",
+  "Runtime implementation for PB-N is not in scope until PB-ND is green.",
+  "A phase that adds code without its PB-ND design gate is incomplete even if tests pass.",
+  "Proofbook development is **contract-first, existing-spine vertical slices**.",
+  "The single Proofbook contract spine is `src-tauri/src/proofbook`; IPC, MCP, and UI are adapters only.",
+  "No phase may add a second dispatcher, command policy, persistence authority, proof format, frontend-only executable schema, or MCP catalog path.",
+  "Unsupported future step types must fail closed with explicit `unsupported_step_type` or `not_implemented` status",
+  "UI work must trail backend contracts",
+  "Each PB phase exits debt-zero",
+  "no orphan stubs",
+  "TODO placeholders",
+  "duplicate schemas",
+  "fake-success paths",
+  "alternate dispatchers",
+  "owner modules and exact file scope",
+  "schema/data model changes and typed error taxonomy",
+  "lifecycle or state-machine transitions",
+  "verifier commands, artifact paths, and focused test matrix",
+  "migration/compatibility/debt boundaries",
+  "claim boundary and stop conditions",
+];
+const missingDevelopmentMethodClauses = missingFromNormalized(spec, requiredDevelopmentMethodClauses);
+const requiredAuthorityDelegationClauses = [
+  "Authority delegation matrix:",
+  "`shell` / `verifier`",
+  "Existing command-risk policy plus repo proof artifact chain.",
+  "`mcpTool`",
+  "Existing schema-enforced `tools/call` path, governance, and audit.",
+  "`agentSession`",
+  "Existing visible pane/session lifecycle runtime; headless only for planner/reviewer/batch.",
+  "`http`",
+  "Bounded request path with secret references and GATED external execution unless read-only.",
+  "`manualGate`",
+  "Existing auditable decision/gate model; no auto-approval replacement.",
+  "`waitFor`",
+  "Bounded polling over files/artifacts/MCP results with timeout and interval.",
+  "`fanOut`",
+  "Existing or mirrored ownership/conflict preflight; overlapping write lanes serialize or reject.",
+  "`subProofbook`",
+  "Child run ledger with lineage and max-depth enforcement.",
+  "`evidence.write` / `evidence.read`",
+  "Run ledger and artifact refs first; Evidence Store is only a later projection.",
+  "Distillation",
+  "Proposed diff plus risk summary only; no automatic source mutation.",
+  "IPC/MCP/UI adapters",
+  "Delegate to Rust proofbook contracts and runner state; no duplicate source of truth.",
+];
+const missingAuthorityDelegationClauses = missingFromNormalized(spec, requiredAuthorityDelegationClauses);
+const requiredPhaseFailClosedClauses = [
+  "PB-1 implementation cannot add a runner or execute a Proofbook.",
+  "PB-2 executes only `shell`, `verifier`, `waitFor`, and `manualGate`",
+  "MCP, HTTP, agent, fan-out, subProofbook, and distill steps remain explicit `not_implemented`/`unsupported_step_type`.",
+  "PB-3 may add runtime MCP tool steps and list/get/validate/run/status/cancel verbs, but create/update/distill stay excluded until PB-6.",
+  "PB-6 emits patch proposals only",
+  "source Proofbooks are never mutated automatically.",
+  "PB-7 keeps raw run ledgers as primary evidence",
+  "Evidence Store is a projection only",
+];
+const missingPhaseFailClosedClauses = missingFromNormalized(spec, requiredPhaseFailClosedClauses);
+const goalPacketsWithoutDesignGate = roadmapIds
+  .filter((id) => id !== "PB-0")
+  .filter((id) => {
+    const phaseNumber = id.slice(3);
+    const section =
+      spec.match(new RegExp(`### ${id} \`/goal\`([\\s\\S]*?)(?=\\n### PB-\\d+ \`/goal\`|\\n## \\d+\\.|$)`))?.[1] ?? "";
+    return !section.includes(`PB-${phaseNumber}D detailed design gate`) || !section.includes("green");
+  });
 const requiredSafetyClauses = [
   "Proofbooks must not introduce a second authority path.",
   "MCP steps use the MCP governance choke point.",
@@ -186,10 +258,30 @@ const checks = [
     { missingRoadmapSections },
   ),
   check(
+    "spec-design-first-development-method",
+    missingDevelopmentMethodClauses.length === 0 && missingDetailedDesignIds.length === 0,
+    "Proofbook spec requires contract-first PB-ND detailed design gates before PB-1 through PB-7 implementation",
+    { missingDevelopmentMethodClauses, missingDetailedDesignIds },
+  ),
+  check(
+    "spec-authority-delegation-matrix",
+    missingAuthorityDelegationClauses.length === 0,
+    "Proofbook spec maps each step/surface to an existing Aelyris authority path instead of a parallel stack",
+    { missingAuthorityDelegationClauses },
+  ),
+  check(
+    "spec-phase-fail-closed-contract",
+    missingPhaseFailClosedClauses.length === 0,
+    "Proofbook roadmap keeps unsupported future behavior fail-closed and prevents fake success across PB-1 through PB-7",
+    { missingPhaseFailClosedClauses },
+  ),
+  check(
     "spec-goal-packets",
-    missingGoalPackets.length === 0 && spec.includes("## 12. Pasteable `/goal` Packets"),
-    "Proofbook spec includes pasteable /goal packets for each roadmap phase",
-    { missingGoalPackets },
+    missingGoalPackets.length === 0 &&
+      goalPacketsWithoutDesignGate.length === 0 &&
+      spec.includes("## 12. Pasteable `/goal` Packets"),
+    "Proofbook spec includes pasteable /goal packets for each roadmap phase and routes PB-1 through PB-7 through PB-ND detailed design gates first",
+    { missingGoalPackets, goalPacketsWithoutDesignGate },
   ),
   check(
     "spec-indexed-as-proposal",
