@@ -41,7 +41,7 @@
   --text-secondary: var(--terminal-ui-secondary);
   --text-muted: var(--terminal-ui-muted);
   color: var(--terminal-ui-primary);
-  padding: var(--space-1);
+  padding: 0;
   border-radius: calc(var(--radius-lg) + 2px);
   background:
     radial-gradient(ellipse at 48% -12%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 42%),

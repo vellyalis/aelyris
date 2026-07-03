@@ -95,7 +95,7 @@ const MIN_COLS = 20;
 const MIN_ROWS = 5;
 // Must match `.terminalViewport` padding so PTY cols/rows describe the
 // drawable canvas well, not the decorative glass gutter around it.
-const CANVAS_GUTTER = 10;
+const CANVAS_GUTTER = 4;
 
 interface Dims {
   cols: number;

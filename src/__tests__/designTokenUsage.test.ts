@@ -525,17 +525,28 @@ describe("design token usage", () => {
     expect(combined).not.toContain("blur(20px)");
   });
 
-  it("keeps terminal shell gutters narrow so the canvas does not look pasted on", () => {
+  it("keeps terminal shell gutters collapsed while preserving the active focus ring", () => {
     const entry = Object.entries(cssSources).find(([file]) =>
       file.includes("features/terminal/pane-tree/PaneTreeRenderer.module.css"),
     );
+    const terminalAreaEntry = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/terminal/TerminalArea.module.css"),
+    );
     expect(entry).toBeDefined();
+    expect(terminalAreaEntry).toBeDefined();
     const source = entry?.[1] ?? "";
+    const terminalAreaSource = terminalAreaEntry?.[1] ?? "";
     const mountRule = source.match(/\.terminalMount\s*{[\s\S]*?}/)?.[0] ?? "";
+    const activeMountRule = source.match(/\.terminalMount\[data-active="true"\]\s*{[\s\S]*?}/)?.[0] ?? "";
+    const terminalAreaRule = terminalAreaSource.match(/\.terminalArea\s*{[\s\S]*?}/)?.[0] ?? "";
+    const viewportRule = terminalAreaSource.match(/\.terminalViewport\s*{[\s\S]*?}/)?.[0] ?? "";
 
     expect(mountRule).toContain("gap: var(--space-1)");
-    expect(mountRule).toContain("padding: var(--space-1)");
+    expect(mountRule).toContain("padding: 0");
     expect(mountRule).not.toContain("padding: var(--space-2)");
+    expect(activeMountRule).toContain("inset 0 0 0 1px");
+    expect(terminalAreaRule).toContain("padding: 0");
+    expect(viewportRule).toContain("padding: 4px");
   });
 
   it("keeps terminal water effects free of generated-looking screen glints", () => {
