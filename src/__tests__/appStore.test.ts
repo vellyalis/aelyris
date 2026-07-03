@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import {
+  DEFAULT_RIGHT_PANEL_WIDTH,
   sanitizeTerminalRendererMode,
   sanitizeThemeOverrides,
   type TerminalRendererMode,
@@ -481,7 +482,7 @@ describe("appStore — panel widths", () => {
     } catch {
       /* ignore */
     }
-    useAppStore.setState({ sidebarWidth: 240, rightPanelWidth: 320 });
+    useAppStore.setState({ sidebarWidth: 240, rightPanelWidth: DEFAULT_RIGHT_PANEL_WIDTH });
   });
 
   it("clamps sidebarWidth to [200, 480]", () => {
@@ -508,6 +509,11 @@ describe("appStore — panel widths", () => {
     expect(useAppStore.getState().rightPanelWidth).toBe(480);
     setRightPanelWidth(360);
     expect(useAppStore.getState().rightPanelWidth).toBe(360);
+  });
+
+  it("keeps the default right panel width compact", () => {
+    expect(DEFAULT_RIGHT_PANEL_WIDTH).toBe(280);
+    expect(useAppStore.getState().rightPanelWidth).toBe(DEFAULT_RIGHT_PANEL_WIDTH);
   });
 
   it("persists rightPanelWidth to localStorage", () => {

@@ -69,6 +69,9 @@ const DEFAULT_TERMINAL_CURSOR_BLINK = true;
 export type DefaultShellId = "powershell" | "cmd" | "gitbash" | "wsl";
 const DEFAULT_SHELL: DefaultShellId = "powershell";
 const DEFAULT_UI_FONT_FAMILY = '"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif';
+export const MIN_RIGHT_PANEL_WIDTH = 260;
+export const MAX_RIGHT_PANEL_WIDTH = 480;
+export const DEFAULT_RIGHT_PANEL_WIDTH = 280;
 // "transparent" = per-pixel see-through to the desktop/windows behind (no DWM
 // material). "mica"/"acrylic" are opt-in OPAQUE Win11 materials that disable
 // see-through (a material occludes the wry transparent window — see
@@ -1205,17 +1208,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const raw = localStorage.getItem("aelyris:rightPanelWidth");
       const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-      if (Number.isFinite(parsed) && parsed >= 260 && parsed <= 480) {
+      if (Number.isFinite(parsed) && parsed >= MIN_RIGHT_PANEL_WIDTH && parsed <= MAX_RIGHT_PANEL_WIDTH) {
         return parsed;
       }
     } catch (err) {
       reportStorageFailure("load_right_panel_width", err, "info");
     }
-    return 320;
+    return DEFAULT_RIGHT_PANEL_WIDTH;
   })(),
   setRightPanelWidth: (v: number) =>
     set(() => {
-      const clamped = Math.max(260, Math.min(480, Math.round(v)));
+      const clamped = Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(MAX_RIGHT_PANEL_WIDTH, Math.round(v)));
       try {
         localStorage.setItem("aelyris:rightPanelWidth", String(clamped));
       } catch (err) {

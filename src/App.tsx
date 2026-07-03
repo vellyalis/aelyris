@@ -277,6 +277,7 @@ import { deriveRightRailWorkforceSummary, type WorkforceGuardrailProfile } from 
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { isTauriRuntime } from "./shared/lib/tauriRuntime";
 import {
+  DEFAULT_RIGHT_PANEL_WIDTH,
   sanitizeDefaultShell,
   sanitizeTerminalCursorStyle,
   sanitizeWindowEffect,
@@ -1845,8 +1846,8 @@ export function App() {
       setRootProjectPath(devVisualQa.projectPath);
     }
     setRightRailMode(devVisualQa.railMode);
-    if (rightPanelWidth < 340) {
-      setRightPanelWidth(340);
+    if (rightPanelWidth < DEFAULT_RIGHT_PANEL_WIDTH) {
+      setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH);
     }
   }, [
     devVisualQa.enabled,
