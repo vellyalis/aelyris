@@ -361,6 +361,7 @@ mod tests {
                 cli: Some("claude".to_string()),
                 backend: Some("pty".to_string()),
                 pty_id: Some("pty-1".to_string()),
+                short_id: None,
                 approval_prompt: None,
                 predecessor_session_id: None,
                 lineage: Vec::new(),

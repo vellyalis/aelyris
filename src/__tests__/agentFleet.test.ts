@@ -108,6 +108,7 @@ describe("agent fleet projection", () => {
         cli: "codex",
         backend: "sidecar",
         pty_id: "pty-1",
+        short_id: 7,
         approval_prompt: "Bash(git push origin main) · Do you want to proceed?",
         predecessor_session_id: "logical-parent",
         lineage: [
@@ -145,6 +146,7 @@ describe("agent fleet projection", () => {
       runStatus: "waiting_approval",
       prompt: "",
       ptyId: "pty-1",
+      shortId: 7,
       // The Decision Inbox only surfaces a waiting_approval gate when the
       // captured menu rides the unified fleet DTO — dropping it here breaks
       // Approve/Deny end-to-end (live-caught regression).

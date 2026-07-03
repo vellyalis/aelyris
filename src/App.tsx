@@ -5105,6 +5105,7 @@ function paneRegistryEqual(a: PaneSwitcherEntry[], b: PaneSwitcherEntry[]): bool
       !!right &&
       left.paneId === right.paneId &&
       left.terminalId === right.terminalId &&
+      left.shortId === right.shortId &&
       left.lifecycle === right.lifecycle &&
       left.index === right.index &&
       left.shell === right.shell &&

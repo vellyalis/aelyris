@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ShellType } from "../../../shared/types/terminalPane";
 import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
+import type { ShellType } from "../../../shared/types/terminalPane";
 import type { PaneSwitcherEntry } from "./operations";
 import { collectLeafIds, collectLeaves, collectPaneSwitcherEntries, countLeaves, findLeaf } from "./operations";
 import { PaneTreeRenderer } from "./PaneTreeRenderer";
@@ -146,6 +146,7 @@ interface PendingBackendPaneTreeSnapshot {
 
 interface BackendPaneInfo {
   terminal_id: string;
+  short_id?: number;
   name?: string;
   role?: string;
   shell_type?: string;
@@ -222,6 +223,7 @@ export function PaneTreeContainer({
   >(() => agentBindingsToMeta(initialAgentBindings));
   const [synchronizedPanes, setSynchronizedPanes] = useState(() => initialSnapshot?.synchronizedPanes === true);
   const [orphanedBackendPanes, setOrphanedBackendPanes] = useState<PaneSwitcherEntry[]>([]);
+  const [terminalShortIds, setTerminalShortIds] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [backendReconciled, setBackendReconciled] = useState(() => !layoutStorageKey);
   const [backendRefreshNonce, setBackendRefreshNonce] = useState(0);
   const syncModeSequenceRef = useRef(0);
@@ -363,13 +365,15 @@ export function PaneTreeContainer({
       })
       .then((backendPanes) => {
         if (cancelled) return;
+        setTerminalShortIds((prev) => {
+          const next = shortIdsFromBackendPanes(backendPanes);
+          return numberMapEqual(prev, next) ? prev : next;
+        });
         if (backendPanes.length === 0) {
           setOrphanedBackendPanes([]);
           // Loop agent panes are in-process terminals, absent from the sidecar's
           // pane list — never reconcile them as dead.
-          const endedPaneIds = Array.from(terminalIds.keys()).filter(
-            (paneId) => !agentPaneIdsRef.current.has(paneId),
-          );
+          const endedPaneIds = Array.from(terminalIds.keys()).filter((paneId) => !agentPaneIdsRef.current.has(paneId));
           setPaneLifecycleStates((prev) => {
             if (terminalIds.size === 0) return prev;
             let changed = false;
@@ -586,13 +590,15 @@ export function PaneTreeContainer({
     onPaneRegistryChangeRef.current = onPaneRegistryChange;
   }, [onPaneRegistryChange]);
 
-  const paneRegistry = useMemo(
-    () => [
-      ...collectPaneSwitcherEntries(tree, terminalIds, switcherWindowLabel, paneLifecycleStates),
-      ...orphanedBackendPanes,
-    ],
-    [orphanedBackendPanes, paneLifecycleStates, switcherWindowLabel, terminalIds, tree],
-  );
+  const paneRegistry = useMemo(() => {
+    const frontendPanes = collectPaneSwitcherEntries(tree, terminalIds, switcherWindowLabel, paneLifecycleStates).map(
+      (pane) => {
+        const shortId = pane.terminalId ? terminalShortIds.get(pane.terminalId) : undefined;
+        return shortId ? { ...pane, shortId } : pane;
+      },
+    );
+    return [...frontendPanes, ...orphanedBackendPanes];
+  }, [orphanedBackendPanes, paneLifecycleStates, switcherWindowLabel, terminalIds, terminalShortIds, tree]);
   useEffect(() => {
     onPaneRegistryChangeRef.current?.(paneRegistry);
   }, [paneRegistry]);
@@ -1275,6 +1281,7 @@ export function PaneTreeContainer({
       terminalIds={terminalIds}
       paneLifecycleStates={paneLifecycleStates}
       agentMeta={agentMeta}
+      terminalShortIds={terminalShortIds}
       synchronizedPanes={synchronizedPanes}
       onFocusPane={setActivePaneId}
       onSplit={splitViaMux}
@@ -1364,6 +1371,7 @@ function reconcileHydratedLayoutWithBackend(
         lifecycle: "orphaned",
         index: collectLeafIds(tree).length + offset,
         shell: normalizeShellType(pane.shell_type),
+        shortId: pane.short_id,
         cwd: pane.cwd,
         title: pane.name || undefined,
         role: normalizeBackendRole(pane.role),
@@ -1455,6 +1463,7 @@ function parseBackendPaneInfo(payload: unknown): BackendPaneInfo[] {
     if (!terminalId) continue;
     panes.push({
       terminal_id: terminalId,
+      short_id: normalizePositiveInteger(record.short_id),
       name: normalizeString(record.name),
       role: normalizeString(record.role),
       shell_type: normalizeString(record.shell_type),
@@ -1470,6 +1479,26 @@ function parseTerminalIds(payload: unknown): string[] {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function shortIdsFromBackendPanes(panes: readonly BackendPaneInfo[]): ReadonlyMap<string, number> {
+  const next = new Map<string, number>();
+  for (const pane of panes) {
+    if (pane.short_id) next.set(pane.terminal_id, pane.short_id);
+  }
+  return next;
+}
+
+function numberMapEqual(left: ReadonlyMap<string, number>, right: ReadonlyMap<string, number>): boolean {
+  if (left.size !== right.size) return false;
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) return false;
+  }
+  return true;
 }
 
 function normalizeComparable(value: string | undefined): string {

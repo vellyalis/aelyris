@@ -3,18 +3,18 @@ use std::io::BufRead;
 use std::path::{Component, Path, PathBuf};
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::broadcast;
 
-use crate::pty::buffer::{strip_ansi, OutputBuffer};
+use crate::pty::buffer::{OutputBuffer, strip_ansi};
 use crate::pty::{ExitInfo, PtyError, PtyManager, ShellType};
 use crate::snapshot::{SnapshotStore, SnapshotTrigger, TerminalSnapshot};
 use crate::term::NativeTerminalRegistry;
 use crate::watchdog::auto_repair::AutoRepairManager;
-use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
+use crate::watchdog::{AutoRepairConfig, ErrorContext, pane_watcher};
 
 use super::persistence_commands::{normalize_command_history_cwd, save_command_history};
 
@@ -405,8 +405,8 @@ fn emit_pty_output_batch(
     if buffer.is_empty() {
         return;
     }
-    use base64::engine::general_purpose::STANDARD as B64;
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
     let payload = PtyOutputBatchPayload {
         data_base64: B64.encode(buffer.as_slice()),
         byte_count: buffer.len(),
@@ -3446,6 +3446,7 @@ pub(crate) fn agent_fleet_snapshot(app: &AppHandle) -> Vec<crate::agent::AgentSe
     let agent_manager = app.state::<crate::agent::AgentManager>();
     let interactive_manager = app.state::<crate::agent::InteractiveSessionManager>();
     let interactive = interactive_manager.list().unwrap_or_default();
+    let pane_registry = app.try_state::<crate::pty::PaneRegistry>();
     let visibility = session_visibility_index(
         app,
         interactive
@@ -3460,7 +3461,11 @@ pub(crate) fn agent_fleet_snapshot(app: &AppHandle) -> Vec<crate::agent::AgentSe
 
     sessions.extend(interactive.into_iter().map(|info| {
         let logical_session_id = info.logical_session_id.clone();
-        let session = crate::agent::AgentSession::from(info);
+        let short_id = pane_registry
+            .as_ref()
+            .and_then(|registry| registry.get(&info.pty_id))
+            .map(|entry| entry.short_id);
+        let session = crate::agent::AgentSession::from(info).with_short_id(short_id);
         match visibility.get(&logical_session_id) {
             Some(visibility) => session.with_visibility(
                 visibility.predecessor_session_id.clone(),
@@ -3497,7 +3502,10 @@ struct SessionVisibility {
     recycle_status: Option<crate::agent::SessionRecycleStatus>,
 }
 
-fn session_visibility_index<I>(app: &AppHandle, logical_session_ids: I) -> HashMap<String, SessionVisibility>
+fn session_visibility_index<I>(
+    app: &AppHandle,
+    logical_session_ids: I,
+) -> HashMap<String, SessionVisibility>
 where
     I: IntoIterator<Item = String>,
 {
@@ -3540,9 +3548,16 @@ where
         };
         let predecessor_session_id =
             latest_checkpoint.and_then(|checkpoint| checkpoint.predecessor_session_id.clone());
-        let visible_lineage = if lineage.len() > 1 { lineage } else { Vec::new() };
+        let visible_lineage = if lineage.len() > 1 {
+            lineage
+        } else {
+            Vec::new()
+        };
 
-        if predecessor_session_id.is_some() || !visible_lineage.is_empty() || recycle_status.is_some() {
+        if predecessor_session_id.is_some()
+            || !visible_lineage.is_empty()
+            || recycle_status.is_some()
+        {
             index.insert(
                 logical_session_id,
                 SessionVisibility {
@@ -3572,7 +3587,9 @@ fn build_session_lineage(
         match checkpoint_by_logical.get(&id) {
             Some(checkpoint) => {
                 current = checkpoint.predecessor_session_id.clone();
-                lineage.push(crate::agent::SessionLineageEntry::from_checkpoint(checkpoint));
+                lineage.push(crate::agent::SessionLineageEntry::from_checkpoint(
+                    checkpoint,
+                ));
             }
             None => {
                 lineage.push(crate::agent::SessionLineageEntry::unresolved(id));
@@ -3812,7 +3829,7 @@ fn write_clipboard_text_impl(text: &str) -> Result<(), String> {
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
-    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 
     const CF_UNICODETEXT: u32 = 13;
 

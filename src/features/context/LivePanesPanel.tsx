@@ -572,6 +572,10 @@ function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
 
+function paneAddress(pane: Pick<PaneEntry, "terminal_id" | "short_id">): string {
+  return typeof pane.short_id === "number" && pane.short_id > 0 ? `%${pane.short_id}` : shortId(pane.terminal_id);
+}
+
 function compactPath(path: string): string {
   if (!path) return "workspace";
   const normalized = path.replace(/\\/g, "/");
@@ -581,7 +585,7 @@ function compactPath(path: string): string {
 
 function backendPaneToView(pane: PaneEntry): PaneView {
   const target = pane.name ? pane.name : pane.role ? `@${pane.role}` : undefined;
-  const label = pane.name || pane.role || shortId(pane.terminal_id);
+  const label = pane.name || pane.role || paneAddress(pane);
   return {
     key: pane.terminal_id,
     terminalId: pane.terminal_id,

@@ -113,6 +113,13 @@ describe("TerminalInfoBar — exit status dot", () => {
     expect(onCycle).toHaveBeenCalledTimes(1);
   });
 
+  it("prefixes the pane header with the process-local short id", () => {
+    render(<TerminalInfoBar shell="pwsh" terminalId="t-1" shortId={3} paneTitle="frontend" paneRole="build" />);
+
+    expect(screen.getByText("%3")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Pane identity: %3 · Build · frontend/ })).toBeTruthy();
+  });
+
   it("sets a pane role from the explicit role menu", async () => {
     const onSetPaneRole = vi.fn();
     render(

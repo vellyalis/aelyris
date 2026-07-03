@@ -4,6 +4,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::LazyLock;
+#[cfg(not(test))]
+use tauri::Manager;
 
 use super::mux::{send_workspace_input, workspace_summary};
 use super::{
@@ -341,7 +343,11 @@ async fn mcp_approval_resolve(
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<Result<(), String>> {
     let app = mcp_app_handle(state)?;
-    let terminal_id = arg_string(args, "terminalId")?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let terminal_id = app
+        .state::<crate::pty::PaneRegistry>()
+        .resolve_terminal_ref(&terminal_ref)
+        .map_err(ApiError::BadRequest)?;
     let decision = arg_string(args, "decision")?;
     let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
     Ok(crate::ipc::resolve_interactive_approval_core(

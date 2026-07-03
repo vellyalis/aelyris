@@ -107,6 +107,7 @@ function parsePanePayload(payload: unknown): PaneEntry[] {
     if (!terminalId) continue;
     panes.push({
       terminal_id: terminalId,
+      short_id: normalizePositiveInteger(item.short_id),
       name: normalizeField(item.name),
       role: normalizeField(item.role),
       shell_type: normalizeField(item.shell_type) || "shell",
@@ -127,6 +128,10 @@ function isPaneRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function normalizePanes(panes: PaneEntry[]): PaneEntry[] {

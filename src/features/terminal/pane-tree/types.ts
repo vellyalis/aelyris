@@ -109,6 +109,7 @@ export type PaneNode = TerminalLeaf | SplitNode;
 export interface PaneRegistryEntry {
   paneId: string;
   terminalId: string | null;
+  shortId?: number;
   lifecycle?: PaneLifecycleState;
   index: number;
   shell: ShellType;

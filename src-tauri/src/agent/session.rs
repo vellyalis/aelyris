@@ -90,6 +90,7 @@ pub struct AgentSession {
     pub cli: Option<String>,
     pub backend: Option<String>,
     pub pty_id: Option<String>,
+    pub short_id: Option<u32>,
     /// The captured permission-menu prompt while an interactive session is
     /// `waiting_approval`. Must ride the unified fleet snapshot: the right
     /// rail consumes THIS contract (not the interactive list), and the
@@ -119,6 +120,11 @@ impl AgentSession {
         self.recycle_status = recycle_status;
         self
     }
+
+    pub fn with_short_id(mut self, short_id: Option<u32>) -> Self {
+        self.short_id = short_id;
+        self
+    }
 }
 
 impl From<AgentSessionInfo> for AgentSession {
@@ -141,6 +147,7 @@ impl From<AgentSessionInfo> for AgentSession {
             cli: None,
             backend: None,
             pty_id: None,
+            short_id: None,
             approval_prompt: None,
             predecessor_session_id: None,
             lineage: Vec::new(),
@@ -176,6 +183,7 @@ impl From<InteractiveSessionInfo> for AgentSession {
             cli: Some(cli_name(&info.cli)),
             backend: Some(info.backend),
             pty_id: Some(info.pty_id),
+            short_id: None,
             approval_prompt: info.approval_prompt,
             predecessor_session_id: None,
             lineage: Vec::new(),
@@ -221,6 +229,7 @@ mod tests {
         assert_eq!(session.started_at, Some(123));
         assert_eq!(session.workspace_scope.as_deref(), Some("C:/repo"));
         assert_eq!(session.cli, None);
+        assert_eq!(session.short_id, None);
         assert!(session.lineage.is_empty());
         assert!(session.recycle_status.is_none());
     }
@@ -236,7 +245,9 @@ mod tests {
             status: "waiting".to_string(),
             model: "codex".to_string(),
             initial_prompt: Some("review".to_string()),
-            approval_prompt: Some("Bash(git push origin main) · Do you want to proceed?".to_string()),
+            approval_prompt: Some(
+                "Bash(git push origin main) · Do you want to proceed?".to_string(),
+            ),
             cwd: "C:/repo".to_string(),
             worktree_branch: Some("agent/review".to_string()),
             worktree_path: Some("C:/repo/.worktrees/agent-review".to_string()),
@@ -254,6 +265,8 @@ mod tests {
         assert_eq!(session.prompt.as_deref(), Some("review"));
         assert_eq!(session.cli.as_deref(), Some("codex"));
         assert_eq!(session.pty_id.as_deref(), Some("pty-1"));
+        assert_eq!(session.short_id, None);
+        assert_eq!(session.clone().with_short_id(Some(7)).short_id, Some(7));
         // The unified fleet snapshot is what the right rail / Decision Inbox
         // consume — dropping the captured menu here silently kills the inbox.
         assert_eq!(

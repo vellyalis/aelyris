@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Metadata for a named pane, used for send-keys-by-name resolution
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PaneEntry {
     pub terminal_id: String,
+    pub short_id: u32,
     pub name: String,
     pub role: String,
     pub shell_type: String,
@@ -16,22 +18,33 @@ pub struct PaneEntry {
 #[derive(Clone)]
 pub struct PaneRegistry {
     entries: Arc<Mutex<HashMap<String, PaneEntry>>>,
+    next_short_id: Arc<AtomicU32>,
 }
 
 impl PaneRegistry {
     pub fn new() -> Self {
         Self {
             entries: Arc::new(Mutex::new(HashMap::new())),
+            next_short_id: Arc::new(AtomicU32::new(0)),
         }
+    }
+
+    fn allocate_short_id(&self) -> u32 {
+        self.next_short_id.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// Register a new pane
     pub fn register(&self, terminal_id: &str, shell_type: &str, cwd: &str) {
         if let Ok(mut entries) = self.entries.lock() {
+            let short_id = entries
+                .get(terminal_id)
+                .map(|entry| entry.short_id)
+                .unwrap_or_else(|| self.allocate_short_id());
             entries.insert(
                 terminal_id.to_string(),
                 PaneEntry {
                     terminal_id: terminal_id.to_string(),
+                    short_id,
                     name: String::new(),
                     role: String::new(),
                     shell_type: shell_type.to_string(),
@@ -52,6 +65,7 @@ impl PaneRegistry {
                 .entry(terminal_id.to_string())
                 .or_insert_with(|| PaneEntry {
                     terminal_id: terminal_id.to_string(),
+                    short_id: self.allocate_short_id(),
                     name: String::new(),
                     role: String::new(),
                     shell_type: shell_type.to_string(),
@@ -169,6 +183,32 @@ impl PaneRegistry {
         Ok(role_matches)
     }
 
+    /// Resolve a user-facing terminal reference for new MCP/aelys surfaces.
+    ///
+    /// `%N` is process-local display sugar; UUIDs and every other reference
+    /// pass through unchanged so existing durable terminal-id validation remains
+    /// downstream.
+    pub fn resolve_terminal_ref(&self, reference: &str) -> Result<String, String> {
+        let trimmed = reference.trim();
+        let Some(rest) = trimmed.strip_prefix('%') else {
+            return Ok(trimmed.to_string());
+        };
+        let short_id = rest
+            .parse::<u32>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| format!("unknown terminal reference `{trimmed}`"))?;
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| "Lock poisoned".to_string())?;
+        entries
+            .values()
+            .find(|entry| entry.short_id == short_id)
+            .map(|entry| entry.terminal_id.clone())
+            .ok_or_else(|| format!("unknown terminal reference `{trimmed}`"))
+    }
+
     /// Find all terminal IDs by role. Multiple panes can intentionally share
     /// a role, so role-addressed sends behave like a scoped broadcast.
     pub fn find_by_role(&self, role: &str) -> Vec<String> {
@@ -205,7 +245,7 @@ impl PaneRegistry {
     /// The registry preserves user labels and roles across some restart paths,
     /// so the active PTY list is the source of truth for live-count surfaces.
     pub fn list_active(&self, active_terminal_ids: &[String]) -> Vec<PaneEntry> {
-        let Ok(entries) = self.entries.lock() else {
+        let Ok(mut entries) = self.entries.lock() else {
             return Vec::new();
         };
         let mut seen = HashSet::new();
@@ -214,18 +254,20 @@ impl PaneRegistry {
             if !seen.insert(terminal_id.clone()) {
                 continue;
             }
-            panes.push(
-                entries
-                    .get(terminal_id)
-                    .cloned()
-                    .unwrap_or_else(|| PaneEntry {
-                        terminal_id: terminal_id.clone(),
-                        name: String::new(),
-                        role: String::new(),
-                        shell_type: "shell".to_string(),
-                        cwd: String::new(),
-                    }),
-            );
+            if let Some(entry) = entries.get(terminal_id) {
+                panes.push(entry.clone());
+                continue;
+            }
+            let entry = PaneEntry {
+                terminal_id: terminal_id.clone(),
+                short_id: self.allocate_short_id(),
+                name: String::new(),
+                role: String::new(),
+                shell_type: "shell".to_string(),
+                cwd: String::new(),
+            };
+            entries.insert(terminal_id.clone(), entry.clone());
+            panes.push(entry);
         }
         panes
     }
@@ -408,5 +450,53 @@ mod tests {
         assert_eq!(panes[1].terminal_id, "missing-metadata");
         assert_eq!(panes[1].shell_type, "shell");
         assert!(!panes.iter().any(|pane| pane.terminal_id == "stale"));
+    }
+
+    #[test]
+    fn short_ids_are_monotonic_and_not_reused() {
+        let reg = PaneRegistry::new();
+        reg.register("pane-a", "powershell", ".");
+        reg.register("pane-b", "cmd", ".");
+        reg.remove("pane-a");
+        reg.register("pane-c", "powershell", ".");
+
+        let mut panes = reg.list();
+        panes.sort_by(|a, b| a.terminal_id.cmp(&b.terminal_id));
+
+        assert_eq!(panes[0].terminal_id, "pane-b");
+        assert_eq!(panes[0].short_id, 2);
+        assert_eq!(panes[1].terminal_id, "pane-c");
+        assert_eq!(panes[1].short_id, 3);
+    }
+
+    #[test]
+    fn resolve_terminal_ref_accepts_short_id_and_uuid_passthrough() {
+        let reg = PaneRegistry::new();
+        reg.register("uuid-a", "powershell", ".");
+        reg.register("uuid-b", "cmd", ".");
+
+        assert_eq!(reg.resolve_terminal_ref("%2").unwrap(), "uuid-b");
+        assert_eq!(reg.resolve_terminal_ref("uuid-a").unwrap(), "uuid-a");
+
+        let err = reg.resolve_terminal_ref("%404").unwrap_err();
+        assert!(err.contains("unknown terminal reference"));
+        assert!(err.contains("%404"));
+
+        let invalid = reg.resolve_terminal_ref("%abc").unwrap_err();
+        assert!(invalid.contains("unknown terminal reference"));
+    }
+
+    #[test]
+    fn list_active_assigns_short_id_to_missing_metadata() {
+        let reg = PaneRegistry::new();
+        reg.register("live", "powershell", ".");
+
+        let panes = reg.list_active(&["live".to_string(), "adopted".to_string()]);
+
+        assert_eq!(panes[0].terminal_id, "live");
+        assert_eq!(panes[0].short_id, 1);
+        assert_eq!(panes[1].terminal_id, "adopted");
+        assert_eq!(panes[1].short_id, 2);
+        assert_eq!(reg.resolve_terminal_ref("%2").unwrap(), "adopted");
     }
 }

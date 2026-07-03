@@ -109,6 +109,8 @@ export interface AgentSession {
   owner?: string;
   /** Workspace or worktree scope the run is allowed to operate in. */
   workspaceScope?: string;
+  /** Process-local pane address sugar, rendered as %N. UUID remains canonical identity. */
+  shortId?: number;
   /** Explicit write set when supplied by a backend/subagent controller. */
   writeSet?: string[];
   /** Latest final report status for this run. */
