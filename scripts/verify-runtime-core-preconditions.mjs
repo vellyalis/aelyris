@@ -14,6 +14,7 @@ function record(id, ok, detail) {
 
 const outputMonitor = read("src-tauri/src/agent/output_monitor.rs");
 const sendKeys = read("src-tauri/src/ipc/send_keys_commands.rs");
+const mcp = read("src-tauri/src/api/mcp.rs");
 const paneFleet = read("src-tauri/src/control/pane_fleet.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const decisionInbox = read("src/shared/lib/decisionInbox.ts");
@@ -142,6 +143,16 @@ const checks = [
       loopPorts.includes("completion_marker_section(task_id: &str, cwd: &str, terminal_id: &str)") &&
       loopPorts.includes("spawn_with_terminal_id"),
     "visible-fleet done marker path includes the terminal id and prompt generation uses the same backend-built path",
+  ),
+  record(
+    "approval-resolve-mcp-delegates-to-shared-core",
+    sendKeys.includes("pub(crate) async fn resolve_interactive_approval_core") &&
+      sendKeys.includes("resolve_interactive_approval_core(app, terminal_id, decision, expected_prompt_key).await") &&
+      mcp.includes('"aelyris.approval.resolve"') &&
+      mcp.includes("mcp_approval_resolve") &&
+      mcp.includes("crate::ipc::resolve_interactive_approval_core") &&
+      mcp.includes('"required": ["terminalId", "decision", "expectedPromptKey"]'),
+    "aelyris.approval.resolve is cataloged, schema-required, and delegates to the shared approval core",
   ),
 ];
 

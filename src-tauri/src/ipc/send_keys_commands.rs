@@ -221,6 +221,15 @@ pub async fn resolve_interactive_approval(
     decision: String,
     expected_prompt_key: Option<String>,
 ) -> Result<(), String> {
+    resolve_interactive_approval_core(app, terminal_id, decision, expected_prompt_key).await
+}
+
+pub(crate) async fn resolve_interactive_approval_core(
+    app: AppHandle,
+    terminal_id: String,
+    decision: String,
+    expected_prompt_key: Option<String>,
+) -> Result<(), String> {
     let approve = match decision.as_str() {
         "approve" => true,
         "deny" => false,

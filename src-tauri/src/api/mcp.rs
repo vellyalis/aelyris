@@ -41,6 +41,7 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.session.reset_context",
         "aelyris.request_approval",
         "aelyris.list_pending_approvals",
+        "aelyris.approval.resolve",
         "aelyris.request_merge",
         "aelyris.spawn_agent",
         "aelyris.stop_agent",
@@ -331,6 +332,49 @@ async fn mcp_session_reset_context(
     _args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
     test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_approval_resolve(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    let terminal_id = arg_string(args, "terminalId")?;
+    let decision = arg_string(args, "decision")?;
+    let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
+    Ok(crate::ipc::resolve_interactive_approval_core(
+        app,
+        terminal_id,
+        decision,
+        Some(expected_prompt_key),
+    )
+    .await)
+}
+
+#[cfg(test)]
+async fn mcp_approval_resolve(
+    _state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let _terminal_id = arg_string(args, "terminalId")?;
+    let _decision = arg_string(args, "decision")?;
+    let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
+    if expected_prompt_key == "stale-test" {
+        Ok(Err(
+            "stale_approval: prompt fingerprint changed for session test".to_string(),
+        ))
+    } else {
+        Ok(Ok(()))
+    }
+}
+
+fn approval_resolve_error_payload(err: &str) -> serde_json::Value {
+    if err.contains("stale_approval") {
+        serde_json::json!({ "stale_approval": err })
+    } else {
+        serde_json::json!({ "error": err })
+    }
 }
 
 fn arg_bool(args: &serde_json::Map<String, serde_json::Value>, key: &str, default: bool) -> bool {
@@ -738,6 +782,21 @@ fn build_tools_list_value() -> serde_json::Value {
                 "description": "Observe pending approval requests and unresolved DURABLE merge intents (everything not yet merged/rejected). Read-only — it cannot resolve them. Returns { pending:[permission items], mergeIntents:[durable merge intents] }.",
                 "safety": "GATED_OBSERVE_ONLY",
                 "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
+                "name": "aelyris.approval.resolve",
+                "description": "Resolve the current interactive approval menu for a visible terminal using the same fingerprint-checked core as the Decision Inbox. Stale or missing prompt fingerprints fail closed.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["terminalId", "decision", "expectedPromptKey"],
+                    "properties": {
+                        "terminalId": { "type": "string" },
+                        "decision": { "type": "string", "enum": ["approve", "deny"] },
+                        "expectedPromptKey": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
             },
             {
                 "name": "aelyris.request_merge",
@@ -1958,6 +2017,15 @@ pub(super) async fn tools_call(
                 "grantToolExposed": false,
             })
         }
+        "aelyris.approval.resolve" => match mcp_approval_resolve(&state, &args).await? {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    approval_resolve_error_payload(&err),
+                ));
+            }
+        },
         "aelyris.request_merge" => {
             // Fail closed: a merge intent MUST be durable. Without the store we do
             // not fall back to a RAM queue a restart would lose (P0-3).
@@ -3359,6 +3427,56 @@ mod tests {
                 .unwrap_or_default();
             assert_eq!(actual_required, required, "{verb} required args drifted");
         }
+    }
+
+    #[test]
+    fn approval_resolve_mcp_schema_and_tool_error_contract() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        );
+
+        let call = |arguments: serde_json::Value| {
+            let body = ToolCallBody {
+                name: "aelyris.approval.resolve".to_string(),
+                arguments,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("tool call response")
+                .0
+        };
+
+        let ok = call(serde_json::json!({
+            "terminalId": "pty-1",
+            "decision": "approve",
+            "expectedPromptKey": "fresh-test"
+        }));
+        assert_eq!(ok["ok"], serde_json::json!(true));
+        assert_eq!(ok["result"]["ok"], serde_json::json!(true));
+
+        let stale = call(serde_json::json!({
+            "terminalId": "pty-1",
+            "decision": "approve",
+            "expectedPromptKey": "stale-test"
+        }));
+        assert_eq!(stale["ok"], serde_json::json!(false));
+        assert!(
+            stale["error"]["stale_approval"]
+                .as_str()
+                .is_some_and(|message| message.contains("stale_approval")),
+            "{stale:?}"
+        );
+
+        let missing_prompt = call(serde_json::json!({
+            "terminalId": "pty-1",
+            "decision": "approve"
+        }));
+        assert_eq!(missing_prompt["ok"], serde_json::json!(false));
+        assert_eq!(
+            missing_prompt["error"]["schema_violation"]["missing"],
+            serde_json::json!(["expectedPromptKey"])
+        );
     }
 
     #[test]
