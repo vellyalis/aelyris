@@ -65,11 +65,11 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `71/100` (`249/351`), grade `D`,
+- `pnpm verify:quality-score` -> `74/100` (`259/351`), grade `D`,
   `releaseCandidateReady=false`.
 - `pnpm verify:final-goal-audit` -> `blocked-by-external-gates`,
   `implementationFixableCount=0`, `policyBlockedCount=0`,
-  `externalBlockedCount=27`.
+  `externalBlockedCount=20`.
 - `pnpm verify:goal:safe` -> required proof registry `28/28`,
   `blocked-by-external-gates`, no failed steps, no non-consent blockers.
 - `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.

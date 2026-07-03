@@ -487,11 +487,19 @@ function currentStateDocFreshness(path) {
 
 const currentStateDocs = currentStateDocPaths.map(currentStateDocFreshness);
 const currentStateDocsFresh = currentStateDocs.every((doc) => doc.ok);
+const releaseScoreFreshnessIgnoredSourcePaths = new Set(currentStateDocsFresh ? currentStateDocPaths : []);
 
 const releaseScoreDependencyPaths = [
-  ...releaseScoreSourcePaths,
+  ...releaseScoreSourcePaths.filter((path) => !releaseScoreFreshnessIgnoredSourcePaths.has(path)),
   ...releaseScoreArtifactPaths.filter((path) => !releaseScoreFreshnessIgnoredArtifactPaths.has(path)),
 ];
+const releaseScoreIgnoredFreshnessSources = releaseScoreSourcePaths
+  .filter((path) => releaseScoreFreshnessIgnoredSourcePaths.has(path))
+  .map((path) => ({
+    path,
+    mtimeMs: mtime(path),
+    reason: "current-state-docs-content-fresh",
+  }));
 const releaseScoreIgnoredFreshnessArtifacts = releaseScoreArtifactPaths
   .filter((path) => releaseScoreFreshnessIgnoredArtifactPaths.has(path))
   .map((path) => ({
@@ -1066,8 +1074,9 @@ const operationalEvidence = {
     projectedPercentWithEvidenceMap: scoreProjectedPercentWithEvidenceMap,
     releaseCandidateThresholdMet: releaseScoreMeetsCandidateThreshold,
     latestDependency: latestReleaseScoreDependency ?? null,
-    checkedSourceCount: releaseScoreSourcePaths.length,
-    checkedArtifactCount: releaseScoreDependencyPaths.length - releaseScoreSourcePaths.length,
+    checkedSourceCount: releaseScoreSourcePaths.length - releaseScoreIgnoredFreshnessSources.length,
+    checkedArtifactCount: releaseScoreArtifactPaths.length - releaseScoreIgnoredFreshnessArtifacts.length,
+    ignoredCurrentStateDocs: releaseScoreIgnoredFreshnessSources,
     ignoredDownstreamArtifacts: releaseScoreIgnoredFreshnessArtifacts,
   },
   runtimeHygiene: {

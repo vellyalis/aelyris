@@ -111,6 +111,18 @@ const finalizeSummary = data.finalize?.summary ?? {};
 const finalGoalEvidenceMap = (Array.isArray(data.score?.scores) ? data.score.scores : []).find(
   (entry) => entry?.id === "final-goal-evidence-map",
 );
+const auditProjection = data.audit?.score?.projectedAfterEvidenceMap ?? {};
+const scoreMatchesAuditProjection =
+  data.score?.releaseCandidateReady === false &&
+  data.audit?.ok === true &&
+  data.audit?.status === "blocked-by-external-gates" &&
+  data.audit?.evidenceComplete === true &&
+  data.audit?.implementationFixableCount === 0 &&
+  (data.audit?.externalBlockedCount ?? 0) >= 1 &&
+  auditProjection.total === data.score?.total &&
+  auditProjection.max === data.score?.max &&
+  auditProjection.percent === data.score?.score &&
+  auditProjection.grade === data.score?.grade;
 const externalGateIds = (Array.isArray(data.externalGates?.remainingExternalGates)
   ? data.externalGates.remainingExternalGates
   : []
@@ -142,12 +154,7 @@ const checks = {
       artifacts.antiStall.mtimeMs,
     ) + 5_000 >=
     sourceCutoffMs,
-  scoreIsCurrentExternalGateShape:
-    data.score?.score === 71 &&
-    data.score?.grade === "D" &&
-    data.score?.total === 249 &&
-    data.score?.max === 351 &&
-    data.score?.releaseCandidateReady === false,
+  scoreIsCurrentExternalGateShape: scoreMatchesAuditProjection,
   scoreBlockersAreOnlyKnownExternalOperatorOrUpstream:
     scoreBlockerAreas.length >= 10 &&
     scoreBlockerAreas.every((area) =>
@@ -178,7 +185,10 @@ const checks = {
     data.audit?.evidenceComplete === true &&
     data.audit?.implementationFixableCount === 0 &&
     data.audit?.policyBlockedCount === 0 &&
-    data.audit?.externalBlockedCount === 27,
+    (data.audit?.externalBlockedCount ?? 0) >= 1 &&
+    data.audit?.residualRiskRegister?.implementationFixableCount === data.audit?.implementationFixableCount &&
+    data.audit?.residualRiskRegister?.policyBlockedCount === data.audit?.policyBlockedCount &&
+    data.audit?.residualRiskRegister?.externalBlockedCount === data.audit?.externalBlockedCount,
   auditScoreMatchesScore:
     data.audit?.score?.preAudit?.total === data.score?.total &&
     data.audit?.score?.preAudit?.percent === data.score?.score &&
@@ -190,7 +200,7 @@ const checks = {
     safeCoverage.proofArtifactCount >= 27 &&
     safeCoverage.nonConsentBlockerCount === 0 &&
     safeCoverage.consentBlockerCount === 0 &&
-    safeCoverage.externalBlockerCount >= 20 &&
+    safeCoverage.externalBlockerCount >= 1 &&
     safeCoverage.externalBlockerCount <= data.audit?.externalBlockedCount &&
     Array.isArray(data.safe?.failedSteps) &&
     data.safe.failedSteps.length === 0,

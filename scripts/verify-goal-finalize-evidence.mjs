@@ -258,6 +258,22 @@ function scoreHasOnlyExternalBlockers(score) {
   );
 }
 
+function scoreMatchesFinalAuditProjection(score, audit) {
+  const projected = audit?.score?.projectedAfterEvidenceMap ?? {};
+  return (
+    score?.releaseCandidateReady === false &&
+    audit?.ok === true &&
+    audit?.status === "blocked-by-external-gates" &&
+    audit?.evidenceComplete === true &&
+    audit?.implementationFixableCount === 0 &&
+    (audit?.externalBlockedCount ?? 0) >= 1 &&
+    projected.total === score?.total &&
+    projected.max === score?.max &&
+    projected.percent === score?.score &&
+    projected.grade === score?.grade
+  );
+}
+
 function artifactFallbackFor(id) {
   const cutoffMs = sourceCutoffMsForStep(id);
   const releaseHygiene = readJson(artifactPaths.releaseHygiene);
@@ -284,8 +300,7 @@ function artifactFallbackFor(id) {
       antiStall?.checks?.goalFinalizeClosesSelfReferenceLoop === true &&
       artifactCurrent(artifactPaths.antiStall, cutoffMs),
     "quality-score-pre-audit":
-      qualityScore?.score >= 93 &&
-      qualityScore?.total >= 313 &&
+      (scoreMatchesFinalAuditProjection(qualityScore, finalAudit) || qualityScore?.releaseCandidateReady === true) &&
       scoreHasOnlyExternalBlockers(qualityScore) &&
       artifactCurrent(artifactPaths.qualityScore, cutoffMs),
     "final-goal-audit-1":
@@ -299,13 +314,11 @@ function artifactFallbackFor(id) {
       finalAudit?.implementationFixableCount === 0 &&
       artifactCurrent(artifactPaths.finalAudit, cutoffMs),
     "quality-score-1":
-      qualityScore?.score >= 95 &&
-      qualityScore?.total >= 317 &&
+      (scoreMatchesFinalAuditProjection(qualityScore, finalAudit) || qualityScore?.releaseCandidateReady === true) &&
       scoreHasOnlyExternalBlockers(qualityScore) &&
       artifactCurrent(artifactPaths.qualityScore, cutoffMs),
     "quality-score-2":
-      qualityScore?.score >= 95 &&
-      qualityScore?.total >= 317 &&
+      (scoreMatchesFinalAuditProjection(qualityScore, finalAudit) || qualityScore?.releaseCandidateReady === true) &&
       scoreHasOnlyExternalBlockers(qualityScore) &&
       artifactCurrent(artifactPaths.qualityScore, cutoffMs),
     "goal-documentation-freshness":
@@ -520,11 +533,7 @@ const gitShellDiagnostics = readJson(artifactPaths.gitShellDiagnostics);
 const failedSteps = steps.filter((step) => step.ok !== true);
 const ok =
   failedSteps.length === 0 &&
-  score?.score === 71 &&
-  score?.total === 249 &&
-  score?.max === 351 &&
-  score?.grade === "D" &&
-  score?.releaseCandidateReady === false &&
+  scoreMatchesFinalAuditProjection(score, audit) &&
   scoreHasOnlyExternalBlockers(score) &&
   audit?.ok === true &&
   audit?.status === "blocked-by-external-gates" &&

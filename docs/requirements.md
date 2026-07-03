@@ -65,10 +65,10 @@ machine truth. They override stale prose, older promotion gates, and historical
 green snapshots.
 
 Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
-reports `71/100` (`249/351`), grade `D`, `releaseCandidateReady=false`.
+reports `74/100` (`259/351`), grade `D`, `releaseCandidateReady=false`.
 The final-goal audit is `blocked-by-external-gates` with
 `implementationFixableCount=0`, `policyBlockedCount=0`, and
-`externalBlockedCount=27`; Aelyris remains alpha and not release-ready.
+`externalBlockedCount=20`; Aelyris remains alpha and not release-ready.
 
 ## Documentation Maintenance Rule
 
