@@ -127,9 +127,11 @@ function nativeClientPasteGuardFallback(error) {
     version: 1,
     generatedAt: new Date().toISOString(),
     ok: true,
-    status: "pass-current-native-hwnd-paste-contract",
+    status: "pass-degraded-no-cdp",
+    degraded: true,
     cdp: CDP,
     cdpFallbackReason: error instanceof Error ? error.message : String(error),
+    warning: "WebView2/CDP WM_PASTE path was not exercised; this is a degraded Rust native HWND proof.",
     appPageUrl: null,
     terminalId: null,
     hwnd: pasteGuard.nativeSurfaceHwnd,
@@ -544,7 +546,7 @@ try {
 } catch (error) {
   if (nativeClientPasteGuardFallback(error)) {
     console.warn(
-      `native HWND paste CDP path unavailable; accepted fresh aelyris-native no-CDP paste-guard proof: ${OUT}`,
+      `native HWND paste WebView2/CDP WM_PASTE path unexercised; accepted degraded aelyris-native no-CDP paste-guard proof: ${OUT}`,
     );
     process.exitCode = 0;
   } else {

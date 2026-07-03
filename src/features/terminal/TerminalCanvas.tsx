@@ -8,9 +8,22 @@ import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { formatFallbackError, reportFallback } from "../../shared/lib/fallbackTelemetry";
 import { TERMINAL_COMMAND_EVIDENCE_EVENT, type TerminalCommandEvidenceDetail } from "../../shared/lib/terminalEvidence";
-import type { TerminalCursorStyle, TerminalTextClarity } from "../../shared/store/appStore";
+import {
+  type TerminalCursorStyle,
+  type TerminalRendererMode,
+  type TerminalTextClarity,
+  useAppStore,
+} from "../../shared/store/appStore";
 import type { CursorShape, GridSnapshot } from "../../shared/types/terminal";
 import { estimateScrollbackMemoryBytes, publishTerminalPerformanceSample } from "../analytics/performanceObservatory";
+import {
+  findAiCliInputAnchor,
+  hasAiCliScreenSignature,
+  isParkedAiCliCursor,
+  isVisibleCursor,
+  terminalCellSpan,
+} from "./aiInputAnchor";
+import * as gpuPaint from "./gpu/terminalPaintGpu";
 import {
   clampTerminalCursor,
   IME_DIAGNOSTIC_EVENT,
@@ -31,17 +44,14 @@ import {
   type WriteBytesFn,
 } from "./hooks/useCanvasIME";
 import { type CopyTextFn, useTerminalSelection } from "./hooks/useTerminalSelection";
-import {
-  findAiCliInputAnchor,
-  hasAiCliScreenSignature,
-  isParkedAiCliCursor,
-  isVisibleCursor,
-  terminalCellSpan,
-} from "./aiInputAnchor";
-import { canvasBitmapSize, canvasCssSize, currentCanvasDevicePixelRatio } from "./terminalCanvasGeometry";
 import { pixelToCell } from "./keymap";
 import { type LinkSpan, linkAt, scanLinks } from "./links";
 import { shouldRepaintRow } from "./repaintDecision";
+import type { AnyMatch } from "./search";
+import { rowSelection, type SelectionRange } from "./selection";
+import styles from "./TerminalArea.module.css";
+import { canvasBitmapSize, canvasCssSize, currentCanvasDevicePixelRatio } from "./terminalCanvasGeometry";
+import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics } from "./terminalMetrics";
 import {
   paintCursor,
   paintGhostSuggestion,
@@ -52,10 +62,6 @@ import {
   paintSelectionBand,
 } from "./terminalPaint";
 import { buildMatchesKey, buildRowMask, hasPrintableAfterCursor, rowsCoveredByLink } from "./terminalRowDirty";
-import type { AnyMatch } from "./search";
-import { rowSelection, type SelectionRange } from "./selection";
-import styles from "./TerminalArea.module.css";
-import { TERMINAL_FONT_FAMILY, useTerminalCellMetrics } from "./terminalMetrics";
 
 export type OpenUrlFn = (url: string) => Promise<void> | void;
 const WEBVIEW_IME_FALLBACK_TEST_ID = ["terminal", "ime", "textarea"].join("-");
@@ -305,10 +311,15 @@ export function TerminalCanvas({
   onRegisterNav,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gpuContextRef = useRef<gpuPaint.TerminalGpuPaintContext | null>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [inputSurfaceEl, setInputSurfaceEl] = useState<HTMLDivElement | null>(null);
   const [textareaEl, setTextareaEl] = useState<HTMLTextAreaElement | null>(null);
   const useNativeInputSurface = nativeTerminalInputSurfaceEnabled();
+  const terminalRendererMode = useAppStore((s) => s.terminalRendererMode);
+  const [webglFallback, setWebglFallback] = useState(false);
+  const effectiveRendererMode: TerminalRendererMode =
+    terminalRendererMode === "webgl2" && !webglFallback ? "webgl2" : "canvas2d";
   // Alias kept so existing mouse-related effects (selection, link hover)
   // read the canvas element under their original name.
   const inputEl = canvasEl;
@@ -368,6 +379,36 @@ export function TerminalCanvas({
   useEffect(() => {
     renderPerfRef.current = { lastPaintAt: 0, droppedRenderFrames: 0 };
   }, []);
+
+  useEffect(() => {
+    gpuContextRef.current = null;
+    if (terminalRendererMode !== "webgl2") {
+      setWebglFallback(false);
+      return;
+    }
+    setWebglFallback(false);
+  }, [terminalRendererMode]);
+
+  useEffect(() => {
+    if (!canvasEl || terminalRendererMode !== "webgl2") return;
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      gpuContextRef.current = null;
+      setWebglFallback(true);
+      reportFallback(
+        {
+          source: "terminal.renderer",
+          operation: "webglcontextlost",
+          severity: "warning",
+          message: "Terminal WebGL2 renderer context was lost; falling back to Canvas2D for this session.",
+          userVisible: true,
+        },
+        { throttleMs: 30_000 },
+      );
+    };
+    canvasEl.addEventListener("webglcontextlost", handleContextLost);
+    return () => canvasEl.removeEventListener("webglcontextlost", handleContextLost);
+  }, [canvasEl, terminalRendererMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -712,17 +753,294 @@ export function TerminalCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const isGpuRenderer = effectiveRendererMode === "webgl2";
+    let gpuCtx: gpuPaint.TerminalGpuPaintContext | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
 
-    ctx.setTransform?.(canvasDevicePixelRatio, 0, 0, canvasDevicePixelRatio, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    configureTerminalCanvasText(ctx);
+    try {
+      if (isGpuRenderer) {
+        gpuCtx = gpuContextRef.current;
+        if (!gpuCtx || gpuCtx.canvas !== canvas) {
+          gpuCtx = gpuPaint.createTerminalGpuPaintContext(canvas, { devicePixelRatio: canvasDevicePixelRatio });
+          if (!gpuCtx) {
+            setWebglFallback(true);
+            reportFallback(
+              {
+                source: "terminal.renderer",
+                operation: "create_webgl2_context",
+                severity: "warning",
+                message: "Terminal WebGL2 renderer is unavailable; falling back to Canvas2D for this session.",
+                userVisible: true,
+              },
+              { throttleMs: 30_000 },
+            );
+            return;
+          }
+          gpuContextRef.current = gpuCtx;
+        }
+        gpuCtx.devicePixelRatio = canvasDevicePixelRatio;
+        gpuPaint.beginGpuFrame(gpuCtx);
+      } else {
+        ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform?.(canvasDevicePixelRatio, 0, 0, canvasDevicePixelRatio, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        configureTerminalCanvasText(ctx);
+      }
 
-    if (!snapshot) {
-      ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
-      prevSnapshotRef.current = null;
+      if (!snapshot) {
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.flushGpuFrame(gpuCtx);
+        } else {
+          ctx?.clearRect?.(0, 0, canvasWidth, canvasHeight);
+        }
+        prevSnapshotRef.current = null;
+        prevCanvasGeometryRef.current = {
+          cellWidth: cellMetrics.width,
+          cellHeight: cellMetrics.height,
+          canvasWidth,
+          canvasHeight,
+          devicePixelRatio: canvasDevicePixelRatio,
+        };
+        return;
+      }
+
+      const paintStartedAt =
+        typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+      const prev = prevSnapshotRef.current;
+      const dimsChanged = !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
+      const prevGeometry = prevCanvasGeometryRef.current;
+      const canvasGeometryChanged =
+        !prevGeometry ||
+        prevGeometry.cellWidth !== cellMetrics.width ||
+        prevGeometry.cellHeight !== cellMetrics.height ||
+        prevGeometry.canvasWidth !== canvasWidth ||
+        prevGeometry.canvasHeight !== canvasHeight ||
+        prevGeometry.devicePixelRatio !== canvasDevicePixelRatio;
+      // Switching between the live grid and the composite scrollback grid must
+      // force every row to repaint: the cells painted last frame came from a
+      // different source than prevSnapshotRef records, so ref-equality skips
+      // would otherwise leave the wrong grid on the canvas.
+      const viewModeChanged = prevScrolledUpRef.current !== scrolledUp;
+      // Mood/theme switches change only the raster background color; force a full
+      // repaint so the new backing color reaches every row's pixels.
+      const backgroundChanged = prevRasterBackgroundRef.current !== rasterBackground;
+      const prevSel = prevSelectionRef.current;
+      const selectionChanged = prevSel !== selection;
+      const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch, scrollback.scrollOffset);
+      const matchesChanged = matchesKey !== prevMatchesKeyRef.current;
+      const prevHover = prevHoveredLinkRef.current;
+      const hoverChanged = prevHover !== hoveredLink;
+      const prevCursor = prevCursorRef.current;
+      const cursor = snapshot.cursor;
+      const cursorMoved = !prevCursor || prevCursor.row !== cursor.row || prevCursor.col !== cursor.col;
+      const cursorBlinkToggled = prevCursorOnRef.current !== cursorOn;
+      const cursorDirtyRows = new Set<number>();
+      if (cursorMoved || cursorBlinkToggled) {
+        if (prevCursor) cursorDirtyRows.add(prevCursor.row);
+        cursorDirtyRows.add(cursor.row);
+      }
+      // The ghost suggestion lives on the cursor row; any change to its
+      // string flips that row dirty so the trailing glyph count is correct.
+      const ghost = ghostSuggestion ?? "";
+      const ghostChanged = ghost !== prevGhostRef.current;
+      if (ghostChanged) cursorDirtyRows.add(cursor.row);
+
+      if (ctx) ctx.textBaseline = "top";
+
+      if (!isGpuRenderer && (dimsChanged || canvasGeometryChanged || backgroundChanged)) {
+        ctx?.clearRect?.(0, 0, canvasWidth, canvasHeight);
+      }
+
+      const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows, scrollback.scrollOffset);
+      const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
+
+      // When the viewport is in scrollback, use the composed grid (history
+      // rows on top, live rows below). Overlays (selection / search /
+      // hover / cursor / ghost) are anchored to the live coordinate system,
+      // so we suppress them here; returning to `scrollToLive()` reinstates
+      // every overlay at once.
+      const viewCells = scrolledUp && scrollback.compositeCells ? scrollback.compositeCells : snapshot.cells;
+
+      for (let row = 0; row < snapshot.rows; row++) {
+        const rowCells = viewCells[row];
+        const inOld = prevSel ? rowSelection(row, prevSel, snapshot.cols) : null;
+        const inNew = !scrolledUp && selection ? rowSelection(row, selection, snapshot.cols) : null;
+        const selDirtyRow = selectionChanged && (inOld !== null || inNew !== null);
+        const matchDirtyRow = matchesChanged && affectedBySearch.has(row);
+        const hoverDirtyRow = hoverChanged && affectedByHover.has(row);
+        const cursorDirtyRow = cursorDirtyRows.has(row);
+        // Composite rows are freshly allocated each scroll tick, so
+        // ref-equality never short-circuits while scrolled up — which is
+        // exactly what we want (the whole viewport must repaint).
+        const rowContentChanged = !prev || prev.cells[row] !== rowCells;
+        if (
+          !isGpuRenderer &&
+          !backgroundChanged &&
+          !shouldRepaintRow({
+            dimsChanged,
+            canvasGeometryChanged,
+            viewModeChanged,
+            selDirtyRow,
+            matchDirtyRow,
+            hoverDirtyRow,
+            cursorDirtyRow,
+            rowContentChanged,
+          })
+        ) {
+          continue;
+        }
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.paintRow(
+            gpuCtx,
+            rowCells,
+            row,
+            cellMetrics,
+            fontSize,
+            fontFamily,
+            canvasDevicePixelRatio,
+            rasterBackground,
+            textClarity,
+          );
+        } else if (ctx) {
+          paintRow(
+            ctx,
+            rowCells,
+            row,
+            cellMetrics,
+            fontSize,
+            fontFamily,
+            canvasDevicePixelRatio,
+            rasterBackground,
+            textClarity,
+          );
+        }
+        // Search bands paint over both live and history rows — viewportRowOf
+        // does the routing so a history match becomes visible the moment the
+        // user scrolls its row into view.
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.paintSearchBands(
+            gpuCtx,
+            row,
+            searchMatches,
+            activeSearchMatch,
+            cellMetrics,
+            snapshot.rows,
+            scrollback.scrollOffset,
+          );
+        } else if (ctx) {
+          paintSearchBands(
+            ctx,
+            row,
+            searchMatches,
+            activeSearchMatch,
+            cellMetrics,
+            snapshot.rows,
+            scrollback.scrollOffset,
+          );
+        }
+        if (!scrolledUp) {
+          if (inNew) {
+            if (isGpuRenderer && gpuCtx) {
+              gpuPaint.paintSelectionBand(gpuCtx, row, inNew, cellMetrics);
+            } else if (ctx) {
+              paintSelectionBand(ctx, row, inNew, cellMetrics);
+            }
+          }
+          if (isGpuRenderer && gpuCtx) {
+            gpuPaint.paintLinkUnderline(gpuCtx, row, hoveredLink, snapshot.cols, cellMetrics);
+          } else if (ctx) {
+            paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
+          }
+        }
+      }
+
+      // Ghost suggestion band — paint BEFORE the cursor so the cursor block
+      // (if block-shape) covers its first glyph just like on a real shell.
+      if (!scrolledUp && ghost && !hasPrintableAfterCursor(snapshot)) {
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.paintGhostSuggestion(
+            gpuCtx,
+            snapshot,
+            ghost,
+            cellMetrics,
+            fontSize,
+            fontFamily,
+            canvasDevicePixelRatio,
+          );
+        } else if (ctx) {
+          paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily, canvasDevicePixelRatio);
+        }
+      }
+
+      // Cursor only makes sense on the live view — suppress it when
+      // scrolled up so users don't mistake scrollback content for the
+      // active prompt line.
+      if (!scrolledUp && snapshot.cursor.visible && cursorOn) {
+        const preferredShape = applyPreferredCursorShape(snapshot.cursor.shape, cursorStyle);
+        const cursorSnapshot =
+          preferredShape === snapshot.cursor.shape
+            ? snapshot
+            : { ...snapshot, cursor: { ...snapshot.cursor, shape: preferredShape } };
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.paintCursor(gpuCtx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
+        } else if (ctx) {
+          paintCursor(ctx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
+        }
+      }
+
+      // Inline image overlays last so they sit on top of cell glyphs
+      // and the cursor — Kitty's protocol contract is that the image
+      // owns the cell rectangle it occupies. Suppressed during scrollback
+      // for the same reason as other live overlays: the snapshot's image
+      // anchors are live-grid coordinates and would mis-render on the
+      // composite scrollback view.
+      if (!scrolledUp && snapshot.images && snapshot.images.length > 0) {
+        if (isGpuRenderer && gpuCtx) {
+          gpuPaint.paintImages(gpuCtx, snapshot.images, imageBitmaps, cellMetrics);
+        } else if (ctx) {
+          paintImages(ctx, snapshot.images, imageBitmaps, cellMetrics);
+        }
+      }
+
+      if (isGpuRenderer && gpuCtx) {
+        gpuPaint.flushGpuFrame(gpuCtx);
+      }
+
+      const paintFinishedAt =
+        typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+      const lastPaintAt = renderPerfRef.current.lastPaintAt;
+      const frameIntervalMs = lastPaintAt > 0 ? paintFinishedAt - lastPaintAt : 0;
+      if (frameIntervalMs > 0) {
+        const targetFrameMs = 1_000 / 60;
+        renderPerfRef.current.droppedRenderFrames += Math.max(0, Math.floor(frameIntervalMs / targetFrameMs) - 1);
+      }
+      renderPerfRef.current.lastPaintAt = paintFinishedAt;
+      const performanceRenderer = effectiveRendererMode === "webgl2" ? "webgl" : "canvas2d";
+      publishTerminalPerformanceSample({
+        terminalId,
+        sampledAt: Date.now(),
+        fps: frameIntervalMs > 0 ? Math.min(240, 1_000 / frameIntervalMs) : null,
+        frameMs: Math.max(0, paintFinishedAt - paintStartedAt),
+        droppedRenderFrames: renderPerfRef.current.droppedRenderFrames,
+        renderer: performanceRenderer,
+        webglFallback: terminalRendererMode === "webgl2" && effectiveRendererMode === "canvas2d",
+        cols: snapshot.cols,
+        rows: snapshot.rows,
+        scrollbackRows: scrollback.historySize,
+        scrollbackMemoryBytes: estimateScrollbackMemoryBytes(scrollback.historySize, snapshot.cols),
+      });
+
+      prevSnapshotRef.current = snapshot;
+      prevSelectionRef.current = selection;
+      prevMatchesKeyRef.current = matchesKey;
+      prevHoveredLinkRef.current = hoveredLink;
+      prevCursorRef.current = { row: cursor.row, col: cursor.col };
+      prevCursorOnRef.current = cursorOn;
+      prevGhostRef.current = ghost;
+      prevScrolledUpRef.current = scrolledUp;
+      prevRasterBackgroundRef.current = rasterBackground;
       prevCanvasGeometryRef.current = {
         cellWidth: cellMetrics.width,
         cellHeight: cellMetrics.height,
@@ -730,183 +1048,26 @@ export function TerminalCanvas({
         canvasHeight,
         devicePixelRatio: canvasDevicePixelRatio,
       };
-      return;
-    }
-
-    const paintStartedAt =
-      typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-    const prev = prevSnapshotRef.current;
-    const dimsChanged = !prev || prev.cols !== snapshot.cols || prev.rows !== snapshot.rows;
-    const prevGeometry = prevCanvasGeometryRef.current;
-    const canvasGeometryChanged =
-      !prevGeometry ||
-      prevGeometry.cellWidth !== cellMetrics.width ||
-      prevGeometry.cellHeight !== cellMetrics.height ||
-      prevGeometry.canvasWidth !== canvasWidth ||
-      prevGeometry.canvasHeight !== canvasHeight ||
-      prevGeometry.devicePixelRatio !== canvasDevicePixelRatio;
-    // Switching between the live grid and the composite scrollback grid must
-    // force every row to repaint: the cells painted last frame came from a
-    // different source than prevSnapshotRef records, so ref-equality skips
-    // would otherwise leave the wrong grid on the canvas.
-    const viewModeChanged = prevScrolledUpRef.current !== scrolledUp;
-    // Mood/theme switches change only the raster background color; force a full
-    // repaint so the new backing color reaches every row's pixels.
-    const backgroundChanged = prevRasterBackgroundRef.current !== rasterBackground;
-    const prevSel = prevSelectionRef.current;
-    const selectionChanged = prevSel !== selection;
-    const matchesKey = buildMatchesKey(searchMatches, activeSearchMatch, scrollback.scrollOffset);
-    const matchesChanged = matchesKey !== prevMatchesKeyRef.current;
-    const prevHover = prevHoveredLinkRef.current;
-    const hoverChanged = prevHover !== hoveredLink;
-    const prevCursor = prevCursorRef.current;
-    const cursor = snapshot.cursor;
-    const cursorMoved = !prevCursor || prevCursor.row !== cursor.row || prevCursor.col !== cursor.col;
-    const cursorBlinkToggled = prevCursorOnRef.current !== cursorOn;
-    const cursorDirtyRows = new Set<number>();
-    if (cursorMoved || cursorBlinkToggled) {
-      if (prevCursor) cursorDirtyRows.add(prevCursor.row);
-      cursorDirtyRows.add(cursor.row);
-    }
-    // The ghost suggestion lives on the cursor row; any change to its
-    // string flips that row dirty so the trailing glyph count is correct.
-    const ghost = ghostSuggestion ?? "";
-    const ghostChanged = ghost !== prevGhostRef.current;
-    if (ghostChanged) cursorDirtyRows.add(cursor.row);
-
-    ctx.textBaseline = "top";
-
-    if (dimsChanged || canvasGeometryChanged || backgroundChanged) {
-      ctx.clearRect?.(0, 0, canvasWidth, canvasHeight);
-    }
-
-    const affectedBySearch = buildRowMask(searchMatches, activeSearchMatch, snapshot.rows, scrollback.scrollOffset);
-    const affectedByHover = rowsCoveredByLink(hoveredLink, prevHover);
-
-    // When the viewport is in scrollback, use the composed grid (history
-    // rows on top, live rows below). Overlays (selection / search /
-    // hover / cursor / ghost) are anchored to the live coordinate system,
-    // so we suppress them here; returning to `scrollToLive()` reinstates
-    // every overlay at once.
-    const viewCells = scrolledUp && scrollback.compositeCells ? scrollback.compositeCells : snapshot.cells;
-
-    for (let row = 0; row < snapshot.rows; row++) {
-      const rowCells = viewCells[row];
-      const inOld = prevSel ? rowSelection(row, prevSel, snapshot.cols) : null;
-      const inNew = !scrolledUp && selection ? rowSelection(row, selection, snapshot.cols) : null;
-      const selDirtyRow = selectionChanged && (inOld !== null || inNew !== null);
-      const matchDirtyRow = matchesChanged && affectedBySearch.has(row);
-      const hoverDirtyRow = hoverChanged && affectedByHover.has(row);
-      const cursorDirtyRow = cursorDirtyRows.has(row);
-      // Composite rows are freshly allocated each scroll tick, so
-      // ref-equality never short-circuits while scrolled up — which is
-      // exactly what we want (the whole viewport must repaint).
-      const rowContentChanged = !prev || prev.cells[row] !== rowCells;
-      if (
-        !backgroundChanged &&
-        !shouldRepaintRow({
-          dimsChanged,
-          canvasGeometryChanged,
-          viewModeChanged,
-          selDirtyRow,
-          matchDirtyRow,
-          hoverDirtyRow,
-          cursorDirtyRow,
-          rowContentChanged,
-        })
-      ) {
-        continue;
-      }
-      paintRow(
-        ctx,
-        rowCells,
-        row,
-        cellMetrics,
-        fontSize,
-        fontFamily,
-        canvasDevicePixelRatio,
-        rasterBackground,
-        textClarity,
+    } catch (error) {
+      // The GPU path can throw beyond context creation (shader compile/link,
+      // buffer/texture allocation, driver quirks). Contract
+      // (TERMINAL_CORE_DESIGN §5): never a blank pane — drop the broken
+      // context and fall back to Canvas2D for this session, exactly like the
+      // webglcontextlost path. Canvas2D errors keep propagating unchanged.
+      if (!isGpuRenderer) throw error;
+      gpuContextRef.current = null;
+      setWebglFallback(true);
+      reportFallback(
+        {
+          source: "terminal.renderer",
+          operation: "webgl2_paint_crash",
+          severity: "warning",
+          message: `Terminal WebGL2 renderer crashed (${error instanceof Error ? error.message : String(error)}); falling back to Canvas2D for this session.`,
+          userVisible: true,
+        },
+        { throttleMs: 30_000 },
       );
-      // Search bands paint over both live and history rows — viewportRowOf
-      // does the routing so a history match becomes visible the moment the
-      // user scrolls its row into view.
-      paintSearchBands(ctx, row, searchMatches, activeSearchMatch, cellMetrics, snapshot.rows, scrollback.scrollOffset);
-      if (!scrolledUp) {
-        if (inNew) {
-          paintSelectionBand(ctx, row, inNew, cellMetrics);
-        }
-        paintLinkUnderline(ctx, row, hoveredLink, snapshot.cols, cellMetrics);
-      }
     }
-
-    // Ghost suggestion band — paint BEFORE the cursor so the cursor block
-    // (if block-shape) covers its first glyph just like on a real shell.
-    if (!scrolledUp && ghost && !hasPrintableAfterCursor(snapshot)) {
-      paintGhostSuggestion(ctx, snapshot, ghost, cellMetrics, fontSize, fontFamily, canvasDevicePixelRatio);
-    }
-
-    // Cursor only makes sense on the live view — suppress it when
-    // scrolled up so users don't mistake scrollback content for the
-    // active prompt line.
-    if (!scrolledUp && snapshot.cursor.visible && cursorOn) {
-      const preferredShape = applyPreferredCursorShape(snapshot.cursor.shape, cursorStyle);
-      const cursorSnapshot =
-        preferredShape === snapshot.cursor.shape
-          ? snapshot
-          : { ...snapshot, cursor: { ...snapshot.cursor, shape: preferredShape } };
-      paintCursor(ctx, cursorSnapshot, cellMetrics, canvasDevicePixelRatio);
-    }
-
-    // Inline image overlays last so they sit on top of cell glyphs
-    // and the cursor — Kitty's protocol contract is that the image
-    // owns the cell rectangle it occupies. Suppressed during scrollback
-    // for the same reason as other live overlays: the snapshot's image
-    // anchors are live-grid coordinates and would mis-render on the
-    // composite scrollback view.
-    if (!scrolledUp && snapshot.images && snapshot.images.length > 0) {
-      paintImages(ctx, snapshot.images, imageBitmaps, cellMetrics);
-    }
-
-    const paintFinishedAt =
-      typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-    const lastPaintAt = renderPerfRef.current.lastPaintAt;
-    const frameIntervalMs = lastPaintAt > 0 ? paintFinishedAt - lastPaintAt : 0;
-    if (frameIntervalMs > 0) {
-      const targetFrameMs = 1_000 / 60;
-      renderPerfRef.current.droppedRenderFrames += Math.max(0, Math.floor(frameIntervalMs / targetFrameMs) - 1);
-    }
-    renderPerfRef.current.lastPaintAt = paintFinishedAt;
-    publishTerminalPerformanceSample({
-      terminalId,
-      sampledAt: Date.now(),
-      fps: frameIntervalMs > 0 ? Math.min(240, 1_000 / frameIntervalMs) : null,
-      frameMs: Math.max(0, paintFinishedAt - paintStartedAt),
-      droppedRenderFrames: renderPerfRef.current.droppedRenderFrames,
-      renderer: "canvas2d",
-      webglFallback: true,
-      cols: snapshot.cols,
-      rows: snapshot.rows,
-      scrollbackRows: scrollback.historySize,
-      scrollbackMemoryBytes: estimateScrollbackMemoryBytes(scrollback.historySize, snapshot.cols),
-    });
-
-    prevSnapshotRef.current = snapshot;
-    prevSelectionRef.current = selection;
-    prevMatchesKeyRef.current = matchesKey;
-    prevHoveredLinkRef.current = hoveredLink;
-    prevCursorRef.current = { row: cursor.row, col: cursor.col };
-    prevCursorOnRef.current = cursorOn;
-    prevGhostRef.current = ghost;
-    prevScrolledUpRef.current = scrolledUp;
-    prevRasterBackgroundRef.current = rasterBackground;
-    prevCanvasGeometryRef.current = {
-      cellWidth: cellMetrics.width,
-      cellHeight: cellMetrics.height,
-      canvasWidth,
-      canvasHeight,
-      devicePixelRatio: canvasDevicePixelRatio,
-    };
   }, [
     snapshot,
     cellMetrics,
@@ -930,6 +1091,8 @@ export function TerminalCanvas({
     canvasHeight,
     textClarity,
     cursorStyle,
+    terminalRendererMode,
+    effectiveRendererMode,
   ]);
 
   useEffect(() => {
@@ -1119,6 +1282,7 @@ export function TerminalCanvas({
       onPaste={handleNativeInputSurfacePaste}
     >
       <canvas
+        key={effectiveRendererMode}
         ref={(node) => {
           canvasRef.current = node;
           setCanvasEl(node);
@@ -1128,6 +1292,8 @@ export function TerminalCanvas({
         height={canvasBitmapHeight}
         data-testid="terminal-canvas"
         data-terminal-id={terminalId}
+        data-terminal-renderer={effectiveRendererMode}
+        data-terminal-webgl-fallback={webglFallback ? "true" : "false"}
         // `-1` keeps the canvas programmatically focus-able (tests /
         // external `canvas.focus()` callers still work and flow through
         // `onFocus` to the textarea) without giving it native click-to-

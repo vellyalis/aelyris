@@ -8,12 +8,14 @@ const OUT = join(ROOT, ".codex-auto", "quality", "terminal-font-render-contract.
 const SOURCE_PATHS = [
   "package.json",
   "src/App.tsx",
+  "src/features/right-rail/rightRailModel.tsx",
   "src/features/settings/Settings.tsx",
   "src/features/terminal/NativeTerminalArea.tsx",
   "src/features/agent-terminal/AgentTerminal.tsx",
   "src/features/terminal/TerminalCanvas.tsx",
   "src/features/terminal/terminalCanvasGeometry.ts",
   "src/features/terminal/terminalPaint.ts",
+  "src/features/terminal/gpu/terminalPaintGpu.ts",
   "src/features/terminal/terminalColors.ts",
   "src/features/terminal/repaintDecision.ts",
   "src/features/terminal/pane-tree/PaneTreeRenderer.tsx",
@@ -27,6 +29,7 @@ const SOURCE_PATHS = [
   "src/__tests__/NativeTerminalArea.test.tsx",
   "src/__tests__/TerminalCanvas.test.tsx",
   "src/__tests__/TerminalFontSettingsContract.test.ts",
+  "src/__tests__/terminalColors.test.ts",
 ];
 
 function source(path) {
@@ -66,12 +69,14 @@ function writeJsonAtomic(path, value) {
 
 const packageJson = source("package.json");
 const app = source("src/App.tsx");
+const rightRailModel = source("src/features/right-rail/rightRailModel.tsx");
 const settings = source("src/features/settings/Settings.tsx");
 const nativeTerminalArea = source("src/features/terminal/NativeTerminalArea.tsx");
 const agentTerminal = source("src/features/agent-terminal/AgentTerminal.tsx");
 const terminalCanvas = source("src/features/terminal/TerminalCanvas.tsx");
 const terminalCanvasGeometry = source("src/features/terminal/terminalCanvasGeometry.ts");
 const terminalPaint = source("src/features/terminal/terminalPaint.ts");
+const terminalPaintGpu = source("src/features/terminal/gpu/terminalPaintGpu.ts");
 const terminalColors = source("src/features/terminal/terminalColors.ts");
 const repaintDecision = source("src/features/terminal/repaintDecision.ts");
 const paneTreeRenderer = source("src/features/terminal/pane-tree/PaneTreeRenderer.tsx");
@@ -85,6 +90,8 @@ const rustSettings = source("src-tauri/src/config/settings.rs");
 const nativeTerminalAreaTest = source("src/__tests__/NativeTerminalArea.test.tsx");
 const terminalCanvasTest = source("src/__tests__/TerminalCanvas.test.tsx");
 const sourceContractTest = source("src/__tests__/TerminalFontSettingsContract.test.ts");
+const terminalColorsTest = source("src/__tests__/terminalColors.test.ts");
+const appConfigSurface = `${app}\n${rightRailModel}`;
 
 const sourceCutoffMs = Math.max(mtime("scripts/verify-terminal-font-render-contract.mjs"), ...SOURCE_PATHS.map(mtime));
 
@@ -92,9 +99,11 @@ const runtimePaneNeedles = [
   "terminalFontFamily = useAppStore((s) => s.terminalFontFamily)",
   "terminalFontSize = useAppStore((s) => s.terminalFontSize)",
   "terminalTextClarity = useAppStore((s) => s.terminalTextClarity)",
-  "useTerminalCellMetrics(terminalFontSize, terminalFontFamily)",
+  "terminalLineHeight = useAppStore((s) => s.terminalLineHeight)",
+  "useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)",
   "fontSize={terminalFontSize}",
   "fontFamily={terminalFontFamily}",
+  "lineHeight={terminalLineHeight}",
   "textClarity={terminalTextClarity}",
 ];
 
@@ -132,7 +141,7 @@ const checks = [
   ),
   check(
     "config-bootstrap",
-    hasAll(app, [
+    hasAll(appConfigSurface, [
       "terminal_font_family?: string",
       "font_size?: number",
       "terminal_text_clarity?:",
@@ -196,12 +205,10 @@ const checks = [
       "useTerminalRasterBackground",
       "TERMINAL_RASTER_BG_FALLBACK",
       "--terminal-raster-bg",
-      "forceOpaqueCssColor",
       "prevCanvasGeometryRef",
       "canvasGeometryChanged",
       "devicePixelRatio: canvasDevicePixelRatio",
       'textClarity = "solid"',
-      'textClarity === "solid"',
       'textClarity === "glass"',
       "data-terminal-text-clarity={textClarity}",
       'textCtx.fontKerning = "none"',
@@ -209,11 +216,36 @@ const checks = [
     ]) &&
       hasAll(terminalCanvasGeometry, ["snapCanvasTextCoord", "canvasBitmapSize", "canvasCssSize"]) &&
       hasAll(terminalPaint, ["snapCanvasTextCoord", "enhanceTerminalTextColor", "dimAlphaForTextClarity"]) &&
-      hasAll(terminalColors, ["forceOpaqueCssColor", "minimumTerminalContrastRatio", "dimAlphaForTextClarity"]) &&
+      hasAll(terminalColors, [
+        "forceOpaqueCssColor",
+        "minimumTerminalContrastRatio",
+        "dimAlphaForTextClarity",
+        'textClarity === "solid"',
+        "minimumContrast <= 0",
+        "const opaqueColor = fg.a < 1 ? forceOpaqueCssColor(color) : color",
+        "return opaqueColor",
+      ]) &&
       hasAll(repaintDecision, ["flags.canvasGeometryChanged", "flags.rowContentChanged"]) &&
       !terminalCanvas.includes('imageRendering: "pixelated"') &&
       !terminalPaint.includes('imageRendering: "pixelated"'),
     "canvas text is DPR-backed, pixel snapped, painted over a clarity-selectable in-canvas raster backing, and leaves Windows/WebView text hinting on the engine-selected path",
+  ),
+  check(
+    "gpu-render-contract",
+    hasAll(terminalPaintGpu, [
+      "createTerminalGpuPaintContext",
+      "alpha: true",
+      "premultipliedAlpha: true",
+      "gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA)",
+      "gl.clearColor(0, 0, 0, 0)",
+      "enhanceTerminalTextColor",
+      "dimAlphaForTextClarity",
+      "colorToRgba(cssColor, alpha)",
+      "uniform bool u_mask",
+      "outColor = vec4(v_color.rgb, sampleColor.a * v_color.a)",
+      "readGpuImageData",
+    ]),
+    "GPU terminal paint keeps the same solid-text contrast contract while preserving transparent clear alpha through premultiplied WebGL2 compositing",
   ),
   check(
     "pane-mount-pixel-grid",
@@ -303,7 +335,8 @@ const checks = [
       "terminal_surface_opacity: terminalSurfaceOpacity",
       "terminalFontFamily = useAppStore((s) => s.terminalFontFamily)",
       "terminalTextClarity = useAppStore((s) => s.terminalTextClarity)",
-      "useTerminalCellMetrics(terminalFontSize, terminalFontFamily)",
+      "terminalLineHeight = useAppStore((s) => s.terminalLineHeight)",
+      "useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)",
       "snapPaneRectToDevicePixels",
       "forceOpaqueCssColor",
       "enhanceTerminalTextColor",
@@ -315,6 +348,11 @@ const checks = [
         "clears rows then paints an in-canvas raster backing before glyphs",
         "rgba(3, 10, 22, 1)",
         "boosts low-contrast text in solid clarity mode",
+      ]) &&
+      hasAll(terminalColorsTest, [
+        "forces translucent legible glyph colours opaque outside glass mode",
+        'enhanceTerminalTextColor("rgba(255, 255, 255, 0.8)", "#000000", "solid")',
+        'enhanceTerminalTextColor("rgba(255, 255, 255, 0.8)", "#000000", "balanced")',
       ]),
     "source-level regression coverage records the settings-to-rendering contract and default sharp raster paint path",
   ),
@@ -330,7 +368,7 @@ const report = {
   sourcePaths: ["scripts/verify-terminal-font-render-contract.mjs", ...SOURCE_PATHS],
   summary:
     failed.length === 0
-      ? "terminal font settings flow, text clarity contrast mode, Japanese fallback stack, DPR canvas render fidelity, and physical-pixel pane compositing are contract-covered"
+      ? "terminal font settings flow, text clarity contrast mode, Japanese fallback stack, DPR canvas/GPU render fidelity, and physical-pixel pane compositing are contract-covered"
       : `${failed.length} terminal font/render contract checks failed`,
   checks,
 };

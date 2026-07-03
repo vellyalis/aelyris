@@ -1,23 +1,9 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
-import {
-  Activity,
-  Bot,
-  ChevronDown,
-  ClipboardCopy,
-  GitBranch,
-  GitCompare,
-  History,
-  type LucideIcon,
-  Radio,
-  Settings as SettingsIcon,
-  SquareTerminal,
-  Users,
-} from "lucide-react";
+import { Activity, ClipboardCopy, Users } from "lucide-react";
 import {
   lazy,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -29,8 +15,10 @@ import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
 import { UpdateBanner } from "./features/app/UpdateBanner";
 import { useAppMenus } from "./features/app/useAppMenus";
+import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
+import { useOrchestraDispatch } from "./features/orchestrator/useOrchestraDispatch";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { TERMINAL_PREFIX_COMMAND_EVENT } from "./features/terminal/hooks/useCanvasIME";
 import type { PaneSwitcherEntry } from "./features/terminal/pane-tree";
@@ -52,13 +40,13 @@ import type {
   PaneRoleCycleRequest,
 } from "./features/terminal/pane-tree/PaneTreeContainer";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
+import { PRODUCT_NAME } from "./shared/constants/product";
 import {
   type AiCliLaunchPreflightEvidence,
   type AiCliLaunchPromptContract,
   type AiCliProbeEvidence,
   deriveAiCliLaunchPlan,
 } from "./shared/lib/aiCliLaunchPlanner";
-import { PRODUCT_NAME } from "./shared/constants/product";
 import { getAuditCorrelationId } from "./shared/lib/auditRecovery";
 import {
   commandHistoryRecordsToCommandBlocks,
@@ -157,17 +145,89 @@ const OnboardingOverlay = lazy(() =>
 );
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
+import {
+  appendRightRailActionAudit,
+  appendRightRailActionOutcomeAudit,
+  appendRightRailEdgeFeedbackStaleAudit,
+  appendRightRailEdgeScoreInteractionAudit,
+  type BootstrapAppConfig,
+  clearRightRailEdgeFeedbackHistory,
+  copyTextToClipboard,
+  createDevVisualQaAuditEvents,
+  createDevVisualQaChangedFiles,
+  createDevVisualQaCommandBlocks,
+  createDevVisualQaNegativePathAction,
+  createDevVisualQaPanes,
+  createDevVisualQaSessions,
+  createRightRailActionResult,
+  createRightRailDestinationResult,
+  createRightRailEdgeScoreFeedbackEntry,
+  deriveRightRailEdgeFeedbackAxisSummary,
+  deriveRightRailEdgeFeedbackStaleEntries,
+  deriveRightRailEdgeFeedbackStaleGroups,
+  deriveRightRailEdgeNextBestAction,
+  deriveRightRailEdgeRecommendationOutcome,
+  deriveRightRailEdgeScore,
+  formatInspectorProof,
+  formatRightRailActionOwner,
+  formatRightRailEdgeFeedbackStaleReason,
+  formatRightRailRecoveryDetail,
+  formatTerminalTarget,
+  getNextRightRailMode,
+  hydrateRightRailGuardrailSelectionFromConfig,
+  hydrateRightRailWidgetOpenFromConfig,
+  isLiveInteractiveSessionStatus,
+  isRightRailGuardrailSelection,
+  isRightRailQaFixtureRisk,
+  isRightRailWidgetId,
+  loadRightRailEdgeFeedbackHistory,
+  loadRightRailGuardrailSelection,
+  mergeRightRailChangedFiles,
+  PRODUCT_MODE_INSPECTOR_SUMMARY,
+  PRODUCT_MODE_RAIL,
+  PRODUCT_MODE_ROUTES,
+  type ProductModeId,
+  parseJsonArtifact,
+  RIGHT_RAIL_ACTION_HISTORY_LIMIT,
+  RIGHT_RAIL_ACTION_PHASE,
+  RIGHT_RAIL_ACTION_WIDGET,
+  RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
+  RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID,
+  RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID,
+  RIGHT_RAIL_GUARDRAIL_OPTIONS,
+  RIGHT_RAIL_GUARDRAIL_SYNC_EVENT,
+  RIGHT_RAIL_MODES,
+  type RightRailActionResult,
+  type RightRailActionResultTone,
+  type RightRailAiCliLaunchEvidenceState,
+  type RightRailDestinationPrompt,
+  RightRailDestinationPromptCard,
+  type RightRailEdgeFeedbackResetNotice,
+  type RightRailEdgeScore,
+  type RightRailEdgeScoreFeedbackEntry,
+  type RightRailEdgeScoreItem,
+  type RightRailGuardrailSelection,
+  type RightRailRouteConfirmation,
+  RightRailWidgetFrame,
+  type RightRailWidgetId,
+  readDevVisualQaState,
+  resolveProjectFilePath,
+  rightRailEdgeFeedbackStorageKey,
+  rightRailModeForOutcomeWidget,
+  saveRightRailEdgeFeedbackHistory,
+  saveRightRailGuardrailSelection,
+  sessionTabMatches,
+} from "./features/right-rail/rightRailModel";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
+import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
 import { useGitStatus } from "./shared/hooks/useGitStatus";
 import { useKeyboardShortcuts } from "./shared/hooks/useKeyboardShortcuts";
-import { useTabManager, VISUAL_QA_FALLBACK_PROJECT_PATH } from "./shared/hooks/useTabManager";
+import { useTabManager } from "./shared/hooks/useTabManager";
 import { useTaskAgentLink } from "./shared/hooks/useTaskAgentLink";
-import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useTerminalNotifications } from "./shared/hooks/useTerminalNotifications";
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
-import { type AgentFleetSession, headlessToFleetSession } from "./shared/lib/agentFleet";
 import { summarizeAgentLane } from "./shared/lib/agentLaneSummary";
 import {
   type AuthenticatedPromptConsentPacket,
@@ -176,7 +236,6 @@ import {
   parseAuthenticatedPromptPreflightMatrixReport,
 } from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
-import { buildDecisionInbox, type DecisionWorkflowStatus, type HumanDecisionItem } from "./shared/lib/decisionInbox";
 import {
   EDITOR_OPEN_MODE_CHANGE_EVENT,
   EDITOR_OPEN_MODE_STORAGE_KEY,
@@ -192,13 +251,7 @@ import {
   reportInvokeFailure,
 } from "./shared/lib/fallbackTelemetry";
 import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
-import { writeClipboardText as writeNativeClipboardText } from "./shared/lib/nativeClipboard";
-import {
-  launchOrchestraPrompts,
-  type OrchestraRoutingDecision,
-  routeOrchestraPrompts,
-} from "./shared/lib/orchestraDispatch";
-import { buildOrchestraPrompts, ORCHESTRA_ROLES, type OwnershipPromptSection } from "./shared/lib/orchestrator";
+import { ORCHESTRA_ROLES } from "./shared/lib/orchestrator";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,
@@ -212,9 +265,7 @@ import {
   parseReleaseQualityReport,
   type ReleaseQualityGoalInputs,
 } from "./shared/lib/releaseQuality";
-import type { GitChangedFile } from "./shared/lib/reviewQueue";
 import {
-  buildRightRailActionAuditPayload,
   deriveRightRailActions,
   deriveRightRailNowState,
   deriveRightRailRecommendation,
@@ -222,11 +273,7 @@ import {
   type RightRailMode,
 } from "./shared/lib/rightRailAdvisor";
 import { deriveRightRailGoalTrack } from "./shared/lib/rightRailGoalTrack";
-import {
-  deriveRightRailWorkforceSummary,
-  WORKFORCE_GUARDRAIL_PROFILES,
-  type WorkforceGuardrailProfile,
-} from "./shared/lib/rightRailWorkforce";
+import { deriveRightRailWorkforceSummary, type WorkforceGuardrailProfile } from "./shared/lib/rightRailWorkforce";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { isTauriRuntime } from "./shared/lib/tauriRuntime";
 import {
@@ -234,20 +281,17 @@ import {
   sanitizeTerminalCursorStyle,
   sanitizeWindowEffect,
   useAppStore,
-  type WallpaperSettings,
 } from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
-import type { AccentOverrides } from "./shared/themes/catppuccin";
-import { type MoodMaterialOverrides, type MoodPresetId, normalizeMoodPreset } from "./shared/themes/moods";
-import type { AgentSession } from "./shared/types/agent";
+import { normalizeMoodPreset } from "./shared/themes/moods";
 import type { SearchHit } from "./shared/types/history";
-import { SHELL_LABELS, type ShellType, type TerminalPaneTarget } from "./shared/types/terminalPane";
+import type { ShellType, TerminalPaneTarget } from "./shared/types/terminalPane";
 import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
-import { OrchestraDialog, showOrchestra } from "./shared/ui/OrchestraDialog";
+import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
 import { PromptDialog } from "./shared/ui/PromptDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { ToastProvider } from "./shared/ui/Toast";
@@ -287,2024 +331,6 @@ interface AppPaneRoleCycleRequest extends PaneRoleCycleRequest {
 
 interface AppPaneLayoutRequest extends PaneLayoutRequest {
   tabId: string;
-}
-
-type RightRailActionResultTone = "success" | "warn" | "error";
-type RightRailGuardrailSelection = "Auto" | WorkforceGuardrailProfile;
-
-type BootstrapAppConfig = {
-  appearance: {
-    theme: string;
-    mood_preset?: string;
-    opacity?: number;
-    ui_font_family?: string;
-    terminal_font_family?: string;
-    font_size?: number;
-    terminal_text_clarity?: "glass" | "balanced" | "solid";
-    terminal_surface_opacity?: number;
-    line_height?: number;
-    ligatures?: boolean;
-    window_effect?: string;
-    theme_overrides?: Record<string, AccentOverrides>;
-    mood_material_overrides?: Partial<Record<MoodPresetId, MoodMaterialOverrides>>;
-    wallpaper_settings_by_mood?: Partial<Record<MoodPresetId, Partial<WallpaperSettings>>>;
-  };
-  terminal?: {
-    default_shell?: string;
-    cursor_style?: string;
-    cursor_blink?: boolean;
-  };
-  ghost_diff?: {
-    live_mode?: boolean;
-  };
-  workspace_profile?: {
-    global_defaults?: {
-      pane_layout?: {
-        right_rail_guardrail_profile?: RightRailGuardrailSelection;
-        right_rail_widgets?: Partial<Record<RightRailWidgetId, boolean>>;
-      };
-    };
-  };
-};
-
-interface RightRailActionResult {
-  id: string;
-  label: string;
-  detail: string;
-  tone: RightRailActionResultTone;
-  timestamp: number;
-  auditEventId: number | null;
-  auditCorrelationId: string | null;
-  auditKind: string | null;
-  auditTimestamp: string | null;
-  routeWidget: RightRailWidgetId | null;
-  routeLabel: string | null;
-  routeDetail: string | null;
-}
-
-interface RightRailAiCliLaunchEvidenceState {
-  evidence: AiCliProbeEvidence | null;
-  preflight: AiCliLaunchPreflightEvidence | null;
-}
-
-interface RightRailRouteConfirmation {
-  widget: RightRailWidgetId;
-  title: string;
-  detail: string;
-  createdAt: number;
-}
-
-interface RightRailEdgeScoreItem {
-  id: "decision" | "evidence" | "recovery" | "live";
-  label: string;
-  score: number;
-  max: number;
-  status: "pass" | "watch" | "gap";
-  detail: string;
-  actionLabel: string;
-  routeMode: RightRailMode;
-  focusWidget: string;
-  routeTitle: string;
-  routeDetail: string;
-  promptTitle: string;
-  promptDetail: string;
-}
-
-interface RightRailEdgeScore {
-  score: number;
-  grade: "S" | "A" | "B" | "C" | "D";
-  tone: "strong" | "watch" | "gap";
-  label: string;
-  detail: string;
-  items: RightRailEdgeScoreItem[];
-}
-
-interface RightRailDestinationPrompt {
-  widget: string;
-  axisLabel: string;
-  title: string;
-  detail: string;
-  actionLabel: string;
-  item: RightRailEdgeScoreItem;
-  edgeScore: number;
-  edgeGrade: RightRailEdgeScore["grade"];
-  fromMode: RightRailMode;
-  createdAt: number;
-  reachedAt?: number;
-}
-
-interface RightRailEdgeScoreFeedbackEntry {
-  id: string;
-  axisId: string;
-  axisLabel: string;
-  actionLabel: string;
-  targetWidget: string;
-  score: number;
-  grade: RightRailEdgeScore["grade"];
-  previousScore: number | null;
-  delta: number;
-  trend: "baseline" | "improved" | "flat" | "regressed";
-  createdAt: number;
-}
-
-interface RightRailEdgeFeedbackAxisSummary {
-  axisId: string;
-  axisLabel: string;
-  count: number;
-  trend: RightRailEdgeScoreFeedbackEntry["trend"];
-}
-
-interface RightRailEdgeFeedbackStaleGroup {
-  axisId: string;
-  axisLabel: string;
-  count: number;
-  score: number;
-  grade: RightRailEdgeScore["grade"];
-  staleReason: string;
-}
-
-interface RightRailEdgeNextBestAction {
-  item: RightRailEdgeScoreItem;
-  reason: "repeated-axis" | "weakest-axis";
-}
-
-interface RightRailEdgeRecommendationOutcome {
-  status: "reached" | "replayed" | "stale";
-  label: string;
-  detail: string;
-}
-
-interface RightRailEdgeFeedbackResetNotice {
-  createdAt: number;
-  label: string;
-  detail: string;
-}
-
-const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
-const RIGHT_RAIL_EDGE_FEEDBACK_LIMIT = 4;
-const RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX = "aelyris:right-rail-edge-feedback:";
-const RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY = "aelyrisRightRailEdgeFeedback";
-const RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM = "edgeLoop";
-const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID = "right-panel-edge-feedback-list";
-const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID = "right-panel-edge-feedback-stale-count-description";
-const RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS: readonly RightRailEdgeScoreItem["id"][] = [
-  "decision",
-  "evidence",
-  "recovery",
-  "live",
-];
-const RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS: Record<RightRailEdgeScoreItem["id"], string> = {
-  decision: "Decision",
-  evidence: "Evidence",
-  recovery: "Recovery",
-  live: "Live",
-};
-const RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS = new Set([
-  "Open inbox",
-  "Inspect inbox",
-  "Open review",
-  "Open audit",
-  "Open risks",
-  "Open recovery",
-  "Watch live",
-  "Open processes",
-]);
-const RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS = new Set([
-  "decision-inbox",
-  "review-queue",
-  "audit-timeline",
-  "reliability",
-  "live-panes",
-  "processes",
-]);
-const RIGHT_RAIL_GUARDRAIL_OPTIONS: readonly RightRailGuardrailSelection[] = ["Auto", ...WORKFORCE_GUARDRAIL_PROFILES];
-const RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY = "aelyris:right-rail-guardrail-selection";
-const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync";
-const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:";
-const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync";
-
-type RightRailWidgetId =
-  | "decision-inbox"
-  | "sessions"
-  | "orchestrator"
-  | "workflow"
-  | "toolkit"
-  | "context"
-  | "audit-timeline"
-  | "run-graph"
-  | "tool-ledger"
-  | "logs";
-const RIGHT_RAIL_WIDGET_IDS: readonly RightRailWidgetId[] = [
-  "decision-inbox",
-  "sessions",
-  "orchestrator",
-  "workflow",
-  "toolkit",
-  "context",
-  "audit-timeline",
-  "run-graph",
-  "tool-ledger",
-  "logs",
-];
-
-interface RightRailWidgetFrameProps {
-  widget: RightRailWidgetId;
-  title: string;
-  subtitle: string;
-  defaultOpen?: boolean;
-  forceOpen?: boolean;
-  focusConfirmation?: Pick<RightRailRouteConfirmation, "title" | "detail"> | null;
-  children: ReactNode;
-}
-
-function isRightRailGuardrailSelection(value: string | null): value is RightRailGuardrailSelection {
-  return value === "Auto" || WORKFORCE_GUARDRAIL_PROFILES.includes(value as WorkforceGuardrailProfile);
-}
-
-function loadRightRailGuardrailSelection(): RightRailGuardrailSelection {
-  if (typeof window === "undefined") return "Auto";
-  try {
-    const saved = window.localStorage.getItem(RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY);
-    return isRightRailGuardrailSelection(saved) ? saved : "Auto";
-  } catch {
-    return "Auto";
-  }
-}
-
-function saveRightRailGuardrailSelection(selection: RightRailGuardrailSelection): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY, selection);
-  } catch {
-    /* localStorage may be unavailable in hardened webviews. */
-  }
-  void saveRightRailGuardrailSelectionToNativeConfig(selection);
-}
-
-function applyRightRailGuardrailSelection(selection: RightRailGuardrailSelection): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY, selection);
-  } catch {
-    /* localStorage may be unavailable in hardened webviews. */
-  }
-  window.dispatchEvent(new CustomEvent(RIGHT_RAIL_GUARDRAIL_SYNC_EVENT, { detail: { selection } }));
-}
-
-function hydrateRightRailGuardrailSelectionFromConfig(selection: unknown): void {
-  if (typeof selection !== "string") return;
-  if (isRightRailGuardrailSelection(selection)) applyRightRailGuardrailSelection(selection);
-}
-
-async function saveRightRailGuardrailSelectionToNativeConfig(selection: RightRailGuardrailSelection): Promise<void> {
-  if (!isTauriRuntime()) return;
-  try {
-    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-    const config = await invoke<BootstrapAppConfig>("load_app_config");
-    const paneLayout = config.workspace_profile?.global_defaults?.pane_layout ?? {};
-    await invoke("save_app_config", {
-      config: {
-        ...config,
-        workspace_profile: {
-          ...(config.workspace_profile ?? {}),
-          global_defaults: {
-            ...(config.workspace_profile?.global_defaults ?? {}),
-            pane_layout: {
-              ...paneLayout,
-              right_rail_guardrail_profile: selection,
-            },
-          },
-        },
-      },
-    });
-  } catch (err) {
-    reportInvokeFailure({
-      source: "app",
-      operation: "save_right_rail_guardrail_config",
-      err,
-      severity: "warning",
-    });
-  }
-}
-
-function isRightRailWidgetId(value: string): value is RightRailWidgetId {
-  return RIGHT_RAIL_WIDGET_IDS.includes(value as RightRailWidgetId);
-}
-
-function writeRightRailWidgetOpenToStorage(widget: RightRailWidgetId, open: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(`${RIGHT_RAIL_WIDGET_STORAGE_PREFIX}${widget}`, open ? "1" : "0");
-  } catch {
-    /* localStorage may be unavailable in hardened webviews. */
-  }
-}
-
-function applyRightRailWidgetOpen(widget: RightRailWidgetId, open: boolean): void {
-  if (typeof window === "undefined") return;
-  writeRightRailWidgetOpenToStorage(widget, open);
-  window.dispatchEvent(new CustomEvent(RIGHT_RAIL_WIDGET_SYNC_EVENT, { detail: { widget, open } }));
-}
-
-function loadRightRailWidgetOpen(widget: RightRailWidgetId, defaultOpen: boolean): boolean {
-  if (typeof window === "undefined") return defaultOpen;
-  try {
-    const saved = window.localStorage.getItem(`${RIGHT_RAIL_WIDGET_STORAGE_PREFIX}${widget}`);
-    return saved == null ? defaultOpen : saved === "1";
-  } catch {
-    return defaultOpen;
-  }
-}
-
-function hydrateRightRailWidgetOpenFromConfig(
-  widgets: Partial<Record<RightRailWidgetId, boolean>> | null | undefined,
-): void {
-  if (!widgets || typeof window === "undefined") return;
-  for (const [widget, open] of Object.entries(widgets)) {
-    if (isRightRailWidgetId(widget) && typeof open === "boolean") {
-      applyRightRailWidgetOpen(widget, open);
-    }
-  }
-}
-
-async function saveRightRailWidgetOpenToNativeConfig(widget: RightRailWidgetId, open: boolean): Promise<void> {
-  if (!isTauriRuntime()) return;
-  try {
-    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-    const config = await invoke<BootstrapAppConfig>("load_app_config");
-    const paneLayout = config.workspace_profile?.global_defaults?.pane_layout ?? {};
-    const widgets = { ...(paneLayout.right_rail_widgets ?? {}), [widget]: open };
-    await invoke("save_app_config", {
-      config: {
-        ...config,
-        workspace_profile: {
-          ...(config.workspace_profile ?? {}),
-          global_defaults: {
-            ...(config.workspace_profile?.global_defaults ?? {}),
-            pane_layout: {
-              ...paneLayout,
-              right_rail_widgets: widgets,
-            },
-          },
-        },
-      },
-    });
-  } catch (err) {
-    reportInvokeFailure({
-      source: "app",
-      operation: "save_right_rail_widget_config",
-      err,
-      severity: "warning",
-    });
-  }
-}
-
-function saveRightRailWidgetOpen(widget: RightRailWidgetId, open: boolean): void {
-  if (typeof window === "undefined") return;
-  writeRightRailWidgetOpenToStorage(widget, open);
-  window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent(RIGHT_RAIL_WIDGET_SYNC_EVENT, { detail: { widget, open } }));
-  }, 0);
-  void saveRightRailWidgetOpenToNativeConfig(widget, open);
-}
-
-function RightRailWidgetFrame({
-  widget,
-  title,
-  subtitle,
-  defaultOpen = true,
-  forceOpen = false,
-  focusConfirmation = null,
-  children,
-}: RightRailWidgetFrameProps) {
-  const [open, setOpen] = useState(() => loadRightRailWidgetOpen(widget, defaultOpen));
-  const effectiveOpen = forceOpen || open;
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onSync = (event: Event) => {
-      const detail = (event as CustomEvent<{ widget?: string; open?: unknown }>).detail;
-      if (detail?.widget === widget && typeof detail.open === "boolean") {
-        setOpen(detail.open);
-      }
-    };
-    window.addEventListener(RIGHT_RAIL_WIDGET_SYNC_EVENT, onSync);
-    return () => window.removeEventListener(RIGHT_RAIL_WIDGET_SYNC_EVENT, onSync);
-  }, [widget]);
-  useEffect(() => {
-    if (!forceOpen) return;
-    setOpen(true);
-    saveRightRailWidgetOpen(widget, true);
-  }, [forceOpen, widget]);
-  const toggleOpen = useCallback(() => {
-    if (forceOpen) return;
-    setOpen((current) => {
-      const next = !current;
-      saveRightRailWidgetOpen(widget, next);
-      return next;
-    });
-  }, [forceOpen, widget]);
-
-  return (
-    <div className="bento-widget right-panel-widget-frame" data-widget={widget} data-open={effectiveOpen}>
-      <button
-        type="button"
-        className="right-panel-widget-frame-header"
-        onClick={toggleOpen}
-        aria-expanded={effectiveOpen}
-        aria-controls={`right-rail-widget-${widget}`}
-        title={`${title}: ${subtitle}`}
-      >
-        <ChevronDown className="right-panel-widget-frame-chevron" size={12} strokeWidth={2.1} aria-hidden="true" />
-        <span className="right-panel-widget-frame-copy">
-          <span className="right-panel-widget-frame-title">{title}</span>
-          <span className="right-panel-widget-frame-subtitle">{subtitle}</span>
-        </span>
-        {forceOpen && <span className="right-panel-widget-frame-pin">Focused</span>}
-      </button>
-      {effectiveOpen && (
-        <div id={`right-rail-widget-${widget}`} className="right-panel-widget-frame-body">
-          {focusConfirmation && (
-            <div className="right-panel-widget-focus-confirmation" role="status" aria-live="polite">
-              <span>{focusConfirmation.title}</span>
-              <strong>{focusConfirmation.detail}</strong>
-            </div>
-          )}
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface DevVisualQaState {
-  enabled: boolean;
-  attachFixture: boolean;
-  diagnosticsEnabled: boolean;
-  incidentFixtures: boolean;
-  negativePath: "missing-diff" | "stale-pane" | null;
-  projectPath: string;
-  railMode: RightRailMode;
-  railScenario: "idle" | "running" | "blocked" | "review" | "conductor" | "unhealthy";
-  railScenarioExplicit: boolean;
-  railScenarioParam: "railState" | "state" | "scenario" | null;
-  usesDeprecatedStateAlias: boolean;
-  hasUrlEdgeLoop: boolean;
-}
-
-function formatTerminalTarget(shell: ShellType, terminalId: string | null): string {
-  const shellLabel = SHELL_LABELS[shell] ?? shell;
-  if (!terminalId) return `${shellLabel} · starting`;
-  return `${shellLabel} · ${terminalId.slice(0, 8)}`;
-}
-
-function readDevVisualQaState(): DevVisualQaState {
-  if (!import.meta.env.DEV || typeof window === "undefined") {
-    return {
-      enabled: false,
-      attachFixture: false,
-      diagnosticsEnabled: false,
-      incidentFixtures: false,
-      negativePath: null,
-      projectPath: "",
-      railMode: "observe",
-      railScenario: "idle",
-      railScenarioExplicit: false,
-      railScenarioParam: null,
-      usesDeprecatedStateAlias: false,
-      hasUrlEdgeLoop: false,
-    };
-  }
-  const params = new URLSearchParams(window.location.search);
-  let storedProject: string | null = null;
-  try {
-    storedProject = window.localStorage.getItem("aelyris:visualQaProject");
-  } catch {
-    /* storage may be unavailable in private/test contexts */
-  }
-  const enabled = params.get("aelyrisVisualQa") === "1" || params.get("visualQa") === "1";
-  if (!enabled)
-    return {
-      enabled: false,
-      attachFixture: false,
-      diagnosticsEnabled: false,
-      incidentFixtures: false,
-      negativePath: null,
-      projectPath: "",
-      railMode: "observe",
-      railScenario: "idle",
-      railScenarioExplicit: false,
-      railScenarioParam: null,
-      usesDeprecatedStateAlias: false,
-      hasUrlEdgeLoop: false,
-    };
-  const attachFixture = params.get("attachFixture") === "1" || params.get("processAttach") === "1";
-  const diagnosticsEnabled = params.get("diagnostics") === "1" || params.get("logs") === "1";
-  const incidentFixtures = params.get("incidents") === "1" || params.get("auditRisk") === "1";
-  const requestedNegativePath = params.get("negativePath") ?? params.get("rightRailNegativePath");
-  const negativePath =
-    requestedNegativePath === "missing-diff" || requestedNegativePath === "stale-pane" ? requestedNegativePath : null;
-  const projectPath = params.get("projectPath") || storedProject || VISUAL_QA_FALLBACK_PROJECT_PATH;
-  const requestedRail = params.get("rail");
-  const requestedScenarioParam = params.has("railState")
-    ? "railState"
-    : params.has("state")
-      ? "state"
-      : params.has("scenario")
-        ? "scenario"
-        : null;
-  const requestedScenario =
-    requestedScenarioParam === "railState"
-      ? params.get("railState")
-      : requestedScenarioParam === "state"
-        ? params.get("state")
-        : requestedScenarioParam === "scenario"
-          ? params.get("scenario")
-          : null;
-  const railScenarioExplicit = requestedScenario != null;
-  const railScenario =
-    requestedScenario === "running" ||
-    requestedScenario === "blocked" ||
-    requestedScenario === "review" ||
-    requestedScenario === "conductor" ||
-    requestedScenario === "unhealthy"
-      ? requestedScenario
-      : "idle";
-  const railMode: RightRailMode =
-    requestedRail === "command" || requestedRail === "review" || requestedRail === "observe"
-      ? requestedRail
-      : "observe";
-  return {
-    enabled: true,
-    attachFixture,
-    diagnosticsEnabled,
-    incidentFixtures,
-    negativePath,
-    projectPath: projectPath.replace(/\\/g, "/"),
-    railMode,
-    railScenario,
-    railScenarioExplicit,
-    railScenarioParam: requestedScenarioParam,
-    usesDeprecatedStateAlias: requestedScenarioParam === "state",
-    hasUrlEdgeLoop: params.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM),
-  };
-}
-
-function isExplicitDevVisualQaRequest(): boolean {
-  if (!import.meta.env.DEV || typeof window === "undefined") return false;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("aelyrisVisualQa") === "1" || params.get("visualQa") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function shouldMirrorRightRailEdgeFeedbackHistoryUrl(): boolean {
-  if (!isExplicitDevVisualQaRequest()) return false;
-  try {
-    const url = new URL(window.location.href);
-    return url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
-  } catch {
-    return false;
-  }
-}
-
-function createDevVisualQaNegativePathAction(negativePath: DevVisualQaState["negativePath"]): RightRailAction | null {
-  if (negativePath === "missing-diff") {
-    return {
-      id: "review-queue",
-      mode: "review",
-      tone: "warn",
-      state: "review-ready",
-      priority: 999,
-      label: "QA missing diff",
-      detail: "missing changed-file target",
-      target: {
-        kind: "widget",
-        label: "review-queue",
-        widget: "review-queue",
-        reason: "Negative-path fixture intentionally omits a file target.",
-      },
-      why: "Release smoke needs a deterministic missing diff target.",
-      nextStep: "Confirm the rail reports a recoverable warning and writes outcome audit evidence.",
-      execution: {
-        status: "ready",
-        operation: "open-primary-diff",
-        label: "Open diff",
-        expectedResult: "The rail should warn when no changed-file target is available.",
-        evidence: "QA URL requested a missing diff target fixture.",
-        auditEvent: "right_rail.qa_missing_diff.opened",
-        recoveryStep: "Refresh source control and reopen the review queue.",
-      },
-    };
-  }
-  if (negativePath === "stale-pane") {
-    return {
-      id: "track-selected",
-      mode: "observe",
-      tone: "warn",
-      state: "running",
-      priority: 999,
-      label: "QA stale pane",
-      detail: "missing operational pane target",
-      target: {
-        kind: "pane",
-        label: "__qa_missing_pane__",
-        role: "__qa_missing_pane__",
-        widget: "live-panes",
-        reason: "Negative-path fixture intentionally points at a stale pane role.",
-      },
-      why: "Release smoke needs a deterministic stale pane target.",
-      nextStep: "Confirm the rail reports a recoverable warning and writes outcome audit evidence.",
-      targetPaneRole: "__qa_missing_pane__",
-      execution: {
-        status: "ready",
-        operation: "focus-pane",
-        label: "Focus pane",
-        expectedResult: "The rail should warn when the selected pane target is stale.",
-        evidence: "QA URL requested a stale pane target fixture.",
-        auditEvent: "right_rail.qa_stale_pane.opened",
-        recoveryStep: "Open Health, refresh live panes, and choose an existing pane.",
-      },
-    };
-  }
-  return null;
-}
-
-function createDevVisualQaSessions(
-  scenario: DevVisualQaState["railScenario"],
-  projectPath: string,
-): AgentFleetSession[] {
-  const now = Date.now();
-  const worktree = {
-    name: "aelyris-command-center",
-    path: `${projectPath}/.aelyris/worktrees/command-center`,
-    branch: "feature/command-center",
-    is_main: false,
-    head_sha: "qa12345",
-    status: "Modified" as const,
-  };
-  const base = (id: string, overrides: Partial<AgentSession> = {}): AgentFleetSession =>
-    headlessToFleetSession({
-      id,
-      name: id,
-      status: "coding",
-      model: "claude-sonnet",
-      prompt: "Harden Aelyris Command Center",
-      startedAt: now - 120_000,
-      logs: [
-        { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
-        { timestamp: now - 30_000, type: "text", content: "Mapped right rail state into next actions." },
-      ],
-      cost: 0.42,
-      tokensUsed: 18_000,
-      branch: "feature/command-center",
-      filesChanged: 2,
-      changedFileDetails: [
-        { path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: now - 60_000 },
-        { path: "src/shared/lib/rightRailAdvisor.ts", action: "edit", toolName: "Edit", timestamp: now - 45_000 },
-      ],
-      worktree,
-      workspaceScope: projectPath,
-      ...overrides,
-    });
-
-  if (scenario === "idle") return [];
-  if (scenario === "review") {
-    return [
-      base("qa-review", {
-        name: "Review ready",
-        status: "done",
-        role: "reviewer",
-        finalReport: { status: "ready", title: "Command Center review", updatedAt: now - 5_000 },
-        closeState: "collectable",
-      }),
-    ];
-  }
-  if (scenario === "blocked") {
-    return [
-      base("qa-blocked", {
-        name: "Blocked implementer",
-        status: "waiting",
-        role: "implementer",
-        blockedReason: "Destructive file-system write requires explicit approval before deleting generated output.",
-        nextActor: "human",
-      }),
-    ];
-  }
-  if (scenario === "unhealthy") {
-    return [
-      base("qa-unhealthy", {
-        name: "Long context runner",
-        status: "coding",
-        role: "implementer",
-        tokensUsed: 192_000,
-        logs: [{ timestamp: now - 45_000, type: "error", content: "Context pressure is above handoff threshold." }],
-      }),
-    ];
-  }
-  if (scenario === "conductor") {
-    return [
-      base("qa-impl", { name: "Implementer", role: "implementer", startedAt: now - 180_000 }),
-      base("qa-test", { name: "Tester", role: "tester", handoffFrom: "qa-impl", startedAt: now - 120_000 }),
-      base("qa-reviewer", { name: "Reviewer", role: "reviewer", handoffFrom: "qa-test", startedAt: now - 60_000 }),
-    ];
-  }
-  return [
-    base("qa-impl", { name: "Implementer", role: "implementer" }),
-    base("qa-reviewer", { name: "Reviewer", role: "reviewer", handoffFrom: "qa-impl" }),
-  ];
-}
-
-function createDevVisualQaChangedFiles(
-  scenario: DevVisualQaState["railScenario"],
-): Array<{ path: string; status: string }> {
-  if (scenario === "idle") return [];
-  if (scenario === "blocked" || scenario === "unhealthy") {
-    return [
-      { path: "src/App.tsx", status: "modified" },
-      { path: "src/shared/lib/rightRailAdvisor.ts", status: "modified" },
-    ];
-  }
-  return [
-    { path: "src/App.tsx", status: "modified" },
-    { path: "src/shared/lib/rightRailAdvisor.ts", status: "modified" },
-    { path: "src/styles/global.css", status: "modified" },
-  ];
-}
-
-function createDevVisualQaCommandBlocks(
-  scenario: DevVisualQaState["railScenario"],
-  projectPath: string,
-): WorkstationGraphCommandBlock[] {
-  if (scenario === "idle") return [];
-  const cwd = projectPath || VISUAL_QA_FALLBACK_PROJECT_PATH;
-  const agentId = scenario === "review" ? "qa-review" : scenario === "blocked" ? "qa-blocked" : "qa-impl";
-  return [
-    {
-      id: "qa-command-typecheck",
-      command: "pnpm exec tsc --noEmit",
-      cwd,
-      status: "passed",
-      exitCode: 0,
-      terminalId: "qa-review-shell",
-      agentId,
-      filePaths: ["src/App.tsx", "src/shared/lib/rightRailAdvisor.ts"],
-      validationKind: "typecheck",
-      commandSequence: 101,
-      outputSequence: 102,
-      endSequence: 103,
-      commandHistorySize: 18,
-      outputHistorySize: 19,
-      endHistorySize: 21,
-      commandScreenLine: 4,
-      outputScreenLine: 5,
-      endScreenLine: 7,
-    },
-  ];
-}
-
-function createDevVisualQaAuditEvents(): AuditEventRecord[] {
-  return [
-    {
-      id: 3,
-      timestamp: "2026-05-01T12:10:00.000Z",
-      category: "terminal",
-      action: "stream_lagged",
-      severity: "warn",
-      entityType: "terminal",
-      entityId: "visual-terminal-with-a-very-long-id",
-      summary: "Terminal stream lagged while rendering dense output",
-      metadata: { droppedChunks: 12, redacted: true },
-    },
-    {
-      id: 2,
-      timestamp: "2026-05-01T12:09:00.000Z",
-      category: "terminal",
-      action: "spawn_failed",
-      severity: "error",
-      entityType: "terminal",
-      entityId: "review-pane",
-      summary: "Terminal spawn failed",
-      metadata: { redacted: true },
-    },
-    {
-      id: 1,
-      timestamp: "2026-05-01T12:08:00.000Z",
-      category: "workflow",
-      action: "reject_gate",
-      severity: "warn",
-      entityType: "workflow",
-      entityId: "bug-fix",
-      summary: "Workflow gate rejected",
-      metadata: { redacted: true },
-    },
-  ];
-}
-
-function createDevVisualQaPanes(
-  projectPath: string,
-  tabId: string,
-  tabLabel: string,
-  tabShell: ShellType,
-  attachFixture = false,
-): TerminalPaneTarget[] {
-  const cwd = projectPath || VISUAL_QA_FALLBACK_PROJECT_PATH;
-  if (attachFixture) {
-    return [
-      {
-        paneId: "qa-detached-left",
-        terminalId: null,
-        lifecycle: "detached",
-        index: 0,
-        shell: tabShell,
-        cwd,
-        title: "Detached Left",
-        role: "work",
-        label: "Detached Left",
-        route: `${tabLabel}.1 Detached Left`,
-        tabId,
-        tabLabel,
-        tabShell,
-        tabCwd: cwd,
-      },
-      {
-        paneId: "qa-detached-review",
-        terminalId: null,
-        lifecycle: "detached",
-        index: 1,
-        shell: tabShell,
-        cwd,
-        title: "Review Resume Target",
-        role: "review",
-        label: "Review Resume Target",
-        route: `${tabLabel}.2 Review Resume Target`,
-        tabId,
-        tabLabel,
-        tabShell,
-        tabCwd: cwd,
-      },
-      {
-        paneId: "qa-orphaned-backend",
-        terminalId: "qa-orphaned-agent-pty",
-        lifecycle: "orphaned",
-        index: 2,
-        shell: tabShell,
-        cwd,
-        title: "Orphaned Agent PTY",
-        role: "agent",
-        label: "Orphaned Agent PTY",
-        route: `${tabLabel}.3 Orphaned Agent PTY`,
-        tabId,
-        tabLabel,
-        tabShell,
-        tabCwd: cwd,
-      },
-    ];
-  }
-  return [
-    {
-      paneId: "qa-work",
-      terminalId: "qa-main-powershell",
-      lifecycle: "live",
-      index: 0,
-      shell: tabShell,
-      cwd,
-      title: "PowerShell",
-      role: "work",
-      label: "PowerShell",
-      route: `${tabLabel}.1 PowerShell`,
-      tabId,
-      tabLabel,
-      tabShell,
-      tabCwd: cwd,
-    },
-    {
-      paneId: "qa-agent",
-      terminalId: "qa-gemini-agent",
-      lifecycle: "live",
-      index: 1,
-      shell: tabShell,
-      cwd,
-      title: "Gemini CLI",
-      role: "agent",
-      label: "Gemini CLI",
-      route: `${tabLabel}.2 Gemini CLI`,
-      tabId,
-      tabLabel,
-      tabShell,
-      tabCwd: cwd,
-    },
-    {
-      paneId: "qa-review",
-      terminalId: "qa-review-shell",
-      lifecycle: "live",
-      index: 2,
-      shell: tabShell,
-      cwd,
-      title: "Review Shell",
-      role: "review",
-      label: "Review Shell",
-      route: `${tabLabel}.3 Review Shell`,
-      tabId,
-      tabLabel,
-      tabShell,
-      tabCwd: cwd,
-    },
-  ];
-}
-
-const RIGHT_RAIL_MODES: Array<{
-  id: RightRailMode;
-  label: string;
-  title: string;
-  description: string;
-  icon: LucideIcon;
-}> = [
-  {
-    id: "command",
-    label: "Run",
-    title: "Launch agents, workflows, and project tools",
-    description: "Start agents, run saved tools, and answer workflow gates.",
-    icon: Bot,
-  },
-  {
-    id: "review",
-    label: "Review",
-    title: "Review agent output, source changes, and commits",
-    description: "Inspect changed files, review queues, provenance, and commit readiness.",
-    icon: GitCompare,
-  },
-  {
-    id: "observe",
-    label: "Health",
-    title: "Watch live panes, agent state, and reliability signals",
-    description: "Track running panes, logs, failures, and recovery actions.",
-    icon: Radio,
-  },
-];
-
-const RIGHT_RAIL_ACTION_WIDGET: Partial<Record<RightRailAction["id"], string>> = {
-  "handoff-context": "context",
-  "resolve-approvals": "decision-inbox",
-  "recover-attention": "sessions",
-  "inspect-risk": "reliability",
-  "focused-review": "review-queue",
-  "collect-final-report": "review-queue",
-  "trace-provenance": "run-graph",
-  "inspect-cli-boundary": "processes",
-  "plan-cli-launch": "toolkit",
-  "review-queue": "review-queue",
-  "track-selected": "live-panes",
-  "parallel-run": "sessions",
-  "open-conductor": "run-graph",
-  "inspect-context": "context",
-  "ready-command": "toolkit",
-  "track-run": "processes",
-};
-
-const RIGHT_RAIL_ACTION_PHASE: Record<RightRailAction["id"], string> = {
-  "handoff-context": "Preserve",
-  "resolve-approvals": "Route",
-  "recover-attention": "Recover",
-  "inspect-risk": "Observe",
-  "focused-review": "Review",
-  "collect-final-report": "Preserve",
-  "trace-provenance": "Review",
-  "inspect-cli-boundary": "Observe",
-  "plan-cli-launch": "Plan",
-  "review-queue": "Review",
-  "track-selected": "Observe",
-  "parallel-run": "Route",
-  "open-conductor": "Route",
-  "inspect-context": "Plan",
-  "ready-command": "Run",
-  "track-run": "Observe",
-};
-
-type ProductModeId = "terminal" | "agents" | "workspace" | "review" | "git" | "context" | "history" | "settings";
-
-const PRODUCT_MODE_RAIL: Array<{
-  id: ProductModeId;
-  label: string;
-  shortcut: string;
-  description: string;
-  icon: LucideIcon;
-}> = [
-  {
-    id: "terminal",
-    label: "Terminal",
-    shortcut: "Alt+1",
-    description: "Focus panes, mux state, shell sessions, and AI CLI input.",
-    icon: SquareTerminal,
-  },
-  {
-    id: "agents",
-    label: "Agents",
-    shortcut: "Alt+2",
-    description: "Run purpose-pinned agents, worktrees, approvals, and telemetry.",
-    icon: Bot,
-  },
-  {
-    id: "workspace",
-    label: "Workspace",
-    shortcut: "Alt+3",
-    description: "Open project tasks, workflows, notes, and shared context.",
-    icon: Activity,
-  },
-  {
-    id: "review",
-    label: "Review",
-    shortcut: "Alt+4",
-    description: "Inspect changed files, review queues, risks, and handoff evidence.",
-    icon: GitCompare,
-  },
-  {
-    id: "git",
-    label: "Git",
-    shortcut: "Alt+5",
-    description: "Route to branch, status, diffs, worktrees, commit, and push actions.",
-    icon: GitBranch,
-  },
-  {
-    id: "context",
-    label: "Context",
-    shortcut: "Alt+6",
-    description: "Inspect context packs, selected panes, files, audit trails, and handoffs.",
-    icon: ClipboardCopy,
-  },
-  {
-    id: "history",
-    label: "History",
-    shortcut: "Alt+7",
-    description: "Search command, session, and action history across the workspace.",
-    icon: History,
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    shortcut: "Alt+8",
-    description: "Customize themes, materials, wallpaper, shell profiles, and editor behavior.",
-    icon: SettingsIcon,
-  },
-];
-
-const PRODUCT_MODE_ROUTES: Record<
-  ProductModeId,
-  {
-    rightRailMode?: RightRailMode;
-    focusWidget?: string | null;
-    expandSidebar?: boolean;
-    openHistory?: boolean;
-    openSettings?: boolean;
-  }
-> = {
-  terminal: { rightRailMode: "observe", focusWidget: "live-panes" },
-  agents: { rightRailMode: "command", focusWidget: "sessions" },
-  workspace: { rightRailMode: "command", focusWidget: "workflow", expandSidebar: true },
-  review: { rightRailMode: "review", focusWidget: "review-queue" },
-  git: { rightRailMode: "review", focusWidget: "scm" },
-  context: { rightRailMode: "observe", focusWidget: "context" },
-  history: { rightRailMode: "observe", focusWidget: "audit-timeline", openHistory: true },
-  settings: { openSettings: true },
-};
-
-const PRODUCT_MODE_INSPECTOR_SUMMARY: Record<
-  ProductModeId,
-  {
-    target: string;
-    owner: string;
-    proof: string;
-  }
-> = {
-  terminal: {
-    target: "Live panes / PTY health",
-    owner: "Rust PTY + mux core",
-    proof: "Native terminal boundary evidence",
-  },
-  agents: {
-    target: "Sessions / workflow gates",
-    owner: "Rust AI orchestration",
-    proof: "Context pack, guardrail, and audit trace",
-  },
-  workspace: {
-    target: "Files / tasks / workflows",
-    owner: "Project workspace state",
-    proof: "File tree, task, and workflow source",
-  },
-  review: {
-    target: "Review queue / changed files",
-    owner: "Git + provenance graph",
-    proof: "Risk, diff, and handoff evidence",
-  },
-  git: {
-    target: "SCM / branch / worktrees",
-    owner: "git2 + worktree core",
-    proof: "Branch, status, and commit readiness",
-  },
-  context: {
-    target: "Context pack / audit trail",
-    owner: "Rust-backed workspace evidence",
-    proof: "Selected pane, file, and session context",
-  },
-  history: {
-    target: "Command / session history",
-    owner: "SQLite history store",
-    proof: "Searchable command and action records",
-  },
-  settings: {
-    target: "Theme / material / shell settings",
-    owner: "Rust settings store",
-    proof: "Config roundtrip and UI control state",
-  },
-};
-
-function compactRightRailOwnerId(value: string | undefined): string {
-  if (!value) return "";
-  const trimmed = value.trim();
-  if (trimmed.length <= 10) return trimmed;
-  return `${trimmed.slice(0, 4)}-${trimmed.slice(-4)}`;
-}
-
-function formatRightRailPathOwner(path: string | undefined): string {
-  if (!path) return "";
-  const normalized = path.replace(/\\/g, "/");
-  return normalized.split("/").filter(Boolean).pop() ?? normalized;
-}
-
-function formatRightRailActionOwner(action: RightRailAction): string {
-  if (action.targetSessionId) return `Session ${compactRightRailOwnerId(action.targetSessionId)}`;
-  if (action.targetPaneRole) return `Pane ${action.targetPaneRole}`;
-  if (action.targetFilePath) return `File ${formatRightRailPathOwner(action.targetFilePath)}`;
-  if (action.target.role) return `Role ${action.target.role}`;
-  if (action.target.widget) return `Widget ${action.target.widget}`;
-  return `${action.target.kind} ${action.target.label}`;
-}
-
-function formatInspectorProof(evidence: string | undefined, fallback: string): string {
-  const normalized = evidence?.trim();
-  if (!normalized) return fallback;
-  const lower = normalized.toLowerCase();
-  if (
-    lower.includes("cannot read properties") ||
-    lower.includes("reading 'invoke'") ||
-    lower.includes("not available in this webview")
-  ) {
-    return fallback;
-  }
-  return normalized;
-}
-
-async function appendRightRailActionAudit(
-  action: RightRailAction,
-  workspaceId: string,
-  previousMode: RightRailMode,
-): Promise<AuditJournalEventRecord | null> {
-  if (!workspaceId || !isTauriRuntime()) return null;
-  try {
-    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-    return await invoke<AuditJournalEventRecord>("append_audit_event", {
-      event: {
-        workspaceId,
-        threadId: null,
-        sessionId: action.targetSessionId ?? null,
-        paneId: null,
-        terminalId: null,
-        agentId: action.targetSessionId ?? null,
-        workflowId: null,
-        taskId: null,
-        correlationId: null,
-        kind: action.execution.auditEvent,
-        severity: action.execution.status === "blocked" ? "warn" : "info",
-        source: "right-rail",
-        confidence: 0.9,
-        payloadJson: buildRightRailActionAuditPayload(action, previousMode),
-      },
-    });
-  } catch (err) {
-    reportInvokeFailure({
-      source: "app",
-      operation: "append_right_rail_action_audit",
-      err,
-      severity: "warning",
-    });
-    return null;
-  }
-}
-
-async function appendRightRailActionOutcomeAudit(
-  action: RightRailAction,
-  workspaceId: string,
-  previousMode: RightRailMode,
-  outcome: "blocked" | "failed",
-  detail: string,
-): Promise<AuditJournalEventRecord | null> {
-  if (!workspaceId || !isTauriRuntime()) return null;
-  try {
-    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-    return await invoke<AuditJournalEventRecord>("append_audit_event", {
-      event: {
-        workspaceId,
-        threadId: null,
-        sessionId: action.targetSessionId ?? null,
-        paneId: null,
-        terminalId: null,
-        agentId: action.targetSessionId ?? null,
-        workflowId: null,
-        taskId: null,
-        correlationId: null,
-        kind: `${action.execution.auditEvent}.${outcome}`,
-        severity: "warn",
-        source: "right-rail",
-        confidence: 0.92,
-        payloadJson: {
-          actionId: action.id,
-          label: action.label,
-          operation: action.execution.operation,
-          fromMode: previousMode,
-          toMode: action.mode,
-          outcome,
-          detail,
-          recoveryStep: action.execution.recoveryStep ?? null,
-          disabledReason: action.execution.disabledReason ?? null,
-          targetFilePath: action.targetFilePath ?? null,
-          targetPaneRole: action.targetPaneRole ?? null,
-        },
-      },
-    });
-  } catch (err) {
-    reportInvokeFailure({
-      source: "app",
-      operation: "append_right_rail_action_outcome_audit",
-      err,
-      severity: "warning",
-    });
-    return null;
-  }
-}
-
-async function appendRightRailEdgeScoreInteractionAudit({
-  item,
-  workspaceId,
-  fromMode,
-  score,
-  grade,
-  stage,
-}: {
-  item: RightRailEdgeScoreItem;
-  workspaceId: string;
-  fromMode: RightRailMode;
-  score: number;
-  grade: RightRailEdgeScore["grade"];
-  stage: "clicked" | "destination-reached";
-}): Promise<AuditJournalEventRecord | null> {
-  if (!workspaceId || !isTauriRuntime()) return null;
-  try {
-    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-    return await invoke<AuditJournalEventRecord>("append_audit_event", {
-      event: {
-        workspaceId,
-        threadId: null,
-        sessionId: null,
-        paneId: null,
-        terminalId: null,
-        agentId: null,
-        workflowId: null,
-        taskId: null,
-        correlationId: null,
-        kind: `right_rail.edge_score.${stage}`,
-        severity: item.status === "gap" ? "warn" : "info",
-        source: "right-rail",
-        confidence: 0.88,
-        payloadJson: {
-          axisId: item.id,
-          axisLabel: item.label,
-          axisStatus: item.status,
-          axisScore: item.score,
-          axisMax: item.max,
-          edgeScore: score,
-          edgeGrade: grade,
-          fromMode,
-          toMode: item.routeMode,
-          targetWidget: item.focusWidget,
-          actionLabel: item.actionLabel,
-          privacy: "no command text, prompt text, file path, or user input captured",
-        },
-      },
-    });
-  } catch (err) {
-    reportInvokeFailure({
-      source: "app",
-      operation: "append_right_rail_edge_score_interaction_audit",
-      err,
-      severity: "warning",
-    });
-    return null;
-  }
-}
-
-async function appendRightRailEdgeFeedbackStaleAudit({
-  entry,
-  workspaceId,
-  staleReason,
-}: {
-  entry: RightRailEdgeScoreFeedbackEntry;
-  workspaceId: string;
-  staleReason: string;
-}): Promise<AuditJournalEventRecord | null> {
-  if (!workspaceId || !isTauriRuntime()) return null;
-  try {
-    const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-    return await invoke<AuditJournalEventRecord>("append_audit_event", {
-      event: {
-        workspaceId,
-        threadId: null,
-        sessionId: null,
-        paneId: null,
-        terminalId: null,
-        agentId: null,
-        workflowId: null,
-        taskId: null,
-        correlationId: null,
-        kind: "right_rail.edge_feedback.stale",
-        severity: "warn",
-        source: "right-rail",
-        confidence: 0.86,
-        payloadJson: {
-          axisId: entry.axisId,
-          axisLabel: entry.axisLabel,
-          score: entry.score,
-          grade: entry.grade,
-          staleReason,
-          privacy: "no command text, prompt text, file path, or user input captured",
-        },
-      },
-    });
-  } catch (err) {
-    reportInvokeFailure({
-      source: "app",
-      operation: "append_right_rail_edge_feedback_stale_audit",
-      err,
-      severity: "warning",
-    });
-    return null;
-  }
-}
-
-function formatRightRailRecoveryDetail(action: RightRailAction, detail: string): string {
-  const recovery = action.execution.recoveryStep;
-  if (!recovery || detail.includes(recovery)) return detail;
-  return `${detail} Recovery: ${recovery}`;
-}
-
-function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null {
-  const currentIndex = RIGHT_RAIL_MODES.findIndex((mode) => mode.id === current);
-  if (currentIndex < 0) return null;
-  if (key === "Home") return RIGHT_RAIL_MODES[0]?.id ?? null;
-  if (key === "End") return RIGHT_RAIL_MODES.at(-1)?.id ?? null;
-  if (key === "ArrowRight" || key === "ArrowDown") {
-    return RIGHT_RAIL_MODES[(currentIndex + 1) % RIGHT_RAIL_MODES.length]?.id ?? null;
-  }
-  if (key === "ArrowLeft" || key === "ArrowUp") {
-    return RIGHT_RAIL_MODES[(currentIndex - 1 + RIGHT_RAIL_MODES.length) % RIGHT_RAIL_MODES.length]?.id ?? null;
-  }
-  return null;
-}
-
-const CLOSED_INTERACTIVE_STATUSES = new Set(["idle", "done", "complete", "completed", "stopped", "exited", "closed"]);
-
-function isLiveInteractiveSessionStatus(status: string): boolean {
-  const normalized = status.trim().toLowerCase();
-  return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
-}
-
-function normalizeProjectPath(path?: string | null): string | null {
-  if (!path) return null;
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function rightRailWorkspaceStorageHash(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-function rightRailEdgeFeedbackStorageKey(projectPath: string): string | null {
-  const normalized = normalizeProjectPath(projectPath);
-  if (!normalized) return null;
-  return `${RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX}${rightRailWorkspaceStorageHash(normalized)}`;
-}
-
-function isRightRailEdgeFeedbackAxisId(value: unknown): value is RightRailEdgeScoreItem["id"] {
-  return typeof value === "string" && RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS.includes(value as RightRailEdgeScoreItem["id"]);
-}
-
-function isSafeRightRailEdgeFeedbackAxisId(value: unknown): value is string {
-  return typeof value === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(value);
-}
-
-function sanitizeRightRailEdgeFeedbackAxisLabel(axisId: string, value: unknown): string {
-  if (isRightRailEdgeFeedbackAxisId(axisId)) return RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS[axisId];
-  if (typeof value !== "string") return "Legacy axis";
-  const normalized = value
-    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 32);
-  return normalized.length > 0 ? normalized : "Legacy axis";
-}
-
-function isRightRailEdgeFeedbackTrend(value: unknown): value is RightRailEdgeScoreFeedbackEntry["trend"] {
-  return value === "baseline" || value === "improved" || value === "flat" || value === "regressed";
-}
-
-function isRightRailEdgeFeedbackGrade(value: unknown): value is RightRailEdgeScore["grade"] {
-  return value === "S" || value === "A" || value === "B" || value === "C" || value === "D";
-}
-
-function sanitizeBoundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function sanitizeRightRailEdgeFeedbackEntry(value: unknown): RightRailEdgeScoreFeedbackEntry | null {
-  if (!isPlainRecord(value)) return null;
-  const rawAxisId =
-    typeof value.axisId === "string" ? value.axisId : typeof value.id === "string" ? value.id.split(":")[0] : null;
-  if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null;
-  const createdAt = sanitizeBoundedNumber(value.createdAt, Date.now(), 0, Number.MAX_SAFE_INTEGER);
-  const actionLabel =
-    typeof value.actionLabel === "string" && RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS.has(value.actionLabel)
-      ? value.actionLabel
-      : "Replay action";
-  const targetWidget =
-    typeof value.targetWidget === "string" && RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS.has(value.targetWidget)
-      ? value.targetWidget
-      : "decision-inbox";
-  return {
-    id: `${rawAxisId}:${createdAt}`,
-    axisId: rawAxisId,
-    axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel),
-    actionLabel,
-    targetWidget,
-    score: sanitizeBoundedNumber(value.score, 0, 0, 100),
-    grade: isRightRailEdgeFeedbackGrade(value.grade) ? value.grade : "D",
-    previousScore: value.previousScore == null ? null : sanitizeBoundedNumber(value.previousScore, 0, 0, 100),
-    delta: sanitizeBoundedNumber(value.delta, 0, -100, 100),
-    trend: isRightRailEdgeFeedbackTrend(value.trend) ? value.trend : "baseline",
-    createdAt,
-  };
-}
-
-function sanitizeRightRailEdgeFeedbackHistory(history: unknown): RightRailEdgeScoreFeedbackEntry[] {
-  if (!Array.isArray(history)) return [];
-  return history
-    .map((entry) => sanitizeRightRailEdgeFeedbackEntry(entry))
-    .filter((entry): entry is RightRailEdgeScoreFeedbackEntry => entry != null)
-    .slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT);
-}
-
-function readRightRailEdgeFeedbackHistoryState(key: string): RightRailEdgeScoreFeedbackEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const state: unknown = window.history.state;
-    if (!isPlainRecord(state)) return [];
-    const payload = state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY];
-    if (!isPlainRecord(payload) || payload.key !== key) return [];
-    return sanitizeRightRailEdgeFeedbackHistory(payload.history);
-  } catch {
-    return [];
-  }
-}
-
-function readRightRailEdgeFeedbackHistoryUrl(key: string): RightRailEdgeScoreFeedbackEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const url = new URL(window.location.href);
-    const raw = url.searchParams.get(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!isPlainRecord(parsed) || parsed.key !== key) return [];
-    return sanitizeRightRailEdgeFeedbackHistory(parsed.history);
-  } catch {
-    return [];
-  }
-}
-
-function writeRightRailEdgeFeedbackHistoryState(key: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    const state = isPlainRecord(window.history.state) ? window.history.state : {};
-    window.history.replaceState(
-      {
-        ...state,
-        [RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]: {
-          key,
-          history,
-        },
-      },
-      "",
-      window.location.href,
-    );
-  } catch {
-    /* history.state can be unavailable in constrained browser harnesses */
-  }
-}
-
-function writeRightRailEdgeFeedbackHistoryUrl(key: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    const url = new URL(window.location.href);
-    url.searchParams.set(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM, JSON.stringify({ key, history }));
-    window.history.replaceState(window.history.state, "", url.toString());
-  } catch {
-    /* URL fallback is best-effort and still privacy-safe when unavailable */
-  }
-}
-
-function clearRightRailEdgeFeedbackHistory(projectPath: string): void {
-  const key = rightRailEdgeFeedbackStorageKey(projectPath);
-  if (!key || typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    /* localStorage can be unavailable in locked-down WebView contexts */
-  }
-  try {
-    const state = isPlainRecord(window.history.state) ? { ...window.history.state } : {};
-    delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY];
-    const url = new URL(window.location.href);
-    url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
-    window.history.replaceState(state, "", url.toString());
-  } catch {
-    /* reset remains best-effort when history or URL mutation is unavailable */
-  }
-}
-
-function loadRightRailEdgeFeedbackHistory(projectPath: string): RightRailEdgeScoreFeedbackEntry[] {
-  const key = rightRailEdgeFeedbackStorageKey(projectPath);
-  if (!key || typeof window === "undefined") return [];
-  const allowDebugUrlFallback = isExplicitDevVisualQaRequest();
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      if (!allowDebugUrlFallback) return [];
-      const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
-      return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
-    }
-    const parsed: unknown = JSON.parse(raw);
-    return sanitizeRightRailEdgeFeedbackHistory(parsed);
-  } catch {
-    if (!allowDebugUrlFallback) return [];
-    const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
-    return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
-  }
-}
-
-function saveRightRailEdgeFeedbackHistory(projectPath: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
-  const key = rightRailEdgeFeedbackStorageKey(projectPath);
-  if (!key || typeof window === "undefined") return;
-  const persisted = history
-    .slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT)
-    .map((entry) => sanitizeRightRailEdgeFeedbackEntry(entry))
-    .filter((entry): entry is RightRailEdgeScoreFeedbackEntry => entry != null)
-    .map(
-      ({ id, axisId, axisLabel, actionLabel, targetWidget, score, grade, previousScore, delta, trend, createdAt }) => ({
-        id,
-        axisId,
-        axisLabel,
-        actionLabel,
-        targetWidget,
-        score,
-        grade,
-        previousScore,
-        delta,
-        trend,
-        createdAt,
-      }),
-    );
-  if (persisted.length === 0) {
-    clearRightRailEdgeFeedbackHistory(projectPath);
-    return;
-  }
-  writeRightRailEdgeFeedbackHistoryState(key, persisted);
-  if (shouldMirrorRightRailEdgeFeedbackHistoryUrl()) {
-    writeRightRailEdgeFeedbackHistoryUrl(key, persisted);
-  }
-  try {
-    window.localStorage.setItem(key, JSON.stringify(persisted));
-  } catch {
-    /* localStorage can be unavailable in locked-down WebView contexts */
-  }
-}
-
-function sameOrNestedPath(left: string, right: string): boolean {
-  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
-}
-
-function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean {
-  const normalizedTabCwd = normalizeProjectPath(tabCwd);
-  if (!normalizedTabCwd) return false;
-  const candidates = [session.workspaceScope, session.worktree?.path]
-    .map((path) => normalizeProjectPath(path))
-    .filter((path): path is string => path != null);
-  return candidates.some((candidate) => sameOrNestedPath(candidate, normalizedTabCwd));
-}
-
-function resolveProjectFilePath(projectPath: string, path: string): string {
-  const trimmed = path.trim();
-  if (/^[a-z]:[\\/]/i.test(trimmed) || /^\\\\/.test(trimmed) || trimmed.startsWith("/")) return trimmed;
-  const root = projectPath.replace(/[\\/]+$/, "");
-  return `${root}\\${trimmed.replace(/^[/\\]+/, "").replace(/\//g, "\\")}`;
-}
-
-function parseJsonArtifact<T>(text: string): T | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  try {
-    return JSON.parse(trimmed) as T;
-  } catch {
-    return null;
-  }
-}
-
-function isRightRailQaFixtureRisk(value: string): boolean {
-  return /right[\s_.-]*rail[\s_.-]*qa|qa[\s_-]*(missing[\s_-]*diff|stale[\s_-]*pane)/i.test(value);
-}
-
-function copyTextToClipboard(text: string): Promise<void> {
-  return writeNativeClipboardText(text, {
-    source: "right-rail.clipboard",
-    fallbackMessage: "Native clipboard write failed; using browser clipboard fallback for right rail copy.",
-    userVisible: true,
-  });
-}
-
-function createRightRailActionResult(
-  action: RightRailAction,
-  tone: RightRailActionResultTone,
-  detail: string,
-  auditRecord: AuditJournalEventRecord | null = null,
-): RightRailActionResult {
-  const timestamp = Date.now();
-  return {
-    id: `${action.id}:${timestamp}`,
-    label: action.execution.label,
-    detail,
-    tone,
-    timestamp,
-    auditEventId: auditRecord?.id ?? null,
-    auditCorrelationId: auditRecord?.correlationId ?? null,
-    auditKind: auditRecord?.kind ?? null,
-    auditTimestamp: auditRecord?.createdAt ?? null,
-    routeWidget: null,
-    routeLabel: null,
-    routeDetail: null,
-  };
-}
-
-function createRightRailDestinationResult({
-  label,
-  detail,
-  tone,
-  auditEventId = null,
-  auditCorrelationId = null,
-  routeWidget = null,
-  routeLabel = null,
-  routeDetail = null,
-}: {
-  label: string;
-  detail: string;
-  tone: RightRailActionResultTone;
-  auditEventId?: number | null;
-  auditCorrelationId?: string | null;
-  routeWidget?: RightRailWidgetId | null;
-  routeLabel?: string | null;
-  routeDetail?: string | null;
-}): RightRailActionResult {
-  const timestamp = Date.now();
-  return {
-    id: `destination:${label}:${timestamp}`,
-    label,
-    detail,
-    tone,
-    timestamp,
-    auditEventId,
-    auditCorrelationId,
-    auditKind: null,
-    auditTimestamp: null,
-    routeWidget,
-    routeLabel,
-    routeDetail,
-  };
-}
-
-function rightRailModeForOutcomeWidget(widget: RightRailWidgetId): RightRailMode {
-  return widget === "workflow" || widget === "toolkit" ? "command" : "observe";
-}
-
-function mergeRightRailChangedFiles(
-  base: readonly GitChangedFile[],
-  graphFiles: readonly GitChangedFile[],
-): GitChangedFile[] {
-  const byPath = new Map<string, GitChangedFile>();
-  for (const file of base) {
-    const normalized = file.path.replace(/\\/g, "/");
-    byPath.set(normalized.toLowerCase(), { ...file, path: normalized });
-  }
-  for (const file of graphFiles) {
-    const normalized = file.path.replace(/\\/g, "/");
-    const key = normalized.toLowerCase();
-    byPath.set(key, { ...file, ...byPath.get(key), path: normalized });
-  }
-  return [...byPath.values()];
-}
-
-function createRightRailEdgeScoreFeedbackEntry({
-  item,
-  score,
-  grade,
-  previous,
-}: {
-  item: RightRailEdgeScoreItem;
-  score: number;
-  grade: RightRailEdgeScore["grade"];
-  previous?: RightRailEdgeScoreFeedbackEntry;
-}): RightRailEdgeScoreFeedbackEntry {
-  const now = Date.now();
-  const previousScore = previous?.score ?? null;
-  const delta = previousScore == null ? 0 : score - previousScore;
-  const trend =
-    previousScore == null ? "baseline" : delta > 0 ? "improved" : delta < 0 ? "regressed" : ("flat" as const);
-  return {
-    id: `${item.id}:${now}`,
-    axisId: item.id,
-    axisLabel: item.label,
-    actionLabel: item.actionLabel,
-    targetWidget: item.focusWidget,
-    score,
-    grade,
-    previousScore,
-    delta,
-    trend,
-    createdAt: now,
-  };
-}
-
-function deriveRightRailEdgeFeedbackAxisSummary(
-  history: RightRailEdgeScoreFeedbackEntry[],
-): RightRailEdgeFeedbackAxisSummary | null {
-  if (history.length === 0) return null;
-  const counts = new Map<
-    string,
-    { axisLabel: string; count: number; latestTrend: RightRailEdgeScoreFeedbackEntry["trend"] }
-  >();
-  for (const entry of history) {
-    const current = counts.get(entry.axisId);
-    counts.set(entry.axisId, {
-      axisLabel: current?.axisLabel ?? entry.axisLabel,
-      count: (current?.count ?? 0) + 1,
-      latestTrend: current?.latestTrend ?? entry.trend,
-    });
-  }
-  const [axisId, summary] = [...counts.entries()].sort((left, right) => right[1].count - left[1].count)[0] ?? [];
-  if (!axisId || !summary) return null;
-  return { axisId, axisLabel: summary.axisLabel, count: summary.count, trend: summary.latestTrend };
-}
-
-function deriveRightRailEdgeNextBestAction(
-  score: RightRailEdgeScore,
-  summary: RightRailEdgeFeedbackAxisSummary | null,
-): RightRailEdgeNextBestAction | null {
-  const repeatedAxis = summary ? score.items.find((item) => item.id === summary.axisId) : null;
-  if (repeatedAxis) return { item: repeatedAxis, reason: "repeated-axis" };
-  const weakestAxis = [...score.items].sort((left, right) => left.score / left.max - right.score / right.max)[0];
-  return weakestAxis ? { item: weakestAxis, reason: "weakest-axis" } : null;
-}
-
-function formatRightRailEdgeFeedbackStaleReason(entry: RightRailEdgeScoreFeedbackEntry): string {
-  return `Stale axis: ${entry.axisLabel} is no longer in the current score model.`;
-}
-
-function deriveRightRailEdgeFeedbackStaleEntries(
-  history: RightRailEdgeScoreFeedbackEntry[],
-  score: RightRailEdgeScore,
-): Array<{ entry: RightRailEdgeScoreFeedbackEntry; staleReason: string }> {
-  return history
-    .filter((entry) => !score.items.some((item) => item.id === entry.axisId || item.label === entry.axisLabel))
-    .map((entry) => ({ entry, staleReason: formatRightRailEdgeFeedbackStaleReason(entry) }));
-}
-
-function deriveRightRailEdgeFeedbackStaleGroups(
-  entries: Array<{ entry: RightRailEdgeScoreFeedbackEntry; staleReason: string }>,
-): RightRailEdgeFeedbackStaleGroup[] {
-  const groups = new Map<string, RightRailEdgeFeedbackStaleGroup>();
-  for (const { entry, staleReason } of entries) {
-    const current = groups.get(entry.axisId);
-    groups.set(entry.axisId, {
-      axisId: entry.axisId,
-      axisLabel: current?.axisLabel ?? entry.axisLabel,
-      count: (current?.count ?? 0) + 1,
-      score: current?.score ?? entry.score,
-      grade: current?.grade ?? entry.grade,
-      staleReason: current?.staleReason ?? staleReason,
-    });
-  }
-  return [...groups.values()].filter((group) => group.count > 1);
-}
-
-function deriveRightRailEdgeRecommendationOutcome({
-  nextAction,
-  prompt,
-  latestFeedback,
-}: {
-  nextAction: RightRailEdgeNextBestAction | null;
-  prompt: RightRailDestinationPrompt | null;
-  latestFeedback?: RightRailEdgeScoreFeedbackEntry;
-}): RightRailEdgeRecommendationOutcome | null {
-  if (!nextAction || !prompt || !latestFeedback) return null;
-  if (prompt.axisLabel !== nextAction.item.label) {
-    return {
-      status: "stale",
-      label: "Recommendation changed",
-      detail: `${prompt.axisLabel} was last used; ${nextAction.item.label} is now recommended.`,
-    };
-  }
-  if (prompt.reachedAt != null) {
-    return {
-      status: "reached",
-      label: "Destination reached",
-      detail: `${prompt.actionLabel} opened ${prompt.widget}.`,
-    };
-  }
-  return {
-    status: "replayed",
-    label: "Action replayed",
-    detail: `${latestFeedback.axisLabel} routed toward ${latestFeedback.targetWidget}.`,
-  };
-}
-
-function RightRailDestinationPromptCard({ prompt }: { prompt: RightRailDestinationPrompt }) {
-  return (
-    <section className="right-panel-destination-prompt" aria-label={`${prompt.axisLabel} remediation prompt`}>
-      <span className="right-panel-destination-prompt-kicker">{prompt.axisLabel} gap</span>
-      <strong>{prompt.title}</strong>
-      <span>{prompt.detail}</span>
-      <small>{prompt.actionLabel}</small>
-    </section>
-  );
-}
-
-function edgeScoreStatus(score: number, max: number): RightRailEdgeScoreItem["status"] {
-  const ratio = score / max;
-  if (ratio >= 0.8) return "pass";
-  if (ratio >= 0.55) return "watch";
-  return "gap";
-}
-
-function deriveRightRailEdgeScore({
-  pendingDecisionCount,
-  liveAgentCount,
-  changedFilesCount,
-  auditEventCount,
-  graphRiskCount,
-  actionCount,
-  recoverableActionCount,
-}: {
-  pendingDecisionCount: number;
-  liveAgentCount: number;
-  changedFilesCount: number;
-  auditEventCount: number;
-  graphRiskCount: number;
-  actionCount: number;
-  recoverableActionCount: number;
-}): RightRailEdgeScore {
-  const evidenceSignalCount = changedFilesCount + auditEventCount + graphRiskCount;
-  const evidenceRoute =
-    changedFilesCount > 0
-      ? {
-          actionLabel: "Open review",
-          routeMode: "review" as const,
-          focusWidget: "review-queue",
-          routeTitle: "Opened review evidence",
-          promptTitle: "Close the evidence gap",
-          promptDetail: "Open the highest-priority diff, verify ownership, then collect review evidence.",
-        }
-      : auditEventCount > 0
-        ? {
-            actionLabel: "Open audit",
-            routeMode: "observe" as const,
-            focusWidget: "audit-timeline",
-            routeTitle: "Opened audit evidence",
-            promptTitle: "Close the evidence gap",
-            promptDetail: "Select the latest audit event and trace it to the pane, workflow, or risk that produced it.",
-          }
-        : {
-            actionLabel: "Open risks",
-            routeMode: "observe" as const,
-            focusWidget: "reliability",
-            routeTitle: "Opened reliability evidence",
-            promptTitle: "Create missing evidence",
-            promptDetail:
-              "Run a focused validation or recovery check so this workspace has proof instead of an empty score.",
-          };
-  const items: RightRailEdgeScoreItem[] = [
-    {
-      id: "decision",
-      label: "Decision",
-      score: pendingDecisionCount > 0 ? 19 : 24,
-      max: 25,
-      status: edgeScoreStatus(pendingDecisionCount > 0 ? 19 : 24, 25),
-      detail:
-        pendingDecisionCount > 0
-          ? `${pendingDecisionCount} owner gate${pendingDecisionCount === 1 ? "" : "s"} surfaced`
-          : "No blocking owner gate",
-      actionLabel: pendingDecisionCount > 0 ? "Open inbox" : "Inspect inbox",
-      routeMode: "command",
-      focusWidget: "decision-inbox",
-      routeTitle: "Opened decision inbox",
-      routeDetail:
-        pendingDecisionCount > 0
-          ? `${pendingDecisionCount} owner gate${pendingDecisionCount === 1 ? "" : "s"} need attention`
-          : "Decision Inbox is clear",
-      promptTitle: pendingDecisionCount > 0 ? "Resolve the blocking decision" : "Decision path is clear",
-      promptDetail:
-        pendingDecisionCount > 0
-          ? "Open the suggested inbox item, inspect its evidence, then approve, reject, or route it to the owning workflow."
-          : "No owner gate is blocking progress. Keep this clear by routing new workflow gates through the inbox.",
-    },
-    {
-      id: "evidence",
-      label: "Evidence",
-      score: evidenceSignalCount >= 3 ? 25 : evidenceSignalCount >= 1 ? 18 : 8,
-      max: 25,
-      status: edgeScoreStatus(evidenceSignalCount >= 3 ? 25 : evidenceSignalCount >= 1 ? 18 : 8, 25),
-      detail: `${changedFilesCount} files · ${auditEventCount} audits · ${graphRiskCount} risks`,
-      actionLabel: evidenceRoute.actionLabel,
-      routeMode: evidenceRoute.routeMode,
-      focusWidget: evidenceRoute.focusWidget,
-      routeTitle: evidenceRoute.routeTitle,
-      routeDetail: `${changedFilesCount} changed files, ${auditEventCount} audit events, ${graphRiskCount} risk nodes`,
-      promptTitle: evidenceRoute.promptTitle,
-      promptDetail: evidenceRoute.promptDetail,
-    },
-    {
-      id: "recovery",
-      label: "Recovery",
-      score: recoverableActionCount >= 3 ? 25 : recoverableActionCount >= 1 ? 19 : 7,
-      max: 25,
-      status: edgeScoreStatus(recoverableActionCount >= 3 ? 25 : recoverableActionCount >= 1 ? 19 : 7, 25),
-      detail: `${recoverableActionCount} guided action${recoverableActionCount === 1 ? "" : "s"}`,
-      actionLabel: "Open recovery",
-      routeMode: "observe",
-      focusWidget: "reliability",
-      routeTitle: "Opened recovery evidence",
-      routeDetail: `${recoverableActionCount} guided recovery action${recoverableActionCount === 1 ? "" : "s"}`,
-      promptTitle: recoverableActionCount > 0 ? "Use the recovery path" : "Add a recovery path",
-      promptDetail:
-        recoverableActionCount > 0
-          ? "Open the reliability incident, focus the affected pane, then restart or trace the failure from the same card."
-          : "Add at least one guided recovery action so failures do not leave users stranded.",
-    },
-    {
-      id: "live",
-      label: "Live",
-      score: liveAgentCount > 0 ? 22 : actionCount > 0 ? 15 : 6,
-      max: 25,
-      status: edgeScoreStatus(liveAgentCount > 0 ? 22 : actionCount > 0 ? 15 : 6, 25),
-      detail:
-        liveAgentCount > 0 ? `${liveAgentCount} live run${liveAgentCount === 1 ? "" : "s"}` : "Ready, no live run",
-      actionLabel: liveAgentCount > 0 ? "Watch live" : "Open processes",
-      routeMode: "observe",
-      focusWidget: liveAgentCount > 0 ? "live-panes" : "processes",
-      routeTitle: liveAgentCount > 0 ? "Opened live panes" : "Opened process health",
-      routeDetail: liveAgentCount > 0 ? `${liveAgentCount} live run${liveAgentCount === 1 ? "" : "s"}` : "No live run",
-      promptTitle: liveAgentCount > 0 ? "Verify the live run" : "Start a live run",
-      promptDetail:
-        liveAgentCount > 0
-          ? "Focus the active pane and confirm it is producing output, accepting input, and tied to the correct workspace."
-          : "Start a shell, workflow, or agent run so the command center can prove live orchestration.",
-    },
-  ];
-  const score = items.reduce((sum, item) => sum + item.score, 0);
-  const grade = score >= 90 ? "S" : score >= 80 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : "D";
-  const weakest = [...items].sort((left, right) => left.score / left.max - right.score / right.max)[0];
-  return {
-    score,
-    grade,
-    tone: score >= 85 ? "strong" : score >= 70 ? "watch" : "gap",
-    label: score >= 85 ? "Edge ready" : score >= 70 ? "Edge forming" : "Edge incomplete",
-    detail: weakest ? `Weakest: ${weakest.label} - ${weakest.detail}` : "No score inputs",
-    items,
-  };
 }
 
 export function App() {
@@ -2716,12 +742,6 @@ export function App() {
     agents: PaneAgentSpawnRequest["agents"][number][];
     sequence: number;
   } | null>(null);
-  // Role → { mounted pty id, tab it was mounted in } for the most recent
-  // orchestra dispatch, so a role lane card can focus its central pane in the
-  // correct tab even after the operator switches tabs (WU-VP-1 DoD#6).
-  const [orchestraRolePanes, setOrchestraRolePanes] = useState<Map<string, { terminalId: string; tabId: string }>>(
-    () => new Map(),
-  );
   // Always-current active tab id read by the identity-stable mountAgentPtyInPane
   // below, so the agent-event listener does not have to re-subscribe per tab.
   const activeTabIdRef = useRef(activeTabId);
@@ -2777,39 +797,36 @@ export function App() {
         durability?: unknown;
         branchName?: unknown;
       };
-    }>(
-      "agent-event",
-      (event) => {
-        if (cancelled) return;
-        const message = event.payload;
-        if (message?.kind !== "agent_spawned") return;
-        const payload = message.payload;
-        const terminalId = payload?.terminalId;
-        if (typeof terminalId !== "string") return;
-        const model = typeof payload?.model === "string" ? payload.model : "sonnet";
-        const taskId = typeof payload?.taskId === "string" ? payload.taskId : undefined;
-        const roleId = typeof payload?.roleId === "string" ? payload.roleId : undefined;
-        const branchName = typeof payload?.branchName === "string" ? payload.branchName : undefined;
-        const backend = payload?.backend === "sidecar" || payload?.backend === "native" ? payload.backend : "native";
-        const durability =
-          payload?.durability === "tmux-durable" || payload?.durability === "degraded"
-            ? payload.durability
-            : backend === "sidecar"
-              ? "tmux-durable"
-              : "degraded";
-        const agent: PaneAgentSpawnRequest["agents"][number] = {
-          terminalId,
-          model,
-          backend,
-          durability,
-          spawnedAt: new Date().toISOString(),
-          ...(taskId ? { taskId } : {}),
-          ...(roleId ? { roleId } : {}),
-          ...(branchName ? { branchName } : {}),
-        };
-        mountAgentPtyInPane(agent);
-      },
-    )
+    }>("agent-event", (event) => {
+      if (cancelled) return;
+      const message = event.payload;
+      if (message?.kind !== "agent_spawned") return;
+      const payload = message.payload;
+      const terminalId = payload?.terminalId;
+      if (typeof terminalId !== "string") return;
+      const model = typeof payload?.model === "string" ? payload.model : "sonnet";
+      const taskId = typeof payload?.taskId === "string" ? payload.taskId : undefined;
+      const roleId = typeof payload?.roleId === "string" ? payload.roleId : undefined;
+      const branchName = typeof payload?.branchName === "string" ? payload.branchName : undefined;
+      const backend = payload?.backend === "sidecar" || payload?.backend === "native" ? payload.backend : "native";
+      const durability =
+        payload?.durability === "tmux-durable" || payload?.durability === "degraded"
+          ? payload.durability
+          : backend === "sidecar"
+            ? "tmux-durable"
+            : "degraded";
+      const agent: PaneAgentSpawnRequest["agents"][number] = {
+        terminalId,
+        model,
+        backend,
+        durability,
+        spawnedAt: new Date().toISOString(),
+        ...(taskId ? { taskId } : {}),
+        ...(roleId ? { roleId } : {}),
+        ...(branchName ? { branchName } : {}),
+      };
+      mountAgentPtyInPane(agent);
+    })
       .then((fn) => {
         if (cancelled) fn();
         else unlisten = fn;
@@ -2895,7 +912,6 @@ export function App() {
   );
   const auditStream = useAuditEvents({ enabled: visualAuditEvents === undefined, limit: 40, pollMs: 3_000 });
   const operationalAuditEvents = visualAuditEvents ?? auditStream.entries;
-  const [workflowStatuses, setWorkflowStatuses] = useState<DecisionWorkflowStatus[]>([]);
   const selectedOperationalPaneTarget = useMemo(
     () =>
       selectedOperationalPane
@@ -2993,6 +1009,7 @@ export function App() {
   const {
     sessions,
     fleetSessions,
+    refreshAgentFleet,
     activeSessionId,
     setActiveSessionId,
     startAgent,
@@ -3232,50 +1249,61 @@ export function App() {
             invoke<string>("read_file", { path: interactiveBoundaryPath }),
           ]),
         )
-        .then(([realProbeResult, nativeInputResult, imeResult, processReconnectResult, muxLiveProcessPreservationResult, interactiveBoundaryResult]) => {
-          if (!active) return;
-          const evidence =
-            realProbeResult.status === "fulfilled"
-              ? parseJsonArtifact<AiCliProbeEvidence>(realProbeResult.value)
-              : null;
-          const nativeInputHost =
-            nativeInputResult.status === "fulfilled"
-              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["nativeInputHost"]>>(nativeInputResult.value)
-              : null;
-          const ime =
-            imeResult.status === "fulfilled"
-              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["ime"]>>(imeResult.value)
-              : null;
-          const processReconnect =
-            processReconnectResult.status === "fulfilled"
-              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["processReconnect"]>>(
-                  processReconnectResult.value,
-                )
-              : null;
-          const muxLiveProcessPreservation =
-            muxLiveProcessPreservationResult.status === "fulfilled"
-              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["muxLiveProcessPreservation"]>>(
-                  muxLiveProcessPreservationResult.value,
-                )
-              : null;
-          const interactiveBoundary =
-            interactiveBoundaryResult.status === "fulfilled"
-              ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["interactiveBoundary"]>>(
-                  interactiveBoundaryResult.value,
-                )
-              : null;
-          const preflight =
-            nativeInputHost || ime || processReconnect || muxLiveProcessPreservation || interactiveBoundary
-              ? {
-                  nativeInputHost,
-                  ime,
-                  processReconnect,
-                  muxLiveProcessPreservation,
-                  interactiveBoundary,
-                }
-              : null;
-          setRightRailAiCliLaunchEvidence({ evidence, preflight });
-        })
+        .then(
+          ([
+            realProbeResult,
+            nativeInputResult,
+            imeResult,
+            processReconnectResult,
+            muxLiveProcessPreservationResult,
+            interactiveBoundaryResult,
+          ]) => {
+            if (!active) return;
+            const evidence =
+              realProbeResult.status === "fulfilled"
+                ? parseJsonArtifact<AiCliProbeEvidence>(realProbeResult.value)
+                : null;
+            const nativeInputHost =
+              nativeInputResult.status === "fulfilled"
+                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["nativeInputHost"]>>(
+                    nativeInputResult.value,
+                  )
+                : null;
+            const ime =
+              imeResult.status === "fulfilled"
+                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["ime"]>>(imeResult.value)
+                : null;
+            const processReconnect =
+              processReconnectResult.status === "fulfilled"
+                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["processReconnect"]>>(
+                    processReconnectResult.value,
+                  )
+                : null;
+            const muxLiveProcessPreservation =
+              muxLiveProcessPreservationResult.status === "fulfilled"
+                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["muxLiveProcessPreservation"]>>(
+                    muxLiveProcessPreservationResult.value,
+                  )
+                : null;
+            const interactiveBoundary =
+              interactiveBoundaryResult.status === "fulfilled"
+                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["interactiveBoundary"]>>(
+                    interactiveBoundaryResult.value,
+                  )
+                : null;
+            const preflight =
+              nativeInputHost || ime || processReconnect || muxLiveProcessPreservation || interactiveBoundary
+                ? {
+                    nativeInputHost,
+                    ime,
+                    processReconnect,
+                    muxLiveProcessPreservation,
+                    interactiveBoundary,
+                  }
+                : null;
+            setRightRailAiCliLaunchEvidence({ evidence, preflight });
+          },
+        )
         .catch((err) => {
           if (!active) return;
           setRightRailAiCliLaunchEvidence({ evidence: null, preflight: null });
@@ -3441,40 +1469,6 @@ export function App() {
       rightRailEdgeFeedbackResetNoticeTimerRef.current = null;
     }, 5_000);
   }, [projectPath]);
-  useEffect(() => {
-    let active = true;
-    if (!projectPath || !isTauriRuntime()) {
-      setWorkflowStatuses([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) => invoke<DecisionWorkflowStatus[]>("list_running_workflows", { projectPath }))
-        .then((statuses) => {
-          if (active) setWorkflowStatuses(statuses);
-        })
-        .catch((err) => {
-          if (!active) return;
-          reportInvokeFailure({
-            source: "app",
-            operation: "list_running_workflows",
-            err,
-            severity: "warning",
-          });
-        });
-    };
-
-    refresh();
-    const interval = window.setInterval(refresh, 30_000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [projectPath]);
-
   useEffect(() => {
     if (!projectPath) return;
     setWorkspaceThreadRunState(projectPath, activeTabId, {
@@ -3750,15 +1744,14 @@ export function App() {
       }),
     [rightRailActiveSessionId, rightRailGraph, selectedOperationalPaneTarget?.paneId],
   );
-  const decisionInbox = useMemo(
-    () =>
-      buildDecisionInbox({
-        sessions: rightRailSessions,
-        auditEvents: scopedOperationalAuditEvents,
-        workflows: workflowStatuses,
-      }),
-    [rightRailSessions, scopedOperationalAuditEvents, workflowStatuses],
-  );
+  const { decisionInbox, handleDecideDecision, workflowStatuses } = useDecisionInbox({
+    projectPath,
+    refreshAgentFleet,
+    rightRailSessions,
+    rightRailUsesFixtures,
+    scopedOperationalAuditEvents,
+    showRightRailRouteConfirmation,
+  });
   const activeAgent = sessions.find((s) => s.id === activeSessionId);
   const headerStatus = activeAgent
     ? activeAgent.status === "thinking" || activeAgent.status === "generating"
@@ -4215,46 +2208,6 @@ export function App() {
       handleSelectSession(sessionId);
     },
     [fleetSessions, handleSelectSession, interactiveSessionId, selectInteractiveSession, rightRailUsesFixtures],
-  );
-
-  // Resolve a waiting interactive agent gate from the Decision Inbox. The safety
-  // contract lives in WHAT gets surfaced as resolvable, not in the backend: only
-  // a confirmed Claude selectable MENU carries a captured prompt + ptyId, so the
-  // backend `resolve_interactive_approval` always writes the MENU keystroke
-  // through the P0-4 gate (approve = Enter on the highlighted default, deny =
-  // Esc) and audits it. There is no y/n path — a y/n prompt is deliberately
-  // never surfaced as resolvable (it would need a different key). We do NOT clear
-  // the item: it leaves the inbox when the agent re-emits its run status.
-  const handleDecideDecision = useCallback(
-    async (item: HumanDecisionItem, decision: "approve" | "deny") => {
-      if (rightRailUsesFixtures) {
-        showRightRailRouteConfirmation({
-          widget: "decision-inbox",
-          title: decision === "approve" ? "Approval preview" : "Denial preview",
-          detail: "Fixture session — no live agent to signal.",
-        });
-        return;
-      }
-      const ptyId = item.ptyId;
-      if (!ptyId) {
-        toast.error("No live agent pane", "This decision has no addressable agent terminal.");
-        return;
-      }
-      try {
-        await tauriInvoke("resolve_interactive_approval", { terminalId: ptyId, decision });
-        showRightRailRouteConfirmation({
-          widget: "decision-inbox",
-          title: decision === "approve" ? "Approval sent" : "Denial sent",
-          detail: item.title,
-        });
-      } catch (err) {
-        toast.error("Decision delivery failed", String(err));
-        // Re-throw so the inbox row re-enables its buttons for a retry instead
-        // of latching on a delivery that never reached the agent.
-        throw err;
-      }
-    },
-    [rightRailUsesFixtures, showRightRailRouteConfirmation],
   );
 
   const handleRightRailAction = useCallback(
@@ -4732,9 +2685,7 @@ export function App() {
   // `waiting` (see agentFleet.agentRunStatusToLegacyStatus). Mirrors the
   // attentionCount predicate in workstationSummary.buildWorkstationSummary so the
   // rail and the workstation pulse agree on what "needs attention" means.
-  const attentionAgentCount = rightRailSessions.filter(
-    (s) => s.status === "waiting" || s.status === "error",
-  ).length;
+  const attentionAgentCount = rightRailSessions.filter((s) => s.status === "waiting" || s.status === "error").length;
   const rightRailModeBadges: Record<RightRailMode, number> = {
     command: decisionInbox.pendingCount > 0 ? decisionInbox.pendingCount : liveAgentCount,
     review: rightRailAllChangedFiles.length,
@@ -5045,108 +2996,21 @@ export function App() {
           .join(" "),
       }
     : null;
-  const handleStartRightRailOrchestra = useCallback(async () => {
-    if (!projectPath) {
-      toast.error("No workspace", "Open a project before dispatching an agent team.");
-      return;
-    }
-    const defaultTask =
-      rightRailPrimaryAction?.nextStep ??
-      (rightRailAllChangedFiles.length > 0
-        ? `Finish and review ${rightRailAllChangedFiles.length} changed file${
-            rightRailAllChangedFiles.length === 1 ? "" : "s"
-          } in ${projectName}.`
-        : `Plan and implement the next parallel development task for ${projectName}.`);
-    const changedFiles = rightRailAllChangedFiles.map((file) => file.path);
-    // Fetch the SAME backend-rendered ownership context the loop injects (SSOT) so the
-    // hand-launched roles are warned off the symbols other agents own. Browser-dev (no
-    // backend) simply skips the consult — the launch path itself requires Tauri. A real
-    // Tauri/backend FAILURE is different: it must NOT be collapsed into "0 claims"
-    // (= looks parallel-safe). Track it separately so the dialog warns safety is UNKNOWN.
-    let ownershipContext: OwnershipPromptSection | undefined;
-    let ownershipUnavailable = false;
-    if (isTauriRuntime()) {
-      try {
-        ownershipContext = await tauriInvoke<OwnershipPromptSection>("symbol_ownership_prompt_section", {
-          files: changedFiles,
-          forAgent: null,
-        });
-      } catch (error) {
-        ownershipContext = undefined;
-        ownershipUnavailable = true;
-        console.error("[Orchestra] symbol_ownership_prompt_section failed", error);
-      }
-    }
-    const result = await showOrchestra({
-      defaultTask,
-      defaultRoles: ["implementer", "tester", "reviewer"],
-      activeClaimCount: ownershipContext?.claimCount ?? 0,
-      ownershipUnavailable,
-    });
-    if (!result || result.roles.length === 0) return;
-    const prompts = buildOrchestraPrompts({
-      task: result.task,
-      roles: result.roles,
-      projectPath,
-      changedFiles,
-      pendingDecisionCount: decisionInbox.pendingCount,
-      existingSessionCount: sessions.length + interactiveSessions.length,
-      ownershipContext,
-    });
-    const routedPrompts = await routeOrchestraPrompts(
-      prompts,
-      (prompt) => tauriInvoke<OrchestraRoutingDecision>("route_agent", { prompt }),
-      isTauriRuntime(),
-    );
-    const launches = await launchOrchestraPrompts(routedPrompts, projectPath, handleStartInteractiveSession);
-    if (launches.length === 0) {
-      toast.error("Orchestra dispatch failed", "No agent session could be started.");
-      return;
-    }
-    // Mount each launched role as a live central pane (WU-VP-1) in one tiling
-    // pass, and remember role → pane so its lane card can focus it (DoD#6).
-    mountAgentPtyInPane(
-      launches.map((launch) => ({
-        terminalId: launch.terminalId,
-        model: launch.model,
-        backend: launch.backend === "sidecar" ? "sidecar" : "native",
-        durability: launch.backend === "sidecar" ? "tmux-durable" : "degraded",
-        spawnedAt: new Date().toISOString(),
-        ...(launch.roleId ? { roleId: launch.roleId } : {}),
-        ...(launch.branchName ? { branchName: launch.branchName } : {}),
-      })),
-      activeTabId,
-    );
-    setOrchestraRolePanes((prev) => {
-      const next = new Map(prev);
-      for (const launch of launches) next.set(launch.roleId, { terminalId: launch.terminalId, tabId: activeTabId });
-      return next;
-    });
-    // spawn_interactive_agent selects each spawned session, and the main tab's
-    // pane tree only renders while no interactive session is selected — so the
-    // last-spawned agent tab would hide the panes we just mounted. Clear the
-    // selection so the operator lands on the tiled role panes, not an agent tab.
-    selectInteractiveSession("");
-    setRightRailMode("command");
-    setRightRailFocusWidget("sessions");
-    toast.success(
-      "Orchestra dispatched",
-      `${launches.length} agent${launches.length === 1 ? "" : "s"} launched in role-scoped panes.`,
-    );
-  }, [
+  const { handleStartRightRailOrchestra, orchestraRolePanes } = useOrchestraDispatch({
     activeTabId,
-    decisionInbox.pendingCount,
+    decisionInboxPendingCount: decisionInbox.pendingCount,
     handleStartInteractiveSession,
-    interactiveSessions.length,
+    interactiveSessionCount: interactiveSessions.length,
     mountAgentPtyInPane,
     projectName,
     projectPath,
     rightRailAllChangedFiles,
-    rightRailAllChangedFiles.length,
-    rightRailPrimaryAction?.nextStep,
+    rightRailPrimaryActionNextStep: rightRailPrimaryAction?.nextStep,
     selectInteractiveSession,
-    sessions.length,
-  ]);
+    sessionsCount: sessions.length,
+    setRightRailFocusWidget,
+    setRightRailMode,
+  });
   const renderRightRailDestinationPrompt = (widget: string) =>
     rightRailDestinationPrompt?.widget === widget ? (
       <RightRailDestinationPromptCard prompt={rightRailDestinationPrompt} />
@@ -5305,1937 +3169,1930 @@ export function App() {
   return (
     <TooltipProvider>
       <ToastProvider>
-          <div className="app-container" data-density={workspaceProfile.visualDensity}>
-            <UpdateBanner />
-            <ProjectHeaderBar
-              projectName={projectName}
-              branch={branch}
-              changedCount={changedFiles.length}
-              status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
-              activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
-              onOpenSettings={() => setSettingsVisible(true)}
-              onRefresh={handleRefresh}
-              menus={menus}
-              sidebarCollapsed={sidebarCollapsed}
-              onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-            />
+        <div className="app-container" data-density={workspaceProfile.visualDensity}>
+          <UpdateBanner />
+          <ProjectHeaderBar
+            projectName={projectName}
+            branch={branch}
+            changedCount={changedFiles.length}
+            status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
+            activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
+            onOpenSettings={() => setSettingsVisible(true)}
+            onRefresh={handleRefresh}
+            menus={menus}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+          />
 
-            <main className="app-main">
-              <nav className="mode-rail" aria-label={`${PRODUCT_NAME} mode rail`} data-active-mode={productMode}>
-                <div className="mode-rail-brand" aria-hidden="true">
-                  {PRODUCT_NAME[0]}
-                </div>
-                <div className="mode-rail-list">
-                  {PRODUCT_MODE_RAIL.map((mode) => {
+          <main className="app-main">
+            <nav className="mode-rail" aria-label={`${PRODUCT_NAME} mode rail`} data-active-mode={productMode}>
+              <div className="mode-rail-brand" aria-hidden="true">
+                {PRODUCT_NAME[0]}
+              </div>
+              <div className="mode-rail-list">
+                {PRODUCT_MODE_RAIL.map((mode) => {
+                  const Icon = mode.icon;
+                  const active = productMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      className="mode-rail-button"
+                      data-active={active ? "true" : "false"}
+                      data-product-mode={mode.id}
+                      aria-pressed={active}
+                      aria-label={`${mode.label}. ${mode.description} ${mode.shortcut}`}
+                      title={`${mode.shortcut} - ${mode.description}`}
+                      onClick={() => handleProductModeSelect(mode.id)}
+                    >
+                      <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
+                      <span className="mode-rail-label">{mode.label}</span>
+                      <span className="mode-rail-shortcut">{mode.shortcut.replace("Alt+", "")}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+            <nav
+              className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
+              aria-label="Project sidebar"
+              data-collapsed={sidebarCollapsed}
+              style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
+            >
+              <CollapsibleSection storageKey="files" title="Files" defaultOpen>
+                <ErrorBoundary>
+                  <FileTree
+                    key={fileTreeKey}
+                    rootPath={projectPath}
+                    onFileSelect={handleFileSelect}
+                    onOpenDiff={handleOpenDiff}
+                    changedFiles={changedFiles}
+                  />
+                </ErrorBoundary>
+              </CollapsibleSection>
+              <CollapsibleSection storageKey="tasks" title="Tasks" defaultOpen={false}>
+                <ErrorBoundary>
+                  <Suspense fallback={null}>
+                    <KanbanBoard
+                      onStartAgent={handleStartAgent}
+                      projectPath={projectPath}
+                      agentStatuses={agentStatuses}
+                      sessions={sessions}
+                      onActivateTask={(taskId) => {
+                        // Jump from a task card to its linked agent: headless
+                        // agents launched here are inspector session cards (not
+                        // PTY panes), so reveal the sessions inspector and select
+                        // the run by its `assignedAgentId` (the session id).
+                        const task = kanbanTasks.find((t) => t.id === taskId);
+                        if (!task?.assignedAgentId) return;
+                        // Don't switch the inspector mode for a session that
+                        // has already been pruned — that reads as a dead click.
+                        if (!sessions.some((s) => s.id === task.assignedAgentId)) {
+                          toast.info("Agent session has ended", "This task's agent run is no longer active.");
+                          return;
+                        }
+                        setRightRailMode("command");
+                        handleSelectRightRailSession(task.assignedAgentId);
+                      }}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              </CollapsibleSection>
+              <CollapsibleSection storageKey="source-control" title="Source Control" defaultOpen={false}>
+                <ErrorBoundary>
+                  <Suspense fallback={null}>
+                    <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+                  </Suspense>
+                </ErrorBoundary>
+              </CollapsibleSection>
+              {searchVisible && (
+                <Suspense fallback={null}>
+                  <ErrorBoundary>
+                    <SearchPanel
+                      visible
+                      rootPath={projectPath}
+                      onClose={() => setSearchVisible(false)}
+                      onResultClick={(file, line) => {
+                        handleFileSelect(file, { line });
+                      }}
+                    />
+                  </ErrorBoundary>
+                </Suspense>
+              )}
+              <hr
+                className="left-panel-resize-handle"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+                aria-valuemin={200}
+                aria-valuemax={480}
+                aria-valuenow={sidebarWidth}
+                tabIndex={0}
+                onPointerDown={(e) => {
+                  // Drag-to-resize. We capture the pointer on the handle so
+                  // the move events keep coming even if the cursor leaves
+                  // the handle's bounds (large drags).
+                  const startX = e.clientX;
+                  const startWidth = sidebarWidth;
+                  const handleEl = e.currentTarget;
+                  handleEl.setPointerCapture(e.pointerId);
+                  document.body.style.cursor = "col-resize";
+                  const onMove = (ev: PointerEvent) => {
+                    setSidebarWidth(startWidth + (ev.clientX - startX));
+                  };
+                  const onUp = () => {
+                    document.body.style.cursor = "";
+                    handleEl.releasePointerCapture(e.pointerId);
+                    handleEl.removeEventListener("pointermove", onMove);
+                    handleEl.removeEventListener("pointerup", onUp);
+                  };
+                  handleEl.addEventListener("pointermove", onMove);
+                  handleEl.addEventListener("pointerup", onUp);
+                }}
+                onKeyDown={(e) => {
+                  // Keyboard accessibility — Arrow keys nudge the
+                  // sidebar by 16 px, Shift+Arrow by 64 px.
+                  const step = e.shiftKey ? 64 : 16;
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    setSidebarWidth(sidebarWidth - step);
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    setSidebarWidth(sidebarWidth + step);
+                  }
+                }}
+              />
+            </nav>
+
+            <section className="center-panel" aria-label="Terminal and editor">
+              {editorArea ? (
+                <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={terminalSurface} />
+              ) : (
+                terminalSurface
+              )}
+            </section>
+
+            <aside
+              className="right-panel"
+              aria-label="Contextual inspector"
+              /* `flex-basis` (not `width`) is what flex layout reads as
+               * the preferred size. Setting only `width` left the
+               * computed width at the CSS default (320 px) on Chromium
+               * even with `flex-shrink: 0`, because `flex-basis: auto`
+               * resolved against the *original* declared width rather
+               * than re-resolving on inline-style change. Driving
+               * basis directly is the canonical fix and matches how
+               * VS Code / Linear size their resizable side panels. */
+              style={{ flexBasis: `${rightPanelWidth}px`, width: `${rightPanelWidth}px` }}
+            >
+              <hr
+                className="right-panel-resize-handle"
+                aria-orientation="vertical"
+                aria-label="Resize agent inspector panel"
+                aria-valuemin={260}
+                aria-valuemax={480}
+                aria-valuenow={rightPanelWidth}
+                tabIndex={0}
+                onPointerDown={(e) => {
+                  // Mirror of the left-panel handle. Handle lives on the
+                  // panel's LEFT edge, so dragging *left* (negative dx)
+                  // makes the panel WIDER — invert the sign vs. the
+                  // sidebar handler.
+                  const startX = e.clientX;
+                  const startWidth = rightPanelWidth;
+                  const handleEl = e.currentTarget;
+                  handleEl.setPointerCapture(e.pointerId);
+                  document.body.style.cursor = "col-resize";
+                  const onMove = (ev: PointerEvent) => {
+                    setRightPanelWidth(startWidth - (ev.clientX - startX));
+                  };
+                  const onUp = () => {
+                    document.body.style.cursor = "";
+                    handleEl.releasePointerCapture(e.pointerId);
+                    handleEl.removeEventListener("pointermove", onMove);
+                    handleEl.removeEventListener("pointerup", onUp);
+                  };
+                  handleEl.addEventListener("pointermove", onMove);
+                  handleEl.addEventListener("pointerup", onUp);
+                }}
+                onKeyDown={(e) => {
+                  // Inverted vs. left-panel: handle on LEFT edge, so
+                  // ArrowLeft *grows* the panel toward the centre and
+                  // ArrowRight shrinks it. Shift accelerates 16→64 px.
+                  const step = e.shiftKey ? 64 : 16;
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    setRightPanelWidth(rightPanelWidth + step);
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    setRightPanelWidth(rightPanelWidth - step);
+                  }
+                }}
+              />
+              <div className="right-panel-content">
+                <div className="right-panel-mode-switch" role="tablist" aria-label="Inspector mode">
+                  {RIGHT_RAIL_MODES.map((mode) => {
                     const Icon = mode.icon;
-                    const active = productMode === mode.id;
+                    const badge = rightRailModeBadges[mode.id];
                     return (
                       <button
                         key={mode.id}
                         type="button"
-                        className="mode-rail-button"
-                        data-active={active ? "true" : "false"}
-                        data-product-mode={mode.id}
-                        aria-pressed={active}
-                        aria-label={`${mode.label}. ${mode.description} ${mode.shortcut}`}
-                        title={`${mode.shortcut} - ${mode.description}`}
-                        onClick={() => handleProductModeSelect(mode.id)}
+                        role="tab"
+                        id={`right-rail-tab-${mode.id}`}
+                        className="right-panel-mode-tab"
+                        data-active={rightRailMode === mode.id}
+                        data-has-badge={badge > 0 ? "true" : undefined}
+                        data-right-rail-mode={mode.id}
+                        aria-selected={rightRailMode === mode.id}
+                        aria-controls="right-rail-panel"
+                        aria-label={`${mode.label}: ${mode.description}`}
+                        tabIndex={rightRailMode === mode.id ? 0 : -1}
+                        title={`${mode.title}. ${mode.description}`}
+                        onClick={() => setRightRailMode(mode.id)}
+                        onKeyDown={handleRightRailModeKeyDown}
                       >
-                        <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
-                        <span className="mode-rail-label">{mode.label}</span>
-                        <span className="mode-rail-shortcut">{mode.shortcut.replace("Alt+", "")}</span>
+                        <Icon size={12} strokeWidth={1.8} aria-hidden="true" />
+                        <span>{mode.label}</span>
+                        {badge > 0 && <span className="right-panel-mode-badge">{badge}</span>}
                       </button>
                     );
                   })}
                 </div>
-              </nav>
-              <nav
-                className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
-                aria-label="Project sidebar"
-                data-collapsed={sidebarCollapsed}
-                style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
-              >
-                <CollapsibleSection storageKey="files" title="Files" defaultOpen>
-                  <ErrorBoundary>
-                    <FileTree
-                      key={fileTreeKey}
-                      rootPath={projectPath}
-                      onFileSelect={handleFileSelect}
-                      onOpenDiff={handleOpenDiff}
-                      changedFiles={changedFiles}
-                    />
-                  </ErrorBoundary>
-                </CollapsibleSection>
-                <CollapsibleSection storageKey="tasks" title="Tasks" defaultOpen={false}>
-                  <ErrorBoundary>
-                    <Suspense fallback={null}>
-                      <KanbanBoard
-                        onStartAgent={handleStartAgent}
-                        projectPath={projectPath}
-                        agentStatuses={agentStatuses}
-                        sessions={sessions}
-                        onActivateTask={(taskId) => {
-                          // Jump from a task card to its linked agent: headless
-                          // agents launched here are inspector session cards (not
-                          // PTY panes), so reveal the sessions inspector and select
-                          // the run by its `assignedAgentId` (the session id).
-                          const task = kanbanTasks.find((t) => t.id === taskId);
-                          if (!task?.assignedAgentId) return;
-                          // Don't switch the inspector mode for a session that
-                          // has already been pruned — that reads as a dead click.
-                          if (!sessions.some((s) => s.id === task.assignedAgentId)) {
-                            toast.info("Agent session has ended", "This task's agent run is no longer active.");
-                            return;
-                          }
-                          setRightRailMode("command");
-                          handleSelectRightRailSession(task.assignedAgentId);
-                        }}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                </CollapsibleSection>
-                <CollapsibleSection storageKey="source-control" title="Source Control" defaultOpen={false}>
-                  <ErrorBoundary>
-                    <Suspense fallback={null}>
-                      <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
-                    </Suspense>
-                  </ErrorBoundary>
-                </CollapsibleSection>
-                {searchVisible && (
-                  <Suspense fallback={null}>
-                    <ErrorBoundary>
-                      <SearchPanel
-                        visible
-                        rootPath={projectPath}
-                        onClose={() => setSearchVisible(false)}
-                        onResultClick={(file, line) => {
-                          handleFileSelect(file, { line });
-                        }}
-                      />
-                    </ErrorBoundary>
-                  </Suspense>
-                )}
-                <hr
-                  className="left-panel-resize-handle"
-                  aria-orientation="vertical"
-                  aria-label="Resize sidebar"
-                  aria-valuemin={200}
-                  aria-valuemax={480}
-                  aria-valuenow={sidebarWidth}
-                  tabIndex={0}
-                  onPointerDown={(e) => {
-                    // Drag-to-resize. We capture the pointer on the handle so
-                    // the move events keep coming even if the cursor leaves
-                    // the handle's bounds (large drags).
-                    const startX = e.clientX;
-                    const startWidth = sidebarWidth;
-                    const handleEl = e.currentTarget;
-                    handleEl.setPointerCapture(e.pointerId);
-                    document.body.style.cursor = "col-resize";
-                    const onMove = (ev: PointerEvent) => {
-                      setSidebarWidth(startWidth + (ev.clientX - startX));
-                    };
-                    const onUp = () => {
-                      document.body.style.cursor = "";
-                      handleEl.releasePointerCapture(e.pointerId);
-                      handleEl.removeEventListener("pointermove", onMove);
-                      handleEl.removeEventListener("pointerup", onUp);
-                    };
-                    handleEl.addEventListener("pointermove", onMove);
-                    handleEl.addEventListener("pointerup", onUp);
-                  }}
-                  onKeyDown={(e) => {
-                    // Keyboard accessibility — Arrow keys nudge the
-                    // sidebar by 16 px, Shift+Arrow by 64 px.
-                    const step = e.shiftKey ? 64 : 16;
-                    if (e.key === "ArrowLeft") {
-                      e.preventDefault();
-                      setSidebarWidth(sidebarWidth - step);
-                    } else if (e.key === "ArrowRight") {
-                      e.preventDefault();
-                      setSidebarWidth(sidebarWidth + step);
-                    }
-                  }}
-                />
-              </nav>
+                <div id="right-rail-purpose" className={appStyles.rightRailPurpose}>
+                  <span className={appStyles.rightRailPurposeKicker}>Orchestra Command</span>
+                  <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
+                </div>
 
-              <section className="center-panel" aria-label="Terminal and editor">
-                {editorArea ? (
-                  <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={terminalSurface} />
-                ) : (
-                  terminalSurface
-                )}
-              </section>
-
-              <aside
-                className="right-panel"
-                aria-label="Contextual inspector"
-                /* `flex-basis` (not `width`) is what flex layout reads as
-                 * the preferred size. Setting only `width` left the
-                 * computed width at the CSS default (320 px) on Chromium
-                 * even with `flex-shrink: 0`, because `flex-basis: auto`
-                 * resolved against the *original* declared width rather
-                 * than re-resolving on inline-style change. Driving
-                 * basis directly is the canonical fix and matches how
-                 * VS Code / Linear size their resizable side panels. */
-                style={{ flexBasis: `${rightPanelWidth}px`, width: `${rightPanelWidth}px` }}
-              >
-                <hr
-                  className="right-panel-resize-handle"
-                  aria-orientation="vertical"
-                  aria-label="Resize agent inspector panel"
-                  aria-valuemin={260}
-                  aria-valuemax={480}
-                  aria-valuenow={rightPanelWidth}
-                  tabIndex={0}
-                  onPointerDown={(e) => {
-                    // Mirror of the left-panel handle. Handle lives on the
-                    // panel's LEFT edge, so dragging *left* (negative dx)
-                    // makes the panel WIDER — invert the sign vs. the
-                    // sidebar handler.
-                    const startX = e.clientX;
-                    const startWidth = rightPanelWidth;
-                    const handleEl = e.currentTarget;
-                    handleEl.setPointerCapture(e.pointerId);
-                    document.body.style.cursor = "col-resize";
-                    const onMove = (ev: PointerEvent) => {
-                      setRightPanelWidth(startWidth - (ev.clientX - startX));
-                    };
-                    const onUp = () => {
-                      document.body.style.cursor = "";
-                      handleEl.releasePointerCapture(e.pointerId);
-                      handleEl.removeEventListener("pointermove", onMove);
-                      handleEl.removeEventListener("pointerup", onUp);
-                    };
-                    handleEl.addEventListener("pointermove", onMove);
-                    handleEl.addEventListener("pointerup", onUp);
-                  }}
-                  onKeyDown={(e) => {
-                    // Inverted vs. left-panel: handle on LEFT edge, so
-                    // ArrowLeft *grows* the panel toward the centre and
-                    // ArrowRight shrinks it. Shift accelerates 16→64 px.
-                    const step = e.shiftKey ? 64 : 16;
-                    if (e.key === "ArrowLeft") {
-                      e.preventDefault();
-                      setRightPanelWidth(rightPanelWidth + step);
-                    } else if (e.key === "ArrowRight") {
-                      e.preventDefault();
-                      setRightPanelWidth(rightPanelWidth - step);
-                    }
-                  }}
-                />
-                <div className="right-panel-content">
-                  <div className="right-panel-mode-switch" role="tablist" aria-label="Inspector mode">
-                    {RIGHT_RAIL_MODES.map((mode) => {
-                      const Icon = mode.icon;
-                      const badge = rightRailModeBadges[mode.id];
-                      return (
-                        <button
-                          key={mode.id}
-                          type="button"
-                          role="tab"
-                          id={`right-rail-tab-${mode.id}`}
-                          className="right-panel-mode-tab"
-                          data-active={rightRailMode === mode.id}
-                          data-has-badge={badge > 0 ? "true" : undefined}
-                          data-right-rail-mode={mode.id}
-                          aria-selected={rightRailMode === mode.id}
-                          aria-controls="right-rail-panel"
-                          aria-label={`${mode.label}: ${mode.description}`}
-                          tabIndex={rightRailMode === mode.id ? 0 : -1}
-                          title={`${mode.title}. ${mode.description}`}
-                          onClick={() => setRightRailMode(mode.id)}
-                          onKeyDown={handleRightRailModeKeyDown}
-                        >
-                          <Icon size={12} strokeWidth={1.8} aria-hidden="true" />
-                          <span>{mode.label}</span>
-                          {badge > 0 && <span className="right-panel-mode-badge">{badge}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div id="right-rail-purpose" className={appStyles.rightRailPurpose}>
-                    <span className={appStyles.rightRailPurposeKicker}>Orchestra Command</span>
-                    <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
-                  </div>
-
-                  <details className="right-panel-advanced-drawer">
-                    <summary>
-                      <span>Mode target</span>
-                      <small>{activeProductMode.label}</small>
-                    </summary>
-                    <section
-                      className="right-panel-inspector-hero"
-                      data-product-mode={productMode}
-                      data-proof-state={rightRailInspectorProofState}
-                      aria-label={`${activeProductMode.label} inspector summary`}
-                    >
-                      <div className="right-panel-inspector-hero-head">
-                        <span className="right-panel-inspector-kicker">Mode</span>
-                        <strong>{activeProductMode.label}</strong>
-                        <span>{activeProductMode.shortcut}</span>
-                      </div>
-                      <p className="right-panel-inspector-description">{activeProductMode.description}</p>
-                      <dl className="right-panel-inspector-grid" aria-label="Selected mode target and proof">
-                        <div data-kind="target">
-                          <dt>Target</dt>
-                          <dd>{activeProductInspector.target}</dd>
-                        </div>
-                        <div data-kind="owner">
-                          <dt>Owner</dt>
-                          <dd>{activeProductInspector.owner}</dd>
-                        </div>
-                        <div data-kind="action">
-                          <dt>Action</dt>
-                          <dd>{rightRailInspectorPrimaryAction}</dd>
-                        </div>
-                        <div data-kind="proof">
-                          <dt>Proof</dt>
-                          <dd>{rightRailInspectorProof}</dd>
-                        </div>
-                      </dl>
-                      <button
-                        type="button"
-                        className="right-panel-inspector-open"
-                        data-target={rightRailInspectorTarget}
-                        onClick={() => handleProductModeSelect(productMode)}
-                        aria-label={`Open ${activeProductMode.label} target ${rightRailInspectorTarget}`}
-                        title={`${activeProductMode.label}: ${rightRailInspectorTarget}`}
-                      >
-                        <span>Open target</span>
-                        <small>{rightRailInspectorTarget}</small>
-                      </button>
-                    </section>
-                  </details>
-
+                <details className="right-panel-advanced-drawer">
+                  <summary>
+                    <span>Mode target</span>
+                    <small>{activeProductMode.label}</small>
+                  </summary>
                   <section
-                    className="right-panel-run-loop right-panel-orchestra-command"
-                    data-phase={rightRailRunLoopPhase}
-                    data-mode={rightRailMode}
-                    data-action-id={rightRailPrimaryAction?.id ?? "none"}
-                    data-action-mode={rightRailPrimaryAction?.mode ?? "none"}
-                    data-operation={rightRailPrimaryAction?.execution.operation ?? "none"}
-                    data-target={rightRailRunLoopTarget}
-                    data-orchestra-ready={projectPath ? "true" : "false"}
-                    aria-label={`Orchestra Command: ${rightRailOrchestraHeadline}`}
+                    className="right-panel-inspector-hero"
+                    data-product-mode={productMode}
+                    data-proof-state={rightRailInspectorProofState}
+                    aria-label={`${activeProductMode.label} inspector summary`}
                   >
-                    <div className="right-panel-run-loop-main">
-                      <span className="right-panel-run-loop-kicker">Orchestra Command</span>
-                      <strong>{rightRailOrchestraHeadline}</strong>
-                      <span>{rightRailOrchestraDetail}</span>
+                    <div className="right-panel-inspector-hero-head">
+                      <span className="right-panel-inspector-kicker">Mode</span>
+                      <strong>{activeProductMode.label}</strong>
+                      <span>{activeProductMode.shortcut}</span>
                     </div>
-                    <ul className="right-panel-orchestra-lanes" aria-label="Role lanes">
-                      {rightRailOrchestraLanes.map((lane) => {
-                        const pane = orchestraRolePanes.get(lane.id);
-                        const focusable = Boolean(pane);
-                        return (
-                          // The lane item doubles as a focus shortcut to its agent pane; a
-                          // nested button would break the flex lane layout. Interactive
-                          // props are only attached when a pane exists for the role.
-                          <li
-                            key={lane.id}
-                            data-role={lane.id}
-                            data-state={lane.state}
-                            data-focusable={focusable ? "" : undefined}
-                            style={{ "--lane-color": lane.color } as React.CSSProperties}
-                            title={
-                              focusable
-                                ? `Focus ${lane.label} agent pane`
-                                : `${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`
-                            }
-                            role={focusable ? "button" : undefined}
-                            tabIndex={focusable ? 0 : undefined}
-                            aria-label={focusable ? `Focus ${lane.label} agent pane` : undefined}
-                            onClick={pane ? () => void handlePaneSwitch(pane.tabId, pane.terminalId) : undefined}
-                            onKeyDown={
-                              pane
-                                ? (e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      void handlePaneSwitch(pane.tabId, pane.terminalId);
-                                    }
-                                  }
-                                : undefined
-                            }
-                          >
-                            <span>{lane.icon}</span>
-                            <strong>{lane.label}</strong>
-                            <small>
-                              {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
-                            </small>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <div className="right-panel-orchestra-actions" role="toolbar" aria-label="Orchestra actions">
-                      <button
-                        type="button"
-                        className="right-panel-orchestra-primary"
-                        onClick={() => void handleStartRightRailOrchestra()}
-                        disabled={!projectPath}
-                        aria-label="Dispatch an Orchestra agent team"
-                        title="Launch role-scoped agents in parallel"
-                      >
-                        <Users size={12} strokeWidth={1.9} aria-hidden="true" />
-                        <span>Dispatch team</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="right-panel-orchestra-secondary"
-                        onClick={() => {
-                          setRightRailMode("command");
-                          setRightRailFocusWidget("sessions");
-                        }}
-                        aria-label="Open agent sessions"
-                        title="Open the detailed Agent Inspector"
-                      >
-                        Agents
-                      </button>
-                      <button
-                        type="button"
-                        className="right-panel-orchestra-secondary"
-                        onClick={() => {
-                          setRightRailMode("command");
-                          setRightRailFocusWidget("toolkit");
-                        }}
-                        aria-label="Open Git, VS Code, and worktree toolkit"
-                        title="Open Toolkit"
-                      >
-                        Toolkit
-                      </button>
-                    </div>
-                    <details className="right-panel-run-loop-disclosure" title={rightRailRunLoopDetail}>
-                      <summary>
-                        <span>Next route</span>
-                        <small>{rightRailRunLoopTarget}</small>
-                      </summary>
-                      <dl className="right-panel-run-loop-trace" aria-label="Primary action trace">
-                        {rightRailRunLoopTraceItems.map((item) => (
-                          <div key={item.id} data-kind={item.id}>
-                            <dt>{item.label}</dt>
-                            <dd>{item.detail}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </details>
+                    <p className="right-panel-inspector-description">{activeProductMode.description}</p>
+                    <dl className="right-panel-inspector-grid" aria-label="Selected mode target and proof">
+                      <div data-kind="target">
+                        <dt>Target</dt>
+                        <dd>{activeProductInspector.target}</dd>
+                      </div>
+                      <div data-kind="owner">
+                        <dt>Owner</dt>
+                        <dd>{activeProductInspector.owner}</dd>
+                      </div>
+                      <div data-kind="action">
+                        <dt>Action</dt>
+                        <dd>{rightRailInspectorPrimaryAction}</dd>
+                      </div>
+                      <div data-kind="proof">
+                        <dt>Proof</dt>
+                        <dd>{rightRailInspectorProof}</dd>
+                      </div>
+                    </dl>
                     <button
                       type="button"
-                      className="right-panel-run-loop-action"
-                      data-execution={rightRailPrimaryAction?.execution.status ?? "ready"}
-                      disabled={rightRailPrimaryAction?.execution.status === "blocked"}
-                      onClick={() =>
-                        rightRailPrimaryAction
-                          ? void handleRightRailAction(rightRailPrimaryAction)
-                          : setRightRailMode(activeRightRailMode.id)
-                      }
-                      aria-label={`Run loop action: ${
-                        rightRailPrimaryAction?.execution.label ?? activeRightRailMode.label
-                      }. Target ${rightRailRunLoopTarget}`}
-                      title={`${rightRailRunLoopEvidence}. Target: ${rightRailRunLoopTarget}`}
+                      className="right-panel-inspector-open"
+                      data-target={rightRailInspectorTarget}
+                      onClick={() => handleProductModeSelect(productMode)}
+                      aria-label={`Open ${activeProductMode.label} target ${rightRailInspectorTarget}`}
+                      title={`${activeProductMode.label}: ${rightRailInspectorTarget}`}
                     >
-                      <span>{rightRailPrimaryAction?.execution.label ?? activeRightRailMode.label}</span>
-                      <small>{rightRailRunLoopTarget}</small>
+                      <span>Open target</span>
+                      <small>{rightRailInspectorTarget}</small>
                     </button>
                   </section>
+                </details>
 
-                  {rightRailHasBlockingDecision && (
+                <section
+                  className="right-panel-run-loop right-panel-orchestra-command"
+                  data-phase={rightRailRunLoopPhase}
+                  data-mode={rightRailMode}
+                  data-action-id={rightRailPrimaryAction?.id ?? "none"}
+                  data-action-mode={rightRailPrimaryAction?.mode ?? "none"}
+                  data-operation={rightRailPrimaryAction?.execution.operation ?? "none"}
+                  data-target={rightRailRunLoopTarget}
+                  data-orchestra-ready={projectPath ? "true" : "false"}
+                  aria-label={`Orchestra Command: ${rightRailOrchestraHeadline}`}
+                >
+                  <div className="right-panel-run-loop-main">
+                    <span className="right-panel-run-loop-kicker">Orchestra Command</span>
+                    <strong>{rightRailOrchestraHeadline}</strong>
+                    <span>{rightRailOrchestraDetail}</span>
+                  </div>
+                  <ul className="right-panel-orchestra-lanes" aria-label="Role lanes">
+                    {rightRailOrchestraLanes.map((lane) => {
+                      const pane = orchestraRolePanes.get(lane.id);
+                      const focusable = Boolean(pane);
+                      return (
+                        // The lane item doubles as a focus shortcut to its agent pane; a
+                        // nested button would break the flex lane layout. Interactive
+                        // props are only attached when a pane exists for the role.
+                        <li
+                          key={lane.id}
+                          data-role={lane.id}
+                          data-state={lane.state}
+                          data-focusable={focusable ? "" : undefined}
+                          style={{ "--lane-color": lane.color } as React.CSSProperties}
+                          title={
+                            focusable
+                              ? `Focus ${lane.label} agent pane`
+                              : `${lane.label}: ${lane.live} live, ${lane.total} total, ${lane.changed} changed files`
+                          }
+                          role={focusable ? "button" : undefined}
+                          tabIndex={focusable ? 0 : undefined}
+                          aria-label={focusable ? `Focus ${lane.label} agent pane` : undefined}
+                          onClick={pane ? () => void handlePaneSwitch(pane.tabId, pane.terminalId) : undefined}
+                          onKeyDown={
+                            pane
+                              ? (e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    void handlePaneSwitch(pane.tabId, pane.terminalId);
+                                  }
+                                }
+                              : undefined
+                          }
+                        >
+                          <span>{lane.icon}</span>
+                          <strong>{lane.label}</strong>
+                          <small>
+                            {lane.live > 0 ? `${lane.live} live` : lane.total > 0 ? `${lane.total} ready` : "open"}
+                          </small>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="right-panel-orchestra-actions" role="toolbar" aria-label="Orchestra actions">
                     <button
                       type="button"
-                      className="right-panel-decision-focus"
-                      data-tone={rightRailDecisionFocus.tone}
-                      data-has-decision={rightRailHasBlockingDecision ? "true" : "false"}
-                      onClick={() => {
-                        setRightRailMode("command");
-                        setRightRailFocusWidget("decision-inbox");
-                      }}
-                      aria-label={`Decision focus: ${rightRailDecisionFocus.label}. ${rightRailDecisionFocus.detail}`}
-                      title={`${rightRailDecisionFocus.label}: ${rightRailDecisionFocus.detail}`}
+                      className="right-panel-orchestra-primary"
+                      onClick={() => void handleStartRightRailOrchestra()}
+                      disabled={!projectPath}
+                      aria-label="Dispatch an Orchestra agent team"
+                      title="Launch role-scoped agents in parallel"
                     >
-                      <span className="right-panel-decision-kicker">Decision</span>
-                      <span className="right-panel-decision-copy">
-                        <span className="right-panel-decision-label">{rightRailDecisionFocus.label}</span>
-                        <span className="right-panel-decision-detail">{rightRailDecisionFocus.detail}</span>
-                      </span>
-                      <span className="right-panel-decision-action">{rightRailDecisionFocus.actionLabel}</span>
+                      <Users size={12} strokeWidth={1.9} aria-hidden="true" />
+                      <span>Dispatch team</span>
                     </button>
-                  )}
-
-                  {rightRailTruthNotice && (
-                    <section
-                      className="right-panel-truth-notice"
-                      data-source="visual-qa"
-                      aria-label={`${rightRailTruthNotice.label}: ${rightRailTruthNotice.detail}`}
-                    >
-                      <span className="right-panel-truth-notice-kicker">Truth source</span>
-                      <strong>{rightRailTruthNotice.label}</strong>
-                      <span>{rightRailTruthNotice.detail}</span>
-                    </section>
-                  )}
-
-                  <section className="right-panel-essential-grid" aria-label="Command center essentials">
                     <button
                       type="button"
-                      className="right-panel-essential-card"
-                      data-tone={activeTerminalTarget.ready ? "good" : "review"}
-                      onClick={() => {
-                        setRightRailMode("command");
-                        setRightRailFocusWidget("toolkit");
-                      }}
-                      aria-label={`Toolkit status: ${rightRailToolkitSummary}. ${rightRailToolkitDetail}`}
-                      title={`Toolkit: ${rightRailToolkitDetail}`}
-                    >
-                      <span>Toolkit</span>
-                      <strong>{rightRailToolkitSummary}</strong>
-                      <small>{rightRailToolkitDetail}</small>
-                    </button>
-                    <button
-                      type="button"
-                      className="right-panel-essential-card"
-                      data-tone={liveAgentCount > 0 ? "running" : rightRailSessions.length > 0 ? "review" : "active"}
+                      className="right-panel-orchestra-secondary"
                       onClick={() => {
                         setRightRailMode("command");
                         setRightRailFocusWidget("sessions");
                       }}
-                      aria-label={`Agent lanes: ${rightRailAgentsSummary}. ${rightRailAgentsDetail}`}
-                      title={`Agents: ${rightRailAgentsDetail}`}
+                      aria-label="Open agent sessions"
+                      title="Open the detailed Agent Inspector"
                     >
-                      <span>Agents</span>
-                      <strong>{rightRailAgentsSummary}</strong>
-                      <small>{rightRailAgentsDetail}</small>
+                      Agents
                     </button>
                     <button
                       type="button"
-                      className="right-panel-essential-card"
-                      data-tone={rightRailAllChangedFiles.length > 0 ? "review" : "good"}
+                      className="right-panel-orchestra-secondary"
                       onClick={() => {
-                        setRightRailMode("review");
-                        setRightRailFocusWidget("review-queue");
+                        setRightRailMode("command");
+                        setRightRailFocusWidget("toolkit");
                       }}
-                      aria-label={`Review lane: ${rightRailReviewSummary}. ${rightRailReviewDetail}`}
-                      title={`Review: ${rightRailReviewDetail}`}
+                      aria-label="Open Git, VS Code, and worktree toolkit"
+                      title="Open Toolkit"
                     >
-                      <span>Review</span>
-                      <strong>{rightRailReviewSummary}</strong>
-                      <small>{rightRailReviewDetail}</small>
+                      Toolkit
                     </button>
-                  </section>
-
-                  <details className="right-panel-evidence-drawer">
+                  </div>
+                  <details className="right-panel-run-loop-disclosure" title={rightRailRunLoopDetail}>
                     <summary>
-                      <span>Evidence</span>
-                      <small>{rightRailEvidenceDrawerSummary}</small>
+                      <span>Next route</span>
+                      <small>{rightRailRunLoopTarget}</small>
                     </summary>
-                    <section
-                      className="right-panel-edge-score"
-                      data-tone={rightRailEdgeScore.tone}
-                      aria-label={`Command center edge score ${rightRailEdgeScore.score}`}
-                    >
-                      <div className="right-panel-edge-score-head">
-                        <span className="right-panel-edge-score-kicker">Edge score</span>
-                        <strong>{rightRailEdgeScore.score}</strong>
-                        <span>{rightRailEdgeScore.grade}</span>
-                      </div>
-                      <span className="right-panel-edge-score-label">{rightRailEdgeScore.label}</span>
-                      <span className="right-panel-edge-score-detail">{rightRailEdgeScore.detail}</span>
-                      <details className="right-panel-edge-score-breakdown">
-                        <summary>
-                          <span>Breakdown</span>
-                          <small>{rightRailEdgeScore.items.length} axes</small>
-                        </summary>
-                        <ul className="right-panel-edge-score-grid" aria-label="Command center score breakdown">
-                          {rightRailEdgeScore.items.map((item) => (
-                            <li key={item.id}>
-                              <button
-                                type="button"
-                                className="right-panel-edge-score-item"
-                                data-status={item.status}
-                                onClick={() => handleOpenRightRailEdgeScoreItem(item)}
-                                aria-label={`${item.label}: ${item.detail}. ${item.actionLabel}`}
-                                title={`${item.routeTitle}: ${item.routeDetail}`}
-                              >
-                                <strong>{item.label}</strong>
-                                <small>
-                                  {item.score}/{item.max}
-                                </small>
-                                <span className="right-panel-edge-score-action">{item.actionLabel}</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    </section>
+                    <dl className="right-panel-run-loop-trace" aria-label="Primary action trace">
+                      {rightRailRunLoopTraceItems.map((item) => (
+                        <div key={item.id} data-kind={item.id}>
+                          <dt>{item.label}</dt>
+                          <dd>{item.detail}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                  <button
+                    type="button"
+                    className="right-panel-run-loop-action"
+                    data-execution={rightRailPrimaryAction?.execution.status ?? "ready"}
+                    disabled={rightRailPrimaryAction?.execution.status === "blocked"}
+                    onClick={() =>
+                      rightRailPrimaryAction
+                        ? void handleRightRailAction(rightRailPrimaryAction)
+                        : setRightRailMode(activeRightRailMode.id)
+                    }
+                    aria-label={`Run loop action: ${
+                      rightRailPrimaryAction?.execution.label ?? activeRightRailMode.label
+                    }. Target ${rightRailRunLoopTarget}`}
+                    title={`${rightRailRunLoopEvidence}. Target: ${rightRailRunLoopTarget}`}
+                  >
+                    <span>{rightRailPrimaryAction?.execution.label ?? activeRightRailMode.label}</span>
+                    <small>{rightRailRunLoopTarget}</small>
+                  </button>
+                </section>
 
-                    <section
-                      className="right-panel-goal-track"
-                      data-status={rightRailGoalTrack.status}
-                      aria-label={`Final goal track: ${rightRailGoalTrack.label}`}
-                    >
-                      <div className="right-panel-goal-track-head">
-                        <span className="right-panel-goal-track-kicker">Final goal</span>
-                        <strong>{rightRailGoalTrack.percent}%</strong>
-                        <span>{rightRailGoalTrack.confidenceLabel}</span>
-                      </div>
-                      <div
-                        className="right-panel-goal-track-bar"
-                        role="progressbar"
-                        aria-label="Final goal progress"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={rightRailGoalTrack.percent}
-                      >
-                        <span style={{ width: `${rightRailGoalTrack.percent}%` }} />
-                      </div>
-                      <span
-                        className="right-panel-goal-track-source"
-                        data-status={rightRailGoalTrack.qualityEvidence.status}
-                        data-local-date={rightRailGoalTrack.qualityEvidence.localDate ?? ""}
-                        data-time-zone={rightRailGoalTrack.qualityEvidence.timeZone ?? ""}
-                        title={rightRailGoalTrack.qualityEvidence.detail}
-                      >
-                        <strong>{rightRailGoalTrack.qualityEvidence.label}</strong>
-                        <small>{rightRailGoalTrack.qualityEvidence.detail}</small>
-                      </span>
-                      {rightRailGoalTrack.residualRisk && (
-                        <div
-                          className="right-panel-goal-track-residual"
-                          data-state={rightRailGoalTrack.residualRisk.state}
-                          data-source={rightRailGoalTrack.residualRisk.source}
-                          data-implementation-fixable-count={rightRailGoalTrack.residualRisk.implementationFixableCount}
-                          data-policy-blocked-count={rightRailGoalTrack.residualRisk.policyBlockedCount}
-                          data-external-blocked-count={rightRailGoalTrack.residualRisk.externalBlockedCount ?? 0}
-                          title={`${rightRailGoalTrack.residualRisk.label}: ${rightRailGoalTrack.residualRisk.detail}`}
-                        >
-                          <strong>{rightRailGoalTrack.residualRisk.label}</strong>
-                          <small>{rightRailGoalTrack.residualRisk.detail}</small>
-                        </div>
-                      )}
-                      {rightRailGoalTrack.safeGate && (
-                        <div
-                          className="right-panel-goal-track-safe"
-                          data-status={rightRailGoalTrack.safeGate.status}
-                          data-source={rightRailGoalTrack.safeGate.source}
-                          data-proof-requirement-pass-count={rightRailGoalTrack.safeGate.proofRequirementPassCount}
-                          data-proof-requirement-count={rightRailGoalTrack.safeGate.proofRequirementCount}
-                          data-proof-artifact-pass-count={rightRailGoalTrack.safeGate.proofArtifactPassCount}
-                          data-proof-artifact-count={rightRailGoalTrack.safeGate.proofArtifactCount}
-                          data-consent-blocker-count={rightRailGoalTrack.safeGate.consentBlockerCount}
-                          data-non-consent-blocker-count={rightRailGoalTrack.safeGate.nonConsentBlockerCount}
-                          data-no-token-prompt-sent={rightRailGoalTrack.safeGate.noTokenPromptSent ? "true" : "false"}
-                          data-token-spending-prompt-executed={
-                            rightRailGoalTrack.safeGate.tokenSpendingPromptExecuted ? "true" : "false"
-                          }
-                          data-release-hygiene-clean={
-                            rightRailGoalTrack.safeGate.releaseHygieneClean ? "true" : "false"
-                          }
-                          data-supply-chain-audit-clean={
-                            rightRailGoalTrack.safeGate.supplyChainAuditClean ? "true" : "false"
-                          }
-                          data-terminal-chunked-osc-live-passed={
-                            rightRailGoalTrack.safeGate.terminalChunkedOscLivePassed ? "true" : "false"
-                          }
-                          data-native-terminal-input-host-passed={
-                            rightRailGoalTrack.safeGate.nativeTerminalInputHostPassed ? "true" : "false"
-                          }
-                          data-native-hwnd-paste-live-passed={
-                            rightRailGoalTrack.safeGate.nativeHwndPasteLivePassed ? "true" : "false"
-                          }
-                          data-semantic-freshness={rightRailGoalTrack.safeGate.semanticFreshness}
-                          data-cycle-boundary={rightRailGoalTrack.safeGate.cycleBoundary}
-                          data-local-date={rightRailGoalTrack.safeGate.localDate ?? ""}
-                          data-time-zone={rightRailGoalTrack.safeGate.timeZone ?? ""}
-                          title={`${rightRailGoalTrack.safeGate.label}: ${rightRailGoalTrack.safeGate.nextRequiredAction}`}
-                        >
-                          <strong>{rightRailGoalTrack.safeGate.label}</strong>
-                          <small>
-                            {rightRailGoalTrack.safeGate.detail}
-                            {rightRailGoalTrack.safeGate.localDate && rightRailGoalTrack.safeGate.timeZone
-                              ? ` · ${rightRailGoalTrack.safeGate.localDate} ${rightRailGoalTrack.safeGate.timeZone}`
-                              : ""}
-                          </small>
-                        </div>
-                      )}
-                      {rightRailGoalTrack.externalGateActions.length > 0 && (
-                        <fieldset
-                          className="right-panel-goal-track-external-actions"
-                          aria-label="External final goal gate actions"
-                        >
-                          <legend className="sr-only">Copy external gate commands</legend>
-                          {rightRailGoalTrack.externalGateActions.map((action) => (
+                {rightRailHasBlockingDecision && (
+                  <button
+                    type="button"
+                    className="right-panel-decision-focus"
+                    data-tone={rightRailDecisionFocus.tone}
+                    data-has-decision={rightRailHasBlockingDecision ? "true" : "false"}
+                    onClick={() => {
+                      setRightRailMode("command");
+                      setRightRailFocusWidget("decision-inbox");
+                    }}
+                    aria-label={`Decision focus: ${rightRailDecisionFocus.label}. ${rightRailDecisionFocus.detail}`}
+                    title={`${rightRailDecisionFocus.label}: ${rightRailDecisionFocus.detail}`}
+                  >
+                    <span className="right-panel-decision-kicker">Decision</span>
+                    <span className="right-panel-decision-copy">
+                      <span className="right-panel-decision-label">{rightRailDecisionFocus.label}</span>
+                      <span className="right-panel-decision-detail">{rightRailDecisionFocus.detail}</span>
+                    </span>
+                    <span className="right-panel-decision-action">{rightRailDecisionFocus.actionLabel}</span>
+                  </button>
+                )}
+
+                {rightRailTruthNotice && (
+                  <section
+                    className="right-panel-truth-notice"
+                    data-source="visual-qa"
+                    aria-label={`${rightRailTruthNotice.label}: ${rightRailTruthNotice.detail}`}
+                  >
+                    <span className="right-panel-truth-notice-kicker">Truth source</span>
+                    <strong>{rightRailTruthNotice.label}</strong>
+                    <span>{rightRailTruthNotice.detail}</span>
+                  </section>
+                )}
+
+                <section className="right-panel-essential-grid" aria-label="Command center essentials">
+                  <button
+                    type="button"
+                    className="right-panel-essential-card"
+                    data-tone={activeTerminalTarget.ready ? "good" : "review"}
+                    onClick={() => {
+                      setRightRailMode("command");
+                      setRightRailFocusWidget("toolkit");
+                    }}
+                    aria-label={`Toolkit status: ${rightRailToolkitSummary}. ${rightRailToolkitDetail}`}
+                    title={`Toolkit: ${rightRailToolkitDetail}`}
+                  >
+                    <span>Toolkit</span>
+                    <strong>{rightRailToolkitSummary}</strong>
+                    <small>{rightRailToolkitDetail}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="right-panel-essential-card"
+                    data-tone={liveAgentCount > 0 ? "running" : rightRailSessions.length > 0 ? "review" : "active"}
+                    onClick={() => {
+                      setRightRailMode("command");
+                      setRightRailFocusWidget("sessions");
+                    }}
+                    aria-label={`Agent lanes: ${rightRailAgentsSummary}. ${rightRailAgentsDetail}`}
+                    title={`Agents: ${rightRailAgentsDetail}`}
+                  >
+                    <span>Agents</span>
+                    <strong>{rightRailAgentsSummary}</strong>
+                    <small>{rightRailAgentsDetail}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="right-panel-essential-card"
+                    data-tone={rightRailAllChangedFiles.length > 0 ? "review" : "good"}
+                    onClick={() => {
+                      setRightRailMode("review");
+                      setRightRailFocusWidget("review-queue");
+                    }}
+                    aria-label={`Review lane: ${rightRailReviewSummary}. ${rightRailReviewDetail}`}
+                    title={`Review: ${rightRailReviewDetail}`}
+                  >
+                    <span>Review</span>
+                    <strong>{rightRailReviewSummary}</strong>
+                    <small>{rightRailReviewDetail}</small>
+                  </button>
+                </section>
+
+                <details className="right-panel-evidence-drawer">
+                  <summary>
+                    <span>Evidence</span>
+                    <small>{rightRailEvidenceDrawerSummary}</small>
+                  </summary>
+                  <section
+                    className="right-panel-edge-score"
+                    data-tone={rightRailEdgeScore.tone}
+                    aria-label={`Command center edge score ${rightRailEdgeScore.score}`}
+                  >
+                    <div className="right-panel-edge-score-head">
+                      <span className="right-panel-edge-score-kicker">Edge score</span>
+                      <strong>{rightRailEdgeScore.score}</strong>
+                      <span>{rightRailEdgeScore.grade}</span>
+                    </div>
+                    <span className="right-panel-edge-score-label">{rightRailEdgeScore.label}</span>
+                    <span className="right-panel-edge-score-detail">{rightRailEdgeScore.detail}</span>
+                    <details className="right-panel-edge-score-breakdown">
+                      <summary>
+                        <span>Breakdown</span>
+                        <small>{rightRailEdgeScore.items.length} axes</small>
+                      </summary>
+                      <ul className="right-panel-edge-score-grid" aria-label="Command center score breakdown">
+                        {rightRailEdgeScore.items.map((item) => (
+                          <li key={item.id}>
                             <button
                               type="button"
-                              key={action.id}
-                              className="right-panel-goal-track-external-copy"
-                              data-external-gate-id={action.id}
-                              data-external-gate-command={action.command}
-                              data-external-gate-follow-up={action.followUpCommands.join(" && ")}
-                              data-external-gate-requires-user-action={action.requiresUserAction ? "true" : "false"}
-                              data-external-gate-requires-explicit-consent={
-                                action.requiresExplicitConsent ? "true" : "false"
-                              }
-                              data-external-gate-cost-class={action.costClass}
-                              title={`${action.manualAction}\n${action.powershellSnippet}`}
-                              onClick={async () => {
-                                try {
-                                  await copyTextToClipboard(action.powershellSnippet);
-                                  toast.success("External gate command copied", action.detail);
-                                } catch (err) {
-                                  toast.error(
-                                    "External gate command copy failed",
-                                    err instanceof Error ? err.message : String(err),
-                                  );
-                                }
-                              }}
+                              className="right-panel-edge-score-item"
+                              data-status={item.status}
+                              onClick={() => handleOpenRightRailEdgeScoreItem(item)}
+                              aria-label={`${item.label}: ${item.detail}. ${item.actionLabel}`}
+                              title={`${item.routeTitle}: ${item.routeDetail}`}
                             >
-                              <ClipboardCopy size={11} aria-hidden="true" />
-                              <span>{action.label}</span>
-                              <small>{action.detail}</small>
+                              <strong>{item.label}</strong>
+                              <small>
+                                {item.score}/{item.max}
+                              </small>
+                              <span className="right-panel-edge-score-action">{item.actionLabel}</span>
                             </button>
-                          ))}
-                        </fieldset>
-                      )}
-                      {(rightRailGoalTrack.boundaryProofs.length > 0 ||
-                        rightRailGoalTrack.requirementProofs.length > 0) && (
-                        <details className="right-panel-goal-track-disclosure" data-kind="proofs">
-                          <summary>
-                            <span>Proofs</span>
-                            <small>
-                              {rightRailGoalTrack.boundaryProofs.length + rightRailGoalTrack.requirementProofs.length}{" "}
-                              items
-                            </small>
-                          </summary>
-                          {rightRailGoalTrack.boundaryProofs.length > 0 && (
-                            <ul className="right-panel-goal-track-boundaries" aria-label="Terminal boundary proofs">
-                              {rightRailGoalTrack.boundaryProofs.map((proof) => (
-                                <li
-                                  key={proof.id}
-                                  data-boundary-id={proof.id}
-                                  data-boundary-status={proof.status}
-                                  data-boundary-source={proof.source}
-                                  data-boundary-artifact={proof.artifactPath}
-                                  data-boundary-refresh-command={proof.refreshCommand}
-                                  data-boundary-cost-class={proof.costClass}
-                                  title={`${proof.label}: ${proof.detail} · ${proof.artifactPath} · ${proof.refreshCommand}`}
-                                >
-                                  <strong>{proof.label}</strong>
-                                  <small>{proof.status}</small>
-                                  <button
-                                    type="button"
-                                    className="right-panel-goal-track-boundary-copy"
-                                    aria-label={`Copy ${proof.label} boundary proof refresh command`}
-                                    title={proof.refreshCommand}
-                                    onClick={async () => {
-                                      try {
-                                        await copyTextToClipboard(proof.refreshCommand);
-                                        toast.success(
-                                          "Boundary proof command copied",
-                                          `${proof.label}: ${proof.refreshCommand}`,
-                                        );
-                                      } catch (err) {
-                                        toast.error(
-                                          "Boundary proof command copy failed",
-                                          err instanceof Error ? err.message : String(err),
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    <ClipboardCopy size={10} aria-hidden="true" />
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                          {rightRailGoalTrack.requirementProofs.length > 0 && (
-                            <ul
-                              className="right-panel-goal-track-requirements"
-                              aria-label="Final goal requirement proofs"
-                            >
-                              {rightRailGoalTrack.requirementProofs.map((proof) => (
-                                <li
-                                  key={proof.id}
-                                  data-requirement-id={proof.id}
-                                  data-proof-status={proof.status}
-                                  data-evidence-count={proof.evidence.length}
-                                  title={`${proof.label}: ${proof.detail}`}
-                                >
-                                  <strong>{proof.label}</strong>
-                                  <small>
-                                    {proof.status} · {proof.evidence.length} evidence
-                                  </small>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </details>
-                      )}
-                      {rightRailGoalTrack.consentPacket && (
-                        <div
-                          className="right-panel-goal-track-consent"
-                          data-status={rightRailGoalTrack.consentPacket.status}
-                          data-provider-env={rightRailGoalTrackConsentProviderEnv}
-                          title={`${rightRailGoalTrack.consentPacket.command} · ${rightRailGoalTrack.consentPacket.requiredEnv} · ${rightRailGoalTrackConsentProviderEnv}`}
-                        >
-                          <strong>{rightRailGoalTrack.consentPacket.label}</strong>
-                          <small>{rightRailGoalTrack.consentPacket.detail}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </section>
+
+                  <section
+                    className="right-panel-goal-track"
+                    data-status={rightRailGoalTrack.status}
+                    aria-label={`Final goal track: ${rightRailGoalTrack.label}`}
+                  >
+                    <div className="right-panel-goal-track-head">
+                      <span className="right-panel-goal-track-kicker">Final goal</span>
+                      <strong>{rightRailGoalTrack.percent}%</strong>
+                      <span>{rightRailGoalTrack.confidenceLabel}</span>
+                    </div>
+                    <div
+                      className="right-panel-goal-track-bar"
+                      role="progressbar"
+                      aria-label="Final goal progress"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={rightRailGoalTrack.percent}
+                    >
+                      <span style={{ width: `${rightRailGoalTrack.percent}%` }} />
+                    </div>
+                    <span
+                      className="right-panel-goal-track-source"
+                      data-status={rightRailGoalTrack.qualityEvidence.status}
+                      data-local-date={rightRailGoalTrack.qualityEvidence.localDate ?? ""}
+                      data-time-zone={rightRailGoalTrack.qualityEvidence.timeZone ?? ""}
+                      title={rightRailGoalTrack.qualityEvidence.detail}
+                    >
+                      <strong>{rightRailGoalTrack.qualityEvidence.label}</strong>
+                      <small>{rightRailGoalTrack.qualityEvidence.detail}</small>
+                    </span>
+                    {rightRailGoalTrack.residualRisk && (
+                      <div
+                        className="right-panel-goal-track-residual"
+                        data-state={rightRailGoalTrack.residualRisk.state}
+                        data-source={rightRailGoalTrack.residualRisk.source}
+                        data-implementation-fixable-count={rightRailGoalTrack.residualRisk.implementationFixableCount}
+                        data-policy-blocked-count={rightRailGoalTrack.residualRisk.policyBlockedCount}
+                        data-external-blocked-count={rightRailGoalTrack.residualRisk.externalBlockedCount ?? 0}
+                        title={`${rightRailGoalTrack.residualRisk.label}: ${rightRailGoalTrack.residualRisk.detail}`}
+                      >
+                        <strong>{rightRailGoalTrack.residualRisk.label}</strong>
+                        <small>{rightRailGoalTrack.residualRisk.detail}</small>
+                      </div>
+                    )}
+                    {rightRailGoalTrack.safeGate && (
+                      <div
+                        className="right-panel-goal-track-safe"
+                        data-status={rightRailGoalTrack.safeGate.status}
+                        data-source={rightRailGoalTrack.safeGate.source}
+                        data-proof-requirement-pass-count={rightRailGoalTrack.safeGate.proofRequirementPassCount}
+                        data-proof-requirement-count={rightRailGoalTrack.safeGate.proofRequirementCount}
+                        data-proof-artifact-pass-count={rightRailGoalTrack.safeGate.proofArtifactPassCount}
+                        data-proof-artifact-count={rightRailGoalTrack.safeGate.proofArtifactCount}
+                        data-consent-blocker-count={rightRailGoalTrack.safeGate.consentBlockerCount}
+                        data-non-consent-blocker-count={rightRailGoalTrack.safeGate.nonConsentBlockerCount}
+                        data-no-token-prompt-sent={rightRailGoalTrack.safeGate.noTokenPromptSent ? "true" : "false"}
+                        data-token-spending-prompt-executed={
+                          rightRailGoalTrack.safeGate.tokenSpendingPromptExecuted ? "true" : "false"
+                        }
+                        data-release-hygiene-clean={rightRailGoalTrack.safeGate.releaseHygieneClean ? "true" : "false"}
+                        data-supply-chain-audit-clean={
+                          rightRailGoalTrack.safeGate.supplyChainAuditClean ? "true" : "false"
+                        }
+                        data-terminal-chunked-osc-live-passed={
+                          rightRailGoalTrack.safeGate.terminalChunkedOscLivePassed ? "true" : "false"
+                        }
+                        data-native-terminal-input-host-passed={
+                          rightRailGoalTrack.safeGate.nativeTerminalInputHostPassed ? "true" : "false"
+                        }
+                        data-native-hwnd-paste-live-passed={
+                          rightRailGoalTrack.safeGate.nativeHwndPasteLivePassed ? "true" : "false"
+                        }
+                        data-semantic-freshness={rightRailGoalTrack.safeGate.semanticFreshness}
+                        data-cycle-boundary={rightRailGoalTrack.safeGate.cycleBoundary}
+                        data-local-date={rightRailGoalTrack.safeGate.localDate ?? ""}
+                        data-time-zone={rightRailGoalTrack.safeGate.timeZone ?? ""}
+                        title={`${rightRailGoalTrack.safeGate.label}: ${rightRailGoalTrack.safeGate.nextRequiredAction}`}
+                      >
+                        <strong>{rightRailGoalTrack.safeGate.label}</strong>
+                        <small>
+                          {rightRailGoalTrack.safeGate.detail}
+                          {rightRailGoalTrack.safeGate.localDate && rightRailGoalTrack.safeGate.timeZone
+                            ? ` · ${rightRailGoalTrack.safeGate.localDate} ${rightRailGoalTrack.safeGate.timeZone}`
+                            : ""}
+                        </small>
+                      </div>
+                    )}
+                    {rightRailGoalTrack.externalGateActions.length > 0 && (
+                      <fieldset
+                        className="right-panel-goal-track-external-actions"
+                        aria-label="External final goal gate actions"
+                      >
+                        <legend className="sr-only">Copy external gate commands</legend>
+                        {rightRailGoalTrack.externalGateActions.map((action) => (
+                          <button
+                            type="button"
+                            key={action.id}
+                            className="right-panel-goal-track-external-copy"
+                            data-external-gate-id={action.id}
+                            data-external-gate-command={action.command}
+                            data-external-gate-follow-up={action.followUpCommands.join(" && ")}
+                            data-external-gate-requires-user-action={action.requiresUserAction ? "true" : "false"}
+                            data-external-gate-requires-explicit-consent={
+                              action.requiresExplicitConsent ? "true" : "false"
+                            }
+                            data-external-gate-cost-class={action.costClass}
+                            title={`${action.manualAction}\n${action.powershellSnippet}`}
+                            onClick={async () => {
+                              try {
+                                await copyTextToClipboard(action.powershellSnippet);
+                                toast.success("External gate command copied", action.detail);
+                              } catch (err) {
+                                toast.error(
+                                  "External gate command copy failed",
+                                  err instanceof Error ? err.message : String(err),
+                                );
+                              }
+                            }}
+                          >
+                            <ClipboardCopy size={11} aria-hidden="true" />
+                            <span>{action.label}</span>
+                            <small>{action.detail}</small>
+                          </button>
+                        ))}
+                      </fieldset>
+                    )}
+                    {(rightRailGoalTrack.boundaryProofs.length > 0 ||
+                      rightRailGoalTrack.requirementProofs.length > 0) && (
+                      <details className="right-panel-goal-track-disclosure" data-kind="proofs">
+                        <summary>
+                          <span>Proofs</span>
                           <small>
-                            {rightRailGoalTrack.consentPacket.provider} · preflight{" "}
-                            {rightRailGoalTrack.consentPacket.preflightReady ? "green" : "blocked"} · prompt{" "}
-                            {rightRailGoalTrack.consentPacket.safeNoPromptSent ? "not sent" : "sent"}
+                            {rightRailGoalTrack.boundaryProofs.length + rightRailGoalTrack.requirementProofs.length}{" "}
+                            items
                           </small>
-                          <details className="right-panel-goal-track-disclosure" data-kind="prompt-command">
-                            <summary>
-                              <span>Command</span>
-                              <small>{rightRailGoalTrack.consentPacket.provider}</small>
-                            </summary>
-                            <dl
-                              className="right-panel-goal-track-consent-command"
-                              aria-label="Authenticated prompt consent command"
-                            >
-                              <div>
-                                <dt>Command</dt>
-                                <dd>{rightRailGoalTrack.consentPacket.command}</dd>
-                              </div>
-                              <div>
-                                <dt>Env</dt>
-                                <dd>{rightRailGoalTrack.consentPacket.requiredEnv || "env unavailable"}</dd>
-                              </div>
-                              <div>
-                                <dt>Tokens</dt>
-                                <dd>
-                                  {rightRailGoalTrack.consentPacket.wouldSpendTokens ? "explicit consent" : "no spend"}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>Provider</dt>
-                                <dd>{rightRailGoalTrackConsentProviderEnv || "provider env unavailable"}</dd>
-                              </div>
-                            </dl>
-                          </details>
-                          {rightRailGoalTrack.consentRunActions.length > 0 && (
-                            <fieldset className="right-panel-goal-track-consent-actions">
-                              <legend className="sr-only">Copy authenticated prompt smoke command by provider</legend>
-                              {rightRailGoalTrack.consentRunActions.map((action) => (
+                        </summary>
+                        {rightRailGoalTrack.boundaryProofs.length > 0 && (
+                          <ul className="right-panel-goal-track-boundaries" aria-label="Terminal boundary proofs">
+                            {rightRailGoalTrack.boundaryProofs.map((proof) => (
+                              <li
+                                key={proof.id}
+                                data-boundary-id={proof.id}
+                                data-boundary-status={proof.status}
+                                data-boundary-source={proof.source}
+                                data-boundary-artifact={proof.artifactPath}
+                                data-boundary-refresh-command={proof.refreshCommand}
+                                data-boundary-cost-class={proof.costClass}
+                                title={`${proof.label}: ${proof.detail} · ${proof.artifactPath} · ${proof.refreshCommand}`}
+                              >
+                                <strong>{proof.label}</strong>
+                                <small>{proof.status}</small>
                                 <button
                                   type="button"
-                                  key={action.provider}
-                                  className="right-panel-goal-track-consent-copy"
-                                  data-consent-run-provider={action.provider}
-                                  data-consent-run-command={action.command}
-                                  data-consent-run-provider-env={action.providerEnv}
-                                  data-consent-run-default-provider={action.defaultProvider}
-                                  data-consent-run-requires-explicit-consent={
-                                    action.requiresExplicitConsent ? "true" : "false"
-                                  }
-                                  title={action.powershellSnippet}
+                                  className="right-panel-goal-track-boundary-copy"
+                                  aria-label={`Copy ${proof.label} boundary proof refresh command`}
+                                  title={proof.refreshCommand}
                                   onClick={async () => {
                                     try {
-                                      await copyTextToClipboard(action.powershellSnippet);
+                                      await copyTextToClipboard(proof.refreshCommand);
                                       toast.success(
-                                        "Consent command copied",
-                                        `${action.provider} prompt smoke command copied; review token spend before running.`,
+                                        "Boundary proof command copied",
+                                        `${proof.label}: ${proof.refreshCommand}`,
                                       );
                                     } catch (err) {
                                       toast.error(
-                                        "Consent command copy failed",
+                                        "Boundary proof command copy failed",
                                         err instanceof Error ? err.message : String(err),
                                       );
                                     }
                                   }}
                                 >
-                                  <ClipboardCopy size={11} aria-hidden="true" />
-                                  <span>{action.label}</span>
-                                  <small>{action.detail}</small>
+                                  <ClipboardCopy size={10} aria-hidden="true" />
                                 </button>
-                              ))}
-                            </fieldset>
-                          )}
-                          {((rightRailGoalTrack.consentPacket.providerReadiness?.length ?? 0) > 0 ||
-                            rightRailGoalTrack.consentPacket.artifactFreshness ||
-                            rightRailGoalTrack.refreshActions.length > 0) && (
-                            <details className="right-panel-goal-track-disclosure" data-kind="prompt-proof">
-                              <summary>
-                                <span>Preflight</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {rightRailGoalTrack.requirementProofs.length > 0 && (
+                          <ul
+                            className="right-panel-goal-track-requirements"
+                            aria-label="Final goal requirement proofs"
+                          >
+                            {rightRailGoalTrack.requirementProofs.map((proof) => (
+                              <li
+                                key={proof.id}
+                                data-requirement-id={proof.id}
+                                data-proof-status={proof.status}
+                                data-evidence-count={proof.evidence.length}
+                                title={`${proof.label}: ${proof.detail}`}
+                              >
+                                <strong>{proof.label}</strong>
                                 <small>
-                                  {rightRailGoalTrack.consentPacket.artifactFreshness
-                                    ? rightRailGoalTrack.consentPacket.artifactFreshness.label
-                                    : "providers"}
+                                  {proof.status} · {proof.evidence.length} evidence
                                 </small>
-                              </summary>
-                              {(rightRailGoalTrack.consentPacket.providerReadiness?.length ?? 0) > 0 && (
-                                <ul
-                                  className="right-panel-goal-track-provider-matrix"
-                                  aria-label="Authenticated AI CLI provider preflight readiness"
-                                >
-                                  {rightRailGoalTrack.consentPacket.providerReadiness?.map((entry) => (
-                                    <li
-                                      key={entry.provider}
-                                      data-status={entry.status}
-                                      title={`${entry.command} · ${entry.requiredEnv || "env unavailable"}${
-                                        entry.failedChecks.length > 0
-                                          ? ` · failing: ${entry.failedChecks.join(", ")}`
-                                          : ""
-                                      }`}
-                                    >
-                                      {entry.provider}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                              {rightRailGoalTrack.consentPacket.artifactFreshness && (
-                                <div
-                                  className="right-panel-goal-track-freshness-radar"
-                                  data-status={rightRailGoalTrack.consentPacket.artifactFreshness.status}
-                                  data-fresh-count={rightRailGoalTrack.consentPacket.artifactFreshness.freshCount}
-                                  data-stale-count={rightRailGoalTrack.consentPacket.artifactFreshness.staleCount}
-                                  data-total-count={rightRailGoalTrack.consentPacket.artifactFreshness.totalCount}
-                                  data-next-refresh-id={
-                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.id ?? ""
-                                  }
-                                  data-next-refresh-command={
-                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.refreshCommand ?? ""
-                                  }
-                                  data-next-refresh-expires-at={
-                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.expiresAt ?? ""
-                                  }
-                                  title={
-                                    rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh
-                                      ? `${rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh.path} · ${
-                                          rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh
-                                            .refreshReason || "refresh proof"
-                                        }`
-                                      : rightRailGoalTrack.consentPacket.artifactFreshness.detail
-                                  }
-                                >
-                                  <strong>{rightRailGoalTrack.consentPacket.artifactFreshness.label}</strong>
-                                  <small>{rightRailGoalTrack.consentPacket.artifactFreshness.detail}</small>
-                                </div>
-                              )}
-                              {rightRailGoalTrack.refreshActions.length > 0 && (
-                                <fieldset className="right-panel-goal-track-artifact-refresh">
-                                  <legend className="sr-only">Non-token proof refresh actions</legend>
-                                  {rightRailGoalTrack.refreshActions.map((action) => (
-                                    <button
-                                      type="button"
-                                      key={`${action.id}:${action.command}`}
-                                      className="right-panel-goal-track-artifact-refresh-action"
-                                      data-goal-refresh-id={action.id}
-                                      data-goal-refresh-command={action.command}
-                                      data-goal-refresh-path={action.path}
-                                      data-goal-refresh-cost-class={action.costClass}
-                                      data-goal-refresh-fresh={action.fresh ? "true" : "false"}
-                                      data-goal-refresh-requires-explicit-consent={
-                                        action.requiresExplicitConsent ? "true" : "false"
-                                      }
-                                      title={`${action.path} · ${action.reason} · ${action.command}`}
-                                      onClick={async () => {
-                                        try {
-                                          await copyTextToClipboard(action.command);
-                                          toast.success("Refresh command copied", `${action.id}: ${action.command}`);
-                                        } catch (err) {
-                                          toast.error(
-                                            "Refresh command copy failed",
-                                            err instanceof Error ? err.message : String(err),
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      <ClipboardCopy size={11} aria-hidden="true" />
-                                      <span>{action.label}</span>
-                                      <small>{action.command}</small>
-                                    </button>
-                                  ))}
-                                </fieldset>
-                              )}
-                            </details>
-                          )}
-                        </div>
-                      )}
-                      <span className="right-panel-goal-track-detail">{rightRailGoalTrack.detail}</span>
-                      <details className="right-panel-goal-track-disclosure" data-kind="remaining">
-                        <summary>
-                          <span>Remaining</span>
-                          <small>
-                            {rightRailGoalTrack.remainingItems[0] ??
-                              `${rightRailGoalTrack.doneCount}/${rightRailGoalTrack.totalCount} milestones`}
-                          </small>
-                        </summary>
-                        {rightRailGoalTrack.riskEvidence.length > 0 && (
-                          <ul
-                            className="right-panel-goal-track-risks"
-                            data-source="release"
-                            aria-label="Goal risk evidence"
-                          >
-                            {rightRailGoalTrack.riskEvidence.map((risk) => (
-                              <li key={risk.id} title={`${risk.label} · ${risk.status ?? "unknown"}`}>
-                                <strong>{risk.label}</strong>
-                                <small>{risk.severity ?? risk.status ?? "risk"}</small>
                               </li>
-                            ))}
-                          </ul>
-                        )}
-                        {rightRailGoalTrack.runtimeFallbackEvidence.length > 0 && (
-                          <ul
-                            className="right-panel-goal-track-risks"
-                            data-source="runtime-fallback"
-                            aria-label="Goal runtime fallback evidence"
-                          >
-                            {rightRailGoalTrack.runtimeFallbackEvidence.map((risk) => (
-                              <li key={risk.id} title={`${risk.label} · ${risk.status ?? "runtime fallback"}`}>
-                                <strong>{risk.label}</strong>
-                                <small>{risk.severity ?? risk.status ?? "fallback"}</small>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        {rightRailGoalTrack.qaRiskEvidence.length > 0 && (
-                          <ul
-                            className="right-panel-goal-track-risks"
-                            data-source="qa-fixture"
-                            aria-label="Goal QA fixture risk evidence"
-                          >
-                            {rightRailGoalTrack.qaRiskEvidence.map((risk) => (
-                              <li key={risk.id} title={`${risk.label} · ${risk.status ?? "qa fixture"}`}>
-                                <strong>{risk.label}</strong>
-                                <small>QA</small>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <ul className="right-panel-goal-track-milestones" aria-label="Final goal milestones">
-                          {rightRailGoalTrack.milestones.map((milestone) => (
-                            <li
-                              key={milestone.id}
-                              className="right-panel-goal-track-milestone"
-                              data-status={milestone.status}
-                              title={`${milestone.label}: ${milestone.detail}. Evidence: ${milestone.evidence}. Remaining: ${milestone.remaining}`}
-                            >
-                              <strong>{milestone.label}</strong>
-                              <small>{milestone.status}</small>
-                            </li>
-                          ))}
-                        </ul>
-                        {rightRailGoalTrack.remainingItems.length > 0 && (
-                          <ul className="right-panel-goal-track-remaining" aria-label="Remaining goal blockers">
-                            {rightRailGoalTrack.remainingItems.slice(0, 3).map((item) => (
-                              <li key={item}>{item}</li>
                             ))}
                           </ul>
                         )}
                       </details>
-                    </section>
-                  </details>
-
-                  {rightRailEdgeNextBestAction && (
-                    <button
-                      type="button"
-                      className="right-panel-edge-next-action"
-                      data-reason={rightRailEdgeNextBestAction.reason}
-                      onClick={() => handleOpenRightRailEdgeScoreItem(rightRailEdgeNextBestAction.item)}
-                      aria-label={`Next best Edge score action: ${rightRailEdgeNextBestAction.item.actionLabel} for ${rightRailEdgeNextBestAction.item.label}`}
-                      title={`${rightRailEdgeNextBestAction.item.routeTitle}: ${rightRailEdgeNextBestAction.item.routeDetail}`}
-                    >
-                      <span>Next best action</span>
-                      <strong>{rightRailEdgeNextBestAction.item.actionLabel}</strong>
-                      <small>
-                        {rightRailEdgeNextBestAction.reason === "repeated-axis" ? "Repeated axis" : "Weakest axis"}:{" "}
-                        {rightRailEdgeNextBestAction.item.label}
-                      </small>
-                      {rightRailEdgeRecommendationOutcome && (
-                        <em data-status={rightRailEdgeRecommendationOutcome.status}>
-                          {rightRailEdgeRecommendationOutcome.label} - {rightRailEdgeRecommendationOutcome.detail}
-                        </em>
+                    )}
+                    {rightRailGoalTrack.consentPacket && (
+                      <div
+                        className="right-panel-goal-track-consent"
+                        data-status={rightRailGoalTrack.consentPacket.status}
+                        data-provider-env={rightRailGoalTrackConsentProviderEnv}
+                        title={`${rightRailGoalTrack.consentPacket.command} · ${rightRailGoalTrack.consentPacket.requiredEnv} · ${rightRailGoalTrackConsentProviderEnv}`}
+                      >
+                        <strong>{rightRailGoalTrack.consentPacket.label}</strong>
+                        <small>{rightRailGoalTrack.consentPacket.detail}</small>
+                        <small>
+                          {rightRailGoalTrack.consentPacket.provider} · preflight{" "}
+                          {rightRailGoalTrack.consentPacket.preflightReady ? "green" : "blocked"} · prompt{" "}
+                          {rightRailGoalTrack.consentPacket.safeNoPromptSent ? "not sent" : "sent"}
+                        </small>
+                        <details className="right-panel-goal-track-disclosure" data-kind="prompt-command">
+                          <summary>
+                            <span>Command</span>
+                            <small>{rightRailGoalTrack.consentPacket.provider}</small>
+                          </summary>
+                          <dl
+                            className="right-panel-goal-track-consent-command"
+                            aria-label="Authenticated prompt consent command"
+                          >
+                            <div>
+                              <dt>Command</dt>
+                              <dd>{rightRailGoalTrack.consentPacket.command}</dd>
+                            </div>
+                            <div>
+                              <dt>Env</dt>
+                              <dd>{rightRailGoalTrack.consentPacket.requiredEnv || "env unavailable"}</dd>
+                            </div>
+                            <div>
+                              <dt>Tokens</dt>
+                              <dd>
+                                {rightRailGoalTrack.consentPacket.wouldSpendTokens ? "explicit consent" : "no spend"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Provider</dt>
+                              <dd>{rightRailGoalTrackConsentProviderEnv || "provider env unavailable"}</dd>
+                            </div>
+                          </dl>
+                        </details>
+                        {rightRailGoalTrack.consentRunActions.length > 0 && (
+                          <fieldset className="right-panel-goal-track-consent-actions">
+                            <legend className="sr-only">Copy authenticated prompt smoke command by provider</legend>
+                            {rightRailGoalTrack.consentRunActions.map((action) => (
+                              <button
+                                type="button"
+                                key={action.provider}
+                                className="right-panel-goal-track-consent-copy"
+                                data-consent-run-provider={action.provider}
+                                data-consent-run-command={action.command}
+                                data-consent-run-provider-env={action.providerEnv}
+                                data-consent-run-default-provider={action.defaultProvider}
+                                data-consent-run-requires-explicit-consent={
+                                  action.requiresExplicitConsent ? "true" : "false"
+                                }
+                                title={action.powershellSnippet}
+                                onClick={async () => {
+                                  try {
+                                    await copyTextToClipboard(action.powershellSnippet);
+                                    toast.success(
+                                      "Consent command copied",
+                                      `${action.provider} prompt smoke command copied; review token spend before running.`,
+                                    );
+                                  } catch (err) {
+                                    toast.error(
+                                      "Consent command copy failed",
+                                      err instanceof Error ? err.message : String(err),
+                                    );
+                                  }
+                                }}
+                              >
+                                <ClipboardCopy size={11} aria-hidden="true" />
+                                <span>{action.label}</span>
+                                <small>{action.detail}</small>
+                              </button>
+                            ))}
+                          </fieldset>
+                        )}
+                        {((rightRailGoalTrack.consentPacket.providerReadiness?.length ?? 0) > 0 ||
+                          rightRailGoalTrack.consentPacket.artifactFreshness ||
+                          rightRailGoalTrack.refreshActions.length > 0) && (
+                          <details className="right-panel-goal-track-disclosure" data-kind="prompt-proof">
+                            <summary>
+                              <span>Preflight</span>
+                              <small>
+                                {rightRailGoalTrack.consentPacket.artifactFreshness
+                                  ? rightRailGoalTrack.consentPacket.artifactFreshness.label
+                                  : "providers"}
+                              </small>
+                            </summary>
+                            {(rightRailGoalTrack.consentPacket.providerReadiness?.length ?? 0) > 0 && (
+                              <ul
+                                className="right-panel-goal-track-provider-matrix"
+                                aria-label="Authenticated AI CLI provider preflight readiness"
+                              >
+                                {rightRailGoalTrack.consentPacket.providerReadiness?.map((entry) => (
+                                  <li
+                                    key={entry.provider}
+                                    data-status={entry.status}
+                                    title={`${entry.command} · ${entry.requiredEnv || "env unavailable"}${
+                                      entry.failedChecks.length > 0
+                                        ? ` · failing: ${entry.failedChecks.join(", ")}`
+                                        : ""
+                                    }`}
+                                  >
+                                    {entry.provider}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {rightRailGoalTrack.consentPacket.artifactFreshness && (
+                              <div
+                                className="right-panel-goal-track-freshness-radar"
+                                data-status={rightRailGoalTrack.consentPacket.artifactFreshness.status}
+                                data-fresh-count={rightRailGoalTrack.consentPacket.artifactFreshness.freshCount}
+                                data-stale-count={rightRailGoalTrack.consentPacket.artifactFreshness.staleCount}
+                                data-total-count={rightRailGoalTrack.consentPacket.artifactFreshness.totalCount}
+                                data-next-refresh-id={
+                                  rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.id ?? ""
+                                }
+                                data-next-refresh-command={
+                                  rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.refreshCommand ?? ""
+                                }
+                                data-next-refresh-expires-at={
+                                  rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh?.expiresAt ?? ""
+                                }
+                                title={
+                                  rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh
+                                    ? `${rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh.path} · ${
+                                        rightRailGoalTrack.consentPacket.artifactFreshness.nextRefresh.refreshReason ||
+                                        "refresh proof"
+                                      }`
+                                    : rightRailGoalTrack.consentPacket.artifactFreshness.detail
+                                }
+                              >
+                                <strong>{rightRailGoalTrack.consentPacket.artifactFreshness.label}</strong>
+                                <small>{rightRailGoalTrack.consentPacket.artifactFreshness.detail}</small>
+                              </div>
+                            )}
+                            {rightRailGoalTrack.refreshActions.length > 0 && (
+                              <fieldset className="right-panel-goal-track-artifact-refresh">
+                                <legend className="sr-only">Non-token proof refresh actions</legend>
+                                {rightRailGoalTrack.refreshActions.map((action) => (
+                                  <button
+                                    type="button"
+                                    key={`${action.id}:${action.command}`}
+                                    className="right-panel-goal-track-artifact-refresh-action"
+                                    data-goal-refresh-id={action.id}
+                                    data-goal-refresh-command={action.command}
+                                    data-goal-refresh-path={action.path}
+                                    data-goal-refresh-cost-class={action.costClass}
+                                    data-goal-refresh-fresh={action.fresh ? "true" : "false"}
+                                    data-goal-refresh-requires-explicit-consent={
+                                      action.requiresExplicitConsent ? "true" : "false"
+                                    }
+                                    title={`${action.path} · ${action.reason} · ${action.command}`}
+                                    onClick={async () => {
+                                      try {
+                                        await copyTextToClipboard(action.command);
+                                        toast.success("Refresh command copied", `${action.id}: ${action.command}`);
+                                      } catch (err) {
+                                        toast.error(
+                                          "Refresh command copy failed",
+                                          err instanceof Error ? err.message : String(err),
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    <ClipboardCopy size={11} aria-hidden="true" />
+                                    <span>{action.label}</span>
+                                    <small>{action.command}</small>
+                                  </button>
+                                ))}
+                              </fieldset>
+                            )}
+                          </details>
+                        )}
+                      </div>
+                    )}
+                    <span className="right-panel-goal-track-detail">{rightRailGoalTrack.detail}</span>
+                    <details className="right-panel-goal-track-disclosure" data-kind="remaining">
+                      <summary>
+                        <span>Remaining</span>
+                        <small>
+                          {rightRailGoalTrack.remainingItems[0] ??
+                            `${rightRailGoalTrack.doneCount}/${rightRailGoalTrack.totalCount} milestones`}
+                        </small>
+                      </summary>
+                      {rightRailGoalTrack.riskEvidence.length > 0 && (
+                        <ul
+                          className="right-panel-goal-track-risks"
+                          data-source="release"
+                          aria-label="Goal risk evidence"
+                        >
+                          {rightRailGoalTrack.riskEvidence.map((risk) => (
+                            <li key={risk.id} title={`${risk.label} · ${risk.status ?? "unknown"}`}>
+                              <strong>{risk.label}</strong>
+                              <small>{risk.severity ?? risk.status ?? "risk"}</small>
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                    </button>
-                  )}
+                      {rightRailGoalTrack.runtimeFallbackEvidence.length > 0 && (
+                        <ul
+                          className="right-panel-goal-track-risks"
+                          data-source="runtime-fallback"
+                          aria-label="Goal runtime fallback evidence"
+                        >
+                          {rightRailGoalTrack.runtimeFallbackEvidence.map((risk) => (
+                            <li key={risk.id} title={`${risk.label} · ${risk.status ?? "runtime fallback"}`}>
+                              <strong>{risk.label}</strong>
+                              <small>{risk.severity ?? risk.status ?? "fallback"}</small>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {rightRailGoalTrack.qaRiskEvidence.length > 0 && (
+                        <ul
+                          className="right-panel-goal-track-risks"
+                          data-source="qa-fixture"
+                          aria-label="Goal QA fixture risk evidence"
+                        >
+                          {rightRailGoalTrack.qaRiskEvidence.map((risk) => (
+                            <li key={risk.id} title={`${risk.label} · ${risk.status ?? "qa fixture"}`}>
+                              <strong>{risk.label}</strong>
+                              <small>QA</small>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <ul className="right-panel-goal-track-milestones" aria-label="Final goal milestones">
+                        {rightRailGoalTrack.milestones.map((milestone) => (
+                          <li
+                            key={milestone.id}
+                            className="right-panel-goal-track-milestone"
+                            data-status={milestone.status}
+                            title={`${milestone.label}: ${milestone.detail}. Evidence: ${milestone.evidence}. Remaining: ${milestone.remaining}`}
+                          >
+                            <strong>{milestone.label}</strong>
+                            <small>{milestone.status}</small>
+                          </li>
+                        ))}
+                      </ul>
+                      {rightRailGoalTrack.remainingItems.length > 0 && (
+                        <ul className="right-panel-goal-track-remaining" aria-label="Remaining goal blockers">
+                          {rightRailGoalTrack.remainingItems.slice(0, 3).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </details>
+                  </section>
+                </details>
 
-                  <details className="right-panel-health-drawer">
-                    <summary>
-                      <span>Health</span>
-                      <small>{rightRailHealthDrawerSummary}</small>
-                    </summary>
+                {rightRailEdgeNextBestAction && (
+                  <button
+                    type="button"
+                    className="right-panel-edge-next-action"
+                    data-reason={rightRailEdgeNextBestAction.reason}
+                    onClick={() => handleOpenRightRailEdgeScoreItem(rightRailEdgeNextBestAction.item)}
+                    aria-label={`Next best Edge score action: ${rightRailEdgeNextBestAction.item.actionLabel} for ${rightRailEdgeNextBestAction.item.label}`}
+                    title={`${rightRailEdgeNextBestAction.item.routeTitle}: ${rightRailEdgeNextBestAction.item.routeDetail}`}
+                  >
+                    <span>Next best action</span>
+                    <strong>{rightRailEdgeNextBestAction.item.actionLabel}</strong>
+                    <small>
+                      {rightRailEdgeNextBestAction.reason === "repeated-axis" ? "Repeated axis" : "Weakest axis"}:{" "}
+                      {rightRailEdgeNextBestAction.item.label}
+                    </small>
+                    {rightRailEdgeRecommendationOutcome && (
+                      <em data-status={rightRailEdgeRecommendationOutcome.status}>
+                        {rightRailEdgeRecommendationOutcome.label} - {rightRailEdgeRecommendationOutcome.detail}
+                      </em>
+                    )}
+                  </button>
+                )}
 
-                    <section
-                      className="right-panel-now"
-                      data-density="deferred"
-                      data-tone={rightRailNowState.tone}
-                      data-state={rightRailNowState.state}
-                      aria-label={`Workspace state: ${rightRailNowState.label}`}
-                    >
-                      <span className="right-panel-now-kicker">State</span>
-                      <span className="right-panel-now-state">{rightRailNowState.label}</span>
-                      <span className="right-panel-now-detail">{rightRailNowState.detail}</span>
-                    </section>
+                <details className="right-panel-health-drawer">
+                  <summary>
+                    <span>Health</span>
+                    <small>{rightRailHealthDrawerSummary}</small>
+                  </summary>
 
-                    {rightRailEdgeFeedbackHistory.length > 0 && (
-                      <section className="right-panel-edge-feedback" aria-label="Recent Edge score feedback">
-                        <div className="right-panel-edge-feedback-head">
-                          <span>Score loop</span>
-                          <span>{rightRailEdgeFeedbackHistory.length}</span>
-                          {rightRailEdgeFeedbackStaleCount > 0 && (
-                            <>
-                              <span className="right-panel-edge-feedback-stale-count" aria-hidden="true">
-                                Stale {rightRailEdgeFeedbackStaleCount}
-                              </span>
-                              <span id={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID} className="sr-only">
-                                {rightRailEdgeFeedbackStaleCountLabel}
-                              </span>
-                            </>
-                          )}
-                          {rightRailEdgeFeedbackStaleCount > 0 && (
-                            <button
-                              type="button"
-                              className="right-panel-edge-feedback-filter"
-                              data-active={rightRailEdgeFeedbackStaleOnly ? "true" : "false"}
-                              onClick={() => setRightRailEdgeFeedbackStaleOnly((active) => !active)}
-                              aria-pressed={rightRailEdgeFeedbackStaleOnly}
-                              aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
-                              aria-describedby={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID}
-                              aria-label={
-                                rightRailEdgeFeedbackStaleOnly
-                                  ? `Show all score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
-                                  : `Show only stale score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
-                              }
-                            >
-                              {rightRailEdgeFeedbackStaleOnly ? "All" : "Stale only"}
-                            </button>
-                          )}
+                  <section
+                    className="right-panel-now"
+                    data-density="deferred"
+                    data-tone={rightRailNowState.tone}
+                    data-state={rightRailNowState.state}
+                    aria-label={`Workspace state: ${rightRailNowState.label}`}
+                  >
+                    <span className="right-panel-now-kicker">State</span>
+                    <span className="right-panel-now-state">{rightRailNowState.label}</span>
+                    <span className="right-panel-now-detail">{rightRailNowState.detail}</span>
+                  </section>
+
+                  {rightRailEdgeFeedbackHistory.length > 0 && (
+                    <section className="right-panel-edge-feedback" aria-label="Recent Edge score feedback">
+                      <div className="right-panel-edge-feedback-head">
+                        <span>Score loop</span>
+                        <span>{rightRailEdgeFeedbackHistory.length}</span>
+                        {rightRailEdgeFeedbackStaleCount > 0 && (
+                          <>
+                            <span className="right-panel-edge-feedback-stale-count" aria-hidden="true">
+                              Stale {rightRailEdgeFeedbackStaleCount}
+                            </span>
+                            <span id={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID} className="sr-only">
+                              {rightRailEdgeFeedbackStaleCountLabel}
+                            </span>
+                          </>
+                        )}
+                        {rightRailEdgeFeedbackStaleCount > 0 && (
                           <button
                             type="button"
-                            className="right-panel-edge-feedback-clear"
-                            onClick={handleClearRightRailEdgeFeedbackHistory}
+                            className="right-panel-edge-feedback-filter"
+                            data-active={rightRailEdgeFeedbackStaleOnly ? "true" : "false"}
+                            onClick={() => setRightRailEdgeFeedbackStaleOnly((active) => !active)}
+                            aria-pressed={rightRailEdgeFeedbackStaleOnly}
                             aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
-                            aria-label="Clear workspace Edge score feedback history"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                        {rightRailEdgeFeedbackAxisSummary && (
-                          <div
-                            className="right-panel-edge-feedback-summary"
-                            data-axis-id={rightRailEdgeFeedbackAxisSummary.axisId}
-                            data-trend={rightRailEdgeFeedbackAxisSummary.trend}
-                          >
-                            <span>Repeated axis</span>
-                            <strong>{rightRailEdgeFeedbackAxisSummary.axisLabel}</strong>
-                            <small>
-                              {rightRailEdgeFeedbackAxisSummary.count} hit
-                              {rightRailEdgeFeedbackAxisSummary.count === 1 ? "" : "s"} -{" "}
-                              {rightRailEdgeFeedbackAxisSummary.trend}
-                            </small>
-                          </div>
-                        )}
-                        {rightRailEdgeFeedbackStaleOnly && rightRailEdgeFeedbackStaleGroups.length > 0 && (
-                          <section
-                            className="right-panel-edge-feedback-stale-groups"
-                            aria-label={`Grouped stale score feedback, ${rightRailEdgeFeedbackStaleGroups.length} repeated ${
-                              rightRailEdgeFeedbackStaleGroups.length === 1 ? "axis" : "axes"
-                            }`}
-                          >
-                            {rightRailEdgeFeedbackStaleGroups.map((group) => (
-                              <fieldset
-                                key={group.axisId}
-                                className="right-panel-edge-feedback-stale-group"
-                                data-axis-id={group.axisId}
-                              >
-                                <legend>Stale group</legend>
-                                <strong>{group.axisLabel}</strong>
-                                <small>
-                                  {group.count} entries - {group.score} - {group.grade} - {group.staleReason}
-                                </small>
-                              </fieldset>
-                            ))}
-                          </section>
-                        )}
-                        <div id={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID} className="right-panel-edge-feedback-list">
-                          {rightRailEdgeFeedbackVisibleHistory.map((entry) => {
-                            const replayItem = rightRailEdgeScore.items.find(
-                              (item) => item.id === entry.axisId || item.label === entry.axisLabel,
-                            );
-                            const staleReason = replayItem ? null : formatRightRailEdgeFeedbackStaleReason(entry);
-                            return (
-                              <button
-                                key={entry.id}
-                                type="button"
-                                className="right-panel-edge-feedback-item"
-                                data-axis-id={entry.axisId}
-                                data-stale={staleReason ? "true" : "false"}
-                                data-trend={entry.trend}
-                                onClick={() => {
-                                  if (replayItem) handleOpenRightRailEdgeScoreItem(replayItem);
-                                }}
-                                disabled={!replayItem}
-                                aria-label={`Replay ${entry.axisLabel} score action: ${entry.actionLabel}`}
-                              >
-                                <span className="right-panel-edge-feedback-axis">{entry.axisLabel}</span>
-                                <span className="right-panel-edge-feedback-score">
-                                  {entry.score} · {entry.grade}
-                                </span>
-                                <span className="right-panel-edge-feedback-delta">
-                                  {entry.trend === "baseline"
-                                    ? "Baseline"
-                                    : entry.delta > 0
-                                      ? `+${entry.delta}`
-                                      : `${entry.delta}`}
-                                </span>
-                                <span className="right-panel-edge-feedback-target">
-                                  {entry.actionLabel} -&gt; {entry.targetWidget}
-                                </span>
-                                {staleReason && <span className="right-panel-edge-feedback-stale">{staleReason}</span>}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    )}
-
-                    {rightRailEdgeFeedbackResetNotice && (
-                      <section className="right-panel-edge-feedback-reset" role="status" aria-live="polite">
-                        <strong>{rightRailEdgeFeedbackResetNotice.label}</strong>
-                        <span>{rightRailEdgeFeedbackResetNotice.detail}</span>
-                      </section>
-                    )}
-
-                    <section
-                      className="right-panel-workforce"
-                      data-tone={rightRailWorkforce.tone}
-                      aria-label={`Agent workforce: ${rightRailWorkforce.headline}`}
-                    >
-                      <div className="right-panel-workforce-head">
-                        <span className="right-panel-workforce-kicker">Agent workforce</span>
-                        <label className="right-panel-workforce-profile-control">
-                          <span className="sr-only">Guardrail profile</span>
-                          <select
-                            className="right-panel-workforce-profile"
-                            value={rightRailGuardrailSelection}
-                            onChange={(event) =>
-                              setRightRailGuardrailSelection(event.currentTarget.value as RightRailGuardrailSelection)
+                            aria-describedby={RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID}
+                            aria-label={
+                              rightRailEdgeFeedbackStaleOnly
+                                ? `Show all score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
+                                : `Show only stale score loop entries; ${rightRailEdgeFeedbackStaleCountLabel}`
                             }
-                            aria-label={`Guardrail profile, current ${
-                              rightRailGuardrailSelection === "Auto"
-                                ? `Auto ${rightRailGuardrailProfile}`
-                                : rightRailGuardrailProfile
-                            }`}
-                            title={`Guardrail: ${rightRailGuardrailDescriptor.label}`}
                           >
-                            {RIGHT_RAIL_GUARDRAIL_OPTIONS.map((profile) => (
-                              <option key={profile} value={profile}>
-                                {profile === "Auto" ? `Auto: ${rightRailWorkforce.guardrailProfile}` : profile}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                            {rightRailEdgeFeedbackStaleOnly ? "All" : "Stale only"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="right-panel-edge-feedback-clear"
+                          onClick={handleClearRightRailEdgeFeedbackHistory}
+                          aria-controls={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID}
+                          aria-label="Clear workspace Edge score feedback history"
+                        >
+                          Clear
+                        </button>
                       </div>
-                      <div className="right-panel-workforce-main">
-                        <span className="right-panel-workforce-title">{rightRailWorkforce.headline}</span>
-                        <span className="right-panel-workforce-detail">{rightRailWorkforce.detail}</span>
-                      </div>
-                      <section className="right-panel-workforce-metrics" aria-label="Workforce metrics">
-                        <span>
-                          <strong>{rightRailWorkforce.liveCount}</strong>
-                          <small>Live</small>
-                        </span>
-                        <span>
-                          <strong>{rightRailWorkforce.blockedCount}</strong>
-                          <small>Blocked</small>
-                        </span>
-                        <span>
-                          <strong>{rightRailWorkforce.handoffCount}</strong>
-                          <small>Handoff</small>
-                        </span>
-                      </section>
-                      <span className="right-panel-workforce-guardrail">{rightRailGuardrailDetail}</span>
-                      <span className="right-panel-workforce-tools">
-                        Tools: {allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join(", ")}
-                      </span>
-                      {rightRailWorkforce.topAgents.length > 0 && (
-                        <section className="right-panel-workforce-roster" aria-label="Top workforce agents">
-                          {rightRailWorkforce.topAgents.map((agent) => (
-                            <button
-                              key={agent.id}
-                              type="button"
-                              className="right-panel-workforce-agent"
-                              onClick={() => handleSelectRightRailSession(agent.id)}
-                              title={`${agent.name}: ${agent.next}`}
+                      {rightRailEdgeFeedbackAxisSummary && (
+                        <div
+                          className="right-panel-edge-feedback-summary"
+                          data-axis-id={rightRailEdgeFeedbackAxisSummary.axisId}
+                          data-trend={rightRailEdgeFeedbackAxisSummary.trend}
+                        >
+                          <span>Repeated axis</span>
+                          <strong>{rightRailEdgeFeedbackAxisSummary.axisLabel}</strong>
+                          <small>
+                            {rightRailEdgeFeedbackAxisSummary.count} hit
+                            {rightRailEdgeFeedbackAxisSummary.count === 1 ? "" : "s"} -{" "}
+                            {rightRailEdgeFeedbackAxisSummary.trend}
+                          </small>
+                        </div>
+                      )}
+                      {rightRailEdgeFeedbackStaleOnly && rightRailEdgeFeedbackStaleGroups.length > 0 && (
+                        <section
+                          className="right-panel-edge-feedback-stale-groups"
+                          aria-label={`Grouped stale score feedback, ${rightRailEdgeFeedbackStaleGroups.length} repeated ${
+                            rightRailEdgeFeedbackStaleGroups.length === 1 ? "axis" : "axes"
+                          }`}
+                        >
+                          {rightRailEdgeFeedbackStaleGroups.map((group) => (
+                            <fieldset
+                              key={group.axisId}
+                              className="right-panel-edge-feedback-stale-group"
+                              data-axis-id={group.axisId}
                             >
-                              <span className="right-panel-workforce-agent-name">{agent.name}</span>
-                              <span className="right-panel-workforce-agent-role">{agent.role}</span>
-                              <span className="right-panel-workforce-agent-next">{agent.next}</span>
-                              <span className="right-panel-workforce-agent-meta">
-                                {agent.contextPct}% · {agent.filesChanged} files
-                              </span>
-                            </button>
+                              <legend>Stale group</legend>
+                              <strong>{group.axisLabel}</strong>
+                              <small>
+                                {group.count} entries - {group.score} - {group.grade} - {group.staleReason}
+                              </small>
+                            </fieldset>
                           ))}
                         </section>
                       )}
-                    </section>
-
-                    <ErrorBoundary>
-                      <Suspense fallback={null}>
-                        <WorkstationPulse
-                          sessions={rightRailSessions}
-                          changedFilesCount={rightRailAllChangedFiles.length}
-                          workstationGraph={focusedRightRailGraph}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  </details>
-
-                  {(rightRailRecommendation || rightRailVisibleActions.length > 0) && (
-                    <details className="right-panel-queue-drawer">
-                      <summary>
-                        <span>Queue</span>
-                        <small>{rightRailQueueCount} routes</small>
-                      </summary>
-                      {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
-                        <button
-                          type="button"
-                          className="right-panel-advisor"
-                          data-tone={rightRailRecommendation.tone}
-                          onClick={() => {
-                            const matchingAction = rightRailActions.find(
-                              (action) =>
-                                action.mode === rightRailRecommendation.mode &&
-                                action.label === rightRailRecommendation.label &&
-                                action.detail === rightRailRecommendation.detail,
-                            );
-                            if (matchingAction) void handleRightRailAction(matchingAction);
-                            else setRightRailMode(rightRailRecommendation.mode);
-                          }}
-                          title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
-                        >
-                          <span className="right-panel-advisor-kicker">Suggested</span>
-                          <span className="right-panel-advisor-icon" aria-hidden="true">
-                            <RightRailRecommendedIcon size={12} strokeWidth={1.8} />
-                          </span>
-                          <span className="right-panel-advisor-copy">
-                            <span className="right-panel-advisor-label">{rightRailRecommendation.label}</span>
-                            <span className="right-panel-advisor-detail">{rightRailRecommendation.detail}</span>
-                          </span>
-                          <span className="right-panel-advisor-target">{rightRailRecommendedMode.label}</span>
-                        </button>
-                      )}
-
-                      {rightRailVisibleActions.length > 0 && (
-                        <section className="right-panel-action-stack" aria-label="Ranked next actions">
-                          {rightRailVisibleActions.map((action) => {
-                            const mode = RIGHT_RAIL_MODES.find((candidate) => candidate.id === action.mode);
-                            const ActionIcon = mode?.icon ?? Activity;
-                            const actionOwnerLabel = formatRightRailActionOwner(action);
-                            return (
-                              <button
-                                key={action.id}
-                                type="button"
-                                className="right-panel-action"
-                                data-tone={action.tone}
-                                data-state={action.state}
-                                data-mode={action.mode}
-                                data-execution={action.execution.status}
-                                data-guardrail={action.execution.guardrailProfile}
-                                data-owner-kind={action.target.kind}
-                                data-owner-label={actionOwnerLabel}
-                                disabled={action.execution.status === "blocked"}
-                                onClick={() => void handleRightRailAction(action)}
-                                title={`${action.label}: ${action.detail}. ${action.nextStep} Expected: ${
-                                  action.execution.expectedResult
-                                } Evidence: ${action.execution.evidence}. Owner: ${actionOwnerLabel}. Target: ${
-                                  action.target.label
-                                }${
-                                  action.target.reason ? ` (${action.target.reason})` : ""
-                                }${action.execution.guardrailDetail ? ` Guardrail: ${action.execution.guardrailDetail}` : ""}${
-                                  action.execution.disabledReason ? ` Blocked: ${action.execution.disabledReason}` : ""
-                                }`}
-                              >
-                                <span className="right-panel-action-icon" aria-hidden="true">
-                                  <ActionIcon size={12} strokeWidth={1.8} />
-                                </span>
-                                <span className="right-panel-action-copy">
-                                  <span className="right-panel-action-label">{action.label}</span>
-                                  <span className="right-panel-action-detail">{action.detail}</span>
-                                  <span className="right-panel-action-why">{action.nextStep}</span>
-                                  <span className="right-panel-action-outcome">
-                                    {action.execution.disabledReason ??
-                                      action.execution.guardrailDetail ??
-                                      action.execution.evidence}
-                                  </span>
-                                </span>
-                                <span className="right-panel-action-meta">
-                                  <span className="right-panel-action-phase">{RIGHT_RAIL_ACTION_PHASE[action.id]}</span>
-                                  <span className="right-panel-action-owner" title={action.target.reason}>
-                                    {actionOwnerLabel}
-                                  </span>
-                                  <span className="right-panel-action-target">{action.target.label}</span>
-                                  <span className="right-panel-action-execution">{action.execution.label}</span>
-                                  {action.execution.guardrailLabel && (
-                                    <span className="right-panel-action-guardrail">
-                                      {action.execution.guardrailLabel}
-                                    </span>
-                                  )}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </section>
-                      )}
-                    </details>
-                  )}
-
-                  {rightRailActionResult && (
-                    <section
-                      className="right-panel-action-result"
-                      data-tone={rightRailActionResult.tone}
-                      role="status"
-                      aria-live="polite"
-                      aria-atomic="true"
-                    >
-                      <span className="right-panel-action-result-kicker">Last action</span>
-                      <span className="right-panel-action-result-label">{rightRailActionResult.label}</span>
-                      <span className="right-panel-action-result-detail">{rightRailActionResult.detail}</span>
-                      {(rightRailActionResult.auditEventId != null ||
-                        rightRailActionResult.auditCorrelationId ||
-                        rightRailActionResult.routeWidget) && (
-                        <button
-                          type="button"
-                          className="right-panel-action-result-audit"
-                          onClick={() => handleOpenRightRailOutcomeSource(rightRailActionResult)}
-                          aria-label={`Open source context for ${rightRailActionResult.label}`}
-                          title={
-                            rightRailActionResult.auditTimestamp
-                              ? `Open audit context from ${rightRailActionResult.auditTimestamp}`
-                              : (rightRailActionResult.routeDetail ?? "Open source context")
-                          }
-                        >
-                          {rightRailActionResult.routeLabel ?? "Audit"}
-                        </button>
-                      )}
-                    </section>
-                  )}
-
-                  {rightRailActionHistory.length > 0 && (
-                    <section className="right-panel-action-history" aria-label="Recent right rail action history">
-                      <div className="right-panel-action-history-header">
-                        <span>Recent actions</span>
-                        <span>{rightRailActionHistory.length}</span>
-                      </div>
-                      <div className="right-panel-action-history-list">
-                        {rightRailActionHistory.map((result) => (
-                          <div key={result.id} className="right-panel-action-history-item" data-tone={result.tone}>
-                            <span className="right-panel-action-history-copy">
-                              <span className="right-panel-action-history-label">{result.label}</span>
-                              <span className="right-panel-action-history-detail">{result.detail}</span>
-                            </span>
-                            {(result.auditEventId != null || result.auditCorrelationId || result.routeWidget) && (
-                              <button
-                                type="button"
-                                className="right-panel-action-history-audit"
-                                onClick={() => handleOpenRightRailOutcomeSource(result)}
-                                aria-label={`Open source context for ${result.label}`}
-                                title={
-                                  result.auditTimestamp
-                                    ? `Open audit context from ${result.auditTimestamp}`
-                                    : (result.routeDetail ?? "Open source context")
-                                }
-                              >
-                                {result.routeLabel ?? "Audit"}
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                      <div id={RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID} className="right-panel-edge-feedback-list">
+                        {rightRailEdgeFeedbackVisibleHistory.map((entry) => {
+                          const replayItem = rightRailEdgeScore.items.find(
+                            (item) => item.id === entry.axisId || item.label === entry.axisLabel,
+                          );
+                          const staleReason = replayItem ? null : formatRightRailEdgeFeedbackStaleReason(entry);
+                          return (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              className="right-panel-edge-feedback-item"
+                              data-axis-id={entry.axisId}
+                              data-stale={staleReason ? "true" : "false"}
+                              data-trend={entry.trend}
+                              onClick={() => {
+                                if (replayItem) handleOpenRightRailEdgeScoreItem(replayItem);
+                              }}
+                              disabled={!replayItem}
+                              aria-label={`Replay ${entry.axisLabel} score action: ${entry.actionLabel}`}
+                            >
+                              <span className="right-panel-edge-feedback-axis">{entry.axisLabel}</span>
+                              <span className="right-panel-edge-feedback-score">
+                                {entry.score} · {entry.grade}
+                              </span>
+                              <span className="right-panel-edge-feedback-delta">
+                                {entry.trend === "baseline"
+                                  ? "Baseline"
+                                  : entry.delta > 0
+                                    ? `+${entry.delta}`
+                                    : `${entry.delta}`}
+                              </span>
+                              <span className="right-panel-edge-feedback-target">
+                                {entry.actionLabel} -&gt; {entry.targetWidget}
+                              </span>
+                              {staleReason && <span className="right-panel-edge-feedback-stale">{staleReason}</span>}
+                            </button>
+                          );
+                        })}
                       </div>
                     </section>
                   )}
 
-                  <div
-                    id="right-rail-panel"
-                    ref={rightRailPanelRef}
-                    className="right-panel-stack"
-                    data-mode={rightRailMode}
-                    role="tabpanel"
-                    aria-labelledby={`right-rail-tab-${rightRailMode}`}
-                    aria-describedby="right-rail-purpose"
+                  {rightRailEdgeFeedbackResetNotice && (
+                    <section className="right-panel-edge-feedback-reset" role="status" aria-live="polite">
+                      <strong>{rightRailEdgeFeedbackResetNotice.label}</strong>
+                      <span>{rightRailEdgeFeedbackResetNotice.detail}</span>
+                    </section>
+                  )}
+
+                  <section
+                    className="right-panel-workforce"
+                    data-tone={rightRailWorkforce.tone}
+                    aria-label={`Agent workforce: ${rightRailWorkforce.headline}`}
                   >
-                    {rightRailMode === "command" && (
-                      <>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div
-                              className="bento-widget"
-                              data-widget="toolkit"
-                              data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}
+                    <div className="right-panel-workforce-head">
+                      <span className="right-panel-workforce-kicker">Agent workforce</span>
+                      <label className="right-panel-workforce-profile-control">
+                        <span className="sr-only">Guardrail profile</span>
+                        <select
+                          className="right-panel-workforce-profile"
+                          value={rightRailGuardrailSelection}
+                          onChange={(event) =>
+                            setRightRailGuardrailSelection(event.currentTarget.value as RightRailGuardrailSelection)
+                          }
+                          aria-label={`Guardrail profile, current ${
+                            rightRailGuardrailSelection === "Auto"
+                              ? `Auto ${rightRailGuardrailProfile}`
+                              : rightRailGuardrailProfile
+                          }`}
+                          title={`Guardrail: ${rightRailGuardrailDescriptor.label}`}
+                        >
+                          {RIGHT_RAIL_GUARDRAIL_OPTIONS.map((profile) => (
+                            <option key={profile} value={profile}>
+                              {profile === "Auto" ? `Auto: ${rightRailWorkforce.guardrailProfile}` : profile}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="right-panel-workforce-main">
+                      <span className="right-panel-workforce-title">{rightRailWorkforce.headline}</span>
+                      <span className="right-panel-workforce-detail">{rightRailWorkforce.detail}</span>
+                    </div>
+                    <section className="right-panel-workforce-metrics" aria-label="Workforce metrics">
+                      <span>
+                        <strong>{rightRailWorkforce.liveCount}</strong>
+                        <small>Live</small>
+                      </span>
+                      <span>
+                        <strong>{rightRailWorkforce.blockedCount}</strong>
+                        <small>Blocked</small>
+                      </span>
+                      <span>
+                        <strong>{rightRailWorkforce.handoffCount}</strong>
+                        <small>Handoff</small>
+                      </span>
+                    </section>
+                    <span className="right-panel-workforce-guardrail">{rightRailGuardrailDetail}</span>
+                    <span className="right-panel-workforce-tools">
+                      Tools: {allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join(", ")}
+                    </span>
+                    {rightRailWorkforce.topAgents.length > 0 && (
+                      <section className="right-panel-workforce-roster" aria-label="Top workforce agents">
+                        {rightRailWorkforce.topAgents.map((agent) => (
+                          <button
+                            key={agent.id}
+                            type="button"
+                            className="right-panel-workforce-agent"
+                            onClick={() => handleSelectRightRailSession(agent.id)}
+                            title={`${agent.name}: ${agent.next}`}
+                          >
+                            <span className="right-panel-workforce-agent-name">{agent.name}</span>
+                            <span className="right-panel-workforce-agent-role">{agent.role}</span>
+                            <span className="right-panel-workforce-agent-next">{agent.next}</span>
+                            <span className="right-panel-workforce-agent-meta">
+                              {agent.contextPct}% · {agent.filesChanged} files
+                            </span>
+                          </button>
+                        ))}
+                      </section>
+                    )}
+                  </section>
+
+                  <ErrorBoundary>
+                    <Suspense fallback={null}>
+                      <WorkstationPulse
+                        sessions={rightRailSessions}
+                        changedFilesCount={rightRailAllChangedFiles.length}
+                        workstationGraph={focusedRightRailGraph}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                </details>
+
+                {(rightRailRecommendation || rightRailVisibleActions.length > 0) && (
+                  <details className="right-panel-queue-drawer">
+                    <summary>
+                      <span>Queue</span>
+                      <small>{rightRailQueueCount} routes</small>
+                    </summary>
+                    {rightRailRecommendation && rightRailRecommendedMode && RightRailRecommendedIcon && (
+                      <button
+                        type="button"
+                        className="right-panel-advisor"
+                        data-tone={rightRailRecommendation.tone}
+                        onClick={() => {
+                          const matchingAction = rightRailActions.find(
+                            (action) =>
+                              action.mode === rightRailRecommendation.mode &&
+                              action.label === rightRailRecommendation.label &&
+                              action.detail === rightRailRecommendation.detail,
+                          );
+                          if (matchingAction) void handleRightRailAction(matchingAction);
+                          else setRightRailMode(rightRailRecommendation.mode);
+                        }}
+                        title={`Switch to ${rightRailRecommendedMode.label}: ${rightRailRecommendation.detail}`}
+                      >
+                        <span className="right-panel-advisor-kicker">Suggested</span>
+                        <span className="right-panel-advisor-icon" aria-hidden="true">
+                          <RightRailRecommendedIcon size={12} strokeWidth={1.8} />
+                        </span>
+                        <span className="right-panel-advisor-copy">
+                          <span className="right-panel-advisor-label">{rightRailRecommendation.label}</span>
+                          <span className="right-panel-advisor-detail">{rightRailRecommendation.detail}</span>
+                        </span>
+                        <span className="right-panel-advisor-target">{rightRailRecommendedMode.label}</span>
+                      </button>
+                    )}
+
+                    {rightRailVisibleActions.length > 0 && (
+                      <section className="right-panel-action-stack" aria-label="Ranked next actions">
+                        {rightRailVisibleActions.map((action) => {
+                          const mode = RIGHT_RAIL_MODES.find((candidate) => candidate.id === action.mode);
+                          const ActionIcon = mode?.icon ?? Activity;
+                          const actionOwnerLabel = formatRightRailActionOwner(action);
+                          return (
+                            <button
+                              key={action.id}
+                              type="button"
+                              className="right-panel-action"
+                              data-tone={action.tone}
+                              data-state={action.state}
+                              data-mode={action.mode}
+                              data-execution={action.execution.status}
+                              data-guardrail={action.execution.guardrailProfile}
+                              data-owner-kind={action.target.kind}
+                              data-owner-label={actionOwnerLabel}
+                              disabled={action.execution.status === "blocked"}
+                              onClick={() => void handleRightRailAction(action)}
+                              title={`${action.label}: ${action.detail}. ${action.nextStep} Expected: ${
+                                action.execution.expectedResult
+                              } Evidence: ${action.execution.evidence}. Owner: ${actionOwnerLabel}. Target: ${
+                                action.target.label
+                              }${
+                                action.target.reason ? ` (${action.target.reason})` : ""
+                              }${action.execution.guardrailDetail ? ` Guardrail: ${action.execution.guardrailDetail}` : ""}${
+                                action.execution.disabledReason ? ` Blocked: ${action.execution.disabledReason}` : ""
+                              }`}
                             >
-                              {renderRightRailDestinationPrompt("toolkit")}
-                              <ToolkitPanel
-                                projectName={projectName}
-                                onRunCommand={handleRunCommand}
-                                activeTargetLabel={visualActiveTerminalTargetLabel}
-                                activeTargetReady={activeTerminalTarget.ready}
-                                forceExpanded={rightRailFocusWidget === "toolkit"}
-                              />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        {(rightRailHasBlockingDecision || rightRailFocusWidget === "decision-inbox") && (
-                          <ErrorBoundary>
-                            <Suspense fallback={null}>
-                              <RightRailWidgetFrame
-                                widget="decision-inbox"
-                                title="Decision Inbox"
-                                subtitle={`${decisionInbox.pendingCount} waiting`}
-                                defaultOpen={rightRailHasBlockingDecision}
-                                forceOpen={rightRailFocusWidget === "decision-inbox"}
-                              >
-                                {renderRightRailDestinationPrompt("decision-inbox")}
-                                <DecisionInboxPanel
-                                  sessions={rightRailSessions}
-                                  auditEvents={scopedOperationalAuditEvents}
-                                  workflows={workflowStatuses}
-                                  activeSessionId={rightRailActiveSessionId}
-                                  onSelectSession={handleSelectRightRailSession}
-                                  onOpenWorkflow={handleOpenDecisionWorkflow}
-                                  onOpenAudit={handleOpenDecisionAudit}
-                                  onDecide={handleDecideDecision}
-                                />
-                              </RightRailWidgetFrame>
-                            </Suspense>
-                          </ErrorBoundary>
-                        )}
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="sessions"
-                              title="Agents"
-                              subtitle={`${rightRailAgentsSummary} · ${rightRailAgentsDetail}`}
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "sessions"}
-                            >
-                              <AgentInspector {...agentInspectorProps} />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="orchestrator"
-                              title="Orchestrator"
-                              subtitle="autonomy loop"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "orchestrator"}
-                            >
-                              <OrchestratorPanel />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="workflow"
-                              title="Workflows"
-                              subtitle="multi-step runs"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "workflow"}
-                              focusConfirmation={
-                                rightRailRouteConfirmation?.widget === "workflow" ? rightRailRouteConfirmation : null
+                              <span className="right-panel-action-icon" aria-hidden="true">
+                                <ActionIcon size={12} strokeWidth={1.8} />
+                              </span>
+                              <span className="right-panel-action-copy">
+                                <span className="right-panel-action-label">{action.label}</span>
+                                <span className="right-panel-action-detail">{action.detail}</span>
+                                <span className="right-panel-action-why">{action.nextStep}</span>
+                                <span className="right-panel-action-outcome">
+                                  {action.execution.disabledReason ??
+                                    action.execution.guardrailDetail ??
+                                    action.execution.evidence}
+                                </span>
+                              </span>
+                              <span className="right-panel-action-meta">
+                                <span className="right-panel-action-phase">{RIGHT_RAIL_ACTION_PHASE[action.id]}</span>
+                                <span className="right-panel-action-owner" title={action.target.reason}>
+                                  {actionOwnerLabel}
+                                </span>
+                                <span className="right-panel-action-target">{action.target.label}</span>
+                                <span className="right-panel-action-execution">{action.execution.label}</span>
+                                {action.execution.guardrailLabel && (
+                                  <span className="right-panel-action-guardrail">
+                                    {action.execution.guardrailLabel}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </section>
+                    )}
+                  </details>
+                )}
+
+                {rightRailActionResult && (
+                  <section
+                    className="right-panel-action-result"
+                    data-tone={rightRailActionResult.tone}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span className="right-panel-action-result-kicker">Last action</span>
+                    <span className="right-panel-action-result-label">{rightRailActionResult.label}</span>
+                    <span className="right-panel-action-result-detail">{rightRailActionResult.detail}</span>
+                    {(rightRailActionResult.auditEventId != null ||
+                      rightRailActionResult.auditCorrelationId ||
+                      rightRailActionResult.routeWidget) && (
+                      <button
+                        type="button"
+                        className="right-panel-action-result-audit"
+                        onClick={() => handleOpenRightRailOutcomeSource(rightRailActionResult)}
+                        aria-label={`Open source context for ${rightRailActionResult.label}`}
+                        title={
+                          rightRailActionResult.auditTimestamp
+                            ? `Open audit context from ${rightRailActionResult.auditTimestamp}`
+                            : (rightRailActionResult.routeDetail ?? "Open source context")
+                        }
+                      >
+                        {rightRailActionResult.routeLabel ?? "Audit"}
+                      </button>
+                    )}
+                  </section>
+                )}
+
+                {rightRailActionHistory.length > 0 && (
+                  <section className="right-panel-action-history" aria-label="Recent right rail action history">
+                    <div className="right-panel-action-history-header">
+                      <span>Recent actions</span>
+                      <span>{rightRailActionHistory.length}</span>
+                    </div>
+                    <div className="right-panel-action-history-list">
+                      {rightRailActionHistory.map((result) => (
+                        <div key={result.id} className="right-panel-action-history-item" data-tone={result.tone}>
+                          <span className="right-panel-action-history-copy">
+                            <span className="right-panel-action-history-label">{result.label}</span>
+                            <span className="right-panel-action-history-detail">{result.detail}</span>
+                          </span>
+                          {(result.auditEventId != null || result.auditCorrelationId || result.routeWidget) && (
+                            <button
+                              type="button"
+                              className="right-panel-action-history-audit"
+                              onClick={() => handleOpenRightRailOutcomeSource(result)}
+                              aria-label={`Open source context for ${result.label}`}
+                              title={
+                                result.auditTimestamp
+                                  ? `Open audit context from ${result.auditTimestamp}`
+                                  : (result.routeDetail ?? "Open source context")
                               }
                             >
-                              <WorkflowPanel
-                                projectPath={projectPath}
-                                sessions={rightRailSessions}
-                                onStartAgent={handleStartAgent}
-                                onDestinationOutcome={showRightRailDestinationOutcome}
-                              />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
+                              {result.routeLabel ?? "Audit"}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <div
+                  id="right-rail-panel"
+                  ref={rightRailPanelRef}
+                  className="right-panel-stack"
+                  data-mode={rightRailMode}
+                  role="tabpanel"
+                  aria-labelledby={`right-rail-tab-${rightRailMode}`}
+                  aria-describedby="right-rail-purpose"
+                >
+                  {rightRailMode === "command" && (
+                    <>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div
+                            className="bento-widget"
+                            data-widget="toolkit"
+                            data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}
+                          >
+                            {renderRightRailDestinationPrompt("toolkit")}
+                            <ToolkitPanel
+                              projectName={projectName}
+                              onRunCommand={handleRunCommand}
+                              activeTargetLabel={visualActiveTerminalTargetLabel}
+                              activeTargetReady={activeTerminalTarget.ready}
+                              forceExpanded={rightRailFocusWidget === "toolkit"}
+                            />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      {(rightRailHasBlockingDecision || rightRailFocusWidget === "decision-inbox") && (
                         <ErrorBoundary>
                           <Suspense fallback={null}>
                             <RightRailWidgetFrame
-                              widget="context"
-                              title="Context"
-                              subtitle="handoff state"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "context"}
+                              widget="decision-inbox"
+                              title="Decision Inbox"
+                              subtitle={`${decisionInbox.pendingCount} waiting`}
+                              defaultOpen={rightRailHasBlockingDecision}
+                              forceOpen={rightRailFocusWidget === "decision-inbox"}
                             >
-                              <ContextPanel
+                              {renderRightRailDestinationPrompt("decision-inbox")}
+                              <DecisionInboxPanel
                                 sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                changedFilesCount={rightRailAllChangedFiles.length}
-                                changedFiles={rightRailAllChangedFiles}
-                                panes={visualTerminalPaneTargets}
                                 auditEvents={scopedOperationalAuditEvents}
-                                projectName={projectName}
-                                projectPath={projectPath}
-                                branch={branch}
-                                workstationGraph={focusedRightRailGraph}
-                              />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                      </>
-                    )}
-
-                    {rightRailMode === "review" && (
-                      <>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="review-queue">
-                              {renderRightRailDestinationPrompt("review-queue")}
-                              <ReviewQueuePanel
-                                sessions={rightRailSessions}
-                                changedFiles={rightRailAllChangedFiles}
+                                workflows={workflowStatuses}
                                 activeSessionId={rightRailActiveSessionId}
                                 onSelectSession={handleSelectRightRailSession}
-                                onOpenDiff={handleOpenDiff}
-                                onOpenCommandEvidence={handleOpenCommandEvidence}
-                                onStartAgent={handleStartAgent}
-                                workstationGraph={focusedRightRailGraph}
-                              />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                              <AgentInspector {...agentInspectorProps} />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="scm">
-                              <SCMPanel
-                                projectPath={projectPath}
-                                onOpenFile={handleFileSelect}
-                                onOpenDiff={handleOpenDiff}
-                              />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="context"
-                              title="Context"
-                              subtitle="handoff state"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "context"}
-                            >
-                              <ContextPanel
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                changedFilesCount={rightRailAllChangedFiles.length}
-                                changedFiles={rightRailAllChangedFiles}
-                                panes={visualTerminalPaneTargets}
-                                auditEvents={scopedOperationalAuditEvents}
-                                projectName={projectName}
-                                projectPath={projectPath}
-                                branch={branch}
-                                density="compact"
-                                workstationGraph={focusedRightRailGraph}
+                                onOpenWorkflow={handleOpenDecisionWorkflow}
+                                onOpenAudit={handleOpenDecisionAudit}
+                                onDecide={handleDecideDecision}
                               />
                             </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
-                      </>
-                    )}
+                      )}
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="sessions"
+                            title="Agents"
+                            subtitle={`${rightRailAgentsSummary} · ${rightRailAgentsDetail}`}
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "sessions"}
+                          >
+                            <AgentInspector {...agentInspectorProps} />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="orchestrator"
+                            title="Orchestrator"
+                            subtitle="autonomy loop"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "orchestrator"}
+                          >
+                            <OrchestratorPanel />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="workflow"
+                            title="Workflows"
+                            subtitle="multi-step runs"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "workflow"}
+                            focusConfirmation={
+                              rightRailRouteConfirmation?.widget === "workflow" ? rightRailRouteConfirmation : null
+                            }
+                          >
+                            <WorkflowPanel
+                              projectPath={projectPath}
+                              sessions={rightRailSessions}
+                              onStartAgent={handleStartAgent}
+                              onDestinationOutcome={showRightRailDestinationOutcome}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="context"
+                            title="Context"
+                            subtitle="handoff state"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "context"}
+                          >
+                            <ContextPanel
+                              sessions={rightRailSessions}
+                              activeSessionId={rightRailActiveSessionId}
+                              changedFilesCount={rightRailAllChangedFiles.length}
+                              changedFiles={rightRailAllChangedFiles}
+                              panes={visualTerminalPaneTargets}
+                              auditEvents={scopedOperationalAuditEvents}
+                              projectName={projectName}
+                              projectPath={projectPath}
+                              branch={branch}
+                              workstationGraph={focusedRightRailGraph}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                    </>
+                  )}
 
-                    {rightRailMode === "observe" && (
-                      <>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="processes">
-                              {renderRightRailDestinationPrompt("processes")}
-                              <ProcessManagerPanel
-                                panes={visualTerminalPaneTargets}
-                                activeTerminalId={visualActivePtyId}
-                                highlightedPaneId={selectedOperationalPane?.paneId ?? null}
-                                highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
-                                onFocusPane={handleFocusOperationalPane}
-                                onClosePane={handlePaneClose}
-                                onRestartPane={handlePaneRestart}
-                                onAttachProcess={handlePaneAttach}
-                                onProcessEnded={(terminalId) => {
-                                  setSelectedOperationalPane((selected) =>
-                                    clearEndedOperationalTerminal(selected, terminalId),
-                                  );
-                                  setTabActivePtyIds((prev) => {
-                                    let changed = false;
-                                    const next = { ...prev };
-                                    for (const [tabId, ptyId] of Object.entries(next)) {
-                                      if (ptyId === terminalId) {
-                                        next[tabId] = null;
-                                        changed = true;
-                                      }
+                  {rightRailMode === "review" && (
+                    <>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="review-queue">
+                            {renderRightRailDestinationPrompt("review-queue")}
+                            <ReviewQueuePanel
+                              sessions={rightRailSessions}
+                              changedFiles={rightRailAllChangedFiles}
+                              activeSessionId={rightRailActiveSessionId}
+                              onSelectSession={handleSelectRightRailSession}
+                              onOpenDiff={handleOpenDiff}
+                              onOpenCommandEvidence={handleOpenCommandEvidence}
+                              onStartAgent={handleStartAgent}
+                              workstationGraph={focusedRightRailGraph}
+                            />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
+                            <AgentInspector {...agentInspectorProps} />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="scm">
+                            <SCMPanel
+                              projectPath={projectPath}
+                              onOpenFile={handleFileSelect}
+                              onOpenDiff={handleOpenDiff}
+                            />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="context"
+                            title="Context"
+                            subtitle="handoff state"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "context"}
+                          >
+                            <ContextPanel
+                              sessions={rightRailSessions}
+                              activeSessionId={rightRailActiveSessionId}
+                              changedFilesCount={rightRailAllChangedFiles.length}
+                              changedFiles={rightRailAllChangedFiles}
+                              panes={visualTerminalPaneTargets}
+                              auditEvents={scopedOperationalAuditEvents}
+                              projectName={projectName}
+                              projectPath={projectPath}
+                              branch={branch}
+                              density="compact"
+                              workstationGraph={focusedRightRailGraph}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                    </>
+                  )}
+
+                  {rightRailMode === "observe" && (
+                    <>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="processes">
+                            {renderRightRailDestinationPrompt("processes")}
+                            <ProcessManagerPanel
+                              panes={visualTerminalPaneTargets}
+                              activeTerminalId={visualActivePtyId}
+                              highlightedPaneId={selectedOperationalPane?.paneId ?? null}
+                              highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
+                              onFocusPane={handleFocusOperationalPane}
+                              onClosePane={handlePaneClose}
+                              onRestartPane={handlePaneRestart}
+                              onAttachProcess={handlePaneAttach}
+                              onProcessEnded={(terminalId) => {
+                                setSelectedOperationalPane((selected) =>
+                                  clearEndedOperationalTerminal(selected, terminalId),
+                                );
+                                setTabActivePtyIds((prev) => {
+                                  let changed = false;
+                                  const next = { ...prev };
+                                  for (const [tabId, ptyId] of Object.entries(next)) {
+                                    if (ptyId === terminalId) {
+                                      next[tabId] = null;
+                                      changed = true;
                                     }
-                                    return changed ? next : prev;
-                                  });
-                                }}
-                              />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
+                                  }
+                                  return changed ? next : prev;
+                                });
+                              }}
+                            />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="live-panes">
+                            {renderRightRailDestinationPrompt("live-panes")}
+                            <LivePanesPanel
+                              panes={visualTerminalPaneTargets}
+                              highlightedPaneId={selectedOperationalPane?.paneId ?? null}
+                              highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
+                              onFocusPane={handleFocusOperationalPane}
+                              onAttachPane={handlePaneAttach}
+                              onSelectPane={selectOperationalPane}
+                            />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="audit-timeline"
+                            title="Audit"
+                            subtitle="events and recovery"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "audit-timeline"}
+                            focusConfirmation={
+                              rightRailRouteConfirmation?.widget === "audit-timeline"
+                                ? rightRailRouteConfirmation
+                                : null
+                            }
+                          >
+                            {renderRightRailDestinationPrompt("audit-timeline")}
+                            <AuditTimelinePanel
+                              auditEvents={scopedOperationalAuditEvents}
+                              auditError={visualAuditEvents === undefined ? auditStream.error : null}
+                              auditReady={visualAuditEvents === undefined ? auditStream.ready : true}
+                              panes={visualTerminalPaneTargets}
+                              selectedEventId={selectedAuditEventId}
+                              traceFilter={selectedAuditTraceFilter}
+                              workstationGraph={focusedRightRailGraph}
+                              onFocusPane={handleFocusOperationalPane}
+                              onRestartPane={handlePaneRestart}
+                              onSelectEvent={handleSelectAuditEvent}
+                              onTraceFilterChange={setSelectedAuditTraceFilter}
+                              onDestinationOutcome={showRightRailDestinationOutcome}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="context"
+                            title="Context"
+                            subtitle="handoff state"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "context"}
+                          >
+                            <ContextPanel
+                              sessions={rightRailSessions}
+                              activeSessionId={rightRailActiveSessionId}
+                              changedFilesCount={rightRailAllChangedFiles.length}
+                              changedFiles={rightRailAllChangedFiles}
+                              panes={visualTerminalPaneTargets}
+                              auditEvents={scopedOperationalAuditEvents}
+                              projectName={projectName}
+                              projectPath={projectPath}
+                              branch={branch}
+                              density="compact"
+                              workstationGraph={focusedRightRailGraph}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="run-graph"
+                            title="Run Graph"
+                            subtitle="roles and handoffs"
+                            defaultOpen={false}
+                            forceOpen={rightRailFocusWidget === "run-graph"}
+                          >
+                            <RunGraphPanel
+                              sessions={rightRailSessions}
+                              activeSessionId={rightRailActiveSessionId}
+                              onSelectSession={handleSelectRightRailSession}
+                              workstationGraph={focusedRightRailGraph}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <RightRailWidgetFrame
+                            widget="tool-ledger"
+                            title="Run Ledger"
+                            subtitle="tool activity"
+                            defaultOpen={false}
+                          >
+                            <ToolLedgerPanel
+                              sessions={rightRailSessions}
+                              activeSessionId={rightRailActiveSessionId}
+                              onSelectSession={handleSelectRightRailSession}
+                              workstationGraph={focusedRightRailGraph}
+                            />
+                          </RightRailWidgetFrame>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
+                            <AgentInspector {...agentInspectorProps} />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <Suspense fallback={null}>
+                          <div className="bento-widget" data-widget="reliability">
+                            {renderRightRailDestinationPrompt("reliability")}
+                            <ReliabilityPanel
+                              sessions={rightRailSessions}
+                              panes={visualTerminalPaneTargets}
+                              changedFilesCount={rightRailAllChangedFiles.length}
+                              auditEvents={scopedOperationalAuditEvents}
+                              workstationGraph={focusedRightRailGraph}
+                              selectedEventId={selectedAuditEventId}
+                              onFocusPane={handleFocusOperationalPane}
+                              onRestartPane={handlePaneRestart}
+                              onSelectIncident={handleSelectReliabilityIncident}
+                              onTraceIncident={handleTraceReliabilityIncident}
+                            />
+                          </div>
+                        </Suspense>
+                      </ErrorBoundary>
+                      {devVisualQa.diagnosticsEnabled && (
                         <ErrorBoundary>
                           <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="live-panes">
-                              {renderRightRailDestinationPrompt("live-panes")}
-                              <LivePanesPanel
-                                panes={visualTerminalPaneTargets}
-                                highlightedPaneId={selectedOperationalPane?.paneId ?? null}
-                                highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
-                                onFocusPane={handleFocusOperationalPane}
-                                onAttachPane={handlePaneAttach}
-                                onSelectPane={selectOperationalPane}
-                              />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="audit-timeline"
-                              title="Audit"
-                              subtitle="events and recovery"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "audit-timeline"}
-                              focusConfirmation={
-                                rightRailRouteConfirmation?.widget === "audit-timeline"
-                                  ? rightRailRouteConfirmation
-                                  : null
-                              }
-                            >
-                              {renderRightRailDestinationPrompt("audit-timeline")}
-                              <AuditTimelinePanel
-                                auditEvents={scopedOperationalAuditEvents}
-                                auditError={visualAuditEvents === undefined ? auditStream.error : null}
-                                auditReady={visualAuditEvents === undefined ? auditStream.ready : true}
-                                panes={visualTerminalPaneTargets}
-                                selectedEventId={selectedAuditEventId}
-                                traceFilter={selectedAuditTraceFilter}
-                                workstationGraph={focusedRightRailGraph}
-                                onFocusPane={handleFocusOperationalPane}
-                                onRestartPane={handlePaneRestart}
-                                onSelectEvent={handleSelectAuditEvent}
-                                onTraceFilterChange={setSelectedAuditTraceFilter}
-                                onDestinationOutcome={showRightRailDestinationOutcome}
-                              />
+                            <RightRailWidgetFrame widget="logs" title="Logs" subtitle="diagnostics" defaultOpen={false}>
+                              <LogsPanel defaultCollapsed />
                             </RightRailWidgetFrame>
                           </Suspense>
                         </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="context"
-                              title="Context"
-                              subtitle="handoff state"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "context"}
-                            >
-                              <ContextPanel
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                changedFilesCount={rightRailAllChangedFiles.length}
-                                changedFiles={rightRailAllChangedFiles}
-                                panes={visualTerminalPaneTargets}
-                                auditEvents={scopedOperationalAuditEvents}
-                                projectName={projectName}
-                                projectPath={projectPath}
-                                branch={branch}
-                                density="compact"
-                                workstationGraph={focusedRightRailGraph}
-                              />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="run-graph"
-                              title="Run Graph"
-                              subtitle="roles and handoffs"
-                              defaultOpen={false}
-                              forceOpen={rightRailFocusWidget === "run-graph"}
-                            >
-                              <RunGraphPanel
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                workstationGraph={focusedRightRailGraph}
-                              />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="tool-ledger"
-                              title="Run Ledger"
-                              subtitle="tool activity"
-                              defaultOpen={false}
-                            >
-                              <ToolLedgerPanel
-                                sessions={rightRailSessions}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                workstationGraph={focusedRightRailGraph}
-                              />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                              <AgentInspector {...agentInspectorProps} />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <div className="bento-widget" data-widget="reliability">
-                              {renderRightRailDestinationPrompt("reliability")}
-                              <ReliabilityPanel
-                                sessions={rightRailSessions}
-                                panes={visualTerminalPaneTargets}
-                                changedFilesCount={rightRailAllChangedFiles.length}
-                                auditEvents={scopedOperationalAuditEvents}
-                                workstationGraph={focusedRightRailGraph}
-                                selectedEventId={selectedAuditEventId}
-                                onFocusPane={handleFocusOperationalPane}
-                                onRestartPane={handlePaneRestart}
-                                onSelectIncident={handleSelectReliabilityIncident}
-                                onTraceIncident={handleTraceReliabilityIncident}
-                              />
-                            </div>
-                          </Suspense>
-                        </ErrorBoundary>
-                        {devVisualQa.diagnosticsEnabled && (
-                          <ErrorBoundary>
-                            <Suspense fallback={null}>
-                              <RightRailWidgetFrame
-                                widget="logs"
-                                title="Logs"
-                                subtitle="diagnostics"
-                                defaultOpen={false}
-                              >
-                                <LogsPanel defaultCollapsed />
-                              </RightRailWidgetFrame>
-                            </Suspense>
-                          </ErrorBoundary>
-                        )}
-                      </>
-                    )}
-                  </div>
+                      )}
+                    </>
+                  )}
                 </div>
-              </aside>
-            </main>
+              </div>
+            </aside>
+          </main>
 
-            <WorkspaceTabs
-              tabs={tabs}
-              activeTabId={activeTabId}
-              activityTabs={activityTabs}
-              onSelectTab={(id) => {
-                if (interactiveSessionId) selectInteractiveSession("");
-                void handleTabSwitch(id);
-              }}
-              onCloseTab={handleCloseTab}
-              onNewTab={addTab}
-              onReorderTab={reorderTab}
-              interactiveSessions={interactiveSessions}
-              activeInteractiveId={interactiveSessionId}
-              onSelectInteractive={handleFocusInteractiveSession}
-              onCloseInteractive={stopInteractiveSession}
-            />
+          <WorkspaceTabs
+            tabs={tabs}
+            activeTabId={activeTabId}
+            activityTabs={activityTabs}
+            onSelectTab={(id) => {
+              if (interactiveSessionId) selectInteractiveSession("");
+              void handleTabSwitch(id);
+            }}
+            onCloseTab={handleCloseTab}
+            onNewTab={addTab}
+            onReorderTab={reorderTab}
+            interactiveSessions={interactiveSessions}
+            activeInteractiveId={interactiveSessionId}
+            onSelectInteractive={handleFocusInteractiveSession}
+            onCloseInteractive={stopInteractiveSession}
+          />
 
-            <StatusBar
-              shell={activeTab.shell}
-              branch={branch}
-              changedCount={changedFiles.length}
-              agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
-              terminalId={activePtyId}
-              paneCount={visualTerminalPaneTargets.length}
-              rightRailMode={rightRailMode}
-              rightRailWidth={rightPanelWidth}
-            />
+          <StatusBar
+            shell={activeTab.shell}
+            branch={branch}
+            changedCount={changedFiles.length}
+            agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
+            terminalId={activePtyId}
+            paneCount={visualTerminalPaneTargets.length}
+            rightRailMode={rightRailMode}
+            rightRailWidth={rightPanelWidth}
+          />
 
-            {paletteVisible && (
-              <LazyDialog>
-                <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
-              </LazyDialog>
-            )}
-            {settingsVisible && (
-              <LazyDialog>
-                <Settings visible onClose={() => setSettingsVisible(false)} />
-              </LazyDialog>
-            )}
-            {watchdogVisible && (
-              <LazyDialog>
-                <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} />
-              </LazyDialog>
-            )}
-            {aboutVisible && (
-              <LazyDialog>
-                <AboutDialog visible onClose={() => setAboutVisible(false)} />
-              </LazyDialog>
-            )}
-            {helpVisible && (
-              <LazyDialog>
-                <HelpDialog visible onClose={() => setHelpVisible(false)} />
-              </LazyDialog>
-            )}
-            {webInspectorVisible && (
-              <LazyDialog>
-                <WebInspector visible onClose={() => setWebInspectorVisible(false)} />
-              </LazyDialog>
-            )}
-            {prInspectorVisible && (
-              <LazyDialog>
-                <PRInspector
-                  visible
-                  projectPath={projectPath}
-                  onClose={() => setPrInspectorVisible(false)}
-                  onStartReview={handleStartAgent}
-                />
-              </LazyDialog>
-            )}
-            {mergeQueueVisible && (
-              <LazyDialog>
-                <MergeQueuePanel visible onClose={() => setMergeQueueVisible(false)} />
-              </LazyDialog>
-            )}
-            {quickOpenMode && (
-              <LazyDialog>
-                <QuickOpen
-                  projectPath={projectPath}
-                  openFiles={openFiles}
-                  onSelectFile={handleFileSelect}
-                  onClose={() => setQuickOpenMode(null)}
-                  initialMode={quickOpenMode}
-                />
-              </LazyDialog>
-            )}
-            {paneSwitcherVisible && (
-              <LazyDialog>
-                <PaneSwitcherDialog
-                  visible
-                  panes={visualTerminalPaneTargets}
-                  activeTabId={activeTabId}
-                  activeTerminalId={visualActivePtyId}
-                  onFocusPane={handleFocusOperationalPane}
-                  onRestartPane={handlePaneRestart}
-                  onClosePane={handlePaneClose}
-                  onRenamePane={handlePaneRename}
-                  onCyclePaneRole={handlePaneRoleCycle}
-                  onClose={() => setPaneSwitcherVisible(false)}
-                />
-              </LazyDialog>
-            )}
-            <PromptDialog />
-            <ConfirmDialog />
-            <HandoffDialog />
-            <OrchestraDialog />
-            <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
-            <Suspense fallback={null}>
-              <OnboardingOverlay />
-              <FleetHud />
-            </Suspense>
-          </div>
-        </ToastProvider>
+          {paletteVisible && (
+            <LazyDialog>
+              <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
+            </LazyDialog>
+          )}
+          {settingsVisible && (
+            <LazyDialog>
+              <Settings visible onClose={() => setSettingsVisible(false)} />
+            </LazyDialog>
+          )}
+          {watchdogVisible && (
+            <LazyDialog>
+              <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} />
+            </LazyDialog>
+          )}
+          {aboutVisible && (
+            <LazyDialog>
+              <AboutDialog visible onClose={() => setAboutVisible(false)} />
+            </LazyDialog>
+          )}
+          {helpVisible && (
+            <LazyDialog>
+              <HelpDialog visible onClose={() => setHelpVisible(false)} />
+            </LazyDialog>
+          )}
+          {webInspectorVisible && (
+            <LazyDialog>
+              <WebInspector visible onClose={() => setWebInspectorVisible(false)} />
+            </LazyDialog>
+          )}
+          {prInspectorVisible && (
+            <LazyDialog>
+              <PRInspector
+                visible
+                projectPath={projectPath}
+                onClose={() => setPrInspectorVisible(false)}
+                onStartReview={handleStartAgent}
+              />
+            </LazyDialog>
+          )}
+          {mergeQueueVisible && (
+            <LazyDialog>
+              <MergeQueuePanel visible onClose={() => setMergeQueueVisible(false)} />
+            </LazyDialog>
+          )}
+          {quickOpenMode && (
+            <LazyDialog>
+              <QuickOpen
+                projectPath={projectPath}
+                openFiles={openFiles}
+                onSelectFile={handleFileSelect}
+                onClose={() => setQuickOpenMode(null)}
+                initialMode={quickOpenMode}
+              />
+            </LazyDialog>
+          )}
+          {paneSwitcherVisible && (
+            <LazyDialog>
+              <PaneSwitcherDialog
+                visible
+                panes={visualTerminalPaneTargets}
+                activeTabId={activeTabId}
+                activeTerminalId={visualActivePtyId}
+                onFocusPane={handleFocusOperationalPane}
+                onRestartPane={handlePaneRestart}
+                onClosePane={handlePaneClose}
+                onRenamePane={handlePaneRename}
+                onCyclePaneRole={handlePaneRoleCycle}
+                onClose={() => setPaneSwitcherVisible(false)}
+              />
+            </LazyDialog>
+          )}
+          <PromptDialog />
+          <ConfirmDialog />
+          <HandoffDialog />
+          <OrchestraDialog />
+          <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
+          <Suspense fallback={null}>
+            <OnboardingOverlay />
+            <FleetHud />
+          </Suspense>
+        </div>
+      </ToastProvider>
     </TooltipProvider>
   );
 }

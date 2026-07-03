@@ -199,6 +199,14 @@ async function listSessions(base) {
   return await request(base, "/sessions");
 }
 
+async function mintInputApproval(base, id, text) {
+  const approval = await request(base, `/sessions/${id}/input-approval`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+  return approval.approvalId ?? null;
+}
+
 async function spawnShellWithId(base, id, cwd) {
   return await request(base, "/sessions", {
     method: "POST",
@@ -213,9 +221,13 @@ async function spawnShellWithId(base, id, cwd) {
 }
 
 async function sendInput(base, id, text) {
+  const approvalId = await mintInputApproval(base, id, text);
   await request(base, `/sessions/${id}/input`, {
     method: "POST",
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({
+      text,
+      ...(approvalId ? { approvalId } : {}),
+    }),
   });
 }
 

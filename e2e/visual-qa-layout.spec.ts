@@ -307,7 +307,7 @@ test.describe("Visual QA layout guard", () => {
   }
 
   const expectedRailWidgets: Record<RailMode, string> = {
-    command: "decision-inbox",
+    command: "toolkit",
     review: "review-queue",
     observe: "processes",
   };

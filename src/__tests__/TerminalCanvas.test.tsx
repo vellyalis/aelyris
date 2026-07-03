@@ -120,6 +120,8 @@ describe("TerminalCanvas", () => {
     expect(canvas.width).toBe(10 * Math.round(14 * 0.6));
     expect(canvas.height).toBe(3 * Math.round(14 * 1.25));
     expect(canvas.getAttribute("data-terminal-id")).toBe("t1");
+    expect(canvas.getAttribute("data-terminal-renderer")).toBe("canvas2d");
+    expect(canvas.getAttribute("data-terminal-webgl-fallback")).toBe("false");
     expect(canvas.parentElement?.getAttribute("data-terminal-text-clarity")).toBe("solid");
   });
 
@@ -191,6 +193,24 @@ describe("TerminalCanvas", () => {
     expect(terminalCanvasSource).toContain("useTerminalRasterBackground");
     expect(terminalCanvasSource).toContain("TERMINAL_RASTER_BG_FALLBACK");
     expect(terminalCanvasSource).toContain('textCtx.textRendering = "auto"');
+  });
+
+  it("keeps the WebGL2 terminal renderer opt-in with Canvas2D fallback wiring", () => {
+    expect(terminalCanvasSource).toContain('import * as gpuPaint from "./gpu/terminalPaintGpu"');
+    expect(terminalCanvasSource).toContain("terminalRendererMode = useAppStore((s) => s.terminalRendererMode)");
+    expect(terminalCanvasSource).toContain(
+      'terminalRendererMode === "webgl2" && !webglFallback ? "webgl2" : "canvas2d"',
+    );
+    expect(terminalCanvasSource).toContain("webglcontextlost");
+    expect(terminalCanvasSource).toContain("setWebglFallback(true)");
+    expect(terminalCanvasSource).toContain('operation: "create_webgl2_context"');
+    expect(terminalCanvasSource).toContain("gpuPaint.beginGpuFrame(gpuCtx)");
+    expect(terminalCanvasSource).toContain("gpuPaint.flushGpuFrame(gpuCtx)");
+    expect(terminalCanvasSource).toContain("key={effectiveRendererMode}");
+    expect(terminalCanvasSource).toContain("data-terminal-renderer={effectiveRendererMode}");
+    expect(terminalCanvasSource).toContain('effectiveRendererMode === "webgl2" ? "webgl" : "canvas2d"');
+    expect(terminalCanvasSource).toContain("renderer: performanceRenderer");
+    expect(terminalCanvasSource).toContain('webglFallback: terminalRendererMode === "webgl2"');
   });
 
   it("snaps pane mounts to the physical pixel grid before compositing the terminal canvas", () => {

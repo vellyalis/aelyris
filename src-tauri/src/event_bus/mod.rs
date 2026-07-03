@@ -94,6 +94,10 @@ pub enum AgentEventKind {
     /// its files (§6.4) — derived from the live ownership map, not raw pane text, so
     /// the directive is auditable and the agent (or operator) can act on structured data.
     SteerAvoid,
+    /// The runtime started, advanced, failed, or committed a visible session handoff.
+    SessionHandoff,
+    /// A predecessor visible session was retired after successor ack+liveness.
+    ContextRecycled,
     /// The loop gave up on a task (a retry budget — crash/rework/timeout — was
     /// exhausted, leaving it `Failed`). Pushed to the supervisor/reviewer with
     /// the failure policy's recommended action so a Failed task is never left
@@ -116,6 +120,8 @@ impl AgentEventKind {
             Self::IntentDeclared => "intent_declared",
             Self::BlockerRaised => "blocker_raised",
             Self::SteerAvoid => "steer_avoid",
+            Self::SessionHandoff => "session_handoff",
+            Self::ContextRecycled => "context_recycled",
             Self::EscalationRaised => "escalation_raised",
         }
     }
@@ -137,7 +143,9 @@ impl AgentEventKind {
             | Self::FileReleased
             | Self::AgentActivity
             | Self::BlockerRaised
-            | Self::SteerAvoid => EventChannel::System,
+            | Self::SteerAvoid
+            | Self::SessionHandoff
+            | Self::ContextRecycled => EventChannel::System,
             // Proposals are deliberation — they belong on the planning channel.
             Self::IntentDeclared => EventChannel::Planning,
         }
@@ -162,6 +170,8 @@ impl FromStr for AgentEventKind {
             "intent_declared" => Self::IntentDeclared,
             "blocker_raised" => Self::BlockerRaised,
             "steer_avoid" => Self::SteerAvoid,
+            "session_handoff" => Self::SessionHandoff,
+            "context_recycled" => Self::ContextRecycled,
             "escalation_raised" => Self::EscalationRaised,
             other => return Err(format!("unknown event kind: {other}")),
         })
@@ -366,6 +376,8 @@ mod tests {
             AgentEventKind::ReviewRequired,
             AgentEventKind::AgentSpawned,
             AgentEventKind::WorktreeCreated,
+            AgentEventKind::SessionHandoff,
+            AgentEventKind::ContextRecycled,
         ] {
             assert!(EVENT_CHANNELS.contains(&kind.default_channel()));
         }
@@ -394,6 +406,8 @@ mod tests {
             AgentEventKind::IntentDeclared,
             AgentEventKind::BlockerRaised,
             AgentEventKind::SteerAvoid,
+            AgentEventKind::SessionHandoff,
+            AgentEventKind::ContextRecycled,
             AgentEventKind::EscalationRaised,
         ];
         for kind in all {

@@ -484,6 +484,7 @@ const terminalFontSettingsContractTestSource = readFileSync(
   join(ROOT, "src", "__tests__", "TerminalFontSettingsContract.test.ts"),
   "utf8",
 );
+const terminalColorsTestSource = readFileSync(join(ROOT, "src", "__tests__", "terminalColors.test.ts"), "utf8");
 const useImageMetricsTestSource = readFileSync(join(ROOT, "src", "__tests__", "useImageMetrics.test.tsx"), "utf8");
 const appSilentBugsTestSource = readFileSync(join(ROOT, "src", "__tests__", "AppSilentBugs.test.ts"), "utf8");
 const themePaletteTestSource = readFileSync(join(ROOT, "src", "__tests__", "themePalette.test.ts"), "utf8");
@@ -550,11 +551,23 @@ const supplyChainEnvironmentBlocked =
   supplyChainAudit?.cargo?.knownVulnerabilities === 0 &&
   (supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
   supplyChainFresh;
+const supplyChainClassifiedUpstreamBound =
+  supplyChainAudit?.status === "classified-upstream-bound" &&
+  supplyChainAudit?.npm?.ok === true &&
+  supplyChainAudit?.npm?.knownVulnerabilities === 0 &&
+  typeof supplyChainAudit?.cargo?.knownVulnerabilities === "number" &&
+  supplyChainAudit.cargo.knownVulnerabilities > 0 &&
+  (supplyChainAudit?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
+  supplyChainAudit?.stackRiskClassification?.ok === true &&
+  supplyChainAudit?.stackRiskClassification?.releaseBlockerCount === 0 &&
+  supplyChainAudit?.stackRiskClassification?.unclassifiedCount === 0 &&
+  (supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? 0) > 0 &&
+  supplyChainFresh;
 add(
   scores,
   "supply-chain-audit",
   "Supply-chain vulnerability audit",
-  supplyChainPass ? 6 : 0,
+  supplyChainPass ? 6 : supplyChainClassifiedUpstreamBound ? 4 : 0,
   6,
   supplyChainPass
     ? `npm 0, cargo 0 vulnerabilities; ${
@@ -562,6 +575,8 @@ add(
       } runtime critical Rust warnings; ${
         supplyChainAudit?.cargo?.reachability?.runtimeMaintenanceWarningCount ?? 0
       } runtime maintenance warnings tracked`
+    : supplyChainClassifiedUpstreamBound
+      ? `classified-upstream-bound; npm 0, cargo ${supplyChainAudit?.cargo?.knownVulnerabilities ?? "?"} known vulnerabilities; stack-risk releaseBlockers=0 upstreamBound=${supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? "?"} unclassified=0`
     : supplyChainEnvironmentBlocked
       ? `environment-blocked; npm audit unavailable (${supplyChainAudit?.npm?.unavailableReason ?? "unknown"}); cargo 0 vulnerabilities, 0 runtime critical Rust warnings`
       : supplyChainAudit?.status
@@ -569,6 +584,10 @@ add(
         : "missing",
   supplyChainPass
     ? []
+    : supplyChainClassifiedUpstreamBound
+      ? [
+          `supply-chain-audit upstream-bound dependency BLOCK: stack-risk releaseBlockers=0 unclassified=0 upstreamBound=${supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? "?"}; release waits on upstream dependency graph movement, not repo-owned implementation.`,
+        ]
     : supplyChainEnvironmentBlocked
       ? [
           `npm supply-chain audit is environment-blocked: ${
@@ -728,9 +747,16 @@ const chunkedOscLiveEnvironmentBlockedReason =
   Array.isArray(chunkedOscLiveEnvironmentBlocked?.errors) && chunkedOscLiveEnvironmentBlocked.errors.length > 0
     ? chunkedOscLiveEnvironmentBlocked.errors.map((error) => String(error)).join("; ")
     : "WebView2/CDP live proof environment is unavailable";
-const nativeHwndPasteLiveFresh =
+const nativeHwndPasteLiveSourceFresh =
+  mtimeMs(nativeHwndPasteLivePath) + 5_000 >=
+  Math.max(
+    mtimeMs(join(ROOT, "scripts", "verify-native-hwnd-paste-live.mjs")),
+    mtimeMs(join(ROOT, "scripts", "verify-native-terminal-input-host.mjs")),
+    mtimeMs(join(ROOT, "src-tauri", "src", "term", "native_input.rs")),
+    mtimeMs(join(ROOT, "src-tauri", "src", "ipc", "commands.rs")),
+  );
+const nativeHwndPasteLiveCoreChecksPass =
   nativeHwndPasteLive?.ok === true &&
-  nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
   nativeHwndPasteLive?.checks?.wmPasteSentToNativeHwnd === true &&
   nativeHwndPasteLive?.checks?.singleLineLfNormalizedAndExecuted === true &&
   nativeHwndPasteLive?.checks?.destructivePasteBlockedBeforePty === true &&
@@ -738,14 +764,18 @@ const nativeHwndPasteLiveFresh =
   nativeHwndPasteLive?.checks?.guardEventCountAdvanced === true &&
   Array.isArray(nativeHwndPasteLive?.cases) &&
   nativeHwndPasteLive.cases.length >= 3 &&
-  nativeHwndPasteLive.cases.every((item) => item?.ok === true && item?.path === "native-input-hwnd-wm-paste") &&
-  mtimeMs(nativeHwndPasteLivePath) + 5_000 >=
-    Math.max(
-      mtimeMs(join(ROOT, "scripts", "verify-native-hwnd-paste-live.mjs")),
-      mtimeMs(join(ROOT, "scripts", "verify-native-terminal-input-host.mjs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "term", "native_input.rs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "ipc", "commands.rs")),
-    );
+  nativeHwndPasteLive.cases.every((item) => item?.ok === true && item?.path === "native-input-hwnd-wm-paste");
+const nativeHwndPasteLiveStrictFresh =
+  nativeHwndPasteLiveCoreChecksPass &&
+  nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
+  nativeHwndPasteLive?.degraded !== true &&
+  nativeHwndPasteLiveSourceFresh;
+const nativeHwndPasteLiveDegradedFresh =
+  nativeHwndPasteLiveCoreChecksPass &&
+  nativeHwndPasteLive?.status === "pass-degraded-no-cdp" &&
+  nativeHwndPasteLive?.degraded === true &&
+  nativeHwndPasteLiveSourceFresh;
+const nativeHwndPasteLiveFresh = nativeHwndPasteLiveStrictFresh;
 const terminalCoreSignals = [
   !hasXtermDependency,
   cargoTomlSource.includes("alacritty_terminal"),
@@ -814,7 +844,13 @@ const terminalCoreBoundaryBlockers = [
           : "chunked OSC inline image live proof is missing or stale",
       ]
     : []),
-  ...(!nativeHwndPasteLiveFresh ? ["native HWND paste live proof is missing or stale"] : []),
+  ...(!nativeHwndPasteLiveFresh
+    ? [
+        nativeHwndPasteLiveDegradedFresh
+          ? "native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof is not full release credit"
+          : "native HWND paste live proof is missing or stale",
+      ]
+    : []),
   ...(Array.isArray(rightRailSuite?.checks) && rightRailSuite.checks.some((check) => check.status === "skipped")
     ? ["native WebView2 terminal/rail CDP evidence is incomplete"]
     : []),
@@ -873,6 +909,8 @@ const terminalCanvasCrispText =
   terminalPaintSource.includes("snapCanvasTextCoord") &&
   terminalPaintSource.includes("shouldClampGlyphToCell") &&
   terminalPaintSource.includes("enhanceTerminalTextColor") &&
+  terminalColorsSource.includes("forceOpaqueCssColor") &&
+  terminalColorsSource.includes("const opaqueColor = fg.a < 1 ? forceOpaqueCssColor(color) : color") &&
   terminalColorsSource.includes("minimumTerminalContrastRatio") &&
   terminalColorsSource.includes("dimAlphaForTextClarity") &&
   terminalMetricsSource.includes("snapTerminalCssPixel") &&
@@ -910,25 +948,28 @@ const terminalFontRenderContractSourcePass =
   terminalFontRenderContractSource.includes("src/features/terminal/terminalPaint.ts") &&
   terminalFontRenderContractSource.includes("src/features/terminal/terminalColors.ts") &&
   terminalFontRenderContractSource.includes("src/features/terminal/repaintDecision.ts") &&
+  terminalFontRenderContractSource.includes("src/__tests__/terminalColors.test.ts") &&
   terminalFontRenderContractSource.includes("pane-mount-pixel-grid") &&
   terminalFontSettingsContractTestSource.includes("terminal font settings contract") &&
   terminalFontSettingsContractTestSource.includes("terminal_font_family: terminalFontFamily") &&
+  terminalFontSettingsContractTestSource.includes("terminalLineHeight = useAppStore((s) => s.terminalLineHeight)") &&
   settingsSource.includes("terminal_font_family: terminalFontFamily") &&
   settingsSource.includes("terminal_text_clarity: terminalTextClarity") &&
   settingsSource.includes("terminal_surface_opacity: terminalSurfaceOpacity") &&
   settingsSource.includes("surfaceOpacity: terminalSurfaceOpacity") &&
   nativeTerminalAreaSource.includes("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)") &&
   nativeTerminalAreaSource.includes("textClarity={terminalTextClarity}") &&
-  nativeTerminalAreaSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily)") &&
+  nativeTerminalAreaSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)") &&
   agentTerminalSource.includes("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)") &&
   agentTerminalSource.includes("textClarity={terminalTextClarity}") &&
-  agentTerminalSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily)") &&
-  terminalCanvasSource.includes("forceOpaqueCssColor") &&
+  agentTerminalSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)") &&
   terminalPaintSource.includes("enhanceTerminalTextColor") &&
+  terminalColorsSource.includes("forceOpaqueCssColor") &&
+  terminalColorsSource.includes("return opaqueColor") &&
+  terminalColorsTestSource.includes("forces translucent legible glyph colours opaque outside glass mode") &&
   terminalColorsSource.includes("minimumTerminalContrastRatio") &&
   terminalColorsSource.includes("dimAlphaForTextClarity") &&
   terminalCanvasSource.includes('textClarity = "solid"') &&
-  terminalCanvasSource.includes('textClarity === "solid"') &&
   terminalCanvasSource.includes("data-terminal-text-clarity={textClarity}");
 const terminalFontRenderContractFresh =
   terminalFontRenderContract?.ok === true &&
@@ -941,6 +982,7 @@ const terminalFontRenderContractFresh =
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/repaintDecision.ts") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/features/terminal/pane-tree/PaneTreeRenderer.tsx") &&
   terminalFontRenderContract?.sourcePaths?.includes?.("src/__tests__/TerminalFontSettingsContract.test.ts") &&
+  terminalFontRenderContract?.sourcePaths?.includes?.("src/__tests__/terminalColors.test.ts") &&
   mtimeMs(terminalFontRenderContractPath) + 5_000 >=
     Math.max(
       mtimeMs(join(ROOT, "scripts", "verify-terminal-font-render-contract.mjs")),
@@ -958,6 +1000,7 @@ const terminalFontRenderContractFresh =
       mtimeMs(join(ROOT, "src", "features", "terminal", "terminalMetrics.ts")),
       mtimeMs(join(ROOT, "src", "shared", "store", "appStore.ts")),
       mtimeMs(join(ROOT, "src", "__tests__", "TerminalFontSettingsContract.test.ts")),
+      mtimeMs(join(ROOT, "src", "__tests__", "terminalColors.test.ts")),
     );
 const terminalRenderFidelityBlockers = [
   ...(terminalCanvasDprBacked ? [] : ["terminal canvas backing store is not device-pixel-ratio backed"]),
@@ -1627,10 +1670,11 @@ const useAgentManagerTelemetryTestPath = join(ROOT, "src", "__tests__", "useAgen
 const commandRecoverySourcePath = join(ROOT, "src", "shared", "lib", "commandRecovery.ts");
 const commandRecoveryTestPath = join(ROOT, "src", "__tests__", "commandRecoveryContract.test.ts");
 const commandRecoveryScriptPath = join(ROOT, "scripts", "verify-command-recovery-contract.mjs");
-const agentStreamParserPath = join(ROOT, "src-tauri", "src", "agent", "parser.rs");
+const rightRailModelPath = join(ROOT, "src", "features", "right-rail", "rightRailModel.tsx");
 const rightRailVisual = join(ROOT, ".codex-auto", "visual", "right-rail-next-action-qa.png");
 const rightRailSource = existsSync(rightRailAdvisor) ? readFileSync(rightRailAdvisor, "utf8") : "";
 const rightRailTestSource = existsSync(rightRailTests) ? readFileSync(rightRailTests, "utf8") : "";
+const rightRailModelSource = existsSync(rightRailModelPath) ? readFileSync(rightRailModelPath, "utf8") : "";
 const terminalNotificationsSource = existsSync(terminalNotificationsPath)
   ? readFileSync(terminalNotificationsPath, "utf8")
   : "";
@@ -1673,7 +1717,6 @@ const commandRecoveryTestSource = existsSync(commandRecoveryTestPath)
 const commandRecoveryScriptSource = existsSync(commandRecoveryScriptPath)
   ? readFileSync(commandRecoveryScriptPath, "utf8")
   : "";
-const agentStreamParserSource = existsSync(agentStreamParserPath) ? readFileSync(agentStreamParserPath, "utf8") : "";
 const rightRailSourceHasExplanations = /\bwhy:\s*"/.test(rightRailSource) && /\bnextStep:\s*"/.test(rightRailSource);
 const rightRailTestsCoverExplanations =
   rightRailTestSource.includes("why") &&
@@ -1744,9 +1787,9 @@ const rightRailTestsCoverRunLoopTrace =
   appSilentBugsTestSource.includes("rightRailTestsCoverRunLoopTrace") &&
   appSilentBugsTestSource.includes('aria-label="Primary action trace"');
 const rightRailTestsCoverActionOwnership =
-  appSource.includes("function formatRightRailActionOwner") &&
-  appSource.includes("compactRightRailOwnerId") &&
-  appSource.includes("formatRightRailPathOwner") &&
+  rightRailModelSource.includes("function formatRightRailActionOwner") &&
+  rightRailModelSource.includes("compactRightRailOwnerId") &&
+  rightRailModelSource.includes("formatRightRailPathOwner") &&
   appSource.includes("const actionOwnerLabel = formatRightRailActionOwner(action)") &&
   appSource.includes("data-owner-kind={action.target.kind}") &&
   appSource.includes("data-owner-label={actionOwnerLabel}") &&
@@ -2018,7 +2061,9 @@ const commandEvidenceSmokeEnvironmentBlockedPass =
   commandEvidenceSmokeEnvironmentBlocked?.preservesPrimaryArtifact === true &&
   Array.isArray(commandEvidenceSmokeEnvironmentBlocked?.errors) &&
   commandEvidenceSmokeEnvironmentBlocked.errors.some((error) =>
-    /spawn EPERM|ECONNREFUSED|browserType\.launch|Cannot open .*Start the dev server first/i.test(String(error)),
+    /spawn EPERM|ECONNREFUSED|browserType\.launch|Cannot open .*Start the dev server first|504 \(Outdated Optimize Dep\)|Outdated Optimize Dep/i.test(
+      String(error),
+    ),
   ) &&
   mtimeMs(commandEvidenceSmokeEnvironmentBlockedPath) + 5_000 >=
     mtimeMs(join(ROOT, "scripts", "verify-right-rail-command-evidence.mjs"));
@@ -2080,7 +2125,7 @@ function commandProofEnvironmentBlockedFresh(artifact, artifactPath, verifierPat
     artifact?.preservesPrimaryArtifact === true &&
     Array.isArray(artifact?.errors) &&
     artifact.errors.some((error) =>
-      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \(null\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
+      /spawn EPERM|connect ECONNREFUSED|Cannot attach to WebView2 CDP|CDP endpoint did not respond|browserType\.launch|PowerShell failed \((?:null|\d+)\)|No running debug\/release Aelyris\.exe process found|Debug app executable missing|Vite dev server/i.test(
         String(error),
       ),
     ) &&
@@ -3287,7 +3332,7 @@ const aiCliLaunchPlannerRightRailPass =
   rightRailTestSource.includes("aiCliLaunchTrace") &&
   appSource.includes("deriveAiCliLaunchPlan") &&
   appSource.includes("rightRailAiCliLaunchPlan") &&
-  appSource.includes("buildRightRailActionAuditPayload(action, previousMode)");
+  rightRailModelSource.includes("buildRightRailActionAuditPayload(action, previousMode)");
 const aiCliLaunchPlannerSmokeFresh =
   aiCliLaunchPlannerSmoke?.ok === true &&
   mtimeMs(aiCliLaunchPlannerSmokePath) + 5_000 >=
@@ -3515,7 +3560,8 @@ const commandRecoveryFresh =
       mtimeMs(commandRecoveryScriptPath),
       mtimeMs(commandRecoveryTestPath),
       mtimeMs(commandRecoverySourcePath),
-      mtimeMs(agentStreamParserPath),
+      mtimeMs(agentFileChangesSourcePath),
+      mtimeMs(agentFileChangesTestPath),
       mtimeMs(join(ROOT, "src", "shared", "lib", "auditRecovery.ts")),
       mtimeMs(rightRailAdvisor),
       mtimeMs(join(ROOT, "src", "shared", "lib", "workstationGraph.ts")),
@@ -3537,10 +3583,10 @@ const commandRecoverySourcePass =
   ) &&
   commandRecoveryTestSource.includes("routes denied tool recovery through review denial without silently retrying") &&
   commandRecoveryScriptSource.includes("failed command recovery does not expose stale/fallback guards") &&
-  agentStreamParserSource.includes('event_type: "parser_error"') &&
-  agentStreamParserSource.includes("malformed-stream-json-is-auditable") &&
-  agentStreamParserSource.includes("test_malformed_json_emits_visible_parse_error") &&
-  agentStreamParserSource.includes("test_flush_malformed_json_emits_visible_parse_error");
+  agentFileChangesSource.includes('kind: "parser_error"') &&
+  agentFileChangesSource.includes("malformed-agent-structured-output-is-auditable") &&
+  agentFileChangesTestSource.includes("surfaces malformed structured agent output as auditable parser_error") &&
+  agentFileChangesTestSource.includes("keeps parser errors separate from normal text so provenance degradation is visible");
 const commandRecoveryPass =
   commandRecoveryFresh &&
   commandRecoverySourcePass &&
@@ -4523,6 +4569,7 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("nativeHwndPasteLivePath") &&
   finalGoalAuditScriptSource.includes("nativeHwndPasteLiveChecks") &&
   finalGoalAuditScriptSource.includes("pass-current-native-hwnd-paste-contract") &&
+  finalGoalAuditScriptSource.includes("pass-degraded-no-cdp") &&
   finalGoalAuditScriptSource.includes("scripts/verify-native-hwnd-paste-live.mjs") &&
   finalGoalAuditScriptSource.includes("docs/specs/README.md") &&
   finalGoalAuditScriptSource.includes("docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md") &&
@@ -4542,7 +4589,8 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("src/__tests__/setup.ts") &&
   finalGoalAuditScriptSource.includes("test-runtime-hygiene") &&
   finalGoalAuditScriptSource.includes("src-tauri/Cargo.toml") &&
-  finalGoalAuditScriptSource.includes("src-tauri/src/agent/parser.rs") &&
+  finalGoalAuditScriptSource.includes("src/shared/lib/agentFileChanges.ts") &&
+  finalGoalAuditScriptSource.includes("src/__tests__/agentFileChanges.test.ts") &&
   finalGoalAuditScriptSource.includes("latestReleaseScoreDependency") &&
   finalGoalAuditScriptSource.includes("releaseScoreFreshness") &&
   finalGoalAuditScriptSource.includes("scoreSelfReferenceNote") &&
@@ -4629,6 +4677,7 @@ const finalGoalAuditSourcePass =
   finalGoalSafeVerifierSource.includes("nativeHwndPasteLiveVerdict") &&
   finalGoalSafeVerifierSource.includes("native-hwnd-paste-live.json") &&
   finalGoalSafeVerifierSource.includes("pass-current-native-hwnd-paste-contract") &&
+  finalGoalSafeVerifierSource.includes("pass-degraded-no-cdp") &&
   finalGoalSafeVerifierSource.includes("nativeHwndPasteLivePassed") &&
   finalGoalSafeVerifierSource.includes("releaseHygieneContractVerdict") &&
   finalGoalSafeVerifierSource.includes("releaseHygieneClean") &&
@@ -4643,6 +4692,7 @@ const finalGoalAuditSourcePass =
   releaseHygieneContractSource.includes("markerHits") &&
   packageJsonSource.includes('"verify:terminal:chunked-osc-live"') &&
   packageJsonSource.includes('"verify:terminal:native-hwnd-paste"') &&
+  packageJsonSource.includes('"verify:stack-risk"') &&
   packageJsonSource.includes('"verify:goal:completion-matrix"') &&
   goalCompletionMatrixSource.includes("goal-completion-matrix.json") &&
   goalCompletionMatrixSource.includes("OBJECTIVE") &&
@@ -4665,6 +4715,8 @@ const finalGoalAuditSourcePass =
   nativeHwndPasteLiveSource.includes("native-hwnd-paste-live.json") &&
   nativeHwndPasteLiveSource.includes("WM_PASTE") &&
   nativeHwndPasteLiveSource.includes("pass-current-native-hwnd-paste-contract") &&
+  nativeHwndPasteLiveSource.includes("pass-degraded-no-cdp") &&
+  nativeHwndPasteLiveSource.includes("degraded") &&
   nativeHwndPasteLiveSource.includes("destructivePasteBlockedBeforePty") &&
   nativeHwndPasteLiveSource.includes("multilinePasteBlockedBeforePty") &&
   finalGoalSafeVerifierSource.includes("runPnpmStep") &&
@@ -4730,7 +4782,8 @@ const finalGoalAuditSourcePass =
   finalGoalSafeVerifierSource.includes("proofArtifactsPassed") &&
   finalGoalSafeVerifierSource.includes("localDate") &&
   finalGoalSafeVerifierSource.includes("timeZone") &&
-  finalGoalSafeVerifierSource.includes("tokenSpendingPromptExecuted: false") &&
+  finalGoalSafeVerifierSource.includes("const tokenSpendingPromptExecuted =") &&
+  finalGoalSafeVerifierSource.includes("expectedSafeGate.tokenSpendingPromptExecuted === tokenSpendingPromptExecuted") &&
   finalGoalSafeVerifierSource.includes("operatorFinishHandoffPassed") &&
   finalGoalSafeVerifierSource.includes("goalAntiStallContractPassed") &&
   finalGoalSafeVerifierSource.includes("antiStallContractVerdict") &&
@@ -5042,4 +5095,9 @@ const report = {
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
+if (nativeHwndPasteLiveDegradedFresh) {
+  console.warn(
+    "native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof did not receive full release credit.",
+  );
+}
 console.log(JSON.stringify(report, null, 2));

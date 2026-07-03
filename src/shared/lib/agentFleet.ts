@@ -1,6 +1,13 @@
-import type { AgentSession, AgentStatus } from "../types/agent";
-import { normalizeAgentRunStatus, type AgentRunStatus } from "../types/agentStatus";
+import type {
+  AgentLineageEntry,
+  AgentRecycleStatus,
+  AgentSession,
+  AgentStatus,
+  ContextRemainingWire,
+} from "../types/agent";
+import { type AgentRunStatus, normalizeAgentRunStatus } from "../types/agentStatus";
 import type { InteractiveSession } from "../types/interactiveAgent";
+import { normalizeContextRemaining } from "./contextTelemetry";
 
 export type AgentFleetRuntime = "headless" | "interactive";
 
@@ -38,8 +45,28 @@ export interface AgentFleetSession extends AgentSession {
   repoPath?: string;
 }
 
+export interface BackendSessionLineageEntry {
+  logical_session_id: string;
+  checkpoint_seq?: number | null;
+  pty_id?: string | null;
+  status?: string | null;
+  predecessor_session_id?: string | null;
+  updated_at?: number | null;
+}
+
+export interface BackendSessionRecycleStatus {
+  predecessor_id: string;
+  successor_id: string;
+  handoff_seq: number;
+  state: string;
+  correlation_id: string;
+  failure_reason?: string | null;
+  updated_at: number;
+}
+
 export interface BackendAgentFleetSession {
   id: string;
+  logical_session_id?: string | null;
   run_mode: AgentFleetRuntime;
   status: AgentRunStatus | string;
   model: string;
@@ -49,9 +76,16 @@ export interface BackendAgentFleetSession {
   cost: number;
   tokens_used: number;
   started_at?: number | null;
+  last_activity?: number | null;
+  turn_count?: number | null;
+  context_remaining?: ContextRemainingWire | null;
   cli?: string | null;
   backend?: string | null;
   pty_id?: string | null;
+  approval_prompt?: string | null;
+  predecessor_session_id?: string | null;
+  lineage?: BackendSessionLineageEntry[] | null;
+  recycle_status?: BackendSessionRecycleStatus | null;
   worktree_branch?: string | null;
   worktree_path?: string | null;
   repo_path?: string | null;
@@ -63,8 +97,10 @@ export function agentRunStatusToLegacyStatus(status: AgentRunStatus): AgentStatu
     case "blocked":
       return "waiting";
     case "spawning":
+    case "retiring":
       return "thinking";
     case "running_tests":
+    case "summarizing":
       return "coding";
     default:
       return status;
@@ -73,6 +109,35 @@ export function agentRunStatusToLegacyStatus(status: AgentRunStatus): AgentStatu
 
 function normalizeOrFallback(status: string): AgentRunStatus {
   return normalizeAgentRunStatus(status) ?? "error";
+}
+
+function normalizeLineage(lineage: BackendSessionLineageEntry[] | null | undefined): AgentLineageEntry[] | undefined {
+  const normalized = (lineage ?? [])
+    .filter((entry) => entry.logical_session_id.trim().length > 0)
+    .map((entry) => ({
+      logicalSessionId: entry.logical_session_id,
+      checkpointSeq: entry.checkpoint_seq ?? undefined,
+      ptyId: entry.pty_id ?? undefined,
+      status: entry.status ?? undefined,
+      predecessorSessionId: entry.predecessor_session_id ?? undefined,
+      updatedAt: entry.updated_at ?? undefined,
+    }));
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeRecycleStatus(
+  status: BackendSessionRecycleStatus | null | undefined,
+): AgentRecycleStatus | undefined {
+  if (!status) return undefined;
+  return {
+    predecessorId: status.predecessor_id,
+    successorId: status.successor_id,
+    handoffSeq: status.handoff_seq,
+    state: status.state,
+    correlationId: status.correlation_id,
+    failureReason: status.failure_reason ?? undefined,
+    updatedAt: status.updated_at,
+  };
 }
 
 export function headlessToFleetSession(session: AgentSession): AgentFleetSession {
@@ -93,6 +158,10 @@ export function interactiveToFleetSession(session: InteractiveSession): AgentFle
     model: session.model,
     prompt: session.initial_prompt ?? "",
     startedAt: session.started_at,
+    logicalSessionId: session.logical_session_id ?? session.id,
+    lastActivity: session.last_activity,
+    turnCount: session.turn_count,
+    contextRemaining: normalizeContextRemaining(session.context_remaining),
     // Interactive sessions carry no structured headless telemetry yet; expose an
     // empty log array so log-rendering surfaces can map() without guards.
     logs: [],
@@ -115,6 +184,9 @@ export function interactiveToFleetSession(session: InteractiveSession): AgentFle
 export function backendToFleetSession(session: BackendAgentFleetSession): AgentFleetSession {
   const runStatus = normalizeOrFallback(session.status);
   const runtime: AgentFleetRuntime = session.run_mode === "interactive" ? "interactive" : "headless";
+  const predecessorSessionId = session.predecessor_session_id ?? undefined;
+  const lineage = normalizeLineage(session.lineage);
+  const recycleStatus = normalizeRecycleStatus(session.recycle_status);
   return {
     id: session.id,
     name: runtime === "interactive" ? `${session.cli ?? "agent"} interactive` : "Agent",
@@ -122,6 +194,10 @@ export function backendToFleetSession(session: BackendAgentFleetSession): AgentF
     model: session.model,
     prompt: session.prompt ?? "",
     startedAt: session.started_at ?? 0,
+    logicalSessionId: session.logical_session_id ?? undefined,
+    lastActivity: session.last_activity ?? undefined,
+    turnCount: session.turn_count ?? undefined,
+    contextRemaining: normalizeContextRemaining(session.context_remaining),
     logs: [],
     cost: session.cost,
     tokensUsed: session.tokens_used,
@@ -132,6 +208,13 @@ export function backendToFleetSession(session: BackendAgentFleetSession): AgentF
     backend: session.backend ?? undefined,
     cli: session.cli ?? undefined,
     ptyId: session.pty_id ?? undefined,
+    // Without this, a waiting_approval gate reaches the rail with no captured
+    // menu and the Decision Inbox (which requires approvalPrompt) never mounts.
+    approvalPrompt: session.approval_prompt ?? undefined,
+    predecessorSessionId,
+    lineage,
+    recycleStatus,
+    handoffFrom: predecessorSessionId,
     worktreeBranch: session.worktree_branch ?? undefined,
     worktreePath: session.worktree_path ?? undefined,
     repoPath: session.repo_path ?? undefined,
@@ -142,14 +225,11 @@ export function mergeAgentFleetSessions(
   headless: AgentSession[],
   interactive: InteractiveSession[],
 ): AgentFleetSession[] {
-  return [
-    ...headless.map(headlessToFleetSession),
-    ...interactive.map(interactiveToFleetSession),
-  ].sort((a, b) => b.startedAt - a.startedAt);
+  return [...headless.map(headlessToFleetSession), ...interactive.map(interactiveToFleetSession)].sort(
+    (a, b) => b.startedAt - a.startedAt,
+  );
 }
 
-export function mapBackendAgentFleetSessions(
-  sessions: BackendAgentFleetSession[],
-): AgentFleetSession[] {
+export function mapBackendAgentFleetSessions(sessions: BackendAgentFleetSession[]): AgentFleetSession[] {
   return sessions.map(backendToFleetSession).sort((a, b) => b.startedAt - a.startedAt);
 }

@@ -1,17 +1,17 @@
 mod claude;
+pub mod context_lifecycle;
 pub mod interactive;
 mod oneshot;
 pub mod output_monitor;
-pub mod parser;
 pub mod router;
 pub mod session;
+pub mod session_lifecycle;
 pub mod status;
-pub mod watchdog;
 
 pub use claude::*;
 pub use interactive::{
     platform_cli_program, AgentCli, InteractiveSessionInfo, InteractiveSessionManager,
 };
 pub use oneshot::claude_oneshot;
-pub use session::{AgentRunMode, AgentSession};
+pub use session::{AgentRunMode, AgentSession, SessionLineageEntry, SessionRecycleStatus};
 pub use status::AgentRunStatus;

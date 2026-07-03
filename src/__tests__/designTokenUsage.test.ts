@@ -362,7 +362,8 @@ describe("design token usage", () => {
     expect(global).toContain("@media (max-width: 860px)");
     expect(global).toContain("@media (max-width: 720px)");
     expect(global).toContain("width: clamp(280px, 42vw, 320px) !important");
-    expect(global).toContain("width: clamp(260px, 40vw, 280px) !important");
+    expect(global).toContain("flex-basis: clamp(224px, 38vw, 240px) !important");
+    expect(global).toContain("width: clamp(224px, 38vw, 240px) !important");
     expect(advisorTargetRule).toContain("text-overflow: ellipsis");
     expect(headerRule).toContain("min-width: 0");
     expect(headerRule).toContain("min-height: 32px");

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
-import { sanitizeThemeOverrides, useAppStore } from "../shared/store/appStore";
+import {
+  sanitizeTerminalRendererMode,
+  sanitizeThemeOverrides,
+  type TerminalRendererMode,
+  useAppStore,
+} from "../shared/store/appStore";
 import { DEFAULT_MOOD_PRESET } from "../shared/themes/moods";
 
 function collectFallbackEvents() {
@@ -26,6 +31,7 @@ beforeEach(() => {
     localStorage.removeItem("aelyris:wallpaperSettingsByMood");
     localStorage.removeItem("aelyris:windowOpacity");
     localStorage.removeItem("aelyris:workspaceProfiles");
+    localStorage.removeItem("aelyris:terminalRendererMode");
   } catch {
     /* ignore */
   }
@@ -57,6 +63,7 @@ beforeEach(() => {
       "aelyris-pro": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
     },
     themeOverrides: {},
+    terminalRendererMode: "canvas2d",
     workspaceProfiles: {
       version: 1,
       globalDefaults: useAppStore.getState().workspaceProfiles.globalDefaults,
@@ -231,6 +238,21 @@ describe("appStore — appearance customization", () => {
 
     setAppWindowOpacity(2);
     expect(useAppStore.getState().appWindowOpacity).toBe(1);
+  });
+
+  it("keeps the experimental terminal renderer mode opt-in and persisted", () => {
+    const { setTerminalAppearance } = useAppStore.getState();
+
+    expect(sanitizeTerminalRendererMode("webgl2")).toBe("webgl2");
+    expect(sanitizeTerminalRendererMode("bogus")).toBe("canvas2d");
+
+    setTerminalAppearance({ rendererMode: "webgl2" });
+    expect(useAppStore.getState().terminalRendererMode).toBe("webgl2");
+    expect(localStorage.getItem("aelyris:terminalRendererMode")).toBe("webgl2");
+
+    setTerminalAppearance({ rendererMode: "bogus" as unknown as TerminalRendererMode });
+    expect(useAppStore.getState().terminalRendererMode).toBe("canvas2d");
+    expect(localStorage.getItem("aelyris:terminalRendererMode")).toBe("canvas2d");
   });
 });
 

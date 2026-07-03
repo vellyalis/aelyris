@@ -60,15 +60,24 @@ const nativePasteGuardFresh =
   nativePasteGuard?.powershellUsed === false;
 const nativeHwndPasteLiveArtifactPath = ".codex-auto/production-smoke/native-hwnd-paste-live.json";
 const nativeHwndPasteLive = readJson(nativeHwndPasteLiveArtifactPath);
-const nativeHwndPasteLiveFresh =
+const nativeHwndPasteLiveSourceFresh =
+  mtime(nativeHwndPasteLiveArtifactPath) + 5_000 >=
+  Math.max(
+    mtime("scripts/verify-native-hwnd-paste-live.mjs"),
+    mtime("src-tauri/src/term/native_input.rs"),
+    mtime("src-tauri/src/ipc/commands.rs"),
+  );
+const nativeHwndPasteLiveStrictFresh =
   nativeHwndPasteLive?.ok === true &&
   nativeHwndPasteLive?.status === "pass-current-native-hwnd-paste-contract" &&
-  mtime(nativeHwndPasteLiveArtifactPath) + 5_000 >=
-    Math.max(
-      mtime("scripts/verify-native-hwnd-paste-live.mjs"),
-      mtime("src-tauri/src/term/native_input.rs"),
-      mtime("src-tauri/src/ipc/commands.rs"),
-    );
+  nativeHwndPasteLive?.degraded !== true &&
+  nativeHwndPasteLiveSourceFresh;
+const nativeHwndPasteLiveDegradedFresh =
+  nativeHwndPasteLive?.ok === true &&
+  nativeHwndPasteLive?.status === "pass-degraded-no-cdp" &&
+  nativeHwndPasteLive?.degraded === true &&
+  nativeHwndPasteLiveSourceFresh;
+const nativeHwndPasteLiveFresh = nativeHwndPasteLiveStrictFresh || nativeHwndPasteLiveDegradedFresh;
 
 const frontendNativeDefault =
   canvasIme.includes("NATIVE_INPUT_SURFACE_DEFAULT_ENABLED = true") &&
@@ -221,7 +230,9 @@ const checks = [
       nativeHwndPasteLive?.checks?.destructivePasteBlockedBeforePty === true &&
       nativeHwndPasteLive?.checks?.multilinePasteBlockedBeforePty === true) ||
       nativePasteGuardFresh,
-    "live Windows WM_PASTE proof behaviorally verifies native HWND focus, allowed paste execution, and blocked paste no-PTY-write paths through either the CDP smoke or the Rust aelyris-native paste-guard proof",
+    nativeHwndPasteLiveDegradedFresh
+      ? "degraded: WebView2/CDP WM_PASTE path unexercised; Rust aelyris-native no-CDP paste-guard proof verifies native HWND focus, allowed paste execution, and blocked paste no-PTY-write paths"
+      : "live Windows WM_PASTE proof behaviorally verifies native HWND focus, allowed paste execution, and blocked paste no-PTY-write paths through either the CDP smoke or the Rust aelyris-native paste-guard proof",
   ),
   check(
     "composition-surface",
@@ -245,13 +256,20 @@ const report = {
     nativePasteGuardFresh,
     nativeHwndPasteLiveArtifactPath,
     nativeHwndPasteLiveFresh,
+    nativeHwndPasteLiveDegradedFresh,
   },
+  warnings: nativeHwndPasteLiveDegradedFresh
+    ? ["WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only."]
+    : [],
   checks,
   blockers: failed.map((item) => item.detail),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
+if (nativeHwndPasteLiveDegradedFresh) {
+  console.warn("native HWND paste WebView2/CDP WM_PASTE path unexercised; using degraded no-CDP Rust proof.");
+}
 console.log(JSON.stringify(report, null, 2));
 
 if (failed.length > 0) {

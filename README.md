@@ -32,6 +32,13 @@ they are written from scratch in Rust for exactly this job.
 Every row names an architectural property with a runnable check behind it —
 see [Verification](#verification).
 
+Current machine truth, refreshed 2026-07-03 JST: `pnpm verify:quality-score`
+currently reports `71/100` (`249/351`), grade `D`,
+`releaseCandidateReady=false`. The final-goal audit is
+`blocked-by-external-gates` with `implementationFixableCount=0`,
+`policyBlockedCount=0`, and `externalBlockedCount=27`; Aelyris remains alpha
+and not release-ready.
+
 ## Why now
 
 AI made writing code the easy part. The bottleneck has moved: it is no longer

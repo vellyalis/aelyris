@@ -4,6 +4,9 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::broadcast;
 
+use crate::agent::context_lifecycle::{
+    parse_claude_context_remaining_from_grid, unix_now_secs, ContextRemaining,
+};
 use crate::agent::output_monitor;
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
 use crate::ghostdiff::{self, LayerRegistry, LayerTint, WatcherPool};
@@ -58,6 +61,37 @@ pub async fn spawn_interactive_agent(
     cols: u16,
     rows: u16,
 ) -> Result<SpawnResult, String> {
+    spawn_interactive_agent_internal(
+        app,
+        cwd,
+        model,
+        initial_prompt,
+        branch_name,
+        cols,
+        rows,
+        SpawnInteractiveAgentOptions::default(),
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct SpawnInteractiveAgentOptions {
+    pub(super) logical_session_id_override: Option<String>,
+    pub(super) inherited_worktree_branch: Option<String>,
+    pub(super) inherited_worktree_path: Option<String>,
+    pub(super) inherited_repo_path: Option<String>,
+}
+
+pub(super) async fn spawn_interactive_agent_internal(
+    app: AppHandle,
+    cwd: String,
+    model: Option<String>,
+    initial_prompt: Option<String>,
+    branch_name: Option<String>,
+    cols: u16,
+    rows: u16,
+    options: SpawnInteractiveAgentOptions,
+) -> Result<SpawnResult, String> {
     let model_str = model.as_deref().unwrap_or("sonnet");
     let cli = AgentCli::from_model(model_str);
     cli.validate()?;
@@ -87,7 +121,7 @@ pub async fn spawn_interactive_agent(
     }
 
     // If branch_name is set, create a worktree and use it as cwd
-    let (resolved_cwd, worktree_branch, worktree_path, repo_path) =
+    let (resolved_cwd, mut worktree_branch, mut worktree_path, mut repo_path) =
         if let Some(ref branch) = branch_name {
             let wt = crate::git::create_worktree(&cwd, branch)?;
             let wt_path = wt.path.clone();
@@ -100,6 +134,14 @@ pub async fn spawn_interactive_agent(
         } else {
             (cwd.clone(), None, None, None)
         };
+    if branch_name.is_none() {
+        worktree_branch = options
+            .inherited_worktree_branch
+            .clone()
+            .or(worktree_branch);
+        worktree_path = options.inherited_worktree_path.clone().or(worktree_path);
+        repo_path = options.inherited_repo_path.clone().or(repo_path);
+    }
 
     // Spawn through the long-lived sidecar when available. AI CLI sessions
     // exercise the same IME / clipboard / reconnect boundary as normal panes,
@@ -146,6 +188,9 @@ pub async fn spawn_interactive_agent(
 
     let info = InteractiveSessionInfo {
         id: session_id.clone(),
+        logical_session_id: options
+            .logical_session_id_override
+            .unwrap_or_else(|| session_id.clone()),
         pty_id: pty_id.clone(),
         backend: backend.clone(),
         cli: cli.clone(),
@@ -164,6 +209,9 @@ pub async fn spawn_interactive_agent(
         cost: 0.0,
         tokens_used: 0,
         started_at: now,
+        last_activity: now,
+        turn_count: 0,
+        context_remaining: Some(ContextRemaining::unknown_proxy(&cli, now)),
     };
 
     let session_mgr = app.state::<InteractiveSessionManager>();
@@ -385,7 +433,7 @@ async fn close_interactive_pty(app: &AppHandle, pty_id: &str) {
     let _ = pty_manager.close(pty_id);
 }
 
-fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
+pub(super) fn emit_interactive_sessions(app: &AppHandle, mgr: &InteractiveSessionManager) {
     match mgr.list() {
         Ok(sessions) => {
             let _ = app.emit("interactive-sessions-updated", &sessions);
@@ -557,6 +605,25 @@ async fn run_output_monitor(
                     let result = parser.parse_chunk(&clean);
 
                     let mut changed = false;
+                    if matches!(cli, &AgentCli::Claude) {
+                        if let Some(snapshot) = native_registry.snapshot(session_id) {
+                            if let Some(context_remaining) =
+                                parse_claude_context_remaining_from_grid(&snapshot, unix_now_secs())
+                            {
+                                match session_mgr
+                                    .update_context_remaining(session_id, context_remaining)
+                                {
+                                    Ok(()) => changed = true,
+                                    Err(err) => {
+                                        log::warn!(
+                                            "interactive context remaining update skipped: {}",
+                                            err
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if let Some(detected) = result.status.as_ref() {
                         if let Some(status) = detected.to_agent_run_status() {
@@ -582,7 +649,8 @@ async fn run_output_monitor(
                             // so it is only ever SET here, on the gate itself.
                             if *detected == output_monitor::DetectedStatus::WaitingPermission {
                                 if let Some(prompt) = result.approval_prompt.clone() {
-                                    match session_mgr.set_approval_prompt(session_id, Some(prompt)) {
+                                    match session_mgr.set_approval_prompt(session_id, Some(prompt))
+                                    {
                                         Ok(true) => changed = true,
                                         Ok(false) => {}
                                         Err(err) => {

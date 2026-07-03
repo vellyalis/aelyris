@@ -1,8 +1,12 @@
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use serde::Deserialize;
+#[cfg(not(test))]
+use serde::Serialize;
 
 use super::mux::{send_workspace_input, workspace_summary};
-use super::{ApiError, ApiResult, ApiState, McpPendingDecision, WS_MAX_INPUT_FRAME_BYTES};
+use super::{
+    ApiError, ApiResult, ApiState, MAX_MCP_PENDING, McpPendingDecision, WS_MAX_INPUT_FRAME_BYTES,
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +32,11 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.route_agent",
         "aelyris.pane_send_input",
         "aelyris.agent_diff",
+        "aelyris.session.summarize",
+        "aelyris.session.checkpoint",
+        "aelyris.session.handoff",
+        "aelyris.session.resume",
+        "aelyris.session.reset_context",
         "aelyris.request_approval",
         "aelyris.list_pending_approvals",
         "aelyris.request_merge",
@@ -129,6 +138,199 @@ fn arg_usize(
         .map_err(|_| ApiError::BadRequest(format!("MCP argument `{key}` is too large")))
 }
 
+#[cfg(not(test))]
+fn arg_optional_u64(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<u64>> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    value
+        .as_u64()
+        .map(Some)
+        .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` must be an integer")))
+}
+
+#[cfg(not(test))]
+fn arg_optional_u16(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<u16>> {
+    let Some(value) = arg_optional_u64(args, key)? else {
+        return Ok(None);
+    };
+    u16::try_from(value)
+        .map(Some)
+        .map_err(|_| ApiError::BadRequest(format!("MCP argument `{key}` is too large")))
+}
+
+#[cfg(not(test))]
+fn arg_optional_object_value(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<Option<serde_json::Value>> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    if value.is_object() {
+        return Ok(Some(value.clone()));
+    }
+    Err(ApiError::BadRequest(format!(
+        "MCP argument `{key}` must be an object"
+    )))
+}
+
+#[cfg(not(test))]
+fn mcp_app_handle(state: &ApiState) -> ApiResult<tauri::AppHandle> {
+    state.app_handle.clone().ok_or_else(|| {
+        ApiError::Internal(
+            "session lifecycle runtime is not attached to this MCP process".to_string(),
+        )
+    })
+}
+
+#[cfg(not(test))]
+fn mcp_result_value<T: Serialize>(result: T) -> ApiResult<serde_json::Value> {
+    serde_json::to_value(result)
+        .map_err(|err| ApiError::Internal(format!("serialize MCP result failed: {err}")))
+}
+
+#[cfg(test)]
+fn test_mcp_session_lifecycle_unattached() -> ApiResult<serde_json::Value> {
+    Err(ApiError::Internal(
+        "session lifecycle runtime is not attached to this MCP process".to_string(),
+    ))
+}
+
+#[cfg(not(test))]
+async fn mcp_session_summarize(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let reason = arg_optional_string(args, "reason");
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let result = crate::ipc::session_summarize(app, session_id, reason, timeout_ms)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_summarize(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+fn mcp_session_checkpoint(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let summary_json = arg_optional_object_value(args, "summary_json")?;
+    let summary_seq = arg_optional_u64(args, "summary_seq")?;
+    let inflight_ref = arg_optional_string(args, "inflight_ref");
+    let predecessor_session_id = arg_optional_string(args, "predecessor_session_id");
+    let result = crate::ipc::session_checkpoint(
+        app,
+        session_id,
+        summary_json,
+        summary_seq,
+        inflight_ref,
+        predecessor_session_id,
+    )
+    .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+fn mcp_session_checkpoint(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_session_handoff(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let reason = arg_optional_string(args, "reason");
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let cols = arg_optional_u16(args, "cols")?;
+    let rows = arg_optional_u16(args, "rows")?;
+    let result = crate::ipc::session_handoff(app, session_id, reason, timeout_ms, cols, rows)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_handoff(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_session_resume(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let logical_session_id = arg_optional_string(args, "logical_session_id");
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let result = crate::ipc::session_resume(app, logical_session_id, timeout_ms)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_resume(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_session_reset_context(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let app = mcp_app_handle(state)?;
+    let session_id = arg_string(args, "session_id")?;
+    let timeout_ms = arg_optional_u64(args, "timeout_ms")?;
+    let cols = arg_optional_u16(args, "cols")?;
+    let rows = arg_optional_u16(args, "rows")?;
+    let result = crate::ipc::session_reset_context(app, session_id, timeout_ms, cols, rows)
+        .await
+        .map_err(ApiError::BadRequest)?;
+    mcp_result_value(result)
+}
+
+#[cfg(test)]
+async fn mcp_session_reset_context(
+    _state: &ApiState,
+    _args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    test_mcp_session_lifecycle_unattached()
+}
+
 fn arg_bool(args: &serde_json::Map<String, serde_json::Value>, key: &str, default: bool) -> bool {
     args.get(key)
         .and_then(|value| value.as_bool())
@@ -187,11 +389,40 @@ fn arg_optional_f64(
 }
 
 fn push_pending(state: &ApiState, item: McpPendingDecision) -> ApiResult<McpPendingDecision> {
-    let mut pending = state
-        .mcp_pending
-        .lock()
-        .map_err(|_| ApiError::Internal("MCP pending queue lock poisoned".to_string()))?;
-    pending.push(item.clone());
+    let dropped = {
+        let mut pending = state
+            .mcp_pending
+            .lock()
+            .map_err(|_| ApiError::Internal("MCP pending queue lock poisoned".to_string()))?;
+        let dropped = if pending.len() >= MAX_MCP_PENDING {
+            Some(pending.remove(0))
+        } else {
+            None
+        };
+        pending.push(item.clone());
+        dropped
+    };
+    if let Some(dropped) = dropped {
+        tracing::warn!(
+            dropped_id = %dropped.id,
+            new_id = %item.id,
+            cap = MAX_MCP_PENDING,
+            "MCP pending queue overflow; dropped oldest pending decision"
+        );
+        if let Some(bus) = state.event_bus.as_ref() {
+            bus.publish(crate::event_bus::AgentEvent::on(
+                crate::event_bus::AgentEventKind::EscalationRaised,
+                crate::event_bus::EventChannel::System,
+                serde_json::json!({
+                    "source": "mcp_pending",
+                    "reason": "queue_overflow",
+                    "droppedId": dropped.id,
+                    "newId": item.id,
+                    "cap": MAX_MCP_PENDING,
+                }),
+            ));
+        }
+    }
     Ok(item)
 }
 
@@ -220,8 +451,8 @@ pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::
     }))
 }
 
-pub(super) async fn tools_list() -> Json<serde_json::Value> {
-    Json(serde_json::json!({
+fn tools_list_value() -> serde_json::Value {
+    serde_json::json!({
         "schema": "aelyris.mcp.server.v1",
         "server": "aelyris",
         "tools": [
@@ -385,6 +616,84 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                         "path": { "type": "string" },
                         "against": { "type": "string", "enum": ["base", "target"] },
                         "targetBranch": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.summarize",
+                "description": "Inject the no-loss self-summary prompt into a live interactive session and return the existing SessionSummarizeResult JSON.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "reason": { "type": "string" },
+                        "timeout_ms": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.checkpoint",
+                "description": "Persist a session checkpoint through the same lifecycle runtime used by the IPC session_checkpoint command.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "summary_json": { "type": "object" },
+                        "summary_seq": { "type": "integer" },
+                        "inflight_ref": { "type": "string" },
+                        "predecessor_session_id": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.handoff",
+                "description": "Run the no-loss handoff transaction: summarize, checkpoint, spawn successor, ack, audit, then retire the predecessor.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "reason": { "type": "string" },
+                        "timeout_ms": { "type": "integer" },
+                        "cols": { "type": "integer" },
+                        "rows": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.resume",
+                "description": "Reconcile unresolved durable session handoffs and adopt a requested logical session when identity checks pass.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "logical_session_id": { "type": "string" },
+                        "timeout_ms": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.session.reset_context",
+                "description": "Recycle a live session through the same no-loss handoff discipline, preserving the worktree.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["session_id"],
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "timeout_ms": { "type": "integer" },
+                        "cols": { "type": "integer" },
+                        "rows": { "type": "integer" }
                     },
                     "additionalProperties": false
                 }
@@ -994,14 +1303,379 @@ pub(super) async fn tools_list() -> Json<serde_json::Value> {
                 "inputSchema": { "type": "object", "additionalProperties": false }
             }
         ]
+    })
+}
+
+pub(super) async fn tools_list() -> Json<serde_json::Value> {
+    Json(tools_list_value())
+}
+
+#[derive(Debug, Default, Clone)]
+struct SchemaValidationReport {
+    missing: Vec<String>,
+    wrong_type: Vec<SchemaTypeViolation>,
+    unknown: Vec<String>,
+}
+
+impl SchemaValidationReport {
+    fn is_empty(&self) -> bool {
+        self.missing.is_empty() && self.wrong_type.is_empty() && self.unknown.is_empty()
+    }
+
+    fn to_payload(&self, verb: &str) -> serde_json::Value {
+        serde_json::json!({
+            "schema_violation": {
+                "verb": verb,
+                "missing": self.missing,
+                "wrong_type": self.wrong_type.iter().map(|violation| {
+                    serde_json::json!({
+                        "field": violation.field,
+                        "expected": violation.expected,
+                        "got": violation.got,
+                    })
+                }).collect::<Vec<_>>(),
+                "unknown": self.unknown,
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SchemaTypeViolation {
+    field: String,
+    expected: String,
+    got: String,
+}
+
+fn input_schema_for_tool(name: &str) -> Option<serde_json::Value> {
+    let listed = tools_list_value();
+    listed
+        .get("tools")?
+        .as_array()?
+        .iter()
+        .find(|tool| tool.get("name").and_then(|value| value.as_str()) == Some(name))
+        .and_then(|tool| tool.get("inputSchema").cloned())
+}
+
+fn schema_tool_error(name: &str, payload: serde_json::Value) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "schema": "aelyris.mcp.server.v1",
+        "tool": name,
+        "ok": false,
+        "error": payload,
     }))
+}
+
+fn validate_tool_arguments(
+    verb: &str,
+    arguments: &serde_json::Value,
+    schema: &serde_json::Value,
+) -> Result<(), SchemaValidationReport> {
+    let mut report = SchemaValidationReport::default();
+    validate_json_schema_value(schema, arguments, "$", &mut report);
+    if report.is_empty() {
+        Ok(())
+    } else {
+        report
+            .wrong_type
+            .sort_by(|left, right| left.field.cmp(&right.field));
+        report.missing.sort();
+        report.unknown.sort();
+        tracing::debug!(
+            verb,
+            missing = ?report.missing,
+            wrong_type = ?report.wrong_type,
+            unknown = ?report.unknown,
+            "MCP inputSchema validation failed"
+        );
+        Err(report)
+    }
+}
+
+fn validate_json_schema_value(
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    field: &str,
+    report: &mut SchemaValidationReport,
+) {
+    let expected_type = schema
+        .get("type")
+        .and_then(|value| value.as_str())
+        .unwrap_or("object");
+    if !json_value_matches_type(value, expected_type) {
+        report.wrong_type.push(SchemaTypeViolation {
+            field: field.to_string(),
+            expected: expected_type.to_string(),
+            got: json_value_kind(value),
+        });
+        return;
+    }
+
+    if let Some(allowed) = schema.get("enum").and_then(|value| value.as_array()) {
+        if !allowed.iter().any(|allowed| allowed == value) {
+            report.wrong_type.push(SchemaTypeViolation {
+                field: field.to_string(),
+                expected: format!(
+                    "one of [{}]",
+                    allowed
+                        .iter()
+                        .map(schema_value_label)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                got: schema_value_label(value),
+            });
+            return;
+        }
+    }
+
+    match expected_type {
+        "object" => validate_schema_object(schema, value, field, report),
+        "array" => validate_schema_array(schema, value, field, report),
+        "integer" => validate_schema_number_bounds(schema, value, field, report, "integer"),
+        "number" => validate_schema_number_bounds(schema, value, field, report, "number"),
+        "string" => validate_schema_string_bounds(schema, value, field, report),
+        "boolean" => {}
+        _ => report.wrong_type.push(SchemaTypeViolation {
+            field: field.to_string(),
+            expected: format!("supported JSON schema type, got `{expected_type}`"),
+            got: json_value_kind(value),
+        }),
+    }
+}
+
+fn validate_schema_object(
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    field: &str,
+    report: &mut SchemaValidationReport,
+) {
+    let object = value.as_object().expect("type checked as object");
+    let properties = schema.get("properties").and_then(|value| value.as_object());
+    if let Some(required) = schema.get("required").and_then(|value| value.as_array()) {
+        for key in required.iter().filter_map(|item| item.as_str()) {
+            if !object.contains_key(key) {
+                report.missing.push(child_field(field, key));
+            }
+        }
+    }
+
+    for (key, value) in object {
+        if let Some(property_schema) = properties.and_then(|properties| properties.get(key)) {
+            validate_json_schema_value(property_schema, value, &child_field(field, key), report);
+            continue;
+        }
+        match schema.get("additionalProperties") {
+            Some(serde_json::Value::Bool(false)) => report.unknown.push(child_field(field, key)),
+            Some(extra_schema) if extra_schema.is_object() => {
+                validate_json_schema_value(extra_schema, value, &child_field(field, key), report);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_schema_array(
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    field: &str,
+    report: &mut SchemaValidationReport,
+) {
+    let Some(item_schema) = schema.get("items").filter(|value| value.is_object()) else {
+        return;
+    };
+    for (idx, item) in value
+        .as_array()
+        .expect("type checked as array")
+        .iter()
+        .enumerate()
+    {
+        validate_json_schema_value(item_schema, item, &format!("{field}[{idx}]"), report);
+    }
+}
+
+fn validate_schema_number_bounds(
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    field: &str,
+    report: &mut SchemaValidationReport,
+    type_name: &str,
+) {
+    let Some(number) = value.as_f64() else {
+        return;
+    };
+    if let Some(minimum) = schema.get("minimum").and_then(|value| value.as_f64()) {
+        if number < minimum {
+            report.wrong_type.push(SchemaTypeViolation {
+                field: field.to_string(),
+                expected: format!("{type_name} >= {minimum}"),
+                got: schema_value_label(value),
+            });
+        }
+    }
+    if let Some(maximum) = schema.get("maximum").and_then(|value| value.as_f64()) {
+        if number > maximum {
+            report.wrong_type.push(SchemaTypeViolation {
+                field: field.to_string(),
+                expected: format!("{type_name} <= {maximum}"),
+                got: schema_value_label(value),
+            });
+        }
+    }
+}
+
+fn validate_schema_string_bounds(
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    field: &str,
+    report: &mut SchemaValidationReport,
+) {
+    let Some(text) = value.as_str() else {
+        return;
+    };
+    if let Some(max_length) = schema.get("maxLength").and_then(|value| value.as_u64()) {
+        if text.chars().count() as u64 > max_length {
+            report.wrong_type.push(SchemaTypeViolation {
+                field: field.to_string(),
+                expected: format!("string <= {max_length} chars"),
+                got: format!("string({} chars)", text.chars().count()),
+            });
+        }
+    }
+}
+
+fn json_value_matches_type(value: &serde_json::Value, expected: &str) -> bool {
+    match expected {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "number" => value.is_number(),
+        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+        _ => false,
+    }
+}
+
+fn json_value_kind(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Bool(_) => "boolean".to_string(),
+        serde_json::Value::Number(number) if number.is_i64() || number.is_u64() => {
+            "integer".to_string()
+        }
+        serde_json::Value::Number(_) => "number".to_string(),
+        serde_json::Value::String(_) => "string".to_string(),
+        serde_json::Value::Array(_) => "array".to_string(),
+        serde_json::Value::Object(_) => "object".to_string(),
+    }
+}
+
+fn schema_value_label(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => format!("\"{value}\""),
+        other => other.to_string(),
+    }
+}
+
+fn child_field(parent: &str, child: &str) -> String {
+    if parent == "$" {
+        child.to_string()
+    } else {
+        format!("{parent}.{child}")
+    }
+}
+
+#[cfg(test)]
+fn schema_subset_violations(schema: &serde_json::Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    assert_schema_subset(schema, "$", &mut violations);
+    violations
+}
+
+#[cfg(test)]
+fn assert_schema_subset(schema: &serde_json::Value, field: &str, violations: &mut Vec<String>) {
+    let Some(object) = schema.as_object() else {
+        violations.push(format!("{field}: schema node must be an object"));
+        return;
+    };
+    for key in object.keys() {
+        if !matches!(
+            key.as_str(),
+            "type"
+                | "properties"
+                | "required"
+                | "additionalProperties"
+                | "enum"
+                | "items"
+                | "minimum"
+                | "maximum"
+                | "maxLength"
+                | "description"
+        ) {
+            violations.push(format!("{field}: unsupported schema key `{key}`"));
+        }
+    }
+    let Some(schema_type) = object.get("type").and_then(|value| value.as_str()) else {
+        violations.push(format!("{field}: schema type must be a string"));
+        return;
+    };
+    if !matches!(
+        schema_type,
+        "object" | "array" | "string" | "integer" | "number" | "boolean"
+    ) {
+        violations.push(format!("{field}: unsupported schema type `{schema_type}`"));
+    }
+    if let Some(properties) = object.get("properties") {
+        let Some(properties) = properties.as_object() else {
+            violations.push(format!("{field}.properties: must be an object"));
+            return;
+        };
+        for (key, property_schema) in properties {
+            assert_schema_subset(property_schema, &child_field(field, key), violations);
+        }
+    }
+    if let Some(required) = object.get("required") {
+        let Some(required) = required.as_array() else {
+            violations.push(format!("{field}.required: must be an array"));
+            return;
+        };
+        if required.iter().any(|item| !item.is_string()) {
+            violations.push(format!("{field}.required: every entry must be a string"));
+        }
+    }
+    if let Some(enum_values) = object.get("enum") {
+        if !enum_values
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+        {
+            violations.push(format!("{field}.enum: must be a non-empty array"));
+        }
+    }
+    if let Some(items) = object.get("items") {
+        assert_schema_subset(items, &format!("{field}[]"), violations);
+    }
+    if let Some(additional) = object.get("additionalProperties") {
+        match additional {
+            serde_json::Value::Bool(_) => {}
+            value if value.is_object() => {
+                assert_schema_subset(value, &format!("{field}.additionalProperties"), violations);
+            }
+            _ => violations.push(format!(
+                "{field}.additionalProperties: must be boolean or schema object"
+            )),
+        }
+    }
 }
 
 pub(super) async fn tools_call(
     State(state): State<ApiState>,
     Json(body): Json<ToolCallBody>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let args = body.arguments.as_object().cloned().unwrap_or_default();
+    let arguments = if body.arguments.is_null() {
+        serde_json::json!({})
+    } else {
+        body.arguments.clone()
+    };
     // P5 governance choke point: EVERY MCP verb flows through one authorization
     // gate. The default policy allows all (local-first, behaviour unchanged); an
     // enterprise build swaps in an RBAC policy with no handler change. A denial
@@ -1020,6 +1694,12 @@ pub(super) async fn tools_call(
             body.name
         )));
     }
+    if let Some(schema) = input_schema_for_tool(&body.name) {
+        if let Err(report) = validate_tool_arguments(&body.name, &arguments, &schema) {
+            return Ok(schema_tool_error(&body.name, report.to_payload(&body.name)));
+        }
+    }
+    let args = arguments.as_object().cloned().unwrap_or_default();
     let result = match body.name.as_str() {
         "terminal.list" => serde_json::json!({
             "sessions": state.pty.list_info(),
@@ -1199,6 +1879,11 @@ pub(super) async fn tools_call(
                 "file": file,
             })
         }
+        "aelyris.session.summarize" => mcp_session_summarize(&state, &args).await?,
+        "aelyris.session.checkpoint" => mcp_session_checkpoint(&state, &args)?,
+        "aelyris.session.handoff" => mcp_session_handoff(&state, &args).await?,
+        "aelyris.session.resume" => mcp_session_resume(&state, &args).await?,
+        "aelyris.session.reset_context" => mcp_session_reset_context(&state, &args).await?,
         "aelyris.request_approval" => {
             let session_id = arg_string(&args, "sessionId")?;
             let tool = arg_string(&args, "tool")?;
@@ -1382,7 +2067,7 @@ pub(super) async fn tools_call(
                 Some(_) => {
                     return Err(ApiError::BadRequest(
                         "gatesDigest must be a string".to_string(),
-                    ))
+                    ));
                 }
             };
 
@@ -2526,14 +3211,18 @@ pub(super) async fn mcp_rpc(
                 };
                 match tools_call(State(state), Json(body)).await {
                     Ok(Json(value)) => {
+                        let is_error = value
+                            .get("ok")
+                            .and_then(|value| value.as_bool())
+                            .is_some_and(|ok| !ok);
                         let inner = value
-                            .get("result")
+                            .get(if is_error { "error" } else { "result" })
                             .cloned()
                             .unwrap_or(serde_json::Value::Null);
                         Ok(serde_json::json!({
                             "content": [{ "type": "text", "text": serde_json::to_string(&inner).unwrap_or_default() }],
                             "structuredContent": inner,
-                            "isError": false,
+                            "isError": is_error,
                         }))
                     }
                     // MCP convention: a tool-level error is a successful JSON-RPC
@@ -2601,6 +3290,93 @@ mod tests {
         );
     }
 
+    #[test]
+    fn session_lifecycle_verbs_are_gated_and_schema_exact() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let tools = listed["tools"].as_array().expect("tools is an array");
+        let expected = [
+            ("aelyris.session.summarize", vec!["session_id"]),
+            ("aelyris.session.checkpoint", vec!["session_id"]),
+            ("aelyris.session.handoff", vec!["session_id"]),
+            ("aelyris.session.resume", vec![]),
+            ("aelyris.session.reset_context", vec!["session_id"]),
+        ];
+
+        for (verb, required) in expected {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(verb))
+                .unwrap_or_else(|| panic!("{verb} present in tools_list"));
+            assert_eq!(tool["safety"], serde_json::json!("GATED"));
+            assert_eq!(
+                tool["inputSchema"]["additionalProperties"],
+                serde_json::json!(false),
+                "{verb} must reject unknown lifecycle args",
+            );
+            let actual_required = tool["inputSchema"]
+                .get("required")
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|item| item.as_str().unwrap().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            assert_eq!(actual_required, required, "{verb} required args drifted");
+        }
+    }
+
+    #[test]
+    fn session_lifecycle_mcp_verbs_go_through_governance_before_runtime() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+        use std::sync::Arc;
+
+        struct DenyLifecycle;
+        impl AccessControl for DenyLifecycle {
+            fn authorize(&self, _actor: &str, verb: &str) -> AccessDecision {
+                if verb.starts_with("aelyris.session.") {
+                    AccessDecision::Deny(format!("{verb} blocked"))
+                } else {
+                    AccessDecision::Allow
+                }
+            }
+        }
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_governance(Arc::new(Governance::with_access(Box::new(DenyLifecycle))));
+        let body = ToolCallBody {
+            name: "aelyris.session.resume".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::Forbidden(_))));
+    }
+
+    #[test]
+    fn session_lifecycle_mcp_fails_closed_without_app_handle() {
+        use crate::pty::PtyManager;
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let body = ToolCallBody {
+            name: "aelyris.session.resume".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        match result {
+            Err(ApiError::Internal(message)) => assert!(
+                message.contains("session lifecycle runtime is not attached"),
+                "{message}"
+            ),
+            other => panic!("expected fail-closed missing runtime error, got {other:?}"),
+        }
+    }
+
     /// The pane-input byte ceiling lives once in `WS_MAX_INPUT_FRAME_BYTES`
     /// and is enforced at the WS handler, but the advertised JSON schemas
     /// repeat it as a raw `maxLength` literal in two places. Lock them
@@ -2626,6 +3402,142 @@ mod tests {
                 "{verb} schema maxLength drifted from WS_MAX_INPUT_FRAME_BYTES",
             );
         }
+    }
+
+    #[test]
+    fn every_catalog_schema_is_in_the_enforced_subset() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        for tool in listed["tools"].as_array().expect("tools is an array") {
+            let name = tool["name"].as_str().expect("tool has name");
+            let violations = schema_subset_violations(&tool["inputSchema"]);
+            assert!(
+                violations.is_empty(),
+                "{name} inputSchema uses unsupported features: {violations:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_tools_call_returns_structured_schema_violation() {
+        use crate::pty::PtyManager;
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let body = ToolCallBody {
+            name: "aelyris.task.transition".to_string(),
+            arguments: serde_json::json!({ "id": 7, "extra": true }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("schema violations are MCP tool errors, not transport errors");
+
+        assert_eq!(value["ok"], serde_json::json!(false));
+        let violation = &value["error"]["schema_violation"];
+        assert_eq!(violation["verb"], "aelyris.task.transition");
+        assert_eq!(violation["missing"], serde_json::json!(["to"]));
+        assert_eq!(violation["unknown"], serde_json::json!(["extra"]));
+        assert_eq!(violation["wrong_type"][0]["field"], "id");
+        assert_eq!(violation["wrong_type"][0]["expected"], "string");
+        assert_eq!(violation["wrong_type"][0]["got"], "integer");
+    }
+
+    #[test]
+    fn native_mcp_schema_violation_is_tool_error_result() {
+        use crate::pty::PtyManager;
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let req = JsonRpcReq {
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".to_string(),
+            params: serde_json::json!({
+                "name": "aelyris.task.transition",
+                "arguments": { "id": 7 }
+            }),
+        };
+
+        let response = rt.block_on(mcp_rpc(State(state), Json(req)));
+        let bytes = rt
+            .block_on(axum::body::to_bytes(response.into_body(), usize::MAX))
+            .expect("body bytes");
+        let value: serde_json::Value = serde_json::from_slice(&bytes).expect("json response");
+
+        assert!(value.get("error").is_none(), "{value}");
+        assert_eq!(value["result"]["isError"], serde_json::json!(true));
+        assert_eq!(
+            value["result"]["structuredContent"]["schema_violation"]["verb"],
+            "aelyris.task.transition"
+        );
+        assert_eq!(
+            value["result"]["structuredContent"]["schema_violation"]["missing"],
+            serde_json::json!(["to"])
+        );
+    }
+
+    #[test]
+    fn well_formed_tools_call_is_unaffected_by_schema_validation() {
+        use crate::pty::PtyManager;
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
+        let body = ToolCallBody {
+            name: "terminal.list".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("well-formed call still dispatches");
+
+        assert_eq!(value["ok"], serde_json::json!(true));
+        assert!(value["result"]["sessions"].is_array());
+    }
+
+    #[test]
+    fn mcp_pending_queue_drops_oldest_at_cap_and_publishes_event() {
+        use crate::event_bus::{EventBus, EventChannel};
+        use crate::pty::PtyManager;
+
+        let bus = Arc::new(EventBus::new());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_event_bus(bus.clone());
+
+        for idx in 0..=MAX_MCP_PENDING {
+            push_pending(
+                &state,
+                McpPendingDecision {
+                    id: format!("approval:{idx}"),
+                    session_id: format!("session:{idx}"),
+                    kind: "permission_required".to_string(),
+                    title: "Approval requested".to_string(),
+                    summary: None,
+                    risk: "medium".to_string(),
+                    status: "pending".to_string(),
+                },
+            )
+            .expect("push pending");
+        }
+
+        let pending = state.mcp_pending.lock().expect("pending lock");
+        assert_eq!(pending.len(), MAX_MCP_PENDING);
+        assert_eq!(pending.first().unwrap().id, "approval:1");
+        assert_eq!(
+            pending.last().unwrap().id,
+            format!("approval:{MAX_MCP_PENDING}")
+        );
+        drop(pending);
+
+        let system_events = bus.by_channel(EventChannel::System);
+        assert!(
+            system_events.iter().any(|event| {
+                event.kind == crate::event_bus::AgentEventKind::EscalationRaised
+                    && event.payload["source"] == "mcp_pending"
+                    && event.payload["reason"] == "queue_overflow"
+                    && event.payload["droppedId"] == "approval:0"
+            }),
+            "overflow must be observable on the system event bus"
+        );
     }
 
     /// P5 governance choke point: a denying policy blocks a verb with 403 BEFORE
@@ -2873,7 +3785,7 @@ mod tests {
         let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,1 +1,2 @@\n use a;\n+use b;\n";
         let dbody = ToolCallBody {
             name: "aelyris.symbol.claim_from_diff".to_string(),
-            arguments: serde_json::json!({ "agentId": "a", "path": "src/x.rs", "diff": diff }),
+            arguments: serde_json::json!({ "agentId": "a", "diff": diff }),
         };
         let Json(_) = rt
             .block_on(tools_call(State(mk_state()), Json(dbody)))
@@ -2998,7 +3910,7 @@ mod tests {
         use crate::db::{Database, ManagedDb};
         use crate::merge_intent::store::MergeIntentStore;
         use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
+        use git2::{Repository, build::CheckoutBuilder};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -3101,7 +4013,7 @@ mod tests {
         use crate::db::{Database, ManagedDb};
         use crate::merge_intent::store::MergeIntentStore;
         use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
+        use git2::{Repository, build::CheckoutBuilder};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -3164,28 +4076,30 @@ mod tests {
 
         // BOUNDARY #1: a caller-supplied repo/source/target is rejected (it tries to
         // re-point the merge) — BEFORE any merge, so the intent stays claimable.
-        let override_err = call(
+        let Json(override_err) = call(
             "aelyris.review.approve",
             serde_json::json!({
                 "intentId": intent_id, "repoPath": "C:/evil",
                 "sourceBranch": "evil", "targetBranch": "main",
             }),
         )
-        .expect_err("override must be rejected");
-        assert!(
-            matches!(override_err, ApiError::BadRequest(_)),
-            "{override_err:?}"
+        .expect("override rejected as a structured schema violation");
+        assert_eq!(override_err["ok"], serde_json::json!(false));
+        assert_eq!(
+            override_err["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["repoPath", "sourceBranch", "targetBranch"])
         );
 
         // BOUNDARY #2: any OTHER unknown field is rejected too.
-        let unknown_err = call(
+        let Json(unknown_err) = call(
             "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "smuggle": 1 }),
         )
-        .expect_err("unknown field must be rejected");
-        assert!(
-            matches!(unknown_err, ApiError::BadRequest(_)),
-            "{unknown_err:?}"
+        .expect("unknown field rejected as a structured schema violation");
+        assert_eq!(unknown_err["ok"], serde_json::json!(false));
+        assert_eq!(
+            unknown_err["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["smuggle"])
         );
 
         // The real approve (intentId only) merges using the STORED branches.
@@ -3226,9 +4140,9 @@ mod tests {
     #[test]
     fn review_approve_rejects_nonstring_fields_and_flags_stale_tips() {
         use crate::db::{Database, ManagedDb};
-        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
+        use crate::merge_intent::{MergeIntentState, store::MergeIntentStore};
         use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
+        use git2::{Repository, build::CheckoutBuilder};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -3290,23 +4204,25 @@ mod tests {
 
         // Type confusion: a NON-string verdict / gatesDigest is rejected, not
         // treated as absent (the intent stays claimable).
-        let bad_verdict = call(
+        let Json(bad_verdict) = call(
             "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "verdict": { "repoPath": "evil" } }),
         )
-        .expect_err("object verdict rejected");
-        assert!(
-            matches!(bad_verdict, ApiError::BadRequest(_)),
-            "{bad_verdict:?}"
+        .expect("object verdict rejected as a structured schema violation");
+        assert_eq!(bad_verdict["ok"], serde_json::json!(false));
+        assert_eq!(
+            bad_verdict["error"]["schema_violation"]["wrong_type"][0]["field"],
+            "verdict"
         );
-        let bad_digest = call(
+        let Json(bad_digest) = call(
             "aelyris.review.approve",
             serde_json::json!({ "intentId": intent_id, "gatesDigest": 5 }),
         )
-        .expect_err("non-string gatesDigest rejected");
-        assert!(
-            matches!(bad_digest, ApiError::BadRequest(_)),
-            "{bad_digest:?}"
+        .expect("non-string gatesDigest rejected as a structured schema violation");
+        assert_eq!(bad_digest["ok"], serde_json::json!(false));
+        assert_eq!(
+            bad_digest["error"]["schema_violation"]["wrong_type"][0]["field"],
+            "gatesDigest"
         );
         // Still claimable (the bad calls did not consume it).
         assert_eq!(
@@ -3338,9 +4254,9 @@ mod tests {
     #[test]
     fn review_reject_is_durable_and_pending_view_comes_from_the_store() {
         use crate::db::{Database, ManagedDb};
-        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
+        use crate::merge_intent::{MergeIntentState, store::MergeIntentStore};
         use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
+        use git2::{Repository, build::CheckoutBuilder};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -3407,22 +4323,26 @@ mod tests {
         assert_eq!(intents[0]["intentId"].as_str().unwrap(), intent_id);
 
         // reject rejects the unknown field and the non-string reason.
-        assert!(matches!(
-            call(
-                "aelyris.review.reject",
-                serde_json::json!({ "intentId": intent_id, "evil": 1 })
-            )
-            .unwrap_err(),
-            ApiError::BadRequest(_)
-        ));
-        assert!(matches!(
-            call(
-                "aelyris.review.reject",
-                serde_json::json!({ "intentId": intent_id, "reason": 5 })
-            )
-            .unwrap_err(),
-            ApiError::BadRequest(_)
-        ));
+        let Json(bad_unknown) = call(
+            "aelyris.review.reject",
+            serde_json::json!({ "intentId": intent_id, "evil": 1 }),
+        )
+        .expect("unknown field rejected as a structured schema violation");
+        assert_eq!(bad_unknown["ok"], serde_json::json!(false));
+        assert_eq!(
+            bad_unknown["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["evil"])
+        );
+        let Json(bad_reason) = call(
+            "aelyris.review.reject",
+            serde_json::json!({ "intentId": intent_id, "reason": 5 }),
+        )
+        .expect("non-string reason rejected as a structured schema violation");
+        assert_eq!(bad_reason["ok"], serde_json::json!(false));
+        assert_eq!(
+            bad_reason["error"]["schema_violation"]["wrong_type"][0]["field"],
+            "reason"
+        );
 
         // A real reject durably transitions the intent.
         let Json(rej) = call(
@@ -3439,10 +4359,12 @@ mod tests {
         // It is gone from the unresolved view, and cannot be rejected again.
         let Json(view2) =
             call("aelyris.list_pending_approvals", serde_json::json!({})).expect("list ok");
-        assert!(view2["result"]["mergeIntents"]
-            .as_array()
-            .unwrap()
-            .is_empty());
+        assert!(
+            view2["result"]["mergeIntents"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         assert!(matches!(
             call(
                 "aelyris.review.reject",

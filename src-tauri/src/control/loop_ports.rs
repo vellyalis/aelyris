@@ -412,6 +412,7 @@ fn spawn_specs(
     graph: &crate::task::TaskGraph,
     repo_path: &str,
     adr_header: &str,
+    guidelines_header: &str,
     ownership: Option<&[SymbolClaim]>,
 ) -> std::collections::HashMap<String, HeadlessSpawnSpec> {
     graph
@@ -424,7 +425,9 @@ fn spawn_specs(
                     prompt: task_agent_prompt(
                         task,
                         adr_header,
+                        guidelines_header,
                         &ownership_section(ownership, task),
+                        "",
                     ),
                     cwd: task_worktree_cwd(task, repo_path),
                     // Route to the task's explicit `model` if set, else its
@@ -440,21 +443,24 @@ fn spawn_specs(
 }
 
 /// The prompt a dispatched agent runs for `task`: title (+ description) prefixed with
-/// the shared ADR header (the world-model) AND the active-symbol-ownership section (the
-/// claims OTHER work holds on this task's files), so every agent works informed rather
-/// than blind. Shared by the headless and visible-pane spec builders so both inject the
-/// same prompt. Empty headers contribute nothing.
+/// the shared ADR header (the world-model), the repo guidelines, AND the
+/// active-symbol-ownership section (the claims OTHER work holds on this task's
+/// files), so every agent works informed rather than blind. Shared by the
+/// headless and visible-pane spec builders so prompt ownership stays centralized.
+/// Empty headers contribute nothing.
 fn task_agent_prompt(
     task: &crate::task::graph::Task,
     adr_header: &str,
+    guidelines_header: &str,
     ownership_section: &str,
+    completion_section: &str,
 ) -> String {
     let task_prompt = if task.description.trim().is_empty() {
         task.title.clone()
     } else {
         format!("{}\n\n{}", task.title, task.description)
     };
-    format!("{adr_header}{ownership_section}{task_prompt}")
+    format!("{adr_header}{guidelines_header}{ownership_section}{completion_section}{task_prompt}")
 }
 
 /// The active-ownership prompt section for `task` (§6.4): the live WRITE claims OTHER
@@ -493,6 +499,23 @@ fn task_worktree_cwd(task: &crate::task::graph::Task, repo_path: &str) -> String
     }
 }
 
+/// Completion marker contract for visible pane agents. The marker path is
+/// backend-built from the worktree plus a sanitized task id; the prompt tells the
+/// agent what to write, but the runtime never trusts an agent-supplied path.
+fn completion_marker_section(task_id: &str, cwd: &str) -> String {
+    let marker = crate::control::pane_fleet::done_marker_path(cwd, task_id)
+        .display()
+        .to_string();
+    let relative = crate::control::pane_fleet::done_marker_relative_path(task_id);
+    format!(
+        "[Completion marker]\n\
+Create this file as your LAST action, after all edits, declared outputs, and self-checks are complete:\n\
+{marker}\n\
+The relative marker path is {relative}. Create parent directories if needed and write exactly: done\n\
+Do not create the marker while work is still in progress. If blocked, leave the marker absent and state the blocker visibly.\n\n"
+    )
+}
+
 /// Default visible-pane geometry for a loop-dispatched agent. Wide enough for a
 /// CLI agent's output to read well in a fleet-grid tile; the frontend resizes
 /// the PTY to the real tile size once the pane mounts. `pub(crate)` so the IPC
@@ -512,8 +535,9 @@ struct PaneSpawnSpec {
     cols: u16,
     rows: u16,
     /// The task's declared output paths (relative to `cwd`). The visible fleet's
-    /// structural completion signal: an interactive agent never exits, so it is
-    /// reported done once these all exist in its worktree (see `PaneFleet`).
+    /// legacy completion fallback: an interactive agent should create its done
+    /// marker as the primary signal, and `PaneFleet` only accepts output files
+    /// after an idle grace window.
     outputs: Vec<String>,
 }
 
@@ -524,21 +548,26 @@ fn pane_spawn_specs(
     graph: &crate::task::TaskGraph,
     repo_path: &str,
     adr_header: &str,
+    guidelines_header: &str,
     ownership: Option<&[SymbolClaim]>,
 ) -> std::collections::HashMap<String, PaneSpawnSpec> {
     graph
         .list()
         .into_iter()
         .map(|task| {
+            let cwd = task_worktree_cwd(task, repo_path);
+            let completion = completion_marker_section(&task.id, &cwd);
             (
                 task.id.clone(),
                 PaneSpawnSpec {
                     prompt: task_agent_prompt(
                         task,
                         adr_header,
+                        guidelines_header,
                         &ownership_section(ownership, task),
+                        &completion,
                     ),
-                    cwd: task_worktree_cwd(task, repo_path),
+                    cwd,
                     model: task.agent_model(),
                     cols: PANE_COLS,
                     rows: PANE_ROWS,
@@ -552,8 +581,9 @@ fn pane_spawn_specs(
 /// Dispatches a ready task by spawning its implementer agent in a **visible PTY
 /// pane** (1 pane = 1 agent) through the shared `PaneFleet`. The CLI command is
 /// resolved from the task's model + prompt via `agent_shell_command_spec` (the
-/// interactive TUI inside a PowerShell pane); completion is sensed structurally
-/// from declared outputs (the interactive TUI never exits). This is the visible
+/// interactive TUI inside a PowerShell pane); completion is sensed from an
+/// explicit done marker, with declared outputs as a delayed compatibility
+/// fallback because the interactive TUI never exits. This is the visible
 /// counterpart of `AgentDispatcher`. The AgentInspector's hand-spawned agents use
 /// the sibling `agent_command_spec` (interactive TUI, launched directly).
 struct PaneDispatcher<'a> {
@@ -572,8 +602,9 @@ impl Dispatcher for PaneDispatcher<'_> {
         // Loop workers run INSIDE a visible PowerShell pane (split pane → shell →
         // AI CLI), as the live INTERACTIVE TUI (not headless -p), autonomous (own
         // worktree) so they auto-accept edits and build. Because the interactive
-        // session never exits, completion is sensed structurally from the task's
-        // declared outputs appearing in the worktree (passed to the fleet here).
+        // session never exits, completion is sensed through the done marker
+        // injected into the prompt; declared outputs remain a delayed fallback
+        // for legacy agents (passed to the fleet here).
         let (program, args, env) =
             crate::agent::interactive::agent_shell_command_spec(model, &spec.prompt, true)?;
         self.fleet.spawn(
@@ -622,6 +653,23 @@ fn build_adr_header(adr: &std::collections::BTreeMap<String, String>) -> String 
     }
     header.push('\n');
     header
+}
+
+// Maximum AGENTS.md body characters injected into a dispatched-agent prompt.
+const REPO_GUIDELINES_HEADER_MAX_CHARS: usize = 4_000;
+
+/// Render repo-local agent rules into every dispatched-agent prompt. Missing
+/// AGENTS.md is fine: repositories without a guide simply contribute no header.
+fn build_guidelines_header(project_root: &str) -> String {
+    let path = std::path::Path::new(project_root).join("AGENTS.md");
+    let Ok(guidelines) = std::fs::read_to_string(path) else {
+        return String::new();
+    };
+    let body: String = guidelines
+        .chars()
+        .take(REPO_GUIDELINES_HEADER_MAX_CHARS)
+        .collect();
+    format!("[Repo guidelines — follow these]\n{body}\n\n")
 }
 
 /// Snapshot the CURRENTLY-LIVE symbol claims (expiry swept) once before a step, so each
@@ -677,6 +725,7 @@ pub fn run_step(
     let caps = cost.caps();
     // The shared ADR, injected into every agent dispatched this step.
     let adr_header = build_adr_header(&context.all());
+    let guidelines_header = build_guidelines_header(&repo_path);
     // The live symbol claims, snapshot once so each agent's prompt lists the claims
     // OTHER work holds on its files (§6.4).
     let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
@@ -687,7 +736,13 @@ pub fn run_step(
         // Snapshots captured before the step mutates the graph — the adapter
         // never re-locks the manager (std Mutex is not reentrant).
         let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref());
+        let specs = spawn_specs(
+            graph,
+            &repo_path,
+            &adr_header,
+            &guidelines_header,
+            claims_snapshot.as_deref(),
+        );
         // Objective gates (tests/lint/types) run mechanically in each task's
         // worktree when a command is configured; otherwise they (and the
         // subjective gates always) fall back to the caller's supplied verdict.
@@ -750,11 +805,18 @@ pub fn run_step_visible(
 ) -> crate::orchestrator::autonomy::StepReport {
     let caps = cost.caps();
     let adr_header = build_adr_header(&context.all());
+    let guidelines_header = build_guidelines_header(&repo_path);
     let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
     let lanes = capture_lanes(tasks);
     let report = tasks.with_graph_mut(|graph| {
         let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = pane_spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref());
+        let specs = pane_spawn_specs(
+            graph,
+            &repo_path,
+            &adr_header,
+            &guidelines_header,
+            claims_snapshot.as_deref(),
+        );
         let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
             repo_path.clone(),
             gate_commands.unwrap_or_default(),
@@ -1584,6 +1646,84 @@ mod tests {
     }
 
     #[test]
+    fn guidelines_header_is_empty_when_agents_md_is_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(build_guidelines_header(dir.path().to_str().unwrap()).is_empty());
+    }
+
+    #[test]
+    fn guidelines_header_reads_agents_md_and_caps_the_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let oversized = format!("{}TAIL", "a".repeat(REPO_GUIDELINES_HEADER_MAX_CHARS + 1));
+        std::fs::write(dir.path().join("AGENTS.md"), oversized).unwrap();
+
+        let header = build_guidelines_header(dir.path().to_str().unwrap());
+        let body = header
+            .strip_prefix("[Repo guidelines — follow these]\n")
+            .unwrap()
+            .strip_suffix("\n\n")
+            .unwrap();
+
+        assert_eq!(body.chars().count(), REPO_GUIDELINES_HEADER_MAX_CHARS);
+        assert!(!body.contains("TAIL"), "{body}");
+    }
+
+    fn assert_dispatch_context_order(prompt: &str) {
+        let adr = prompt.find("[Project decisions").unwrap();
+        let guidelines = prompt.find("[Repo guidelines").unwrap();
+        let ownership = prompt.find("[Symbol ownership unavailable").unwrap();
+        let task = prompt.find("Build login").unwrap();
+        assert!(
+            adr < guidelines && guidelines < ownership && ownership < task,
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn dispatched_prompt_context_order_is_stable_for_headless_and_visible() {
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("t", "Build login")).unwrap();
+        let mut adr = std::collections::BTreeMap::new();
+        adr.insert("auth_method".to_string(), "jwt".to_string());
+        let adr_header = build_adr_header(&adr);
+        let guidelines_header = "[Repo guidelines — follow these]\nRead AGENTS.md\n\n";
+
+        let headless = spawn_specs(&graph, "/repo", &adr_header, guidelines_header, None);
+        assert_dispatch_context_order(&headless.get("t").unwrap().prompt);
+
+        let visible = pane_spawn_specs(&graph, "/repo", &adr_header, guidelines_header, None);
+        assert_dispatch_context_order(&visible.get("t").unwrap().prompt);
+    }
+
+    #[test]
+    fn visible_dispatch_prompt_includes_backend_built_done_marker_contract() {
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("task/one:two", "Build login")).unwrap();
+
+        let visible = pane_spawn_specs(&graph, "/repo", "", "", None);
+        let prompt = &visible.get("task/one:two").unwrap().prompt;
+
+        assert!(prompt.contains("[Completion marker]"), "{prompt}");
+        assert!(prompt.contains("LAST action"), "{prompt}");
+        assert!(
+            prompt.contains(".aelyris/done/task_one_two.done"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("write exactly: done"), "{prompt}");
+        assert!(!prompt.contains("capture_pane"), "{prompt}");
+
+        let headless = spawn_specs(&graph, "/repo", "", "", None);
+        assert!(
+            !headless
+                .get("task/one:two")
+                .unwrap()
+                .prompt
+                .contains("[Completion marker]"),
+            "headless completion remains exit-based"
+        );
+    }
+
+    #[test]
     fn spawn_specs_inject_the_current_adr_into_every_prompt() {
         // Convergence (③): every dispatched agent — a fresh one or a task
         // re-dispatched after a mid-flight decision change — carries the CURRENT
@@ -1596,7 +1736,7 @@ mod tests {
         adr.insert("auth_method".to_string(), "jwt".to_string());
         let header = build_adr_header(&adr);
 
-        let specs = spawn_specs(&graph, "/repo", &header, None);
+        let specs = spawn_specs(&graph, "/repo", &header, "", None);
         let spec = specs.get("t").unwrap();
 
         assert!(spec.prompt.starts_with("[Project decisions"));
@@ -1626,7 +1766,7 @@ mod tests {
             lease_expires_at: u64::MAX,
             confidence: Confidence::Lsp,
         }];
-        let specs = spawn_specs(&graph, "/repo", "", Some(&claims));
+        let specs = spawn_specs(&graph, "/repo", "", "", Some(&claims));
         let prompt = &specs.get("t").unwrap().prompt;
         assert!(prompt.contains("do NOT edit"), "{prompt}");
         assert!(
@@ -1655,7 +1795,7 @@ mod tests {
             lease_expires_at: u64::MAX,
             confidence: Confidence::Lsp,
         }];
-        let specs = spawn_specs(&graph, "/repo", "", Some(&claims));
+        let specs = spawn_specs(&graph, "/repo", "", "", Some(&claims));
         let prompt = &specs.get("t").unwrap().prompt;
         assert!(
             !prompt.contains("do NOT edit"),
@@ -1683,7 +1823,7 @@ mod tests {
             lease_expires_at: u64::MAX,
             confidence: Confidence::Lsp,
         }];
-        let specs = pane_spawn_specs(&graph, "/repo", "", Some(&claims));
+        let specs = pane_spawn_specs(&graph, "/repo", "", "", Some(&claims));
         assert!(
             specs
                 .get("t")
@@ -1693,7 +1833,7 @@ mod tests {
             "visible pane prompt must carry active claims"
         );
         // And the no-map note appears on the visible face too.
-        let none_specs = pane_spawn_specs(&graph, "/repo", "", None);
+        let none_specs = pane_spawn_specs(&graph, "/repo", "", "", None);
         assert!(none_specs
             .get("t")
             .unwrap()

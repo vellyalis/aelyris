@@ -317,7 +317,7 @@ export function ToolkitPanel({
   }, [parseImportText]);
 
   return (
-    <section className={styles.toolkit} aria-label="Toolkit">
+    <section className={styles.toolkit} aria-label="Toolkit" data-toolkit-role="git-vscode">
       <PanelHeader
         title="Toolkit"
         subtitle="saved commands"

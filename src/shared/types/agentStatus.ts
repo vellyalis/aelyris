@@ -5,6 +5,8 @@ export const AGENT_RUN_STATUSES = [
   "running_tests",
   "waiting_approval",
   "blocked",
+  "summarizing",
+  "retiring",
   "idle",
   "done",
   "error",

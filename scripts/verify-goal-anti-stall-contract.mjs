@@ -358,11 +358,12 @@ const checks = {
     hasAll(goalCloseout, [
       "goal-closeout-snapshot.json",
       "noArtifactOlderThanCloseoutSources",
-      "scoreIsExternalGateA",
+      "scoreIsCurrentExternalGateShape",
+      "scoreBlockersAreOnlyKnownExternalOperatorOrUpstream",
       "safeRequiredProofsGreen",
       "finalizeAgreesWithSafe",
       "externalGateReadinessIsSafeHandoff",
-      "Only external/operator gates remain",
+      "Only external/operator/upstream gates remain",
       "pnpm verify:goal:closeout",
     ]),
   releaseSigningOperatorHandoffPreventsRepeatStall:

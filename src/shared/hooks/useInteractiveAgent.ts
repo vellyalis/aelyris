@@ -16,6 +16,28 @@ export function useInteractiveAgent() {
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
 
+  const applySessions = useCallback((next: InteractiveSession[]) => {
+    setSessions(next);
+    setActiveSessionId((current) => (current && next.some((s) => s.id === current) ? current : null));
+  }, []);
+
+  const refreshSessions = useCallback(async (): Promise<InteractiveSession[] | null> => {
+    if (!isTauriRuntime()) return null;
+    try {
+      const next = await invoke<InteractiveSession[]>("list_interactive_agents");
+      applySessions(next);
+      return next;
+    } catch (err) {
+      reportInvokeFailure({
+        source: "interactive-agent",
+        operation: "list_interactive_agents",
+        err,
+        userVisible: false,
+      });
+      return null;
+    }
+  }, [applySessions]);
+
   // Listen for session state updates from Rust backend
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -23,11 +45,6 @@ export function useInteractiveAgent() {
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
     let receivedEventBeforeSeed = false;
-
-    const applySessions = (next: InteractiveSession[]) => {
-      setSessions(next);
-      setActiveSessionId((current) => (current && next.some((s) => s.id === current) ? current : null));
-    };
 
     (async () => {
       try {
@@ -69,7 +86,7 @@ export function useInteractiveAgent() {
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [applySessions]);
 
   /** Start a new interactive agent session */
   const startSession = useCallback(
@@ -136,6 +153,7 @@ export function useInteractiveAgent() {
     activeSession,
     activeSessionId,
     selectSession,
+    refreshSessions,
     startSession,
     stopSession,
     endSessionAndRemoveWorktree,

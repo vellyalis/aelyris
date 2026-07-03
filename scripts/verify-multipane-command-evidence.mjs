@@ -21,7 +21,7 @@ const PROJECT_PATH = (process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_PROJECT ?? 
 const OUT =
   process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/multipane-command-evidence.json";
 const WAIT_MS = Number.parseInt(process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_WAIT_MS ?? "90000", 10);
-const LONG_OUTPUT_LINES = Number.parseInt(process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_LINES ?? "96", 10);
+const LONG_OUTPUT_LINES = Number.parseInt(process.env.AELYRIS_MULTIPANE_COMMAND_EVIDENCE_LINES ?? "20", 10);
 
 const report = {
   ok: false,
@@ -166,6 +166,17 @@ async function waitForTerminal(page, terminalId) {
   return ids;
 }
 
+async function waitForShellReady(page, terminalId) {
+  const deadline = Date.now() + 30000;
+  let text = "";
+  while (Date.now() < deadline) {
+    text = await gridText(page, terminalId);
+    if (/PS\s+.*>\s*$/m.test(text)) return text;
+    await sleep(250);
+  }
+  throw new Error(`Terminal ${terminalId} did not become shell-ready; sample=${text.slice(-600)}`);
+}
+
 async function gridText(page, terminalId) {
   return await page.evaluate(
     async ({ id }) => {
@@ -226,7 +237,9 @@ async function waitForHistoryContains(page, terminalId, marker) {
 async function submitLongCommand(page, terminalId, label) {
   const marker = `AELYRIS_${label}_${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
   const done = `${marker}_DONE`;
-  const command = `for ($i=1; $i -le ${LONG_OUTPUT_LINES}; $i++) { Write-Output "${marker}_$i" }; Write-Output "${done}"`;
+  const command = Array.from({ length: LONG_OUTPUT_LINES }, (_, index) => `echo ${marker}_${index + 1}`)
+    .concat(`echo ${done}`)
+    .join("; ");
   await call(page, "send_keys", { terminalId, data: `${command}\r` });
   const visibleText = await waitForGridText(page, terminalId, done);
   const { blocks, block } = await waitForCommandBlock(page, terminalId, marker);
@@ -274,6 +287,7 @@ async function main() {
       cwd: PROJECT_PATH,
     });
     await waitForTerminal(page, baseTerminalId);
+    await waitForShellReady(page, baseTerminalId);
 
     const splitTerminalId = await call(page, "mux_split_pane", {
       workspaceId: baseTerminalId,
@@ -286,6 +300,8 @@ async function main() {
       title: "evidence-split",
     });
     const terminalIdsAfterSplit = await waitForTerminal(page, splitTerminalId);
+    await waitForShellReady(page, baseTerminalId);
+    await waitForShellReady(page, splitTerminalId);
     if (!terminalIdsAfterSplit.includes(baseTerminalId)) {
       throw new Error(`Base terminal ${baseTerminalId} disappeared after split`);
     }

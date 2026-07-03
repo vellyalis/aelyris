@@ -33,6 +33,15 @@ describe("agent telemetry persistence", () => {
         handoffFrom: "root",
         tokensUsed: 32_000,
         cost: 0.42,
+        contextRemaining: {
+          pct: 12,
+          usedPct: 88,
+          confidence: "parsed",
+          source: "claude_grid_context_left",
+          updatedAt: 4_000,
+          warn: true,
+          hard: false,
+        },
         logs: [
           {
             timestamp: 2_000,
@@ -58,6 +67,15 @@ describe("agent telemetry persistence", () => {
       handoffFrom: "root",
       tokensUsed: 32_000,
       cost: 0.42,
+      contextRemaining: {
+        pct: 12,
+        usedPct: 88,
+        confidence: "parsed",
+        source: "claude_grid_context_left",
+        updatedAt: 4_000,
+        warn: true,
+        hard: false,
+      },
       logs: [
         {
           type: "system",

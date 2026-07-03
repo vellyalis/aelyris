@@ -133,7 +133,8 @@ function expectedSafeGate() {
   ].filter(Boolean);
   const coreProofDetail = coreProofs.length > 0 ? `core: ${coreProofs.join("/")}` : "";
   const safeProofDetail =
-    [requirementProof, artifactProof, coreProofDetail].filter(Boolean).join(" · ") || "prompt not sent";
+    [requirementProof, artifactProof, coreProofDetail].filter(Boolean).join(" · ") ||
+    "token-spending prompt was not executed";
   const localFreshnessDetail =
     typeof safe.localDate === "string" && typeof safe.timeZone === "string" ? `${safe.localDate} ${safe.timeZone}` : "";
   const stepCount = Array.isArray(safe.steps) ? safe.steps.length : null;
@@ -287,9 +288,15 @@ function countAuthenticatedPromptBlockers(items) {
 }
 
 async function readGoalTrack(page) {
-  await page.waitForSelector(".right-panel-goal-track", { timeout: WAIT_MS });
+  await page.waitForSelector(".right-panel-evidence-drawer", { state: "attached", timeout: WAIT_MS });
+  await page.evaluate(() => {
+    const evidenceDrawer = document.querySelector("details.right-panel-evidence-drawer");
+    if (evidenceDrawer instanceof HTMLDetailsElement) evidenceDrawer.open = true;
+  });
+  await page.waitForSelector(".right-panel-goal-track", { state: "attached", timeout: WAIT_MS });
   return await page.evaluate(() => {
     const root = document.querySelector(".right-panel-goal-track");
+    const rootStyle = root ? window.getComputedStyle(root) : null;
     const quality = root?.querySelector(".right-panel-goal-track-source");
     const residual = root?.querySelector(".right-panel-goal-track-residual");
     const safeGate = root?.querySelector(".right-panel-goal-track-safe");
@@ -302,7 +309,7 @@ async function readGoalTrack(page) {
     );
     const externalActions = Array.from(root?.querySelectorAll(".right-panel-goal-track-external-actions button") ?? []);
     return {
-      visible: Boolean(root),
+      visible: Boolean(root && root.getClientRects().length > 0 && rootStyle?.visibility !== "hidden"),
       status: root?.getAttribute("data-status") ?? null,
       percent: root?.querySelector(".right-panel-goal-track-head strong")?.textContent?.trim() ?? null,
       qualitySource: {
@@ -728,8 +735,11 @@ async function main() {
     if (report.expectedSafeGate?.noTokenPromptSent === true && goalTrack.safeGate.noTokenPromptSent !== "true") {
       failures.push("final safe gate does not expose no-token-prompt-sent proof in Tauri runtime");
     }
-    if (goalTrack.safeGate.tokenSpendingPromptExecuted !== "false") {
-      failures.push("final safe gate does not prove the token-spending prompt was not executed");
+    if (typeof report.expectedSafeGate?.tokenSpendingPromptExecuted === "boolean") {
+      const expectedTokenPromptExecuted = report.expectedSafeGate.tokenSpendingPromptExecuted ? "true" : "false";
+      if (goalTrack.safeGate.tokenSpendingPromptExecuted !== expectedTokenPromptExecuted) {
+        failures.push("final safe gate token-spending prompt execution state is stale in Tauri runtime");
+      }
     }
     for (const [field, message] of [
       ["releaseHygieneClean", "final safe gate does not expose release hygiene core proof in Tauri runtime"],
@@ -822,11 +832,18 @@ async function main() {
         failures.push(`consent provider matrix does not show ${provider} as ready`);
       }
     }
-    if (!goalTrack.remaining.some((item) => /authenticated.*prompt.*smoke/i.test(item))) {
-      failures.push("remaining blocker does not name authenticated prompt smoke");
-    }
-    if (countAuthenticatedPromptBlockers(goalTrack.remaining) !== 1) {
-      failures.push("duplicate authenticated prompt blockers are visible in Goal Track remaining items");
+    const authenticatedPromptBlockerCount = countAuthenticatedPromptBlockers(goalTrack.remaining);
+    if (report.expectedSafeGate?.tokenSpendingPromptExecuted === true) {
+      if (authenticatedPromptBlockerCount !== 0) {
+        failures.push("authenticated prompt blockers are still visible after the prompt smoke executed");
+      }
+    } else {
+      if (!goalTrack.remaining.some((item) => /authenticated.*prompt.*smoke/i.test(item))) {
+        failures.push("remaining blocker does not name authenticated prompt smoke");
+      }
+      if (authenticatedPromptBlockerCount !== 1) {
+        failures.push("duplicate authenticated prompt blockers are visible in Goal Track remaining items");
+      }
     }
     const riskRemaining = goalTrack.remaining.some((item) => /risk or blocker node/.test(item));
     if (riskRemaining && goalTrack.riskEvidence.length === 0) {

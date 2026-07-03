@@ -6,9 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use aelyris_lib::config::{
-    load_config, save_config, MoodMaterialOverrideConfig, WallpaperConfig,
-};
+use aelyris_lib::config::{load_config, save_config, MoodMaterialOverrideConfig, WallpaperConfig};
 use aelyris_lib::db::{
     AgentIdentityRecord, Database, HistorySearchEntryRecord, ModePreservationSnapshotRecord,
     WorkspaceItemRecord,
@@ -570,8 +568,12 @@ async fn text_shaping_fixture_proof(args: &[String]) -> Result<(), String> {
     let surface_width = u32::from(frame.cell_width_px) * u32::from(frame.cols).max(1);
     let surface_height = u32::from(frame.cell_height_px) * u32::from(frame.rows).max(1);
     let allow_ligatures = load_config().appearance.ligatures;
-    let plan =
-        build_winit_wgpu_terminal_draw_plan(&frame, surface_width, surface_height, allow_ligatures)?;
+    let plan = build_winit_wgpu_terminal_draw_plan(
+        &frame,
+        surface_width,
+        surface_height,
+        allow_ligatures,
+    )?;
 
     write_font_atlas_png(&png_path, &plan.font_atlas)?;
     let png_bytes =
@@ -5587,7 +5589,10 @@ fn native_settings_window_proof(
     _alpha: u8,
     _visible: bool,
 ) -> Result<Value, String> {
-    Err("aelyris-native settings-window-proof is currently implemented for Windows only".to_string())
+    Err(
+        "aelyris-native settings-window-proof is currently implemented for Windows only"
+            .to_string(),
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -8075,9 +8080,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         && app.font_atlas_missing_fallback_glyphs == 0
         && app.fallback_glyph_quads >= app.directwrite_fallback_clusters;
     let text_shaping_backend = if renderer_fallback_glyph_rasterization_ready {
-        "directwrite-shaped-run-consumed-fontdue-directwrite-fallback-atlas"
+        "directwrite-shaped-run-consumed-swash-directwrite-fallback-atlas"
     } else {
-        "directwrite-shaped-run-consumed-fontdue-primary-atlas-fallback-raster-pending"
+        "directwrite-shaped-run-consumed-swash-primary-atlas-fallback-raster-pending"
     };
     Ok(json!({
         "terminalRenderer": "native-winit-wgpu-terminal",
@@ -8175,18 +8180,46 @@ struct AtlasGlyph {
 }
 
 #[cfg(target_os = "windows")]
-fn load_native_terminal_font() -> Result<(fontdue::Font, String), String> {
+struct NativeRasterFont {
+    data: Vec<u8>,
+    collection_index: usize,
+    path: String,
+}
+
+#[cfg(target_os = "windows")]
+impl NativeRasterFont {
+    fn load(path: &str, collection_index: u32) -> Result<Self, String> {
+        let data = std::fs::read(path).map_err(|err| format!("read {path}: {err}"))?;
+        let collection_index = collection_index as usize;
+        swash::FontRef::from_index(&data, collection_index)
+            .ok_or_else(|| format!("parse {path}#{collection_index} with swash"))?;
+        Ok(Self {
+            data,
+            collection_index,
+            path: path.to_string(),
+        })
+    }
+
+    fn font_ref(&self) -> Result<swash::FontRef<'_>, String> {
+        swash::FontRef::from_index(&self.data, self.collection_index).ok_or_else(|| {
+            format!(
+                "parse {}#{} with swash",
+                self.path, self.collection_index
+            )
+        })
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn load_native_terminal_font() -> Result<NativeRasterFont, String> {
     let candidates = [
         "C:\\Windows\\Fonts\\CascadiaMono.ttf",
         "C:\\Windows\\Fonts\\CascadiaCode.ttf",
         "C:\\Windows\\Fonts\\consola.ttf",
     ];
     for path in candidates {
-        let Ok(bytes) = std::fs::read(path) else {
-            continue;
-        };
-        match fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()) {
-            Ok(font) => return Ok((font, path.to_string())),
+        match NativeRasterFont::load(path, 0) {
+            Ok(font) => return Ok(font),
             Err(_) => continue,
         }
     }
@@ -8194,16 +8227,42 @@ fn load_native_terminal_font() -> Result<(fontdue::Font, String), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn load_fontdue_font_from_path(path: &str, collection_index: u32) -> Result<fontdue::Font, String> {
-    let bytes = std::fs::read(path).map_err(|err| format!("read {path}: {err}"))?;
-    fontdue::Font::from_bytes(
-        bytes,
-        fontdue::FontSettings {
-            collection_index,
-            ..fontdue::FontSettings::default()
-        },
-    )
-    .map_err(|err| format!("parse {path}#{collection_index}: {err}"))
+fn render_swash_glyph(
+    font: &NativeRasterFont,
+    ch: char,
+    font_px: f32,
+) -> Result<Option<swash::scale::image::Image>, String> {
+    use swash::scale::{Render, ScaleContext, Source, StrikeWith};
+
+    let font_ref = font.font_ref()?;
+    let glyph_id = font_ref.charmap().map(ch);
+    if glyph_id == 0 {
+        return Ok(None);
+    }
+    let mut context = ScaleContext::new();
+    let mut scaler = context.builder(font_ref).size(font_px).hint(true).build();
+    let sources = [
+        Source::ColorOutline(0),
+        Source::ColorBitmap(StrikeWith::BestFit),
+        Source::Outline,
+    ];
+    Ok(Render::new(&sources)
+        .format(swash::zeno::Format::Alpha)
+        .render(&mut scaler, glyph_id))
+}
+
+#[cfg(target_os = "windows")]
+fn swash_image_alpha(image: &swash::scale::image::Image, x: usize, y: usize) -> u8 {
+    let width = image.placement.width as usize;
+    let pixel = y.saturating_mul(width).saturating_add(x);
+    if image.data.len() == width.saturating_mul(image.placement.height as usize) {
+        return image.data.get(pixel).copied().unwrap_or(0);
+    }
+    let base = pixel.saturating_mul(4);
+    let Some(channels) = image.data.get(base..base.saturating_add(4)) else {
+        return 0;
+    };
+    channels.iter().copied().max().unwrap_or(0)
 }
 
 #[cfg(target_os = "windows")]
@@ -8379,7 +8438,7 @@ fn build_native_font_atlas(
 ) -> Result<(FontAtlas, std::collections::HashMap<char, AtlasGlyph>), String> {
     use std::collections::HashMap;
 
-    let (font, font_path) = load_native_terminal_font()?;
+    let font = load_native_terminal_font()?;
     let chars = shape_plan.atlas_chars.iter().copied().collect::<Vec<_>>();
     let slot_w = (u32::from(frame.cell_width_px).max(8) * 2).min(64);
     let slot_h = u32::from(frame.cell_height_px).clamp(12, 64);
@@ -8408,7 +8467,7 @@ fn build_native_font_atlas(
         if let (Some(fallback), Some(key)) = (fallback_ref, fallback_key.as_ref()) {
             let _ = &fallback.family;
             if !fallback_fonts.contains_key(key) {
-                match load_fontdue_font_from_path(&fallback.path, fallback.collection_index) {
+                match NativeRasterFont::load(&fallback.path, fallback.collection_index) {
                     Ok(font) => {
                         fallback_fonts.insert(key.clone(), font);
                     }
@@ -8422,8 +8481,20 @@ fn build_native_font_atlas(
             .as_ref()
             .and_then(|key| fallback_fonts.get(key));
         let used_fallback_font = fallback_font.is_some();
-        let (metrics, bitmap) = fallback_font.unwrap_or(&font).rasterize(ch, font_px);
-        if metrics.width == 0 || metrics.height == 0 || bitmap.iter().all(|value| *value == 0) {
+        let image = match render_swash_glyph(fallback_font.unwrap_or(&font), ch, font_px)? {
+            Some(image) => image,
+            None => {
+                missing_glyphs += 1;
+                if shape_plan.fallback_required_chars.contains(&ch) {
+                    missing_fallback_glyphs += 1;
+                }
+                continue;
+            }
+        };
+        if image.placement.width == 0
+            || image.placement.height == 0
+            || image.data.iter().all(|value| *value == 0)
+        {
             missing_glyphs += 1;
             if shape_plan.fallback_required_chars.contains(&ch) {
                 missing_fallback_glyphs += 1;
@@ -8436,14 +8507,14 @@ fn build_native_font_atlas(
 
         let slot_x = (index as u32 % columns) * slot_w;
         let slot_y = (index as u32 / columns) * slot_h;
-        let glyph_w = metrics.width.min(slot_w as usize);
-        let glyph_h = metrics.height.min(slot_h as usize);
+        let glyph_w = (image.placement.width as usize).min(slot_w as usize);
+        let glyph_h = (image.placement.height as usize).min(slot_h as usize);
         let offset_x = slot_x + (slot_w.saturating_sub(glyph_w as u32) / 2);
         let offset_y = slot_y + (slot_h.saturating_sub(glyph_h as u32) / 2);
 
         for y in 0..glyph_h {
             for x in 0..glyph_w {
-                let source = bitmap[y * metrics.width + x];
+                let source = swash_image_alpha(&image, x, y);
                 let dest_x = offset_x + x as u32;
                 let dest_y = offset_y + y as u32;
                 let dest = dest_y as usize * width as usize + dest_x as usize;
@@ -8475,7 +8546,7 @@ fn build_native_font_atlas(
             missing_glyphs,
             missing_fallback_glyphs,
             question_mark_substitutions: 0,
-            font_path,
+            font_path: font.path,
             font_px,
         },
         glyphs,
