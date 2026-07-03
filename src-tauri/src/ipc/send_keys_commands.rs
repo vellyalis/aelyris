@@ -442,10 +442,18 @@ pub async fn broadcast_keys(
 /// Rename a terminal pane (for send-keys-by-name)
 #[tauri::command]
 pub fn rename_pane(app: AppHandle, terminal_id: String, name: String) -> Result<(), String> {
+    rename_pane_core(&app, &terminal_id, &name)
+}
+
+pub(crate) fn rename_pane_core(
+    app: &AppHandle,
+    terminal_id: &str,
+    name: &str,
+) -> Result<(), String> {
     let registry = app.state::<crate::pty::PaneRegistry>();
-    registry.rename(&terminal_id, &name)?;
-    sync_mux_pane_name(&app, &terminal_id, &name);
-    persist_pane_metadata(&app, &terminal_id);
+    registry.rename(terminal_id, name)?;
+    sync_mux_pane_name(app, terminal_id, name);
+    persist_pane_metadata(app, terminal_id);
     Ok(())
 }
 
@@ -466,10 +474,18 @@ fn persist_pane_metadata(app: &AppHandle, terminal_id: &str) {
 /// Assign a role to a terminal pane for workstation routing.
 #[tauri::command]
 pub fn set_pane_role(app: AppHandle, terminal_id: String, role: String) -> Result<(), String> {
+    set_pane_role_core(&app, &terminal_id, &role)
+}
+
+pub(crate) fn set_pane_role_core(
+    app: &AppHandle,
+    terminal_id: &str,
+    role: &str,
+) -> Result<(), String> {
     let registry = app.state::<crate::pty::PaneRegistry>();
-    registry.set_role(&terminal_id, &role)?;
-    sync_mux_pane_role(&app, &terminal_id, &role);
-    persist_pane_metadata(&app, &terminal_id);
+    registry.set_role(terminal_id, role)?;
+    sync_mux_pane_role(app, terminal_id, role);
+    persist_pane_metadata(app, terminal_id);
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, PtyPair, PtySize};
+use portable_pty::{Child, ChildKiller, CommandBuilder, PtyPair, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -8,9 +8,9 @@ use std::time::Instant;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use super::buffer::{strip_ansi, OutputBuffer};
+use super::buffer::{OutputBuffer, strip_ansi};
 use super::error::PtyError;
-use super::scrollback::{search_scrollback_text, FilePtyScrollbackStore, PtyScrollbackSearchMatch};
+use super::scrollback::{FilePtyScrollbackStore, PtyScrollbackSearchMatch, search_scrollback_text};
 use super::shell::ShellType;
 
 pub const PTY_SCROLLBACK_DIR_ENV: &str = "AELYRIS_PTY_SCROLLBACK_DIR";
@@ -108,6 +108,8 @@ impl Drop for PtyInstance {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerminalInfo {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_id: Option<u32>,
     pub shell_type: ShellType,
     pub cwd: String,
     pub uptime_secs: u64,
@@ -680,6 +682,7 @@ impl PtyManager {
                     .iter()
                     .map(|(id, inst)| TerminalInfo {
                         id: id.clone(),
+                        short_id: None,
                         shell_type: inst.shell_type.clone(),
                         cwd: inst.cwd.clone(),
                         uptime_secs: inst.spawned_at.elapsed().as_secs(),

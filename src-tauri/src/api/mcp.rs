@@ -44,6 +44,8 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.request_approval",
         "aelyris.list_pending_approvals",
         "aelyris.approval.resolve",
+        "aelyris.pane.rename",
+        "aelyris.pane.set_role",
         "aelyris.request_merge",
         "aelyris.spawn_agent",
         "aelyris.agent.spawn_visible",
@@ -344,10 +346,7 @@ async fn mcp_approval_resolve(
 ) -> ApiResult<Result<(), String>> {
     let app = mcp_app_handle(state)?;
     let terminal_ref = arg_string(args, "terminalId")?;
-    let terminal_id = app
-        .state::<crate::pty::PaneRegistry>()
-        .resolve_terminal_ref(&terminal_ref)
-        .map_err(ApiError::BadRequest)?;
+    let terminal_id = resolve_mcp_terminal_ref(state, &terminal_ref)?;
     let decision = arg_string(args, "decision")?;
     let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
     Ok(crate::ipc::resolve_interactive_approval_core(
@@ -382,6 +381,95 @@ fn approval_resolve_error_payload(err: &str) -> serde_json::Value {
     } else {
         serde_json::json!({ "error": err })
     }
+}
+
+#[cfg(not(test))]
+fn resolve_mcp_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<String> {
+    let trimmed = reference.trim();
+    if !trimmed.starts_with('%') {
+        return Ok(trimmed.to_string());
+    }
+    let app = mcp_app_handle(state)?;
+    app.state::<crate::pty::PaneRegistry>()
+        .resolve_terminal_ref(trimmed)
+        .map_err(ApiError::BadRequest)
+}
+
+#[cfg(test)]
+fn resolve_mcp_terminal_ref(_state: &ApiState, reference: &str) -> ApiResult<String> {
+    let trimmed = reference.trim();
+    if trimmed == "%404" {
+        return Err(ApiError::BadRequest(format!(
+            "unknown terminal reference `{trimmed}`"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+#[cfg(not(test))]
+fn mcp_pane_rename(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let name = arg_string(args, "name")?;
+    Ok(crate::ipc::rename_pane_core(&app, &terminal_id, &name))
+}
+
+#[cfg(test)]
+fn mcp_pane_rename(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let name = arg_string(args, "name")?;
+    if name == "missing-pane" {
+        Ok(Err("Pane missing-pane not found".to_string()))
+    } else {
+        Ok(Ok(()))
+    }
+}
+
+#[cfg(not(test))]
+fn mcp_pane_set_role(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let role = arg_string(args, "role")?;
+    Ok(crate::ipc::set_pane_role_core(&app, &terminal_id, &role))
+}
+
+#[cfg(test)]
+fn mcp_pane_set_role(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let _role = arg_string(args, "role")?;
+    Ok(Ok(()))
 }
 
 #[cfg(not(test))]
@@ -850,6 +938,34 @@ fn build_tools_list_value() -> serde_json::Value {
                         "terminalId": { "type": "string" },
                         "decision": { "type": "string", "enum": ["approve", "deny"] },
                         "expectedPromptKey": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.pane.rename",
+                "description": "Rename a visible terminal pane through the same cockpit pane-identity core. terminalId accepts a UUID or process-local %N short id.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["terminalId", "name"],
+                    "properties": {
+                        "terminalId": { "type": "string" },
+                        "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.pane.set_role",
+                "description": "Assign a visible terminal pane role through the same cockpit pane-identity core. terminalId accepts a UUID or process-local %N short id.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["terminalId", "role"],
+                    "properties": {
+                        "terminalId": { "type": "string" },
+                        "role": { "type": "string", "minLength": 1, "maxLength": 40 }
                     },
                     "additionalProperties": false
                 }
@@ -1687,6 +1803,15 @@ fn validate_schema_string_bounds(
     let Some(text) = value.as_str() else {
         return;
     };
+    if let Some(min_length) = schema.get("minLength").and_then(|value| value.as_u64()) {
+        if (text.chars().count() as u64) < min_length {
+            report.wrong_type.push(SchemaTypeViolation {
+                field: field.to_string(),
+                expected: format!("string >= {min_length} chars"),
+                got: format!("string({} chars)", text.chars().count()),
+            });
+        }
+    }
     if let Some(max_length) = schema.get("maxLength").and_then(|value| value.as_u64()) {
         if text.chars().count() as u64 > max_length {
             report.wrong_type.push(SchemaTypeViolation {
@@ -1763,6 +1888,7 @@ fn assert_schema_subset(schema: &serde_json::Value, field: &str, violations: &mu
                 | "items"
                 | "minimum"
                 | "maximum"
+                | "minLength"
                 | "maxLength"
                 | "description"
         ) {
@@ -1859,7 +1985,8 @@ pub(super) async fn tools_call(
             "sessions": state.pty.list_info(),
         }),
         "terminal.capture" => {
-            let session_id = arg_string(&args, "sessionId")?;
+            let session_ref = arg_string(&args, "sessionId")?;
+            let session_id = resolve_mcp_terminal_ref(&state, &session_ref)?;
             let lines = arg_usize(&args, "lines", 200)?.clamp(1, 10_000);
             let clean = arg_bool(&args, "clean", true);
             let text = state
@@ -1965,7 +2092,8 @@ pub(super) async fn tools_call(
             serde_json::json!({ "prompt": prompt, "decision": decision })
         }
         "aelyris.pane_send_input" => {
-            let terminal_id = arg_string(&args, "terminalId")?;
+            let terminal_ref = arg_string(&args, "terminalId")?;
+            let terminal_id = resolve_mcp_terminal_ref(&state, &terminal_ref)?;
             let text = arg_string(&args, "text")?;
             let approval_id = arg_optional_string(&args, "approvalId");
             if text.len() > WS_MAX_INPUT_FRAME_BYTES {
@@ -2097,6 +2225,24 @@ pub(super) async fn tools_call(
                 return Ok(schema_tool_error(
                     &body.name,
                     approval_resolve_error_payload(&err),
+                ));
+            }
+        },
+        "aelyris.pane.rename" => match mcp_pane_rename(&state, &args)? {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    serde_json::json!({ "error": err }),
+                ));
+            }
+        },
+        "aelyris.pane.set_role" => match mcp_pane_set_role(&state, &args)? {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    serde_json::json!({ "error": err }),
                 ));
             }
         },
@@ -3629,6 +3775,83 @@ mod tests {
         assert_eq!(
             low_cols["error"]["schema_violation"]["wrong_type"][0]["expected"],
             serde_json::json!("integer >= 20")
+        );
+    }
+
+    #[test]
+    fn pane_identity_mcp_schema_and_tool_error_contract() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        );
+
+        let call = |name: &str, arguments: serde_json::Value| {
+            let body = ToolCallBody {
+                name: name.to_string(),
+                arguments,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("tool call response")
+                .0
+        };
+
+        let Json(listed) = rt.block_on(tools_list());
+        for (verb, field, max_len) in [
+            ("aelyris.pane.rename", "name", 120),
+            ("aelyris.pane.set_role", "role", 40),
+        ] {
+            let tool = listed["tools"]
+                .as_array()
+                .expect("tools is an array")
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(verb))
+                .unwrap_or_else(|| panic!("{verb} is listed"));
+            assert_eq!(tool["safety"], serde_json::json!("GATED"));
+            assert_eq!(
+                tool["inputSchema"]["properties"][field]["minLength"],
+                serde_json::json!(1)
+            );
+            assert_eq!(
+                tool["inputSchema"]["properties"][field]["maxLength"],
+                serde_json::json!(max_len)
+            );
+        }
+
+        let renamed = call(
+            "aelyris.pane.rename",
+            serde_json::json!({ "terminalId": "pty-1", "name": "review" }),
+        );
+        assert_eq!(renamed["ok"], serde_json::json!(true));
+        assert_eq!(renamed["result"]["ok"], serde_json::json!(true));
+
+        let role = call(
+            "aelyris.pane.set_role",
+            serde_json::json!({ "terminalId": "pty-1", "role": "agent" }),
+        );
+        assert_eq!(role["ok"], serde_json::json!(true));
+        assert_eq!(role["result"]["ok"], serde_json::json!(true));
+
+        let empty_name = call(
+            "aelyris.pane.rename",
+            serde_json::json!({ "terminalId": "pty-1", "name": "" }),
+        );
+        assert_eq!(empty_name["ok"], serde_json::json!(false));
+        assert_eq!(
+            empty_name["error"]["schema_violation"]["wrong_type"][0]["expected"],
+            serde_json::json!("string >= 1 chars")
+        );
+
+        let missing_ref = call(
+            "aelyris.pane.rename",
+            serde_json::json!({ "terminalId": "%404", "name": "review" }),
+        );
+        assert_eq!(missing_ref["ok"], serde_json::json!(false));
+        assert!(
+            missing_ref["error"]["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("unknown terminal reference `%404`")),
+            "{missing_ref:?}"
         );
     }
 

@@ -35,31 +35,31 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::{
+    Json, Router,
     extract::{
-        ws::{Message, WebSocket},
         ConnectInfo, Extension, Path, Query, Request, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     http::{
-        header::{self, AUTHORIZATION, CONTENT_TYPE},
         HeaderMap, HeaderName, HeaderValue, Method, StatusCode,
+        header::{self, AUTHORIZATION, CONTENT_TYPE},
     },
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
-    Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 #[cfg(not(test))]
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use thiserror::Error;
-use tokio::sync::{broadcast, Mutex as AsyncMutex, Notify};
+use tokio::sync::{Mutex as AsyncMutex, Notify, broadcast};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::mux::graph::MUX_GRAPH_VERSION;
 use crate::mux::manager::MuxManager;
-use crate::mux::store::{graph_for_snapshot_restore, FileMuxSnapshotStore};
+use crate::mux::store::{FileMuxSnapshotStore, graph_for_snapshot_restore};
 #[cfg(test)]
 use crate::pty::ShellType;
 use crate::pty::{PtyError, PtyManager, TerminalInfo};
@@ -1578,6 +1578,33 @@ fn map_pty_err(id: &str, e: PtyError) -> ApiError {
     }
 }
 
+fn resolve_api_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<String> {
+    let trimmed = reference.trim();
+    if !trimmed.starts_with('%') {
+        return Ok(trimmed.to_string());
+    }
+    resolve_api_short_terminal_ref(state, trimmed)
+}
+
+#[cfg(not(test))]
+fn resolve_api_short_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<String> {
+    let app = state.app_handle.as_ref().ok_or_else(|| {
+        ApiError::BadRequest(
+            "short terminal references require the embedded pane registry".to_string(),
+        )
+    })?;
+    app.state::<crate::pty::PaneRegistry>()
+        .resolve_terminal_ref(reference)
+        .map_err(ApiError::BadRequest)
+}
+
+#[cfg(test)]
+fn resolve_api_short_terminal_ref(_state: &ApiState, reference: &str) -> ApiResult<String> {
+    Err(ApiError::BadRequest(format!(
+        "unknown terminal reference `{reference}`"
+    )))
+}
+
 // ─── Router / serve ─────────────────────────────────────────────────────────
 
 /// Build the router. Exposed so integration tests can drive it with a custom
@@ -1757,10 +1784,8 @@ fn terminal_core_policy() -> TerminalCorePolicyResponse {
         render_pipeline_boundary: "rust-native-render-pipeline",
         next_renderer: "winit-wgpu-present-loop",
         current_presentation_surface: "react-canvas-presentation-with-rust-term-engine-truth",
-        native_renderer_status:
-            "aelyris-native-no-webview-spike-proved-full-product-renderer-pending",
-        renderer_claim_policy:
-            "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded",
+        native_renderer_status: "aelyris-native-no-webview-spike-proved-full-product-renderer-pending",
+        renderer_claim_policy: "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded",
         webview_terminal_renderer_policy: "fallback-contained-not-source-of-truth",
         react_terminal_renderer_policy: "control-plane-only-not-terminal-core",
         mux_truth_source: "daemon-api",
@@ -2068,8 +2093,24 @@ fn validate_session_id(id: &str) -> Result<(), ApiError> {
 }
 
 async fn list_sessions(State(state): State<ApiState>) -> Json<Vec<TerminalInfo>> {
-    Json(state.pty.list_info())
+    let mut sessions = state.pty.list_info();
+    attach_short_ids(&state, &mut sessions);
+    Json(sessions)
 }
+
+#[cfg(not(test))]
+fn attach_short_ids(state: &ApiState, sessions: &mut [TerminalInfo]) {
+    let Some(app) = state.app_handle.as_ref() else {
+        return;
+    };
+    let registry = app.state::<crate::pty::PaneRegistry>();
+    for session in sessions {
+        session.short_id = registry.get(&session.id).map(|entry| entry.short_id);
+    }
+}
+
+#[cfg(test)]
+fn attach_short_ids(_state: &ApiState, _sessions: &mut [TerminalInfo]) {}
 
 async fn health(State(state): State<ApiState>) -> Json<HealthResponse> {
     Json(HealthResponse {
@@ -2109,11 +2150,9 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         transport: "loopback-http-websocket",
         auth_policy: "bearer-token-or-disabled-test-mode",
         client_detach_policy: "detach-keeps-live-pty-while-daemon-running",
-        restart_restore_policy:
-            "snapshot-restores-graph-as-restore-pending-with-durable-scrollback",
+        restart_restore_policy: "snapshot-restores-graph-as-restore-pending-with-durable-scrollback",
         attach_policy: "reattach-respawns-only-missing-or-restore-pending-pty-bindings",
-        live_process_preservation_policy:
-            "daemon-live-detach-reattach-preserves-existing-pty-process-id",
+        live_process_preservation_policy: "daemon-live-detach-reattach-preserves-existing-pty-process-id",
         shutdown_policy: "explicit-workspace-close-terminates-owned-child-ptys",
         max_sessions: state.max_sessions,
         active_sessions: state.pty.list_info().len(),
@@ -2216,6 +2255,7 @@ async fn send_session_input(
     headers: HeaderMap,
     Json(body): Json<InputBody>,
 ) -> ApiResult<StatusCode> {
+    let id = resolve_api_terminal_ref(&state, &id)?;
     let bytes = body.text.as_bytes();
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
         return Err(ApiError::BadRequest(format!(
@@ -2283,8 +2323,7 @@ async fn mint_session_input_approval(
             .controller_leases
             .ensure_can_control(target_id, client_id.as_deref())?;
     }
-    mint_command_input_approval(&state, "rest-session-input", &id, &targets, &body.text)
-        .map(Json)
+    mint_command_input_approval(&state, "rest-session-input", &id, &targets, &body.text).map(Json)
 }
 
 fn approval_command_from_input(text: &str) -> ApiResult<&str> {
@@ -2304,7 +2343,8 @@ fn approval_command_from_input(text: &str) -> ApiResult<&str> {
         ));
     }
     let tail = &text[first_terminator..];
-    if tail.trim_matches(|c| c == '\r' || c == '\n')
+    if tail
+        .trim_matches(|c| c == '\r' || c == '\n')
         .trim()
         .is_empty()
     {
@@ -2352,20 +2392,18 @@ fn mint_command_input_approval(
         command,
         &target_scope_hash,
     ) {
-        crate::command_risk::approval::MintOutcome::NoApprovalNeeded => {
-            Ok(InputApprovalResponse {
-                status: "no_approval_needed",
-                approval_id: None,
-                severity: "allow",
-                requires_approval: false,
-                catastrophic: false,
-                preview: command.to_string(),
-                command_hash,
-                source_kind,
-                session_id: session_id.to_string(),
-                target_scope_hash,
-            })
-        }
+        crate::command_risk::approval::MintOutcome::NoApprovalNeeded => Ok(InputApprovalResponse {
+            status: "no_approval_needed",
+            approval_id: None,
+            severity: "allow",
+            requires_approval: false,
+            catastrophic: false,
+            preview: command.to_string(),
+            command_hash,
+            source_kind,
+            session_id: session_id.to_string(),
+            target_scope_hash,
+        }),
         crate::command_risk::approval::MintOutcome::Minted {
             approval_id,
             report,
@@ -2381,20 +2419,18 @@ fn mint_command_input_approval(
             session_id: session_id.to_string(),
             target_scope_hash,
         }),
-        crate::command_risk::approval::MintOutcome::Catastrophic { report } => {
-            Err(ApiError::CommandRiskBlocked(Box::new(
-                crate::command_risk::gate::GateDenial {
-                    reason: "destructive command refused; approval not minted".to_string(),
-                    severity: Some(report.severity),
-                    classes: report.classes,
-                    preview: report.preview,
-                    command_hash: Some(command_hash),
-                    source_kind: source_kind.to_string(),
-                    target_scope_hash,
-                    catastrophic: true,
-                },
-            )))
-        }
+        crate::command_risk::approval::MintOutcome::Catastrophic { report } => Err(
+            ApiError::CommandRiskBlocked(Box::new(crate::command_risk::gate::GateDenial {
+                reason: "destructive command refused; approval not minted".to_string(),
+                severity: Some(report.severity),
+                classes: report.classes,
+                preview: report.preview,
+                command_hash: Some(command_hash),
+                source_kind: source_kind.to_string(),
+                target_scope_hash,
+                catastrophic: true,
+            })),
+        ),
     }
 }
 
@@ -2419,6 +2455,7 @@ async fn capture_session_output(
     Path(id): Path<String>,
     Query(query): Query<CaptureQuery>,
 ) -> ApiResult<Json<CaptureResponse>> {
+    let id = resolve_api_terminal_ref(&state, &id)?;
     let lines = query.lines.clamp(1, 10_000);
     let text = state
         .pty
@@ -2952,7 +2989,10 @@ mod tests {
 
     #[test]
     fn input_approval_command_text_accepts_exactly_one_line() {
-        assert_eq!(approval_command_from_input("git status").unwrap(), "git status");
+        assert_eq!(
+            approval_command_from_input("git status").unwrap(),
+            "git status"
+        );
         assert_eq!(
             approval_command_from_input("BOUNDARY_INPUT_CODEX_x80x\r").unwrap(),
             "BOUNDARY_INPUT_CODEX_x80x"
