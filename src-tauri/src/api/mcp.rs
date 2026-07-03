@@ -1,11 +1,11 @@
-use axum::{Json, extract::State};
+use axum::{extract::State, Json};
 use serde::Deserialize;
 #[cfg(not(test))]
 use serde::Serialize;
 
 use super::mux::{send_workspace_input, workspace_summary};
 use super::{
-    ApiError, ApiResult, ApiState, MAX_MCP_PENDING, McpPendingDecision, WS_MAX_INPUT_FRAME_BYTES,
+    ApiError, ApiResult, ApiState, McpPendingDecision, MAX_MCP_PENDING, WS_MAX_INPUT_FRAME_BYTES,
 };
 
 #[derive(Deserialize)]
@@ -3910,7 +3910,7 @@ mod tests {
         use crate::db::{Database, ManagedDb};
         use crate::merge_intent::store::MergeIntentStore;
         use crate::pty::PtyManager;
-        use git2::{Repository, build::CheckoutBuilder};
+        use git2::{build::CheckoutBuilder, Repository};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -4013,7 +4013,7 @@ mod tests {
         use crate::db::{Database, ManagedDb};
         use crate::merge_intent::store::MergeIntentStore;
         use crate::pty::PtyManager;
-        use git2::{Repository, build::CheckoutBuilder};
+        use git2::{build::CheckoutBuilder, Repository};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -4140,9 +4140,9 @@ mod tests {
     #[test]
     fn review_approve_rejects_nonstring_fields_and_flags_stale_tips() {
         use crate::db::{Database, ManagedDb};
-        use crate::merge_intent::{MergeIntentState, store::MergeIntentStore};
+        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
         use crate::pty::PtyManager;
-        use git2::{Repository, build::CheckoutBuilder};
+        use git2::{build::CheckoutBuilder, Repository};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -4254,9 +4254,9 @@ mod tests {
     #[test]
     fn review_reject_is_durable_and_pending_view_comes_from_the_store() {
         use crate::db::{Database, ManagedDb};
-        use crate::merge_intent::{MergeIntentState, store::MergeIntentStore};
+        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
         use crate::pty::PtyManager;
-        use git2::{Repository, build::CheckoutBuilder};
+        use git2::{build::CheckoutBuilder, Repository};
         use std::path::Path;
         use std::sync::Arc;
 
@@ -4359,12 +4359,10 @@ mod tests {
         // It is gone from the unresolved view, and cannot be rejected again.
         let Json(view2) =
             call("aelyris.list_pending_approvals", serde_json::json!({})).expect("list ok");
-        assert!(
-            view2["result"]["mergeIntents"]
-                .as_array()
-                .unwrap()
-                .is_empty()
-        );
+        assert!(view2["result"]["mergeIntents"]
+            .as_array()
+            .unwrap()
+            .is_empty());
         assert!(matches!(
             call(
                 "aelyris.review.reject",

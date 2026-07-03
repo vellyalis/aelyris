@@ -2158,12 +2158,16 @@ const multipaneCommandEvidenceSupersetPass =
   multipaneBaseBlockForLive?.status === "passed" &&
   multipaneBaseBlockForLive?.exitCode === 0 &&
   typeof multipaneBaseBlockForLive?.terminalId === "string" &&
+  typeof multipaneBaseBlockForLive?.commandSequence === "number" &&
+  typeof multipaneBaseBlockForLive?.commandHistorySize === "number" &&
   typeof multipaneBaseBlockForLive?.endSequence === "number" &&
   typeof multipaneBaseBlockForLive?.endHistorySize === "number" &&
   multipaneCommandEvidence?.checks?.base?.history?.found === true &&
   multipaneSplitBlockForLive?.status === "passed" &&
   multipaneSplitBlockForLive?.exitCode === 0 &&
   typeof multipaneSplitBlockForLive?.terminalId === "string" &&
+  typeof multipaneSplitBlockForLive?.commandSequence === "number" &&
+  typeof multipaneSplitBlockForLive?.commandHistorySize === "number" &&
   typeof multipaneSplitBlockForLive?.endSequence === "number" &&
   typeof multipaneSplitBlockForLive?.endHistorySize === "number" &&
   multipaneCommandEvidence?.checks?.split?.history?.found === true;
@@ -2178,6 +2182,8 @@ const liveCommandEvidencePass =
     liveCommandBlock?.status === "passed" &&
     liveCommandBlock?.exitCode === 0 &&
     typeof liveCommandBlock?.terminalId === "string" &&
+    typeof liveCommandBlock?.commandSequence === "number" &&
+    typeof liveCommandBlock?.commandHistorySize === "number" &&
     typeof liveCommandBlock?.endSequence === "number" &&
     typeof liveCommandBlock?.endHistorySize === "number" &&
     Array.isArray(liveCommandEvidence?.checks?.markerHit?.hits) &&
@@ -2206,7 +2212,11 @@ add(
           ...(liveCommandBlock?.exitCode === 0 ? [] : ["live command block exit code is not 0"]),
           ...(typeof liveCommandBlock?.endSequence === "number" && typeof liveCommandBlock?.endHistorySize === "number"
             ? []
-            : ["live command block is missing prompt-mark/scrollback anchors"]),
+            : ["live command block is missing end prompt-mark/scrollback anchors"]),
+          ...(typeof liveCommandBlock?.commandSequence === "number" &&
+          typeof liveCommandBlock?.commandHistorySize === "number"
+            ? []
+            : ["live command block is missing command-start prompt-mark/scrollback anchors"]),
         ],
 );
 
@@ -2236,6 +2246,10 @@ const multipaneEvidencePass =
   multipaneSplit?.block?.status === "passed" &&
   multipaneBase?.block?.exitCode === 0 &&
   multipaneSplit?.block?.exitCode === 0 &&
+  typeof multipaneBase?.block?.commandSequence === "number" &&
+  typeof multipaneSplit?.block?.commandSequence === "number" &&
+  typeof multipaneBase?.block?.commandHistorySize === "number" &&
+  typeof multipaneSplit?.block?.commandHistorySize === "number" &&
   typeof multipaneBase?.block?.endHistorySize === "number" &&
   typeof multipaneSplit?.block?.endHistorySize === "number" &&
   (multipaneBase?.history?.historySize ?? 0) > 0 &&
@@ -2267,6 +2281,12 @@ add(
           ...(multipaneBase?.history?.found === true && multipaneSplit?.history?.found === true
             ? []
             : ["long scrollback markers were not retained in both panes"]),
+          ...(typeof multipaneBase?.block?.commandSequence === "number" &&
+          typeof multipaneSplit?.block?.commandSequence === "number" &&
+          typeof multipaneBase?.block?.commandHistorySize === "number" &&
+          typeof multipaneSplit?.block?.commandHistorySize === "number"
+            ? []
+            : ["base or split pane command block is missing command-start prompt-mark anchors"]),
           ...(multipaneBaseAfterClose?.status === "passed"
             ? []
             : ["base pane command evidence did not survive split close"]),
@@ -2299,6 +2319,10 @@ const recoveredEvidencePass =
   recoveredAfterReloadBlock?.status === "passed" &&
   recoveredPersistedBlock?.exitCode === 0 &&
   recoveredAfterReloadBlock?.exitCode === 0 &&
+  typeof recoveredPersistedBlock?.commandSequence === "number" &&
+  typeof recoveredPersistedBlock?.commandHistorySize === "number" &&
+  typeof recoveredAfterReloadBlock?.commandSequence === "number" &&
+  typeof recoveredAfterReloadBlock?.commandHistorySize === "number" &&
   typeof recoveredPersistedBlock?.endSequence === "number" &&
   typeof recoveredPersistedBlock?.endHistorySize === "number" &&
   recoveredCommandEvidence?.checks?.terminalListedAfterReload === true;
@@ -2325,7 +2349,13 @@ add(
           ...(typeof recoveredPersistedBlock?.endSequence === "number" &&
           typeof recoveredPersistedBlock?.endHistorySize === "number"
             ? []
-            : ["persisted command block is missing prompt-mark/scrollback anchors"]),
+            : ["persisted command block is missing end prompt-mark/scrollback anchors"]),
+          ...(typeof recoveredPersistedBlock?.commandSequence === "number" &&
+          typeof recoveredPersistedBlock?.commandHistorySize === "number" &&
+          typeof recoveredAfterReloadBlock?.commandSequence === "number" &&
+          typeof recoveredAfterReloadBlock?.commandHistorySize === "number"
+            ? []
+            : ["recovered command block is missing command-start prompt-mark/scrollback anchors"]),
           ...(recoveredCommandEvidence?.checks?.terminalListedAfterReload === true
             ? []
             : ["terminal was not listed after WebView reconnect"]),
@@ -2374,6 +2404,18 @@ const processReconnectEvidencePass =
   processAfterRestartPersistedBlock?.exitCode === 0 &&
   processSplitAfterRestartBlock?.exitCode === 0 &&
   processSplitAfterRestartPersistedBlock?.exitCode === 0 &&
+  typeof processRecoveredBlock?.commandSequence === "number" &&
+  typeof processSplitRecoveredBlock?.commandSequence === "number" &&
+  typeof processAfterRestartBlock?.commandSequence === "number" &&
+  typeof processAfterRestartPersistedBlock?.commandSequence === "number" &&
+  typeof processSplitAfterRestartBlock?.commandSequence === "number" &&
+  typeof processSplitAfterRestartPersistedBlock?.commandSequence === "number" &&
+  typeof processRecoveredBlock?.commandHistorySize === "number" &&
+  typeof processSplitRecoveredBlock?.commandHistorySize === "number" &&
+  typeof processAfterRestartBlock?.commandHistorySize === "number" &&
+  typeof processAfterRestartPersistedBlock?.commandHistorySize === "number" &&
+  typeof processSplitAfterRestartBlock?.commandHistorySize === "number" &&
+  typeof processSplitAfterRestartPersistedBlock?.commandHistorySize === "number" &&
   typeof processRecoveredBlock?.endHistorySize === "number" &&
   typeof processSplitRecoveredBlock?.endHistorySize === "number" &&
   typeof processAfterRestartBlock?.endHistorySize === "number" &&
@@ -2423,6 +2465,14 @@ add(
           processSplitAfterRestartPersistedBlock?.status === "passed"
             ? []
             : ["post-restart input did not produce live and persisted command evidence for all panes"]),
+          ...(typeof processRecoveredBlock?.commandSequence === "number" &&
+          typeof processSplitRecoveredBlock?.commandSequence === "number" &&
+          typeof processAfterRestartBlock?.commandSequence === "number" &&
+          typeof processAfterRestartPersistedBlock?.commandSequence === "number" &&
+          typeof processSplitAfterRestartBlock?.commandSequence === "number" &&
+          typeof processSplitAfterRestartPersistedBlock?.commandSequence === "number"
+            ? []
+            : ["process reconnect command evidence is missing command-start prompt-mark anchors"]),
         ],
 );
 

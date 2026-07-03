@@ -236,7 +236,9 @@ mod tests {
             status: "waiting".to_string(),
             model: "codex".to_string(),
             initial_prompt: Some("review".to_string()),
-            approval_prompt: Some("Bash(git push origin main) · Do you want to proceed?".to_string()),
+            approval_prompt: Some(
+                "Bash(git push origin main) · Do you want to proceed?".to_string(),
+            ),
             cwd: "C:/repo".to_string(),
             worktree_branch: Some("agent/review".to_string()),
             worktree_path: Some("C:/repo/.worktrees/agent-review".to_string()),

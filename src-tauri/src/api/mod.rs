@@ -2283,8 +2283,7 @@ async fn mint_session_input_approval(
             .controller_leases
             .ensure_can_control(target_id, client_id.as_deref())?;
     }
-    mint_command_input_approval(&state, "rest-session-input", &id, &targets, &body.text)
-        .map(Json)
+    mint_command_input_approval(&state, "rest-session-input", &id, &targets, &body.text).map(Json)
 }
 
 fn approval_command_from_input(text: &str) -> ApiResult<&str> {
@@ -2304,7 +2303,8 @@ fn approval_command_from_input(text: &str) -> ApiResult<&str> {
         ));
     }
     let tail = &text[first_terminator..];
-    if tail.trim_matches(|c| c == '\r' || c == '\n')
+    if tail
+        .trim_matches(|c| c == '\r' || c == '\n')
         .trim()
         .is_empty()
     {
@@ -2352,20 +2352,18 @@ fn mint_command_input_approval(
         command,
         &target_scope_hash,
     ) {
-        crate::command_risk::approval::MintOutcome::NoApprovalNeeded => {
-            Ok(InputApprovalResponse {
-                status: "no_approval_needed",
-                approval_id: None,
-                severity: "allow",
-                requires_approval: false,
-                catastrophic: false,
-                preview: command.to_string(),
-                command_hash,
-                source_kind,
-                session_id: session_id.to_string(),
-                target_scope_hash,
-            })
-        }
+        crate::command_risk::approval::MintOutcome::NoApprovalNeeded => Ok(InputApprovalResponse {
+            status: "no_approval_needed",
+            approval_id: None,
+            severity: "allow",
+            requires_approval: false,
+            catastrophic: false,
+            preview: command.to_string(),
+            command_hash,
+            source_kind,
+            session_id: session_id.to_string(),
+            target_scope_hash,
+        }),
         crate::command_risk::approval::MintOutcome::Minted {
             approval_id,
             report,
@@ -2381,20 +2379,18 @@ fn mint_command_input_approval(
             session_id: session_id.to_string(),
             target_scope_hash,
         }),
-        crate::command_risk::approval::MintOutcome::Catastrophic { report } => {
-            Err(ApiError::CommandRiskBlocked(Box::new(
-                crate::command_risk::gate::GateDenial {
-                    reason: "destructive command refused; approval not minted".to_string(),
-                    severity: Some(report.severity),
-                    classes: report.classes,
-                    preview: report.preview,
-                    command_hash: Some(command_hash),
-                    source_kind: source_kind.to_string(),
-                    target_scope_hash,
-                    catastrophic: true,
-                },
-            )))
-        }
+        crate::command_risk::approval::MintOutcome::Catastrophic { report } => Err(
+            ApiError::CommandRiskBlocked(Box::new(crate::command_risk::gate::GateDenial {
+                reason: "destructive command refused; approval not minted".to_string(),
+                severity: Some(report.severity),
+                classes: report.classes,
+                preview: report.preview,
+                command_hash: Some(command_hash),
+                source_kind: source_kind.to_string(),
+                target_scope_hash,
+                catastrophic: true,
+            })),
+        ),
     }
 }
 
@@ -2952,7 +2948,10 @@ mod tests {
 
     #[test]
     fn input_approval_command_text_accepts_exactly_one_line() {
-        assert_eq!(approval_command_from_input("git status").unwrap(), "git status");
+        assert_eq!(
+            approval_command_from_input("git status").unwrap(),
+            "git status"
+        );
         assert_eq!(
             approval_command_from_input("BOUNDARY_INPUT_CODEX_x80x\r").unwrap(),
             "BOUNDARY_INPUT_CODEX_x80x"

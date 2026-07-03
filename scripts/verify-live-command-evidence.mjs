@@ -278,7 +278,12 @@ async function main() {
     if (block.terminalId !== terminalId) throw new Error(`Command block terminal mismatch: ${block.terminalId}`);
     if (block.status !== "passed") throw new Error(`Command block did not pass: ${JSON.stringify(block)}`);
     if (block.exitCode !== 0) throw new Error(`Command block exit code was not 0: ${JSON.stringify(block)}`);
-    if (!block.endSequence || block.endHistorySize == null) {
+    if (
+      typeof block.commandSequence !== "number" ||
+      typeof block.commandHistorySize !== "number" ||
+      typeof block.endSequence !== "number" ||
+      typeof block.endHistorySize !== "number"
+    ) {
       throw new Error(`Command block is missing prompt-mark or scrollback anchor: ${JSON.stringify(block)}`);
     }
     if (consoleErrors.length > 0 || pageErrors.length > 0) {

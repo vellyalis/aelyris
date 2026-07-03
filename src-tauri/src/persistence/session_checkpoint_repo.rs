@@ -759,14 +759,18 @@ mod tests {
         )
         .unwrap();
 
-        let by_predecessor = SessionCheckpointRepo::load_latest_handoff_for_session(&db, "logical-a")
-            .unwrap()
-            .unwrap();
+        let by_predecessor =
+            SessionCheckpointRepo::load_latest_handoff_for_session(&db, "logical-a")
+                .unwrap()
+                .unwrap();
         let by_successor = SessionCheckpointRepo::load_latest_handoff_for_session(&db, "logical-b")
             .unwrap()
             .unwrap();
 
-        assert_eq!(by_predecessor.state, SessionHandoffState::PredecessorRetired);
+        assert_eq!(
+            by_predecessor.state,
+            SessionHandoffState::PredecessorRetired
+        );
         assert_eq!(by_successor.predecessor_id, "logical-a");
         assert_eq!(by_successor.successor_id, "logical-b");
     }
