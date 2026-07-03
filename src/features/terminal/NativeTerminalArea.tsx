@@ -3,8 +3,6 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import type { ShellType } from "../../shared/types/terminalPane";
 import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
@@ -16,6 +14,7 @@ import { useAppStore } from "../../shared/store/appStore";
 import type { LayerIdPayload } from "../../shared/types/ghostdiff";
 import type { SnapshotSummary } from "../../shared/types/snapshot";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../../shared/types/terminal";
+import type { ShellType } from "../../shared/types/terminalPane";
 import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import {
@@ -1268,6 +1267,7 @@ export function NativeTerminalArea({
   const diagnosticComposition = lastImeDiagnostic?.composing ? "composing" : "idle";
   const diagnosticCandidate = formatCandidateRect(lastImeDiagnostic);
   const diagnosticLastEvent = formatImeEventSummary(lastImeDiagnostic);
+  const imeInputBarCollapsed = !(lastImeDiagnostic?.active || lastImeDiagnostic?.composing);
   const startupMessage =
     spawnStatus === "failed"
       ? `Failed to start ${shellDisplayName(shell)}${spawnError ? `: ${spawnError}` : ""}`
@@ -1504,7 +1504,12 @@ export function NativeTerminalArea({
           </div>
         )}
       </div>
-      <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
+      <IMEInputBar
+        ref={imeBarRef}
+        onSubmit={sendIMEBytes}
+        onRequestCanvasFocus={focusCanvas}
+        collapsed={imeInputBarCollapsed}
+      />
     </div>
   );
 }

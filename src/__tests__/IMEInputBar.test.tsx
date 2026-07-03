@@ -27,6 +27,7 @@ function renderBar(
     autoFocus: props.autoFocus,
     maxHistory: props.maxHistory,
     disabled: props.disabled,
+    collapsed: props.collapsed,
     pickAttachmentFiles: props.pickAttachmentFiles,
     saveClipboardImage: props.saveClipboardImage,
     readNativeClipboardImage: props.readNativeClipboardImage,
@@ -56,6 +57,29 @@ describe("IMEInputBar", () => {
     const { textarea, onSubmit } = renderBar();
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledWith("\r");
+  });
+
+  it("collapses visually while keeping the textarea mounted", () => {
+    const { container, textarea } = renderBar({ collapsed: true });
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("true");
+    expect(textarea).toBeTruthy();
+  });
+
+  it("stays expanded when the parent reports the pane as focused", () => {
+    const { container } = renderBar({ collapsed: false });
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("expands on textarea focus even when the parent requests collapse", () => {
+    const { container, textarea } = renderBar({ collapsed: true });
+    fireEvent.focus(textarea);
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("expands while composing even when the parent requests collapse", () => {
+    const { container, textarea } = renderBar({ collapsed: true });
+    fireEvent.compositionStart(textarea);
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
   });
 
   it("Shift+Enter inserts a newline instead of submitting", () => {

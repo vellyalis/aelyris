@@ -242,13 +242,13 @@ describe("NativeTerminalArea", () => {
     expect(container.textContent).toContain("Resize failed: backend resize failed");
   });
 
-  it("renders the IME input bar on mount (always visible)", async () => {
+  it("keeps the IME input bar mounted while initially collapsed", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-perm");
     const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
     await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
-    // The bar sits at the bottom and is always mounted; we don't conditionally
-    // render it based on AI-CLI detection.
-    expect(container.querySelector("[aria-label='ターミナル入力バー']")).not.toBeNull();
+    // The bar remains mounted for native IME input, but its chrome starts
+    // collapsed until focus/composition makes it earn pixels.
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("true");
   });
 
   it("activates AI CLI anchoring from live PTY output before Japanese IME input", async () => {
