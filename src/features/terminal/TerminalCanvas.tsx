@@ -311,6 +311,7 @@ export function TerminalCanvas({
   onRegisterNav,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const onCanvasRefCallbackRef = useRef(onCanvasRef);
   const gpuContextRef = useRef<gpuPaint.TerminalGpuPaintContext | null>(null);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [inputSurfaceEl, setInputSurfaceEl] = useState<HTMLDivElement | null>(null);
@@ -366,6 +367,17 @@ export function TerminalCanvas({
       return;
     }
     setCompositionAnchorCursor((current) => current ?? liveImeCursorRef.current);
+  }, []);
+
+  useEffect(() => {
+    onCanvasRefCallbackRef.current = onCanvasRef;
+  }, [onCanvasRef]);
+
+  const handleCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
+    if (canvasRef.current === node) return;
+    canvasRef.current = node;
+    setCanvasEl((current) => (current === node ? current : node));
+    onCanvasRefCallbackRef.current?.(node);
   }, []);
 
   useCanvasIME({
@@ -1269,9 +1281,16 @@ export function TerminalCanvas({
       data-terminal-text-clarity={textClarity}
       style={{
         position: "relative",
-        width: `${canvasCssWidth}px`,
-        height: `${canvasCssHeight}px`,
-        flex: "0 0 auto",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        width: "100%",
+        height: "100%",
+        minWidth: `${canvasCssWidth}px`,
+        minHeight: `${canvasCssHeight}px`,
+        flex: "1 1 auto",
+        background:
+          "color-mix(in srgb, var(--terminal-canvas-bg, transparent) calc(var(--terminal-surface-opacity, 0.82) * 100%), transparent)",
         outline: "none",
       }}
       tabIndex={0}
@@ -1283,11 +1302,7 @@ export function TerminalCanvas({
     >
       <canvas
         key={effectiveRendererMode}
-        ref={(node) => {
-          canvasRef.current = node;
-          setCanvasEl(node);
-          onCanvasRef?.(node);
-        }}
+        ref={handleCanvasRef}
         width={canvasBitmapWidth}
         height={canvasBitmapHeight}
         data-testid="terminal-canvas"

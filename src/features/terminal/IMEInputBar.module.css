@@ -5,16 +5,24 @@
  *
  * The textarea still auto-grows up to TEXTAREA_MAX_ROWS (5) when
  * the user types multiple lines, but the resting state is a single
- * 28-px row everywhere. */
+ * 26-px row everywhere. */
 .bar {
   position: relative;
   display: flex;
+  box-sizing: border-box;
+  container-type: inline-size;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-inline-size: 0;
   flex-direction: column;
   align-items: stretch;
+  flex: 0 0 auto;
   gap: 0;
   padding: 0 var(--space-3);
   margin: 0;
-  min-height: var(--terminal-chrome-ime-height);
+  min-height: 26px;
+  overflow: hidden;
   background: transparent;
   border: 0;
   border-radius: calc(var(--radius-lg) - 6px);
@@ -27,10 +35,16 @@
 }
 
 .inputRow {
+  position: relative;
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-height: 26px;
   min-width: 0;
   align-items: center;
+  box-sizing: border-box;
   gap: var(--space-3);
+  overflow: hidden;
 }
 
 .bar.focused {
@@ -211,6 +225,7 @@
 
 .input {
   flex: 1;
+  width: 0;
   min-width: 0;
   background: transparent;
   border: none;
@@ -219,7 +234,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-base);
   line-height: 1.4;
-  padding: var(--space-2) 0;
+  padding: 3px 0;
   resize: none;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -254,6 +269,9 @@
  * focus. The `<kbd>` semantics give screen readers the right hint
  * even when the visual is suppressed. */
 .hint {
+  position: absolute;
+  top: 50%;
+  right: 0;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -265,10 +283,10 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   user-select: none;
   opacity: 0;
-  transform: translateY(2px);
+  transform: translateY(calc(-50% + 2px));
   pointer-events: none;
   transition:
     opacity var(--duration-fast) var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1)),
@@ -277,5 +295,19 @@
 
 .bar.focused .hint {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(-50%);
+}
+
+.bar.focused .input {
+  padding-right: 34px;
+}
+
+@container (max-width: 220px) {
+  .bar.focused .hint {
+    opacity: 0;
+  }
+
+  .bar.focused .input {
+    padding-right: 0;
+  }
 }

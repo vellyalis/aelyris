@@ -1,5 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -15,6 +17,8 @@ const invokeMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
+
+const imeInputBarCssSource = readFileSync("src/features/terminal/IMEInputBar.module.css", "utf8");
 
 function renderBar(
   props: Partial<React.ComponentProps<typeof IMEInputBar>> & {
@@ -43,6 +47,15 @@ describe("IMEInputBar", () => {
   afterEach(() => {
     invokeMock.mockClear();
     vi.restoreAllMocks();
+  });
+
+  it("keeps compact pane footers from expanding wider than their pane", () => {
+    expect(imeInputBarCssSource).toContain("min-inline-size: 0");
+    expect(imeInputBarCssSource).toContain("width: 100%");
+    expect(imeInputBarCssSource).toContain("max-width: 100%");
+    expect(imeInputBarCssSource).toContain("container-type: inline-size");
+    expect(imeInputBarCssSource).toContain(".bar.focused .input");
+    expect(imeInputBarCssSource).toContain("@container (max-width: 220px)");
   });
 
   it("submits the current value and \\r on Enter, then clears", () => {

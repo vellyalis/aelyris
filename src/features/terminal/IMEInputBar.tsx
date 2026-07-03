@@ -41,6 +41,7 @@ interface IMEInputBarProps {
 
 const DEFAULT_MAX_HISTORY = 50;
 const TEXTAREA_MAX_ROWS = 5;
+const TEXTAREA_RENDER_GUARD_PX = 2;
 const CANDIDATE_POPUP_GUARD_PX = 440;
 const CANDIDATE_POPUP_HEIGHT_GUARD_PX = 260;
 const handledPasteEvents = new WeakSet<Event>();
@@ -438,8 +439,10 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     if (!ta) return;
     ta.style.height = "auto";
     const lineHeight = parseFloat(getComputedStyle(ta).lineHeight || "0") || 20;
-    const maxHeight = lineHeight * TEXTAREA_MAX_ROWS;
-    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+    // WebView2 rounds textarea scrollHeight a little tighter than the
+    // subpixel line-height + padding box, which clips the resting placeholder.
+    const maxHeight = lineHeight * TEXTAREA_MAX_ROWS + TEXTAREA_RENDER_GUARD_PX;
+    ta.style.height = `${Math.min(ta.scrollHeight + TEXTAREA_RENDER_GUARD_PX, maxHeight)}px`;
   }, [value]);
 
   useEffect(() => {

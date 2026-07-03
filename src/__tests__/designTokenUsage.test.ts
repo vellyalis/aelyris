@@ -559,6 +559,7 @@ describe("design token usage", () => {
     expect(activeMountRule).toContain("inset 0 0 0 1px");
     expect(terminalAreaRule).toContain("padding: var(--terminal-chrome-area-padding)");
     expect(viewportRule).toContain("padding: var(--terminal-canvas-gutter)");
+    expect(viewportRule).toContain("align-items: center");
   });
 
   it("keeps terminal water effects free of generated-looking screen glints", () => {

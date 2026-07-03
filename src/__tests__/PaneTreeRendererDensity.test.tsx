@@ -105,10 +105,10 @@ function renderPaneTree(
 }
 
 describe("PaneTreeRenderer terminal density chrome", () => {
-  it("hides the pane header for a lone terminal pane", () => {
+  it("shows the pane header for a lone terminal pane", () => {
     renderPaneTree(singlePane);
 
-    expect(screen.queryByTestId("terminal-info-bar")).toBeNull();
+    expect(screen.getByTestId("terminal-info-bar")).toBeTruthy();
   });
 
   it("shows one pane header per terminal when the layout is split", () => {
@@ -117,10 +117,10 @@ describe("PaneTreeRenderer terminal density chrome", () => {
     expect(screen.getAllByTestId("terminal-info-bar")).toHaveLength(2);
   });
 
-  it("hides all pane headers while one pane is maximized", () => {
+  it("shows the maximized pane header while one pane is maximized", () => {
     renderPaneTree(splitPane, "pane-a");
 
-    expect(screen.queryByTestId("terminal-info-bar")).toBeNull();
+    expect(screen.getAllByTestId("terminal-info-bar")).toHaveLength(1);
   });
 
   it("mounts a lone detached pane so restore state cannot block startup", async () => {

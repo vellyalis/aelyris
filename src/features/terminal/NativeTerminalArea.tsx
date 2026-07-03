@@ -105,6 +105,22 @@ interface Dims {
 type InputWritePath = "idle" | "input-bar" | "ghost-suggestion" | ImeDiagnosticWritePath;
 type SpawnStatus = "idle" | "starting" | "failed";
 
+export function terminalRowsForDrawableHeight(
+  drawableHeight: number,
+  cellHeight: number,
+  minRows = MIN_ROWS,
+  overflowGuardPx = CANVAS_GUTTER,
+): number {
+  if (!Number.isFinite(drawableHeight) || !Number.isFinite(cellHeight) || drawableHeight <= 0 || cellHeight <= 0) {
+    return minRows;
+  }
+  const baseRows = Math.floor(drawableHeight / cellHeight);
+  const remainder = drawableHeight - baseRows * cellHeight;
+  const overflowToNextRow = remainder > 0 ? cellHeight - remainder : Number.POSITIVE_INFINITY;
+  const rows = overflowToNextRow <= overflowGuardPx ? baseRows + 1 : baseRows;
+  return Math.max(minRows, rows);
+}
+
 function inputWritePathLabel(path: InputWritePath): string {
   switch (path) {
     case "canvas":
@@ -965,7 +981,7 @@ export function NativeTerminalArea({
       if (w <= 0 || h <= 0) return null;
       return {
         cols: Math.max(MIN_COLS, Math.floor(w / cellMetrics.width)),
-        rows: Math.max(MIN_ROWS, Math.floor(h / cellMetrics.height)),
+        rows: terminalRowsForDrawableHeight(h, cellMetrics.height),
       };
     };
     const apply = () => {
@@ -1286,7 +1302,6 @@ export function NativeTerminalArea({
   const diagnosticComposition = lastImeDiagnostic?.composing ? "composing" : "idle";
   const diagnosticCandidate = formatCandidateRect(lastImeDiagnostic);
   const diagnosticLastEvent = formatImeEventSummary(lastImeDiagnostic);
-  const imeInputBarCollapsed = !(lastImeDiagnostic?.active || lastImeDiagnostic?.composing);
   const shouldRenderTimelineBar = shouldMountTimelineBar(timelineSnapshots, snapshotOverlay);
   const startupMessage =
     spawnStatus === "failed"
@@ -1528,7 +1543,7 @@ export function NativeTerminalArea({
         ref={imeBarRef}
         onSubmit={sendIMEBytes}
         onRequestCanvasFocus={focusCanvas}
-        collapsed={imeInputBarCollapsed}
+        collapsed={false}
       />
     </div>
   );

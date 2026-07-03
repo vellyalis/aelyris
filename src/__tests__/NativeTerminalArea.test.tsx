@@ -10,6 +10,7 @@ import {
   commandHistoryTextFromSubmittedInput,
   NativeTerminalArea,
   shouldMountTimelineBar,
+  terminalRowsForDrawableHeight,
 } from "../features/terminal/NativeTerminalArea";
 import type { ActiveSnapshotOverlay } from "../features/timeline/TimelineBar";
 import { useTerminalSnapshot } from "../shared/hooks/useTerminalSnapshot";
@@ -99,6 +100,12 @@ function deferred<T = void>() {
 }
 
 describe("NativeTerminalArea", () => {
+  it("rounds terminal rows up only when the extra row fits the decorative gutter", () => {
+    expect(terminalRowsForDrawableHeight(718, 20)).toBe(36);
+    expect(terminalRowsForDrawableHeight(714, 20)).toBe(35);
+    expect(terminalRowsForDrawableHeight(10, 20)).toBe(5);
+  });
+
   it("normalizes submitted input-bar commands for native command evidence", () => {
     expect(commandHistoryTextFromSubmittedInput("echo hi\r")).toBe("echo hi");
     expect(commandHistoryTextFromSubmittedInput("echo hi\n")).toBe("echo hi");
@@ -287,13 +294,12 @@ describe("NativeTerminalArea", () => {
     expect(container.textContent).toContain("Resize failed: backend resize failed");
   });
 
-  it("keeps the IME input bar mounted while initially collapsed", async () => {
+  it("keeps the IME input bar mounted and visible for attachment controls", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-perm");
     const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
     await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
-    // The bar remains mounted for native IME input, but its chrome starts
-    // collapsed until focus/composition makes it earn pixels.
-    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("true");
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
+    expect(container.querySelector("[aria-label='写真とファイルを追加']")).not.toBeNull();
   });
 
   it("activates AI CLI anchoring from live PTY output before Japanese IME input", async () => {

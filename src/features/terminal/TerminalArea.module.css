@@ -5,6 +5,7 @@
   overflow: hidden;
   position: relative;
   isolation: isolate;
+  --terminal-chrome-gap: 0px;
   gap: var(--terminal-chrome-gap);
   min-height: 0;
   margin: 0;
@@ -65,7 +66,7 @@
   position: relative;
   box-sizing: border-box;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
   padding: var(--terminal-canvas-gutter);
   width: 100%;

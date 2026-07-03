@@ -123,6 +123,19 @@ export function PaneTreeRenderer({
       return next;
     });
   }, []);
+  const snapshotMarkHandlerChangeCache = useRef(new Map<string, (handler: (() => void) | null) => void>());
+  const getSnapshotMarkHandlerChange = useCallback(
+    (id: string) => {
+      const cache = snapshotMarkHandlerChangeCache.current;
+      let cb = cache.get(id);
+      if (!cb) {
+        cb = (handler: (() => void) | null) => registerSnapshotMarkHandler(id, handler);
+        cache.set(id, cb);
+      }
+      return cb;
+    },
+    [registerSnapshotMarkHandler],
+  );
 
   // Update the accumulated leaf map
   const currentIds = new Set<string>();
@@ -220,6 +233,10 @@ export function PaneTreeRenderer({
     const cache = slotRefCache.current;
     for (const id of cache.keys()) {
       if (!currentIds.has(id)) cache.delete(id);
+    }
+    const snapshotHandlerCache = snapshotMarkHandlerChangeCache.current;
+    for (const id of snapshotHandlerCache.keys()) {
+      if (!currentIds.has(id)) snapshotHandlerCache.delete(id);
     }
   });
 
@@ -372,7 +389,7 @@ export function PaneTreeRenderer({
         const shouldHoldForAttach = endedLifecycle && !shouldRecoverDetachedLonePane && (!agent || !terminalId);
         const shouldMount =
           !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
-        const shouldShowPaneHeader = currentLeaves.length > 1 && !maximizedPaneId;
+        const shouldShowPaneHeader = !maximizedPaneId || isMaximized;
 
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: the terminal mount itself claims focus without changing keyboard semantics.
@@ -426,7 +443,7 @@ export function PaneTreeRenderer({
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
                 onLifecycleChange={(lifecycle) => onPaneLifecycleChange?.(leaf.id, lifecycle)}
                 restartRequest={restartPaneRequest?.paneId === leaf.id ? restartPaneRequest : null}
-                onSnapshotMarkHandlerChange={(handler) => registerSnapshotMarkHandler(leaf.id, handler)}
+                onSnapshotMarkHandlerChange={getSnapshotMarkHandlerChange(leaf.id)}
               />
             ) : shouldHoldForAttach ? (
               <div className={styles.lifecyclePlaceholder} data-lifecycle={lifecycle}>
