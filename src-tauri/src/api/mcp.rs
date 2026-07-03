@@ -2,6 +2,8 @@ use axum::{Json, extract::State};
 use serde::Deserialize;
 #[cfg(not(test))]
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use super::mux::{send_workspace_input, workspace_summary};
 use super::{
@@ -451,7 +453,24 @@ pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::
     }))
 }
 
-fn tools_list_value() -> serde_json::Value {
+static TOOL_CATALOG: LazyLock<serde_json::Value> = LazyLock::new(build_tools_list_value);
+static TOOL_SCHEMA_INDEX: LazyLock<HashMap<String, serde_json::Value>> = LazyLock::new(|| {
+    let mut index = HashMap::new();
+    if let Some(tools) = TOOL_CATALOG.get("tools").and_then(|tools| tools.as_array()) {
+        for tool in tools {
+            let Some(name) = tool.get("name").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            let Some(schema) = tool.get("inputSchema") else {
+                continue;
+            };
+            index.insert(name.to_string(), schema.clone());
+        }
+    }
+    index
+});
+
+fn build_tools_list_value() -> serde_json::Value {
     serde_json::json!({
         "schema": "aelyris.mcp.server.v1",
         "server": "aelyris",
@@ -1306,6 +1325,10 @@ fn tools_list_value() -> serde_json::Value {
     })
 }
 
+fn tools_list_value() -> serde_json::Value {
+    TOOL_CATALOG.clone()
+}
+
 pub(super) async fn tools_list() -> Json<serde_json::Value> {
     Json(tools_list_value())
 }
@@ -1347,14 +1370,12 @@ struct SchemaTypeViolation {
     got: String,
 }
 
+fn input_schema_for_tool_ref(name: &str) -> Option<&'static serde_json::Value> {
+    TOOL_SCHEMA_INDEX.get(name)
+}
+
 fn input_schema_for_tool(name: &str) -> Option<serde_json::Value> {
-    let listed = tools_list_value();
-    listed
-        .get("tools")?
-        .as_array()?
-        .iter()
-        .find(|tool| tool.get("name").and_then(|value| value.as_str()) == Some(name))
-        .and_then(|tool| tool.get("inputSchema").cloned())
+    input_schema_for_tool_ref(name).cloned()
 }
 
 fn schema_tool_error(name: &str, payload: serde_json::Value) -> Json<serde_json::Value> {
@@ -3288,6 +3309,17 @@ mod tests {
             catalog.difference(&schemas).collect::<Vec<_>>(),
             schemas.difference(&catalog).collect::<Vec<_>>(),
         );
+    }
+
+    #[test]
+    fn input_schema_for_tool_uses_memoized_schema_index() {
+        let first = input_schema_for_tool_ref("terminal.capture").expect("schema exists");
+        let second = input_schema_for_tool_ref("terminal.capture").expect("schema exists");
+
+        assert!(std::ptr::eq(first, second));
+        let cloned = input_schema_for_tool("terminal.capture").unwrap();
+        assert_eq!(&cloned, first);
+        assert!(input_schema_for_tool_ref("aelyris.unknown").is_none());
     }
 
     #[test]
