@@ -1,4 +1,48 @@
+export type TelemetryConfidence = "exact" | "parsed" | "estimated" | "unknown";
+
+export interface ContextRemaining {
+  /** CLI-reported remaining context percentage, or null when only proxy telemetry exists. */
+  pct: number | null;
+  /** Usage percentage derived from pct; feeds the existing ContextGauge thresholds. */
+  usedPct: number | null;
+  confidence: TelemetryConfidence;
+  source: string;
+  updatedAt: number;
+  warn: boolean;
+  hard: boolean;
+}
+
+export interface ContextRemainingWire {
+  pct?: number | null;
+  used_pct?: number | null;
+  usedPct?: number | null;
+  confidence?: TelemetryConfidence;
+  source?: string;
+  updated_at?: number | null;
+  updatedAt?: number | null;
+  warn?: boolean;
+  hard?: boolean;
+}
 export type AgentStatus = "idle" | "thinking" | "coding" | "waiting" | "error" | "done" | "generating";
+
+export interface AgentLineageEntry {
+  logicalSessionId: string;
+  checkpointSeq?: number;
+  ptyId?: string;
+  status?: string;
+  predecessorSessionId?: string;
+  updatedAt?: number;
+}
+
+export interface AgentRecycleStatus {
+  predecessorId: string;
+  successorId: string;
+  handoffSeq: number;
+  state: string;
+  correlationId: string;
+  failureReason?: string;
+  updatedAt: number;
+}
 
 export interface WorktreeInfo {
   name: string;
@@ -31,11 +75,15 @@ export type AgentCloseState = "active" | "collectable" | "collected";
 
 export interface AgentSession {
   id: string;
+  logicalSessionId?: string;
   name: string;
   status: AgentStatus;
   model: string;
   prompt: string;
   startedAt: number;
+  lastActivity?: number;
+  turnCount?: number;
+  contextRemaining?: ContextRemaining;
   logs: AgentLog[];
   cost: number;
   tokensUsed: number;
@@ -51,6 +99,12 @@ export interface AgentSession {
   role?: import("../lib/orchestrator").OrchestraRoleId;
   /** Optional parent session id when spawned via handoff. */
   handoffFrom?: string;
+  /** Durable predecessor logical session id from session_checkpoints. */
+  predecessorSessionId?: string;
+  /** Durable logical-session lineage from session_checkpoints.predecessor_session_id. */
+  lineage?: AgentLineageEntry[];
+  /** Latest durable recycle/handoff state involving this logical session. */
+  recycleStatus?: AgentRecycleStatus;
   /** Human or automation owner responsible for the run. */
   owner?: string;
   /** Workspace or worktree scope the run is allowed to operate in. */

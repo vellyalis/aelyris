@@ -35,7 +35,7 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
     let main_branch = repo
         .head()
         .ok()
-        .and_then(|h| h.shorthand().map(String::from))
+        .and_then(|h| h.shorthand().ok().map(String::from))
         .unwrap_or_else(|| "HEAD".to_string());
     let main_sha = repo
         .head()
@@ -62,7 +62,7 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
         .worktrees()
         .map_err(|e| format!("Failed to list worktrees: {}", e))?;
 
-    for name in worktrees.iter().flatten() {
+    for name in worktrees.iter().filter_map(|name| name.ok().flatten()) {
         if let Ok(wt) = repo.find_worktree(name) {
             let wt_path = wt.path().to_string_lossy().to_string().replace('\\', "/");
             let (branch, head_sha, status) = match Repository::open(wt.path()) {
@@ -70,7 +70,7 @@ pub fn list_worktrees(repo_path: &str) -> Result<Vec<WorktreeInfo>, String> {
                     let b = wt_repo
                         .head()
                         .ok()
-                        .and_then(|h| h.shorthand().map(String::from))
+                        .and_then(|h| h.shorthand().ok().map(String::from))
                         .unwrap_or_else(|| "detached".to_string());
                     let sha = wt_repo
                         .head()

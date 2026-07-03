@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AgentFleetSession, headlessToFleetSession } from "../shared/lib/agentFleet";
+import { type AgentFleetSession, headlessToFleetSession, mapBackendAgentFleetSessions } from "../shared/lib/agentFleet";
 import type { AgentSession } from "../shared/types/agent";
 
 // ReactFlow doesn't behave well in jsdom (resize observer / measureText). The
@@ -107,6 +107,53 @@ describe("AgentInspector tab routing", () => {
     expect(screen.getByLabelText("File diffs")).toBeTruthy();
   });
 
+  it("renders durable lineage and recycle state for backend interactive sessions", () => {
+    const sessions = mapBackendAgentFleetSessions([
+      {
+        id: "pty-successor",
+        logical_session_id: "logical-successor",
+        run_mode: "interactive",
+        status: "idle",
+        model: "codex",
+        prompt: "continue",
+        cwd: "C:/repo",
+        workspace_scope: "C:/repo",
+        cost: 0,
+        tokens_used: 0,
+        started_at: Math.floor(Date.now() / 1000) - 60,
+        cli: "codex",
+        backend: "sidecar",
+        pty_id: "pty-successor",
+        predecessor_session_id: "logical-parent",
+        lineage: [
+          { logical_session_id: "logical-parent", checkpoint_seq: 1, pty_id: "pty-parent", status: "retiring" },
+          {
+            logical_session_id: "logical-successor",
+            checkpoint_seq: 2,
+            pty_id: "pty-successor",
+            status: "idle",
+            predecessor_session_id: "logical-parent",
+          },
+        ],
+        recycle_status: {
+          predecessor_id: "logical-parent",
+          successor_id: "logical-successor",
+          handoff_seq: 1,
+          state: "predecessor_retired",
+          correlation_id: "session-handoff-logical-parent-1",
+          updated_at: 123,
+        },
+      },
+    ]);
+
+    render(<AgentInspector sessions={sessions} activeSessionId="pty-successor" onSelectSession={() => {}} />);
+
+    expect(screen.getByLabelText("Session lineage")).toBeTruthy();
+    expect(screen.getByText("logical-parent")).toBeTruthy();
+    expect(screen.getByText("logical-successor")).toBeTruthy();
+    expect(screen.getByText("predecessor retired")).toBeTruthy();
+  });
+
   it("keeps file diffs scoped to the active session", () => {
     const sessions = [
       baseSession("a", { logs: [] }),
@@ -179,17 +226,24 @@ describe("AgentInspector tab routing", () => {
   });
 
   it("keeps app session tab routing anchored on explicit workspace paths", () => {
-    const sources = import.meta.glob("../App.tsx", {
+    const appSources = import.meta.glob("../App.tsx", {
       query: "?raw",
       import: "default",
       eager: true,
     }) as Record<string, string>;
-    const src = Object.values(sources)[0] ?? "";
+    const rightRailModelSources = import.meta.glob("../features/right-rail/rightRailModel.tsx", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    const appSrc = Object.values(appSources)[0] ?? "";
+    const rightRailModelSrc = Object.values(rightRailModelSources)[0] ?? "";
 
-    expect(src).toContain("function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean");
-    expect(src).toContain("session.workspaceScope");
-    expect(src).toContain("session.worktree?.path");
-    expect(src).not.toContain("agent.prompt.includes");
+    expect(rightRailModelSrc).toContain("function sessionTabMatches(session: AgentSession, tabCwd?: string): boolean");
+    expect(rightRailModelSrc).toContain("session.workspaceScope");
+    expect(rightRailModelSrc).toContain("session.worktree?.path");
+    expect(appSrc).toContain("sessionTabMatches(agent, t.cwd)");
+    expect(appSrc).not.toContain("agent.prompt.includes");
   });
 
   it("parallel tab still renders parallel panes", () => {

@@ -1,3 +1,4 @@
+use super::context_lifecycle::{unix_now_secs, ContextRemaining, TelemetryConfidence};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -322,6 +323,7 @@ pub fn agent_shell_command_spec(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InteractiveSessionInfo {
     pub id: String,
+    pub logical_session_id: String,
     pub pty_id: String,
     pub backend: String,
     pub cli: AgentCli,
@@ -341,6 +343,9 @@ pub struct InteractiveSessionInfo {
     pub cost: f64,
     pub tokens_used: u64,
     pub started_at: u64,
+    pub last_activity: u64,
+    pub turn_count: u64,
+    pub context_remaining: Option<ContextRemaining>,
 }
 
 /// Manages interactive agent sessions (agent-agnostic, works with any CLI)
@@ -399,13 +404,33 @@ impl InteractiveSessionManager {
         let session = sessions
             .get_mut(id)
             .ok_or_else(|| format!("Interactive session not found for status update: {id}"))?;
-        if session.status != status {
+        let previous_status = session.status.clone();
+        if previous_status != status {
             log::debug!(
                 "interactive session id={} status {} -> {}",
                 id,
-                session.status,
+                previous_status,
                 status,
             );
+            let now = unix_now_secs();
+            session.last_activity = now;
+            if status == "idle" && previous_status != "idle" {
+                session.turn_count = session.turn_count.saturating_add(1);
+            }
+            let should_refresh_proxy = session
+                .context_remaining
+                .as_ref()
+                .map(|remaining| {
+                    matches!(
+                        remaining.confidence,
+                        TelemetryConfidence::Estimated | TelemetryConfidence::Unknown
+                    )
+                })
+                .unwrap_or(true);
+            if should_refresh_proxy {
+                session.context_remaining =
+                    Some(ContextRemaining::unknown_proxy(&session.cli, now));
+            }
         }
         session.status = status.to_string();
         // A captured permission menu is only meaningful while the session is
@@ -419,14 +444,11 @@ impl InteractiveSessionManager {
         Ok(())
     }
 
-    /// Set or clear the captured permission-menu prompt for a session. Returns
-    /// `Ok(true)` only when the stored value actually changed, so the output
-    /// monitor can skip re-emitting the fleet on identical menu redraw chunks.
     pub fn set_approval_prompt(&self, id: &str, prompt: Option<String>) -> Result<bool, String> {
         let mut sessions = self.lock_sessions()?;
-        let session = sessions
-            .get_mut(id)
-            .ok_or_else(|| format!("Interactive session not found for approval prompt update: {id}"))?;
+        let session = sessions.get_mut(id).ok_or_else(|| {
+            format!("Interactive session not found for approval prompt update: {id}")
+        })?;
         if session.approval_prompt == prompt {
             return Ok(false);
         }
@@ -445,6 +467,19 @@ impl InteractiveSessionManager {
         Ok(())
     }
 
+    /// Update parsed or proxy context-window telemetry for a session.
+    pub fn update_context_remaining(
+        &self,
+        id: &str,
+        context_remaining: ContextRemaining,
+    ) -> Result<(), String> {
+        let mut sessions = self.lock_sessions()?;
+        let session = sessions
+            .get_mut(id)
+            .ok_or_else(|| format!("Interactive session not found for context update: {id}"))?;
+        session.context_remaining = Some(context_remaining);
+        Ok(())
+    }
     /// List all sessions
     pub fn list(&self) -> Result<Vec<InteractiveSessionInfo>, String> {
         Ok(self.lock_sessions()?.values().cloned().collect())
@@ -478,9 +513,10 @@ mod tests {
     fn make_session(id: &str, cli: AgentCli) -> InteractiveSessionInfo {
         InteractiveSessionInfo {
             id: id.to_string(),
+            logical_session_id: id.to_string(),
             pty_id: format!("pty-{}", id),
             backend: "sidecar".to_string(),
-            cli,
+            cli: cli.clone(),
             status: "idle".to_string(),
             model: "sonnet".to_string(),
             initial_prompt: None,
@@ -492,6 +528,9 @@ mod tests {
             cost: 0.0,
             tokens_used: 0,
             started_at: 0,
+            last_activity: 0,
+            turn_count: 0,
+            context_remaining: Some(ContextRemaining::unknown_proxy(&cli, 0)),
         }
     }
 
@@ -540,6 +579,25 @@ mod tests {
     }
 
     #[test]
+    fn update_status_tracks_activity_turns_and_proxy_context() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+
+        mgr.update_status("s1", "thinking").unwrap();
+        let thinking = mgr.get("s1").unwrap().unwrap();
+        assert_eq!(thinking.turn_count, 0);
+        assert!(thinking.last_activity > 0);
+        assert_eq!(
+            thinking.context_remaining.as_ref().map(|c| c.confidence),
+            Some(TelemetryConfidence::Estimated)
+        );
+
+        mgr.update_status("s1", "idle").unwrap();
+        let idle = mgr.get("s1").unwrap().unwrap();
+        assert_eq!(idle.turn_count, 1);
+        assert!(idle.last_activity >= thinking.last_activity);
+    }
+    #[test]
     fn set_approval_prompt_reports_only_real_changes() {
         let mgr = InteractiveSessionManager::new();
         mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
@@ -569,8 +627,11 @@ mod tests {
 
         // Entering the gate keeps a captured prompt.
         mgr.update_status("s1", "waiting_approval").unwrap();
-        mgr.set_approval_prompt("s1", Some("Bash(rm -rf dist) · Do you want to proceed?".to_string()))
-            .unwrap();
+        mgr.set_approval_prompt(
+            "s1",
+            Some("Bash(rm -rf dist) · Do you want to proceed?".to_string()),
+        )
+        .unwrap();
         assert!(mgr.get("s1").unwrap().unwrap().approval_prompt.is_some());
 
         // Any non-waiting status (the agent acted) drops the stale command so the

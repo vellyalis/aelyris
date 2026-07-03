@@ -1,3 +1,4 @@
+import { normalizeContextRemaining } from "./contextTelemetry";
 import type { AgentFinalReportInfo, AgentLog, AgentSession, FileChangeDetail } from "../types/agent";
 
 export const AGENT_TELEMETRY_STORAGE_KEY = "aelyris:agentTelemetry:v1";
@@ -149,6 +150,10 @@ function sanitizeSession(value: unknown): AgentSession | null {
     model: typeof value.model === "string" ? value.model : "unknown",
     prompt: typeof value.prompt === "string" ? value.prompt : "",
     startedAt: isFiniteNumber(value.startedAt) ? value.startedAt : Date.now(),
+    logicalSessionId: typeof value.logicalSessionId === "string" ? value.logicalSessionId : undefined,
+    lastActivity: isFiniteNumber(value.lastActivity) ? value.lastActivity : undefined,
+    turnCount: isFiniteNumber(value.turnCount) ? value.turnCount : undefined,
+    contextRemaining: normalizeContextRemaining(value.contextRemaining),
     logs: logs.slice(-MAX_LOGS_PER_SESSION),
     cost: isFiniteNumber(value.cost) ? value.cost : 0,
     tokensUsed: isFiniteNumber(value.tokensUsed) ? value.tokensUsed : 0,

@@ -117,10 +117,11 @@ export function enhanceTerminalTextColor(color: string, background: string, text
   const fg = parseCssRgbColor(color);
   const bg = parseCssRgbColor(background);
   if (!fg || !bg) return color;
+  const opaqueColor = fg.a < 1 ? forceOpaqueCssColor(color) : color;
 
   const fgRgb = compositeOverFallback(fg);
   const bgRgb = compositeOverFallback(bg);
-  if (contrastRatio(fgRgb, bgRgb) >= minimumContrast) return color;
+  if (contrastRatio(fgRgb, bgRgb) >= minimumContrast) return opaqueColor;
 
   const target = relativeLuminance(bgRgb) > 0.5 ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 };
   const step = textClarity === "solid" ? 0.08 : 0.12;

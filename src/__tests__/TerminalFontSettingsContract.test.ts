@@ -13,11 +13,12 @@ function read(path: string): string {
 describe("terminal font settings contract", () => {
   it("hydrates config font settings into the runtime terminal store", () => {
     const app = read("src/App.tsx");
+    const rightRailModel = read("src/features/right-rail/rightRailModel.tsx");
 
-    expect(app).toContain("terminal_font_family?: string");
-    expect(app).toContain("font_size?: number");
-    expect(app).toContain('terminal_text_clarity?: "glass" | "balanced" | "solid"');
-    expect(app).toContain("terminal_surface_opacity?: number");
+    expect(rightRailModel).toContain("terminal_font_family?: string");
+    expect(rightRailModel).toContain("font_size?: number");
+    expect(rightRailModel).toContain('terminal_text_clarity?: "glass" | "balanced" | "solid"');
+    expect(rightRailModel).toContain("terminal_surface_opacity?: number");
     expect(app).toContain("store.setTerminalAppearance({");
     expect(app).toContain("fontFamily: cfg.appearance.terminal_font_family");
     expect(app).toContain("fontSize: cfg.appearance.font_size");
@@ -60,6 +61,7 @@ describe("terminal font settings contract", () => {
     const canvas = read("src/features/terminal/TerminalCanvas.tsx");
     const terminalColors = read("src/features/terminal/terminalColors.ts");
     const terminalPaint = read("src/features/terminal/terminalPaint.ts");
+    const terminalPaintGpu = read("src/features/terminal/gpu/terminalPaintGpu.ts");
     const paneTreeRenderer = read("src/features/terminal/pane-tree/PaneTreeRenderer.tsx");
     const paneTreeRendererStyles = read("src/features/terminal/pane-tree/PaneTreeRenderer.module.css");
     const terminalAreaStyles = read("src/features/terminal/TerminalArea.module.css");
@@ -85,6 +87,12 @@ describe("terminal font settings contract", () => {
     expect(terminalColors).toContain("export function enhanceTerminalTextColor");
     expect(terminalColors).toContain("export function minimumTerminalContrastRatio");
     expect(terminalColors).toContain("export function dimAlphaForTextClarity");
+    expect(terminalPaintGpu).toContain("premultipliedAlpha: true");
+    expect(terminalPaintGpu).toContain("gl.clearColor(0, 0, 0, 0)");
+    expect(terminalPaintGpu).toContain("enhanceTerminalTextColor");
+    expect(terminalPaintGpu).toContain("dimAlphaForTextClarity");
+    expect(terminalPaintGpu).toContain("colorToRgba(cssColor, alpha)");
+    expect(terminalPaintGpu).toContain("outColor = vec4(v_color.rgb, sampleColor.a * v_color.a)");
     expect(canvas).toContain('textClarity = "solid"');
     expect(canvas).toContain("Solid clarity now means solid glyph paint");
     expect(paneTreeRenderer).toContain("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)");

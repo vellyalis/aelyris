@@ -244,6 +244,21 @@ async function closeSessionIfPresent(base, id) {
   throw new Error(`DELETE /sessions/${id} -> ${response.status}: ${body}`);
 }
 
+async function mintInputApproval(base, id, text) {
+  const approval = await request(base, `/sessions/${id}/input-approval`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+  return {
+    approvalId: approval.approvalId ?? null,
+    status: approval.status,
+    severity: approval.severity,
+    requiresApproval: approval.requiresApproval === true,
+    commandHash: approval.commandHash,
+    targetScopeHash: approval.targetScopeHash,
+  };
+}
+
 async function assertSecurityGuards(base) {
   const noAuth = await rawRequest(base, "/commands", {
     method: "POST",
@@ -292,14 +307,22 @@ async function runCliBoundary(base, cli, binDir) {
     stream = await waitForStreamMarker(base, id, marker);
     const readyText = await waitForCapture(base, id, `AELYRIS_AI_CLI_READY ${marker}`);
     const input = `BOUNDARY_INPUT_${cli.toUpperCase()}_${Math.random().toString(36).slice(2, 6)}`;
+    const inputApproval = await mintInputApproval(base, id, input);
     await request(base, `/sessions/${id}/input`, {
       method: "POST",
-      body: JSON.stringify({ text: `${input}\r` }),
+      body: JSON.stringify({
+        text: `${input}\r`,
+        ...(inputApproval.approvalId ? { approvalId: inputApproval.approvalId } : {}),
+      }),
     });
     const inputText = await waitForCapture(base, id, `AELYRIS_AI_CLI_INPUT ${marker} ${input}`);
+    const exitApproval = await mintInputApproval(base, id, "/exit");
     await request(base, `/sessions/${id}/input`, {
       method: "POST",
-      body: JSON.stringify({ text: "/exit\r" }),
+      body: JSON.stringify({
+        text: "/exit\r",
+        ...(exitApproval.approvalId ? { approvalId: exitApproval.approvalId } : {}),
+      }),
     });
     const doneText = await waitForCapture(base, id, `AELYRIS_AI_CLI_DONE ${marker}`);
     const closeState = await closeSessionIfPresent(base, id);
@@ -312,6 +335,8 @@ async function runCliBoundary(base, cli, binDir) {
       program,
       streamReceivedMarker: stream.streamText.includes(marker),
       ticketExpiresInMs: stream.ticketExpiresInMs,
+      inputApproval,
+      exitApproval,
       readyVisible: readyText.includes(marker),
       inputRoundtrip: inputText.includes(input),
       doneVisible: doneText.includes(`AELYRIS_AI_CLI_DONE ${marker}`),

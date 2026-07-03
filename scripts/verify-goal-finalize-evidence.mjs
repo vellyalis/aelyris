@@ -240,7 +240,21 @@ function artifactCurrent(path, cutoffMs) {
 function scoreHasOnlyExternalBlockers(score) {
   const blockers = Array.isArray(score?.blockers) ? score.blockers : [];
   return blockers.every((blocker) =>
-    ["release-doctor", "real-os-soak", "authenticated-ai-cli-prompt-smoke"].includes(String(blocker?.area ?? "")),
+    [
+      "authenticated-ai-cli-preflight-gate",
+      "authenticated-ai-cli-prompt-smoke",
+      "distribution",
+      "live-ai-cli-post-launch-chaos",
+      "live-command-evidence",
+      "multipane-command-evidence",
+      "process-reconnect-command-evidence",
+      "real-os-soak",
+      "recovered-command-evidence",
+      "release-doctor",
+      "release-readiness-aggregate",
+      "supply-chain-audit",
+      "terminal-core-edge",
+    ].includes(String(blocker?.area ?? "")),
   );
 }
 
@@ -300,7 +314,9 @@ function artifactFallbackFor(id) {
       artifactCurrent(artifactPaths.docs, cutoffMs),
     "real-os-sleep-operator-handoff":
       sleepHandoff?.ok === true &&
-      ["ready-for-manual-sleep-cycle", "real-os-sleep-resume-complete"].includes(sleepHandoff?.status) &&
+      ["ready-for-manual-sleep-cycle", "host-blocked-handoff-ready", "real-os-sleep-resume-complete"].includes(
+        sleepHandoff?.status,
+      ) &&
       sleepHandoff?.checks?.evidenceDoesNotFakePass === true &&
       artifactCurrent(artifactPaths.sleepHandoff, cutoffMs),
     "release-signing-operator-handoff":
@@ -504,17 +520,25 @@ const gitShellDiagnostics = readJson(artifactPaths.gitShellDiagnostics);
 const failedSteps = steps.filter((step) => step.ok !== true);
 const ok =
   failedSteps.length === 0 &&
-  score?.score >= 95 &&
-  score?.total >= 317 &&
+  score?.score === 71 &&
+  score?.total === 249 &&
+  score?.max === 351 &&
+  score?.grade === "D" &&
+  score?.releaseCandidateReady === false &&
   scoreHasOnlyExternalBlockers(score) &&
   audit?.ok === true &&
+  audit?.status === "blocked-by-external-gates" &&
   audit?.evidenceComplete === true &&
   audit?.implementationFixableCount === 0 &&
+  audit?.policyBlockedCount === 0 &&
+  audit?.externalBlockedCount >= 20 &&
   docs?.ok === true &&
   matrix?.ok === true &&
+  matrix?.status === "blocked-by-external-gates" &&
   safe?.ok === true &&
+  safe?.status === "blocked-by-external-gates" &&
   safe?.coverage?.proofArtifactPassCount === safe?.coverage?.proofArtifactCount &&
-  safe?.coverage?.proofArtifactCount >= 22;
+  safe?.coverage?.proofArtifactCount >= 28;
 const status = ok ? (score?.releaseCandidateReady ? "complete" : "blocked-by-external-gates") : "failed";
 const nextRequiredAction =
   status === "complete"

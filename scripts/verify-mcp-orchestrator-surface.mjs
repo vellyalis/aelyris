@@ -11,7 +11,6 @@ const read = (relativePath) =>
 const api = read("src-tauri/src/api/mod.rs");
 const apiMcp = read("src-tauri/src/api/mcp.rs");
 const lib = read("src-tauri/src/lib.rs");
-const controlMod = read("src-tauri/src/control/mod.rs");
 const merge = read("src-tauri/src/control/merge.rs");
 const gitMod = read("src-tauri/src/git/mod.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
@@ -145,8 +144,9 @@ const checks = [
       // intent, claimed via the DB compare-and-swap.
       !apiMcp.includes("crate::git::perform_merge(&repo_path, &source_branch, &target_branch)") &&
       apiMcp.includes("APPROVE_ALLOWED") &&
-      apiMcp.includes("crate::git::perform_merge_bound(") &&
-      apiMcp.includes(".claim_for_merge(&intent_id, now)") &&
+      apiMcp.includes("crate::control::merge::approve_durable_intent(") &&
+      merge.includes("crate::git::perform_merge_bound(") &&
+      merge.includes(".claim_for_merge(intent_id, now)") &&
       gitMerge.includes("pub fn perform_merge_bound"),
     detail:
       "reviewer approve binds to the stored immutable intent (intentId only), CAS-claims, and runs an OID-bound merge; reject resolves without merging",
@@ -234,10 +234,15 @@ const checks = [
       // Every dispatched agent's prompt carries the CURRENT ADR, rebuilt from
       // the shared store each step — no agent runs on stale context (③).
       loopPorts.includes("build_adr_header(&context.all())") &&
-      // Every dispatched prompt carries BOTH the current ADR (world-model) AND the
-      // active symbol-ownership section (A6 §6.4) — the agent runs blind to neither the
-      // shared decisions nor who owns which symbols in its files.
-      loopPorts.includes("format!(\"{adr_header}{ownership_section}{task_prompt}\")") &&
+      loopPorts.includes("let guidelines_header = build_guidelines_header(&repo_path);") &&
+      // Every dispatched prompt carries the current ADR (world-model), repo rules,
+      // active symbol-ownership section (A6 §6.4), and the optional visible-pane
+      // completion contract through one prompt owner — the agent runs blind to
+      // neither the shared decisions, repository guide, file ownership, nor its
+      // explicit done-marker duty when present.
+      loopPorts.includes(
+        'format!("{adr_header}{guidelines_header}{ownership_section}{completion_section}{task_prompt}")',
+      ) &&
       loopPorts.includes("fn ownership_section(") &&
       // Rejected/stale work is re-dispatched (with the fresh ADR) via the shared
       // requeue path on the rework budget, not stranded in Running with no worker.
@@ -334,9 +339,12 @@ const checks = [
       lib.includes(".with_context_store(context_store)") &&
       loopPorts.includes("fn build_adr_header(") &&
       loopPorts.includes("align your work to these shared decisions") &&
-      loopPorts.includes("spawn_specs(graph, &repo_path, &adr_header, claims_snapshot.as_deref())"),
+      loopPorts.includes("fn build_guidelines_header(") &&
+      loopPorts.includes("spawn_specs(") &&
+      loopPorts.includes("&adr_header,") &&
+      loopPorts.includes("&guidelines_header,"),
     detail:
-      "orchestrator AI reads/writes the shared ADR (Context Store) over MCP; context.set publishes decision_changed; and the ADR is injected into every dispatched agent's prompt so all agents share the world-model (BR6)",
+      "orchestrator AI reads/writes the shared ADR (Context Store) over MCP; context.set publishes decision_changed; and the ADR is injected ahead of repo guidelines in every dispatched agent prompt so all agents share the world-model (BR6)",
   },
   {
     id: "mcp-realtime-activity-and-intent",

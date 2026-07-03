@@ -12,6 +12,13 @@ the current limitations visible. Aelyris is alpha and does not claim production
 readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
+Current machine truth refreshed 2026-07-03 JST: `pnpm verify:quality-score`
+reports `71/100` (`249/351`), grade `D`, `releaseCandidateReady=false`.
+The current final-goal audit is `blocked-by-external-gates` with
+`implementationFixableCount=0`, `policyBlockedCount=0`, and
+`externalBlockedCount=27`; safe proof registry coverage is `28/28`. This is not
+release-ready.
+
 Regenerate the machine evidence locally before release decisions:
 
 ```powershell
@@ -29,13 +36,14 @@ pnpm verify:requirements-spec-design-traceability
 - `LICENSE`, `SECURITY.md`, and `CONTRIBUTING.md` exist.
 - Release hygiene verifier passes.
 - Requirements and specs have a current traceability map.
+- Supply-chain verifier passes on the current lockfiles; rerun
+  `pnpm verify:supply-chain` before release decisions.
 
 ## Still Not Release-Ready
 
 Remaining gate classes:
 
 - release signing/updater material,
-- npm supply-chain audit child-process environment block,
 - mux live restore proof,
 - chunked OSC/WebView2/CDP live proof,
 - aggregate readiness gate,
@@ -44,7 +52,7 @@ Remaining gate classes:
 - right-rail visual QA,
 - live command, multipane command, recovered command, and process reconnect
   evidence,
-- authenticated AI CLI prompt smoke, which requires explicit token-spend consent. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt execution requires `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
+- authenticated AI CLI prompt smoke. The gate is `authenticated-ai-cli-prompt-smoke`, the packet is `authenticated-ai-cli-consent-packet`, and prompt/probe execution has standing owner consent for this repo/WU when `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` or the documented provider env is set. Evidence must record provider/model/command/artifact; secrets, token files, signing material, and secret-bearing transcripts must not be persisted or committed.
 
 ## Publish Checklist
 
@@ -76,5 +84,3 @@ Then confirm:
 Aelyris — project-first AI development workspace for Windows. Alpha Tauri/Rust/React
 app with visible AI-agent panes, worktree/review/merge control, and machine-checked
 readiness gates.
-
-

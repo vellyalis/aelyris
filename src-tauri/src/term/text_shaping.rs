@@ -1,7 +1,7 @@
 //! Native terminal text-shaping boundary.
 //!
 //! This module owns the renderer-independent shaping contract. The current
-//! winit/wgpu proof still uses a `fontdue` atlas for presentation, but Windows
+//! winit/wgpu proof still uses a `swash` atlas for presentation, but Windows
 //! builds now have a DirectWrite-backed shaping/fallback boundary that can feed
 //! the renderer without pretending the visual dogfood is complete.
 
@@ -762,7 +762,7 @@ pub fn terminal_text_shaping_policy() -> TerminalTextShapingPolicy {
     }
     if !system_capability.renderer_integration_ready {
         release_blockers.push(
-            "winit/wgpu native renderer must consume DirectWrite shaped runs instead of the fontdue '?' atlas fallback".to_string(),
+            "winit/wgpu native renderer must consume DirectWrite shaped runs instead of a single-font '?' atlas fallback".to_string(),
         );
     }
     if !system_capability.visual_fixture_ready {

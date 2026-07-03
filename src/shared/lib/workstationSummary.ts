@@ -3,7 +3,7 @@ import { getMaxTokens, getModelBySpecifier } from "../types/model";
 
 export const LIVE_AGENT_STATUSES = new Set<AgentStatus>(["thinking", "generating", "coding", "waiting"]);
 
-export type TelemetryConfidence = "exact" | "parsed" | "estimated" | "unknown";
+export type TelemetryConfidence = import("../types/agent").TelemetryConfidence;
 
 const STATUS_RANK: Record<AgentStatus, number> = {
   generating: 0,
@@ -46,6 +46,9 @@ export function isLiveAgentStatus(status: AgentStatus): boolean {
 }
 
 export function agentContextPercent(session: AgentSession): number {
+  if (typeof session.contextRemaining?.usedPct === "number") {
+    return Math.max(0, Math.min(100, session.contextRemaining.usedPct));
+  }
   const max = getMaxTokens(session.model);
   if (max <= 0) return 0;
   return Math.min(100, (session.tokensUsed / max) * 100);
@@ -67,7 +70,9 @@ export function tokenTelemetryConfidence(sessions: readonly AgentSession[]): Tel
 }
 
 export function contextTelemetryConfidence(session: AgentSession | null): TelemetryConfidence {
-  if (!session || session.tokensUsed <= 0) return "unknown";
+  if (!session) return "unknown";
+  if (session.contextRemaining) return session.contextRemaining.confidence;
+  if (session.tokensUsed <= 0) return "unknown";
   return getModelBySpecifier(session.model) ? "parsed" : "estimated";
 }
 

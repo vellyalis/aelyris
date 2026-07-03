@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentContextWindow, buildWorkstationSummary, rankAgentSessions } from "../shared/lib/workstationSummary";
+import { agentContextPercent, agentContextWindow, buildWorkstationSummary, rankAgentSessions } from "../shared/lib/workstationSummary";
 import type { AgentSession } from "../shared/types/agent";
 
 function session(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
@@ -56,6 +56,26 @@ describe("buildWorkstationSummary", () => {
     expect(summary.changedFilesCount).toBe(5);
   });
 
+
+  it("prefers runtime context remaining telemetry over token fallback", () => {
+    const runtimeSession = session("runtime", {
+      tokensUsed: 0,
+      contextRemaining: {
+        pct: 12,
+        usedPct: 88,
+        confidence: "parsed",
+        source: "claude_grid_context_left",
+        updatedAt: 2_000,
+        warn: true,
+        hard: false,
+      },
+    });
+    const summary = buildWorkstationSummary({ sessions: [runtimeSession] });
+
+    expect(agentContextPercent(runtimeSession)).toBe(88);
+    expect(summary.peakContextPct).toBe(88);
+    expect(summary.contextConfidence).toBe("parsed");
+  });
   it("marks context as estimated when the peak model uses the fallback context window", () => {
     const summary = buildWorkstationSummary({
       sessions: [session("a", { model: "custom-model", tokensUsed: 25_000, filesChanged: 2 })],

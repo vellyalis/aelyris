@@ -130,12 +130,12 @@ function generatedRecords({ releaseQuality, currentReadiness, agentTeam, nativeB
         rendererRunsConsumed && !realFallbackReady
           ? "directwrite-shaped-run-consumed-real-font-fallback-mapping-pending"
           : fallbackGlyphRasterReady
-            ? "directwrite-shaped-run-consumed-fontdue-directwrite-fallback-atlas-visual-fixtures-pending"
+            ? "directwrite-shaped-run-consumed-swash-directwrite-fallback-atlas-visual-fixtures-pending"
             : rendererRunsConsumed
-              ? "directwrite-shaped-run-consumed-fontdue-primary-atlas-fallback-raster-pending"
+              ? "directwrite-shaped-run-consumed-swash-primary-atlas-fallback-raster-pending"
               : systemShaperReady
-                ? "directwrite-system-shaper-boundary-fontdue-atlas-renderer-pending"
-                : "fontdue-single-font-atlas-policy-fallback",
+                ? "directwrite-system-shaper-boundary-swash-atlas-renderer-pending"
+                : "single-font-atlas-policy-fallback",
         rendererRunsConsumed && !realFallbackReady
           ? "DirectWrite shaped runs are consumed by the native renderer, but real DirectWrite fallback mapping is not implemented"
           : fallbackGlyphRasterReady

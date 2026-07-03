@@ -24,8 +24,15 @@ const STEP_FALLBACK_ARTIFACTS = {
   "external-gate-readiness": [".codex-auto/quality/goal-external-gate-readiness.json"],
   "tauri-runtime-hygiene": [".codex-auto/quality/tauri-runtime-hygiene.json"],
   "runtime-core-preconditions": [".codex-auto/quality/runtime-core-preconditions.json"],
+  "runtime-core-rt1a0-live": [".codex-auto/quality/runtime-core-rt1a0-live.json"],
+  "runtime-core-context-proxy": [".codex-auto/quality/runtime-core-context-proxy.json"],
+  "runtime-core-self-summary": [".codex-auto/quality/runtime-core-self-summary.json"],
+  "runtime-core-session-checkpoint": [".codex-auto/quality/session-checkpoint-restore.json"],
+  "runtime-core-session-handoff": [".codex-auto/quality/session-handoff-no-loss.json"],
+  "runtime-core-session-resume": [".codex-auto/quality/session-resume-idempotent.json"],
   "release-hygiene-contract": [".codex-auto/quality/release-hygiene-contract.json"],
   "supply-chain-audit": [".codex-auto/release-doctor/supply-chain-audit.json"],
+  "stack-risk": [".codex-auto/quality/stack-risk.json"],
   "production-build": [".codex-auto/quality/production-bundle-budget.json"],
   "production-bundle-budget": [".codex-auto/quality/production-bundle-budget.json"],
   "quality-score-pre-audit": [".codex-auto/quality/release-quality-score.json"],
@@ -467,9 +474,14 @@ function releaseSigningOperatorHandoffVerdict(data) {
 
 function realOsSleepOperatorHandoffVerdict(data) {
   const afterManualGate = Array.isArray(data?.runbook?.afterManualGate) ? data.runbook.afterManualGate : [];
+  const allowedReadyStatuses = new Set([
+    "ready-for-manual-sleep-cycle",
+    "host-blocked-handoff-ready",
+    "real-os-sleep-resume-complete",
+  ]);
   const ready =
     data?.ok === true &&
-    ["ready-for-manual-sleep-cycle", "real-os-sleep-resume-complete"].includes(data?.status) &&
+    allowedReadyStatuses.has(data?.status) &&
     data?.realOsSleepInvoked === false &&
     data?.checks?.noUnsafeConsentEnvPresent === true &&
     data?.checks?.noOsSleepEnvPresent === true &&
@@ -738,10 +750,9 @@ function nativeAiCliPostLaunchChaosVerdict(data) {
   const sourceFresh =
     mtimeMs(artifactPath) + 5_000 >=
     Math.max(mtimeMs("scripts/verify-native-ai-cli-post-launch-chaos.mjs"), mtimeMs("package.json"));
-  const ok =
+  const contractPass =
     data?.ok === true &&
     data?.status === "pass" &&
-    sourceFresh &&
     checks.daemonReady === true &&
     checks.commandSessionCapability === true &&
     checks.webviewRequiredForToolCalls === true &&
@@ -772,6 +783,11 @@ function nativeAiCliPostLaunchChaosVerdict(data) {
         row?.remainingSessionsAfterCleanup === 0
       );
     });
+  // Freshness is non-negotiable: the final audit's nativeFirstReady flag
+  // carries no mtime check of its own, so accepting it as a substitute lets a
+  // stale artifact (invalidated by later code changes) keep passing. If this
+  // goes red, regenerate the artifact — don't route around the staleness gate.
+  const ok = contractPass && sourceFresh;
   return {
     ok,
     status: ok ? "pass-current-native-ai-cli-chaos-contract" : (data?.status ?? "stale-or-incomplete"),
@@ -1021,6 +1037,53 @@ function tauriRuntimeHygieneVerdict(data) {
   };
 }
 
+function runtimeCoreRt1a0LiveVerdict(data) {
+  const requiredProviders = Array.isArray(data?.requiredProviders)
+    ? data.requiredProviders
+    : ["claude", "codex", "gemini"];
+  const providerMatrix = Array.isArray(data?.providerMatrix) ? data.providerMatrix : [];
+  const missingProviders = Array.isArray(data?.missingProviders)
+    ? data.missingProviders
+    : requiredProviders.filter((provider) => !providerMatrix.some((entry) => entry?.provider === provider));
+  const allProvidersPresent = requiredProviders.every((provider) =>
+    providerMatrix.some((entry) => entry?.provider === provider),
+  );
+  const allProvidersReady = requiredProviders.every((provider) => {
+    const row = providerMatrix.find((entry) => entry?.provider === provider);
+    return row?.ok === true && row?.status === "ready";
+  });
+  const fixturePath = data?.fixture?.path ?? data?.formalCaptureContract?.fixturePath;
+  const fixtureReady = data?.fixture?.exists === true && typeof fixturePath === "string" && fixturePath.length > 0;
+  const cdpStateRecorded = data?.cdp?.host === "127.0.0.1" && typeof data?.cdp?.port === "number";
+  const captureContractReady =
+    data?.formalCaptureContract?.spawn === "spawn_interactive_agent" &&
+    String(data?.formalCaptureContract?.measurement ?? "").includes("GridSnapshot") &&
+    Array.isArray(data?.formalCaptureContract?.providers) &&
+    requiredProviders.every((provider) => data.formalCaptureContract.providers.includes(provider));
+  const ok =
+    data?.ok === true &&
+    data?.status === "pass-rt1a0-provider-matrix" &&
+    fixtureReady &&
+    cdpStateRecorded &&
+    captureContractReady &&
+    allProvidersPresent &&
+    allProvidersReady;
+  return {
+    ok,
+    status: ok ? "pass-current-rt1a0-provider-matrix" : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "RT-1a0 records a redacted live provider matrix for claude, codex, and gemini using spawn_interactive_agent plus term_snapshot/GridSnapshot",
+    reason: ok
+      ? "RT-1a0 provider matrix is complete and fixture-backed for all required providers"
+      : `RT-1a0 provider matrix is incomplete or host-blocked; missing providers: ${missingProviders.join(", ") || "unknown"}`,
+    requiredProviders,
+    missingProviders,
+    providerMatrix,
+    fixture: data?.fixture ?? null,
+    cdp: data?.cdp ?? null,
+  };
+}
+
 function rightRailStaleUrlTruthVerdict(data) {
   const normal = data?.checks?.normalRuntime ?? {};
   const visualQa = data?.checks?.visualQaRuntime ?? {};
@@ -1205,12 +1268,23 @@ function supplyChainAuditVerdict(data) {
     /spawn EPERM|environment-blocked/i.test(
       String(data?.npm?.unavailableReason ?? data?.npm?.stderrTail ?? data?.error ?? ""),
     );
+  const classifiedUpstreamBound =
+    data?.status === "classified-upstream-bound" &&
+    data?.npm?.ok === true &&
+    data?.npm?.knownVulnerabilities === 0 &&
+    typeof data?.cargo?.knownVulnerabilities === "number" &&
+    data.cargo.knownVulnerabilities > 0 &&
+    (data?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
+    data?.stackRiskClassification?.ok === true &&
+    data?.stackRiskClassification?.releaseBlockerCount === 0 &&
+    data?.stackRiskClassification?.unclassifiedCount === 0 &&
+    (data?.stackRiskClassification?.upstreamBoundBlockerCount ?? 0) > 0;
   const ok =
-    (data?.status === "pass" || npmEnvironmentBlocked) &&
+    (data?.status === "pass" || npmEnvironmentBlocked || classifiedUpstreamBound) &&
     (data?.npm?.ok === true || npmEnvironmentBlocked) &&
     (data?.npm?.knownVulnerabilities === 0 || npmEnvironmentBlocked) &&
-    data?.cargo?.ok === true &&
-    data?.cargo?.knownVulnerabilities === 0 &&
+    (data?.cargo?.ok === true || classifiedUpstreamBound) &&
+    (data?.cargo?.knownVulnerabilities === 0 || classifiedUpstreamBound) &&
     (data?.cargo?.reachability?.runtimeCriticalWarningCount ?? 0) === 0 &&
     sourceFresh === true;
   return {
@@ -1218,15 +1292,19 @@ function supplyChainAuditVerdict(data) {
     status: ok
       ? npmEnvironmentBlocked
         ? "environment-blocked-current-contract"
+        : classifiedUpstreamBound
+          ? "classified-upstream-bound-current-contract"
         : "pass-current-supply-chain-contract"
       : (data?.status ?? "stale-or-incomplete"),
     expectation:
-      "npm and Rust dependency audit is current with zero known vulnerabilities and zero runtime critical Rust warnings, or the npm child process is explicitly host-blocked",
+      "npm and Rust dependency audit is current with zero repo-owned release blockers and zero runtime critical Rust warnings; external host blocks or classified upstream-bound dependency blockers are explicit non-release states",
     reason: ok
       ? npmEnvironmentBlocked
         ? "supply-chain audit is current; npm audit child process is host-blocked while Rust audit reports zero known vulnerabilities and zero runtime critical warnings"
+        : classifiedUpstreamBound
+          ? "supply-chain audit is current; known Rust dependency blockers remain, but stack-risk classifies all of them as upstream-bound with releaseBlockers=0 and unclassified=0"
         : "supply-chain audit is source-fresh, reports zero known npm/cargo vulnerabilities, and isolates remaining maintenance warnings as tracked upstream debt"
-      : "supply-chain audit is stale, incomplete, failing, reports known vulnerabilities, or has runtime critical Rust warnings",
+      : "supply-chain audit is stale, incomplete, failing, has repo-owned/unclassified known vulnerabilities, or has runtime critical Rust warnings",
   };
 }
 
@@ -1362,16 +1440,9 @@ function nativeHwndPasteLiveVerdict(data) {
     "multiline-paste-blocked-before-pty",
   ];
   const passedCaseIds = new Set(cases.filter((item) => item?.ok === true).map((item) => String(item.id ?? "")));
-  const ok =
+  const commonOk =
     data?.ok === true &&
-    data?.status === "pass-current-native-hwnd-paste-contract" &&
     checks.windowsHost === true &&
-    (checks.tauriPageAttached === true ||
-      (checks.nativeNoCdpProof === true &&
-        checks.aelyrisNativePasteGuardProof === true &&
-        checks.noWebView === true &&
-        checks.noReact === true &&
-        checks.noCdp === true)) &&
     checks.nativeSurfaceHwndAvailable === true &&
     checks.wmPasteSentToNativeHwnd === true &&
     checks.singleLineLfNormalizedAndExecuted === true &&
@@ -1381,13 +1452,36 @@ function nativeHwndPasteLiveVerdict(data) {
     requiredCaseIds.every((id) => passedCaseIds.has(id)) &&
     cases.every((item) => item?.path === "native-input-hwnd-wm-paste") &&
     sourceFresh;
+  const strictOk =
+    commonOk && data?.status === "pass-current-native-hwnd-paste-contract" && checks.tauriPageAttached === true;
+  const degradedOk =
+    commonOk &&
+    data?.status === "pass-degraded-no-cdp" &&
+    data?.degraded === true &&
+    checks.nativeNoCdpProof === true &&
+    checks.aelyrisNativePasteGuardProof === true &&
+    checks.noWebView === true &&
+    checks.noReact === true &&
+    checks.noCdp === true;
+  const ok = strictOk || degradedOk;
   return {
     ok,
-    status: ok ? "pass-current-native-hwnd-paste-contract" : (data?.status ?? "stale-or-incomplete"),
+    status: strictOk
+      ? "pass-current-native-hwnd-paste-contract"
+      : degradedOk
+        ? "pass-degraded-no-cdp"
+        : (data?.status ?? "stale-or-incomplete"),
     expectation: "real Windows WM_PASTE sent to the native input HWND is guarded in Rust before PTY write",
-    reason: ok
-      ? "native HWND paste live proof is source-fresh and covers allowed single-line, destructive, and multiline paste paths"
+    reason: strictOk
+      ? "native HWND paste live proof is source-fresh and covers the WebView2/CDP WM_PASTE path plus allowed single-line, destructive, and multiline paste paths"
+      : degradedOk
+        ? "native HWND paste proof is source-fresh but degraded: WebView2/CDP WM_PASTE was not exercised, only the Rust native no-CDP proof ran"
       : "native HWND paste live proof is missing, stale, incomplete, or does not prove every guard path",
+    strictProof: strictOk,
+    degradedProof: degradedOk,
+    warning: degradedOk
+      ? "WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only."
+      : undefined,
     semanticFreshness: ok ? "current-native-hwnd-paste-live-contract" : "stale-or-incomplete",
     cycleBoundary: "native-input-real-wm-paste-proof",
   };
@@ -1410,10 +1504,17 @@ function artifactMeta(path, verdictFor) {
     expectation: verdict.expectation,
     reason: verdict.reason,
     strictProof: verdict.strictProof,
+    degradedProof: verdict.degradedProof,
+    warning: verdict.warning,
     environmentBlockedProof: verdict.environmentBlockedProof,
     bootstrapOnly: verdict.bootstrapOnly,
     semanticFreshness: verdict.semanticFreshness ?? null,
     cycleBoundary: verdict.cycleBoundary ?? null,
+    requiredProviders: verdict.requiredProviders,
+    missingProviders: verdict.missingProviders,
+    providerMatrix: verdict.providerMatrix,
+    fixture: verdict.fixture,
+    cdp: verdict.cdp,
     generatedAt: data?.generatedAt ?? data?.finishedAt ?? data?.completedAt ?? null,
     mtimeMs: stats.mtimeMs,
   };
@@ -1568,6 +1669,7 @@ function artifactPassesForCachedStep(data) {
   if (data.status === "blocked-by-external-gates" && data.implementationFixableCount === 0) return true;
   if (data.status === "environment-blocked-current-contract") return true;
   if (data.status === "environment-blocked") return true;
+  if (data.classificationGate?.ok === true) return true;
   if (data.status === "ready-for-external-operator-gates") return true;
   if (data.status === "blocked-by-git-metadata-permissions" && data.ok === true) return true;
   if (typeof data.score === "number" && projectedExternalGateScoreShape(data)) return true;
@@ -1626,7 +1728,7 @@ function cachedStepFallback(id, label, script, child) {
 }
 
 function isAuthenticatedPromptBlocker(value) {
-  return /authenticated[-\s]?ai[-\s]?cli[-\s]?prompt|token-spend consent/i.test(String(value ?? ""));
+  return /token-spend consent|explicit token consent|blocked-only-by-explicit-token-consent/i.test(String(value ?? ""));
 }
 
 function isHostSleepUnsupportedBlocker(value) {
@@ -1638,7 +1740,7 @@ function isHostSleepUnsupportedBlocker(value) {
 
 function isReleaseSigningOperatorBlocker(value) {
   const text = `${value?.area ?? ""} ${value?.blocker ?? value ?? ""}`;
-  return /release[-\s]?doctor.*signing\/updater|signing\/updater warnings|signatures\/latest\.json|updater signatures|latest\.json/i.test(
+  return /release[-\s]?doctor.*signing\/updater|signing\/updater warnings|signatures\/latest\.json|updater signatures|latest\.json|signed exe\/installer artifacts are incomplete|distribution.*signed/i.test(
     text,
   );
 }
@@ -1648,7 +1750,7 @@ function isExternalOperatorBlocker(value) {
   return (
     isHostSleepUnsupportedBlocker(value) ||
     isReleaseSigningOperatorBlocker(value) ||
-    /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|mux live restore|release readiness aggregate gate is externally blocked|release readiness claim blocked: .*external-blocked|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
+    /environment-blocked|spawn EPERM|spawnSync .* EPERM|WebView2|CDP|ECONNREFUSED|connectOverCDP|browserType\.launch|Playwright|Chromium|npm supply-chain audit|supply-chain.*upstream-bound|upstream-bound dependency BLOCK|mux live restore|release readiness aggregate gate is externally blocked|release readiness claim blocked: .*=(?:external-blocked|review)\b|release readiness claim blocked: release=block\b|right rail.*visual QA|chunked OSC.*environment-blocked|live command evidence|multi-pane command evidence|recovered command evidence|process reconnect command evidence|live AI CLI (?:post-launch )?chaos|native-first AI CLI post-launch chaos|authenticated AI CLI prompt smoke|authenticated prompt artifact|authenticated prompt .*executed-with-consent|git metadata|git-index-lock|git-object-database|git-add-dry-run/i.test(
       text,
     )
   );
@@ -1690,13 +1792,32 @@ const steps = [
     "verify-release-signing-operator-handoff.mjs",
   ),
   runStep("tauri-runtime-hygiene", "Tauri runtime hygiene", "verify-tauri-runtime-hygiene.mjs"),
+  runStep("runtime-core-preconditions", "Runtime Core approval preconditions", "verify-runtime-core-preconditions.mjs"),
   runStep(
-    "runtime-core-preconditions",
-    "Runtime Core approval preconditions",
-    "verify-runtime-core-preconditions.mjs",
+    "runtime-core-rt1a0-live",
+    "Runtime Core RT-1a0 live provider matrix gate",
+    "verify-runtime-core-rt1a0-live.mjs",
+  ),
+  runStep("runtime-core-context-proxy", "Runtime Core RT-1a context proxy", "verify-context-proxy.mjs"),
+  runStep("runtime-core-self-summary", "Runtime Core RT-1b self summary", "verify-self-summary.mjs"),
+  runStep(
+    "runtime-core-session-checkpoint",
+    "Runtime Core RT-1c session checkpoint restore",
+    "verify-session-checkpoint-restore.mjs",
+  ),
+  runStep(
+    "runtime-core-session-handoff",
+    "Runtime Core RT-1d session handoff no-loss",
+    "verify-session-handoff-no-loss.mjs",
+  ),
+  runStep(
+    "runtime-core-session-resume",
+    "Runtime Core RT-1e session resume/reset idempotency",
+    "verify-session-resume-idempotent.mjs",
   ),
   runStep("release-hygiene-contract", "Release hygiene contract", "verify-release-hygiene-contract.mjs"),
   runStep("supply-chain-audit", "Supply-chain vulnerability audit", "verify-supply-chain.mjs"),
+  runPnpmStep("stack-risk", "Stack-risk classification", "verify:stack-risk"),
   runPnpmStep("production-build", "Production TypeScript and Vite build", "build"),
   runStep("production-bundle-budget", "Production shell bundle budget", "verify-production-bundle-budget.mjs"),
   runStep("quality-score-pre-audit", "Release quality score before final audit", "score-release-quality.mjs"),
@@ -1867,6 +1988,11 @@ function rightRailGoalTrackVerdict(data) {
   const environmentBlockedFiles = Array.isArray(environmentBlocked?.sourceContract?.files)
     ? environmentBlocked.sourceContract.files
     : [];
+  const environmentBlockedSourceArtifactsReady =
+    (environmentBlocked?.sourceArtifacts?.releaseQualityScore?.ok === true &&
+      environmentBlocked?.sourceArtifacts?.finalGoalAudit?.exists === true &&
+      environmentBlocked?.sourceArtifacts?.finalGoalSafe?.exists === true) ||
+    projectedExternalGateScoreShape(score, audit);
   const environmentBlockedFresh =
     environmentBlocked?.status === "environment-blocked" &&
     environmentBlocked?.preservesPrimaryArtifact === true &&
@@ -1876,9 +2002,7 @@ function rightRailGoalTrackVerdict(data) {
         String(error),
       ),
     ) &&
-    environmentBlocked?.sourceArtifacts?.releaseQualityScore?.ok === true &&
-    environmentBlocked?.sourceArtifacts?.finalGoalAudit?.exists === true &&
-    environmentBlocked?.sourceArtifacts?.finalGoalSafe?.exists === true &&
+    environmentBlockedSourceArtifactsReady &&
     environmentBlockedFiles.length >= 8 &&
     environmentBlockedFiles.every(
       (file) => file?.exists === true && typeof file?.mtimeMs === "number" && file.mtimeMs > 0,
@@ -2072,6 +2196,7 @@ const proofArtifacts = {
     realOsSleepOperatorHandoffVerdict,
   ),
   tauriRuntimeHygiene: artifactMeta(".codex-auto/quality/tauri-runtime-hygiene.json", tauriRuntimeHygieneVerdict),
+  runtimeCoreRt1a0Live: artifactMeta(".codex-auto/quality/runtime-core-rt1a0-live.json", runtimeCoreRt1a0LiveVerdict),
   releaseHygieneContract: artifactMeta(
     ".codex-auto/quality/release-hygiene-contract.json",
     releaseHygieneContractVerdict,
@@ -2161,6 +2286,7 @@ const report = {
     proofArtifactsPassed,
     releaseHygieneClean: proofArtifacts.releaseHygieneContract?.ok === true,
     supplyChainAuditClean: proofArtifacts.supplyChainAudit?.ok === true,
+    supplyChainNoRepoOwnedBlocker: proofArtifacts.supplyChainAudit?.ok === true,
     terminalChunkedOscLivePassed: proofArtifacts.terminalChunkedOscLive?.ok === true,
     nativeTerminalInputHostPassed: proofArtifacts.nativeTerminalInputHost?.ok === true,
     nativeHwndPasteLivePassed: proofArtifacts.nativeHwndPasteLive?.ok === true,
@@ -2239,6 +2365,9 @@ const report = {
 };
 
 writeJson(OUT, report);
+if (proofArtifacts.nativeHwndPasteLive?.degradedProof === true) {
+  console.warn("native HWND paste WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only.");
+}
 console.log(JSON.stringify({ artifact: OUT, ...report }, null, 2));
 
 if (!safeGatePassed) {

@@ -59,7 +59,7 @@ fn repo_signature(repo: &git2::Repository) -> Result<git2::Signature<'static>, S
 fn head_is_branch(repo: &git2::Repository, branch: &str) -> bool {
     repo.head()
         .ok()
-        .and_then(|head| head.shorthand().map(|name| name == branch))
+        .and_then(|head| head.shorthand().ok().map(|name| name == branch))
         .unwrap_or(false)
 }
 

@@ -1,3 +1,4 @@
+use std::path::Path as FsPath;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
@@ -243,6 +244,39 @@ pub(super) fn sync_spawn(
     rows: u16,
 ) -> ApiResult<()> {
     let shell_name = format!("{:?}", shell).to_lowercase();
+    sync_spawn_record(state, id, &shell_name, cwd, cols, rows)
+}
+
+pub(super) fn sync_command_spawn(
+    state: &ApiState,
+    id: &str,
+    program: &str,
+    cwd: Option<&str>,
+    cols: u16,
+    rows: u16,
+) -> ApiResult<()> {
+    sync_spawn_record(state, id, &command_label(program), cwd, cols, rows)
+}
+
+fn command_label(program: &str) -> String {
+    FsPath::new(program)
+        .file_stem()
+        .or_else(|| FsPath::new(program).file_name())
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("command")
+        .to_ascii_lowercase()
+}
+
+fn sync_spawn_record(
+    state: &ApiState,
+    id: &str,
+    shell_name: &str,
+    cwd: Option<&str>,
+    cols: u16,
+    rows: u16,
+) -> ApiResult<()> {
     let cwd = cwd.unwrap_or(".");
     let graph = {
         let mut mux = state

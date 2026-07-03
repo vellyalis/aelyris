@@ -2,6 +2,8 @@
 //! Pure module move — no behavior change. Shared helpers remain in `commands`.
 use tauri::{AppHandle, Manager};
 
+use crate::agent::{InteractiveSessionInfo, InteractiveSessionManager};
+
 use super::commands::{
     capture_if_enter, gate_ipc_input, record_audit_event, sanitize_audit_error,
     save_submitted_command_history, sync_mux_pane_name, sync_mux_pane_role, terminal_ids_async,
@@ -90,6 +92,59 @@ fn approval_resolution_keystroke(approve: bool) -> &'static [u8] {
     }
 }
 
+fn stable_text_key(value: &str) -> String {
+    let mut hash = 2166136261_u32;
+    for unit in value.encode_utf16() {
+        hash ^= u32::from(unit);
+        hash = hash.wrapping_mul(16777619);
+    }
+    format!("{hash:x}")
+}
+
+fn find_interactive_session_by_pty(
+    session_mgr: &InteractiveSessionManager,
+    terminal_id: &str,
+) -> Result<InteractiveSessionInfo, String> {
+    session_mgr
+        .list()?
+        .into_iter()
+        .find(|session| session.pty_id == terminal_id)
+        .ok_or_else(|| {
+            format!("stale_approval: no interactive session owns terminal {terminal_id}")
+        })
+}
+
+fn verify_current_interactive_approval(
+    session_mgr: &InteractiveSessionManager,
+    terminal_id: &str,
+    expected_prompt_key: Option<&str>,
+) -> Result<(), String> {
+    let expected_prompt_key = expected_prompt_key
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| "stale_approval: expected prompt fingerprint is required".to_string())?;
+    let session = find_interactive_session_by_pty(session_mgr, terminal_id)?;
+    if session.status != "waiting_approval" {
+        return Err(format!(
+            "stale_approval: session {} is not waiting_approval (status={})",
+            session.id, session.status
+        ));
+    }
+    let prompt = session.approval_prompt.as_deref().ok_or_else(|| {
+        format!(
+            "stale_approval: session {} is waiting_approval without an approval prompt",
+            session.id
+        )
+    })?;
+    let actual_prompt_key = stable_text_key(prompt);
+    if actual_prompt_key != expected_prompt_key {
+        return Err(format!(
+            "stale_approval: prompt fingerprint changed for session {}",
+            session.id
+        ));
+    }
+    Ok(())
+}
+
 /// Resolve a waiting interactive agent gate from the cockpit Decision Inbox.
 /// This is scoped to Claude's selectable permission menu (the inbox only marks
 /// rows with highlighted Yes keystroke-resolvable), so the answer is explicit:
@@ -104,6 +159,7 @@ pub async fn resolve_interactive_approval(
     app: AppHandle,
     terminal_id: String,
     decision: String,
+    expected_prompt_key: Option<String>,
 ) -> Result<(), String> {
     let approve = match decision.as_str() {
         "approve" => true,
@@ -117,6 +173,22 @@ pub async fn resolve_interactive_approval(
 
     // Menu keystrokes: select option 1 for Yes explicitly; Esc rejects.
     let keystroke: &[u8] = approval_resolution_keystroke(approve);
+
+    let session_mgr = app.state::<InteractiveSessionManager>();
+
+    // Serialize the gate-check + PTY write per terminal (same contract as the
+    // other input verbs) so a concurrent write cannot reorder on the PTY.
+    // The stale-approval fingerprint check MUST run while holding this lock:
+    // verifying before acquiring it leaves a window where a concurrent write
+    // changes the prompt between the check and the keystroke landing.
+    let write_order = terminal_write_order_lock(&terminal_id);
+    let _write_guard = write_order.lock().await;
+
+    verify_current_interactive_approval(
+        &session_mgr,
+        &terminal_id,
+        expected_prompt_key.as_deref(),
+    )?;
 
     // Audit the INTENT before the write so a crash mid-delivery still leaves a trace.
     record_audit_event(
@@ -133,11 +205,6 @@ pub async fn resolve_interactive_approval(
             "redacted": true,
         }),
     );
-
-    // Serialize the gate-check + PTY write per terminal (same contract as the
-    // other input verbs) so a concurrent write cannot reorder on the PTY.
-    let write_order = terminal_write_order_lock(&terminal_id);
-    let _write_guard = write_order.lock().await;
     let bytes = gate_ipc_input(
         &app,
         &terminal_id,
@@ -567,7 +634,42 @@ pub async fn list_panes_info(app: AppHandle) -> Vec<crate::pty::registry::PaneEn
 
 #[cfg(test)]
 mod tests {
-    use super::approval_resolution_keystroke;
+    use super::{
+        approval_resolution_keystroke, stable_text_key, verify_current_interactive_approval,
+    };
+    use crate::agent::{
+        context_lifecycle::ContextRemaining, AgentCli, InteractiveSessionInfo,
+        InteractiveSessionManager,
+    };
+
+    fn make_interactive_session(
+        id: &str,
+        pty_id: &str,
+        status: &str,
+        approval_prompt: Option<&str>,
+    ) -> InteractiveSessionInfo {
+        InteractiveSessionInfo {
+            id: id.to_string(),
+            logical_session_id: id.to_string(),
+            pty_id: pty_id.to_string(),
+            backend: "sidecar".to_string(),
+            cli: AgentCli::Claude,
+            status: status.to_string(),
+            model: "sonnet".to_string(),
+            initial_prompt: None,
+            approval_prompt: approval_prompt.map(str::to_string),
+            cwd: "/tmp".to_string(),
+            worktree_branch: None,
+            worktree_path: None,
+            repo_path: None,
+            cost: 0.0,
+            tokens_used: 0,
+            started_at: 0,
+            last_activity: 0,
+            turn_count: 0,
+            context_remaining: Some(ContextRemaining::unknown_proxy(&AgentCli::Claude, 0)),
+        }
+    }
 
     #[test]
     fn approve_keystroke_explicitly_selects_yes() {
@@ -577,5 +679,80 @@ mod tests {
     #[test]
     fn deny_keystroke_rejects_with_escape() {
         assert_eq!(approval_resolution_keystroke(false), b"\x1b");
+    }
+
+    #[test]
+    fn stable_text_key_matches_decision_inbox_vectors() {
+        assert_eq!(
+            stable_text_key("Bash(rm -rf dist) · Do you want to proceed?"),
+            "ac2f40f5"
+        );
+        assert_eq!(stable_text_key("承認🔒"), "b8c5e33a");
+    }
+
+    #[test]
+    fn current_approval_rejects_missing_expected_prompt_key() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_interactive_session(
+            "s1",
+            "pty-1",
+            "waiting_approval",
+            Some("Bash(npm test) · Do you want to proceed?"),
+        ))
+        .unwrap();
+
+        let err = verify_current_interactive_approval(&mgr, "pty-1", None).unwrap_err();
+        assert!(err.contains("stale_approval"));
+        assert!(err.contains("expected prompt fingerprint is required"));
+    }
+
+    #[test]
+    fn current_approval_rejects_session_no_longer_waiting() {
+        let mgr = InteractiveSessionManager::new();
+        let prompt = "Bash(npm test) · Do you want to proceed?";
+        mgr.register(make_interactive_session(
+            "s1",
+            "pty-1",
+            "idle",
+            Some(prompt),
+        ))
+        .unwrap();
+
+        let err =
+            verify_current_interactive_approval(&mgr, "pty-1", Some(&stable_text_key(prompt)))
+                .unwrap_err();
+        assert!(err.contains("stale_approval"));
+        assert!(err.contains("not waiting_approval"));
+    }
+
+    #[test]
+    fn current_approval_rejects_prompt_fingerprint_mismatch() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_interactive_session(
+            "s1",
+            "pty-1",
+            "waiting_approval",
+            Some("Bash(rm -rf dist) · Do you want to proceed?"),
+        ))
+        .unwrap();
+
+        let err = verify_current_interactive_approval(&mgr, "pty-1", Some("deadbeef")).unwrap_err();
+        assert!(err.contains("stale_approval"));
+        assert!(err.contains("prompt fingerprint changed"));
+    }
+
+    #[test]
+    fn current_approval_accepts_matching_prompt_fingerprint() {
+        let mgr = InteractiveSessionManager::new();
+        let prompt = "Bash(npm test) · Do you want to proceed?";
+        mgr.register(make_interactive_session(
+            "s1",
+            "pty-1",
+            "waiting_approval",
+            Some(prompt),
+        ))
+        .unwrap();
+
+        verify_current_interactive_approval(&mgr, "pty-1", Some(&stable_text_key(prompt))).unwrap();
     }
 }

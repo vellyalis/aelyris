@@ -5386,9 +5386,10 @@ button:disabled,
   }
 
   .right-panel {
-    width: clamp(260px, 40vw, 280px) !important;
-    min-width: 260px;
-    max-width: 280px;
+    flex-basis: clamp(224px, 38vw, 240px) !important;
+    width: clamp(224px, 38vw, 240px) !important;
+    min-width: 224px;
+    max-width: 240px;
   }
 }
 

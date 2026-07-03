@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(process.cwd());
@@ -8,17 +8,70 @@ const AUDIT_PATH = ".codex-auto/quality/final-goal-audit.json";
 const FINAL_GOAL_SAFE_VERIFIER_PATH = "scripts/verify-final-goal-safe.mjs";
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const CURRENT_STATE_DOCS = [
+  "AGENTS.md",
   "README.md",
   "docs/README.md",
+  "docs/AGENT_WORKFLOWS.md",
   "docs/PUBLICATION_READINESS.md",
   "docs/requirements.md",
   "docs/specs/README.md",
+  "docs/specs/WU_RT_1_CONTINUATION.md",
   "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ];
 const DETAILED_CURRENT_STATE_DOCS = new Set([
   "docs/PUBLICATION_READINESS.md",
+  "docs/specs/WU_RT_1_CONTINUATION.md",
   "docs/specs/AELYRIS_REQUIREMENTS_SPEC_DESIGN_TRACEABILITY_2026-06-27.md",
 ]);
+const STALE_DOCUMENTATION_PATTERNS = [
+  {
+    id: "stale-merge-absence-claim",
+    pattern: /No merge-to-main command exists/,
+  },
+  {
+    id: "removed-project-skill-name",
+    pattern: /\baelyris-(?:plan|fleet)\b/,
+  },
+  {
+    id: "ui-token-still-proposed",
+    pattern: /PROPOSED \(apply-ready change list, NOT applied\)/,
+  },
+  {
+    id: "old-mcp-spec-branch",
+    pattern: /codex\/release-hardening-quality-gates|Nothing here is\s+implemented yet/,
+  },
+  {
+    id: "dead-traceability-verifier",
+    pattern: /verify:mux-tmux-grade-contract|verify:native-daily-driver-terminal|FULL_NATIVE_RUST_FINAL_GOAL/,
+  },
+  {
+    id: "stale-hardening-continuation",
+    pattern:
+      /Current target: hardening completion audit from H1 through H8|target is hardening completion audit|Baseline pushed commit before this continuation refresh|71af0b0 docs: track active work orders/,
+  },
+  {
+    id: "old-hand-baked-release-score",
+    pattern: /\b35\/100\b|\b124\/351\b/,
+  },
+];
+
+function collectDocumentationPaths() {
+  const paths = ["AGENTS.md", "README.md"];
+  const stack = ["docs"];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+      const relative = join(dir, entry.name).replaceAll("\\", "/");
+      if (relative.startsWith("docs/assets/")) continue;
+      if (entry.isDirectory()) {
+        stack.push(relative);
+      } else if (entry.isFile() && /\.(md|mdx|txt)$/i.test(entry.name)) {
+        paths.push(relative);
+      }
+    }
+  }
+  return [...new Set(paths)].sort();
+}
 
 function currentLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -158,6 +211,24 @@ function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
   };
 }
 
+function staleDocumentationHits(paths) {
+  const hits = [];
+  for (const path of paths) {
+    const text = readText(path);
+    if (text == null) continue;
+    for (const stalePattern of STALE_DOCUMENTATION_PATTERNS) {
+      const match = text.match(stalePattern.pattern);
+      if (!match) continue;
+      hits.push({
+        path,
+        id: stalePattern.id,
+        match: match[0].slice(0, 160),
+      });
+    }
+  }
+  return hits;
+}
+
 const score = readJson(SCORE_PATH);
 const audit = readJson(AUDIT_PATH);
 const projectedScorePercent =
@@ -211,6 +282,8 @@ const auditResidualRiskStateValid =
 const safeProofArtifactRegistryCount = expectedSafeProofArtifactCount();
 const localDate = currentLocalDate();
 const docs = CURRENT_STATE_DOCS.map((path) => docResult(path, score, audit, safeProofArtifactRegistryCount, localDate));
+const documentationPaths = collectDocumentationPaths();
+const stalePatternHits = staleDocumentationHits(documentationPaths);
 const checks = {
   scoreExists: score != null,
   auditExists: audit != null,
@@ -232,6 +305,7 @@ const checks = {
   // authoritative score/audit state, and let verify-final-goal-safe own the
   // safe artifact invariants.
   currentStateDocsFresh: docs.every((doc) => doc.ok),
+  noKnownStaleDocumentationPatterns: stalePatternHits.length === 0,
 };
 
 const report = {
@@ -243,6 +317,11 @@ const report = {
   localDate,
   requiredDocPaths: CURRENT_STATE_DOCS,
   checkedDocCount: docs.length,
+  stalePatternScan: {
+    checkedPathCount: documentationPaths.length,
+    patterns: STALE_DOCUMENTATION_PATTERNS.map((item) => item.id),
+    hits: stalePatternHits,
+  },
   score: score
     ? {
         score: score.score,

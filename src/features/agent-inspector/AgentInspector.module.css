@@ -262,8 +262,7 @@
 .cardActive {
   --selection-accent: var(--session-accent, var(--gold));
   background:
-    linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.035)), transparent 64%),
-    var(--surface-selected);
+    linear-gradient(90deg, var(--session-subtle, rgba(200, 160, 80, 0.035)), transparent 64%), var(--surface-selected);
   /* Phase 1 H7: active shadow simplified — same 3-layer as hover
    * plus stronger session glow for selected emphasis. */
   box-shadow:
@@ -389,6 +388,51 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
   align-items: center;
+}
+.lineagePanel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+.lineageChain {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  overflow: hidden;
+}
+.lineageChain svg,
+.recycleBadge svg {
+  flex: 0 0 auto;
+}
+.lineageNode {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  color: color-mix(in srgb, var(--text-muted) 82%, var(--text-secondary));
+}
+.lineageNode span:last-child,
+.recycleBadge {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineageArrow {
+  color: color-mix(in srgb, var(--gold) 62%, var(--text-muted));
+}
+.recycleBadge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 48%;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  color: color-mix(in srgb, var(--ctp-blue) 68%, var(--text-secondary));
 }
 .navHint {
   grid-column: 1 / -1; /* Phase 1 Bento: span full grid width */

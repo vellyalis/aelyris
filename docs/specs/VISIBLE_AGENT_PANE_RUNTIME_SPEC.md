@@ -75,7 +75,7 @@ Frontend 側:
 - ready task を `PaneFleet` に dispatch。
 - command は `agent_shell_command_spec` 由来なので no `-p`。
 - each task = visible PTY pane。
-- completion は interactive TUI の exit ではなく、declared output paths が worktree に現れたかで判断する。
+- completion は interactive TUI の exit ではなく、明示 done marker を主信号にする。declared output paths は、marker 未対応 agent 向けの grace 付き後方互換 fallback。
 
 `src-tauri/src/ipc/orchestrator_commands.rs::orchestrator_step` は:
 
@@ -154,6 +154,13 @@ Visible TUI prompt delivery:
 Headless prompt delivery:
 
 - `-p <prompt>` is allowed only in `AgentManager`, `claude_oneshot`, and explicitly headless MCP tools.
+
+Loop-dispatched prompt context:
+
+- `run_step` and `run_step_visible` MUST build the same prompt prefix contract.
+- Prefix order is stable: Context Store ADR decisions, then repo-local `AGENTS.md` guidelines, then active symbol ownership, then the task title/description.
+- The `AGENTS.md` section is read from the project root and capped before insertion. Missing `AGENTS.md` contributes no section and is not an error.
+- The repo guideline section is informational prompt context only. It must not change run mode, worktree ownership, tool permission, or visible-vs-headless launch rules.
 
 ### 3.3 Presentation modes
 
@@ -262,42 +269,42 @@ Acceptance:
 Problem:
 
 - Interactive TUI sessions often never exit.
-- `PaneFleet` already supports structural completion via declared output files.
+- `PaneFleet` used to complete as soon as declared output files existed, which can kill an agent after the first save while it is still mid-refactor.
 - Tasks with `outputs: []` cannot auto-complete safely and will ride exit/timeout/manual paths.
 
 Implementation:
 
 1. For auto-dispatched visible agents, require one of:
-   - non-empty `outputs`
-   - explicit `completionMarker` path
+   - explicit backend-built done marker path
+   - non-empty `outputs` as a delayed fallback only
    - manual review mode
-2. Planner-generated tasks MUST include outputs or marker.
-3. Orchestra prompts should include the marker/output contract in the prompt.
-4. UI should label no-output tasks as "manual collect" instead of "auto merge ready".
-
-Recommended marker:
+2. Planner-generated tasks MUST include a marker contract; outputs remain useful for review and fallback but are not the primary completion signal.
+3. Loop-dispatched visible prompts MUST include the marker contract in the prompt. Prompt wording:
 
 ```text
-.aelyris/tasks/<task_id>/done.json
+[Completion marker]
+Create this file as your LAST action, after all edits, declared outputs, and self-checks are complete:
+<worktree>/.aelyris/done/<sanitized-task-id>.done
+The relative marker path is .aelyris/done/<sanitized-task-id>.done. Create parent directories if needed and write exactly: done
+Do not create the marker while work is still in progress. If blocked, leave the marker absent and state the blocker visibly.
 ```
 
-Marker shape:
+4. UI should label no-output tasks as "manual collect" instead of "auto merge ready".
 
-```json
-{
-  "taskId": "string",
-  "summary": "string",
-  "changedFiles": ["relative/path"],
-  "testsRun": ["command"],
-  "result": "done" | "blocked"
-}
-```
+Marker path contract:
+
+- Runtime builds the path from the pane worktree plus `.aelyris/done/<sanitized-task-id>.done`.
+- The task id is sanitized with the session-lifecycle handoff sanitizer; the agent never supplies the path.
+- Marker presence means completion. Outputs-only completion requires all declared output files plus a configurable idle grace window, so the first save does not complete the task.
+- A blocked agent leaves the marker absent and reports the blocker visibly; absence keeps the pane running until fallback, timeout, or operator collection.
 
 Acceptance:
 
 - Visible agents do not wedge in Running merely because the TUI remains open.
+- A marker completes immediately and then the runtime can close the still-running TUI process.
+- Outputs-only does not complete until the grace window has elapsed with the pane idle.
 - Empty-output tasks do not auto-complete immediately.
-- A blocked marker creates an attention state, not a merge-ready state.
+- A missing marker keeps the task running or attention-worthy, not merge-ready.
 
 ### WU-VP-5: Make MCP/headless naming explicit
 
@@ -351,6 +358,7 @@ New / updated gates:
 
 - Static grep gate: `agent_command_spec` and `agent_shell_command_spec` must not contain `-p` / `--print`.
 - Static doc gate: docs must not claim interactive prompt delivery uses `-p`.
+- Rust unit gate: `loop_ports` covers repo guideline header present/missing/capped behavior and proves headless plus visible pane prompt ordering.
 - Frontend unit gate: Orchestra dispatch enqueues central pane mounts for all successful visible spawns.
 - Live gate: `scripts/verify-orchestra-center-panes.mjs`.
 - Existing live gates remain:

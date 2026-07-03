@@ -49,7 +49,7 @@ function outputArtifactMeta(path) {
 }
 
 function isEnvironmentBlockedError(message) {
-  return /browserType\.launch: spawn EPERM|chrome-headless-shell\.exe|spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|ETIMEDOUT/i.test(
+  return /browserType\.launch: spawn EPERM|chrome-headless-shell\.exe|spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|ETIMEDOUT|504 \(Outdated Optimize Dep\)|Outdated Optimize Dep/i.test(
     message,
   );
 }

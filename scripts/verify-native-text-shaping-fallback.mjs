@@ -182,8 +182,8 @@ const checks = [
       '"textShapingPolicy"',
       '"systemTextShapingCapability"',
       '"textShapingBackend": text_shaping_backend',
-      "directwrite-shaped-run-consumed-fontdue-directwrite-fallback-atlas",
-      "directwrite-shaped-run-consumed-fontdue-primary-atlas-fallback-raster-pending",
+      "directwrite-shaped-run-consumed-swash-directwrite-fallback-atlas",
+      "directwrite-shaped-run-consumed-swash-primary-atlas-fallback-raster-pending",
       '"rendererConsumesSystemShapedRuns"',
       '"questionMarkSubstitutionDisabled"',
       '"fontAtlasFallbackGlyphs"',
@@ -247,15 +247,16 @@ const rendererFallbackGlyphRasterizationReady =
   rendererTextShapingIntegrated &&
   hasAll(nativeClient, [
     "fallback_font_refs",
-    "load_fontdue_font_from_path",
-    "fontdue::FontSettings",
+    "NativeRasterFont::load",
+    "render_swash_glyph",
+    "swash::FontRef",
     "collection_index",
     "font_atlas_fallback_glyphs > 0",
     "font_atlas_fallback_font_load_failures == 0",
     "font_atlas_missing_fallback_glyphs == 0",
     '"fontAtlasFallbackGlyphs"',
     '"fontAtlasFallbackFontLoadFailures"',
-    "directwrite-shaped-run-consumed-fontdue-directwrite-fallback-atlas",
+    "directwrite-shaped-run-consumed-swash-directwrite-fallback-atlas",
   ]);
 const fixturePngPath = typeof visualFixture?.png?.path === "string" ? join(ROOT, visualFixture.png.path) : null;
 const visualFixtureFresh =

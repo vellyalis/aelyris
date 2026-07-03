@@ -1,5 +1,5 @@
 import type { AgentSession } from "../types/agent";
-import { getMaxTokens } from "../types/model";
+import { agentContextPercent } from "./workstationSummary";
 
 export type BudgetWarningKind = "cost" | "context";
 
@@ -24,11 +24,7 @@ export function getBudgetWarning(
   thresholds: BudgetThresholds = DEFAULT_BUDGET_THRESHOLDS,
 ): BudgetWarningKind | null {
   if (session.cost > thresholds.perSessionCostCap) return "cost";
-  const max = getMaxTokens(session.model);
-  if (max > 0) {
-    const pct = (session.tokensUsed / max) * 100;
-    if (pct >= thresholds.contextWarnPct) return "context";
-  }
+  if (agentContextPercent(session) >= thresholds.contextWarnPct) return "context";
   return null;
 }
 

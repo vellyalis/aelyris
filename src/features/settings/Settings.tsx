@@ -7,6 +7,7 @@ import {
   sanitizeDefaultShell,
   sanitizeWindowEffect,
   type TerminalCursorStyle,
+  type TerminalRendererMode,
   type TerminalTextClarity,
   useAppStore,
   type WallpaperSettings,
@@ -62,6 +63,10 @@ const TERMINAL_TEXT_CLARITY_OPTIONS: { value: TerminalTextClarity; label: string
   { value: "balanced", label: "Balanced" },
   { value: "solid", label: "Sharp" },
   { value: "glass", label: "Glass" },
+];
+const TERMINAL_RENDERER_OPTIONS: { value: TerminalRendererMode; label: string }[] = [
+  { value: "canvas2d", label: "Canvas2D" },
+  { value: "webgl2", label: "WebGL2 Atlas" },
 ];
 // UI (app-chrome) font choices. Each value is a full font stack so the chosen
 // primary always has sensible cross-platform fallbacks. The persisted
@@ -248,6 +253,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const setTerminalAppearance = useAppStore((s) => s.setTerminalAppearance);
   const storeTerminalTextClarity = useAppStore((s) => s.terminalTextClarity);
   const storeTerminalSurfaceOpacity = useAppStore((s) => s.terminalSurfaceOpacity);
+  const storeTerminalRendererMode = useAppStore((s) => s.terminalRendererMode);
   const setStoreCursorStyle = useAppStore((s) => s.setCursorStyle);
   const setStoreCursorBlink = useAppStore((s) => s.setCursorBlink);
   const setStoreDefaultShell = useAppStore((s) => s.setDefaultShell);
@@ -261,6 +267,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [fontSize, setFontSize] = useState(14);
   const [terminalTextClarity, setTerminalTextClarity] = useState<TerminalTextClarity>(storeTerminalTextClarity);
   const [terminalSurfaceOpacity, setTerminalSurfaceOpacity] = useState(storeTerminalSurfaceOpacity);
+  const [terminalRendererMode, setTerminalRendererMode] = useState<TerminalRendererMode>(storeTerminalRendererMode);
   const [lineHeight, setLineHeight] = useState(1.4);
   const [ligatures, setLigatures] = useState(true);
   const [defaultShell, setDefaultShell] = useState("powershell");
@@ -315,6 +322,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setFontSize(cfg.appearance.font_size);
       setTerminalTextClarity(cfg.appearance.terminal_text_clarity ?? "solid");
       setTerminalSurfaceOpacity(cfg.appearance.terminal_surface_opacity ?? storeTerminalSurfaceOpacity);
+      setTerminalRendererMode(storeTerminalRendererMode);
       setLineHeight(cfg.appearance.line_height);
       setLigatures(cfg.appearance.ligatures);
       setUiFont(matchUiFontValue(cfg.appearance.ui_font_family));
@@ -334,6 +342,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         surfaceOpacity: cfg.appearance.terminal_surface_opacity,
         lineHeight: cfg.appearance.line_height,
         ligatures: cfg.appearance.ligatures,
+        rendererMode: storeTerminalRendererMode,
       });
       return;
     }
@@ -354,6 +363,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setFontSize(cfg.appearance.font_size);
         setTerminalTextClarity(cfg.appearance.terminal_text_clarity ?? "solid");
         setTerminalSurfaceOpacity(cfg.appearance.terminal_surface_opacity ?? storeTerminalSurfaceOpacity);
+        setTerminalRendererMode(useAppStore.getState().terminalRendererMode);
         setLineHeight(cfg.appearance.line_height);
         setLigatures(cfg.appearance.ligatures);
         setUiFont(matchUiFontValue(cfg.appearance.ui_font_family));
@@ -371,6 +381,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
           surfaceOpacity: cfg.appearance.terminal_surface_opacity,
           lineHeight: cfg.appearance.line_height,
           ligatures: cfg.appearance.ligatures,
+          rendererMode: useAppStore.getState().terminalRendererMode,
         });
         // Rehydrate from disk so config.toml is the source of truth — this
         // corrects the localStorage bootstrap value if the user edited the
@@ -399,6 +410,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
     replaceWallpaperSettingsByMood,
     setTerminalAppearance,
     storeTerminalSurfaceOpacity,
+    storeTerminalRendererMode,
   ]);
 
   const markEdited = () => {
@@ -512,6 +524,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         surfaceOpacity: terminalSurfaceOpacity,
         lineHeight,
         ligatures,
+        rendererMode: terminalRendererMode,
       });
       setStoreCursorStyle(cursorStyle as TerminalCursorStyle);
       setStoreCursorBlink(cursorBlink);
@@ -571,6 +584,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
           surfaceOpacity: terminalSurfaceOpacity,
           lineHeight,
           ligatures,
+          rendererMode: terminalRendererMode,
         });
         setStoreCursorStyle(cursorStyle as TerminalCursorStyle);
         setStoreCursorBlink(cursorBlink);
@@ -702,9 +716,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 <label className={styles.label} htmlFor="settings-terminal-surface-opacity">
                   Terminal surface opacity
                 </label>
-                <p className={styles.materialHint}>
-                  Lower values make only the backing clearer; glyphs stay solid.
-                </p>
+                <p className={styles.materialHint}>Lower values make only the backing clearer; glyphs stay solid.</p>
                 <div className={styles.materialRow}>
                   <span className={styles.materialColorPreview} aria-hidden="true" />
                   <input
@@ -1001,6 +1013,23 @@ export function Settings({ visible, onClose }: SettingsProps) {
                         setTerminalAppearance({ lineHeight: Math.min(2, Math.max(1, raw)) });
                       }
                     }}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="settings-terminal-renderer">
+                    Renderer
+                  </label>
+                  <Select
+                    id="settings-terminal-renderer"
+                    value={terminalRendererMode}
+                    onValueChange={(next) => {
+                      markEdited();
+                      const rendererMode = next as TerminalRendererMode;
+                      setTerminalRendererMode(rendererMode);
+                      setTerminalAppearance({ rendererMode });
+                    }}
+                    options={TERMINAL_RENDERER_OPTIONS}
+                    ariaLabel="Terminal renderer"
                   />
                 </div>
               </div>

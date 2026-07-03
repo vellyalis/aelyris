@@ -16,7 +16,8 @@ import { chromium } from "@playwright/test";
 const APP_URL = process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_URL ?? "http://localhost:1420/";
 const PROJECT_PATH = (process.env.AELYRIS_TAURI_PROJECT ?? process.cwd()).replaceAll("\\", "/");
 const OUT =
-  process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_OUT ?? ".codex-auto/production-smoke/right-rail-command-evidence.json";
+  process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_OUT ??
+  ".codex-auto/production-smoke/right-rail-command-evidence.json";
 const SCREENSHOT =
   process.env.AELYRIS_RIGHT_RAIL_COMMAND_EVIDENCE_SCREENSHOT ??
   ".codex-auto/visual/right-rail-review-fixture-command-evidence.png";
@@ -39,8 +40,15 @@ function writeArtifact() {
 }
 
 function isEnvironmentUnavailable() {
-  return report.errors.some((error) =>
-    /spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|browserType\.launch/i.test(String(error)),
+  const messages = [
+    ...report.errors,
+    ...(Array.isArray(report.checks?.consoleErrors) ? report.checks.consoleErrors : []),
+    ...(Array.isArray(report.checks?.pageErrors) ? report.checks.pageErrors : []),
+  ];
+  return messages.some((error) =>
+    /spawn EPERM|Cannot open .*Start the dev server first|ECONNREFUSED|browserType\.launch|504 \(Outdated Optimize Dep\)|Outdated Optimize Dep/i.test(
+      String(error),
+    ),
   );
 }
 
@@ -187,6 +195,16 @@ async function readGoalTrack(page) {
   });
 }
 
+async function openEvidenceDrawer(page) {
+  const drawer = page.locator("details.right-panel-evidence-drawer").first();
+  await drawer.waitFor({ state: "attached", timeout: WAIT_MS });
+  const alreadyOpen = await drawer.evaluate((element) => element.hasAttribute("open"));
+  if (!alreadyOpen) {
+    await page.locator("details.right-panel-evidence-drawer > summary").first().click();
+  }
+  await page.waitForSelector(".right-panel-goal-track", { state: "visible", timeout: WAIT_MS });
+}
+
 function isAuthenticatedPromptBlocker(value) {
   return /authenticated[-\s]?ai[-\s]?cli[-\s]?prompt|authenticated AI CLI prompt|token-spend consent/i.test(
     String(value ?? ""),
@@ -210,7 +228,8 @@ async function main() {
     await seedQaStorage(page);
     await page.goto(targetQaUrl(), { waitUntil: "domcontentloaded", timeout: WAIT_MS });
     await page.waitForSelector('[data-widget="review-queue"]', { timeout: WAIT_MS });
-    await page.waitForSelector(".right-panel-goal-track", { state: "visible", timeout: WAIT_MS });
+    await openEvidenceDrawer(page);
+    report.checks.evidenceDrawerOpened = true;
     report.checks.goalTrack = await readGoalTrack(page);
 
     const provenance = page.getByRole("group", { name: "Provenance for src/App.tsx" });
@@ -249,7 +268,14 @@ async function main() {
     report.checks.pageErrors = quality.pageErrors;
 
     if (quality.consoleErrors.length > 0 || quality.pageErrors.length > 0) {
-      throw new Error("Console or page errors appeared during command evidence smoke");
+      throw new Error(
+        `Console or page errors appeared during command evidence smoke: ${[
+          ...quality.consoleErrors,
+          ...quality.pageErrors,
+        ]
+          .slice(0, 4)
+          .join(" | ")}`,
+      );
     }
     if (!report.checks.emittedEvidence || report.checks.emittedEvidence.terminalId !== "qa-review-shell") {
       throw new Error("Command evidence event did not target qa-review-shell");
@@ -274,9 +300,13 @@ async function main() {
       throw new Error("Final goal track did not expose terminal boundary proofs");
     }
     if (
-      !["native-input-host", "native-hwnd-paste", "chunked-osc-inline-image", "release-hygiene", "safe-proof-chain"].every(
-        (id) => report.checks.goalTrack.boundaryProofs.some((item) => item.id === id),
-      )
+      ![
+        "native-input-host",
+        "native-hwnd-paste",
+        "chunked-osc-inline-image",
+        "release-hygiene",
+        "safe-proof-chain",
+      ].every((id) => report.checks.goalTrack.boundaryProofs.some((item) => item.id === id))
     ) {
       throw new Error("Final goal track terminal boundary proof set is incomplete");
     }
@@ -288,7 +318,9 @@ async function main() {
           item.costClass === "no-token",
       )
     ) {
-      throw new Error("Final goal track terminal boundary proofs did not expose artifact paths and no-token refresh commands");
+      throw new Error(
+        "Final goal track terminal boundary proofs did not expose artifact paths and no-token refresh commands",
+      );
     }
     const riskRemaining = report.checks.goalTrack.remaining.some((item) => /risk or blocker node/.test(item));
     if (riskRemaining && report.checks.goalTrack.riskEvidence.length === 0) {

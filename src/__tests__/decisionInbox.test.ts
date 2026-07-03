@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildDecisionInbox, isTrueHumanDecisionKind } from "../shared/lib/decisionInbox";
 import type { AgentFleetSession } from "../shared/lib/agentFleet";
+import { buildDecisionInbox, isTrueHumanDecisionKind, stableTextKey } from "../shared/lib/decisionInbox";
 
 import type { AuditEventRecord } from "../shared/types/audit";
 
@@ -184,6 +184,7 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems[0]).toMatchObject({
       sessionId: "int-wait",
       ptyId: "pty-7",
+      approvalPromptKey: "ac2f40f5",
       // Classified from the captured command: `rm -rf` is destructive, so the
       // row keeps a critical badge instead of a flat medium "permission".
       type: "destructive_operation",
@@ -195,6 +196,47 @@ describe("decisionInbox", () => {
     // The captured menu is shown so the human sees WHAT they approve (P2-A).
     expect(inbox.pendingItems[0].context).toContain("rm -rf dist");
   });
+
+  it("keeps the approval prompt fingerprint aligned with the backend vector", () => {
+    expect(stableTextKey("Bash(rm -rf dist) · Do you want to proceed?")).toBe("ac2f40f5");
+    expect(stableTextKey("承認🔒")).toBe("b8c5e33a");
+  });
+
+  it("includes durable lineage and recycle state in interactive decision evidence", () => {
+    const inbox = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-lineage", {
+          name: "codex interactive",
+          status: "waiting",
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-lineage",
+          cli: "codex",
+          approvalPrompt: "Bash(npm test) · Do you want to proceed?",
+          logicalSessionId: "logical-child",
+          predecessorSessionId: "logical-parent",
+          lineage: [
+            { logicalSessionId: "logical-parent", checkpointSeq: 1 },
+            { logicalSessionId: "logical-child", checkpointSeq: 2, predecessorSessionId: "logical-parent" },
+          ],
+          recycleStatus: {
+            predecessorId: "logical-parent",
+            successorId: "logical-child",
+            handoffSeq: 1,
+            state: "successor_acked",
+            correlationId: "session-handoff-logical-parent-1",
+            updatedAt: 123,
+          },
+        }),
+      ],
+    });
+
+    expect(inbox.pendingCount).toBe(1);
+    expect(inbox.pendingItems[0].evidence).toContain("lineage=logical-parent->logical-child");
+    expect(inbox.pendingItems[0].evidence).toContain("recycle=successor_acked#1");
+  });
+
   it("keeps the full interactive approval prompt before render clipping", () => {
     const prefix = "echo safe && ".repeat(45);
     const tail = " && echo done".repeat(45);
@@ -224,7 +266,6 @@ describe("decisionInbox", () => {
     expect(inbox.pendingItems[0].context.length).toBeGreaterThan(300);
     expect(inbox.pendingItems[0].context).toContain("rm -rf C:/danger");
   });
-
 
   it("classifies a benign interactive approval as a plain permission gate", () => {
     const inbox = buildDecisionInbox({

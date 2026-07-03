@@ -57,11 +57,11 @@ alacritty_terminal = "0.26"
 wgpu = { version = "28.0.0", default-features = false, features = ["std", "dx12", "wgsl"] }
 pollster = "0.4"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
-fontdue = "0.9"
+swash = "0.2.9"
 png = "0.17"
 
 # Git operations
-git2 = "0.20"
+git2 = "0.21"
 
 # Config
 toml = "0.8"
@@ -95,8 +95,9 @@ regex = "1"
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# YAML workflow definitions
-serde_yaml = "0.9"
+# YAML workflow definitions. Keep the Rust import name stable while using the
+# maintained fork so workflow parsing call sites stay untouched.
+serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
 
 # File system watching
 notify = { version = "8.2.0", features = ["macos_kqueue"] }
