@@ -9,16 +9,15 @@ older RT-1-only task lists.
 ## Current Branch
 
 - Repo: `C:\Users\owner\Aether_Terminal`
-- Branch: `feat/wu-rt-1-context-lifecycle`
-- Latest completed local commits before this documentation correction:
-  - `df92a59 docs: refresh hardening machine truth`
-  - `f59fda4 fix: align hardening gates with current evidence`
-  - `602c81d docs: align hardening continuation gate`
-- Push status: not pushed by Codex. Recheck with `git status --short --branch`
-  before any next action.
-- Known pre-existing dirty file at this refresh: `scripts/verify-stack-risk.mjs`
-  may contain stack-risk proof-basis hardening. Do not overwrite it. If still
-  present, classify and commit it as its own phase before unrelated work.
+- Branch: `main`
+- Latest pushed commits at this refresh:
+  - `bc4e08f fix: align final goal external gate truth`
+  - `3367acb fix: persist command evidence start anchors`
+  - `c29c74d fix: harden native hwnd paste proof`
+- Push status: `main` has been pushed to `origin/main` through `bc4e08f`.
+  Recheck with `git status --short --branch` before any next action.
+- Known dirty files at this refresh: none. If the next session starts dirty,
+  classify that diff before unrelated work and do not overwrite it.
 
 Do not push to `main`, do not force-push, and do not open or merge a PR from an
 agent session. Owner controls merge timing.
@@ -119,7 +118,7 @@ Use them as local evidence only after rerunning the owning verifier.
 Pasteable goal for the cleared session:
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/README.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/WU_RT_1_CONTINUATION.md を順に読み、current machine truth を確認する。refactor と hardening H1-H8 は repo-owned completion audit 済みとして再実装しない。git status に scripts/verify-stack-risk.mjs の未コミット差分が残っていれば、それを別 phase として検証・commit する。その後は renderer follow-up または外部/operator gate handoff のどちらか1つだけを選ぶ。明示 stage、one phase = one commit、main/PR/force push 禁止。
+/goal C:\Users\owner\Aether_Terminal で git status --short --branch を確認し、AGENTS.md -> docs/README.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/WU_RT_1_CONTINUATION.md を順に読み、current machine truth を確認する。refactor と hardening H1-H8 は repo-owned completion audit 済みとして再実装しない。git status が dirty なら差分を先に分類する。その後は renderer follow-up または外部/operator gate handoff のどちらか1つだけを選ぶ。明示 stage、one phase = one commit、追加 push/PR/force push 禁止。
 ```
 
 Suggested first commands:
