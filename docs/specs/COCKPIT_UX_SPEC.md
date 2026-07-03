@@ -1,5 +1,11 @@
 # Cockpit UX Spec — Multi-Agent Dev Cockpit
 
+> **STATUS (2026-07-02): SHIPPED 2026-06-30** (PR #3 cockpit surfaces, PR #4 approval
+> inbox). Statements below like "a NEW merge backend" being missing or `useAgentFleet`
+> being a precondition describe June's **pre-implementation** state — the shipped
+> owners are `src-tauri/src/ipc/merge_commands.rs`, `src/shared/hooks/useAgentFleet.ts`,
+> and `src/features/decision-inbox/`. Body kept as the original design record.
+
 > Status: design spec (analysis only — no source changes)
 > Date: 2026-06-13
 > Scope: the operator-facing surfaces for supervising 3–4 Claude/Codex agents, each in its own git worktree.

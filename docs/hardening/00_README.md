@@ -1,5 +1,7 @@
 # Aelyris Runtime Hardening — ドキュメント一式
 
+> **STATUS (2026-07-02): P1-P5 + E1 landed on master in June 2026; E2/E3 remain design-only. This directory is the historical hardening program record.**
+
 > **目的**: Agent Runtime Core（AI組織OSの心臓部）を「単一オペレータ・単一プロジェクト・ローカル専用」でも **再起動で会社が消えない / 連絡漏れゼロ / 詰まり自動エスカレーション** な堅牢基盤へ引き上げる。負債を残さず、理想粒度でモジュール化し、常に変更しやすい状態を保つ。
 >
 > **作成**: 2026-06-20 / **ブランチ**: `feat/runtime-hardening`（base `feat/autonomy-visible-panes` HEAD `d660a62`）
@@ -46,7 +48,7 @@
 
 | Phase | テーマ | 解消する弱点 | 状態 |
 |-------|-------|------------|------|
-| **P1** | 永続化（ContextStore + TaskGraph → SQLite write-through + 起動時復元） | 再起動で会社が消える | ⬜ 未着手 |
+| **P1** | 永続化（ContextStore + TaskGraph → SQLite write-through + 起動時復元） | 再起動で会社が消える | ✅ (P1-5b 手動GUI確認のみ⬜ — 下のトラッカー参照) |
 | **P2** | 並行耐久性の証明（自動）+ 実LLM中規模実走（手動受入） | Core未実戦の不安 | 🟡 |
 | **P3** | Event Bus 無損失化（durable log + seqカーソル + 自己回復） | 連絡漏れ | ✅ |
 | **P4** | Supervisor実体（escalation durable化）+ C-22回帰 | 詰まり放置 | ✅ |

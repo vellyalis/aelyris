@@ -1,7 +1,7 @@
 # Aelyris Requirements / Spec / Design Traceability
 
 Date: 2026-06-27 JST
-Last reviewed: 2026-07-03 JST
+Last reviewed: 2026-06-29 JST
 Status: active traceability map
 
 This document answers the process question:
@@ -25,27 +25,19 @@ work cannot rely on scattered narrative docs.
 
 | Requirement | Specification | Implementation design | Verifier / artifact | Current status |
 | --- | --- | --- | --- | --- |
-| Current truth must override stale green evidence. | `docs/specs/README.md` do-not-break docs, `docs/requirements.md` verification table | G1 current-readiness hierarchy, G6 aggregate gate | `pnpm verify:current-readiness-source`, `.codex-auto/quality/current-readiness-source.json`; `pnpm verify:release-readiness-aggregate`, `.codex-auto/quality/release-readiness-aggregate.json` | BLOCK by design; stale promotion gate demoted. |
-| Fallbacks must not unlock product claims. | `docs/requirements.md` §3A | G1 anti-debt and G4/G5 fallback blockers | `pnpm verify:anti-debt-claim-contract`, `pnpm verify:mux-fallback-blocker`, `pnpm verify:native-text-shaping-fallback` | PASS/REVIEW; fallback paths remain claim-blocking. |
+| Current truth must override stale green evidence. | `docs/specs/README.md` do-not-break docs, `docs/requirements.md` "Current Machine Truth" section | G1 current-readiness hierarchy, G6 aggregate gate | `pnpm verify:current-readiness-source`, `.codex-auto/quality/current-readiness-source.json`; `pnpm verify:release-readiness-aggregate`, `.codex-auto/quality/release-readiness-aggregate.json` | BLOCK by design; stale promotion gate demoted. |
+| Fallbacks must not unlock product claims. | `docs/requirements.md` "Current Claim Policy" section | G1 anti-debt and G4/G5 fallback blockers | `pnpm verify:anti-debt-claim-contract`, `pnpm verify:mux-fallback-blocker`, `pnpm verify:native-text-shaping-fallback` | PASS/REVIEW; fallback paths remain claim-blocking. |
 | tmux-grade mux must prove durable sessions, window/client lifecycle, multi-client attach, replay, control, restore, process preservation, and no fallback claim. | Gap audit tmux section, mux source contracts | G4 tmux-grade mux closure | `pnpm verify:mux-window-session-model`, `pnpm verify:mux-durability-contract`, `pnpm verify:mux-multiclient-attach`, `pnpm verify:mux-fallback-blocker`, `pnpm verify:mux-live`, `pnpm verify:mux-live-process-preservation` | BLOCK in aggregate because live restore proof is `environment-blocked` by Node child-process `spawn EPERM` on this machine. Backend session/window/client model, read-only attach, controller lease, replay, daemon-live same-process detach/reattach, and fallback blocking are now machine-checked. |
 | The shared AI team OS must share backend truth across MCP, UI, merge, ownership, shared brain, restart replay, and agent orchestration. | `MCP_TOOL_SURFACE_SPEC.md`, `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`, `docs/specs/README.md` | G2/G3 shared brain, durable merge, ownership persistence | `pnpm verify:durable-merge-unification`, `pnpm verify:security-merge-intent-binding`, `pnpm verify:shared-brain-ownership-persistence`, `pnpm verify:shared-brain-restart-replay`, `pnpm verify:goal:orchestration`, `pnpm verify:upper-compat` | BLOCK in aggregate: restart replay is `environment-blocked` without an authenticated live Aelyris API token/two-phase app restart proof, and agent-team readiness remains blocked by mux live restore plus upper-compat host proof gates. |
-| Native-terminal quality requires current native operator proof, system text shaping/fallback, visual regression, IME/paste/resize/sleep/reconnect evidence. | Gap audit native section and terminal/native modules | G5 native terminal closure | `pnpm verify:native-text-shaping-fallback`, `pnpm verify:native-operator-primary-terminal`, `pnpm verify:native-visual-regression`, `pnpm verify:terminal:native-boundary` | BLOCK. The native text-shaping, native-client, native-input, HWND paste, and native visual QA subclaims are current, but full native-terminal quality remains blocked by native boundary, primary-shell full-native readiness, process reconnect/OSC, and real sleep/resume visual proof. |
-| Release readiness must include the aggregate readiness gate and cannot pass while tmux/shared-workspace/native-terminal claims are blocked. | Release hardening audit and score model | G6 aggregate gate plus release-score integration | `pnpm verify:quality-score`, `.codex-auto/quality/release-quality-score.json` | BLOCK. Current score is `71/100`, `249/351`, grade `D`, `releaseCandidateReady=false`; the final-goal evidence-map is awarded, but release remains blocked by external/operator/upstream gates. |
+| Native-terminal quality requires current native daily-driver proof, system text shaping/fallback, visual regression, IME/paste/resize/sleep/reconnect evidence. | No dedicated spec (gap): the native-terminal final goal is currently defined only by its verifiers and terminal/native modules, not by a spec document in `docs/specs/` | G5 native terminal closure | `pnpm verify:native-text-shaping-fallback`, `pnpm verify:native-operator-primary-terminal`, `pnpm verify:native-visual-regression`, `pnpm verify:terminal:native-boundary` | BLOCK. The native text-shaping, native-client, native-input, HWND paste, and native visual QA subclaims are current, but full native-terminal quality remains blocked by native boundary, primary-shell full-native readiness, process reconnect/OSC, and real sleep/resume visual proof. |
+| Release readiness must include the aggregate readiness gate and cannot pass while tmux/shared-workspace/native-terminal claims are blocked. | Release hardening audit and score model | G6 aggregate gate plus release-score integration | `pnpm verify:quality-score`, `.codex-auto/quality/release-quality-score.json` | BLOCK while `releaseCandidateReady=false` in the artifact. Current score/grade values live in `.codex-auto/quality/release-quality-score.json`; regenerate with `pnpm verify:quality-score`; never trust prose numbers. |
 | Aelyris must not claim strict `agmsg` superset behavior until durable addressed messaging, delivery policy, role leases, directives, driver trust, and replay/no-loss gates pass. | `AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md` | AMB-1 through AMB-10 agent-message work units | Planned: `pnpm verify:agent-message:contract`, `pnpm verify:agent-message:delivery`, `pnpm verify:agent-role-lease`, `pnpm verify:agent-directive-gate`, `pnpm verify:agent-driver-trust`, `pnpm verify:agent-message:watch-once`, `pnpm verify:agent-message:ui-smoke`, `pnpm verify:agent-message:replay`, `pnpm verify:agmsg-superset` | BLOCK. Spec and plan exist; implementation and gates are not complete. |
-| Terminal renderer claims must stay behind measured gates, and WebGL2 must not default on while current Stage 1 performance is worse than Canvas2D. | `TERMINAL_CORE_DESIGN.md` | WU-TC-1a through WU-TC-1f terminal renderer plan | `pnpm verify:renderer:parity`, `pnpm verify:renderer:perf`, `pnpm verify:renderer:transparency`, `pnpm verify:renderer:soak`, `pnpm verify:terminal:font-render` | REVIEW/BLOCK for default flip. R6 artifact proposes `canvas2d` default; WebGL2 remains opt-in until owner-approved performance evidence changes the decision. |
 | Modularity and implementation grain must remain visible. | `docs/specs/README.md` shared contract and god-file decomposition, release design anti-debt rules | Modularity boundary contract | `pnpm verify:modularity-boundary`, `.codex-auto/quality/modularity-boundary-contract.json` | REVIEW. Gate is green as advisory baseline; known large files remain tracked debt. |
 | Requirements, specs, design docs, and gate artifacts must stay synchronized. | `docs/requirements.md`, `docs/specs/README.md`, this traceability map | G6 documentation traceability guard | `pnpm verify:requirements-spec-design-traceability`, `.codex-auto/quality/requirements-spec-design-traceability.json` | PASS when docs are connected to current blockers; does not unlock product claims. |
 
 ## Current Gate Residuals
 
-Current final audit status is `blocked-by-external-gates`:
-`implementationFixableCount=0`, `policyBlockedCount=0`,
-`externalBlockedCount=27`. Safe proof registry coverage is `28/28`. The
-token-spending gate is
-`authenticated-ai-cli-prompt-smoke`; the consent packet is
-`authenticated-ai-cli-consent-packet`; prompt execution requires
-`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus the documented consent
-environment.
+The final audit status and its residual counts (`implementationFixableCount`, `policyBlockedCount`, `externalBlockedCount`) live in `.codex-auto/quality/final-goal-audit.json`; regenerate with `pnpm verify:final-goal-audit`; never trust prose numbers. The token-spending gate is `authenticated-ai-cli-prompt-smoke`; the consent packet is `authenticated-ai-cli-consent-packet`; prompt execution requires `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` plus explicit consent.
 
 ## Active Design Status
 
@@ -87,9 +79,10 @@ The implementation is not only docs. Source and verifier work has landed for:
    run on a host where Node/Cargo child process launch is allowed.
 
 5. Release:
-   `score-release-quality` remains `D` at `71/100` (`249/351`) after the final
-   evidence-map loop is awarded. The aggregate readiness gate is a release-score
-   blocker and must stay that way until all claims pass.
+   read the current score and grade from
+   `.codex-auto/quality/release-quality-score.json` (regenerate with
+   `pnpm verify:quality-score`); the aggregate readiness gate is now a
+   release-score blocker and must stay that way until all claims pass.
 
 ## Maintenance Rules
 
@@ -101,3 +94,7 @@ The implementation is not only docs. Source and verifier work has landed for:
   claim-blocking until the removal gate passes.
 - Update `docs/requirements.md`, `docs/specs/README.md`, and this file when the
   authoritative requirement path changes.
+
+
+
+
