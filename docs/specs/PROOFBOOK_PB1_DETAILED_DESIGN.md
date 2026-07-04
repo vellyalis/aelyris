@@ -10,6 +10,18 @@ Companion to (does not replace) `PROOFBOOK_AUTOMATION_SPEC.md`. Read that spec's
 §0 claim boundary, §4 domain model, §5 step types, §7 safety, and §11 roadmap
 first.
 
+Source-of-truth precedence:
+
+- `PROOFBOOK_AUTOMATION_SPEC.md` remains the parent authority for product
+  requirements, Scape differentiation, phase roadmap, claim boundary, and PB-2+
+  behavior.
+- `PROOFBOOK_PB1_DETAILED_DESIGN.md` is the authority for PB-1 implementation
+  details within the file scope, wiring, error taxonomy, and focused test matrix
+  documented here.
+- If the two documents conflict inside PB-1 implementation scope, update both
+  documents and `scripts/verify-proofbook-spec.mjs` in the same phase before
+  coding.
+
 Last reviewed: 2026-07-04 JST.
 
 ---

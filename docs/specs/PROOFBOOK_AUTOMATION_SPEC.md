@@ -474,11 +474,23 @@ Status: required before PB-1 runtime code. PB-1D is a docs/verifier gate only.
 It does not create `src-tauri/src/proofbook`, IPC handlers, MCP verbs, a runner,
 run ledgers, UI, DB tables, or executable Proofbooks.
 
+PB-1 source-of-truth integration:
+
+- `docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md` is the PB-1 implementation
+  blueprint.
+- For PB-1 implementation conflicts, `PROOFBOOK_PB1_DETAILED_DESIGN.md` wins
+  inside the PB-1 file scope and focused test matrix.
+- `PROOFBOOK_AUTOMATION_SPEC.md` remains the authority for product
+  requirements, phase roadmap, claim boundary, and PB-2+ behavior.
+- Any change to PB-1 implementation scope must update this spec, the detailed
+  design, and `scripts/verify-proofbook-spec.mjs` in the same phase.
+
 PB-1D owner scope:
 
 - Design files touched by PB-1D:
   `docs/specs/PROOFBOOK_AUTOMATION_SPEC.md` and
-  `scripts/verify-proofbook-spec.mjs`.
+  `docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md`, with
+  `scripts/verify-proofbook-spec.mjs` enforcing the relationship.
 - Future PB-1 implementation spine:
   `src-tauri/src/proofbook/mod.rs`,
   `src-tauri/src/proofbook/types.rs`,

@@ -7,6 +7,7 @@ const OUT = join(ROOT, ".codex-auto", "quality", "proofbook-spec.json");
 
 const paths = {
   spec: "docs/specs/PROOFBOOK_AUTOMATION_SPEC.md",
+  pb1DetailedDesign: "docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md",
   specIndex: "docs/specs/README.md",
   packageJson: "package.json",
 };
@@ -89,6 +90,7 @@ function writeJsonAtomic(path, value) {
 }
 
 const spec = readText(paths.spec);
+const pb1DetailedDesign = readText(paths.pb1DetailedDesign);
 const specIndex = readText(paths.specIndex);
 const packageJson = readText(paths.packageJson);
 const normalizedSpec = normalize(spec);
@@ -215,6 +217,33 @@ const pb1dErrorCodes = [
 ];
 const missingPb1dClauses = missingFromNormalized(spec, requiredPb1dClauses);
 const missingPb1dErrorCodes = missingFrom(spec, pb1dErrorCodes);
+const requiredPb1dIntegrationClauses = [
+  "`docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md` is the PB-1 implementation blueprint.",
+  "For PB-1 implementation conflicts, `PROOFBOOK_PB1_DETAILED_DESIGN.md` wins inside the PB-1 file scope and focused test matrix.",
+  "`PROOFBOOK_AUTOMATION_SPEC.md` remains the authority for product requirements, phase roadmap, claim boundary, and PB-2+ behavior.",
+  "Any change to PB-1 implementation scope must update this spec, the detailed design, and `scripts/verify-proofbook-spec.mjs` in the same phase.",
+];
+const missingPb1dIntegrationClauses = missingFromNormalized(spec, requiredPb1dIntegrationClauses);
+const requiredPb1dBlueprintClauses = [
+  "Source-of-truth precedence:",
+  "`PROOFBOOK_AUTOMATION_SPEC.md` remains the parent authority for product requirements, Scape differentiation, phase roadmap, claim boundary, and PB-2+ behavior.",
+  "`PROOFBOOK_PB1_DETAILED_DESIGN.md` is the authority for PB-1 implementation details within the file scope, wiring, error taxonomy, and focused test matrix documented here.",
+  "If the two documents conflict inside PB-1 implementation scope, update both documents and `scripts/verify-proofbook-spec.mjs` in the same phase before coding.",
+  "Status: **design gate only",
+  "Companion to (does not replace) `PROOFBOOK_AUTOMATION_SPEC.md`.",
+  "ProofbookError は thiserror + Serialize",
+  "schema struct は rename_all=camelCase",
+  "step.kind は String で保持し validator で from_wire 解決して unknown_step_type を出す。",
+  "runner/ledger/MCP/UI/.manage は作らない。",
+];
+const missingPb1dBlueprintClauses = missingFromNormalized(pb1DetailedDesign, requiredPb1dBlueprintClauses);
+const requiredPb1dIndexClauses = [
+  "[PROOFBOOK_PB1_DETAILED_DESIGN.md](./PROOFBOOK_PB1_DETAILED_DESIGN.md)",
+  "PB-1 implementation blueprint",
+  "PB-1 schema/parser/validator + list/validate IPC",
+  "Proofbooks 実装済みclaimではない",
+];
+const missingPb1dIndexClauses = missingFromNormalized(specIndex, requiredPb1dIndexClauses);
 const goalPacketsWithoutDesignGate = roadmapIds
   .filter((id) => id !== "PB-0")
   .filter((id) => {
@@ -336,6 +365,15 @@ const checks = [
     { missingPb1dClauses, missingPb1dErrorCodes },
   ),
   check(
+    "spec-pb1d-blueprint-integrated",
+    existsSync(fullPath(paths.pb1DetailedDesign)) &&
+      missingPb1dIntegrationClauses.length === 0 &&
+      missingPb1dBlueprintClauses.length === 0 &&
+      missingPb1dIndexClauses.length === 0,
+    "Proofbook PB-1 detailed design is explicitly integrated as the PB-1 implementation blueprint without replacing the parent automation spec",
+    { missingPb1dIntegrationClauses, missingPb1dBlueprintClauses, missingPb1dIndexClauses },
+  ),
+  check(
     "spec-goal-packets",
     missingGoalPackets.length === 0 &&
       goalPacketsWithoutDesignGate.length === 0 &&
@@ -376,9 +414,16 @@ const report = {
   ok: failed.length === 0,
   status: failed.length === 0 ? "pass-proofbook-spec-contract" : "fail-proofbook-spec-contract",
   generatedAt: new Date().toISOString(),
-  sourcePaths: [paths.spec, paths.specIndex, paths.packageJson, "scripts/verify-proofbook-spec.mjs"],
+  sourcePaths: [
+    paths.spec,
+    paths.pb1DetailedDesign,
+    paths.specIndex,
+    paths.packageJson,
+    "scripts/verify-proofbook-spec.mjs",
+  ],
   sourceCutoffMs: Math.max(
     mtime(paths.spec),
+    mtime(paths.pb1DetailedDesign),
     mtime(paths.specIndex),
     mtime(paths.packageJson),
     mtime("scripts/verify-proofbook-spec.mjs"),
