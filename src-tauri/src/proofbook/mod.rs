@@ -10,12 +10,12 @@ pub(crate) mod validator;
 
 pub use errors::{ProofbookError, ProofbookErrorCode};
 pub use ledger::{
-    ProofbookArtifactRef, ProofbookGateDecision, ProofbookResidualBlocker, ProofbookRunError,
-    ProofbookRunEvent, ProofbookRunLedger, ProofbookRunStatus, ProofbookStepStatus,
-    PROOFBOOK_RUN_SCHEMA_V1,
+    hash_json, normalize_path, ProofbookArtifactRef, ProofbookGateDecision,
+    ProofbookResidualBlocker, ProofbookRunError, ProofbookRunEvent, ProofbookRunLedger,
+    ProofbookRunStatus, ProofbookStepOutcome, ProofbookStepStatus, PROOFBOOK_RUN_SCHEMA_V1,
 };
 pub use parser::{list_proofbook_files, parse_proofbook};
-pub use runner::ProofbookRunner;
+pub use runner::{ProofbookMcpToolExecutor, ProofbookRunner};
 pub use types::{
     ProofbookDefinition, ProofbookInputSpec, ProofbookSecretRef, ProofbookSettlement,
     ProofbookStep, ProofbookStepKind, ProofbookSummary, ProofbookValidationReport,

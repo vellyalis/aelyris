@@ -11,6 +11,16 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+pub trait ProofbookMcpToolExecutor {
+    fn execute_mcp_tool(
+        &self,
+        run_id: &str,
+        ledger: &ProofbookRunLedger,
+        step: &ProofbookStep,
+        approved_gate: Option<&ProofbookGateDecision>,
+    ) -> Result<ProofbookStepOutcome, ProofbookError>;
+}
+
 #[derive(Clone, Default)]
 pub struct ProofbookRunner {
     runs: Arc<Mutex<BTreeMap<String, ProofbookRunLedger>>>,
@@ -27,6 +37,26 @@ impl ProofbookRunner {
         proofbook_path: &str,
         inputs: serde_json::Value,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.start_run_inner(project_path, proofbook_path, inputs, None)
+    }
+
+    pub fn start_run_with_mcp_executor(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        inputs: serde_json::Value,
+        mcp_executor: &dyn ProofbookMcpToolExecutor,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.start_run_inner(project_path, proofbook_path, inputs, Some(mcp_executor))
+    }
+
+    fn start_run_inner(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        inputs: serde_json::Value,
+        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let proofbook_path = resolve_proofbook_path(&root, proofbook_path)?;
         let definition = parse_proofbook(&proofbook_path)?;
@@ -38,7 +68,7 @@ impl ProofbookRunner {
         let mut ledger = ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?;
         ledger::write_ledger(&root, &ledger)?;
         self.remember(ledger.clone())?;
-        self.drive_run(&root, &definition, &mut ledger)?;
+        self.drive_run(&root, &definition, &mut ledger, mcp_executor)?;
         self.remember(ledger.clone())?;
         Ok(ledger)
     }
@@ -98,6 +128,54 @@ impl ProofbookRunner {
         actor: Option<String>,
         comment: Option<String>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.resolve_gate_inner(
+            project_path,
+            run_id,
+            gate_id,
+            gate_hash,
+            decision,
+            actor,
+            comment,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn resolve_gate_with_mcp_executor(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        gate_id: String,
+        gate_hash: String,
+        decision: String,
+        actor: Option<String>,
+        comment: Option<String>,
+        mcp_executor: &dyn ProofbookMcpToolExecutor,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.resolve_gate_inner(
+            project_path,
+            run_id,
+            gate_id,
+            gate_hash,
+            decision,
+            actor,
+            comment,
+            Some(mcp_executor),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_gate_inner(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        gate_id: String,
+        gate_hash: String,
+        decision: String,
+        actor: Option<String>,
+        comment: Option<String>,
+        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let mut ledger = self.load_run(&root, run_id)?;
         let Some((step_id, gate_kind)) = waiting_gate_for(&ledger, &gate_id) else {
@@ -106,11 +184,6 @@ impl ProofbookRunner {
                 format!("no waiting Proofbook gate found for {gate_id}"),
             ));
         };
-        if gate_kind != "manualGate" {
-            return Err(ProofbookError::runtime_not_available(
-                "resolving command-risk gates is not implemented in PB-2",
-            ));
-        }
         let expected_hash = gate_hash_for(&ledger, &gate_id).unwrap_or_default();
         if expected_hash != gate_hash {
             return Err(ProofbookError::new(
@@ -129,7 +202,13 @@ impl ProofbookRunner {
             actor,
             comment,
         );
-        apply_gate_decision(&mut ledger, &step_id, gate_decision, &normalized_decision);
+        apply_gate_decision(
+            &mut ledger,
+            &step_id,
+            gate_kind.as_str(),
+            gate_decision.clone(),
+            &normalized_decision,
+        );
         ledger.status = if normalized_decision == "approve" || normalized_decision == "approved" {
             ProofbookRunStatus::Running
         } else {
@@ -181,7 +260,36 @@ impl ProofbookRunner {
                     );
                     ledger::write_ledger(&root, &ledger)?;
                 } else {
-                    self.drive_run(&root, &definition, &mut ledger)?;
+                    if gate_kind == "mcpTool" {
+                        let executor = mcp_executor.ok_or_else(|| {
+                            ProofbookError::runtime_not_available(
+                                "resolving Proofbook MCP tool gates requires the MCP runtime",
+                            )
+                        })?;
+                        let step = definition
+                            .steps
+                            .iter()
+                            .find(|step| step.id == step_id)
+                            .ok_or_else(|| {
+                                ProofbookError::new(
+                                    ProofbookErrorCode::ValidationFailed,
+                                    format!("Proofbook gate step disappeared: {step_id}"),
+                                )
+                            })?;
+                        if let Some(summary) = ledger.step_mut(&step_id) {
+                            summary.status = ProofbookStepStatus::Running;
+                            summary.started_at.get_or_insert_with(ledger::now_timestamp);
+                        }
+                        ledger::write_ledger(&root, &ledger)?;
+                        let outcome = executor.execute_mcp_tool(
+                            &ledger.run_id,
+                            &ledger,
+                            step,
+                            Some(&gate_decision),
+                        )?;
+                        self.apply_step_outcome(&root, &mut ledger, step, outcome)?;
+                    }
+                    self.drive_run(&root, &definition, &mut ledger, mcp_executor)?;
                 }
             }
         }
@@ -246,6 +354,7 @@ impl ProofbookRunner {
         root: &Path,
         definition: &ProofbookDefinition,
         ledger: &mut ProofbookRunLedger,
+        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
     ) -> Result<(), ProofbookError> {
         if matches!(
             ledger.status,
@@ -274,7 +383,7 @@ impl ProofbookRunner {
                 }
                 progressed = true;
                 self.mark_step_running(root, ledger, step)?;
-                let outcome = self.execute_step(root, &ledger.run_id, step)?;
+                let outcome = self.execute_step(root, ledger, step, mcp_executor)?;
                 self.apply_step_outcome(root, ledger, step, outcome)?;
                 match ledger.step(&step.id).map(|s| s.status) {
                     Some(ProofbookStepStatus::WaitingGate) => return Ok(()),
@@ -318,22 +427,30 @@ impl ProofbookRunner {
     fn execute_step(
         &self,
         root: &Path,
-        run_id: &str,
+        ledger: &ProofbookRunLedger,
         step: &ProofbookStep,
+        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
     ) -> Result<ProofbookStepOutcome, ProofbookError> {
         match ProofbookStepKind::from_wire(&step.kind) {
             Some(ProofbookStepKind::Shell) => {
-                crate::proofbook::step_shell::execute_shell_step(root, run_id, step, false)
+                crate::proofbook::step_shell::execute_shell_step(root, &ledger.run_id, step, false)
             }
             Some(ProofbookStepKind::Verifier) => {
-                crate::proofbook::step_shell::execute_shell_step(root, run_id, step, true)
+                crate::proofbook::step_shell::execute_shell_step(root, &ledger.run_id, step, true)
             }
             Some(ProofbookStepKind::WaitFor) => {
                 crate::proofbook::step_wait::execute_wait_for_step(root, step)
             }
             Some(ProofbookStepKind::ManualGate) => Ok(
-                crate::proofbook::step_manual_gate::wait_for_manual_gate(run_id, step),
+                crate::proofbook::step_manual_gate::wait_for_manual_gate(&ledger.run_id, step),
             ),
+            Some(ProofbookStepKind::McpTool) => match mcp_executor {
+                Some(executor) => executor.execute_mcp_tool(&ledger.run_id, ledger, step, None),
+                None => Ok(ProofbookStepOutcome::blocked(
+                    "not_implemented",
+                    "Proofbook mcpTool steps require the PB-3 MCP runtime",
+                )),
+            },
             Some(kind) => Ok(ProofbookStepOutcome::blocked(
                 "not_implemented",
                 format!("Proofbook step kind {kind:?} is not executable in PB-2"),
@@ -615,10 +732,22 @@ fn gate_hash_for(ledger: &ProofbookRunLedger, gate_id: &str) -> Option<String> {
 fn apply_gate_decision(
     ledger: &mut ProofbookRunLedger,
     step_id: &str,
+    gate_kind: &str,
     decision: ProofbookGateDecision,
     normalized_decision: &str,
 ) {
     let passed = normalized_decision == "approve" || normalized_decision == "approved";
+    let is_manual_gate = gate_kind == "manualGate";
+    let rejection_code = if is_manual_gate {
+        "manual_gate_rejected"
+    } else {
+        "proofbook_gate_rejected"
+    };
+    let rejection_message = if is_manual_gate {
+        "manual Proofbook gate was rejected".to_string()
+    } else {
+        format!("{gate_kind} Proofbook gate was rejected")
+    };
     if let Some(step) = ledger.step_mut(step_id) {
         step.status = if passed {
             ProofbookStepStatus::Passed
@@ -629,35 +758,41 @@ fn apply_gate_decision(
         step.gate_decision = Some(decision.clone());
         if !passed {
             step.error = Some(ProofbookRunError::new(
-                "manual_gate_rejected",
-                "manual Proofbook gate was rejected",
+                rejection_code,
+                rejection_message.clone(),
             ));
         }
     }
     ledger.decisions.push(decision.clone());
     if !passed {
         ledger.residual_blockers.push(ProofbookResidualBlocker {
-            code: "manual_gate_rejected".to_string(),
+            code: rejection_code.to_string(),
             step_id: Some(step_id.to_string()),
-            message: "manual Proofbook gate was rejected".to_string(),
+            message: rejection_message.clone(),
         });
     }
+    let event_kind = if is_manual_gate {
+        "manual_gate_decided"
+    } else {
+        "proofbook_gate_decided"
+    };
+    let event_message = if is_manual_gate {
+        format!("Proofbook manual gate decided: {normalized_decision}")
+    } else {
+        format!("Proofbook {gate_kind} gate decided: {normalized_decision}")
+    };
     ledger.append_event(
-        "manual_gate_decided",
+        event_kind,
         Some(step_id.to_string()),
-        format!("Proofbook manual gate decided: {normalized_decision}"),
+        event_message,
         Some(if passed { "passed" } else { "failed" }.to_string()),
         if passed {
             None
         } else {
-            Some(ProofbookRunError::new(
-                "manual_gate_rejected",
-                "manual Proofbook gate was rejected",
-            ))
+            Some(ProofbookRunError::new(rejection_code, rejection_message))
         },
     );
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

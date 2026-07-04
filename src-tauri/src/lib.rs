@@ -970,6 +970,7 @@ pub fn run() {
                     .state::<std::sync::Arc<knowledge_graph::KnowledgeGraphManager>>()
                     .inner()
                     .clone();
+                let proofbook_runner = app.state::<proofbook::ProofbookRunner>().inner().clone();
                 // P4: give the MCP face its own connection to the same db file so
                 // the autonomous loop persists escalations durably (WAL +
                 // busy_timeout make the extra writer safe). A failed open degrades
@@ -992,6 +993,7 @@ pub fn run() {
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
+                    .with_proofbook_runner(proofbook_runner)
                     // P0-4: the API face shares the SAME gate instance managed above, so the
                     // approval registry + line accumulator + audit sink are unified across the
                     // REST/WS/MCP and local IPC surfaces.

@@ -1,7 +1,5 @@
 use axum::{extract::State, Json};
-use serde::Deserialize;
-#[cfg(not(test))]
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::mux::{send_workspace_input, workspace_summary};
 use super::{
@@ -37,6 +35,14 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.session.handoff",
         "aelyris.session.resume",
         "aelyris.session.reset_context",
+        "aelyris.proofbook.list",
+        "aelyris.proofbook.get",
+        "aelyris.proofbook.validate",
+        "aelyris.proofbook.run",
+        "aelyris.proofbook.status",
+        "aelyris.proofbook.cancel",
+        "aelyris.proofbook.approve_gate",
+        "aelyris.proofbook.reject_gate",
         "aelyris.request_approval",
         "aelyris.list_pending_approvals",
         "aelyris.request_merge",
@@ -193,7 +199,6 @@ fn mcp_app_handle(state: &ApiState) -> ApiResult<tauri::AppHandle> {
     })
 }
 
-#[cfg(not(test))]
 fn mcp_result_value<T: Serialize>(result: T) -> ApiResult<serde_json::Value> {
     serde_json::to_value(result)
         .map_err(|err| ApiError::Internal(format!("serialize MCP result failed: {err}")))
@@ -329,6 +334,393 @@ async fn mcp_session_reset_context(
     _args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
     test_mcp_session_lifecycle_unattached()
+}
+
+fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
+    state.proofbook_runner.clone().ok_or_else(|| {
+        ApiError::Internal(
+            "Proofbook runner runtime is not attached to this MCP process".to_string(),
+        )
+    })
+}
+
+fn resolve_mcp_proofbook_path(
+    project_path: &str,
+    raw_path: &str,
+) -> Result<String, crate::proofbook::ProofbookError> {
+    let root = crate::proofbook::validator::canonical_project_root(project_path)?;
+    let raw = std::path::Path::new(raw_path);
+    let candidate = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        root.join(raw)
+    };
+    let resolved = crate::proofbook::validator::ensure_path_under_root(
+        &root,
+        &candidate.to_string_lossy(),
+        "proofbookPath",
+    )?;
+    Ok(crate::proofbook::normalize_path(resolved))
+}
+
+fn mcp_validate_proofbook_report(
+    project_path: &str,
+    proofbook_path: &str,
+) -> Result<crate::proofbook::ProofbookValidationReport, crate::proofbook::ProofbookError> {
+    let proofbook_path = resolve_mcp_proofbook_path(project_path, proofbook_path)?;
+    match crate::proofbook::parse_proofbook(&proofbook_path) {
+        Ok(definition) => Ok(crate::proofbook::validate_definition(
+            project_path,
+            &definition,
+            &proofbook_path,
+        )),
+        Err(error) => Ok(crate::proofbook::ProofbookValidationReport {
+            definition_id: None,
+            path: proofbook_path,
+            valid: false,
+            errors: vec![error],
+        }),
+    }
+}
+
+fn proofbook_error_to_api(error: crate::proofbook::ProofbookError) -> ApiError {
+    ApiError::BadRequest(error.to_string())
+}
+
+fn mcp_proofbook_list(
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let project_path = arg_string(args, "projectPath")?;
+    Ok(serde_json::json!({
+        "projectPath": project_path,
+        "proofbooks": crate::proofbook::list_proofbook_files(&project_path),
+    }))
+}
+
+fn mcp_proofbook_get(
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let project_path = arg_string(args, "projectPath")?;
+    let proofbook_path = arg_string(args, "proofbookPath")?;
+    let resolved = resolve_mcp_proofbook_path(&project_path, &proofbook_path)
+        .map_err(proofbook_error_to_api)?;
+    let definition =
+        crate::proofbook::parse_proofbook(&resolved).map_err(proofbook_error_to_api)?;
+    let validation = crate::proofbook::validate_definition(&project_path, &definition, &resolved);
+    let definition_hash =
+        crate::proofbook::hash_json(&definition).map_err(proofbook_error_to_api)?;
+    Ok(serde_json::json!({
+        "projectPath": project_path,
+        "proofbookPath": resolved,
+        "definitionHash": definition_hash,
+        "definition": definition,
+        "validation": validation,
+    }))
+}
+
+fn mcp_proofbook_validate(
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let project_path = arg_string(args, "projectPath")?;
+    let proofbook_path = arg_string(args, "proofbookPath")?;
+    let report = mcp_validate_proofbook_report(&project_path, &proofbook_path)
+        .map_err(proofbook_error_to_api)?;
+    mcp_result_value(report)
+}
+
+fn mcp_proofbook_run(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let proofbook_path = arg_string(args, "proofbookPath")?;
+    let inputs = args
+        .get("inputs")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let executor = McpProofbookExecutor {
+        state: state.clone(),
+    };
+    let ledger = runner
+        .start_run_with_mcp_executor(&project_path, &proofbook_path, inputs, &executor)
+        .map_err(proofbook_error_to_api)?;
+    mcp_result_value(ledger)
+}
+
+fn mcp_proofbook_status(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let ledger = runner
+        .status(&project_path, &run_id)
+        .map_err(proofbook_error_to_api)?;
+    mcp_result_value(ledger)
+}
+
+fn mcp_proofbook_cancel(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let ledger = runner
+        .cancel_run(&project_path, &run_id)
+        .map_err(proofbook_error_to_api)?;
+    mcp_result_value(ledger)
+}
+
+fn mcp_proofbook_decide_gate(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+    decision: &str,
+) -> ApiResult<serde_json::Value> {
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let gate_id = arg_string(args, "gateId")?;
+    let gate_hash = arg_string(args, "gateHash")?;
+    let actor = arg_optional_string(args, "actor");
+    let comment = arg_optional_string(args, "comment");
+    let executor = McpProofbookExecutor {
+        state: state.clone(),
+    };
+    let ledger = runner
+        .resolve_gate_with_mcp_executor(
+            &project_path,
+            &run_id,
+            gate_id,
+            gate_hash,
+            decision.to_string(),
+            actor,
+            comment,
+            &executor,
+        )
+        .map_err(proofbook_error_to_api)?;
+    mcp_result_value(ledger)
+}
+
+fn tool_safety(name: &str) -> Option<String> {
+    let listed = tools_list_value();
+    listed
+        .get("tools")?
+        .as_array()?
+        .iter()
+        .find(|tool| tool.get("name").and_then(|value| value.as_str()) == Some(name))
+        .map(|tool| {
+            tool.get("safety")
+                .and_then(|value| value.as_str())
+                .unwrap_or("FREE")
+                .to_string()
+        })
+}
+
+#[derive(Clone)]
+struct McpProofbookExecutor {
+    state: ApiState,
+}
+
+impl crate::proofbook::ProofbookMcpToolExecutor for McpProofbookExecutor {
+    fn execute_mcp_tool(
+        &self,
+        _run_id: &str,
+        ledger: &crate::proofbook::ProofbookRunLedger,
+        step: &crate::proofbook::ProofbookStep,
+        approved_gate: Option<&crate::proofbook::ProofbookGateDecision>,
+    ) -> Result<crate::proofbook::ProofbookStepOutcome, crate::proofbook::ProofbookError> {
+        use crate::proofbook::{ProofbookRunError, ProofbookStepOutcome, ProofbookStepStatus};
+
+        let Some(tool_name) = proofbook_step_string_param(step, "toolName") else {
+            return Ok(ProofbookStepOutcome::failed(
+                "mcp_tool_not_found",
+                "mcpTool step requires toolName",
+            ));
+        };
+        if tool_name.starts_with("aelyris.proofbook.") {
+            return Ok(ProofbookStepOutcome::failed(
+                "proofbook_mcp_recursion_not_supported",
+                "PB-3 mcpTool steps cannot call aelyris.proofbook.* recursively",
+            ));
+        }
+        let arguments = match step.params.get("arguments") {
+            Some(value) => serde_json::to_value(value).unwrap_or_else(|_| serde_json::json!({})),
+            None => serde_json::json!({}),
+        };
+        let Some(schema) = input_schema_for_tool(&tool_name) else {
+            return Ok(ProofbookStepOutcome::failed(
+                "mcp_tool_not_found",
+                format!("MCP tool not found: {tool_name}"),
+            ));
+        };
+        if let Err(report) = validate_tool_arguments(&tool_name, &arguments, &schema) {
+            return Ok(ProofbookStepOutcome {
+                status: ProofbookStepStatus::Failed,
+                structured_output: Some(report.to_payload(&tool_name)),
+                error: Some(ProofbookRunError::new(
+                    "mcp_schema_violation",
+                    format!("MCP tool arguments failed schema validation for {tool_name}"),
+                )),
+                ..ProofbookStepOutcome::passed()
+            });
+        }
+        let actor = "operator";
+        if let crate::governance::AccessDecision::Deny(reason) =
+            self.state.governance.authorize(actor, &tool_name)
+        {
+            super::audit_access_denied(&self.state, actor, &tool_name, &reason);
+            return Ok(ProofbookStepOutcome::blocked(
+                "mcp_governance_denied",
+                format!("MCP tool {tool_name} is not permitted"),
+            ));
+        }
+        let safety = tool_safety(&tool_name).unwrap_or_else(|| "FREE".to_string());
+        let arguments_hash = crate::proofbook::hash_json(&arguments)?;
+        if safety != "FREE" && approved_gate.is_none() {
+            let gate_id = format!(
+                "pb-gate-{}-{}-{}-mcp",
+                ledger.run_id,
+                step.id,
+                sanitize_gate_fragment(&tool_name)
+            );
+            let gate_hash = crate::proofbook::hash_json(&serde_json::json!({
+                "runId": ledger.run_id,
+                "stepId": step.id,
+                "toolName": tool_name,
+                "argumentsHash": arguments_hash,
+                "definitionHash": ledger.definition_hash,
+                "inputHash": ledger.input_hash,
+            }))?;
+            let pending = push_pending(
+                &self.state,
+                McpPendingDecision {
+                    id: format!(
+                        "proofbook:{}:{}:{}",
+                        ledger.run_id,
+                        step.id,
+                        uuid::Uuid::new_v4()
+                    ),
+                    session_id: ledger.run_id.clone(),
+                    kind: "proofbook_mcp_tool".to_string(),
+                    title: format!("Proofbook MCP tool gate: {tool_name}"),
+                    summary: Some(format!("Proofbook step {} requests {tool_name}", step.id)),
+                    risk: safety.clone(),
+                    status: "pending".to_string(),
+                },
+            )
+            .map_err(|error| {
+                crate::proofbook::ProofbookError::new(
+                    crate::proofbook::ProofbookErrorCode::IoError,
+                    error.to_string(),
+                )
+            })?;
+            return Ok(ProofbookStepOutcome::waiting_gate(
+                serde_json::json!({
+                    "kind": "mcpTool",
+                    "toolName": tool_name,
+                    "safety": safety,
+                    "gateId": gate_id,
+                    "gateHash": gate_hash,
+                    "argumentsHash": arguments_hash,
+                    "pendingDecisionId": pending.id,
+                }),
+                Some(serde_json::json!({ "safety": safety })),
+            ));
+        }
+
+        let value =
+            call_mcp_tool_on_fresh_runtime(self.state.clone(), tool_name.clone(), arguments)
+                .map_err(|message| {
+                    crate::proofbook::ProofbookError::new(
+                        crate::proofbook::ProofbookErrorCode::IoError,
+                        message,
+                    )
+                })?;
+        if !value
+            .get("ok")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+        {
+            return Ok(ProofbookStepOutcome {
+                status: ProofbookStepStatus::Failed,
+                structured_output: value.get("error").cloned(),
+                error: Some(ProofbookRunError::new(
+                    "mcp_tool_error",
+                    format!("MCP tool {tool_name} returned an error"),
+                )),
+                ..ProofbookStepOutcome::passed()
+            });
+        }
+        let mut structured = serde_json::json!({
+            "kind": "mcpTool",
+            "toolName": tool_name,
+            "safety": safety,
+            "argumentsHash": arguments_hash,
+            "result": value.get("result").cloned().unwrap_or(serde_json::Value::Null),
+        });
+        if let Some(decision) = approved_gate {
+            structured["decision"] =
+                serde_json::to_value(decision).unwrap_or(serde_json::Value::Null);
+        }
+        Ok(ProofbookStepOutcome {
+            status: ProofbookStepStatus::Passed,
+            structured_output: Some(structured),
+            ..ProofbookStepOutcome::passed()
+        })
+    }
+}
+
+fn call_mcp_tool_on_fresh_runtime(
+    state: ApiState,
+    name: String,
+    arguments: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    std::thread::Builder::new()
+        .name("proofbook-mcp-tool".to_string())
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| format!("start Proofbook MCP runtime: {error}"))?;
+            runtime.block_on(async move {
+                match tools_call(State(state), Json(ToolCallBody { name, arguments })).await {
+                    Ok(Json(value)) => Ok(value),
+                    Err(error) => Err(error.to_string()),
+                }
+            })
+        })
+        .map_err(|error| format!("spawn Proofbook MCP runtime: {error}"))?
+        .join()
+        .map_err(|_| "Proofbook MCP runtime thread panicked".to_string())?
+}
+
+fn proofbook_step_string_param(
+    step: &crate::proofbook::ProofbookStep,
+    key: &str,
+) -> Option<String> {
+    step.params
+        .get(key)
+        .and_then(|value| match value {
+            serde_yaml::Value::String(value) => Some(value.trim().to_string()),
+            _ => None,
+        })
+        .filter(|value| !value.is_empty())
+}
+
+fn sanitize_gate_fragment(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>();
+    let trimmed = sanitized.trim_matches('-');
+    if trimmed.is_empty() {
+        "tool".to_string()
+    } else {
+        trimmed.chars().take(48).collect()
+    }
 }
 
 fn arg_bool(args: &serde_json::Map<String, serde_json::Value>, key: &str, default: bool) -> bool {
@@ -694,6 +1086,124 @@ fn tools_list_value() -> serde_json::Value {
                         "timeout_ms": { "type": "integer" },
                         "cols": { "type": "integer" },
                         "rows": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.list",
+                "description": "List project Proofbook definitions discovered under .aelyris/proofbooks without executing them.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath"],
+                    "properties": { "projectPath": { "type": "string" } },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.get",
+                "description": "Read one contained Proofbook definition with its definition hash and validation report.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "proofbookPath"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "proofbookPath": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.validate",
+                "description": "Run PB-1 static Proofbook validation without executing a run.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "proofbookPath"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "proofbookPath": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.run",
+                "description": "Start a PB-2/PB-3 Proofbook run through the managed Rust runner. GATED mcpTool steps pause before execution and require approve_gate.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "proofbookPath"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "proofbookPath": { "type": "string" },
+                        "inputs": { "type": "object" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.status",
+                "description": "Read one Proofbook run ledger, including waiting gates and residual blockers.",
+                "safety": "FREE",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "runId"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "runId": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.cancel",
+                "description": "Cancel a Proofbook run through the managed runner; artifacts and ledgers are retained.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "runId"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "runId": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.approve_gate",
+                "description": "Approve a waiting Proofbook gate by expected gate id and hash. Stale hashes fail closed.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "runId", "gateId", "gateHash"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "runId": { "type": "string" },
+                        "gateId": { "type": "string" },
+                        "gateHash": { "type": "string" },
+                        "actor": { "type": "string" },
+                        "comment": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.reject_gate",
+                "description": "Reject a waiting Proofbook gate by expected gate id and hash. Stale hashes fail closed.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "runId", "gateId", "gateHash"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "runId": { "type": "string" },
+                        "gateId": { "type": "string" },
+                        "gateHash": { "type": "string" },
+                        "actor": { "type": "string" },
+                        "comment": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
@@ -1884,6 +2394,14 @@ pub(super) async fn tools_call(
         "aelyris.session.handoff" => mcp_session_handoff(&state, &args).await?,
         "aelyris.session.resume" => mcp_session_resume(&state, &args).await?,
         "aelyris.session.reset_context" => mcp_session_reset_context(&state, &args).await?,
+        "aelyris.proofbook.list" => mcp_proofbook_list(&args)?,
+        "aelyris.proofbook.get" => mcp_proofbook_get(&args)?,
+        "aelyris.proofbook.validate" => mcp_proofbook_validate(&args)?,
+        "aelyris.proofbook.run" => mcp_proofbook_run(&state, &args)?,
+        "aelyris.proofbook.status" => mcp_proofbook_status(&state, &args)?,
+        "aelyris.proofbook.cancel" => mcp_proofbook_cancel(&state, &args)?,
+        "aelyris.proofbook.approve_gate" => mcp_proofbook_decide_gate(&state, &args, "approve")?,
+        "aelyris.proofbook.reject_gate" => mcp_proofbook_decide_gate(&state, &args, "reject")?,
         "aelyris.request_approval" => {
             let session_id = arg_string(&args, "sessionId")?;
             let tool = arg_string(&args, "tool")?;
@@ -3374,6 +3892,247 @@ mod tests {
                 "{message}"
             ),
             other => panic!("expected fail-closed missing runtime error, got {other:?}"),
+        }
+    }
+
+    fn write_test_proofbook(project: &std::path::Path, yaml: &str) -> String {
+        let dir = project.join(".aelyris").join("proofbooks");
+        std::fs::create_dir_all(&dir).expect("proofbook dir");
+        let path = dir.join("mcp.proofbook.yaml");
+        std::fs::write(&path, yaml).expect("write proofbook");
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn proofbook_mcp_verbs_are_cataloged_and_scoped() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let tools = listed["tools"].as_array().expect("tools is an array");
+        let expected = [
+            ("aelyris.proofbook.list", "FREE"),
+            ("aelyris.proofbook.get", "FREE"),
+            ("aelyris.proofbook.validate", "FREE"),
+            ("aelyris.proofbook.run", "GATED"),
+            ("aelyris.proofbook.status", "FREE"),
+            ("aelyris.proofbook.cancel", "GATED"),
+            ("aelyris.proofbook.approve_gate", "GATED"),
+            ("aelyris.proofbook.reject_gate", "GATED"),
+        ];
+        for (verb, safety) in expected {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(verb))
+                .unwrap_or_else(|| panic!("{verb} present in tools_list"));
+            assert_eq!(tool["safety"], serde_json::json!(safety));
+            assert_eq!(
+                tool["inputSchema"]["additionalProperties"],
+                serde_json::json!(false)
+            );
+        }
+        assert!(tools.iter().all(|tool| !matches!(
+            tool["name"].as_str(),
+            Some(
+                "aelyris.proofbook.create"
+                    | "aelyris.proofbook.update"
+                    | "aelyris.proofbook.distill"
+            )
+        )));
+    }
+
+    #[test]
+    fn proofbook_mcp_verbs_go_through_governance_before_runtime() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct DenyProofbook;
+        impl AccessControl for DenyProofbook {
+            fn authorize(&self, _actor: &str, verb: &str) -> AccessDecision {
+                if verb.starts_with("aelyris.proofbook.") {
+                    AccessDecision::Deny(format!("{verb} blocked"))
+                } else {
+                    AccessDecision::Allow
+                }
+            }
+        }
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_governance(Arc::new(Governance::with_access(Box::new(DenyProofbook))));
+        let body = ToolCallBody {
+            name: "aelyris.proofbook.run".to_string(),
+            arguments: serde_json::json!({ "projectPath": "C:/repo", "proofbookPath": "x" }),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(body)));
+        assert!(matches!(result, Err(ApiError::Forbidden(_))));
+    }
+
+    #[test]
+    fn proofbook_mcp_run_executes_free_mcp_tool_step_through_tools_call() {
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        let project = tempfile::tempdir().expect("tempdir");
+        let proofbook = write_test_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb3-free-mcp
+steps:
+  - id: list
+    type: mcpTool
+    toolName: terminal.list
+    arguments: {}
+settlement:
+  requiredSteps: [list]
+"#,
+        );
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_proofbook_runner(crate::proofbook::ProofbookRunner::new());
+        let body = ToolCallBody {
+            name: "aelyris.proofbook.run".to_string(),
+            arguments: serde_json::json!({
+                "projectPath": project.path().to_string_lossy(),
+                "proofbookPath": proofbook,
+            }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("proofbook run dispatches");
+        let ledger: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(value["result"].clone()).expect("ledger result");
+
+        assert_eq!(ledger.status, ProofbookRunStatus::Passed);
+        assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Passed);
+        let output = ledger.steps[0]
+            .structured_output
+            .as_ref()
+            .expect("mcp output");
+        assert_eq!(output["kind"], "mcpTool");
+        assert_eq!(output["toolName"], "terminal.list");
+        assert!(output["result"]["sessions"].is_array());
+    }
+
+    #[test]
+    fn proofbook_mcp_tool_schema_violation_is_recorded_in_ledger() {
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        let project = tempfile::tempdir().expect("tempdir");
+        let proofbook = write_test_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb3-schema
+steps:
+  - id: capture
+    type: mcpTool
+    toolName: terminal.capture
+    arguments: {}
+settlement:
+  requiredSteps: [capture]
+"#,
+        );
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_proofbook_runner(crate::proofbook::ProofbookRunner::new());
+        let body = ToolCallBody {
+            name: "aelyris.proofbook.run".to_string(),
+            arguments: serde_json::json!({
+                "projectPath": project.path().to_string_lossy(),
+                "proofbookPath": proofbook,
+            }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state), Json(body)))
+            .expect("proofbook run dispatches");
+        let ledger: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(value["result"].clone()).expect("ledger result");
+
+        assert_eq!(ledger.status, ProofbookRunStatus::Failed);
+        assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Failed);
+        assert_eq!(
+            ledger.steps[0].error.as_ref().unwrap().code,
+            "mcp_schema_violation"
+        );
+        assert_eq!(
+            ledger.steps[0].structured_output.as_ref().unwrap()["schema_violation"]["missing"],
+            serde_json::json!(["sessionId"])
+        );
+    }
+
+    #[test]
+    fn proofbook_gated_mcp_tool_waits_and_stale_gate_hash_fails_closed() {
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        let project = tempfile::tempdir().expect("tempdir");
+        let proofbook = write_test_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb3-gated
+steps:
+  - id: approval
+    type: mcpTool
+    toolName: aelyris.request_approval
+    arguments:
+      sessionId: pb3
+      tool: deploy
+settlement:
+  requiredSteps: [approval]
+"#,
+        );
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_proofbook_runner(crate::proofbook::ProofbookRunner::new());
+        let body = ToolCallBody {
+            name: "aelyris.proofbook.run".to_string(),
+            arguments: serde_json::json!({
+                "projectPath": project.path().to_string_lossy(),
+                "proofbookPath": proofbook,
+            }),
+        };
+        let Json(value) = rt
+            .block_on(tools_call(State(state.clone()), Json(body)))
+            .expect("proofbook run dispatches");
+        let ledger: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(value["result"].clone()).expect("ledger result");
+        let output = ledger.steps[0]
+            .structured_output
+            .as_ref()
+            .expect("gate output");
+
+        assert_eq!(ledger.status, ProofbookRunStatus::WaitingGate);
+        assert_eq!(ledger.steps[0].status, ProofbookStepStatus::WaitingGate);
+        assert_eq!(output["kind"], "mcpTool");
+        assert_eq!(output["safety"], "GATED");
+        assert!(output["pendingDecisionId"]
+            .as_str()
+            .unwrap()
+            .starts_with("proofbook:"));
+        assert_eq!(
+            state.mcp_pending.lock().expect("pending lock").len(),
+            1,
+            "GATED mcpTool creates a pending decision projection",
+        );
+
+        let stale = ToolCallBody {
+            name: "aelyris.proofbook.approve_gate".to_string(),
+            arguments: serde_json::json!({
+                "projectPath": project.path().to_string_lossy(),
+                "runId": ledger.run_id,
+                "gateId": output["gateId"].as_str().unwrap(),
+                "gateHash": "sha256:stale",
+            }),
+        };
+        let result = rt.block_on(tools_call(State(state), Json(stale)));
+        match result {
+            Err(ApiError::BadRequest(message)) => {
+                assert!(message.contains("StaleGateHash"), "{message}")
+            }
+            other => panic!("expected stale hash BadRequest, got {other:?}"),
         }
     }
 

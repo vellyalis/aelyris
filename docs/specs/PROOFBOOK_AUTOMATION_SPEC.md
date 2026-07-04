@@ -1,6 +1,6 @@
 # Aelyris Proofbook Automation Spec
 
-Status: proposal / design target. Not a shipped capability.
+Status: proposal / implementation roadmap with scoped PB runtime slices. Not a shipped capability.
 Last reviewed: 2026-07-04 JST
 
 This spec turns the Scape-style Playbooks idea into an Aelyris-native automation
@@ -17,12 +17,13 @@ Do not claim Proofbooks as implemented until the matching verifier is green.
 Current Aelyris has a workflow engine, an MCP control surface, planner verbs,
 governance/audit, task graph, agent fleet, visible panes, verifier artifacts,
 PB-1 static Proofbook schema/parser/validator plus read-only list/validate IPC,
-and a PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and
-`manualGate` steps through Tauri IPC. PB-3D documents the MCP integration design
-gate, but PB-3 runtime code and Proofbook MCP verbs are still not implemented.
-This is not a shipped end-user Proofbook product: Aelyris still does not have a
-Proofbook canvas, distillation, Proofbook MCP verbs,
-MCP/HTTP/agent/fan-out/subProofbook execution, or Evidence Store projection
+a PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and
+`manualGate` steps through Tauri IPC, and a PB-3 MCP integration slice for
+`aelyris.proofbook.list/get/validate/run/status/cancel/approve_gate/reject_gate`
+and `mcpTool` delegation through the existing `tools/call` schema/governance
+path. This is not a shipped end-user Proofbook product: Aelyris still does not
+have a Proofbook canvas, create/update/distill verbs, agent/HTTP/fan-out/
+subProofbook execution, Evidence Store projection, or native UI completion
 described here.
 
 Reference products such as Scape expose Playbooks that chain shell commands, AI
@@ -820,8 +821,8 @@ PB-2D stop conditions:
 ### PB-2 — Run Ledger And Deterministic Steps
 
 Status: local backend runner/ledger and Tauri IPC are implemented for the PB-2
-step subset. Minimal end-user UI, MCP verbs, and later step kinds remain future
-phases.
+step subset. The PB-3 MCP integration slice is tracked in its own roadmap
+section; minimal end-user UI and later step kinds remain future phases.
 
 Scope: shell, verifier, waitFor, manualGate in a local runner.
 
@@ -846,12 +847,12 @@ Acceptance:
 
 ### PB-3D - Detailed Design Gate: MCP Tool Step And Proofbook MCP Verbs
 
-Status: docs/verifier gate only. PB-3D does not add `aelyris.proofbook.*`
-catalog entries, execute `mcpTool` steps, change `ProofbookRunner` behavior, or
-claim Proofbook MCP support. Runtime implementation for PB-3 is out of scope
-until this section exists, `docs/specs/MCP_TOOL_SURFACE_SPEC.md` has the
-matching Proofbook domain contract, and `pnpm verify:proofbook:spec` reports a
-passing `spec-pb3d-detailed-design` check.
+Status: completed docs/verifier design gate. PB-3D fixed the MCP integration
+contract before runtime work: catalog rows, `mcpTool` execution,
+`ProofbookRunner` behavior changes, and product claims were out of scope until
+this section, `docs/specs/MCP_TOOL_SURFACE_SPEC.md`, and
+`pnpm verify:proofbook:spec` were green. PB-3 runtime scope is tracked in the
+following roadmap section and remains bounded by this contract.
 
 PB-3D owner scope:
 
@@ -1001,12 +1002,14 @@ Verifier and artifact expectations:
 
 PB-3D claim boundary:
 
-After PB-3D, the only safe claim is that the MCP integration design gate is
-documented and verifier-checked. Proofbook MCP verbs and `mcpTool` execution are
-still not implemented until PB-3 runtime code, catalog rows, focused tests, and
-runner/MCP verifier coverage land. Even after PB-3 implementation, create,
-update, distill, HTTP, agentSession, fanOut, subProofbook, and Evidence Store
-remain future PB phases.
+After PB-3D, the safe claim was that the MCP integration design gate was
+documented and verifier-checked. After PB-3 runtime work, the safe claim remains
+narrow: the PB-3 MCP integration slice may expose
+`aelyris.proofbook.list/get/validate/run/status/cancel/approve_gate/reject_gate`
+and `mcpTool` execution only when catalog rows, focused tests, runner/MCP
+verifier coverage, and proof artifacts are green. Create/update/distill, HTTP,
+agentSession, fanOut, subProofbook, Evidence Store, canvas, and native UI product
+flows remain future PB phases.
 
 PB-3D stop conditions:
 
@@ -1024,13 +1027,19 @@ PB-3D stop conditions:
   keys, or unbounded MCP output would be written inline to the ledger.
 ### PB-3 — MCP Tool Step And Proofbook MCP Verbs
 
+Status: PB-3 runtime slice implemented behind the existing MCP schema/governance
+path; not a shipped end-user Proofbook product.
+
 Scope: connect to existing MCP dispatch.
 
 Files:
 
 - `src-tauri/src/api/mcp.rs`
+- `src-tauri/src/api/mod.rs`
+- `src-tauri/src/lib.rs`
 - `src-tauri/src/proofbook/runner.rs`
 - `docs/specs/MCP_TOOL_SURFACE_SPEC.md`
+- `scripts/verify-proofbook-runner.mjs`
 - focused Rust MCP tests
 
 Acceptance:
@@ -1041,6 +1050,9 @@ Acceptance:
 - GATED MCP tool steps produce `waiting_gate`, not fake success.
 - Definition mutation verbs (`create`/`update`) and `distill` stay out of PB-3
   and belong to PB-6.
+- `pnpm verify:proofbook:runner` source-scans the PB-3 dispatch seam and focused
+  Rust tests cover catalog/schema drift, governance denial, FREE `mcpTool`,
+  schema violation, GATED waiting gate, and stale gate hash fail-closed behavior.
 
 ### PB-4 — Agent Session Step
 
@@ -1205,9 +1217,11 @@ Stop and ask before implementation if:
 - Distillation would remove a verifier or gate.
 - A UI path suggests Proofbooks are release-ready before PB gates exist.
 
-Safe public claim after the PB-2 backend slice:
+Safe public claim after the PB-3 MCP integration slice:
 
-> Aelyris has a Proofbook automation design proposal and a local PB-2 backend
+> Aelyris has a Proofbook automation design proposal, a local PB-2 backend
 > runner/ledger slice for `shell`, `verifier`, `waitFor`, and `manualGate` over
-> Tauri IPC. Proofbook UI, MCP verbs, agent/HTTP/fan-out execution, distillation,
-> and Evidence Store remain planned until their gates are implemented.
+> Tauri IPC, and a PB-3 MCP integration slice for cataloged Proofbook run/status
+> verbs plus governed `mcpTool` execution. Proofbook UI, create/update/distill,
+> agent/HTTP/fan-out/subProofbook execution, and Evidence Store remain planned
+> until their gates are implemented.

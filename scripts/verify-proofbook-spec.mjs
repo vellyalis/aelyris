@@ -300,9 +300,10 @@ const requiredPb2dClauses = [
 const missingPb2dClauses = missingFromNormalized(spec, requiredPb2dClauses);
 const requiredPb3dClauses = [
   "### PB-3D - Detailed Design Gate: MCP Tool Step And Proofbook MCP Verbs",
-  "Status: docs/verifier gate only. PB-3D does not add `aelyris.proofbook.*`",
-  "Runtime implementation for PB-3 is out of scope",
-  "`spec-pb3d-detailed-design` check.",
+  "Status: completed docs/verifier design gate.",
+  "PB-3D fixed the MCP integration",
+  "`pnpm verify:proofbook:spec` were green.",
+  "PB-3 runtime scope is tracked in the",
   "PB-3D owner scope:",
   "`src-tauri/src/api/mcp.rs`",
   "`src-tauri/src/proofbook/runner.rs`",
@@ -363,9 +364,11 @@ const requiredPb3dClauses = [
   "cargo test --manifest-path src-tauri\\Cargo.toml proofbook",
   "PB-3 docs changes must keep `pnpm verify:goal:docs` green.",
   "PB-3D claim boundary:",
-  "After PB-3D, the only safe claim is that the MCP integration design gate is",
-  "Proofbook MCP verbs and `mcpTool` execution are",
-  "still not implemented until PB-3 runtime code",
+  "After PB-3D, the safe claim was that the MCP integration design gate was",
+  "After PB-3 runtime work, the safe claim remains",
+  "PB-3 MCP integration slice may expose",
+  "Create/update/distill, HTTP,",
+  "flows remain future PB phases.",
   "PB-3D stop conditions:",
   "bypass `tools_call` inputSchema validation, governance, or",
   "second MCP dispatcher, Proofbook-only catalog, or duplicate schema",
@@ -375,8 +378,10 @@ const requiredPb3dClauses = [
 ];
 const missingPb3dClauses = missingFromNormalized(spec, requiredPb3dClauses);
 const requiredPb3dMcpSurfaceClauses = [
-  "### 3.8 Proofbook domain (PB-3 design target)",
-  "Rows in this section are design-target until PB-3 runtime code",
+  "### 3.8 Proofbook domain (PB-3 runtime slice)",
+  "Rows in this section describe the scoped PB-3 runtime slice",
+  "not a shipped",
+  "create/update/distill",
   "existing `tools/call` schema/governance/dispatch path",
   "They do not create a",
   "second dispatcher, a second catalog, or a Proofbook-only schema validator.",
@@ -404,7 +409,6 @@ const requiredPb3dMcpSurfaceClauses = [
   "prove the PB-6 mutation verbs are still absent.",
 ];
 const missingPb3dMcpSurfaceClauses = missingFromNormalized(mcpToolSurface, requiredPb3dMcpSurfaceClauses);
-
 const requiredPb1dIntegrationClauses = [
   "`docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md` is the PB-1 implementation blueprint.",
   "For PB-1 implementation conflicts, `PROOFBOOK_PB1_DETAILED_DESIGN.md` wins inside the PB-1 file scope and focused test matrix.",
@@ -497,14 +501,14 @@ const checks = [
   check(
     "spec-claim-boundary",
     includesAll(normalizedSpec, [
-      "Status: proposal / design target. Not a shipped capability.",
+      "Status: proposal / implementation roadmap with scoped PB runtime slices. Not a shipped capability.",
       "## 0. Claim Boundary",
       "Do not claim Proofbooks as implemented until the matching verifier is green.",
       "PB-1 static Proofbook schema/parser/validator plus read-only list/validate IPC,",
       "PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and",
+      "PB-3 MCP integration slice",
       "not a shipped end-user Proofbook",
-      "Proofbook canvas, distillation,",
-      "Proofbook MCP verbs",
+      "Proofbook canvas, create/update/distill",
     ]),
     "Proofbook spec keeps the proposal/not-shipped claim boundary explicit",
   ),
@@ -565,7 +569,7 @@ const checks = [
   check(
     "spec-pb3d-detailed-design",
     missingPb3dClauses.length === 0 && missingPb3dMcpSurfaceClauses.length === 0,
-    "Proofbook spec and MCP surface define PB-3D MCP tool-step ownership, schema/governance delegation, waiting_gate proof, mutation-verb exclusion, tests, verifier artifacts, and claim boundary before PB-3 runtime code",
+    "Proofbook spec and MCP surface define the PB-3D MCP tool-step contract and the bounded PB-3 runtime slice without claiming a shipped Proofbook product",
     { missingPb3dClauses, missingPb3dMcpSurfaceClauses },
   ),
   check(
@@ -591,10 +595,11 @@ const checks = [
       "[PROOFBOOK_AUTOMATION_SPEC.md](./PROOFBOOK_AUTOMATION_SPEC.md)",
       "proposal / automation roadmap",
       "PB-2 local backend runner/ledger",
+      "PB-3 MCP integration slice",
       "未実装の設計 target",
       "Proofbooks 全体の実装済みclaimではない",
     ]),
-    "spec index lists Proofbooks as an unimplemented proposal/automation roadmap, not a shipped capability",
+    "spec index lists Proofbooks as a scoped implementation roadmap, not a shipped capability",
   ),
   check(
     "package-script-present",
@@ -606,9 +611,10 @@ const checks = [
     implementedClaimHits.length === 0 &&
       normalizedSpec.includes("Proofbook automation design proposal") &&
       normalizedSpec.includes("not a shipped end-user Proofbook") &&
-      normalizedSpec.includes("Proofbook UI, MCP verbs") &&
+      normalizedSpec.includes("PB-3 MCP integration slice") &&
+      normalizedSpec.includes("Proofbook UI, create/update/distill") &&
       normalizedIndex.includes("Proofbooks 全体の実装済みclaimではない"),
-    "public docs distinguish the PB-2 backend slice from a shipped Proofbook product",
+    "public docs distinguish the PB-2/PB-3 runtime slices from a shipped Proofbook product",
     { implementedClaimHits },
   ),
 ];
@@ -638,7 +644,7 @@ const report = {
   ),
   summary:
     failed.length === 0
-      ? "Proofbook spec/index/MCP/package contract is present and keeps the PB-2 backend slice plus PB-3D design gate distinct from a shipped Proofbook product."
+      ? "Proofbook spec/index/MCP/package contract is present and keeps the PB-2 backend slice plus PB-3 MCP runtime slice distinct from a shipped Proofbook product."
       : `${failed.length} Proofbook PB-0 contract checks failed`,
   checks,
 };

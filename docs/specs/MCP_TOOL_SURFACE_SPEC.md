@@ -229,12 +229,14 @@ remains the hot owner; SQLite is the restart source of truth.
 
 ---
 
-### 3.8 Proofbook domain (PB-3 design target)
+### 3.8 Proofbook domain (PB-3 runtime slice)
 
 PB-3 connects Proofbooks to the existing MCP face after the local PB-2 runner.
-Rows in this section are design-target until PB-3 runtime code, catalog rows,
-focused tests, and verifier artifacts land. They must not be claimed as shipped
-Proofbook MCP support before the matching gate is green.
+Rows in this section describe the scoped PB-3 runtime slice when catalog rows,
+focused tests, and verifier artifacts are green. They are not a shipped
+end-user Proofbook product claim: canvas/UI, create/update/distill,
+agent/HTTP/fan-out/subProofbook, and Evidence Store behavior remain future
+phases.
 
 The implementation rule is strict: Proofbook MCP verbs and `mcpTool` steps are
 thin adapters over the single `src-tauri/src/proofbook` contract spine and the
