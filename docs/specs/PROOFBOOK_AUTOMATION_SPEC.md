@@ -648,7 +648,173 @@ Acceptance:
 - Does not register run/resume/cancel/mutate commands and does not write run
   ledgers.
 
+### PB-2D - Detailed Design Gate: Run Ledger And Deterministic Steps
+
+Status: docs/verifier gate only. PB-2D does not create `runner.rs`,
+`ledger.rs`, UI, DB migrations, MCP verbs, or executable Proofbook behavior.
+Runtime implementation for PB-2 is out of scope until this section is present
+and `pnpm verify:proofbook:spec` reports a passing
+`spec-pb2d-detailed-design` check.
+
+PB-2D owner scope:
+
+- Design file touched by PB-2D:
+  `docs/specs/PROOFBOOK_AUTOMATION_SPEC.md`, with
+  `scripts/verify-proofbook-spec.mjs` enforcing the gate.
+- Future PB-2 implementation spine:
+  `src-tauri/src/proofbook/runner.rs`,
+  `src-tauri/src/proofbook/ledger.rs`,
+  `src-tauri/src/proofbook/step_shell.rs`,
+  `src-tauri/src/proofbook/step_wait.rs`, and
+  `src-tauri/src/proofbook/step_manual_gate.rs`.
+- Future PB-2 adapter scope:
+  `src-tauri/src/ipc/proofbook_commands.rs`,
+  `src-tauri/src/lib.rs`, and a minimal `src/features/proofbook/` run/status
+  panel that renders real Rust runner state only.
+- PB-2 still must not touch `src-tauri/src/api/mcp.rs`, HTTP execution,
+  agent session spawning, fan-out/subProofbook execution, distill, Evidence
+  Store, SQLite migrations, or create/update Proofbook mutation flows.
+
+Module ownership:
+
+- `runner.rs` owns the run state machine, topological ready queue, cancellation,
+  resume-on-start classification, and `StepExecutor` registration. It may
+  schedule steps and call executors, but it must not embed per-kind command,
+  wait, or manual-gate logic directly.
+- `ledger.rs` owns `aelyris.proofbook_run.v1`, atomic JSON persistence,
+  append-only event records, derived step summaries, artifact refs, SHA-256
+  hashing, secret redaction, and run hydration. It is the only module that
+  writes `.aelyris/proofbook-runs/*`.
+- `step_shell.rs` owns `shell` and `verifier` command execution through the
+  existing command-risk policy and project-root containment checks.
+- `step_wait.rs` owns PB-2 `waitFor` over files, expected artifacts, and prior
+  step status only. Polling MCP results is deferred to PB-3D.
+- `step_manual_gate.rs` owns `manualGate` pause/resume records, expected gate
+  hash checks, actor/comment metadata, and the no-auto-approval boundary.
+- IPC/UI adapters may start, read, cancel, and resolve runner state only through
+  the Rust Proofbook runner. They must not duplicate schema validation, execute
+  mock steps, or write ledger files directly.
+
+PB-2 run ledger contract:
+
+- Every run writes `.aelyris/proofbook-runs/<run-id>.json` before the first step
+  starts. Large stdout/stderr artifacts are stored under
+  `.aelyris/proofbook-runs/artifacts/<run-id>/`.
+- Ledger schema is exactly `aelyris.proofbook_run.v1`. Required top-level fields:
+  `runId`, `proofbookId`, `projectPath`, `status`, `startedAt`, `updatedAt`,
+  `definitionHash`, `inputHash`, `events`, `steps`, `artifacts`, `decisions`,
+  and `residualBlockers`.
+- The ledger is append-only at the proof level: every transition adds an event.
+  Derived `steps` summaries may be rewritten by atomic file replacement, but
+  completed event history must not be removed or edited.
+- Artifact refs include `path`, `kind`, `sizeBytes`, `sha256`, `redactionCount`,
+  and the producing `stepId`. Hashes are over the redacted persisted bytes.
+- Stdout, stderr, structured output, command previews, and gate comments are
+  redacted before persistence. Resolved secret values, token-bearing
+  transcripts, signing material, and private keys are never written to ledger or
+  artifacts.
+- On startup, hydration is fail-closed: `waiting_gate` runs stay waiting with
+  their gate hash; `running` steps from a dead process become `blocked` with
+  `error.code="interrupted_by_restart"`; completed events remain authoritative.
+
+PB-2 state machine:
+
+- Run statuses: `pending`, `running`, `waiting_gate`, `passed`, `failed`,
+  `blocked-by-policy`, `blocked-by-external-gates`, and `cancelled`.
+- Step statuses: `pending`, `running`, `passed`, `failed`, `skipped`,
+  `waiting_gate`, `blocked`, and `cancelled`.
+- Start flow: parse and statically validate with PB-1, preflight project-root
+  containment and command-risk policy, create the ledger, then execute a
+  deterministic topological ready queue with concurrency `1`.
+- A required step failure sets the run to `failed` unless the error is a policy
+  denial, explicit external/operator boundary, or cancellation.
+- Cancellation appends a cancellation event, prevents new steps from starting,
+  and marks pending steps `cancelled`. It must not delete artifacts or ledger
+  history.
+- Settlement requires all configured `requiredSteps` to pass and all
+  `requiredArtifacts` to exist under project root with recorded hashes.
+
+PB-2 executable step scope:
+
+- `shell`: executes a local command in a contained cwd only after command-risk
+  classification. GATED or destructive commands create a waiting decision
+  instead of spawning directly.
+- `verifier`: a `shell` specialization that must name at least one expected
+  artifact path or structured success predicate. The verifier step records the
+  generated artifact refs and exit code.
+- `waitFor`: polls files, expected artifacts, or prior step status with required
+  `intervalMs` and `timeoutMs`. It never busy-loops and never polls MCP/HTTP in
+  PB-2.
+- `manualGate`: pauses with `gateId`, `gateHash`, options, default, risk, and
+  evidence context. Resolve requires the expected `gateHash`; stale or mismatched
+  gate resolution fails closed.
+
+Unsupported PB-2 behavior:
+
+- `mcpTool`, `agentSession`, `http`, `fanOut`, `subProofbook`,
+  `evidence.write`, `evidence.read`, create/update, and distill are not
+  executable in PB-2.
+- Recognized future step kinds that are not executable in PB-2 become `blocked`
+  with `error.code="not_implemented"` and must never write passed ledger
+  records, placeholder success artifacts, or no-op success.
+- Non-taxonomy step kinds are still rejected by PB-1 validation as
+  `unknown_step_type`; runtime adapters must not reinterpret them.
+
+PB-2 focused test matrix:
+
+- valid PB-1 definition starts a run, writes the ledger before execution, and
+  records a deterministic `runId`;
+- `shell` and `verifier` capture exit code, stdout/stderr artifact refs,
+  SHA-256 hashes, redaction count, and final status;
+- command-risk GATED command transitions to `waiting_gate` before spawn;
+- `manualGate` records `waiting_gate`, accepts matching gate hash, rejects stale
+  gate hash, and preserves actor/comment metadata;
+- `waitFor` passes on file/artifact presence, times out with a bounded interval,
+  and never busy-loops;
+- unsupported PB-2 step kinds produce `not_implemented` without fake success;
+- restart hydration preserves completed events, keeps `waiting_gate`, and
+  converts dead `running` steps to `interrupted_by_restart`;
+- cancellation is append-only and leaves artifacts intact;
+- settlement classifies missing required artifacts and failed required steps;
+- UI tests render Rust runner status only and cannot start executable mock flows.
+
+Verifier and artifact expectations:
+
+- PB-2D uses `pnpm verify:proofbook:spec`, which writes
+  `.codex-auto/quality/proofbook-spec.json` and must include a passing
+  `spec-pb2d-detailed-design` check.
+- PB-2 implementation must add focused Rust tests and pass
+  `cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib`.
+- PB-2 implementation should add `pnpm verify:proofbook:runner`, writing
+  `.codex-auto/quality/proofbook-runner.json` with the runner/ledger contract.
+- PB-2 docs changes must also keep `pnpm verify:goal:docs` green.
+
+PB-2D claim boundary:
+
+After PB-2D, the only safe claim is that the PB-2 run ledger and deterministic
+step design gate is documented and verifier-checked. Proofbooks still cannot
+run until PB-2 runtime code, IPC/UI adapters, focused tests, and runner verifier
+land in a later phase. Even after PB-2 implementation, the safe product claim is
+limited to local `shell`, `verifier`, `waitFor`, and `manualGate` runs; MCP,
+HTTP, agent, fan-out, subProofbook, distill, Evidence Store, and Proofbook MCP
+verbs remain future PB phases.
+
+PB-2D stop conditions:
+
+- Stop if PB-2 needs to bypass command-risk policy, cwd containment, or existing
+  auditable decision paths.
+- Stop if raw secrets, token-bearing transcripts, signing material, or private
+  keys would be persisted.
+- Stop if a UI panel creates executable mock flows before Rust runner state
+  exists.
+- Stop if the design requires MCP/HTTP/agent/fan-out/subProofbook execution
+  before their owning PB-ND gates.
+- Stop if JSON-file ledgers cannot preserve append-only event history with
+  atomic writes.
+
 ### PB-2 — Run Ledger And Deterministic Steps
+
+Status: not implemented. Runtime code starts only after PB-2D is green.
 
 Scope: shell, verifier, waitFor, manualGate in a local runner.
 
@@ -656,6 +822,9 @@ Files:
 
 - `src-tauri/src/proofbook/runner.rs`
 - `src-tauri/src/proofbook/ledger.rs`
+- `src-tauri/src/proofbook/step_shell.rs`
+- `src-tauri/src/proofbook/step_wait.rs`
+- `src-tauri/src/proofbook/step_manual_gate.rs`
 - `src-tauri/src/ipc/proofbook_commands.rs`
 - `src-tauri/src/lib.rs`
 - `src/features/proofbook/` minimal panel
