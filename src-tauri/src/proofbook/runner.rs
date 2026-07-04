@@ -3,8 +3,8 @@ use crate::proofbook::ledger::{
     ProofbookRunStatus, ProofbookStepOutcome, ProofbookStepStatus,
 };
 use crate::proofbook::{
-    parse_proofbook, validate_definition, ProofbookDefinition, ProofbookError, ProofbookErrorCode,
-    ProofbookStep, ProofbookStepKind,
+    parse_proofbook, validate_definition, ProofbookAgentSessionExecutor, ProofbookDefinition,
+    ProofbookError, ProofbookErrorCode, ProofbookStep, ProofbookStepKind,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -19,6 +19,12 @@ pub trait ProofbookMcpToolExecutor {
         step: &ProofbookStep,
         approved_gate: Option<&ProofbookGateDecision>,
     ) -> Result<ProofbookStepOutcome, ProofbookError>;
+}
+
+#[derive(Clone, Copy, Default)]
+struct ProofbookExecutorRefs<'a> {
+    mcp: Option<&'a dyn ProofbookMcpToolExecutor>,
+    agent: Option<&'a dyn ProofbookAgentSessionExecutor>,
 }
 
 #[derive(Clone, Default)]
@@ -37,7 +43,12 @@ impl ProofbookRunner {
         proofbook_path: &str,
         inputs: serde_json::Value,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
-        self.start_run_inner(project_path, proofbook_path, inputs, None)
+        self.start_run_inner(
+            project_path,
+            proofbook_path,
+            inputs,
+            ProofbookExecutorRefs::default(),
+        )
     }
 
     pub fn start_run_with_mcp_executor(
@@ -47,7 +58,48 @@ impl ProofbookRunner {
         inputs: serde_json::Value,
         mcp_executor: &dyn ProofbookMcpToolExecutor,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
-        self.start_run_inner(project_path, proofbook_path, inputs, Some(mcp_executor))
+        self.start_run_with_executors(
+            project_path,
+            proofbook_path,
+            inputs,
+            Some(mcp_executor),
+            None,
+        )
+    }
+
+    pub fn start_run_with_agent_executor(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        inputs: serde_json::Value,
+        agent_executor: &dyn ProofbookAgentSessionExecutor,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.start_run_with_executors(
+            project_path,
+            proofbook_path,
+            inputs,
+            None,
+            Some(agent_executor),
+        )
+    }
+
+    pub fn start_run_with_executors(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        inputs: serde_json::Value,
+        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+        agent_executor: Option<&dyn ProofbookAgentSessionExecutor>,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.start_run_inner(
+            project_path,
+            proofbook_path,
+            inputs,
+            ProofbookExecutorRefs {
+                mcp: mcp_executor,
+                agent: agent_executor,
+            },
+        )
     }
 
     fn start_run_inner(
@@ -55,7 +107,7 @@ impl ProofbookRunner {
         project_path: &str,
         proofbook_path: &str,
         inputs: serde_json::Value,
-        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+        executors: ProofbookExecutorRefs<'_>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let proofbook_path = resolve_proofbook_path(&root, proofbook_path)?;
@@ -68,7 +120,7 @@ impl ProofbookRunner {
         let mut ledger = ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?;
         ledger::write_ledger(&root, &ledger)?;
         self.remember(ledger.clone())?;
-        self.drive_run(&root, &definition, &mut ledger, mcp_executor)?;
+        self.drive_run(&root, &definition, &mut ledger, executors)?;
         self.remember(ledger.clone())?;
         Ok(ledger)
     }
@@ -289,7 +341,15 @@ impl ProofbookRunner {
                         )?;
                         self.apply_step_outcome(&root, &mut ledger, step, outcome)?;
                     }
-                    self.drive_run(&root, &definition, &mut ledger, mcp_executor)?;
+                    self.drive_run(
+                        &root,
+                        &definition,
+                        &mut ledger,
+                        ProofbookExecutorRefs {
+                            mcp: mcp_executor,
+                            agent: None,
+                        },
+                    )?;
                 }
             }
         }
@@ -307,27 +367,40 @@ impl ProofbookRunner {
                     if step.status == ProofbookStepStatus::Running {
                         step.status = ProofbookStepStatus::Blocked;
                         step.completed_at = Some(ledger::now_timestamp());
-                        step.error = Some(ProofbookRunError::new(
-                            "interrupted_by_restart",
-                            "running step was interrupted by process restart",
-                        ));
+                        step.error = Some(if step.kind == "agentSession" {
+                            crate::proofbook::agent_step::interrupted_agent_session_error()
+                        } else {
+                            ProofbookRunError::new(
+                                "interrupted_by_restart",
+                                "running step was interrupted by process restart",
+                            )
+                        });
                         changed = true;
                     }
                 }
                 if changed {
+                    let interrupted_code = if ledger.steps.iter().any(|step| {
+                        step.error.as_ref().is_some_and(|error| {
+                            error.code == "agent_session_interrupted_by_restart"
+                        })
+                    }) {
+                        "agent_session_interrupted_by_restart"
+                    } else {
+                        "interrupted_by_restart"
+                    };
                     ledger.status = ProofbookRunStatus::Failed;
                     ledger.residual_blockers.push(ProofbookResidualBlocker {
-                        code: "interrupted_by_restart".to_string(),
+                        code: interrupted_code.to_string(),
                         step_id: None,
                         message: "A running Proofbook step was found during hydration.".to_string(),
                     });
                     ledger.append_event(
                         "run_hydrated_fail_closed",
                         None,
-                        "Converted dead running steps to interrupted_by_restart",
+                        format!("Converted dead running steps to {interrupted_code}"),
                         Some("failed".to_string()),
                         Some(ProofbookRunError::new(
-                            "interrupted_by_restart",
+                            interrupted_code,
                             "running steps cannot be resumed blindly",
                         )),
                     );
@@ -354,7 +427,7 @@ impl ProofbookRunner {
         root: &Path,
         definition: &ProofbookDefinition,
         ledger: &mut ProofbookRunLedger,
-        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+        executors: ProofbookExecutorRefs<'_>,
     ) -> Result<(), ProofbookError> {
         if matches!(
             ledger.status,
@@ -383,12 +456,14 @@ impl ProofbookRunner {
                 }
                 progressed = true;
                 self.mark_step_running(root, ledger, step)?;
-                let outcome = self.execute_step(root, ledger, step, mcp_executor)?;
+                let outcome = self.execute_step(root, ledger, step, executors)?;
                 self.apply_step_outcome(root, ledger, step, outcome)?;
                 match ledger.step(&step.id).map(|s| s.status) {
-                    Some(ProofbookStepStatus::WaitingGate) => return Ok(()),
+                    Some(ProofbookStepStatus::WaitingGate | ProofbookStepStatus::Running) => {
+                        return Ok(());
+                    }
                     Some(ProofbookStepStatus::Failed | ProofbookStepStatus::Blocked) => {
-                        return Ok(())
+                        return Ok(());
                     }
                     _ => {}
                 }
@@ -429,7 +504,7 @@ impl ProofbookRunner {
         root: &Path,
         ledger: &ProofbookRunLedger,
         step: &ProofbookStep,
-        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+        executors: ProofbookExecutorRefs<'_>,
     ) -> Result<ProofbookStepOutcome, ProofbookError> {
         match ProofbookStepKind::from_wire(&step.kind) {
             Some(ProofbookStepKind::Shell) => {
@@ -444,13 +519,21 @@ impl ProofbookRunner {
             Some(ProofbookStepKind::ManualGate) => Ok(
                 crate::proofbook::step_manual_gate::wait_for_manual_gate(&ledger.run_id, step),
             ),
-            Some(ProofbookStepKind::McpTool) => match mcp_executor {
+            Some(ProofbookStepKind::McpTool) => match executors.mcp {
                 Some(executor) => executor.execute_mcp_tool(&ledger.run_id, ledger, step, None),
                 None => Ok(ProofbookStepOutcome::blocked(
                     "not_implemented",
                     "Proofbook mcpTool steps require the PB-3 MCP runtime",
                 )),
             },
+            Some(ProofbookStepKind::AgentSession) => {
+                crate::proofbook::agent_step::execute_agent_session_step(
+                    root,
+                    ledger,
+                    step,
+                    executors.agent,
+                )
+            }
             Some(kind) => Ok(ProofbookStepOutcome::blocked(
                 "not_implemented",
                 format!("Proofbook step kind {kind:?} is not executable in PB-2"),
@@ -475,12 +558,18 @@ impl ProofbookRunner {
         let artifact_refs = outcome.artifact_refs.clone();
         if let Some(summary) = ledger.step_mut(&step.id) {
             summary.status = status;
-            summary.completed_at = if status == ProofbookStepStatus::WaitingGate {
+            summary.completed_at = if matches!(
+                status,
+                ProofbookStepStatus::WaitingGate | ProofbookStepStatus::Running
+            ) {
                 None
             } else {
                 Some(completed_at.clone())
             };
-            summary.duration_ms = ledger::duration_ms(&summary.started_at, &completed_at);
+            summary.duration_ms = summary
+                .completed_at
+                .as_ref()
+                .and_then(|completed_at| ledger::duration_ms(&summary.started_at, completed_at));
             summary.stdout_ref = outcome.stdout_ref;
             summary.stderr_ref = outcome.stderr_ref;
             summary.exit_code = outcome.exit_code;
@@ -509,6 +598,16 @@ impl ProofbookRunner {
                     Some(step.id.clone()),
                     format!("Proofbook step {} is waiting for a gate", step.id),
                     Some("waiting_gate".to_string()),
+                    error,
+                );
+            }
+            ProofbookStepStatus::Running => {
+                ledger.status = ProofbookRunStatus::Running;
+                ledger.append_event(
+                    "step_running",
+                    Some(step.id.clone()),
+                    format!("Proofbook step {} is running", step.id),
+                    Some("running".to_string()),
                     error,
                 );
             }
@@ -555,8 +654,7 @@ impl ProofbookRunner {
             }
             ProofbookStepStatus::Cancelled
             | ProofbookStepStatus::Skipped
-            | ProofbookStepStatus::Pending
-            | ProofbookStepStatus::Running => {}
+            | ProofbookStepStatus::Pending => {}
         }
         ledger::write_ledger(root, ledger)
     }
@@ -1075,5 +1173,197 @@ settlement:
             restored.steps[0].error.as_ref().unwrap().code,
             "interrupted_by_restart"
         );
+    }
+
+    struct FakeAgentExecutor;
+
+    impl ProofbookAgentSessionExecutor for FakeAgentExecutor {
+        fn start_agent_session(
+            &self,
+            _run_id: &str,
+            _ledger: &ProofbookRunLedger,
+            step: &ProofbookStep,
+            request: &crate::proofbook::ProofbookAgentSessionRequest,
+        ) -> Result<crate::proofbook::ProofbookAgentSessionSpawn, ProofbookError> {
+            Ok(crate::proofbook::ProofbookAgentSessionSpawn {
+                session_id: format!("session-{}", step.id),
+                pane_id: request.visible.then(|| format!("pane-{}", step.id)),
+                pty_id: request.visible.then(|| format!("pty-{}", step.id)),
+                backend: if request.visible {
+                    "native"
+                } else {
+                    "headless"
+                }
+                .to_string(),
+                provider: request.provider.clone(),
+                model: request.model.clone(),
+                repo_path: request.repo_path.clone(),
+                worktree_path: request.worktree_path.clone(),
+                worktree_branch: request.worktree_branch.clone(),
+                visible: request.visible,
+            })
+        }
+    }
+
+    #[test]
+    fn proofbook_runner_agent_session_spawn_records_running_ledger_metadata() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-visible
+steps:
+  - id: agent
+    type: agentSession
+    task: continue PB-4 runtime
+    role: implementation
+    model: codex-mini
+    branch: proofbook-agent-runtime
+    expectedArtifacts:
+      - .aelyris/proofbooks/agent-summary.md
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+
+        let ledger = runner
+            .start_run_with_agent_executor(
+                &project_path(&project),
+                &proofbook,
+                json!({}),
+                &FakeAgentExecutor,
+            )
+            .unwrap();
+
+        assert_eq!(ledger.status, ProofbookRunStatus::Running);
+        assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Running);
+        assert!(ledger.steps[0].completed_at.is_none());
+        let output = ledger.steps[0].structured_output.as_ref().unwrap();
+        assert_eq!(output["kind"], "agentSession");
+        assert_eq!(output["sessionId"], "session-agent");
+        assert_eq!(output["paneId"], "pane-agent");
+        assert_eq!(output["ptyId"], "pty-agent");
+        assert_eq!(output["visibleMode"], "visible");
+        assert_eq!(output["costTokensStatus"], "unknown");
+        assert_eq!(output["worktreeBranch"], "proofbook-agent-runtime");
+        assert!(ledger
+            .events
+            .iter()
+            .any(|event| event.kind == "step_running"));
+    }
+
+    #[test]
+    fn proofbook_runner_agent_session_requires_pb4_runtime() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-runtime-required
+steps:
+  - id: agent
+    type: agentSession
+    task: continue PB-4 runtime
+    role: implementation
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+
+        let ledger = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+
+        assert_eq!(ledger.status, ProofbookRunStatus::Failed);
+        assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Blocked);
+        assert_eq!(
+            ledger.steps[0].error.as_ref().unwrap().code,
+            "agent_session_runtime_unavailable"
+        );
+    }
+
+    #[test]
+    fn proofbook_runner_agent_session_headless_planner_records_reason() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-headless
+steps:
+  - id: agent
+    type: agentSession
+    task: review the proof artifacts
+    role: planner
+    visible: false
+    headlessReason: batch planning evidence only
+    model: sonnet
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+
+        let ledger = runner
+            .start_run_with_agent_executor(
+                &project_path(&project),
+                &proofbook,
+                json!({}),
+                &FakeAgentExecutor,
+            )
+            .unwrap();
+
+        assert_eq!(ledger.status, ProofbookRunStatus::Running);
+        let output = ledger.steps[0].structured_output.as_ref().unwrap();
+        assert_eq!(output["visibleMode"], "headless");
+        assert_eq!(output["headlessReason"], "batch planning evidence only");
+        assert_eq!(output["backend"], "headless");
+        assert!(output["paneId"].is_null());
+        assert!(output["ptyId"].is_null());
+    }
+
+    #[test]
+    fn proofbook_runner_hydrates_running_agent_session_with_typed_blocker() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-hydrate
+steps:
+  - id: agent
+    type: agentSession
+    task: continue PB-4 runtime
+    role: implementation
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let definition = parse_proofbook(&proofbook).unwrap();
+        let mut ledger =
+            ledger::new_run_ledger(project.path(), &proofbook, &definition, &json!({})).unwrap();
+        ledger.status = ProofbookRunStatus::Running;
+        ledger.steps[0].status = ProofbookStepStatus::Running;
+        ledger::write_ledger(project.path(), &ledger).unwrap();
+
+        let runner = ProofbookRunner::new();
+        assert_eq!(runner.restore_project(&project_path(&project)).unwrap(), 1);
+        let restored = runner
+            .status(&project_path(&project), &ledger.run_id)
+            .unwrap();
+
+        assert_eq!(restored.status, ProofbookRunStatus::Failed);
+        assert_eq!(restored.steps[0].status, ProofbookStepStatus::Blocked);
+        assert_eq!(
+            restored.steps[0].error.as_ref().unwrap().code,
+            "agent_session_interrupted_by_restart"
+        );
+        assert!(restored
+            .residual_blockers
+            .iter()
+            .any(|blocker| blocker.code == "agent_session_interrupted_by_restart"));
     }
 }

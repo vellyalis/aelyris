@@ -21,10 +21,12 @@ a PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and
 `manualGate` steps through Tauri IPC, and a PB-3 MCP integration slice for
 `aelyris.proofbook.list/get/validate/run/status/cancel/approve_gate/reject_gate`
 and `mcpTool` delegation through the existing `tools/call` schema/governance
-path. This is not a shipped end-user Proofbook product: Aelyris still does not
-have a Proofbook canvas, create/update/distill verbs, agent/HTTP/fan-out/
-subProofbook execution, Evidence Store projection, or native UI completion
-described here.
+path, plus a PB-4 agentSession runtime start slice that records visible or
+allowed headless agent sessions as running ledger steps through the existing
+agent runtimes. This is not a shipped end-user Proofbook product: Aelyris still
+does not have a Proofbook canvas, create/update/distill verbs, HTTP/fan-out/
+subProofbook execution, Evidence Store projection, agentSession completion
+settlement, or native UI completion described here.
 
 Reference products such as Scape expose Playbooks that chain shell commands, AI
 sessions/prompts, HTTP requests, tools, sub-playbooks, table reads/writes,

@@ -1,3 +1,4 @@
+mod agent_step;
 mod errors;
 mod ledger;
 mod parser;
@@ -8,6 +9,9 @@ mod step_wait;
 mod types;
 pub(crate) mod validator;
 
+pub use agent_step::{
+    ProofbookAgentSessionExecutor, ProofbookAgentSessionRequest, ProofbookAgentSessionSpawn,
+};
 pub use errors::{ProofbookError, ProofbookErrorCode};
 pub use ledger::{
     hash_json, normalize_path, ProofbookArtifactRef, ProofbookGateDecision,

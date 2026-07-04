@@ -43,10 +43,12 @@ pub fn start_proofbook_run(
     inputs: Option<serde_json::Value>,
 ) -> Result<ProofbookRunLedger, ProofbookError> {
     let runner = app.state::<proofbook::ProofbookRunner>();
-    let ledger = runner.start_run(
+    let executor = IpcProofbookAgentExecutor { app: app.clone() };
+    let ledger = runner.start_run_with_agent_executor(
         &project_path,
         &proofbook_path,
         inputs.unwrap_or_else(|| serde_json::json!({})),
+        &executor,
     )?;
     record_audit_event(
         &app,
@@ -148,6 +150,89 @@ pub fn resolve_proofbook_manual_gate(
     );
     emit_proofbook_update(&app, &ledger);
     Ok(ledger)
+}
+
+struct IpcProofbookAgentExecutor {
+    app: AppHandle,
+}
+
+impl proofbook::ProofbookAgentSessionExecutor for IpcProofbookAgentExecutor {
+    fn start_agent_session(
+        &self,
+        _run_id: &str,
+        _ledger: &ProofbookRunLedger,
+        _step: &proofbook::ProofbookStep,
+        request: &proofbook::ProofbookAgentSessionRequest,
+    ) -> Result<proofbook::ProofbookAgentSessionSpawn, ProofbookError> {
+        if request.visible {
+            let cwd = request
+                .worktree_path
+                .clone()
+                .unwrap_or_else(|| request.repo_path.clone());
+            let branch = if request.worktree_path.is_some() {
+                None
+            } else {
+                request.worktree_branch.clone()
+            };
+            let result = tauri::async_runtime::block_on(crate::ipc::spawn_interactive_agent(
+                self.app.clone(),
+                cwd,
+                Some(request.model.clone()),
+                Some(request.task.clone()),
+                branch,
+                request.cols,
+                request.rows,
+            ))
+            .map_err(|message| {
+                ProofbookError::new(ProofbookErrorCode::ValidationFailed, message)
+                    .with_field("agentSession")
+            })?;
+            return Ok(proofbook::ProofbookAgentSessionSpawn {
+                session_id: result.session_id,
+                pane_id: Some(result.pty_id.clone()),
+                pty_id: Some(result.pty_id),
+                backend: result.backend,
+                provider: request.provider.clone(),
+                model: request.model.clone(),
+                repo_path: request.repo_path.clone(),
+                worktree_path: request.worktree_path.clone().or(result.worktree_path),
+                worktree_branch: request.worktree_branch.clone(),
+                visible: true,
+            });
+        }
+
+        let manager = self.app.state::<crate::agent::AgentManager>();
+        let cwd = request
+            .worktree_path
+            .clone()
+            .unwrap_or_else(|| request.repo_path.clone());
+        let session_id = crate::control::agent::start_headless(
+            &manager,
+            crate::control::agent::HeadlessSpawnSpec {
+                prompt: request.task.clone(),
+                cwd,
+                model: Some(request.model.clone()),
+                allowed_tools: None,
+                resume_id: None,
+            },
+        )
+        .map_err(|message| {
+            ProofbookError::new(ProofbookErrorCode::ValidationFailed, message)
+                .with_field("agentSession")
+        })?;
+        Ok(proofbook::ProofbookAgentSessionSpawn {
+            session_id,
+            pane_id: None,
+            pty_id: None,
+            backend: "headless".to_string(),
+            provider: request.provider.clone(),
+            model: request.model.clone(),
+            repo_path: request.repo_path.clone(),
+            worktree_path: request.worktree_path.clone(),
+            worktree_branch: request.worktree_branch.clone(),
+            visible: false,
+        })
+    }
 }
 
 fn emit_proofbook_update(app: &AppHandle, ledger: &ProofbookRunLedger) {

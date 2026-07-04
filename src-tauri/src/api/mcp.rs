@@ -443,7 +443,13 @@ fn mcp_proofbook_run(
         state: state.clone(),
     };
     let ledger = runner
-        .start_run_with_mcp_executor(&project_path, &proofbook_path, inputs, &executor)
+        .start_run_with_executors(
+            &project_path,
+            &proofbook_path,
+            inputs,
+            Some(&executor),
+            Some(&executor),
+        )
         .map_err(proofbook_error_to_api)?;
     mcp_result_value(ledger)
 }
@@ -670,6 +676,142 @@ impl crate::proofbook::ProofbookMcpToolExecutor for McpProofbookExecutor {
             structured_output: Some(structured),
             ..ProofbookStepOutcome::passed()
         })
+    }
+}
+
+impl crate::proofbook::ProofbookAgentSessionExecutor for McpProofbookExecutor {
+    fn start_agent_session(
+        &self,
+        _run_id: &str,
+        _ledger: &crate::proofbook::ProofbookRunLedger,
+        _step: &crate::proofbook::ProofbookStep,
+        request: &crate::proofbook::ProofbookAgentSessionRequest,
+    ) -> Result<crate::proofbook::ProofbookAgentSessionSpawn, crate::proofbook::ProofbookError>
+    {
+        #[cfg(test)]
+        {
+            let _ = request;
+            return Err(crate::proofbook::ProofbookError::runtime_not_available(
+                "agentSession",
+            ));
+        }
+
+        #[cfg(not(test))]
+        {
+            if request.visible {
+                let app = mcp_app_handle(&self.state).map_err(|error| {
+                    crate::proofbook::ProofbookError::new(
+                        crate::proofbook::ProofbookErrorCode::RuntimeNotAvailable,
+                        error.to_string(),
+                    )
+                    .with_field("agentSession")
+                })?;
+                let cwd = request
+                    .worktree_path
+                    .clone()
+                    .unwrap_or_else(|| request.repo_path.clone());
+                let branch = if request.worktree_path.is_some() {
+                    None
+                } else {
+                    request.worktree_branch.clone()
+                };
+                let model = request.model.clone();
+                let task = request.task.clone();
+                let cols = request.cols;
+                let rows = request.rows;
+                let result = std::thread::Builder::new()
+                    .name("proofbook-agent-session".to_string())
+                    .spawn(move || {
+                        let runtime = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .map_err(|error| format!("start Proofbook agent runtime: {error}"))?;
+                        runtime.block_on(crate::ipc::spawn_interactive_agent(
+                            app,
+                            cwd,
+                            Some(model),
+                            Some(task),
+                            branch,
+                            cols,
+                            rows,
+                        ))
+                    })
+                    .map_err(|error| {
+                        crate::proofbook::ProofbookError::new(
+                            crate::proofbook::ProofbookErrorCode::IoError,
+                            format!("spawn Proofbook agent runtime: {error}"),
+                        )
+                        .with_field("agentSession")
+                    })?
+                    .join()
+                    .map_err(|_| {
+                        crate::proofbook::ProofbookError::new(
+                            crate::proofbook::ProofbookErrorCode::IoError,
+                            "Proofbook agent runtime thread panicked",
+                        )
+                        .with_field("agentSession")
+                    })?
+                    .map_err(|message| {
+                        crate::proofbook::ProofbookError::new(
+                            crate::proofbook::ProofbookErrorCode::ValidationFailed,
+                            message,
+                        )
+                        .with_field("agentSession")
+                    })?;
+                return Ok(crate::proofbook::ProofbookAgentSessionSpawn {
+                    session_id: result.session_id,
+                    pane_id: Some(result.pty_id.clone()),
+                    pty_id: Some(result.pty_id),
+                    backend: result.backend,
+                    provider: request.provider.clone(),
+                    model: request.model.clone(),
+                    repo_path: request.repo_path.clone(),
+                    worktree_path: request.worktree_path.clone().or(result.worktree_path),
+                    worktree_branch: request.worktree_branch.clone(),
+                    visible: true,
+                });
+            }
+
+            let manager = self.state.agent_manager.as_ref().ok_or_else(|| {
+                crate::proofbook::ProofbookError::runtime_not_available(
+                    "agentSession headless runtime is not attached",
+                )
+                .with_field("agentSession")
+            })?;
+            let cwd = request
+                .worktree_path
+                .clone()
+                .unwrap_or_else(|| request.repo_path.clone());
+            let session_id = crate::control::agent::start_headless(
+                manager,
+                crate::control::agent::HeadlessSpawnSpec {
+                    prompt: request.task.clone(),
+                    cwd,
+                    model: Some(request.model.clone()),
+                    allowed_tools: None,
+                    resume_id: None,
+                },
+            )
+            .map_err(|message| {
+                crate::proofbook::ProofbookError::new(
+                    crate::proofbook::ProofbookErrorCode::ValidationFailed,
+                    message,
+                )
+                .with_field("agentSession")
+            })?;
+            Ok(crate::proofbook::ProofbookAgentSessionSpawn {
+                session_id,
+                pane_id: None,
+                pty_id: None,
+                backend: "headless".to_string(),
+                provider: request.provider.clone(),
+                model: request.model.clone(),
+                repo_path: request.repo_path.clone(),
+                worktree_path: request.worktree_path.clone(),
+                worktree_branch: request.worktree_branch.clone(),
+                visible: false,
+            })
+        }
     }
 }
 
