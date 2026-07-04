@@ -1669,6 +1669,14 @@ function artifactPassesForCachedStep(data) {
   if (data.status === "blocked-by-external-gates" && data.implementationFixableCount === 0) return true;
   if (data.status === "environment-blocked-current-contract") return true;
   if (data.status === "environment-blocked") return true;
+  if (
+    data.status === "classified-upstream-bound" &&
+    data.stackRiskClassification?.classificationGate?.ok === true &&
+    data.stackRiskClassification?.releaseBlockerCount === 0 &&
+    data.stackRiskClassification?.unclassifiedCount === 0
+  ) {
+    return true;
+  }
   if (data.classificationGate?.ok === true) return true;
   if (data.status === "ready-for-external-operator-gates") return true;
   if (data.status === "blocked-by-git-metadata-permissions" && data.ok === true) return true;

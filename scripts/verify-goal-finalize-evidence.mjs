@@ -188,7 +188,8 @@ function sourceCutoffMsForStep(id) {
       "scripts/build-dist-windows.ps1",
       "src-tauri/tauri.dist.conf.json",
       "src-tauri/tauri.conf.json",
-      artifactPaths.qualityScore,
+      // Current score shape is validated by the quality-score steps; keeping it
+      // here makes the later safe-gate score refresh stale this handoff replay.
     ],
     "external-gate-readiness": [
       "scripts/verify-goal-external-gate-readiness.mjs",
