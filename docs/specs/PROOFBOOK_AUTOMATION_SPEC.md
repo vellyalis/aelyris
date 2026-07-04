@@ -18,10 +18,12 @@ Current Aelyris has a workflow engine, an MCP control surface, planner verbs,
 governance/audit, task graph, agent fleet, visible panes, verifier artifacts,
 PB-1 static Proofbook schema/parser/validator plus read-only list/validate IPC,
 and a PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and
-`manualGate` steps through Tauri IPC. This is not a shipped end-user Proofbook
-product: Aelyris still does not have a Proofbook canvas, distillation,
-Proofbook MCP verbs, MCP/HTTP/agent/fan-out/subProofbook execution, or Evidence
-Store projection described here.
+`manualGate` steps through Tauri IPC. PB-3D documents the MCP integration design
+gate, but PB-3 runtime code and Proofbook MCP verbs are still not implemented.
+This is not a shipped end-user Proofbook product: Aelyris still does not have a
+Proofbook canvas, distillation, Proofbook MCP verbs,
+MCP/HTTP/agent/fan-out/subProofbook execution, or Evidence Store projection
+described here.
 
 Reference products such as Scape expose Playbooks that chain shell commands, AI
 sessions/prompts, HTTP requests, tools, sub-playbooks, table reads/writes,
@@ -842,6 +844,184 @@ Acceptance:
 - `manualGate` pauses and resumes with decision metadata.
 - Does not execute network or MCP steps yet.
 
+### PB-3D - Detailed Design Gate: MCP Tool Step And Proofbook MCP Verbs
+
+Status: docs/verifier gate only. PB-3D does not add `aelyris.proofbook.*`
+catalog entries, execute `mcpTool` steps, change `ProofbookRunner` behavior, or
+claim Proofbook MCP support. Runtime implementation for PB-3 is out of scope
+until this section exists, `docs/specs/MCP_TOOL_SURFACE_SPEC.md` has the
+matching Proofbook domain contract, and `pnpm verify:proofbook:spec` reports a
+passing `spec-pb3d-detailed-design` check.
+
+PB-3D owner scope:
+
+- `src-tauri/src/api/mcp.rs`
+- `src-tauri/src/proofbook/runner.rs`
+- `src-tauri/src/proofbook/ledger.rs` only if existing `structuredOutput`,
+  `risk`, `error`, `decisions`, and event fields cannot express the PB-3 gate
+  records.
+- `docs/specs/MCP_TOOL_SURFACE_SPEC.md`
+- focused Rust tests for MCP schema/governance/catalog drift and Proofbook
+  runner gate behavior.
+
+PB-3 must not implement Proofbook `create`, `update`, or `distill`; those stay
+in PB-6. PB-3 must not execute HTTP, agentSession, fanOut, subProofbook, or
+Evidence Store behavior; those remain blocked with explicit
+`not_implemented`/`unsupported_step_type` until their owning PB phase.
+
+Module ownership:
+
+- `src-tauri/src/api/mcp.rs` owns the MCP catalog rows, inputSchema definitions,
+  schema validation, governance authorization, and `tools_call` dispatch seam.
+  PB-3 must reuse `tool_names()`, `tools_list()`, `input_schema_for_tool()`,
+  `validate_tool_arguments()`, `schema_tool_error()`, the governance choke point,
+  and the existing catalog/schema drift tests. It must not create a second MCP
+  dispatcher, a second schema validator, or a Proofbook-only catalog.
+- `src-tauri/src/proofbook/runner.rs` remains the run state-machine owner. It may
+  add the PB-3 `mcpTool` execution branch and runner helpers, but it delegates
+  all MCP schema/governance/tool dispatch decisions back through the `mcp.rs`
+  seam instead of re-implementing per-tool argument parsing.
+- `src-tauri/src/proofbook/ledger.rs` remains the ledger schema owner. PB-3
+  should prefer the existing `structuredOutput`, `risk`, `error`, `decisions`,
+  and append-only `events` fields for `mcpTool` proof. Any ledger field addition
+  requires the spec, verifier, and focused tests in the same phase.
+- `docs/specs/MCP_TOOL_SURFACE_SPEC.md` owns the public MCP row contract for the
+  PB-3 verbs and the `mcpTool` step semantics. The parent Proofbook spec remains
+  the claim boundary and roadmap authority.
+
+PB-3 MCP verb contract:
+
+| Verb | Safety | PB-3 behavior |
+| --- | --- | --- |
+| `aelyris.proofbook.list` | FREE | List `.aelyris/proofbooks/*.proofbook.yaml` and `.proofbook.yml` through `proofbook::list_proofbook_files`. |
+| `aelyris.proofbook.get` | FREE | Parse one contained definition and return the definition, definition hash, and validation report without executing it. |
+| `aelyris.proofbook.validate` | FREE | Run the PB-1 validator and return the same structured validation report as IPC. |
+| `aelyris.proofbook.run` | GATED | Start a PB-2/PB-3 run through the managed `ProofbookRunner`, returning `runId`, `status`, and ledger path. |
+| `aelyris.proofbook.status` | FREE | Read one run ledger by `runId`, including current waiting gates and residual blockers. |
+| `aelyris.proofbook.cancel` | GATED | Cancel a run through the runner and append a cancellation event; never delete artifacts or ledgers. |
+| `aelyris.proofbook.approve_gate` | GATED | Resolve a Proofbook gate by expected `gateId` and `gateHash`; stale hashes fail closed. |
+| `aelyris.proofbook.reject_gate` | GATED | Reject a Proofbook gate by expected `gateId` and `gateHash`, recording actor/comment metadata. |
+
+All PB-3 verbs must use `additionalProperties:false` inputSchema objects and
+must be present in `tool_names()`, `tools_list()`, and `tools_call()` together so
+`catalog_and_schemas_list_exactly_the_same_verbs` catches drift. The MCP face
+may retrieve the managed runner through the Tauri `AppHandle` already stored in
+`ApiState`; sidecar/test modes with no attached runtime fail closed with a typed
+runtime error rather than creating a second runner.
+
+PB-3 `mcpTool` step contract:
+
+- A Proofbook step uses `type: mcpTool`, `toolName`, and `arguments` object
+  fields. `toolName` must name a catalog tool exposed by `mcp.rs`; unknown tools
+  fail with `mcp_tool_not_found`.
+- `mcpTool` may not target `aelyris.proofbook.*` verbs in PB-3. Recursive
+  Proofbook execution and Proofbook gate mutation from inside a Proofbook fail
+  closed with `proofbook_mcp_recursion_not_supported`.
+- Before dispatch, the same advertised `inputSchema` is enforced. Schema
+  failures write a step failure with `error.code="mcp_schema_violation"` and the
+  machine-correctable `schema_violation` payload in `structuredOutput`.
+- Governance denial writes a step failure or blocker with
+  `error.code="mcp_governance_denied"` and preserves the durable access-denied
+  audit from the MCP path. Proofbook runner code must not catch the denial and
+  retry through a less-governed path.
+- FREE tools may run immediately through the shared dispatch seam. The step
+  passes only when the MCP result is not an error result. Tool `structuredContent`
+  and bounded result metadata are recorded in `structuredOutput`; large or
+  sensitive output must become redacted artifact refs instead of inline ledger
+  payload.
+- GATED tools do not fake success. They transition the Proofbook run to
+  `waiting_gate` before the privileged operation, recording
+  `kind:"mcpTool"`, `toolName`, `safety`, `gateId`, `gateHash`,
+  `argumentsHash`, and `pendingDecisionId` when the MCP pending path creates
+  one. Resume requires `approve_gate` with the expected hash; stale or mismatched
+  gates fail closed.
+- GATED observe-only tools may execute only when `MCP_TOOL_SURFACE_SPEC.md`
+  explicitly documents that the verb is read-only and cannot resolve or mutate a
+  pending decision. Otherwise any non-FREE safety classification becomes a
+  waiting gate.
+
+PB-3 pending decision shape:
+
+- `gateId`: stable per run id + step id + target tool.
+- `gateHash`: hash over `runId`, `stepId`, `toolName`, canonicalized
+  `arguments`, `definitionHash`, and `inputHash`.
+- `pendingDecisionId`: id returned by the MCP pending queue when a pending
+  decision is created; omitted only for a verb whose own durable store is the
+  source of truth.
+- `structuredOutput.kind`: exactly `mcpTool`.
+- `structuredOutput.decision`: absent until resolved; after resolution the
+  append-only `decisions` array records actor, decision, comment, and timestamp.
+
+PB-3 restart/replay behavior:
+
+- Waiting `mcpTool` gates stay `waiting_gate` after hydration with the same
+  `gateHash`; no MCP tool is re-dispatched automatically on restart.
+- A `running` MCP step found during hydration is converted to `blocked` with
+  `error.code="interrupted_by_restart"` using the existing PB-2 fail-closed
+  hydration rule.
+- Completed MCP step events remain append-only evidence. A later status read may
+  enrich current pending-state projection, but it must not rewrite completed
+  event history.
+
+PB-3 focused test matrix:
+
+- catalog/schema drift includes all eight `aelyris.proofbook.*` PB-3 verbs and
+  excludes `aelyris.proofbook.create`, `aelyris.proofbook.update`, and
+  `aelyris.proofbook.distill`;
+- every Proofbook MCP verb has `additionalProperties:false` and the expected
+  FREE/GATED safety classification;
+- malformed Proofbook MCP calls return the existing structured
+  `schema_violation` payload before runtime dispatch;
+- governance denial blocks a Proofbook MCP verb before runner code executes;
+- `mcpTool` FREE step delegates through the same schema/governance seam and
+  records a passed ledger step with structured output;
+- `mcpTool` schema violation records `mcp_schema_violation` without tool
+  execution;
+- `mcpTool` governance denial records `mcp_governance_denied` without alternate
+  dispatch;
+- GATED `mcpTool` transitions to `waiting_gate`, records `gateHash` and
+  `pendingDecisionId`, and does not mark the step passed until an expected-hash
+  approval resolves it;
+- stale `approve_gate`/`reject_gate` hashes fail closed;
+- recursive `aelyris.proofbook.*` `mcpTool` targets fail with
+  `proofbook_mcp_recursion_not_supported`.
+
+Verifier and artifact expectations:
+
+- PB-3D uses `pnpm verify:proofbook:spec`, which writes
+  `.codex-auto/quality/proofbook-spec.json` and must include a passing
+  `spec-pb3d-detailed-design` check.
+- PB-3 implementation must pass `cargo test --manifest-path src-tauri\Cargo.toml
+  mcp --lib` and `cargo test --manifest-path src-tauri\Cargo.toml proofbook
+  --lib`.
+- PB-3 implementation should extend `pnpm verify:proofbook:runner` or add a
+  focused MCP verifier artifact if source-scan coverage is needed for the new
+  dispatch seam.
+- PB-3 docs changes must keep `pnpm verify:goal:docs` green.
+
+PB-3D claim boundary:
+
+After PB-3D, the only safe claim is that the MCP integration design gate is
+documented and verifier-checked. Proofbook MCP verbs and `mcpTool` execution are
+still not implemented until PB-3 runtime code, catalog rows, focused tests, and
+runner/MCP verifier coverage land. Even after PB-3 implementation, create,
+update, distill, HTTP, agentSession, fanOut, subProofbook, and Evidence Store
+remain future PB phases.
+
+PB-3D stop conditions:
+
+- Stop if PB-3 would bypass `tools_call` inputSchema validation, governance, or
+  audit.
+- Stop if a second MCP dispatcher, Proofbook-only catalog, or duplicate schema
+  validator seems necessary.
+- Stop if `ApiState` cannot reach the managed `ProofbookRunner` without a new
+  global singleton.
+- Stop if a GATED MCP tool would need to be recorded as passed before the
+  expected gate hash is approved.
+- Stop if a Proofbook can call `aelyris.proofbook.*` recursively before PB-5
+  subProofbook lineage exists.
+- Stop if raw secrets, token-bearing transcripts, signing material, private
+  keys, or unbounded MCP output would be written inline to the ledger.
 ### PB-3 — MCP Tool Step And Proofbook MCP Verbs
 
 Scope: connect to existing MCP dispatch.

@@ -8,6 +8,7 @@ const OUT = join(ROOT, ".codex-auto", "quality", "proofbook-spec.json");
 const paths = {
   spec: "docs/specs/PROOFBOOK_AUTOMATION_SPEC.md",
   pb1DetailedDesign: "docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md",
+  mcpToolSurface: "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
   specIndex: "docs/specs/README.md",
   packageJson: "package.json",
 };
@@ -91,10 +92,12 @@ function writeJsonAtomic(path, value) {
 
 const spec = readText(paths.spec);
 const pb1DetailedDesign = readText(paths.pb1DetailedDesign);
+const mcpToolSurface = readText(paths.mcpToolSurface);
 const specIndex = readText(paths.specIndex);
 const packageJson = readText(paths.packageJson);
 const normalizedSpec = normalize(spec);
 const normalizedIndex = normalize(specIndex);
+const normalizedMcpToolSurface = normalize(mcpToolSurface);
 
 const missingStepTypes = missingFrom(spec, stepTypes);
 const missingMcpVerbs = missingFrom(spec, mcpVerbs);
@@ -295,6 +298,112 @@ const requiredPb2dClauses = [
   "JSON-file ledgers cannot preserve append-only event history with",
 ];
 const missingPb2dClauses = missingFromNormalized(spec, requiredPb2dClauses);
+const requiredPb3dClauses = [
+  "### PB-3D - Detailed Design Gate: MCP Tool Step And Proofbook MCP Verbs",
+  "Status: docs/verifier gate only. PB-3D does not add `aelyris.proofbook.*`",
+  "Runtime implementation for PB-3 is out of scope",
+  "`spec-pb3d-detailed-design` check.",
+  "PB-3D owner scope:",
+  "`src-tauri/src/api/mcp.rs`",
+  "`src-tauri/src/proofbook/runner.rs`",
+  "`src-tauri/src/proofbook/ledger.rs` only if existing `structuredOutput`,",
+  "`docs/specs/MCP_TOOL_SURFACE_SPEC.md`",
+  "PB-3 must not implement Proofbook `create`, `update`, or `distill`",
+  "PB-3 must not execute HTTP, agentSession, fanOut, subProofbook, or",
+  "Module ownership:",
+  "`src-tauri/src/api/mcp.rs` owns the MCP catalog rows, inputSchema definitions,",
+  "PB-3 must reuse `tool_names()`, `tools_list()`, `input_schema_for_tool()`,",
+  "`validate_tool_arguments()`, `schema_tool_error()`, the governance choke point,",
+  "It must not create a second MCP",
+  "dispatcher, a second schema validator, or a Proofbook-only catalog.",
+  "`src-tauri/src/proofbook/runner.rs` remains the run state-machine owner.",
+  "delegates all MCP schema/governance/tool dispatch decisions back through the `mcp.rs`",
+  "`src-tauri/src/proofbook/ledger.rs` remains the ledger schema owner.",
+  "Any ledger field addition",
+  "requires the spec, verifier, and focused tests in the same phase.",
+  "PB-3 MCP verb contract:",
+  "`aelyris.proofbook.list`",
+  "`aelyris.proofbook.get`",
+  "`aelyris.proofbook.validate`",
+  "`aelyris.proofbook.run`",
+  "`aelyris.proofbook.status`",
+  "`aelyris.proofbook.cancel`",
+  "`aelyris.proofbook.approve_gate`",
+  "`aelyris.proofbook.reject_gate`",
+  "All PB-3 verbs must use `additionalProperties:false` inputSchema objects",
+  "`catalog_and_schemas_list_exactly_the_same_verbs` catches drift.",
+  "The MCP face",
+  "may retrieve the managed runner through the Tauri `AppHandle` already stored in",
+  "sidecar/test modes with no attached runtime fail closed",
+  "PB-3 `mcpTool` step contract:",
+  "`type: mcpTool`, `toolName`, and `arguments` object",
+  "mcp_tool_not_found",
+  "`mcpTool` may not target `aelyris.proofbook.*` verbs in PB-3.",
+  "proofbook_mcp_recursion_not_supported",
+  "error.code=\"mcp_schema_violation\"",
+  "machine-correctable `schema_violation` payload",
+  "error.code=\"mcp_governance_denied\"",
+  "GATED tools do not fake success.",
+  "`kind:\"mcpTool\"`, `toolName`, `safety`, `gateId`, `gateHash`,",
+  "`argumentsHash`, and `pendingDecisionId`",
+  "PB-3 pending decision shape:",
+  "`gateHash`: hash over `runId`, `stepId`, `toolName`, canonicalized",
+  "PB-3 restart/replay behavior:",
+  "Waiting `mcpTool` gates stay `waiting_gate` after hydration",
+  "no MCP tool is re-dispatched automatically on restart.",
+  "PB-3 focused test matrix:",
+  "excludes `aelyris.proofbook.create`, `aelyris.proofbook.update`, and",
+  "`aelyris.proofbook.distill`",
+  "malformed Proofbook MCP calls return the existing structured",
+  "governance denial blocks a Proofbook MCP verb before runner code executes",
+  "recursive `aelyris.proofbook.*` `mcpTool` targets fail",
+  "Verifier and artifact expectations:",
+  "PB-3 implementation must pass `cargo test --manifest-path src-tauri\\Cargo.toml",
+  "mcp --lib`",
+  "cargo test --manifest-path src-tauri\\Cargo.toml proofbook",
+  "PB-3 docs changes must keep `pnpm verify:goal:docs` green.",
+  "PB-3D claim boundary:",
+  "After PB-3D, the only safe claim is that the MCP integration design gate is",
+  "Proofbook MCP verbs and `mcpTool` execution are",
+  "still not implemented until PB-3 runtime code",
+  "PB-3D stop conditions:",
+  "bypass `tools_call` inputSchema validation, governance, or",
+  "second MCP dispatcher, Proofbook-only catalog, or duplicate schema",
+  "cannot reach the managed `ProofbookRunner` without a new",
+  "GATED MCP tool would need to be recorded as passed before",
+  "Proofbook can call `aelyris.proofbook.*` recursively",
+];
+const missingPb3dClauses = missingFromNormalized(spec, requiredPb3dClauses);
+const requiredPb3dMcpSurfaceClauses = [
+  "### 3.8 Proofbook domain (PB-3 design target)",
+  "Rows in this section are design-target until PB-3 runtime code",
+  "existing `tools/call` schema/governance/dispatch path",
+  "They do not create a",
+  "second dispatcher, a second catalog, or a Proofbook-only schema validator.",
+  "`aelyris.proofbook.list`",
+  "`aelyris.proofbook.get`",
+  "`aelyris.proofbook.validate`",
+  "`aelyris.proofbook.run`",
+  "`aelyris.proofbook.status`",
+  "`aelyris.proofbook.cancel`",
+  "`aelyris.proofbook.approve_gate`",
+  "`aelyris.proofbook.reject_gate`",
+  "PB-3 deliberately excludes `aelyris.proofbook.create`,",
+  "`aelyris.proofbook.update`, and `aelyris.proofbook.distill`.",
+  "`mcpTool` step semantics:",
+  "same inputSchema validator that",
+  "guards external `tools/call`",
+  "schema_violation",
+  "same governance choke point as external MCP",
+  "mcp_governance_denied",
+  "GATED target tools transition the Proofbook run to `waiting_gate`",
+  "`kind:\"mcpTool\"`, `toolName`, `safety`,",
+  "`gateId`, `gateHash`, `argumentsHash`, and any `pendingDecisionId`",
+  "PB-3 `mcpTool` cannot call `aelyris.proofbook.*`",
+  "PB-3 drift tests must prove all Proofbook rows have `additionalProperties:false`",
+  "prove the PB-6 mutation verbs are still absent.",
+];
+const missingPb3dMcpSurfaceClauses = missingFromNormalized(mcpToolSurface, requiredPb3dMcpSurfaceClauses);
 
 const requiredPb1dIntegrationClauses = [
   "`docs/specs/PROOFBOOK_PB1_DETAILED_DESIGN.md` is the PB-1 implementation blueprint.",
@@ -454,6 +563,12 @@ const checks = [
     { missingPb2dClauses },
   ),
   check(
+    "spec-pb3d-detailed-design",
+    missingPb3dClauses.length === 0 && missingPb3dMcpSurfaceClauses.length === 0,
+    "Proofbook spec and MCP surface define PB-3D MCP tool-step ownership, schema/governance delegation, waiting_gate proof, mutation-verb exclusion, tests, verifier artifacts, and claim boundary before PB-3 runtime code",
+    { missingPb3dClauses, missingPb3dMcpSurfaceClauses },
+  ),
+  check(
     "spec-pb1d-blueprint-integrated",
     existsSync(fullPath(paths.pb1DetailedDesign)) &&
       missingPb1dIntegrationClauses.length === 0 &&
@@ -508,6 +623,7 @@ const report = {
   sourcePaths: [
     paths.spec,
     paths.pb1DetailedDesign,
+    paths.mcpToolSurface,
     paths.specIndex,
     paths.packageJson,
     "scripts/verify-proofbook-spec.mjs",
@@ -515,13 +631,14 @@ const report = {
   sourceCutoffMs: Math.max(
     mtime(paths.spec),
     mtime(paths.pb1DetailedDesign),
+    mtime(paths.mcpToolSurface),
     mtime(paths.specIndex),
     mtime(paths.packageJson),
     mtime("scripts/verify-proofbook-spec.mjs"),
   ),
   summary:
     failed.length === 0
-      ? "Proofbook spec/index/package contract is present and keeps the PB-2 backend slice distinct from a shipped Proofbook product."
+      ? "Proofbook spec/index/MCP/package contract is present and keeps the PB-2 backend slice plus PB-3D design gate distinct from a shipped Proofbook product."
       : `${failed.length} Proofbook PB-0 contract checks failed`,
   checks,
 };
