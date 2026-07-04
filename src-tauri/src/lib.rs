@@ -205,6 +205,7 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
+        .manage(proofbook::ProofbookRunner::new())
         .manage(lsp::LspManager::new(lsp_tx))
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
         .manage(std::sync::Arc::new(term::CommandBlockJournal::new()))
@@ -1191,9 +1192,14 @@ pub fn run() {
             ipc::workflow_status,
             ipc::list_running_workflows,
             ipc::workflow_remove,
-            // Proofbook (PB-1: schema/parser/validator only, no runner)
+            // Proofbook (PB-2: local runner/ledger; MCP verbs remain future PB-3)
             ipc::list_proofbooks,
             ipc::validate_proofbook,
+            ipc::start_proofbook_run,
+            ipc::proofbook_run_status,
+            ipc::list_proofbook_runs,
+            ipc::cancel_proofbook_run,
+            ipc::resolve_proofbook_manual_gate,
             // Agent session persistence
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,

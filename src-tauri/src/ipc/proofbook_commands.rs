@@ -1,7 +1,11 @@
 use crate::proofbook::{
-    self, ProofbookError, ProofbookErrorCode, ProofbookSummary, ProofbookValidationReport,
+    self, ProofbookError, ProofbookErrorCode, ProofbookRunLedger, ProofbookSummary,
+    ProofbookValidationReport,
 };
 use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Emitter, Manager};
+
+use super::commands::record_audit_event;
 
 #[tauri::command]
 pub fn list_proofbooks(project_path: String) -> Vec<ProofbookSummary> {
@@ -29,6 +33,125 @@ pub fn validate_proofbook(
             errors: vec![error],
         }),
     }
+}
+
+#[tauri::command]
+pub fn start_proofbook_run(
+    app: AppHandle,
+    project_path: String,
+    proofbook_path: String,
+    inputs: Option<serde_json::Value>,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    let runner = app.state::<proofbook::ProofbookRunner>();
+    let ledger = runner.start_run(
+        &project_path,
+        &proofbook_path,
+        inputs.unwrap_or_else(|| serde_json::json!({})),
+    )?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "run_started",
+        "info",
+        Some("proofbook"),
+        Some(&ledger.run_id),
+        "Proofbook run started",
+        serde_json::json!({
+            "projectPath": project_path,
+            "proofbookPath": proofbook_path,
+            "status": ledger.status,
+        }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
+}
+
+#[tauri::command]
+pub fn proofbook_run_status(
+    app: AppHandle,
+    project_path: String,
+    run_id: String,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    app.state::<proofbook::ProofbookRunner>()
+        .status(&project_path, &run_id)
+}
+
+#[tauri::command]
+pub fn list_proofbook_runs(
+    app: AppHandle,
+    project_path: String,
+) -> Result<Vec<ProofbookRunLedger>, ProofbookError> {
+    app.state::<proofbook::ProofbookRunner>()
+        .list_runs(&project_path)
+}
+
+#[tauri::command]
+pub fn cancel_proofbook_run(
+    app: AppHandle,
+    project_path: String,
+    run_id: String,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    let ledger = app
+        .state::<proofbook::ProofbookRunner>()
+        .cancel_run(&project_path, &run_id)?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "run_cancelled",
+        "warn",
+        Some("proofbook"),
+        Some(&run_id),
+        "Proofbook run cancelled",
+        serde_json::json!({ "projectPath": project_path }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
+}
+
+#[tauri::command]
+pub fn resolve_proofbook_manual_gate(
+    app: AppHandle,
+    project_path: String,
+    run_id: String,
+    gate_id: String,
+    gate_hash: String,
+    decision: String,
+    actor: Option<String>,
+    comment: Option<String>,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    let ledger = app
+        .state::<proofbook::ProofbookRunner>()
+        .resolve_manual_gate(
+            &project_path,
+            &run_id,
+            gate_id.clone(),
+            gate_hash,
+            decision.clone(),
+            actor.clone(),
+            comment.clone(),
+        )?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "manual_gate_decided",
+        "info",
+        Some("proofbook"),
+        Some(&run_id),
+        "Proofbook manual gate decided",
+        serde_json::json!({
+            "gateId": gate_id,
+            "decision": decision,
+            "actor": actor,
+            "comment": comment,
+            "status": ledger.status,
+        }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
+}
+
+fn emit_proofbook_update(app: &AppHandle, ledger: &ProofbookRunLedger) {
+    let _ = app.emit("proofbook-updated", ledger);
 }
 
 fn resolve_candidate_path(root: &Path, raw_path: &str) -> Result<String, ProofbookError> {

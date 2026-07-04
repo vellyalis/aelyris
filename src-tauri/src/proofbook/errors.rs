@@ -17,6 +17,9 @@ pub enum ProofbookErrorCode {
     CycleDetected,
     MissingSettlement,
     InvalidSecretRef,
+    RunNotFound,
+    ValidationFailed,
+    StaleGateHash,
     RuntimeNotAvailable,
 }
 

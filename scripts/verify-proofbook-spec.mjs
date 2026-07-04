@@ -391,9 +391,11 @@ const checks = [
       "Status: proposal / design target. Not a shipped capability.",
       "## 0. Claim Boundary",
       "Do not claim Proofbooks as implemented until the matching verifier is green.",
-      "PB-1 static Proofbook schema/parser/validator plus read-only list/validate",
-      "IPC. It does not yet have a Proofbook runner, run ledger, canvas, distillation,",
-      "or Proofbook MCP verbs described here.",
+      "PB-1 static Proofbook schema/parser/validator plus read-only list/validate IPC,",
+      "PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and",
+      "not a shipped end-user Proofbook",
+      "Proofbook canvas, distillation,",
+      "Proofbook MCP verbs",
     ]),
     "Proofbook spec keeps the proposal/not-shipped claim boundary explicit",
   ),
@@ -473,8 +475,9 @@ const checks = [
     includesAll(specIndex, [
       "[PROOFBOOK_AUTOMATION_SPEC.md](./PROOFBOOK_AUTOMATION_SPEC.md)",
       "proposal / automation roadmap",
+      "PB-2 local backend runner/ledger",
       "未実装の設計 target",
-      "実装済みclaimではない",
+      "Proofbooks 全体の実装済みclaimではない",
     ]),
     "spec index lists Proofbooks as an unimplemented proposal/automation roadmap, not a shipped capability",
   ),
@@ -487,9 +490,10 @@ const checks = [
     "no-implemented-product-claim",
     implementedClaimHits.length === 0 &&
       normalizedSpec.includes("Proofbook automation design proposal") &&
-      normalizedSpec.includes("UI remain planned until their gates are implemented.") &&
-      normalizedIndex.includes("未実装の設計 target"),
-    "public docs do not claim Proofbooks are implemented after PB-0",
+      normalizedSpec.includes("not a shipped end-user Proofbook") &&
+      normalizedSpec.includes("Proofbook UI, MCP verbs") &&
+      normalizedIndex.includes("Proofbooks 全体の実装済みclaimではない"),
+    "public docs distinguish the PB-2 backend slice from a shipped Proofbook product",
     { implementedClaimHits },
   ),
 ];
@@ -517,7 +521,7 @@ const report = {
   ),
   summary:
     failed.length === 0
-      ? "Proofbook PB-0 spec/index/package contract is present and keeps Proofbooks as a proposal, not an implemented capability."
+      ? "Proofbook spec/index/package contract is present and keeps the PB-2 backend slice distinct from a shipped Proofbook product."
       : `${failed.length} Proofbook PB-0 contract checks failed`,
   checks,
 };

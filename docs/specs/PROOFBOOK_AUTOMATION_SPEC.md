@@ -16,9 +16,12 @@ Working name: **Proofbooks**.
 Do not claim Proofbooks as implemented until the matching verifier is green.
 Current Aelyris has a workflow engine, an MCP control surface, planner verbs,
 governance/audit, task graph, agent fleet, visible panes, verifier artifacts,
-and PB-1 static Proofbook schema/parser/validator plus read-only list/validate
-IPC. It does not yet have a Proofbook runner, run ledger, canvas, distillation,
-or Proofbook MCP verbs described here.
+PB-1 static Proofbook schema/parser/validator plus read-only list/validate IPC,
+and a PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and
+`manualGate` steps through Tauri IPC. This is not a shipped end-user Proofbook
+product: Aelyris still does not have a Proofbook canvas, distillation,
+Proofbook MCP verbs, MCP/HTTP/agent/fan-out/subProofbook execution, or Evidence
+Store projection described here.
 
 Reference products such as Scape expose Playbooks that chain shell commands, AI
 sessions/prompts, HTTP requests, tools, sub-playbooks, table reads/writes,
@@ -814,7 +817,9 @@ PB-2D stop conditions:
 
 ### PB-2 — Run Ledger And Deterministic Steps
 
-Status: not implemented. Runtime code starts only after PB-2D is green.
+Status: local backend runner/ledger and Tauri IPC are implemented for the PB-2
+step subset. Minimal end-user UI, MCP verbs, and later step kinds remain future
+phases.
 
 Scope: shell, verifier, waitFor, manualGate in a local runner.
 
@@ -1020,8 +1025,9 @@ Stop and ask before implementation if:
 - Distillation would remove a verifier or gate.
 - A UI path suggests Proofbooks are release-ready before PB gates exist.
 
-Safe public claim after PB-0 only:
+Safe public claim after the PB-2 backend slice:
 
-> Aelyris has a Proofbook automation design proposal that turns playbook-style
-> automation into proof-backed, governed, verifier-aware workflows. The runner
-> and UI remain planned until their gates are implemented.
+> Aelyris has a Proofbook automation design proposal and a local PB-2 backend
+> runner/ledger slice for `shell`, `verifier`, `waitFor`, and `manualGate` over
+> Tauri IPC. Proofbook UI, MCP verbs, agent/HTTP/fan-out execution, distillation,
+> and Evidence Store remain planned until their gates are implemented.

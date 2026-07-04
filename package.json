@@ -21,6 +21,7 @@
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",
+    "verify:proofbook:runner": "node scripts/verify-proofbook-runner.mjs",
     "verify:anti-debt-claim-contract": "node scripts/verify-anti-debt-claim-contract.mjs",
     "verify:modularity-boundary": "node scripts/verify-modularity-boundary-contract.mjs",
     "verify:visible-agent-pane-binding": "node scripts/verify-visible-agent-pane-binding-contract.mjs",
