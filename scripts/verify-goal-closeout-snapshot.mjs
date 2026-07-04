@@ -28,7 +28,7 @@ const paths = {
 
 const sourcePaths = [
   "package.json",
-  "scripts/verify-goal-closeout-snapshot.mjs",
+  // This verifier is the writer of the closeout snapshot; upstream artifact freshness should not depend on its own mtime.
   "scripts/verify-agent-team-orchestration-readiness.mjs",
   "scripts/verify-final-goal-safe.mjs",
   "scripts/verify-goal-finalize-evidence.mjs",
@@ -174,9 +174,8 @@ const checks = {
         "terminal-core-edge",
       ].includes(area),
     ) &&
-    hasArea(scoreBlockers, "release-doctor") &&
-    hasArea(scoreBlockers, "distribution") &&
     hasArea(scoreBlockers, "supply-chain-audit") &&
+    hasArea(scoreBlockers, "release-readiness-aggregate") &&
     hasArea(scoreBlockers, "real-os-soak"),
   finalEvidenceMapEarned: finalGoalEvidenceMap?.points === 8 && finalGoalEvidenceMap?.max === 8,
   auditClassifiesResiduals:
@@ -231,9 +230,15 @@ const checks = {
     (data.externalGates?.tokenSpendingPromptExecuted === false ||
       data.externalGates?.checks?.tokenPromptExecutedWithConsent === true) &&
     data.externalGates?.realOsSleepInvoked === false &&
-    externalGateIds.includes("authenticated-ai-cli-prompt-smoke") &&
-    externalGateIds.includes("release-signing-updater") &&
-    externalGateIds.includes("real-os-sleep-resume"),
+    ["ready-for-external-operator-gates", "blocked-by-host-sleep-unsupported", "external-operator-gates-complete"].includes(
+      data.externalGates?.status,
+    ) &&
+    (data.externalGates?.tokenSpendingPromptAlreadyProved === true ||
+      data.externalGates?.tokenSpendingPromptExecuted === false ||
+      externalGateIds.includes("authenticated-ai-cli-prompt-smoke")) &&
+    (data.releaseSigningHandoff?.status === "release-signing-complete" ||
+      externalGateIds.includes("release-signing-updater")) &&
+    (data.externalGates?.realOsSleepAlreadyProved === true || externalGateIds.includes("real-os-sleep-resume")),
   operatorFinishIsNoSurprise:
     data.operatorFinish?.ok === true &&
     data.operatorFinish?.status === "ready-for-external-operator-gates" &&
@@ -246,9 +251,10 @@ const checks = {
     data.progress?.noRawTerminalOutputPersisted === true,
   releaseSigningHandoffReady:
     data.releaseSigningHandoff?.ok === true &&
-    data.releaseSigningHandoff?.status === "ready-for-release-signing-operator" &&
-    data.releaseSigningHandoff?.signingMaterialProvidedToThisRun === false &&
-    data.releaseSigningHandoff?.noSecretMaterialPersisted === true,
+    ["ready-for-release-signing-operator", "release-signing-complete"].includes(data.releaseSigningHandoff?.status) &&
+    data.releaseSigningHandoff?.noSecretMaterialPersisted === true &&
+    (data.releaseSigningHandoff?.status === "release-signing-complete" ||
+      data.releaseSigningHandoff?.signingMaterialProvidedToThisRun === false),
   sleepHandoffReady:
     data.sleepHandoff?.ok === true &&
     ["ready-for-manual-sleep-cycle", "host-blocked-handoff-ready"].includes(data.sleepHandoff?.status) &&
@@ -325,7 +331,7 @@ const output = {
     optionalProofArtifactCount: safeCoverage.optionalProofArtifactCount ?? null,
   },
   nextRequiredAction:
-    "Only external/operator/upstream gates remain: release signing/updater material, supply-chain upstream dependency movement, WebView2/CDP host proof, real Windows sleep/resume, and optional refreshed authenticated AI CLI prompt proof. After any one is completed, rerun pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout.",
+    "Only external/operator/upstream gates remain: supply-chain upstream dependency movement, release-readiness aggregate host/operator proof, and real Windows sleep/resume. Release signing/updater and authenticated prompt proof are complete in this snapshot. After any remaining gate is completed, rerun pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout.",
   artifacts: Object.fromEntries(Object.entries(artifacts).map(([key, entry]) => [key, artifactSummary(entry)])),
 };
 

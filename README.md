@@ -33,10 +33,12 @@ Every row names an architectural property with a runnable check behind it —
 see [Verification](#verification).
 
 Current machine truth, refreshed 2026-07-04 JST: `pnpm verify:quality-score`
-currently reports `83/100` (`293/351`), grade `C`,
+currently reports `94/100` (`329/351`), grade `A`,
+`releaseCandidateReady=false`; after the final-goal evidence-map refresh the
+projected score is `94/100` (`329/351`), still
 `releaseCandidateReady=false`. The final-goal audit is
 `blocked-by-external-gates` with `implementationFixableCount=0`,
-`policyBlockedCount=0`, and `externalBlockedCount=13`; Aelyris remains alpha
+`policyBlockedCount=0`, and `externalBlockedCount=8`; Aelyris remains alpha
 and not release-ready.
 
 ## Why now

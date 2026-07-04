@@ -82,11 +82,13 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `83/100` (`293/351`), grade `C`,
+- `pnpm verify:quality-score` -> `94/100` (`329/351`), grade `A`,
+  `releaseCandidateReady=false`; after the final-goal evidence-map refresh the
+  projected score is `94/100` (`329/351`), still
   `releaseCandidateReady=false`.
 - `pnpm verify:final-goal-audit` -> `blocked-by-external-gates`,
   `implementationFixableCount=0`, `policyBlockedCount=0`,
-  `externalBlockedCount=13`.
+  `externalBlockedCount=8`.
 - `pnpm verify:goal:safe` -> required proof registry `28/28`,
   `blocked-by-external-gates`, no failed steps, no non-consent blockers.
 - `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.
@@ -102,13 +104,14 @@ Last confirmed machine truth for the hardening closeout:
 
 The remaining release blockers are external/operator/upstream gates, especially:
 
-- `authenticated-ai-cli-prompt-smoke` / `authenticated-ai-cli-consent-packet`
-  with documented provider env such as
-  `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
-- release signing/updater material.
 - real Windows sleep/resume proof.
-- WebView2/CDP host proof.
 - upstream dependency movement for supply-chain findings.
+- release readiness aggregate proof for tmux/shared-workspace/native-terminal
+  claims.
+- WebView2/CDP host proof.
+- `authenticated-ai-cli-prompt-smoke` / `authenticated-ai-cli-consent-packet`
+  are current; refreshes still require documented provider env such as
+  `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 
 Known caution: older generated `.codex-auto/quality/*` artifacts may be stale.
 Use them as local evidence only after rerunning the owning verifier.

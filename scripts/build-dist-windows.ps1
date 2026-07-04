@@ -7,6 +7,8 @@ $BundleRoot = Join-Path $Root "src-tauri\target\release\bundle"
 $WixDir = Join-Path $Root "src-tauri\target\release\wix\x64"
 $PackageJson = Get-Content -LiteralPath (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
 $MsiPath = Join-Path $BundleRoot "msi\Aelyris_$($PackageJson.version)_x64_en-US.msi"
+$UpdaterSigningEnvPresent = -not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or -not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PATH)
+$NoSignArgs = if ($UpdaterSigningEnvPresent) { @() } else { @('--no-sign') }
 
 function Invoke-Checked {
   param(
@@ -56,11 +58,11 @@ try {
 
   Invoke-Checked `
     -FilePath $Tauri `
-    -Arguments @("build", "--config", $TauriConfig, "--no-sign", "--bundles", "nsis") `
+    -Arguments (@("build", "--ci", "--config", $TauriConfig) + $NoSignArgs + @("--bundles", "nsis")) `
     -FailureMessage "Tauri NSIS build failed"
 
   $MsiBuildStarted = Get-Date
-  & $Tauri build --config $TauriConfig --no-sign --bundles msi
+  & $Tauri build --ci --config $TauriConfig @NoSignArgs --bundles msi
   $MsiExitCode = $LASTEXITCODE
 
   if ($MsiExitCode -eq 0) {

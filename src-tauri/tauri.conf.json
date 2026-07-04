@@ -58,7 +58,7 @@
       "endpoints": [
         "https://updates.aelyris.app/{{target}}/{{current_version}}"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1MTE0REZDREY1MDAzQ0QKUldUTkExRGYvRTBSdGJOc3BmMDkvcVZnallISkE4QTZUOEc5TE9RUXVJRWgxNVVoU1VwYi8zelYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFRDNGQzlBQ0ZGMjJFQUEKUldTcUx2TFBtdnpUSHFVakVqWVJPNUZZOTg4aC9BVzB0eWROUlYrNVhub3FDSDFuUmhBb24rQ3MK",
       "windows": {
         "installMode": "passive"
       }
