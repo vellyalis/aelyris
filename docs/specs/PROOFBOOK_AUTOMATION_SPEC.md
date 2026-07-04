@@ -15,9 +15,10 @@ Working name: **Proofbooks**.
 
 Do not claim Proofbooks as implemented until the matching verifier is green.
 Current Aelyris has a workflow engine, an MCP control surface, planner verbs,
-governance/audit, task graph, agent fleet, visible panes, and verifier artifacts.
-It does not yet have the Proofbook schema, runner, canvas, distillation, or
-Proofbook MCP verbs described here.
+governance/audit, task graph, agent fleet, visible panes, verifier artifacts,
+and PB-1 static Proofbook schema/parser/validator plus read-only list/validate
+IPC. It does not yet have a Proofbook runner, run ledger, canvas, distillation,
+or Proofbook MCP verbs described here.
 
 Reference products such as Scape expose Playbooks that chain shell commands, AI
 sessions/prompts, HTTP requests, tools, sub-playbooks, table reads/writes,
@@ -621,6 +622,9 @@ MCP Proofbook verbs, or distillation capability is implemented.
 
 ### PB-1 — Schema, Parser, And Validation
 
+Status: implemented as static parse/validate only. This is not a runnable
+Proofbook capability.
+
 Scope: no execution.
 
 Files:
@@ -636,7 +640,8 @@ Files:
 
 Acceptance:
 
-- Parses `.aelyris/proofbooks/*.proofbook.yaml`.
+- Parses `.aelyris/proofbooks/*.proofbook.yaml` and
+  `.aelyris/proofbooks/*.proofbook.yml`.
 - Rejects cycles, unknown step types, missing dependencies, missing settlement,
   invalid secret refs, and unsupported schema versions.
 - Lists and validates project Proofbooks through IPC only.

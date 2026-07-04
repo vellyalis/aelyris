@@ -28,6 +28,7 @@ pub mod mux;
 pub mod orchestrator;
 pub mod persistence;
 pub mod process;
+pub mod proofbook;
 pub mod pty;
 pub mod pty_sidecar;
 pub mod review;
@@ -1190,6 +1191,9 @@ pub fn run() {
             ipc::workflow_status,
             ipc::list_running_workflows,
             ipc::workflow_remove,
+            // Proofbook (PB-1: schema/parser/validator only, no runner)
+            ipc::list_proofbooks,
+            ipc::validate_proofbook,
             // Agent session persistence
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,
