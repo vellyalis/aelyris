@@ -13,12 +13,12 @@ readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
 Current machine truth refreshed 2026-07-04 JST: `pnpm verify:quality-score`
-reports `94/100` (`329/351`), grade `A`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `94/100`
-(`329/351`), still `releaseCandidateReady=false`.
-The current final-goal audit is `blocked-by-external-gates` with
-`implementationFixableCount=0`, `policyBlockedCount=0`, and
-`externalBlockedCount=8`; safe proof registry coverage is `28/28`. This is not
+reports `65/100` (`227/351`), grade `D`, `releaseCandidateReady=false`;
+after the final-goal evidence-map refresh the projected score is `65/100`
+(`227/351`), still `releaseCandidateReady=false`.
+The current final-goal audit is `blocked` with
+`implementationFixableCount=19`, `policyBlockedCount=0`, and
+`externalBlockedCount=16`; safe proof registry coverage is `28/28`. This is not
 release-ready.
 
 Regenerate the machine evidence locally before release decisions:

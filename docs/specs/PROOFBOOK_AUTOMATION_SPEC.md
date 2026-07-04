@@ -1025,6 +1025,163 @@ PB-3D stop conditions:
   subProofbook lineage exists.
 - Stop if raw secrets, token-bearing transcripts, signing material, private
   keys, or unbounded MCP output would be written inline to the ledger.
+
+### PB-4D - Detailed Design Gate: Agent Session Step
+
+Status: docs/verifier gate only. PB-4D defines the agentSession runtime
+contract before any `agent_step.rs`, runner, or Proofbook UI implementation
+lands. Runtime implementation for PB-4 is out of scope until this section and
+the `spec-pb4d-detailed-design` verifier check are green.
+
+PB-4D owner scope:
+
+- `src-tauri/src/proofbook/agent_step.rs`
+- `src-tauri/src/proofbook/runner.rs`
+- `src-tauri/src/proofbook/ledger.rs` only if existing session, pane, worktree,
+  lifecycle artifact, cost/token, and error evidence cannot fit existing
+  `structuredOutput`, `artifacts`, `risk`, `error`, and `events` fields.
+- minimal `src/features/proofbook/` run/status UI proof surface.
+- `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md` if PB-4 changes the
+  visible-vs-headless runtime boundary.
+- focused Rust and TS tests plus Proofbook verifier source-scan coverage.
+
+PB-4 must not implement HTTP, fanOut, subProofbook, distill, Evidence Store,
+Proofbook create/update, or merge/review automation. PB-4 must not add a second
+agent dispatcher, a second session lifecycle owner, or frontend-only executable
+agent flows.
+
+Module ownership:
+
+- `agent_step.rs` owns the `agentSession` step adapter over the existing visible
+  pane/session lifecycle runtime. It must call the same spawn/session lifecycle
+  contracts used by the cockpit and MCP faces, not shell out to an AI CLI
+  directly.
+- `runner.rs` remains the deterministic run state-machine owner. It may call
+  the `agentSession` adapter, persist the step as `running` or `waiting_gate`,
+  and resume only through explicit lifecycle proof; it must not decide session
+  success from UI-only state.
+- `ledger.rs` remains the proof schema owner. PB-4 should record agent evidence
+  with existing append-only fields unless a schema addition is justified in the
+  same spec/verifier/test phase.
+- `src/features/proofbook/` may render run status, session links, pane links,
+  worktree links, lifecycle artifacts, and missing proof. It must not synthesize
+  executable mock agent flows or mark a step passed without Rust runner state.
+
+PB-4 visible-vs-headless policy:
+
+- `agentSession` for implementation roles defaults to a visible PTY pane.
+- Visible agent paths must use the interactive TUI and must not add `-p` or
+  `--print`.
+- Headless mode is allowed only for planner, reviewer, or batch roles, and the
+  ledger must record `headlessReason`.
+- A Proofbook definition that requests headless implementation work fails
+  closed with `agent_session_headless_not_allowed`.
+- Provider/model/CLI selection uses the existing agent runtime mapping. PB-4
+  must not introduce Proofbook-only provider selection.
+
+PB-4 `agentSession` step schema:
+
+- Required fields: `type: agentSession`, `id`, `task`, and either `role` or
+  `mode`.
+- Optional fields: `provider`, `model`, `repoPath`, `branch`, `worktreePath`,
+  `visible`, `headlessReason`, `timeoutMs`, `expectedArtifacts`, and
+  `settlementStatus`.
+- The runner resolves repo/worktree paths through existing containment and
+  worktree validators. It rejects path escape, unsafe branch names, and missing
+  required session inputs before spawning.
+- Unsupported or ambiguous provider/mode values fail closed with
+  `agent_session_invalid_config`.
+
+PB-4 pane/session/worktree linkage:
+
+- The ledger records `sessionId`, `paneId`, `ptyId`, `backend`, `provider`,
+  `model`, `role`, `repoPath`, `worktreePath`, `worktreeBranch`, and
+  `visibleMode`.
+- If the runtime creates a new worktree, the ledger links it to the step and
+  records cleanup expectations. PB-4 must not delete the worktree implicitly on
+  success.
+- If the step attaches to an existing session, it must verify that session id,
+  pane id, repo path, and worktree branch match the definition; mismatches fail
+  closed with `agent_session_identity_mismatch`.
+
+PB-4 lifecycle artifact refs:
+
+- Long-running agent sessions must link summary, checkpoint, handoff, resume,
+  reset-context, final report, and command evidence artifacts when those
+  artifacts exist.
+- A running step found during hydration cannot be marked passed from stale
+  memory. It must either reconnect to a matching live session with fresh
+  lifecycle proof or become blocked with
+  `agent_session_interrupted_by_restart`.
+- Completion requires an explicit done signal, verified final report, required
+  artifact settlement, or reviewer/batch completion proof. First-file-exists is
+  not enough for an `agentSession` pass.
+
+PB-4 cost/token handling:
+
+- Cost and token fields are evidence, not requirements. If the existing runtime
+  exposes cost/tokens, record them with source and freshness. If not, record
+  `costTokensStatus:"unknown"` and do not estimate.
+- Unknown cost/tokens must not block a non-cost-capped Proofbook run. If a
+  Proofbook declares a cost cap and the runtime cannot observe tokens or cost,
+  the step fails closed with `agent_session_cost_unknown`.
+
+PB-4 stop/error semantics:
+
+- Spawn failure, missing runtime, denied policy, invalid config, identity
+  mismatch, interrupted restart, timeout, and failed settlement each produce a
+  typed `error.code` and residual blocker.
+- Operator cancellation appends a cancellation event and never kills unrelated
+  panes or sessions.
+- Agent-reported blockers keep the run in `blocked` or `waiting_gate` with the
+  blocker text and linked evidence; they do not become success.
+
+PB-4 focused test matrix:
+
+- implementation role defaults to visible PTY and rejects `-p` / `--print`;
+- planner/reviewer/batch may be headless only with a recorded
+  `headlessReason`;
+- invalid provider/mode and headless implementation requests fail closed;
+- successful spawn records session, pane, pty, repo, worktree, provider, model,
+  role, and visible/headless metadata in the ledger;
+- hydration of a dead running agent step records
+  `agent_session_interrupted_by_restart`;
+- identity mismatch on attached session records
+  `agent_session_identity_mismatch`;
+- unknown cost/token state records `costTokensStatus:"unknown"` and cost caps
+  fail closed when observation is unavailable;
+- UI tests render Rust runner session state and cannot start executable mock
+  flows.
+
+Verifier and artifact expectations:
+
+- PB-4D uses `pnpm verify:proofbook:spec`, which writes
+  `.codex-auto/quality/proofbook-spec.json` and must include a passing
+  `spec-pb4d-detailed-design` check.
+- PB-4 runtime work must extend `pnpm verify:proofbook:runner` or add
+  `pnpm verify:proofbook:agent-session` if source-scan coverage is needed for
+  visible/headless policy, ledger fields, and fail-closed error codes.
+- PB-4 implementation must pass `cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib`, focused TS tests for the minimal UI proof surface, and
+  `pnpm verify:goal:docs`.
+
+PB-4D claim boundary:
+
+After PB-4D, the safe claim is only that the agentSession design gate is
+documented and verifier-checked. Aelyris still must not claim Proofbook agent
+execution until the PB-4 runtime slice, focused tests, runner verifier, and UI
+proof surface are green. HTTP, fanOut, subProofbook, distill, create/update, and
+Evidence Store remain future PB phases.
+
+PB-4D stop conditions:
+
+- Stop if PB-4 would add `-p` / `--print` to visible agent panes.
+- Stop if `agentSession` needs a Proofbook-only agent launcher instead of the
+  existing visible pane/session lifecycle runtime.
+- Stop if session success would be inferred from frontend-only state.
+- Stop if cost/token caps require estimates or hidden provider scraping.
+- Stop if raw prompt transcripts, token-bearing output, signing material, or
+  secrets would be written inline to the ledger.
+
 ### PB-3 — MCP Tool Step And Proofbook MCP Verbs
 
 Status: PB-3 runtime slice implemented behind the existing MCP schema/governance

@@ -63,7 +63,7 @@ repo-owned regression.
 2. `hardening-instructions.md`
    - Status: H1-H8 repo-owned completion audit is closed out locally.
    - Current proof shape: no implementation-fixable or policy blockers remain.
-   - Remaining blockers are classified as external/operator/upstream gates.
+   - Remaining blockers must be read from the current final-goal audit before selecting the next workstream.
    - Do not restart H1-H8 unless a verifier regresses from the current contract.
 
 3. `renderer-instructions.md`
@@ -82,13 +82,13 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `94/100` (`329/351`), grade `A`,
+- `pnpm verify:quality-score` -> `65/100` (`227/351`), grade `D`,
   `releaseCandidateReady=false`; after the final-goal evidence-map refresh the
-  projected score is `94/100` (`329/351`), still
+  projected score is `65/100` (`227/351`), still
   `releaseCandidateReady=false`.
-- `pnpm verify:final-goal-audit` -> `blocked-by-external-gates`,
-  `implementationFixableCount=0`, `policyBlockedCount=0`,
-  `externalBlockedCount=8`.
+- `pnpm verify:final-goal-audit` -> `blocked`,
+  `implementationFixableCount=19`, `policyBlockedCount=0`,
+  `externalBlockedCount=16`.
 - `pnpm verify:goal:safe` -> required proof registry `28/28`,
   `blocked-by-external-gates`, no failed steps, no non-consent blockers.
 - `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.
@@ -102,7 +102,7 @@ Last confirmed machine truth for the hardening closeout:
   editing continuation docs because it checks that the resume/reset scope is
   still discoverable.
 
-The remaining release blockers are external/operator/upstream gates, especially:
+The remaining release blockers must be read from current artifacts before release claims. Current external/operator/upstream gates include:
 
 - real Windows sleep/resume proof.
 - upstream dependency movement for supply-chain findings.
