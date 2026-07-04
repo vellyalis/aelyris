@@ -21,12 +21,13 @@ a PB-2 local backend runner/ledger for `shell`, `verifier`, `waitFor`, and
 `manualGate` steps through Tauri IPC, and a PB-3 MCP integration slice for
 `aelyris.proofbook.list/get/validate/run/status/cancel/approve_gate/reject_gate`
 and `mcpTool` delegation through the existing `tools/call` schema/governance
-path, plus a PB-4 agentSession runtime start slice that records visible or
-allowed headless agent sessions as running ledger steps through the existing
-agent runtimes. This is not a shipped end-user Proofbook product: Aelyris still
-does not have a Proofbook canvas, create/update/distill verbs, HTTP/fan-out/
-subProofbook execution, Evidence Store projection, agentSession completion
-settlement, or native UI completion described here.
+path, plus a PB-4 agentSession runtime start and completion/status settlement
+slice. PB-4 records visible or allowed headless agent sessions as running ledger
+steps through the existing agent runtimes and settles them only through explicit
+done signal, final report, required artifact settlement, or reviewer/batch
+proof. This is not a shipped end-user Proofbook product: Aelyris still does not
+have a Proofbook canvas, create/update/distill verbs, HTTP/fan-out/subProofbook
+execution, Evidence Store projection, or native UI completion described here.
 
 Reference products such as Scape expose Playbooks that chain shell commands, AI
 sessions/prompts, HTTP requests, tools, sub-playbooks, table reads/writes,
@@ -1030,10 +1031,10 @@ PB-3D stop conditions:
 
 ### PB-4D - Detailed Design Gate: Agent Session Step
 
-Status: docs/verifier gate only. PB-4D defines the agentSession runtime
-contract before any `agent_step.rs`, runner, or Proofbook UI implementation
-lands. Runtime implementation for PB-4 is out of scope until this section and
-the `spec-pb4d-detailed-design` verifier check are green.
+Status: PB-4D design gate is complete, and the current PB-4 runtime includes
+agentSession start plus completion/status settlement slices. This section
+remains the active contract for any later PB-4 UI proof surface or lifecycle
+expansion.
 
 PB-4D owner scope:
 
@@ -1060,8 +1061,9 @@ Module ownership:
   directly.
 - `runner.rs` remains the deterministic run state-machine owner. It may call
   the `agentSession` adapter, persist the step as `running` or `waiting_gate`,
-  and resume only through explicit lifecycle proof; it must not decide session
-  success from UI-only state.
+  settle a running step through `settle_agent_session`, and resume only through
+  explicit lifecycle proof; it must not decide session success from UI-only
+  state.
 - `ledger.rs` remains the proof schema owner. PB-4 should record agent evidence
   with existing append-only fields unless a schema addition is justified in the
   same spec/verifier/test phase.
@@ -1118,6 +1120,11 @@ PB-4 lifecycle artifact refs:
 - Completion requires an explicit done signal, verified final report, required
   artifact settlement, or reviewer/batch completion proof. First-file-exists is
   not enough for an `agentSession` pass.
+- Runtime settlement is owned by `ProofbookRunner::settle_agent_session` and the
+  governed `aelyris.proofbook.settle_agent_session` MCP verb. A successful
+  settlement updates the existing running ledger step with `completion` proof,
+  artifact refs, and `agent_session_completed`; failure, blocker, timeout, and
+  cancellation paths keep typed status/error semantics.
 
 PB-4 cost/token handling:
 
@@ -1148,6 +1155,9 @@ PB-4 focused test matrix:
   role, and visible/headless metadata in the ledger;
 - hydration of a dead running agent step records
   `agent_session_interrupted_by_restart`;
+- final-report proof and required-artifact settlement can complete a running
+  agent step through the runner, while first-file-exists without an explicit
+  completion signal is rejected with `agent_session_completion_proof_missing`;
 - identity mismatch on attached session records
   `agent_session_identity_mismatch`;
 - unknown cost/token state records `costTokensStatus:"unknown"` and cost caps
@@ -1162,17 +1172,19 @@ Verifier and artifact expectations:
   `spec-pb4d-detailed-design` check.
 - PB-4 runtime work must extend `pnpm verify:proofbook:runner` or add
   `pnpm verify:proofbook:agent-session` if source-scan coverage is needed for
-  visible/headless policy, ledger fields, and fail-closed error codes.
-- PB-4 implementation must pass `cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib`, focused TS tests for the minimal UI proof surface, and
-  `pnpm verify:goal:docs`.
+  visible/headless policy, ledger fields, completion settlement, and fail-closed
+  error codes.
+- PB-4 implementation must pass `cargo test --manifest-path src-tauri\Cargo.toml proofbook --lib`. If a minimal UI proof surface is selected in the same
+  slice, focused TS tests and `pnpm verify:goal:docs` are also required.
 
 PB-4D claim boundary:
 
-After PB-4D, the safe claim is only that the agentSession design gate is
-documented and verifier-checked. Aelyris still must not claim Proofbook agent
-execution until the PB-4 runtime slice, focused tests, runner verifier, and UI
-proof surface are green. HTTP, fanOut, subProofbook, distill, create/update, and
-Evidence Store remain future PB phases.
+After the current PB-4 runtime slices, the safe claim is only that Proofbook can
+start existing visible/headless agent runtimes as running ledger steps and settle
+those running steps through explicit completion/status proof. Aelyris still must
+not claim a shipped Proofbook agent product or native completion UI. HTTP,
+fanOut, subProofbook, distill, create/update, and Evidence Store remain future
+PB phases.
 
 PB-4D stop conditions:
 
@@ -1376,11 +1388,13 @@ Stop and ask before implementation if:
 - Distillation would remove a verifier or gate.
 - A UI path suggests Proofbooks are release-ready before PB gates exist.
 
-Safe public claim after the PB-3 MCP integration slice:
+Safe public claim after the current PB-4 runtime slices:
 
 > Aelyris has a Proofbook automation design proposal, a local PB-2 backend
 > runner/ledger slice for `shell`, `verifier`, `waitFor`, and `manualGate` over
-> Tauri IPC, and a PB-3 MCP integration slice for cataloged Proofbook run/status
-> verbs plus governed `mcpTool` execution. Proofbook UI, create/update/distill,
-> agent/HTTP/fan-out/subProofbook execution, and Evidence Store remain planned
-> until their gates are implemented.
+> Tauri IPC, a PB-3 MCP integration slice for cataloged Proofbook run/status
+> verbs plus governed `mcpTool` execution, and a PB-4 agentSession runtime slice
+> that starts existing visible/headless agent runtimes and settles running steps
+> only through explicit completion/status proof. Proofbook UI,
+> create/update/distill, HTTP/fan-out/subProofbook execution, Evidence Store,
+> and native completion UI remain planned until their gates are implemented.

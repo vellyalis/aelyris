@@ -40,6 +40,7 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.proofbook.validate",
         "aelyris.proofbook.run",
         "aelyris.proofbook.status",
+        "aelyris.proofbook.settle_agent_session",
         "aelyris.proofbook.cancel",
         "aelyris.proofbook.approve_gate",
         "aelyris.proofbook.reject_gate",
@@ -467,6 +468,26 @@ fn mcp_proofbook_status(
     mcp_result_value(ledger)
 }
 
+fn mcp_proofbook_settle_agent_session(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let step_id = arg_string(args, "stepId")?;
+    let proof_value = args
+        .get("proof")
+        .cloned()
+        .ok_or_else(|| ApiError::BadRequest("MCP argument `proof` is required".to_string()))?;
+    let proof: crate::proofbook::ProofbookAgentSessionCompletionProof =
+        serde_json::from_value(proof_value)
+            .map_err(|err| ApiError::BadRequest(format!("invalid agentSession proof: {err}")))?;
+    let ledger = runner
+        .settle_agent_session(&project_path, &run_id, &step_id, proof)
+        .map_err(proofbook_error_to_api)?;
+    mcp_result_value(ledger)
+}
 fn mcp_proofbook_cancel(
     state: &ApiState,
     args: &serde_json::Map<String, serde_json::Value>,
@@ -1296,6 +1317,37 @@ fn tools_list_value() -> serde_json::Value {
                     "properties": {
                         "projectPath": { "type": "string" },
                         "runId": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.proofbook.settle_agent_session",
+                "description": "Settle one running PB-4 agentSession step with explicit completion proof; first-file-exists alone is rejected.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["projectPath", "runId", "stepId", "proof"],
+                    "properties": {
+                        "projectPath": { "type": "string" },
+                        "runId": { "type": "string" },
+                        "stepId": { "type": "string" },
+                        "proof": {
+                            "type": "object",
+                            "required": ["status"],
+                            "properties": {
+                                "status": { "type": "string", "enum": ["passed", "failed", "blocked", "timeout", "cancelled"] },
+                                "proofKind": { "type": "string" },
+                                "doneSignal": { "type": "string" },
+                                "finalReportPath": { "type": "string" },
+                                "artifactPaths": { "type": "array", "items": { "type": "string" } },
+                                "reviewerBatchId": { "type": "string" },
+                                "blockerCode": { "type": "string" },
+                                "blockerMessage": { "type": "string" },
+                                "summary": { "type": "string" }
+                            },
+                            "additionalProperties": false
+                        }
                     },
                     "additionalProperties": false
                 }
@@ -2541,6 +2593,9 @@ pub(super) async fn tools_call(
         "aelyris.proofbook.validate" => mcp_proofbook_validate(&args)?,
         "aelyris.proofbook.run" => mcp_proofbook_run(&state, &args)?,
         "aelyris.proofbook.status" => mcp_proofbook_status(&state, &args)?,
+        "aelyris.proofbook.settle_agent_session" => {
+            mcp_proofbook_settle_agent_session(&state, &args)?
+        }
         "aelyris.proofbook.cancel" => mcp_proofbook_cancel(&state, &args)?,
         "aelyris.proofbook.approve_gate" => mcp_proofbook_decide_gate(&state, &args, "approve")?,
         "aelyris.proofbook.reject_gate" => mcp_proofbook_decide_gate(&state, &args, "reject")?,
@@ -4057,6 +4112,7 @@ mod tests {
             ("aelyris.proofbook.validate", "FREE"),
             ("aelyris.proofbook.run", "GATED"),
             ("aelyris.proofbook.status", "FREE"),
+            ("aelyris.proofbook.settle_agent_session", "GATED"),
             ("aelyris.proofbook.cancel", "GATED"),
             ("aelyris.proofbook.approve_gate", "GATED"),
             ("aelyris.proofbook.reject_gate", "GATED"),

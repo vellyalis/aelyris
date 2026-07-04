@@ -38,6 +38,27 @@ pub struct ProofbookAgentSessionSpawn {
     pub visible: bool,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProofbookAgentSessionCompletionProof {
+    pub status: String,
+    #[serde(default)]
+    pub proof_kind: String,
+    #[serde(default)]
+    pub done_signal: Option<String>,
+    #[serde(default)]
+    pub final_report_path: Option<String>,
+    #[serde(default)]
+    pub artifact_paths: Vec<String>,
+    #[serde(default)]
+    pub reviewer_batch_id: Option<String>,
+    #[serde(default)]
+    pub blocker_code: Option<String>,
+    #[serde(default)]
+    pub blocker_message: Option<String>,
+    #[serde(default)]
+    pub summary: Option<String>,
+}
 pub trait ProofbookAgentSessionExecutor {
     fn start_agent_session(
         &self,

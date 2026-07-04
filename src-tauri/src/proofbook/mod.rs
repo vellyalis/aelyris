@@ -10,7 +10,8 @@ mod types;
 pub(crate) mod validator;
 
 pub use agent_step::{
-    ProofbookAgentSessionExecutor, ProofbookAgentSessionRequest, ProofbookAgentSessionSpawn,
+    ProofbookAgentSessionCompletionProof, ProofbookAgentSessionExecutor,
+    ProofbookAgentSessionRequest, ProofbookAgentSessionSpawn,
 };
 pub use errors::{ProofbookError, ProofbookErrorCode};
 pub use ledger::{

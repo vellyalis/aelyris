@@ -152,6 +152,34 @@ pub fn resolve_proofbook_manual_gate(
     Ok(ledger)
 }
 
+#[tauri::command]
+pub fn settle_proofbook_agent_session(
+    app: AppHandle,
+    project_path: String,
+    run_id: String,
+    step_id: String,
+    proof: proofbook::ProofbookAgentSessionCompletionProof,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    let ledger = app
+        .state::<proofbook::ProofbookRunner>()
+        .settle_agent_session(&project_path, &run_id, &step_id, proof)?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "agent_session_settled",
+        "info",
+        Some("proofbook"),
+        Some(&run_id),
+        "Proofbook agentSession settled",
+        serde_json::json!({
+            "projectPath": project_path,
+            "stepId": step_id,
+            "status": ledger.status,
+        }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
+}
 struct IpcProofbookAgentExecutor {
     app: AppHandle,
 }
