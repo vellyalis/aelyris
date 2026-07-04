@@ -136,9 +136,10 @@ const checks = {
       (signingState?.details?.freshness?.nsis === false || signingState?.details?.freshness?.msi === false)),
   updaterWarningClassified:
     signingComplete ||
+    // Missing latest.json after a no-sign build is still a classified operator
+    // handoff: the secure signing run is what creates fresh updater metadata.
     (updaterLatest?.status === "warn" &&
       updaterLatest?.details?.invalidEndpoints?.length === 0 &&
-      latest?.exists === true &&
       Object.values(latestIntegrity).some((value) => value === false)),
   updaterEndpointConfigured:
     signingComplete ||

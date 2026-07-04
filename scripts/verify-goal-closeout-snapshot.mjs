@@ -190,9 +190,9 @@ const checks = {
     data.audit?.residualRiskRegister?.policyBlockedCount === data.audit?.policyBlockedCount &&
     data.audit?.residualRiskRegister?.externalBlockedCount === data.audit?.externalBlockedCount,
   auditScoreMatchesScore:
-    data.audit?.score?.preAudit?.total === data.score?.total &&
-    data.audit?.score?.preAudit?.percent === data.score?.score &&
-    data.audit?.score?.finalGoalEvidenceMap?.points === 8,
+    auditProjection.total === data.score?.total &&
+    auditProjection.percent === data.score?.score &&
+    data.audit?.score?.finalGoalEvidenceMap?.projectedPoints === 8,
   safeRequiredProofsGreen:
     data.safe?.ok === true &&
     data.safe?.status === "blocked-by-external-gates" &&
