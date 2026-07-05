@@ -288,3 +288,11 @@ Instead, when an item is selected for execution, run one deepening pass
 first (re-verify anchors against current main, pin exact wiring, add/refresh
 the instructions file + /goal packet — the WU-UQ-1 §3.5 pattern), then
 execute.
+
+**Who deepens (owner decision 2026-07-06):** the deepening pass is done by
+the owner-side Claude session (top-tier model) BEFORE handoff — never by
+the executing opus/codex agent. Executing agents receive only
+zero-inference packets and do purely mechanical anchor relocation (Grep for
+the quoted identifier). If an anchor cannot be relocated mechanically, or
+the pinned design no longer matches the code, the executing agent must
+STOP and report — redesigning on the fly is forbidden.

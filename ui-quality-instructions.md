@@ -90,8 +90,12 @@ blockers visible, dangerous actions keyboard-safe, rendered UI truth gated.
 - Anything requiring live eyes is an **OPERATOR GATE**: implement +
   unit-test + verifier, then list it under `## Result` — do not claim it.
 - All `file:line` anchors below are point-in-time (2026-07-05, `8a3b3f0`
-  era). Re-locate with Grep before editing; if an anchor moved, trust the
-  search, not this file.
+  era). Re-locate with Grep before editing (search the quoted identifier —
+  purely mechanical). If an anchor cannot be relocated mechanically, or the
+  §3.5 pinned design no longer matches the code, **STOP and report — do NOT
+  redesign on the fly**. Deepening/design decisions belong to the
+  owner-side Claude session, not the executing agent (ledger granularity
+  rule).
 
 ## 3. Phases
 
@@ -409,7 +413,10 @@ ConfirmDialog IS the existing glass dialog surface.
 **Scheduling decision (owner, 2026-07-05, recorded in
 `PRODUCT_DIRECTION_PROPOSALS_2026-07-03.md` §5):** run the **safety subset
 Q0–Q3 first** (§5 #6). Q4–Q11 is a separate later work unit (§5 #9). Do not
-paste the full-run packet unless the owner explicitly selects it.
+paste the full-run packet unless the owner explicitly selects it — and even
+then, Q4–Q11 have NOT had a zero-inference deepening pass (§3.5 covers
+Q0–Q3 only); the owner-side Claude session must deepen Q4–Q11 first before
+any opus/codex execution of those phases.
 
 ### Packet 1 — SAFETY SUBSET Q0–Q3 (default, use this one)
 
