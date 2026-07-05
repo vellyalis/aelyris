@@ -16,9 +16,18 @@ Read in this order:
 2. `GITHUB_INTRODUCTION.md` - public GitHub introduction and Aelyris naming copy.
 3. `PUBLICATION_READINESS.md` - public-release checklist and current blockers.
 4. `requirements.md` - stable requirements entrypoint referenced by `AGENTS.md`.
-5. `specs/README.md` - active spec index and work-unit map.
-6. `AGENT_WORKFLOWS.md` - agent/skill workflow routing and closeout rules.
-7. Verifier commands such as `pnpm verify:quality-score` and `pnpm verify:goal:safe` - generate local `.codex-auto/quality/*.json` evidence.
+5. `../GOAL.md` - product purpose, target users, north star, and claim boundary.
+6. `../AI_GUIDE.md` - AI decision knowledge router.
+7. `../DECISION_FRAMEWORK.md` - what to choose.
+8. `../DELEGATION_FRAMEWORK.md` - who should explore, review, verify, or implement.
+9. `../ARCHITECTURE.md` - owner modules and placement map.
+10. `../contracts/README.md` - rigid API/schema/runtime contract index.
+11. `specs/README.md` - active spec index and work-unit map.
+12. `AGENT_WORKFLOWS.md` - agent/skill workflow routing and closeout rules.
+13. `../tasks/README.md` - current task packet and handoff shape.
+14. `../DECISIONS.md` - durable design decision log.
+15. `../STYLE.md` - coding, naming, verifier, and dependency style.
+16. Verifier commands such as `pnpm verify:quality-score` and `pnpm verify:goal:safe` - generate local `.codex-auto/quality/*.json` evidence.
 
 Aelyris is alpha and does not claim production readiness; capability claims are
 gated by verifiers. Regenerate the machine evidence locally before release
@@ -46,11 +55,38 @@ locations. Treat those as historical evidence, not portable setup instructions.
 New public docs should prefer placeholders like `<repo>`, `<codex-home>`, or
 environment variables.
 
+## AI Decision Knowledge
+
+Aelyris separates long-lived AI context into decision layers:
+
+- Principles: `../AGENTS.md` and `../CLAUDE.md` define how agents behave.
+- Goal: `../GOAL.md` defines what the product is and what it must not claim.
+- Knowledge router: `../AI_GUIDE.md` defines the read order.
+- Decision Framework: `../DECISION_FRAMEWORK.md` defines what to choose.
+- Delegation Framework: `../DELEGATION_FRAMEWORK.md` defines who should explore, review, verify, or implement.
+- Architecture: `../ARCHITECTURE.md` defines owner modules and dependency direction.
+- Contracts: `../contracts/README.md` plus owning specs define rigid boundaries.
+- Tasks: `../tasks/README.md` and scoped work orders define current work.
+- Decisions: `../DECISIONS.md` records why durable choices were made.
+- Style: `../STYLE.md` records naming, code, verifier, and dependency style.
+
+This keeps prompts small and gives agents stable judgment material for file
+placement, dependency direction, delegation, naming, contracts, and done gates.
+
 ## Active Planning Documents
 
 These files are active entrypoints:
 
 - `requirements.md`
+- `../GOAL.md`
+- `../AI_GUIDE.md`
+- `../DECISION_FRAMEWORK.md`
+- `../DELEGATION_FRAMEWORK.md`
+- `../ARCHITECTURE.md`
+- `../contracts/README.md`
+- `../tasks/README.md`
+- `../DECISIONS.md`
+- `../STYLE.md`
 - `GITHUB_INTRODUCTION.md`
 - `PUBLICATION_READINESS.md`
 - `specs/README.md`
@@ -86,8 +122,3 @@ When implementation changes affect readiness or positioning, update all three:
 1. the relevant spec or requirement,
 2. the verifier script/artifact,
 3. the public-facing status text if the claim boundary changed.
-
-
-
-
-

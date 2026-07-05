@@ -36,8 +36,17 @@ signing/updater / operator proof gates 待ちです。
 2. `docs/README.md` - docs guide and historical/current split.
 3. `docs/PUBLICATION_READINESS.md` - public readiness checklist.
 4. `docs/requirements.md` - stable requirements and claim policy.
-5. `docs/AGENT_WORKFLOWS.md` - agent/skill workflow routing.
-6. `docs/specs/README.md` - active spec index.
+5. `GOAL.md` - product purpose, target users, north star, and claim boundary.
+6. `AI_GUIDE.md` - AI decision knowledge router and read order.
+7. `DECISION_FRAMEWORK.md` - what to choose: architecture, abstraction, dependency, performance, and safety tradeoffs.
+8. `DELEGATION_FRAMEWORK.md` - who should explore, review, verify, or implement.
+9. `ARCHITECTURE.md` - owner modules, dependency direction, and placement map.
+10. `contracts/README.md` - rigid contract index for APIs, schemas, runtime boundaries, and verifiers.
+11. `docs/AGENT_WORKFLOWS.md` - agent/skill workflow routing.
+12. `docs/specs/README.md` - active spec index.
+13. `tasks/README.md` - current task packet shape and handoff minimum.
+14. `DECISIONS.md` - durable design decision log.
+15. `STYLE.md` - naming, type, frontend, backend, verifier, and dependency style.
 
 ### Fable / World-Class Continuation Override
 
@@ -57,7 +66,9 @@ P1 Command Evidence Durability であり、`pnpm verify:terminal:command-evidenc
 `pnpm verify:terminal:recovered-command-evidence`,
 `pnpm verify:terminal:process-reconnect-command-evidence` から再確認する。
 local-only handoff が存在しない場合だけ、`docs/specs/WU_RT_1_CONTINUATION.md`
-と current artifacts に fallback する。
+と current artifacts に fallback する。この local-only handoff は task 層の
+入力であり、knowledge 層（`GOAL.md` / `AI_GUIDE.md` / framework 群）と
+claim policy を上書きしない。
 
 ## Active Work Orders
 

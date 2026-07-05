@@ -23,6 +23,8 @@
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",
     "verify:proofbook:runner": "node scripts/verify-proofbook-runner.mjs",
     "verify:proofbook:agent-session": "node scripts/verify-proofbook-agent-session.mjs",
+    "verify:differentiation-polish-spec": "node scripts/verify-differentiation-polish-spec.mjs",
+    "verify:ai-decision-knowledge": "node scripts/verify-ai-decision-knowledge.mjs",
     "verify:anti-debt-claim-contract": "node scripts/verify-anti-debt-claim-contract.mjs",
     "verify:modularity-boundary": "node scripts/verify-modularity-boundary-contract.mjs",
     "verify:visible-agent-pane-binding": "node scripts/verify-visible-agent-pane-binding-contract.mjs",

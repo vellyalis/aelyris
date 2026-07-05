@@ -38,6 +38,9 @@ order and the authoritative specs. Key still-active specs include:
 
 ## Current Claim Policy
 
+This section is the claim policy authority. `GOAL.md`, `README.md`, and
+`docs/PUBLICATION_READINESS.md` project this policy and must not fork it.
+
 Aelyris is alpha and does not claim production readiness; capability claims are
 gated by verifiers. The product must not claim readiness or completed
 capabilities until the matching gate is green.
