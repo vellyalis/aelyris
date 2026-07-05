@@ -54,6 +54,15 @@
   box-shadow: none;
 }
 
+.shortId {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: color-mix(in srgb, var(--terminal-ui-secondary, var(--text-secondary)) 82%, var(--accent));
+  white-space: nowrap;
+}
+
 .identityBtn {
   display: inline-flex;
   align-items: center;

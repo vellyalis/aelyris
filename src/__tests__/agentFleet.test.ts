@@ -46,6 +46,7 @@ describe("agent fleet projection", () => {
       logical_session_id: "logical-i1",
       last_activity: 21,
       turn_count: 3,
+      short_id: 4,
       context_remaining: {
         pct: 12,
         used_pct: 88,
@@ -71,6 +72,9 @@ describe("agent fleet projection", () => {
       lastActivity: 21,
       turnCount: 3,
       contextRemaining: expect.objectContaining({ usedPct: 88, confidence: "parsed" }),
+      // Both fleet paths must carry the short id — the approval_prompt
+      // omission on the backend path is the cautionary precedent.
+      shortId: 4,
     });
     expect(fleet[1]).toMatchObject({
       runtime: "headless",
@@ -108,6 +112,7 @@ describe("agent fleet projection", () => {
         cli: "codex",
         backend: "sidecar",
         pty_id: "pty-1",
+        short_id: 7,
         approval_prompt: "Bash(git push origin main) · Do you want to proceed?",
         predecessor_session_id: "logical-parent",
         lineage: [
@@ -145,6 +150,7 @@ describe("agent fleet projection", () => {
       runStatus: "waiting_approval",
       prompt: "",
       ptyId: "pty-1",
+      shortId: 7,
       // The Decision Inbox only surfaces a waiting_approval gate when the
       // captured menu rides the unified fleet DTO — dropping it here breaks
       // Approve/Deny end-to-end (live-caught regression).

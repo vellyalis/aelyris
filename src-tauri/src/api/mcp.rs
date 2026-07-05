@@ -1,5 +1,9 @@
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::LazyLock;
+#[cfg(not(test))]
+use tauri::Manager;
 
 use super::mux::{send_workspace_input, workspace_summary};
 use super::{
@@ -45,8 +49,12 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.proofbook.reject_gate",
         "aelyris.request_approval",
         "aelyris.list_pending_approvals",
+        "aelyris.approval.resolve",
+        "aelyris.pane.rename",
+        "aelyris.pane.set_role",
         "aelyris.request_merge",
         "aelyris.spawn_agent",
+        "aelyris.agent.spawn_visible",
         "aelyris.stop_agent",
         "aelyris.review.approve",
         "aelyris.review.reject",
@@ -334,6 +342,201 @@ async fn mcp_session_reset_context(
     _args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
     test_mcp_session_lifecycle_unattached()
+}
+
+#[cfg(not(test))]
+async fn mcp_approval_resolve(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    // Unknown %N / terminal refs are TOOL errors (ok:false, aelys exit 2) —
+    // same contract as pane.rename/set_role, not an HTTP 400 transport error.
+    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let decision = arg_string(args, "decision")?;
+    let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
+    Ok(crate::ipc::resolve_interactive_approval_core(
+        app,
+        terminal_id,
+        decision,
+        Some(expected_prompt_key),
+    )
+    .await)
+}
+
+#[cfg(test)]
+async fn mcp_approval_resolve(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let terminal_ref = arg_string(args, "terminalId")?;
+    // Mirror the non-test path so the %N-miss tool-error contract is
+    // exercised by tests.
+    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let _decision = arg_string(args, "decision")?;
+    let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
+    if expected_prompt_key == "stale-test" {
+        Ok(Err(
+            "stale_approval: prompt fingerprint changed for session test".to_string(),
+        ))
+    } else {
+        Ok(Ok(()))
+    }
+}
+
+fn approval_resolve_error_payload(err: &str) -> serde_json::Value {
+    if err.contains("stale_approval") {
+        serde_json::json!({ "stale_approval": err })
+    } else {
+        serde_json::json!({ "error": err })
+    }
+}
+
+#[cfg(not(test))]
+fn resolve_mcp_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<String> {
+    let trimmed = reference.trim();
+    if !trimmed.starts_with('%') {
+        return Ok(trimmed.to_string());
+    }
+    let app = mcp_app_handle(state)?;
+    app.state::<crate::pty::PaneRegistry>()
+        .resolve_terminal_ref(trimmed)
+        .map_err(ApiError::BadRequest)
+}
+
+#[cfg(test)]
+fn resolve_mcp_terminal_ref(_state: &ApiState, reference: &str) -> ApiResult<String> {
+    let trimmed = reference.trim();
+    if trimmed == "%404" {
+        return Err(ApiError::BadRequest(format!(
+            "unknown terminal reference `{trimmed}`"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+#[cfg(not(test))]
+fn mcp_pane_rename(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let name = arg_string(args, "name")?;
+    Ok(crate::ipc::rename_pane_core(&app, &terminal_id, &name))
+}
+
+#[cfg(test)]
+fn mcp_pane_rename(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let name = arg_string(args, "name")?;
+    if name == "missing-pane" {
+        Ok(Err("Pane missing-pane not found".to_string()))
+    } else {
+        Ok(Ok(()))
+    }
+}
+
+#[cfg(not(test))]
+fn mcp_pane_set_role(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let role = arg_string(args, "role")?;
+    Ok(crate::ipc::set_pane_role_core(&app, &terminal_id, &role))
+}
+
+#[cfg(test)]
+fn mcp_pane_set_role(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    let terminal_ref = arg_string(args, "terminalId")?;
+    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
+    let _role = arg_string(args, "role")?;
+    Ok(Ok(()))
+}
+
+#[cfg(not(test))]
+async fn mcp_spawn_visible(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<serde_json::Value, String>> {
+    let app = mcp_app_handle(state)?;
+    let cwd = arg_string(args, "cwd")?;
+    let model = arg_optional_string(args, "model");
+    let initial_prompt = arg_optional_string(args, "initialPrompt");
+    let branch_name = arg_optional_string(args, "branchName");
+    let cols = arg_optional_u16(args, "cols")?.unwrap_or(120);
+    let rows = arg_optional_u16(args, "rows")?.unwrap_or(30);
+    match crate::ipc::spawn_interactive_agent_internal(
+        app,
+        cwd,
+        model,
+        initial_prompt,
+        branch_name,
+        cols,
+        rows,
+        crate::ipc::SpawnInteractiveAgentOptions::default(),
+    )
+    .await
+    {
+        Ok(result) => Ok(Ok(mcp_result_value(result)?)),
+        Err(err) => Ok(Err(err)),
+    }
+}
+
+#[cfg(test)]
+async fn mcp_spawn_visible(
+    _state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<serde_json::Value, String>> {
+    let cwd = arg_string(args, "cwd")?;
+    let _model = arg_optional_string(args, "model");
+    let _initial_prompt = arg_optional_string(args, "initialPrompt");
+    let _branch_name = arg_optional_string(args, "branchName");
+    if cwd == "cost-deny" {
+        return Ok(Err("cost cap denied: test".to_string()));
+    }
+    Ok(Ok(serde_json::json!({
+        "session_id": "session-visible",
+        "pty_id": "pty-visible",
+        "worktree_path": null,
+        "backend": "sidecar",
+    })))
 }
 
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
@@ -985,7 +1188,24 @@ pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::
     }))
 }
 
-fn tools_list_value() -> serde_json::Value {
+static TOOL_CATALOG: LazyLock<serde_json::Value> = LazyLock::new(build_tools_list_value);
+static TOOL_SCHEMA_INDEX: LazyLock<HashMap<String, serde_json::Value>> = LazyLock::new(|| {
+    let mut index = HashMap::new();
+    if let Some(tools) = TOOL_CATALOG.get("tools").and_then(|tools| tools.as_array()) {
+        for tool in tools {
+            let Some(name) = tool.get("name").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            let Some(schema) = tool.get("inputSchema") else {
+                continue;
+            };
+            index.insert(name.to_string(), schema.clone());
+        }
+    }
+    index
+});
+
+fn build_tools_list_value() -> serde_json::Value {
     serde_json::json!({
         "schema": "aelyris.mcp.server.v1",
         "server": "aelyris",
@@ -1373,6 +1593,49 @@ fn tools_list_value() -> serde_json::Value {
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
+                "name": "aelyris.approval.resolve",
+                "description": "Resolve the current interactive approval menu for a visible terminal using the same fingerprint-checked core as the Decision Inbox. Stale or missing prompt fingerprints fail closed.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["terminalId", "decision", "expectedPromptKey"],
+                    "properties": {
+                        "terminalId": { "type": "string" },
+                        "decision": { "type": "string", "enum": ["approve", "deny"] },
+                        "expectedPromptKey": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.pane.rename",
+                "description": "Rename a visible terminal pane through the same cockpit pane-identity core. terminalId accepts a UUID or process-local %N short id.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["terminalId", "name"],
+                    "properties": {
+                        "terminalId": { "type": "string" },
+                        "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.pane.set_role",
+                "description": "Assign a visible terminal pane role through the same cockpit pane-identity core. terminalId accepts a UUID or process-local %N short id.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["terminalId", "role"],
+                    "properties": {
+                        "terminalId": { "type": "string" },
+                        "role": { "type": "string", "minLength": 1, "maxLength": 40 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
                 "name": "aelyris.request_merge",
                 "description": "Queue a DURABLE merge intent (never merges to main). The repo/source/target and their branch-tip OIDs are captured and stored at request time, so the merge is bound to specific commits. Idempotent per (taskId, source commit, target commit): a duplicate request returns the original intent. Returns { intentId, status, intent }.",
                 "safety": "GATED",
@@ -1402,6 +1665,24 @@ fn tools_list_value() -> serde_json::Value {
                         "model": { "type": "string" },
                         "allowedTools": { "type": "array", "items": { "type": "string" } },
                         "resumeId": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "aelyris.agent.spawn_visible",
+                "description": "Spawn the same visible interactive TUI agent as the cockpit path. Enforces the live cost cap (BR7) and returns SpawnResult.",
+                "safety": "GATED",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["cwd"],
+                    "properties": {
+                        "cwd": { "type": "string" },
+                        "model": { "type": "string" },
+                        "initialPrompt": { "type": "string" },
+                        "branchName": { "type": "string" },
+                        "cols": { "type": "integer", "minimum": 20, "maximum": 500 },
+                        "rows": { "type": "integer", "minimum": 10, "maximum": 200 }
                     },
                     "additionalProperties": false
                 }
@@ -1958,6 +2239,10 @@ fn tools_list_value() -> serde_json::Value {
     })
 }
 
+fn tools_list_value() -> serde_json::Value {
+    TOOL_CATALOG.clone()
+}
+
 pub(super) async fn tools_list() -> Json<serde_json::Value> {
     Json(tools_list_value())
 }
@@ -1999,14 +2284,12 @@ struct SchemaTypeViolation {
     got: String,
 }
 
+fn input_schema_for_tool_ref(name: &str) -> Option<&'static serde_json::Value> {
+    TOOL_SCHEMA_INDEX.get(name)
+}
+
 fn input_schema_for_tool(name: &str) -> Option<serde_json::Value> {
-    let listed = tools_list_value();
-    listed
-        .get("tools")?
-        .as_array()?
-        .iter()
-        .find(|tool| tool.get("name").and_then(|value| value.as_str()) == Some(name))
-        .and_then(|tool| tool.get("inputSchema").cloned())
+    input_schema_for_tool_ref(name).cloned()
 }
 
 fn schema_tool_error(name: &str, payload: serde_json::Value) -> Json<serde_json::Value> {
@@ -2185,6 +2468,15 @@ fn validate_schema_string_bounds(
     let Some(text) = value.as_str() else {
         return;
     };
+    if let Some(min_length) = schema.get("minLength").and_then(|value| value.as_u64()) {
+        if (text.chars().count() as u64) < min_length {
+            report.wrong_type.push(SchemaTypeViolation {
+                field: field.to_string(),
+                expected: format!("string >= {min_length} chars"),
+                got: format!("string({} chars)", text.chars().count()),
+            });
+        }
+    }
     if let Some(max_length) = schema.get("maxLength").and_then(|value| value.as_u64()) {
         if text.chars().count() as u64 > max_length {
             report.wrong_type.push(SchemaTypeViolation {
@@ -2261,6 +2553,7 @@ fn assert_schema_subset(schema: &serde_json::Value, field: &str, violations: &mu
                 | "items"
                 | "minimum"
                 | "maximum"
+                | "minLength"
                 | "maxLength"
                 | "description"
         ) {
@@ -2357,7 +2650,8 @@ pub(super) async fn tools_call(
             "sessions": state.pty.list_info(),
         }),
         "terminal.capture" => {
-            let session_id = arg_string(&args, "sessionId")?;
+            let session_ref = arg_string(&args, "sessionId")?;
+            let session_id = resolve_mcp_terminal_ref(&state, &session_ref)?;
             let lines = arg_usize(&args, "lines", 200)?.clamp(1, 10_000);
             let clean = arg_bool(&args, "clean", true);
             let text = state
@@ -2463,7 +2757,8 @@ pub(super) async fn tools_call(
             serde_json::json!({ "prompt": prompt, "decision": decision })
         }
         "aelyris.pane_send_input" => {
-            let terminal_id = arg_string(&args, "terminalId")?;
+            let terminal_ref = arg_string(&args, "terminalId")?;
+            let terminal_id = resolve_mcp_terminal_ref(&state, &terminal_ref)?;
             let text = arg_string(&args, "text")?;
             let approval_id = arg_optional_string(&args, "approvalId");
             if text.len() > WS_MAX_INPUT_FRAME_BYTES {
@@ -2471,6 +2766,18 @@ pub(super) async fn tools_call(
                     "input frame exceeds {} bytes",
                     WS_MAX_INPUT_FRAME_BYTES
                 )));
+            }
+            // FR-1: same rule as the REST/IPC faces — agent-injected input must
+            // never land on a pane waiting at an approval menu; resolve it via
+            // aelyris.approval.resolve instead. Typed tool error (aelys exit 2).
+            #[cfg(not(test))]
+            if let Some(app) = state.app_handle.as_ref() {
+                if let Err(err) = crate::ipc::reject_waiting_approval_via_app(app, &terminal_id) {
+                    return Ok(schema_tool_error(
+                        &body.name,
+                        serde_json::json!({ "error": err }),
+                    ));
+                }
             }
             // P0-4: classify the agent-injected command BEFORE it reaches the PTY
             // (hard boundary #1). An agent steering a terminal is exactly the
@@ -2597,6 +2904,33 @@ pub(super) async fn tools_call(
                 "grantToolExposed": false,
             })
         }
+        "aelyris.approval.resolve" => match mcp_approval_resolve(&state, &args).await? {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    approval_resolve_error_payload(&err),
+                ));
+            }
+        },
+        "aelyris.pane.rename" => match mcp_pane_rename(&state, &args)? {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    serde_json::json!({ "error": err }),
+                ));
+            }
+        },
+        "aelyris.pane.set_role" => match mcp_pane_set_role(&state, &args)? {
+            Ok(()) => serde_json::json!({ "ok": true }),
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    serde_json::json!({ "error": err }),
+                ));
+            }
+        },
         "aelyris.request_merge" => {
             // Fail closed: a merge intent MUST be durable. Without the store we do
             // not fall back to a RAM queue a restart would lose (P0-3).
@@ -2682,6 +3016,15 @@ pub(super) async fn tools_call(
             .map_err(ApiError::BadRequest)?;
             serde_json::json!({ "sessionId": session_id, "spawned": true })
         }
+        "aelyris.agent.spawn_visible" => match mcp_spawn_visible(&state, &args).await? {
+            Ok(value) => value,
+            Err(err) => {
+                return Ok(schema_tool_error(
+                    &body.name,
+                    serde_json::json!({ "error": err }),
+                ));
+            }
+        },
         "aelyris.stop_agent" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
@@ -3951,6 +4294,17 @@ mod tests {
     }
 
     #[test]
+    fn input_schema_for_tool_uses_memoized_schema_index() {
+        let first = input_schema_for_tool_ref("terminal.capture").expect("schema exists");
+        let second = input_schema_for_tool_ref("terminal.capture").expect("schema exists");
+
+        assert!(std::ptr::eq(first, second));
+        let cloned = input_schema_for_tool("terminal.capture").unwrap();
+        assert_eq!(&cloned, first);
+        assert!(input_schema_for_tool_ref("aelyris.unknown").is_none());
+    }
+
+    #[test]
     fn session_lifecycle_verbs_are_gated_and_schema_exact() {
         let Json(listed) = tokio::runtime::Runtime::new()
             .expect("tokio runtime")
@@ -3987,6 +4341,203 @@ mod tests {
                 .unwrap_or_default();
             assert_eq!(actual_required, required, "{verb} required args drifted");
         }
+    }
+
+    #[test]
+    fn approval_resolve_mcp_schema_and_tool_error_contract() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        );
+
+        let call = |arguments: serde_json::Value| {
+            let body = ToolCallBody {
+                name: "aelyris.approval.resolve".to_string(),
+                arguments,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("tool call response")
+                .0
+        };
+
+        let ok = call(serde_json::json!({
+            "terminalId": "pty-1",
+            "decision": "approve",
+            "expectedPromptKey": "fresh-test"
+        }));
+        assert_eq!(ok["ok"], serde_json::json!(true));
+        assert_eq!(ok["result"]["ok"], serde_json::json!(true));
+
+        let stale = call(serde_json::json!({
+            "terminalId": "pty-1",
+            "decision": "approve",
+            "expectedPromptKey": "stale-test"
+        }));
+        assert_eq!(stale["ok"], serde_json::json!(false));
+        assert!(
+            stale["error"]["stale_approval"]
+                .as_str()
+                .is_some_and(|message| message.contains("stale_approval")),
+            "{stale:?}"
+        );
+
+        let missing_prompt = call(serde_json::json!({
+            "terminalId": "pty-1",
+            "decision": "approve"
+        }));
+        assert_eq!(missing_prompt["ok"], serde_json::json!(false));
+        assert_eq!(
+            missing_prompt["error"]["schema_violation"]["missing"],
+            serde_json::json!(["expectedPromptKey"])
+        );
+    }
+
+    #[test]
+    fn spawn_visible_mcp_schema_and_tool_error_contract() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        );
+
+        let call = |arguments: serde_json::Value| {
+            let body = ToolCallBody {
+                name: "aelyris.agent.spawn_visible".to_string(),
+                arguments,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("tool call response")
+                .0
+        };
+
+        let Json(listed) = rt.block_on(tools_list());
+        let tool = listed["tools"]
+            .as_array()
+            .expect("tools is an array")
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("aelyris.agent.spawn_visible"))
+            .expect("spawn_visible is listed");
+        assert_eq!(tool["safety"], serde_json::json!("GATED"));
+        assert_eq!(tool["inputSchema"]["required"], serde_json::json!(["cwd"]));
+        assert_eq!(
+            tool["inputSchema"]["additionalProperties"],
+            serde_json::json!(false)
+        );
+
+        let ok = call(serde_json::json!({
+            "cwd": "C:/repo",
+            "cols": 120,
+            "rows": 30
+        }));
+        assert_eq!(ok["ok"], serde_json::json!(true));
+        assert_eq!(
+            ok["result"]["session_id"],
+            serde_json::json!("session-visible")
+        );
+        assert_eq!(ok["result"]["pty_id"], serde_json::json!("pty-visible"));
+        assert_eq!(ok["result"]["backend"], serde_json::json!("sidecar"));
+
+        let denied = call(serde_json::json!({ "cwd": "cost-deny" }));
+        assert_eq!(denied["ok"], serde_json::json!(false));
+        assert!(
+            denied["error"]["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("cost cap denied")),
+            "{denied:?}"
+        );
+
+        let low_cols = call(serde_json::json!({
+            "cwd": "C:/repo",
+            "cols": 19,
+            "rows": 30
+        }));
+        assert_eq!(low_cols["ok"], serde_json::json!(false));
+        assert_eq!(
+            low_cols["error"]["schema_violation"]["wrong_type"][0]["field"],
+            serde_json::json!("cols")
+        );
+        assert_eq!(
+            low_cols["error"]["schema_violation"]["wrong_type"][0]["expected"],
+            serde_json::json!("integer >= 20")
+        );
+    }
+
+    #[test]
+    fn pane_identity_mcp_schema_and_tool_error_contract() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        );
+
+        let call = |name: &str, arguments: serde_json::Value| {
+            let body = ToolCallBody {
+                name: name.to_string(),
+                arguments,
+            };
+            rt.block_on(tools_call(State(state.clone()), Json(body)))
+                .expect("tool call response")
+                .0
+        };
+
+        let Json(listed) = rt.block_on(tools_list());
+        for (verb, field, max_len) in [
+            ("aelyris.pane.rename", "name", 120),
+            ("aelyris.pane.set_role", "role", 40),
+        ] {
+            let tool = listed["tools"]
+                .as_array()
+                .expect("tools is an array")
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(verb))
+                .unwrap_or_else(|| panic!("{verb} is listed"));
+            assert_eq!(tool["safety"], serde_json::json!("GATED"));
+            assert_eq!(
+                tool["inputSchema"]["properties"][field]["minLength"],
+                serde_json::json!(1)
+            );
+            assert_eq!(
+                tool["inputSchema"]["properties"][field]["maxLength"],
+                serde_json::json!(max_len)
+            );
+        }
+
+        let renamed = call(
+            "aelyris.pane.rename",
+            serde_json::json!({ "terminalId": "pty-1", "name": "review" }),
+        );
+        assert_eq!(renamed["ok"], serde_json::json!(true));
+        assert_eq!(renamed["result"]["ok"], serde_json::json!(true));
+
+        let role = call(
+            "aelyris.pane.set_role",
+            serde_json::json!({ "terminalId": "pty-1", "role": "agent" }),
+        );
+        assert_eq!(role["ok"], serde_json::json!(true));
+        assert_eq!(role["result"]["ok"], serde_json::json!(true));
+
+        let empty_name = call(
+            "aelyris.pane.rename",
+            serde_json::json!({ "terminalId": "pty-1", "name": "" }),
+        );
+        assert_eq!(empty_name["ok"], serde_json::json!(false));
+        assert_eq!(
+            empty_name["error"]["schema_violation"]["wrong_type"][0]["expected"],
+            serde_json::json!("string >= 1 chars")
+        );
+
+        let missing_ref = call(
+            "aelyris.pane.rename",
+            serde_json::json!({ "terminalId": "%404", "name": "review" }),
+        );
+        assert_eq!(missing_ref["ok"], serde_json::json!(false));
+        assert!(
+            missing_ref["error"]["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("unknown terminal reference `%404`")),
+            "{missing_ref:?}"
+        );
     }
 
     #[test]

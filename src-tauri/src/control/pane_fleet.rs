@@ -54,23 +54,25 @@ fn mark_failed(exit: &Arc<Mutex<Option<bool>>>) {
 /// Relative marker path injected into loop-dispatched visible agents. The task id
 /// is sanitized by the session-lifecycle helper used for handoff files so the
 /// agent never controls a path component.
-pub(crate) fn done_marker_relative_path(task_id: &str) -> String {
+pub(crate) fn done_marker_relative_path(task_id: &str, terminal_id: &str) -> String {
     format!(
-        ".aelyris/done/{}.done",
-        crate::agent::session_lifecycle::sanitize_handoff_id(task_id)
+        ".aelyris/done/{}-{}.done",
+        crate::agent::session_lifecycle::sanitize_handoff_id(task_id),
+        terminal_id
     )
 }
 
 /// Absolute marker path under the pane worktree. The path is backend-built from a
 /// fixed directory plus a sanitized file name; no user-supplied marker path is
 /// trusted.
-pub(crate) fn done_marker_path(worktree_path: &str, task_id: &str) -> PathBuf {
+pub(crate) fn done_marker_path(worktree_path: &str, task_id: &str, terminal_id: &str) -> PathBuf {
     Path::new(worktree_path)
         .join(".aelyris")
         .join("done")
         .join(format!(
-            "{}.done",
-            crate::agent::session_lifecycle::sanitize_handoff_id(task_id)
+            "{}-{}.done",
+            crate::agent::session_lifecycle::sanitize_handoff_id(task_id),
+            terminal_id
         ))
 }
 
@@ -154,8 +156,48 @@ impl PaneFleet {
             self.pty
                 .spawn_command(program, args, cols, rows, Some(cwd), Some(env))?;
 
+        self.register_spawned_pane(task_id, &terminal_id, cwd, outputs)?;
+        Ok(terminal_id)
+    }
+
+    /// Same as [`spawn`] but the caller chooses the terminal id before command
+    /// construction. Visible loop dispatch uses this to inject the exact
+    /// collision-proof completion marker path into the agent prompt.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_with_terminal_id(
+        &self,
+        terminal_id: &str,
+        task_id: &str,
+        program: &str,
+        args: &[String],
+        cols: u16,
+        rows: u16,
+        cwd: &str,
+        env: HashMap<String, String>,
+        outputs: Vec<String>,
+    ) -> Result<String, String> {
+        self.pty.spawn_command_with_id(
+            terminal_id,
+            program,
+            args,
+            cols,
+            rows,
+            Some(cwd),
+            Some(env),
+        )?;
+        self.register_spawned_pane(task_id, terminal_id, cwd, outputs)?;
+        Ok(terminal_id.to_string())
+    }
+
+    fn register_spawned_pane(
+        &self,
+        task_id: &str,
+        terminal_id: &str,
+        cwd: &str,
+        outputs: Vec<String>,
+    ) -> Result<(), String> {
         let exit = Arc::new(Mutex::new(None));
-        match self.pty.take_child(&terminal_id) {
+        match self.pty.take_child(terminal_id) {
             Some(mut child) => {
                 let slot = exit.clone();
                 // Owns the child: `wait()` blocks until the agent process exits,
@@ -201,18 +243,18 @@ impl PaneFleet {
         runs.insert(
             task_id.to_string(),
             PaneRun {
-                terminal_id: terminal_id.clone(),
+                terminal_id: terminal_id.to_string(),
                 started_at: now_secs(),
                 exit,
                 worktree_path: cwd.to_string(),
                 outputs,
-                done_marker_path: done_marker_path(cwd, task_id),
+                done_marker_path: done_marker_path(cwd, task_id, terminal_id),
                 outputs_ready_since: None,
                 last_output_signature: None,
                 output_idle_since: None,
             },
         );
-        Ok(terminal_id)
+        Ok(())
     }
 
     /// The visible terminal id dispatched for `task_id`, if it is still tracked.
@@ -600,20 +642,47 @@ mod tests {
     #[test]
     fn done_marker_path_is_backend_built_and_sanitized() {
         let root = PathBuf::from("C:/repo");
-        let path = done_marker_path(root.to_str().unwrap(), "../task/one:two");
+        let path = done_marker_path(
+            root.to_str().unwrap(),
+            "../task/one:two",
+            "123e4567-e89b-12d3-a456-426614174000",
+        );
         let done_dir = root.join(".aelyris").join("done");
 
         assert!(path.starts_with(&done_dir));
-        assert!(path.ends_with(".._task_one_two.done"));
+        assert!(path.ends_with(".._task_one_two-123e4567-e89b-12d3-a456-426614174000.done"));
         assert!(!path
             .strip_prefix(done_dir)
             .unwrap()
             .components()
             .any(|component| matches!(component, std::path::Component::ParentDir)));
         assert_eq!(
-            done_marker_relative_path("../task/one:two"),
-            ".aelyris/done/.._task_one_two.done"
+            done_marker_relative_path("../task/one:two", "123e4567-e89b-12d3-a456-426614174000"),
+            ".aelyris/done/.._task_one_two-123e4567-e89b-12d3-a456-426614174000.done"
         );
+    }
+
+    #[test]
+    fn done_marker_collision_uses_terminal_id_discriminator() {
+        let root = std::env::temp_dir().join(format!("aelyris-marker-collision-{}", now_secs()));
+        std::fs::create_dir_all(root.join(".aelyris").join("done")).unwrap();
+        let cwd = root.to_string_lossy().to_string();
+
+        let first = done_marker_path(&cwd, "task/1", "terminal-a");
+        let second = done_marker_path(&cwd, "task:1", "terminal-b");
+
+        assert_ne!(first, second);
+        assert!(first.ends_with("task_1-terminal-a.done"));
+        assert!(second.ends_with("task_1-terminal-b.done"));
+
+        std::fs::write(&first, "done").unwrap();
+        assert!(first.is_file());
+        assert!(
+            !second.is_file(),
+            "one colliding task's marker must not satisfy another terminal's marker"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -703,7 +772,8 @@ mod tests {
         assert!(fleet.terminal_of("task-build").is_some());
 
         // The agent creates its explicit marker as its last action.
-        let marker = done_marker_path(&cwd, "task-build");
+        let terminal = fleet.terminal_of("task-build").unwrap();
+        let marker = done_marker_path(&cwd, "task-build", &terminal);
         std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
         std::fs::write(marker, "done").unwrap();
 

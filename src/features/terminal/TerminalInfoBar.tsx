@@ -17,6 +17,7 @@ interface TerminalInfoBarProps {
    * stays hidden until the first mark arrives.
    */
   terminalId?: string | null;
+  shortId?: number;
   paneTitle?: string;
   paneRole?: PaneRole;
   activeAgent?: { model: string; cost?: number; status?: "running" | "done" | "error" } | null;
@@ -38,6 +39,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   shell,
   cwd,
   terminalId,
+  shortId,
   paneTitle,
   paneRole,
   activeAgent,
@@ -60,7 +62,9 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   const lastEnd = lastCommandEnd(marks);
   const lag = usePtyLag(terminalId ?? null);
   const roleLabel = ROLE_LABELS[paneRole ?? "work"];
+  const shortIdLabel = typeof shortId === "number" && shortId > 0 ? `%${shortId}` : null;
   const identityLabel = paneTitle ? `${roleLabel} · ${paneTitle}` : roleLabel;
+  const identityAriaLabel = shortIdLabel ? `${shortIdLabel} · ${identityLabel}` : identityLabel;
 
   const handleRename = () => {
     if (!onRenamePane) return;
@@ -78,6 +82,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
      * affordance. */
     <div className={styles.bar} data-active={isActive ? "true" : undefined}>
       <span className={styles.shell}>{shell}</span>
+      {shortIdLabel && <span className={styles.shortId}>{shortIdLabel}</span>}
       {(onSetPaneRole || onCyclePaneRole || onRenamePane || paneTitle || paneRole) &&
         (onSetPaneRole ? (
           <DropdownMenu.Root>
@@ -85,7 +90,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
               <button
                 type="button"
                 className={styles.identityBtn}
-                aria-label={`Pane identity: ${identityLabel}`}
+                aria-label={`Pane identity: ${identityAriaLabel}`}
                 title="Set pane role"
               >
                 <Tag size={10} aria-hidden="true" />
@@ -115,7 +120,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
             onClick={() => {
               onCyclePaneRole?.();
             }}
-            aria-label={`Pane identity: ${identityLabel}`}
+            aria-label={`Pane identity: ${identityAriaLabel}`}
             title="Cycle pane role"
           >
             <Tag size={10} aria-hidden="true" />

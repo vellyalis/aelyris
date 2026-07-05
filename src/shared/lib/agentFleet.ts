@@ -33,6 +33,7 @@ export interface AgentFleetSession extends AgentSession {
   backend?: string;
   cli?: string;
   ptyId?: string;
+  shortId?: number;
   /**
    * Captured permission-menu prompt for an interactive run that is
    * `waiting_approval` — the gated command the human is being asked to approve.
@@ -82,6 +83,7 @@ export interface BackendAgentFleetSession {
   cli?: string | null;
   backend?: string | null;
   pty_id?: string | null;
+  short_id?: number | null;
   approval_prompt?: string | null;
   predecessor_session_id?: string | null;
   lineage?: BackendSessionLineageEntry[] | null;
@@ -109,6 +111,10 @@ export function agentRunStatusToLegacyStatus(status: AgentRunStatus): AgentStatu
 
 function normalizeOrFallback(status: string): AgentRunStatus {
   return normalizeAgentRunStatus(status) ?? "error";
+}
+
+function normalizeShortId(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 function normalizeLineage(lineage: BackendSessionLineageEntry[] | null | undefined): AgentLineageEntry[] | undefined {
@@ -174,6 +180,7 @@ export function interactiveToFleetSession(session: InteractiveSession): AgentFle
     backend: session.backend,
     cli: session.cli,
     ptyId: session.pty_id,
+    shortId: normalizeShortId(session.short_id),
     approvalPrompt: session.approval_prompt ?? undefined,
     worktreeBranch: session.worktree_branch,
     worktreePath: session.worktree_path,
@@ -208,6 +215,7 @@ export function backendToFleetSession(session: BackendAgentFleetSession): AgentF
     backend: session.backend ?? undefined,
     cli: session.cli ?? undefined,
     ptyId: session.pty_id ?? undefined,
+    shortId: normalizeShortId(session.short_id),
     // Without this, a waiting_approval gate reaches the rail with no captured
     // menu and the Decision Inbox (which requires approvalPrompt) never mounts.
     approvalPrompt: session.approval_prompt ?? undefined,

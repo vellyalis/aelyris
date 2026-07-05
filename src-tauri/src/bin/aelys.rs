@@ -5,17 +5,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use aelyris_lib::db::{self, Database};
 use reqwest::Method;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9333";
 const SIDECAR_BASE_URL: &str = "http://127.0.0.1:9334";
 const TOKEN_FILE_NAME: &str = "aelyris-pty-server.token";
+const TOOL_ERROR_PREFIX: &str = "tool error: ";
 
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
+        let exit_code = if err.starts_with(TOOL_ERROR_PREFIX) {
+            2
+        } else {
+            1
+        };
         eprintln!("aelys: {err}");
-        std::process::exit(1);
+        std::process::exit(exit_code);
     }
 }
 
@@ -122,6 +128,8 @@ async fn run() -> Result<(), String> {
         "create" => create_session(&args[1..]).await,
         "send" => send_input(&args[1..]).await,
         "capture" => capture_output(&args[1..]).await,
+        "mcp" => mcp_call(&args[1..]).await,
+        "report" => report(&args[1..]).await,
         "search" | "scrollback-search" => search_output(&args[1..]).await,
         "close" => {
             let id = args
@@ -517,28 +525,10 @@ async fn mux_zoom(args: &[String], zoomed: bool) -> Result<(), String> {
 }
 
 async fn send_input(args: &[String]) -> Result<(), String> {
-    let id = args
-        .first()
-        .ok_or_else(|| "send requires a session id".to_string())?;
-    let mut enter = false;
-    let mut text_parts = Vec::new();
-    for arg in &args[1..] {
-        if arg == "--enter" {
-            enter = true;
-        } else {
-            text_parts.push(arg.as_str());
-        }
-    }
-    if text_parts.is_empty() && !enter {
-        return Err("send requires text or --enter".to_string());
-    }
-    let mut text = text_parts.join(" ");
-    if enter {
-        text.push('\r');
-    }
+    let (id, text) = parse_send_input(args, default_terminal_id().ok())?;
     let value = request(
         Method::POST,
-        &format!("/sessions/{id}/input"),
+        &format!("/sessions/{}/input", query_component(&id)),
         Some(json!({ "text": text })),
     )
     .await?;
@@ -546,22 +536,157 @@ async fn send_input(args: &[String]) -> Result<(), String> {
 }
 
 async fn capture_output(args: &[String]) -> Result<(), String> {
-    let id = args
+    let (id, lines, clean) = parse_capture_target(args, default_terminal_id().ok())?;
+    let value = request(
+        Method::GET,
+        &format!(
+            "/sessions/{}/capture?lines={lines}&clean={clean}",
+            query_component(&id)
+        ),
+        None,
+    )
+    .await?;
+    print_json(&value)
+}
+
+async fn mcp_call(args: &[String]) -> Result<(), String> {
+    let body = mcp_call_body(args)?;
+    let value = request(Method::POST, "/mcp/tools/call", Some(body)).await?;
+    print_mcp_response(&value)
+}
+
+async fn report(args: &[String]) -> Result<(), String> {
+    let body = report_mcp_body(args, &default_terminal_id()?)?;
+    let value = request(Method::POST, "/mcp/tools/call", Some(body)).await?;
+    print_mcp_response(&value)
+}
+
+fn mcp_call_body(args: &[String]) -> Result<Value, String> {
+    let verb = args
         .first()
-        .ok_or_else(|| "capture requires a session id".to_string())?;
+        .ok_or_else(|| "mcp requires a verb".to_string())?;
+    if args.len() > 2 {
+        return Err("mcp accepts at most one JSON arguments value".to_string());
+    }
+    let arguments = match args.get(1) {
+        Some(raw) => serde_json::from_str::<Value>(raw)
+            .map_err(|err| format!("mcp JSON arguments invalid: {err}"))?,
+        None => json!({}),
+    };
+    Ok(json!({
+        "name": verb,
+        "arguments": arguments,
+    }))
+}
+
+fn report_mcp_body(args: &[String], terminal_id: &str) -> Result<Value, String> {
+    let title = option_value(args, "--title")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "report requires --title".to_string())?;
+    Ok(json!({
+        "name": "aelyris.pane.rename",
+        "arguments": {
+            "terminalId": terminal_id,
+            "name": title,
+        },
+    }))
+}
+
+fn print_mcp_response(value: &Value) -> Result<(), String> {
+    if value.get("ok").and_then(Value::as_bool) == Some(false) {
+        let text = serde_json::to_string_pretty(value).map_err(|err| err.to_string())?;
+        eprintln!("{text}");
+        let tool = value
+            .get("tool")
+            .and_then(Value::as_str)
+            .unwrap_or("mcp tool");
+        return Err(format!("{TOOL_ERROR_PREFIX}{tool} returned ok:false"));
+    }
+    print_json(value)
+}
+
+fn default_terminal_id() -> Result<String, String> {
+    env::var("AELYRIS_TERMINAL_ID")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "AELYRIS_TERMINAL_ID is required when target is omitted".to_string())
+}
+
+fn parse_send_input(
+    args: &[String],
+    default_target: Option<String>,
+) -> Result<(String, String), String> {
+    let mut enter = false;
+    let mut values = Vec::new();
+    for arg in args {
+        if arg == "--enter" {
+            enter = true;
+        } else {
+            values.push(arg.as_str());
+        }
+    }
+
+    let (target, text_parts): (String, &[&str]) = match values.len() {
+        0 => (
+            default_target
+                .ok_or_else(|| "send requires a session id or AELYRIS_TERMINAL_ID".to_string())?,
+            &[],
+        ),
+        1 => match default_target {
+            Some(_) if enter && is_short_terminal_ref(values[0]) => (values[0].to_string(), &[]),
+            Some(target) => (target, &values[..]),
+            None if enter => (values[0].to_string(), &[]),
+            None => return Err("send requires text or --enter".to_string()),
+        },
+        _ => (values[0].to_string(), &values[1..]),
+    };
+
+    if text_parts.is_empty() && !enter {
+        return Err("send requires text or --enter".to_string());
+    }
+    let mut text = text_parts.join(" ");
+    if enter {
+        text.push('\r');
+    }
+    Ok((target, text))
+}
+
+fn is_short_terminal_ref(value: &str) -> bool {
+    value
+        .strip_prefix('%')
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit()))
+}
+
+fn parse_capture_target(
+    args: &[String],
+    default_target: Option<String>,
+) -> Result<(String, usize, bool), String> {
     let lines = option_value(args, "--lines")
         .as_deref()
         .unwrap_or("200")
         .parse::<usize>()
         .map_err(|_| "--lines must be a positive integer".to_string())?;
     let clean = !args.iter().any(|arg| arg == "--raw");
-    let value = request(
-        Method::GET,
-        &format!("/sessions/{id}/capture?lines={lines}&clean={clean}"),
-        None,
-    )
-    .await?;
-    print_json(&value)
+    let target = capture_target_arg(args)
+        .map(ToOwned::to_owned)
+        .or(default_target)
+        .ok_or_else(|| "capture requires a session id or AELYRIS_TERMINAL_ID".to_string())?;
+    Ok((target, lines, clean))
+}
+
+fn capture_target_arg(args: &[String]) -> Option<&str> {
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--raw" => index += 1,
+            "--lines" => index += 2,
+            value if value.starts_with("--") => index += 1,
+            value => return Some(value),
+        }
+    }
+    None
 }
 
 async fn search_output(args: &[String]) -> Result<(), String> {
@@ -735,7 +860,7 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aelys commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send <id> <text...> [--enter]\n  capture <id> [--lines n] [--raw]\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the Aelyris sidecar token file"
+        "aelys commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the Aelyris sidecar token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
     );
 }
 
@@ -774,5 +899,73 @@ mod tests {
         assert!(search_query(&strings(&["pane-1"])).is_err());
         assert!(search_query(&strings(&["pane-1", "--lines"])).is_err());
         assert!(search_query(&strings(&["pane-1", "--unknown", "needle"])).is_err());
+    }
+
+    #[test]
+    fn mcp_call_body_builds_tools_call_payload() {
+        let body = mcp_call_body(&strings(&[
+            "aelyris.pane.rename",
+            r#"{"terminalId":"%2","name":"ready"}"#,
+        ]))
+        .unwrap();
+
+        assert_eq!(body["name"], "aelyris.pane.rename");
+        assert_eq!(body["arguments"]["terminalId"], "%2");
+        assert_eq!(body["arguments"]["name"], "ready");
+
+        let empty = mcp_call_body(&strings(&["aelyris.fleet_status"])).unwrap();
+        assert_eq!(empty["arguments"], json!({}));
+        assert!(mcp_call_body(&strings(&["verb", "{bad json"])).is_err());
+    }
+
+    #[test]
+    fn report_builds_pane_rename_payload_for_current_terminal() {
+        let body = report_mcp_body(&strings(&["--title", "Phase F7 done"]), "%3").unwrap();
+
+        assert_eq!(body["name"], "aelyris.pane.rename");
+        assert_eq!(body["arguments"]["terminalId"], "%3");
+        assert_eq!(body["arguments"]["name"], "Phase F7 done");
+        assert!(report_mcp_body(&strings(&[]), "%3").is_err());
+    }
+
+    #[test]
+    fn send_input_parses_optional_in_pane_target_and_encodes_short_refs() {
+        let (target, text) =
+            parse_send_input(&strings(&["hello", "--enter"]), Some("%2".to_string())).unwrap();
+        assert_eq!(target, "%2");
+        assert_eq!(text, "hello\r");
+
+        let (target, text) = parse_send_input(
+            &strings(&["%3", "status", "--enter"]),
+            Some("%2".to_string()),
+        )
+        .unwrap();
+        assert_eq!(target, "%3");
+        assert_eq!(text, "status\r");
+
+        let (target, text) =
+            parse_send_input(&strings(&["%3", "--enter"]), Some("%2".to_string())).unwrap();
+        assert_eq!(target, "%3");
+        assert_eq!(text, "\r");
+        assert_eq!(query_component("%3"), "%253");
+    }
+
+    #[test]
+    fn capture_parses_optional_target_and_options() {
+        let (target, lines, clean) = parse_capture_target(
+            &strings(&["--lines", "40", "--raw"]),
+            Some("%5".to_string()),
+        )
+        .unwrap();
+        assert_eq!(target, "%5");
+        assert_eq!(lines, 40);
+        assert!(!clean);
+
+        let (target, lines, clean) =
+            parse_capture_target(&strings(&["%6", "--lines", "12"]), Some("%5".to_string()))
+                .unwrap();
+        assert_eq!(target, "%6");
+        assert_eq!(lines, 12);
+        assert!(clean);
     }
 }

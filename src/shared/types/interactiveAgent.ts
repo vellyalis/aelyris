@@ -23,6 +23,7 @@ export interface InteractiveSession {
   worktree_branch?: string;
   worktree_path?: string;
   repo_path?: string;
+  short_id?: number | null;
   cost: number;
   tokens_used: number;
   started_at: number;

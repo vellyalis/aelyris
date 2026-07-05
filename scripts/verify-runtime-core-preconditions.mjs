@@ -14,6 +14,10 @@ function record(id, ok, detail) {
 
 const outputMonitor = read("src-tauri/src/agent/output_monitor.rs");
 const sendKeys = read("src-tauri/src/ipc/send_keys_commands.rs");
+const mcp = read("src-tauri/src/api/mcp.rs");
+const apiMod = read("src-tauri/src/api/mod.rs");
+const paneFleet = read("src-tauri/src/control/pane_fleet.rs");
+const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const decisionInbox = read("src/shared/lib/decisionInbox.ts");
 const panel = read("src/features/decision-inbox/DecisionInboxPanel.tsx");
 const decisionInboxTest = read("src/__tests__/decisionInbox.test.ts");
@@ -65,7 +69,9 @@ const checks = [
   ),
   record(
     "approve-keystroke-selects-option-one",
-    /fn approval_resolution_keystroke\(approve: bool\)[\s\S]*?if approve\s*\{\s*b"1"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(sendKeys) &&
+    /fn approval_resolution_keystroke\(approve: bool\)[\s\S]*?if approve\s*\{\s*b"1"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(
+      sendKeys,
+    ) &&
       sendKeys.includes("approval_resolution_keystroke(approve)") &&
       !/if approve\s*\{\s*b"\\r"\s*\}\s*else\s*\{\s*b"\\x1b"\s*\}/.test(sendKeys),
     "Approve sends option 1 explicitly; Deny sends Escape",
@@ -111,6 +117,73 @@ const checks = [
       return lockAt >= 0 && verifyAt >= 0 && lockAt < verifyAt;
     })(),
     "resolve_interactive_approval acquires the per-terminal write lock BEFORE the stale-approval fingerprint re-check (no check-then-lock TOCTOU)",
+  ),
+  record(
+    "write-paths-block-targeted-waiting-approval",
+    sendKeys.includes("blocked_waiting_approval") &&
+      sendKeys.includes("reject_targeted_waiting_approval") &&
+      sendKeys.includes("waiting_approval_write_skip") &&
+      sendKeys.includes('session.status == "waiting_approval"'),
+    "targeted send-key paths fail closed when the pane is waiting at an approval gate",
+  ),
+  record(
+    "fanout-write-paths-skip-and-report-waiting-approval",
+    sendKeys.includes("TerminalWriteBatchResult") &&
+      sendKeys.includes("SkippedTerminalWrite") &&
+      sendKeys.includes("record_waiting_approval_skip") &&
+      sendKeys.includes("broadcast_keys_skipped_waiting_approval") &&
+      sendKeys.includes("send_keys_skipped_waiting_approval") &&
+      sendKeys.includes('"skipped": &skipped'),
+    "fan-out write paths skip waiting-approval panes, return skipped entries, and audit each skipped pane",
+  ),
+  record(
+    "done-marker-path-includes-terminal-id",
+    paneFleet.includes("done_marker_path(worktree_path: &str, task_id: &str, terminal_id: &str)") &&
+      paneFleet.includes('"{}-{}.done"') &&
+      paneFleet.includes("done_marker_collision_uses_terminal_id_discriminator") &&
+      loopPorts.includes("completion_marker_section(task_id: &str, cwd: &str, terminal_id: &str)") &&
+      loopPorts.includes("spawn_with_terminal_id"),
+    "visible-fleet done marker path includes the terminal id and prompt generation uses the same backend-built path",
+  ),
+  record(
+    "approval-resolve-mcp-delegates-to-shared-core",
+    sendKeys.includes("pub(crate) async fn resolve_interactive_approval_core") &&
+      sendKeys.includes("resolve_interactive_approval_core(app, terminal_id, decision, expected_prompt_key).await") &&
+      mcp.includes('"aelyris.approval.resolve"') &&
+      mcp.includes("mcp_approval_resolve") &&
+      mcp.includes("crate::ipc::resolve_interactive_approval_core") &&
+      mcp.includes('"required": ["terminalId", "decision", "expectedPromptKey"]'),
+    "aelyris.approval.resolve is cataloged, schema-required, and delegates to the shared approval core",
+  ),
+  record(
+    "rest-and-mcp-write-faces-share-waiting-approval-guard",
+    sendKeys.includes("pub fn reject_waiting_approval_via_app") &&
+      apiMod.includes("reject_waiting_approval_via_app") &&
+      (() => {
+        const arm = mcp.indexOf('"aelyris.pane_send_input" =>');
+        if (arm < 0) return false;
+        const body = mcp.slice(arm, arm + 2200);
+        const guardAt = body.indexOf("reject_waiting_approval_via_app");
+        const gateAt = body.indexOf("gate_command_input");
+        return guardAt >= 0 && gateAt >= 0 && guardAt < gateAt;
+      })(),
+    "REST send_session_input and MCP aelyris.pane_send_input run the same waiting-approval rejection BEFORE the command gate — no unguarded write face",
+  ),
+  record(
+    "by-target-single-resolution-uses-typed-error",
+    (() => {
+      const fn = sendKeys.indexOf("pub async fn send_keys_by_target");
+      if (fn < 0) return false;
+      const body = sendKeys.slice(fn, fn + 4000);
+      return /terminal_ids\.len\(\)\s*==\s*1[\s\S]{0,400}?reject_targeted_waiting_approval/.test(body);
+    })(),
+    "send_keys_by_target treats a single-pane resolution as a targeted send (typed blocked_waiting_approval, not a silent fan-out skip)",
+  ),
+  record(
+    "waiting-approval-audit-throttled-per-episode",
+    sendKeys.includes("WAITING_SKIP_AUDIT_KEYS") &&
+      sendKeys.includes("stable_text_key(&prompt)"),
+    "skipped-write audit events are throttled to one per pane per approval episode (prompt-fingerprint keyed)",
   ),
 ];
 
