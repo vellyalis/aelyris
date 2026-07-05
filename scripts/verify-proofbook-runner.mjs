@@ -124,6 +124,7 @@ const checks = [
       "list_proofbook_runs",
       "cancel_proofbook_run",
       "resolve_proofbook_manual_gate",
+      "settle_proofbook_agent_session",
       "proofbook-updated",
     ]),
     "IPC exposes PB-2 local runner adapters without adding MCP Proofbook verbs",
@@ -137,6 +138,7 @@ const checks = [
       "ipc::list_proofbook_runs",
       "ipc::cancel_proofbook_run",
       "ipc::resolve_proofbook_manual_gate",
+      "ipc::settle_proofbook_agent_session",
     ]),
     "Tauri manages the Proofbook runner and registers runner IPC commands",
   ),
@@ -148,6 +150,7 @@ const checks = [
       "aelyris.proofbook.validate",
       "aelyris.proofbook.run",
       "aelyris.proofbook.status",
+      "aelyris.proofbook.settle_agent_session",
       "aelyris.proofbook.cancel",
       "aelyris.proofbook.approve_gate",
       "aelyris.proofbook.reject_gate",
@@ -161,6 +164,7 @@ const checks = [
       "proofbook_mcp_recursion_not_supported",
       "pendingDecisionId",
       "proofbook_mcp_verbs_are_cataloged_and_scoped",
+      "mcp_proofbook_settle_agent_session",
       "proofbook_mcp_run_executes_free_mcp_tool_step_through_tools_call",
       "proofbook_gated_mcp_tool_waits_and_stale_gate_hash_fails_closed",
     ]),
@@ -191,6 +195,8 @@ const checks = [
     hasAll(normalizedSpec, [
       "PB-2 local backend runner/ledger",
       "PB-3 MCP integration slice",
+      "PB-4 agentSession runtime",
+      "completion/status settlement",
       "Proofbook canvas",
       "create/update/distill",
       "not a shipped end-user Proofbook product",
@@ -198,9 +204,11 @@ const checks = [
       hasAll(normalizedIndex, [
         "PB-2 local backend runner/ledger",
         "PB-3 MCP integration slice",
+        "PB-4 agentSession runtime",
+        "completion/status settlement",
         "Proofbooks 全体の実装済みclaimではない",
       ]),
-    "Docs distinguish the implemented PB-2/PB-3 runtime slices from unimplemented product/UI/future-step capabilities",
+    "Docs distinguish the implemented PB-2/PB-3/PB-4 runtime slices from unimplemented product/UI/future-step capabilities",
   ),
 ];
 

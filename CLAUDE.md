@@ -7,13 +7,31 @@ Read it first, then use this file only for Claude-specific operating notes.
 
 1. `AGENTS.md`
 2. `docs/requirements.md`
-3. `docs/AGENT_WORKFLOWS.md`
-4. `docs/specs/README.md`
-5. The Work Unit spec section for the task at hand
-6. This Claude-specific note
+3. `GOAL.md`
+4. `AI_GUIDE.md`
+5. `DECISION_FRAMEWORK.md`
+6. `DELEGATION_FRAMEWORK.md`
+7. `ARCHITECTURE.md`
+8. `contracts/README.md`
+9. `docs/AGENT_WORKFLOWS.md`
+10. `docs/specs/README.md`
+11. `tasks/README.md`
+12. The Work Unit spec section for the task at hand
+13. `DECISIONS.md`
+14. `STYLE.md`
+15. This Claude-specific note
 
 If this file conflicts with `AGENTS.md` or the current claim policy, follow
 `AGENTS.md` and update this file in the same change.
+
+## Claude-Specific Decision Rules
+
+- Contracts are rigid; implementations are disposable.
+- Optimize for machine editability and context economy.
+- If uncertain, inspect.
+- Never infer file contents.
+- Preserve existing architecture unless the task explicitly changes it.
+- Keep the distinction clear: `DECISION_FRAMEWORK.md` decides what to choose; `DELEGATION_FRAMEWORK.md` decides who should explore, review, or verify.
 
 ## Claude-Specific Notes
 

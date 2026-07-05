@@ -3,10 +3,11 @@ use crate::proofbook::ledger::{
     ProofbookRunStatus, ProofbookStepOutcome, ProofbookStepStatus,
 };
 use crate::proofbook::{
-    parse_proofbook, validate_definition, ProofbookAgentSessionExecutor, ProofbookDefinition,
-    ProofbookError, ProofbookErrorCode, ProofbookStep, ProofbookStepKind,
+    parse_proofbook, validate_definition, ProofbookAgentSessionCompletionProof,
+    ProofbookAgentSessionExecutor, ProofbookDefinition, ProofbookError, ProofbookErrorCode,
+    ProofbookStep, ProofbookStepKind,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -134,6 +135,97 @@ impl ProofbookRunner {
         self.load_run(&root, run_id)
     }
 
+    pub fn settle_agent_session(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        step_id: &str,
+        proof: ProofbookAgentSessionCompletionProof,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        let root = crate::proofbook::validator::canonical_project_root(project_path)?;
+        let mut ledger = self.load_run(&root, run_id)?;
+        let definition = parse_proofbook(&ledger.definition_path)?;
+        let current_hash = ledger::hash_json(&definition)?;
+        if current_hash != ledger.definition_hash {
+            return Err(agent_session_completion_validation(
+                step_id,
+                "Proofbook definition changed after agentSession started; refresh run status and restart",
+            ));
+        }
+        let report = validate_definition(project_path, &definition, &ledger.definition_path);
+        if !report.valid {
+            return Err(validation_failed(report.errors));
+        }
+        let step = definition
+            .steps
+            .iter()
+            .find(|step| step.id == step_id)
+            .ok_or_else(|| {
+                agent_session_completion_validation(
+                    step_id,
+                    format!("Proofbook agentSession step not found: {step_id}"),
+                )
+            })?;
+        if ProofbookStepKind::from_wire(&step.kind) != Some(ProofbookStepKind::AgentSession) {
+            return Err(agent_session_completion_validation(
+                step_id,
+                "Proofbook agentSession settlement requires an agentSession step",
+            ));
+        }
+        let summary = ledger.step(step_id).cloned().ok_or_else(|| {
+            agent_session_completion_validation(
+                step_id,
+                format!("Proofbook ledger step not found: {step_id}"),
+            )
+        })?;
+        if summary.status != ProofbookStepStatus::Running {
+            return Err(agent_session_completion_validation(
+                step_id,
+                "Proofbook agentSession settlement requires a running step",
+            ));
+        }
+
+        let outcome = agent_session_completion_outcome(&root, step, &summary, proof)?;
+        let completed_status = outcome.status;
+        let completed_error = outcome.error.clone();
+        self.apply_step_outcome(&root, &mut ledger, step, outcome)?;
+        let (event_kind, event_message, event_status) = match completed_status {
+            ProofbookStepStatus::Passed => (
+                "agent_session_completed",
+                "Proofbook agentSession completed with explicit proof",
+                "passed",
+            ),
+            ProofbookStepStatus::Blocked => (
+                "agent_session_blocked",
+                "Proofbook agentSession reported a blocker",
+                "blocked",
+            ),
+            _ => (
+                "agent_session_failed",
+                "Proofbook agentSession reported failure",
+                "failed",
+            ),
+        };
+        ledger.append_event(
+            event_kind,
+            Some(step_id.to_string()),
+            event_message,
+            Some(event_status.to_string()),
+            completed_error,
+        );
+        ledger::write_ledger(&root, &ledger)?;
+
+        if completed_status == ProofbookStepStatus::Passed {
+            self.drive_run(
+                &root,
+                &definition,
+                &mut ledger,
+                ProofbookExecutorRefs::default(),
+            )?;
+        }
+        self.remember(ledger.clone())?;
+        Ok(ledger)
+    }
     pub fn list_runs(&self, project_path: &str) -> Result<Vec<ProofbookRunLedger>, ProofbookError> {
         self.restore_project(project_path)?;
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
@@ -763,6 +855,344 @@ impl ProofbookRunner {
     }
 }
 
+fn agent_session_completion_outcome(
+    root: &Path,
+    step: &ProofbookStep,
+    summary: &ledger::ProofbookStepSummary,
+    proof: ProofbookAgentSessionCompletionProof,
+) -> Result<ProofbookStepOutcome, ProofbookError> {
+    let status_key = compact_key(&proof.status);
+    let proof_kind = trim_optional(&proof.proof_kind).unwrap_or_else(|| "unspecified".to_string());
+    let proof_kind_key = compact_key(&proof_kind);
+    let done_signal = trim_optional(proof.done_signal.as_deref().unwrap_or_default());
+    let final_report_path = trim_optional(proof.final_report_path.as_deref().unwrap_or_default());
+    let reviewer_batch_id = trim_optional(proof.reviewer_batch_id.as_deref().unwrap_or_default());
+    let summary_text = trim_optional(proof.summary.as_deref().unwrap_or_default());
+
+    match status_key.as_str() {
+        "passed" | "pass" | "done" | "completed" => agent_session_passed_outcome(
+            root,
+            step,
+            summary,
+            &proof,
+            proof_kind,
+            proof_kind_key,
+            done_signal,
+            final_report_path,
+            reviewer_batch_id,
+            summary_text,
+        ),
+        "failed" | "fail" | "error" | "timeout" | "timedout" => Ok(agent_session_error_outcome(
+            summary,
+            "failed",
+            &proof_kind,
+            proof.blocker_code.as_deref(),
+            proof.blocker_message.as_deref(),
+            summary_text.as_deref(),
+            if status_key.starts_with("timeout") {
+                "agent_session_timeout"
+            } else {
+                "agent_session_reported_failure"
+            },
+            "agentSession reported failure",
+            ProofbookStepStatus::Failed,
+        )),
+        "blocked" | "blocker" => Ok(agent_session_error_outcome(
+            summary,
+            "blocked",
+            &proof_kind,
+            proof.blocker_code.as_deref(),
+            proof.blocker_message.as_deref(),
+            summary_text.as_deref(),
+            "agent_session_reported_blocker",
+            "agentSession reported a blocker",
+            ProofbookStepStatus::Blocked,
+        )),
+        "cancelled" | "canceled" => Err(agent_session_completion_validation(
+            &step.id,
+            "agentSession cancellation uses cancel_proofbook_run or aelyris.proofbook.cancel",
+        )),
+        _ => Err(agent_session_completion_validation(
+            &step.id,
+            "agentSession completion proof status must be passed, failed, blocked, timeout, or cancelled",
+        )),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn agent_session_passed_outcome(
+    root: &Path,
+    step: &ProofbookStep,
+    summary: &ledger::ProofbookStepSummary,
+    proof: &ProofbookAgentSessionCompletionProof,
+    proof_kind: String,
+    proof_kind_key: String,
+    done_signal: Option<String>,
+    final_report_path: Option<String>,
+    reviewer_batch_id: Option<String>,
+    summary_text: Option<String>,
+) -> Result<ProofbookStepOutcome, ProofbookError> {
+    let mut artifacts = Vec::new();
+    let mut artifact_refs = Vec::new();
+    let mut artifact_paths = Vec::new();
+    let mut proof_sources = Vec::new();
+    let mut final_report_refs = Vec::new();
+
+    if let Some(signal) = done_signal.as_ref() {
+        if !signal.is_empty() {
+            proof_sources.push("explicitDoneSignal".to_string());
+        }
+    } else if proof_kind_key == "explicitdonesignal" {
+        return Err(agent_session_completion_validation(
+            &step.id,
+            "explicitDoneSignal proof requires doneSignal",
+        ));
+    }
+
+    if let Some(path) = final_report_path.as_ref() {
+        let artifact =
+            record_agent_session_completion_artifact(root, &step.id, "finalReport", path)?;
+        final_report_refs.push(artifact.id.clone());
+        artifact_refs.push(artifact.id.clone());
+        artifact_paths.push(artifact.path.clone());
+        artifacts.push(artifact);
+        proof_sources.push("finalReport".to_string());
+    } else if proof_kind_key == "finalreport" {
+        return Err(agent_session_completion_validation(
+            &step.id,
+            "finalReport proof requires finalReportPath",
+        ));
+    }
+
+    let mut recorded_required_artifacts = false;
+    if proof_kind_key == "requiredartifactsettlement" {
+        let mut settlement_paths = expected_agent_artifacts(summary);
+        if settlement_paths.is_empty() {
+            settlement_paths = trimmed_vec(&proof.artifact_paths);
+        }
+        if settlement_paths.is_empty() {
+            return Err(agent_session_completion_validation(
+                &step.id,
+                "requiredArtifactSettlement proof requires expectedArtifacts or artifactPaths",
+            ));
+        }
+        for path in settlement_paths {
+            let artifact = record_agent_session_completion_artifact(
+                root,
+                &step.id,
+                "expectedArtifact",
+                &path,
+            )?;
+            artifact_refs.push(artifact.id.clone());
+            artifact_paths.push(artifact.path.clone());
+            artifacts.push(artifact);
+        }
+        recorded_required_artifacts = true;
+        proof_sources.push("requiredArtifactSettlement".to_string());
+    }
+
+    if let Some(batch_id) = reviewer_batch_id.as_ref() {
+        if !batch_id.is_empty() {
+            proof_sources.push("reviewerBatch".to_string());
+        }
+    } else if proof_kind_key == "reviewerbatch" || proof_kind_key == "reviewerbatchproof" {
+        return Err(agent_session_completion_validation(
+            &step.id,
+            "reviewerBatch proof requires reviewerBatchId",
+        ));
+    }
+
+    if proof_sources.is_empty() {
+        return Err(agent_session_completion_validation(
+            &step.id,
+            "agent_session_completion_proof_missing: completion requires explicit done signal, final report, required artifact settlement, or reviewer-batch proof",
+        ));
+    }
+
+    if !recorded_required_artifacts {
+        for path in trimmed_vec(&proof.artifact_paths) {
+            let artifact = record_agent_session_completion_artifact(
+                root,
+                &step.id,
+                "agentCompletionEvidence",
+                &path,
+            )?;
+            artifact_refs.push(artifact.id.clone());
+            artifact_paths.push(artifact.path.clone());
+            artifacts.push(artifact);
+        }
+    }
+
+    let output = agent_session_completion_output(
+        summary,
+        "passed",
+        &proof_kind,
+        proof_sources,
+        done_signal,
+        final_report_path,
+        reviewer_batch_id,
+        None,
+        summary_text,
+        &artifact_refs,
+        &artifact_paths,
+        &final_report_refs,
+    );
+    Ok(ProofbookStepOutcome {
+        status: ProofbookStepStatus::Passed,
+        structured_output: Some(output),
+        artifact_refs,
+        artifacts,
+        ..ProofbookStepOutcome::passed()
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn agent_session_error_outcome(
+    summary: &ledger::ProofbookStepSummary,
+    status_label: &str,
+    proof_kind: &str,
+    blocker_code: Option<&str>,
+    blocker_message: Option<&str>,
+    summary_text: Option<&str>,
+    default_code: &str,
+    default_message: &str,
+    step_status: ProofbookStepStatus,
+) -> ProofbookStepOutcome {
+    let code =
+        trim_optional(blocker_code.unwrap_or_default()).unwrap_or_else(|| default_code.to_string());
+    let message = trim_optional(blocker_message.unwrap_or_default())
+        .or_else(|| summary_text.and_then(trim_optional))
+        .unwrap_or_else(|| default_message.to_string());
+    let blocker = json!({ "code": code, "message": message });
+    let output = agent_session_completion_output(
+        summary,
+        status_label,
+        proof_kind,
+        Vec::new(),
+        None,
+        None,
+        None,
+        Some(blocker),
+        summary_text.map(str::to_string),
+        &[],
+        &[],
+        &[],
+    );
+    ProofbookStepOutcome {
+        status: step_status,
+        structured_output: Some(output),
+        error: Some(ProofbookRunError::new(code, message)),
+        ..ProofbookStepOutcome::passed()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn agent_session_completion_output(
+    summary: &ledger::ProofbookStepSummary,
+    status: &str,
+    proof_kind: &str,
+    proof_sources: Vec<String>,
+    done_signal: Option<String>,
+    final_report_path: Option<String>,
+    reviewer_batch_id: Option<String>,
+    blocker: Option<Value>,
+    summary_text: Option<String>,
+    artifact_refs: &[String],
+    artifact_paths: &[String],
+    final_report_refs: &[String],
+) -> Value {
+    let mut output = summary
+        .structured_output
+        .clone()
+        .unwrap_or_else(|| json!({ "kind": "agentSession" }));
+    if !output.is_object() {
+        output = json!({ "kind": "agentSession", "previousOutput": output });
+    }
+    let completion = json!({
+        "status": status,
+        "proofKind": proof_kind,
+        "proofSources": proof_sources,
+        "doneSignal": done_signal,
+        "finalReportPath": final_report_path,
+        "reviewerBatchId": reviewer_batch_id,
+        "blocker": blocker,
+        "summary": summary_text,
+        "artifactRefs": artifact_refs,
+        "artifactPaths": artifact_paths,
+        "settledAt": ledger::now_timestamp()
+    });
+    if let Some(map) = output.as_object_mut() {
+        map.insert("completion".to_string(), completion);
+        if !final_report_refs.is_empty() {
+            let lifecycle = map
+                .entry("lifecycleArtifacts".to_string())
+                .or_insert_with(|| json!({}));
+            if let Some(lifecycle) = lifecycle.as_object_mut() {
+                lifecycle.insert("finalReport".to_string(), json!(final_report_refs));
+            }
+        }
+    }
+    output
+}
+
+fn record_agent_session_completion_artifact(
+    root: &Path,
+    step_id: &str,
+    kind: &str,
+    raw_path: &str,
+) -> Result<ledger::ProofbookArtifactRef, ProofbookError> {
+    let path = crate::proofbook::step_shell::resolve_under_root(root, raw_path)?;
+    if !path.exists() {
+        return Err(agent_session_completion_validation(
+            step_id,
+            format!("agentSession completion artifact does not exist: {raw_path}"),
+        ));
+    }
+    ledger::record_existing_artifact(root, step_id, kind, &path)
+}
+
+fn expected_agent_artifacts(summary: &ledger::ProofbookStepSummary) -> Vec<String> {
+    summary
+        .structured_output
+        .as_ref()
+        .and_then(|output| output.get("expectedArtifacts"))
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .filter_map(trim_optional)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn trimmed_vec(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .filter_map(|value| trim_optional(value))
+        .collect()
+}
+
+fn trim_optional(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn compact_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| !matches!(*ch, '_' | '-' | ' '))
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+fn agent_session_completion_validation(
+    step_id: &str,
+    message: impl Into<String>,
+) -> ProofbookError {
+    ProofbookError::new(ProofbookErrorCode::ValidationFailed, message).with_step(step_id)
+}
 fn resolve_proofbook_path(root: &Path, raw_path: &str) -> Result<String, ProofbookError> {
     let raw = Path::new(raw_path);
     let candidate = if raw.is_absolute() {
@@ -1325,6 +1755,194 @@ settlement:
         assert!(output["ptyId"].is_null());
     }
 
+    #[test]
+    fn proofbook_runner_agent_session_settles_with_final_report_proof() {
+        let project = tempfile::tempdir().unwrap();
+        let final_report = project
+            .path()
+            .join(".aelyris")
+            .join("proofbooks")
+            .join("agent-final.md");
+        fs::create_dir_all(final_report.parent().unwrap()).unwrap();
+        fs::write(&final_report, "agent done").unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-complete-final-report
+steps:
+  - id: agent
+    type: agentSession
+    task: complete PB-4 runtime
+    role: implementation
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let running = runner
+            .start_run_with_agent_executor(
+                &project_path(&project),
+                &proofbook,
+                json!({}),
+                &FakeAgentExecutor,
+            )
+            .unwrap();
+
+        let settled = runner
+            .settle_agent_session(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                ProofbookAgentSessionCompletionProof {
+                    status: "passed".to_string(),
+                    proof_kind: "finalReport".to_string(),
+                    final_report_path: Some(".aelyris/proofbooks/agent-final.md".to_string()),
+                    summary: Some("completed".to_string()),
+                    ..ProofbookAgentSessionCompletionProof::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(settled.status, ProofbookRunStatus::Passed);
+        assert_eq!(settled.steps[0].status, ProofbookStepStatus::Passed);
+        let output = settled.steps[0].structured_output.as_ref().unwrap();
+        assert_eq!(output["completion"]["status"], "passed");
+        assert!(output["completion"]["proofSources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source.as_str() == Some("finalReport")));
+        assert!(settled
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.kind == "finalReport"));
+        assert!(settled
+            .events
+            .iter()
+            .any(|event| event.kind == "agent_session_completed"));
+    }
+
+    #[test]
+    fn proofbook_runner_agent_session_settles_required_artifacts_only_with_explicit_proof() {
+        let project = tempfile::tempdir().unwrap();
+        let expected = project
+            .path()
+            .join(".aelyris")
+            .join("proofbooks")
+            .join("agent-summary.md");
+        fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        fs::write(&expected, "summary").unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-complete-required-artifact
+steps:
+  - id: agent
+    type: agentSession
+    task: complete PB-4 runtime
+    role: implementation
+    expectedArtifacts:
+      - .aelyris/proofbooks/agent-summary.md
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let running = runner
+            .start_run_with_agent_executor(
+                &project_path(&project),
+                &proofbook,
+                json!({}),
+                &FakeAgentExecutor,
+            )
+            .unwrap();
+
+        let settled = runner
+            .settle_agent_session(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                ProofbookAgentSessionCompletionProof {
+                    status: "passed".to_string(),
+                    proof_kind: "requiredArtifactSettlement".to_string(),
+                    ..ProofbookAgentSessionCompletionProof::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(settled.status, ProofbookRunStatus::Passed);
+        assert_eq!(settled.steps[0].status, ProofbookStepStatus::Passed);
+        let output = settled.steps[0].structured_output.as_ref().unwrap();
+        assert!(output["completion"]["proofSources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source.as_str() == Some("requiredArtifactSettlement")));
+        assert!(settled
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.kind == "expectedArtifact"));
+    }
+
+    #[test]
+    fn proofbook_runner_agent_session_rejects_first_file_exists_without_completion_signal() {
+        let project = tempfile::tempdir().unwrap();
+        let expected = project
+            .path()
+            .join(".aelyris")
+            .join("proofbooks")
+            .join("agent-summary.md");
+        fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        fs::write(&expected, "summary").unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-reject-first-file
+steps:
+  - id: agent
+    type: agentSession
+    task: complete PB-4 runtime
+    role: implementation
+    expectedArtifacts:
+      - .aelyris/proofbooks/agent-summary.md
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let running = runner
+            .start_run_with_agent_executor(
+                &project_path(&project),
+                &proofbook,
+                json!({}),
+                &FakeAgentExecutor,
+            )
+            .unwrap();
+
+        let error = runner
+            .settle_agent_session(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                ProofbookAgentSessionCompletionProof {
+                    status: "passed".to_string(),
+                    ..ProofbookAgentSessionCompletionProof::default()
+                },
+            )
+            .unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
+        assert!(error
+            .message
+            .contains("agent_session_completion_proof_missing"));
+        let current = runner
+            .status(&project_path(&project), &running.run_id)
+            .unwrap();
+        assert_eq!(current.status, ProofbookRunStatus::Running);
+        assert_eq!(current.steps[0].status, ProofbookStepStatus::Running);
+    }
     #[test]
     fn proofbook_runner_hydrates_running_agent_session_with_typed_blocker() {
         let project = tempfile::tempdir().unwrap();

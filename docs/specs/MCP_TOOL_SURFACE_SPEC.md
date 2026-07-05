@@ -229,13 +229,14 @@ remains the hot owner; SQLite is the restart source of truth.
 
 ---
 
-### 3.8 Proofbook domain (PB-3 runtime slice)
+### 3.8 Proofbook domain (PB-3/PB-4 runtime slices)
 
 PB-3 connects Proofbooks to the existing MCP face after the local PB-2 runner.
-Rows in this section describe the scoped PB-3 runtime slice when catalog rows,
-focused tests, and verifier artifacts are green. They are not a shipped
-end-user Proofbook product claim: canvas/UI, create/update/distill,
-agent/HTTP/fan-out/subProofbook, and Evidence Store behavior remain future
+PB-4 adds a governed settlement verb for already-running `agentSession` steps.
+Rows in this section describe scoped runtime slices when catalog rows, focused
+tests, and verifier artifacts are green. They are not a shipped end-user
+Proofbook product claim: canvas/UI, create/update/distill, HTTP/fan-out/
+subProofbook, Evidence Store behavior, and native completion UI remain future
 phases.
 
 The implementation rule is strict: Proofbook MCP verbs and `mcpTool` steps are
@@ -250,11 +251,12 @@ second dispatcher, a second catalog, or a Proofbook-only schema validator.
 | `aelyris.proofbook.validate` | **params** `{ projectPath: string, proofbookPath: string }` -> **return** `ProofbookValidationReport` | same validator as IPC `validate_proofbook` | FREE | Schema/DAG/preflight validation only. It cannot start a run. |
 | `aelyris.proofbook.run` | **params** `{ projectPath: string, proofbookPath: string, inputs?: object }` -> **return** `{ runId, status, ledgerPath, ledger }` | managed `ProofbookRunner::start_run` | **GATED** | Starts local PB-2/PB-3 execution through the Tauri-managed runner. Sidecar/test modes without an attached runtime fail closed instead of creating another runner. |
 | `aelyris.proofbook.status` | **params** `{ projectPath: string, runId: string }` -> **return** `{ ledger }` | `ProofbookRunner::status` | FREE | Reads the run ledger, waiting gates, decisions, artifacts, and residual blockers. |
+| `aelyris.proofbook.settle_agent_session` | **params** `{ projectPath: string, runId: string, stepId: string, proof: { status: string, proofKind?: string, doneSignal?: string, finalReportPath?: string, artifactPaths?: string[], reviewerBatchId?: string, blockerCode?: string, blockerMessage?: string, summary?: string } }` -> **return** `{ ledger }` | `ProofbookRunner::settle_agent_session` | **GATED** | PB-4 only. Settles an already-running `agentSession` through explicit done signal, final report, required artifact settlement, reviewer-batch proof, or typed failure/blocker/timeout proof. First-file-exists alone is rejected. |
 | `aelyris.proofbook.cancel` | **params** `{ projectPath: string, runId: string }` -> **return** `{ ledger }` | `ProofbookRunner::cancel_run` | **GATED** | Appends cancellation evidence and prevents new steps. It never deletes ledger files or artifacts. |
 | `aelyris.proofbook.approve_gate` | **params** `{ projectPath: string, runId: string, gateId: string, gateHash: string, actor?: string, comment?: string }` -> **return** `{ ledger }` | Proofbook runner gate resolver | **GATED** | Resolves a Proofbook gate only when the expected hash matches. Stale hashes fail closed. |
 | `aelyris.proofbook.reject_gate` | **params** `{ projectPath: string, runId: string, gateId: string, gateHash: string, actor?: string, comment?: string }` -> **return** `{ ledger }` | Proofbook runner gate resolver | **GATED** | Records a rejection with actor/comment metadata and leaves append-only evidence. |
 
-PB-3 deliberately excludes `aelyris.proofbook.create`,
+PB-3/PB-4 deliberately exclude `aelyris.proofbook.create`,
 `aelyris.proofbook.update`, and `aelyris.proofbook.distill`. Those mutation and
 rewrite verbs are PB-6 work and remain absent from `tool_names()` and
 `tools_list()` until their own design gate is green.
@@ -283,7 +285,7 @@ rewrite verbs are PB-6 work and remain absent from `tool_names()` and
   gate mutation from inside a Proofbook stay out of scope until subProofbook
   lineage exists.
 
-PB-3 drift tests must prove all Proofbook rows have `additionalProperties:false`,
+PB-3/PB-4 drift tests must prove all Proofbook rows have `additionalProperties:false`,
 the expected FREE/GATED safety classification, and a handler entry. They must
 also prove the PB-6 mutation verbs are still absent.
 ## 4. Gate enforcement

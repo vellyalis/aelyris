@@ -36,11 +36,13 @@ const checks = [
     "pb4-agent-step-module",
     hasAll(files.mod, [
       "mod agent_step;",
+      "ProofbookAgentSessionCompletionProof",
       "ProofbookAgentSessionExecutor",
       "ProofbookAgentSessionRequest",
       "ProofbookAgentSessionSpawn",
     ]) &&
       hasAll(files.agentStep, [
+        "ProofbookAgentSessionCompletionProof",
         "ProofbookAgentSessionExecutor",
         "execute_agent_session_step",
         "ProofbookAgentSessionRequest",
@@ -81,11 +83,18 @@ const checks = [
       "ProofbookStepStatus::WaitingGate | ProofbookStepStatus::Running",
       "step_running",
       "agent_session_interrupted_by_restart",
+      "settle_agent_session",
+      "agent_session_completion_proof_missing",
+      "agent_session_completed",
+      "requiredArtifactSettlement",
       "proofbook_runner_agent_session_spawn_records_running_ledger_metadata",
       "proofbook_runner_agent_session_requires_pb4_runtime",
       "proofbook_runner_agent_session_headless_planner_records_reason",
+      "proofbook_runner_agent_session_settles_with_final_report_proof",
+      "proofbook_runner_agent_session_settles_required_artifacts_only_with_explicit_proof",
+      "proofbook_runner_agent_session_rejects_first_file_exists_without_completion_signal",
     ]),
-    "runner injects the PB-4 agent executor, leaves spawned agentSession steps running, and tests the ledger state",
+    "runner injects the PB-4 agent executor, leaves spawned agentSession steps running, and settles only through explicit completion proof",
   ),
   check(
     "pb4-ipc-mcp-runtime-adapters",
@@ -95,6 +104,7 @@ const checks = [
       "spawn_interactive_agent",
       "start_headless",
       "HeadlessSpawnSpec",
+      "settle_proofbook_agent_session",
     ]) &&
       hasAll(files.apiMcp, [
         "ProofbookAgentSessionExecutor for McpProofbookExecutor",
@@ -103,8 +113,10 @@ const checks = [
         "spawn_interactive_agent",
         "start_headless",
         "HeadlessSpawnSpec",
+        "aelyris.proofbook.settle_agent_session",
+        "mcp_proofbook_settle_agent_session",
       ]),
-    "IPC and MCP Proofbook run paths inject the existing visible/headless agent runtimes instead of creating a Proofbook-only launcher",
+    "IPC and MCP Proofbook paths inject existing runtimes and expose explicit agentSession settlement instead of creating a Proofbook-only launcher",
   ),
   check(
     "pb4-package-script",
@@ -117,12 +129,14 @@ const checks = [
     "pb4-doc-claim-boundary",
     hasAll(normalizedSpec, [
       "PB-4 agentSession runtime",
+      "completion/status settlement slice",
       "not a shipped end-user Proofbook",
       "HTTP/fan-out",
       "Evidence Store",
     ]) &&
       hasAll(normalizedIndex, [
         "PB-4 agentSession runtime",
+        "completion/status settlement",
         "Proofbooks 全体の実装済みclaimではない",
       ]),
     "docs name the PB-4 runtime slice while keeping the broader Proofbook product non-claim explicit",

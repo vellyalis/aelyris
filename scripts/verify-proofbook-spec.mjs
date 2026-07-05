@@ -328,6 +328,7 @@ const requiredPb3dClauses = [
   "`aelyris.proofbook.validate`",
   "`aelyris.proofbook.run`",
   "`aelyris.proofbook.status`",
+  "`aelyris.proofbook.settle_agent_session`",
   "`aelyris.proofbook.cancel`",
   "`aelyris.proofbook.approve_gate`",
   "`aelyris.proofbook.reject_gate`",
@@ -379,9 +380,8 @@ const requiredPb3dClauses = [
 const missingPb3dClauses = missingFromNormalized(spec, requiredPb3dClauses);
 const requiredPb4dClauses = [
   "### PB-4D - Detailed Design Gate: Agent Session Step",
-  "Status: docs/verifier gate only.",
-  "PB-4D defines the agentSession runtime",
-  "`spec-pb4d-detailed-design` verifier check are green.",
+  "Status: PB-4D design gate is complete",
+  "agentSession start plus completion/status settlement slices",
   "PB-4D owner scope:",
   "`src-tauri/src/proofbook/agent_step.rs`",
   "`src-tauri/src/proofbook/runner.rs`",
@@ -395,6 +395,7 @@ const requiredPb4dClauses = [
   "`agent_step.rs` owns the `agentSession` step adapter over the existing visible",
   "must call the same spawn/session lifecycle",
   "`runner.rs` remains the deterministic run state-machine owner.",
+  "settle a running step through `settle_agent_session`",
   "`ledger.rs` remains the proof schema owner.",
   "`src/features/proofbook/` may render run status, session links, pane links,",
   "must not synthesize",
@@ -419,6 +420,9 @@ const requiredPb4dClauses = [
   "agent_session_interrupted_by_restart",
   "First-file-exists is",
   "not enough for an `agentSession` pass.",
+  "ProofbookRunner::settle_agent_session",
+  "aelyris.proofbook.settle_agent_session",
+  "agent_session_completed",
   "PB-4 cost/token handling:",
   "costTokensStatus:\"unknown\"",
   "agent_session_cost_unknown",
@@ -428,6 +432,8 @@ const requiredPb4dClauses = [
   "PB-4 focused test matrix:",
   "implementation role defaults to visible PTY and rejects `-p` / `--print`",
   "planner/reviewer/batch may be headless only with a recorded",
+  "final-report proof and required-artifact settlement can complete a running",
+  "agent_session_completion_proof_missing",
   "UI tests render Rust runner session state and cannot start executable mock",
   "Verifier and artifact expectations:",
   "PB-4D uses `pnpm verify:proofbook:spec`, which writes",
@@ -437,9 +443,9 @@ const requiredPb4dClauses = [
   "proofbook --lib",
   "`pnpm verify:goal:docs`",
   "PB-4D claim boundary:",
-  "After PB-4D, the safe claim is only that the agentSession design gate is",
-  "Proofbook agent",
-  "execution until the PB-4 runtime slice",
+  "After the current PB-4 runtime slices",
+  "explicit completion/status proof",
+  "must not claim a shipped Proofbook agent product",
   "PB-4D stop conditions:",
   "add `-p` / `--print` to visible agent panes",
   "Proofbook-only agent launcher",
@@ -449,8 +455,8 @@ const requiredPb4dClauses = [
 ];
 const missingPb4dClauses = missingFromNormalized(spec, requiredPb4dClauses);
 const requiredPb3dMcpSurfaceClauses = [
-  "### 3.8 Proofbook domain (PB-3 runtime slice)",
-  "Rows in this section describe the scoped PB-3 runtime slice",
+  "### 3.8 Proofbook domain (PB-3/PB-4 runtime slices)",
+  "Rows in this section describe scoped runtime slices",
   "not a shipped",
   "create/update/distill",
   "existing `tools/call` schema/governance/dispatch path",
@@ -461,10 +467,11 @@ const requiredPb3dMcpSurfaceClauses = [
   "`aelyris.proofbook.validate`",
   "`aelyris.proofbook.run`",
   "`aelyris.proofbook.status`",
+  "`aelyris.proofbook.settle_agent_session`",
   "`aelyris.proofbook.cancel`",
   "`aelyris.proofbook.approve_gate`",
   "`aelyris.proofbook.reject_gate`",
-  "PB-3 deliberately excludes `aelyris.proofbook.create`,",
+  "PB-3/PB-4 deliberately exclude `aelyris.proofbook.create`,",
   "`aelyris.proofbook.update`, and `aelyris.proofbook.distill`.",
   "`mcpTool` step semantics:",
   "same inputSchema validator that",
@@ -476,7 +483,7 @@ const requiredPb3dMcpSurfaceClauses = [
   "`kind:\"mcpTool\"`, `toolName`, `safety`,",
   "`gateId`, `gateHash`, `argumentsHash`, and any `pendingDecisionId`",
   "PB-3 `mcpTool` cannot call `aelyris.proofbook.*`",
-  "PB-3 drift tests must prove all Proofbook rows have `additionalProperties:false`",
+  "PB-3/PB-4 drift tests must prove all Proofbook rows have `additionalProperties:false`",
   "prove the PB-6 mutation verbs are still absent.",
 ];
 const missingPb3dMcpSurfaceClauses = missingFromNormalized(mcpToolSurface, requiredPb3dMcpSurfaceClauses);
@@ -673,6 +680,8 @@ const checks = [
       "proposal / automation roadmap",
       "PB-2 local backend runner/ledger",
       "PB-3 MCP integration slice",
+      "PB-4 agentSession runtime",
+      "completion/status settlement",
       "未実装の設計 target",
       "Proofbooks 全体の実装済みclaimではない",
     ]),
@@ -689,9 +698,11 @@ const checks = [
       normalizedSpec.includes("Proofbook automation design proposal") &&
       normalizedSpec.includes("not a shipped end-user Proofbook") &&
       normalizedSpec.includes("PB-3 MCP integration slice") &&
-      normalizedSpec.includes("Proofbook UI, create/update/distill") &&
+      normalizedSpec.includes("PB-4 agentSession runtime") &&
+      normalizedSpec.includes("completion/status settlement") &&
+      normalizedSpec.includes("Proofbook UI") &&
       normalizedIndex.includes("Proofbooks 全体の実装済みclaimではない"),
-    "public docs distinguish the PB-2/PB-3 runtime slices from a shipped Proofbook product",
+    "public docs distinguish the PB-2/PB-3/PB-4 runtime slices from a shipped Proofbook product",
     { implementedClaimHits },
   ),
 ];
@@ -721,7 +732,7 @@ const report = {
   ),
   summary:
     failed.length === 0
-      ? "Proofbook spec/index/MCP/package contract is present and keeps the PB-2 backend slice plus PB-3 MCP runtime slice distinct from a shipped Proofbook product."
+      ? "Proofbook spec/index/MCP/package contract is present and keeps the PB-2 backend slice plus PB-3/PB-4 runtime slices distinct from a shipped Proofbook product."
       : `${failed.length} Proofbook PB-0 contract checks failed`,
   checks,
 };

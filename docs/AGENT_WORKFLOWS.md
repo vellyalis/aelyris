@@ -7,12 +7,15 @@ skill, verifier, or review gate should drive a task.
 
 1. `AGENTS.md` - shared repo policy and current claim boundary.
 2. `docs/requirements.md` - stable requirements and machine-truth policy.
-3. Root work orders - read `refactor-instructions.md`,
+3. Judgment material - `GOAL.md` plus the knowledge stack routed by
+   `AI_GUIDE.md` (decision framework, delegation framework, architecture,
+   contracts). The canonical read order lives in `AI_GUIDE.md` section 0.
+4. Root work orders - read `refactor-instructions.md`,
    `hardening-instructions.md`, and `renderer-instructions.md` explicitly for
    status, but do not restart completed orders unless a current verifier shows a
    regression.
-4. `docs/specs/README.md` - active spec index and current Work Unit routing.
-5. This file - operational routing for agents and skills.
+5. `docs/specs/README.md` - active spec index and current Work Unit routing.
+6. This file - operational routing for agents and skills.
 
 If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.

@@ -1194,7 +1194,7 @@ pub fn run() {
             ipc::workflow_status,
             ipc::list_running_workflows,
             ipc::workflow_remove,
-            // Proofbook (PB-2: local runner/ledger; MCP verbs remain future PB-3)
+            // Proofbook (PB-1/PB-4: schema, runner, MCP, and agentSession proof slices)
             ipc::list_proofbooks,
             ipc::validate_proofbook,
             ipc::start_proofbook_run,
@@ -1202,6 +1202,7 @@ pub fn run() {
             ipc::list_proofbook_runs,
             ipc::cancel_proofbook_run,
             ipc::resolve_proofbook_manual_gate,
+            ipc::settle_proofbook_agent_session,
             // Agent session persistence
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,
