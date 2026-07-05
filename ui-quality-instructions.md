@@ -266,7 +266,20 @@ Result instead.
   kill, populated-cockpit visual pass, CI blocking flip), skipped items with
   reasons, files touched, and any anchor drift discovered.
 
-## Pasteable goal for a cleared codex/opus session
+## Pasteable goals for a cleared codex/opus session
+
+**Scheduling decision (owner, 2026-07-05, recorded in
+`PRODUCT_DIRECTION_PROPOSALS_2026-07-03.md` §5):** run the **safety subset
+Q0–Q3 first** (§5 #6). Q4–Q11 is a separate later work unit (§5 #9). Do not
+paste the full-run packet unless the owner explicitly selects it.
+
+### Packet 1 — SAFETY SUBSET Q0–Q3 (default, use this one)
+
+```text
+/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md -> ui-quality-instructions.md を順に読み、ui-quality-instructions.md の Phase Q0 から Q3 のみを完遂して停止しろ（Q4 以降には着手するな。Q4-Q11 は別 work unit）。ブランチは feat/wu-uq-1-trust-cockpit を main から切る。Q0 の trust 検証器を最初に作り、それが baseline 緑になるまで trust surface の変更をコミットするな。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。pnpm と cargo は直列実行。src-tauri の編集は Q2（イベント emit のみ）に限定し、PTY の状態機械・プロトコル・レンダラ契約には触るな。**透過ウィンドウは絶対（owner law）**: DWM material / per-pixel see-through 経路・window background alpha・glass alpha トークン・backdrop-filter に一切触るな、新規オーバーレイ（Q3 の PasteGuardDialog 含む）は既存 glass dialog surface を使え、各フェーズ後に verify:renderer:transparency と verify:ui:glass-legibility が untouched-green であることを確認しろ、透過は CDP では検証不可なので疑義があれば OPERATOR GATE に回せ。既存テスト・検証器の弱体化禁止、F12 go-to-definition の claim 禁止。file:line アンカーは 2026-07-05 時点なので編集前に Grep で再特定しろ。IME 実機確認（Q3 後必須）と sidecar kill 実機観察（Q2 後必須）は OPERATOR GATE として Result に列挙し、自分で claim するな。fleet-api-instructions.md（WU-FA-1）と同一セッションで実行するな。main への push / force push / PR 作成禁止。完了したら feature branch を push して ui-quality-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
+```
+
+### Packet 2 — FULL RUN Q0–Q10 (only on explicit owner selection)
 
 ```text
 /goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md -> ui-quality-instructions.md を順に読み、ui-quality-instructions.md の Phase Q0 から Q10 を完遂しろ（Q11 は任意）。ブランチは feat/wu-uq-1-trust-cockpit を main から切る。Q0 の trust 検証器を最初に作り、それが baseline 緑になるまで trust surface の変更をコミットするな。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。pnpm と cargo は直列実行。src-tauri の編集は Q2（イベント emit のみ）と Q9（未配線 keybindings 削除）に限定し、PTY の状態機械・プロトコル・レンダラ契約には触るな。**透過ウィンドウは絶対（owner law）**: DWM material / per-pixel see-through 経路・window background alpha・glass alpha トークン・backdrop-filter に一切触るな、新規オーバーレイは既存 glass dialog surface を使え、各フェーズ後に verify:renderer:transparency と verify:ui:glass-legibility が untouched-green であることを確認しろ、透過は CDP では検証不可なので疑義があれば OPERATOR GATE に回せ。透明感・ガラスのトークン値変更禁止、レイアウト再設計禁止、既存テスト・検証器の弱体化禁止、F12 go-to-definition の claim 禁止。file:line アンカーは 2026-07-05 時点なので編集前に Grep で再特定しろ。IME 実機確認・sidecar kill 実機観察・populated cockpit 目視・CI blocking 化は OPERATOR GATE として Result に列挙し、自分で claim するな。fleet-api-instructions.md（WU-FA-1）と同一セッションで実行するな。main への push / force push / PR 作成禁止。完了したら feature branch を push して ui-quality-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
