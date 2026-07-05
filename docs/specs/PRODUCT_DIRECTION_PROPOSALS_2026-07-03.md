@@ -246,10 +246,27 @@ GUI equivalent of herdr's agent recipes; shareable as JSON in-repo.
 3. **A3b short IDs + A4.1/A4.2 CLI bridge** (address-ability foundation)
 4. **A4.3 report --title + A2 visible spawn** (fleet legibility)
 5. **UI density work order** (`UI_DENSITY_AUDIT_2026-07-03.md` — parallel-safe
-   with the above, different files)
-6. **4.1 Fleet Briefing + 4.2 approval batching** (non-engineer value)
-7. **C4 KG live indexing / C5 governance principal** (depth)
-8. **4.3 remote monitor** (after A1/C5, since it rides them)
+   with the above, different files) — **DONE 2026-07-03, merged to main
+   (WU-UD-1).**
+6. **WU-UQ-1 safety subset: phases Q0–Q3 only**
+   (`UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md` + root
+   `ui-quality-instructions.md`, pasteable /goal included). These are
+   correctness/safety bugs, not polish: gate-first trust verifier (Q0),
+   pane liveness wiring (Q1), sidecar reconnect visibility (Q2),
+   multi-line paste guard (Q3). Owner decision 2026-07-05: not started
+   immediately, but explicitly scheduled here so it is not lost.
+   Do NOT run in the same session as WU-FA-1 (TerminalInfoBar overlap).
+   Window transparency is absolute (owner law) — see the work order's
+   ground rules.
+7. **4.1 Fleet Briefing + 4.2 approval batching** (non-engineer value)
+8. **C4 KG live indexing / C5 governance principal** (depth)
+9. **WU-UQ-1 remainder: phases Q4–Q11** (ownership/blocker rendering,
+   keyboard approvals, evidence-honesty labels, small-honesty batch,
+   keyboard-complete shell + persisted nav, dead-layer cleanup,
+   enforce + rendered-truth CI, stretch contrast gate). Normal priority.
+   Phases Q2/Q6/Q8/Q10 carry judgment calls — prefer an opus checkpoint
+   before/after those when executed by codex.
+10. **4.3 remote monitor** (after A1/C5, since it rides them)
 
 Everything above follows the standing rules: one work unit = one branch,
 verifier before claim, no weakening of existing gates, owner decides `DECIDE:`
