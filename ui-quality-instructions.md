@@ -1,5 +1,13 @@
 # ui-quality-instructions.md — WU-UQ-1 execution order (2026-07-05)
 
+> **STATUS: SCHEDULED — NEXT UP, NOT STARTED.** This is item #6 in the
+> execution-order ledger (`docs/specs/PRODUCT_DIRECTION_PROPOSALS_2026-07-03.md`
+> §5). Resume rule: if there is no `## Result` section at the end of this
+> file, nothing has been executed — start by pasting **Packet 1 (Q0–Q3)**
+> below into a cleared codex/opus session. If a partial `## Result` exists,
+> continue from the first phase it does not list. Q4–Q11 is ledger item #9,
+> a separate later work unit.
+
 Implements `docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md` (READ IT FIRST —
 it carries the evidence, the verdict, the constraints, and every `file:line`
 anchor; this file is only the execution order and gate discipline).
@@ -8,9 +16,10 @@ fake-alive panes, no heuristic verdicts dressed as authority, ownership and
 blockers visible, dangerous actions keyboard-safe, rendered UI truth gated.
 
 **Ordering / conflicts:**
-- Do NOT run concurrently with `fleet-api-instructions.md` (WU-FA-1 also
-  edits `TerminalInfoBar.tsx` and the fleet snapshot). If WU-FA-1 merged
-  first, rebase and keep its `%N` prefix intact.
+- WU-FA-1 (`fleet-api-instructions.md`) is **merged to main (PR #14,
+  2026-07-05)** — the former same-session conflict is moot. Its `%N` short-id
+  prefix now lives in `TerminalInfoBar`; keep it intact when editing the
+  header (Q1).
 - Independent of `ui-density-instructions.md` (already landed on main —
   never weaken its verifier `verify-terminal-density-contract.mjs`).
 

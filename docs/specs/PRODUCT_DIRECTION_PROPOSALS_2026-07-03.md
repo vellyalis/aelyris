@@ -241,23 +241,30 @@ GUI equivalent of herdr's agent recipes; shareable as JSON in-repo.
 
 ## 5. Recommended execution order (for the next work-order author)
 
-1. **C1 + C2** (safety/correctness bugs — small, verifier-gated)
-2. **A1** (approval.resolve over MCP) + **C3** (memoization, trivial)
-3. **A3b short IDs + A4.1/A4.2 CLI bridge** (address-ability foundation)
-4. **A4.3 report --title + A2 visible spawn** (fleet legibility)
+> Status legend maintained as items land. Resume rule: the next work unit is
+> always the **lowest-numbered item not marked DONE**.
+
+1. **C1 + C2** (safety/correctness bugs — small, verifier-gated) —
+   **DONE 2026-07-03 (WU-FA-1 F1/F2, merged via PR #14).**
+2. **A1** (approval.resolve over MCP) + **C3** (memoization, trivial) —
+   **DONE (WU-FA-1 F3/F4, PR #14).**
+3. **A3b short IDs + A4.1/A4.2 CLI bridge** (address-ability foundation) —
+   **DONE (WU-FA-1 F6/F7, PR #14).**
+4. **A4.3 report --title + A2 visible spawn** (fleet legibility) —
+   **DONE (WU-FA-1 F5/F7, PR #14; F8 notify-on-exit skipped as optional).**
 5. **UI density work order** (`UI_DENSITY_AUDIT_2026-07-03.md` — parallel-safe
    with the above, different files) — **DONE 2026-07-03, merged to main
    (WU-UD-1).**
-6. **WU-UQ-1 safety subset: phases Q0–Q3 only**
+6. **⏭ NEXT UP — WU-UQ-1 safety subset: phases Q0–Q3 only**
    (`UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md` + root
-   `ui-quality-instructions.md`, pasteable /goal included). These are
-   correctness/safety bugs, not polish: gate-first trust verifier (Q0),
-   pane liveness wiring (Q1), sidecar reconnect visibility (Q2),
-   multi-line paste guard (Q3). Owner decision 2026-07-05: not started
-   immediately, but explicitly scheduled here so it is not lost.
-   Do NOT run in the same session as WU-FA-1 (TerminalInfoBar overlap).
-   Window transparency is absolute (owner law) — see the work order's
-   ground rules.
+   `ui-quality-instructions.md`). These are correctness/safety bugs, not
+   polish: gate-first trust verifier (Q0), pane liveness wiring (Q1),
+   sidecar reconnect visibility (Q2), multi-line paste guard (Q3).
+   **To start: paste Packet 1 from `ui-quality-instructions.md` into a
+   cleared codex/opus session.** WU-FA-1 is merged (2026-07-05), so the
+   former same-session conflict is moot — but rebase-aware: TerminalInfoBar
+   now carries the `%N` prefix; keep it intact. Window transparency is
+   absolute (owner law) — see the work order's ground rules.
 7. **4.1 Fleet Briefing + 4.2 approval batching** (non-engineer value)
 8. **C4 KG live indexing / C5 governance principal** (depth)
 9. **WU-UQ-1 remainder: phases Q4–Q11** (ownership/blocker rendering,
