@@ -172,3 +172,20 @@ Skipped:
 Scope notes:
 - `src-tauri/` was not edited.
 - No main push, force push, or PR creation was performed.
+
+## Post-Result amendment (owner review, 2026-07-05)
+
+- `ffcbe95` ("Fix terminal footer spacing", landed after this Result)
+  deliberately superseded two shipped items based on live use: **D1** is
+  disabled (`IMEInputBar collapsed={false}` — auto-collapse changed the
+  drawable height and churned the PTY row count) and **U4**'s lone-pane
+  header hiding is reverted (`shouldShowPaneHeader = !maximizedPaneId ||
+  isMaximized`). Tests were updated in the same commit; this section, not the
+  original Result text above, describes what ships on `main`.
+- The density verifier now requires the IMEInputBar binding to be either a
+  computed expression or a constant carrying an in-source
+  `density-decision:` marker, so a silent constant can no longer read as a
+  live collapse path.
+- Follow-up candidate (unscheduled): reclaim the input-bar strip via an
+  overlay-positioned bar that does not participate in layout (no drawable
+  height change), which would restore D1's savings without the row churn.
