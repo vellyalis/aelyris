@@ -147,9 +147,19 @@ const timelineMountGated =
   /\(\s*timelineSnapshots\.length\s*>\s*0\s*\|\|\s*snapshotOverlay\s*\)\s*&&\s*\(?\s*<TimelineBar/s.test(
     nativeTerminalArea,
   );
+// The prop must be bound to a NON-CONSTANT expression, OR the constant must
+// carry an explicit `density-decision:` marker comment. A bare
+// `collapsed={false}` satisfies a "prop present" scan while permanently
+// disabling the collapse behavior — that happened once (ffcbe95, a deliberate
+// live-UX call whose rationale was invisible to this gate). Deliberate
+// exceptions stay allowed but must be auditable in-source.
+const imeCollapsedBinding = /<IMEInputBar[\s\S]{0,800}?\b(?:visuallyCollapsed|collapsed)=\{([^}]+)\}/.exec(
+  nativeTerminalArea,
+);
+const imeConstantBinding = imeCollapsedBinding != null && /^\s*(?:true|false)\s*$/.test(imeCollapsedBinding[1]);
+const imeDensityDecisionMarker = /density-decision:\s*ime-input-bar/.test(nativeTerminalArea);
 const imeCollapsedProp =
-  /<IMEInputBar[\s\S]*\bcollapsed=\{/.test(nativeTerminalArea) ||
-  /<IMEInputBar[\s\S]*\bvisuallyCollapsed=\{/.test(nativeTerminalArea);
+  imeCollapsedBinding != null && (!imeConstantBinding || imeDensityDecisionMarker);
 const imeCollapsedCss =
   blocks.imeBarCollapsed.length > 0 &&
   (resolvePx(declarations.imeCollapsedMinHeight, rootVars) === 0 ||
@@ -168,7 +178,14 @@ function modeMeasurement(mode) {
     terminalMountGap: valueForMode(declarations.terminalMountGap, mode, modeVars),
   };
   const timelineFixed = timelineMountGated ? 0 : (values.timelineEmptyHeight ?? values.timelineHeight ?? 0);
-  const imeFixed = imeCollapsedCss && imeCollapsedProp ? 0 : (values.imeHeight ?? 0);
+  // Budget treatment: a LIVE collapse path counts 0 (the strip really yields
+  // its pixels); a marker-documented always-visible decision is exempted from
+  // the budget but disclosed here at its real resting height; a bare constant
+  // counts full (and separately fails ime-collapsed-state).
+  const imeExempted = imeConstantBinding && imeDensityDecisionMarker;
+  const imeLiveCollapse = imeCollapsedCss && imeCollapsedProp && !imeConstantBinding;
+  const imeFixed = imeLiveCollapse || imeExempted ? 0 : (values.imeHeight ?? 0);
+  const imeBudgetTreatment = imeLiveCollapse ? "live-collapse" : imeExempted ? "density-decision-exempt" : "full";
   const denseVerticalChrome =
     (values.headerHeight ?? 0) +
     timelineFixed +
@@ -183,6 +200,8 @@ function modeMeasurement(mode) {
     timelineMountGated,
     imeCollapsedCss,
     imeCollapsedProp,
+    imeBudgetTreatment,
+    imeRestingHeightPx: values.imeHeight ?? 0,
     canvasGutter,
     fixedVerticalChromePx: denseVerticalChrome,
   };

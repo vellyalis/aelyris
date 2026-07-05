@@ -1543,6 +1543,10 @@ export function NativeTerminalArea({
         ref={imeBarRef}
         onSubmit={sendIMEBytes}
         onRequestCanvasFocus={focusCanvas}
+        // density-decision: ime-input-bar stays visible (ffcbe95) — auto-collapse
+        // changed the drawable height and churned the PTY row count ("footer
+        // spacing" jank). Reclaiming this strip needs an overlay-positioned bar
+        // that doesn't participate in layout, not a conditional mount.
         collapsed={false}
       />
     </div>

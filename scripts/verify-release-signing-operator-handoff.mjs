@@ -136,10 +136,13 @@ const checks = {
       (signingState?.details?.freshness?.nsis === false || signingState?.details?.freshness?.msi === false)),
   updaterWarningClassified:
     signingComplete ||
-    // Missing latest.json after a no-sign build is still a classified operator
-    // handoff: the secure signing run is what creates fresh updater metadata.
+    // A stale-but-PRESENT latest.json after a no-sign build is a classified
+    // operator handoff. A MISSING manifest is not: with no file at all, every
+    // latestIntegrity field computes to false, so without the exists check
+    // "zero evidence" and "some evidence" become indistinguishable.
     (updaterLatest?.status === "warn" &&
       updaterLatest?.details?.invalidEndpoints?.length === 0 &&
+      latest?.exists === true &&
       Object.values(latestIntegrity).some((value) => value === false)),
   updaterEndpointConfigured:
     signingComplete ||

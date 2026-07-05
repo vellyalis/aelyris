@@ -541,7 +541,9 @@ const ok =
   audit?.evidenceComplete === true &&
   audit?.implementationFixableCount === 0 &&
   audit?.policyBlockedCount === 0 &&
-  audit?.externalBlockedCount >= 1 &&
+  // Floor = current legitimate external-gate count; lower only in the commit
+  // that closes a gate with evidence (">= 1" hides mass reclassification).
+  audit?.externalBlockedCount >= 8 &&
   docs?.ok === true &&
   matrix?.ok === true &&
   matrix?.status === "blocked-by-external-gates" &&

@@ -212,7 +212,10 @@ const checks = {
     data.matrix?.implementationFixableCount === 0 &&
     data.matrix?.policyBlockedCount === data.audit?.policyBlockedCount &&
     data.matrix?.externalBlockedCount === data.audit?.externalBlockedCount &&
-    data.matrix?.externalBlockedCount >= 1,
+    // Floor = the current legitimate external-gate count. Lower it ONLY in the
+    // same commit that legitimately closes a gate (with its evidence), never
+    // casually — ">= 1" would let mass reclassification pass unnoticed.
+    data.matrix?.externalBlockedCount >= 8,
   finalizeAgreesWithSafe:
     data.finalize?.ok === true &&
     data.finalize?.status === "blocked-by-external-gates" &&
@@ -253,8 +256,10 @@ const checks = {
     data.releaseSigningHandoff?.ok === true &&
     ["ready-for-release-signing-operator", "release-signing-complete"].includes(data.releaseSigningHandoff?.status) &&
     data.releaseSigningHandoff?.noSecretMaterialPersisted === true &&
-    (data.releaseSigningHandoff?.status === "release-signing-complete" ||
-      data.releaseSigningHandoff?.signingMaterialProvidedToThisRun === false),
+    // Unconditional: the handoff verifier never signs, so no state — including
+    // "complete" (which requires fresh signature evidence upstream) — may be
+    // recorded by a run that had signing key material present.
+    data.releaseSigningHandoff?.signingMaterialProvidedToThisRun === false,
   sleepHandoffReady:
     data.sleepHandoff?.ok === true &&
     ["ready-for-manual-sleep-cycle", "host-blocked-handoff-ready"].includes(data.sleepHandoff?.status) &&
