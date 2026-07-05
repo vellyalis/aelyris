@@ -153,3 +153,28 @@ Files touched:
 - Rust API/MCP/CLI/core: `src-tauri/src/api/mcp.rs`, `src-tauri/src/api/mod.rs`, `src-tauri/src/bin/aelys.rs`, `src-tauri/src/ipc/send_keys_commands.rs`, `src-tauri/src/ipc/interactive_commands.rs`, `src-tauri/src/ipc/commands.rs`, `src-tauri/src/pty/registry.rs`, `src-tauri/src/pty/manager.rs`, `src-tauri/src/control/pane_fleet.rs`, `src-tauri/src/control/loop_ports.rs`, `src-tauri/src/agent/session.rs`, `src-tauri/src/shared_brain.rs`
 - Frontend contracts/UI/tests: `src/shared/types/agent.ts`, `src/shared/types/interactiveAgent.ts`, `src/shared/types/pane.ts`, `src/shared/lib/agentFleet.ts`, `src/shared/hooks/useLivePanes.ts`, `src/features/context/LivePanesPanel.tsx`, `src/features/app/useAppMenus.ts`, `src/features/workflow/WorkflowPanel.tsx`, `src/features/terminal/TerminalInfoBar.tsx`, `src/features/terminal/TerminalInfoBar.module.css`, `src/features/terminal/pane-tree/types.ts`, `src/features/terminal/pane-tree/PaneTreeContainer.tsx`, `src/features/terminal/pane-tree/PaneTreeRenderer.tsx`, `src/App.tsx`
 - Verifiers/tests/report: `scripts/verify-runtime-core-preconditions.mjs`, `src/__tests__/WorkflowPanelRace.test.tsx`, `src/__tests__/TerminalInfoBarExitDot.test.tsx`, `src/__tests__/agentFleet.test.ts`, `fleet-api-instructions.md`
+
+## Post-Result review fixes (owner review, 2026-07-05)
+
+The owner review (BLOCK) found the F2 guard missing on the two write faces an
+orchestrator actually uses; fixed in this branch before merge:
+
+- REST `send_session_input` and MCP `aelyris.pane_send_input` now run
+  `reject_waiting_approval_via_app` BEFORE the command gate (typed
+  `blocked_waiting_approval`; MCP face returns a tool error so `aelys mcp`
+  exits 2). Standalone sidecar daemon (no app handle) has no interactive
+  registry — nothing to check there by construction.
+- `send_keys_by_target` resolving to exactly one pane now surfaces the typed
+  error instead of a silent fan-out skip (spec §3.2 single-target semantics).
+- `aelyris.approval.resolve` returns unknown-terminal-ref as a tool error
+  (exit-2 contract), mirroring pane.rename/set_role; the test stub exercises
+  %N-miss resolution.
+- Skipped-write audit events are throttled to one per pane per approval
+  episode (prompt-fingerprint keyed).
+- `interactiveToFleetSession` short_id now has FE test coverage (both fleet
+  paths pinned).
+- Rollout note (F1): the marker filename changed shape; an agent already
+  running across a hot redeploy with the OLD path in its prompt will fall
+  back to the timeout/recovery path once — acceptable, no persistence
+  involved.
+- Preconditions verifier gained three checks pinning all of the above.

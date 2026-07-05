@@ -63,7 +63,34 @@ fn reject_targeted_waiting_approval(
     Ok(())
 }
 
+/// FR-1 guard for the REST/MCP faces: same typed rejection as the IPC write
+/// paths, resolved from the AppHandle so the api layer shares ONE rule.
+pub fn reject_waiting_approval_via_app(app: &AppHandle, terminal_id: &str) -> Result<(), String> {
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    reject_targeted_waiting_approval(&session_mgr, terminal_id)
+}
+
+/// One audit row per pane per approval EPISODE (keyed by the prompt
+/// fingerprint), not per attempted write — a retry loop against a gated pane
+/// must not flood the audit trail (spec §3.2 throttle).
+static WAITING_SKIP_AUDIT_KEYS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
 fn record_waiting_approval_skip(app: &AppHandle, terminal_id: &str, action: &str) {
+    let episode_key = app
+        .state::<InteractiveSessionManager>()
+        .list()
+        .ok()
+        .and_then(|sessions| sessions.into_iter().find(|s| s.pty_id == terminal_id))
+        .and_then(|s| s.approval_prompt)
+        .map(|prompt| stable_text_key(&prompt))
+        .unwrap_or_default();
+    if let Ok(mut seen) = WAITING_SKIP_AUDIT_KEYS.lock() {
+        if seen.get(terminal_id).map(String::as_str) == Some(episode_key.as_str()) {
+            return;
+        }
+        seen.insert(terminal_id.to_string(), episode_key);
+    }
     record_audit_event(
         app,
         "agent",
@@ -650,6 +677,13 @@ pub async fn send_keys_by_target(
             }),
         );
         return Err(err);
+    }
+    // Spec §3.2: a target that resolves to exactly ONE pane is a targeted
+    // send — it must surface the typed blocked_waiting_approval error, not the
+    // fan-out's silent skip+report (same semantics as send_keys_by_name).
+    if terminal_ids.len() == 1 {
+        let session_mgr = app.state::<InteractiveSessionManager>();
+        reject_targeted_waiting_approval(&session_mgr, &terminal_ids[0])?;
     }
     write_to_terminals(&app, terminal_ids, data.as_bytes()).await
 }

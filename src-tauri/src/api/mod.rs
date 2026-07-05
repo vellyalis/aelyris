@@ -2273,6 +2273,16 @@ async fn send_session_input(
             .controller_leases
             .ensure_can_control(target_id, client_id.as_deref())?;
     }
+    // FR-1: no write path may deliver input to a pane waiting at an approval
+    // gate — including synchronized-group fan-out. In-app the interactive
+    // registry is authoritative; a standalone sidecar daemon has no
+    // interactive sessions, so with no app handle there is nothing to check.
+    #[cfg(not(test))]
+    if let Some(app) = state.app_handle.as_ref() {
+        for target_id in &targets {
+            crate::ipc::reject_waiting_approval_via_app(app, target_id).map_err(ApiError::BadRequest)?;
+        }
+    }
     // P0-4: the gate returns the bytes that may reach the PTY (it HOLDS unterminated input
     // and emits only complete, approved lines — boundary #1). Write those, not `bytes`.
     let writable = gate_command_input(

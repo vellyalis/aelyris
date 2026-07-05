@@ -72,7 +72,9 @@ governed internals the cockpit uses, never through new parallel paths.
 | `aelyris.pane.rename` | `{ terminalId: string, name: string (1..120 chars) }` | `{ ok: true }` | unknown terminal |
 | `aelyris.pane.set_role` | `{ terminalId: string, role: string (1..40 chars) }` | `{ ok: true }` | unknown terminal |
 
-`terminalId` in ALL FOUR verbs accepts `"%<N>"` or a UUID (see §3.3).
+`terminalId` in the three terminal-addressed verbs (`approval.resolve`,
+`pane.rename`, `pane.set_role`) accepts `"%<N>"` or a UUID (see §3.3);
+`agent.spawn_visible` creates a new pane and takes no `terminalId`.
 The catalog drift test (`catalog_and_schemas_list_exactly_the_same_verbs`)
 automatically covers the new entries; schemas must be added to BOTH the
 catalog and the schema list or that test fails — that is intended.

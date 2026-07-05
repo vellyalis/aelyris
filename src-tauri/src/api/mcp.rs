@@ -346,7 +346,13 @@ async fn mcp_approval_resolve(
 ) -> ApiResult<Result<(), String>> {
     let app = mcp_app_handle(state)?;
     let terminal_ref = arg_string(args, "terminalId")?;
-    let terminal_id = resolve_mcp_terminal_ref(state, &terminal_ref)?;
+    // Unknown %N / terminal refs are TOOL errors (ok:false, aelys exit 2) —
+    // same contract as pane.rename/set_role, not an HTTP 400 transport error.
+    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
     let decision = arg_string(args, "decision")?;
     let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
     Ok(crate::ipc::resolve_interactive_approval_core(
@@ -360,10 +366,17 @@ async fn mcp_approval_resolve(
 
 #[cfg(test)]
 async fn mcp_approval_resolve(
-    _state: &ApiState,
+    state: &ApiState,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<Result<(), String>> {
-    let _terminal_id = arg_string(args, "terminalId")?;
+    let terminal_ref = arg_string(args, "terminalId")?;
+    // Mirror the non-test path so the %N-miss tool-error contract is
+    // exercised by tests.
+    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
+        Ok(terminal_id) => terminal_id,
+        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
+        Err(err) => return Err(err),
+    };
     let _decision = arg_string(args, "decision")?;
     let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
     if expected_prompt_key == "stale-test" {
@@ -2101,6 +2114,18 @@ pub(super) async fn tools_call(
                     "input frame exceeds {} bytes",
                     WS_MAX_INPUT_FRAME_BYTES
                 )));
+            }
+            // FR-1: same rule as the REST/IPC faces — agent-injected input must
+            // never land on a pane waiting at an approval menu; resolve it via
+            // aelyris.approval.resolve instead. Typed tool error (aelys exit 2).
+            #[cfg(not(test))]
+            if let Some(app) = state.app_handle.as_ref() {
+                if let Err(err) = crate::ipc::reject_waiting_approval_via_app(app, &terminal_id) {
+                    return Ok(schema_tool_error(
+                        &body.name,
+                        serde_json::json!({ "error": err }),
+                    ));
+                }
             }
             // P0-4: classify the agent-injected command BEFORE it reaches the PTY
             // (hard boundary #1). An agent steering a terminal is exactly the
