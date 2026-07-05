@@ -78,8 +78,8 @@ blockers visible, dangerous actions keyboard-safe, rendered UI truth gated.
   see-through path (`DWMSBT_NONE` per-pixel transparency — see-through
   requires NO material), window background alpha, glass alpha tokens, or
   any `backdrop-filter` chain. No new opaque full-bleed layers; any new
-  overlay/dialog (Q3 PasteGuardDialog included) uses the existing glass
-  dialog surfaces. `pnpm verify:renderer:transparency` and
+  overlay/dialog uses the existing glass dialog surfaces (Q3 uses the
+  existing `showConfirm`/ConfirmDialog — no new dialog component; §3.5). `pnpm verify:renderer:transparency` and
   `pnpm verify:ui:glass-legibility` must stay untouched-green after every
   phase. Note: transparency CANNOT be verified via CDP/Playwright — any
   doubt is an OPERATOR GATE (OS-level visual), never a self-claim.
@@ -130,7 +130,7 @@ ADD vitest: mapping from lifecycle state → rendered badge; live renders
 nothing extra.
 
 ### Q2 — sidecar reconnect events (`feat:`) — ONLY RUST PHASE
-In `src-tauri/src/pty/pty_sidecar.rs` reconnect loop (`:947-984` era):
+In `src-tauri/src/pty_sidecar.rs` reconnect loop (`:947-984` era):
 emit a `pty-stream-state` event `{terminalId, state: "reconnecting"|
 "recovered"|"gone", attempt}` at attempt start, on success, and on final
 failure. Also pass through real exit severity where known instead of the
@@ -146,10 +146,11 @@ sidecar kill shows reconnecting → exited in the real app.
 ### Q3 — multi-line paste guard (`feat:`) — HIGHEST IME RISK, DO NOT RUSH
 Both paste handlers in `IMEInputBar.tsx` (`:550-570` React, `:572-595`
 native era) currently submit multi-line immediately. Insert a guard: if
-normalized content contains >1 line, open `PasteGuardDialog` (new, Radix
-Dialog like ConfirmDialog): line count, first 3 lines preview, Enter=run
-Esc=cancel, "always allow" writes setting `terminal.pasteGuard=false`
-(store + Settings toggle in the Terminal section).
+normalized content contains >1 line, confirm via the EXISTING
+`showConfirm`/ConfirmDialog (no new dialog component — §3.5 wins): line
+count in the title, first 3 lines preview in the description, Enter=run
+Esc=cancel. Opt-out setting `paste_guard` in Settings' Terminal section
+(§3.5 pins the exact Rust + FE field names and templates).
 The guard intercepts ONLY the paste event path. Composition events,
 single-line paste, and the hidden-textarea path are untouched (UR-4
 discipline from UD-1).
@@ -260,6 +261,134 @@ and lightest mood backdrops; reuse the math in `terminalColors.ts:78-113`).
 Baseline mode only in this WU. Skip freely if any ambiguity — file notes in
 Result instead.
 
+## 3.5 Detailed design for Q0–Q3 (zero-inference addendum, 2026-07-06)
+
+Wiring facts below were re-verified against `main` post PR #14/#15/#16.
+**If this section conflicts with the shorter phase text above, THIS section
+wins.** Anchors are point-in-time; re-locate with Grep before editing.
+
+### Q0 exact shape
+Clone `scripts/verify-glass-legibility-contract.mjs` structurally:
+- helper `add(checks, id, ok, detail, evidence = {})`; envelope fields
+  `{artifact, version:1, generatedAt, localDate, timeZone:"Asia/Tokyo", ok,
+  status, sourceFiles:[{path,exists,mtimeMs}], checks, failedChecks,
+  nextRequiredAction}`; write to
+  `.codex-auto/quality/ui-trust-contract.json` via
+  `mkdirSync(dirname(OUT),{recursive:true})` + `writeFileSync`;
+  `if (!report.ok) process.exitCode = 1` (in `--enforce` only; baseline
+  mode always exits 0 with `status:"baseline-recorded"`).
+- package.json: `"verify:ui:trust": "node scripts/verify-ui-trust-contract.mjs"`.
+- Check IDs (stable, do not rename later): `q1-lifecycle-prop`,
+  `q1-liveness-render`, `q2-stream-state-emit`, `q2-stream-state-consumer`,
+  `q3-paste-guard-routed`, `q3-paste-guard-setting`, `q4-ownership-render`,
+  `q4-blocked-reason-render`, `q5-approval-keybinding`,
+  `q6-inferred-marker`, `q7-toast-severity-type`.
+
+### Q1 exact wiring
+Already true on main: the lifecycle union
+`PANE_LIFECYCLE_STATES`-derived `PaneLifecycleState` =
+`"layout-only" | "detached" | "orphaned" | "starting" | "live" | "exited" |
+"crashed" | "restarting"` (`src/features/terminal/pane-tree/types.ts:7-18`);
+`paneLifecycleStates: ReadonlyMap<string, PaneLifecycleState>` state at
+`PaneTreeContainer.tsx:206-208`; **already passed** to `PaneTreeRenderer`
+(`PaneTreeContainer.tsx:1282`). The ONLY missing hop:
+1. Extend the union with `"reconnecting"` in `PANE_LIFECYCLE_STATES`
+   (types.ts) — Q2 sets it; Q1 renders it.
+2. Add prop `lifecycle?: PaneLifecycleState` to `TerminalInfoBarProps`
+   (`TerminalInfoBar.tsx:9-36`).
+3. In `PaneTreeRenderer.tsx` at the existing `<TerminalInfoBar>` call
+   (`:420-440`), pass `lifecycle={paneLifecycleStates?.get(paneId) ??
+   paneLifecycleStates?.get(terminalId)}` (agent panes key by terminalId —
+   see `PaneTreeContainer.tsx:1142`).
+4. Render: a `<span className={styles.lifeBadge} data-lifecycle={...}
+   role="status">` placed immediately LEFT of the ExitStatusDot site
+   (`TerminalInfoBar.tsx:141`). Render `null` for `"live"`, `"starting"`,
+   and `"layout-only"` (absence is the live signal — same philosophy as
+   ExitStatusDot). Render text labels: `exited`, `crashed`, `detached`,
+   `orphaned`, `restarting…`, `reconnecting…`. New CSS class in
+   `TerminalInfoBar.module.css` only (solid text color per glass-legibility
+   contract; no new blur/alpha).
+5. Tests: extend the existing pattern of
+   `src/__tests__/TerminalInfoBarExitDot.test.tsx` with a new
+   `TerminalInfoBarLifecycle.test.tsx`: live/starting → nothing rendered;
+   exited/crashed/detached/reconnecting → labeled badge present.
+
+### Q2 exact wiring (CORRECTED — read carefully)
+File is `src-tauri/src/pty_sidecar.rs` (top-level module, NOT under
+`src-tauri/src/pty/`). Facts: `PtySidecarClient` (fields at `:27-33`) has
+**no Tauri AppHandle and no emitter**; reconnect logic =
+`run_stream_supervisor` (`:877-941`) + `reconnect_stream_socket`
+(`:947-990`); today a session death just removes the stream (`:938-940`)
+and the FE `pty-exit-<id>` event comes from the IPC layer
+(`ipc/commands.rs:1635` etc. via `app.emit`).
+Design (callback injection, no protocol change):
+1. Define in `pty_sidecar.rs`:
+   `pub type StreamStateCallback = Arc<dyn Fn(&str, SidecarStreamState) + Send + Sync>;`
+   and `#[derive(Debug, Clone, serde::Serialize)] pub struct SidecarStreamState
+   { pub state: &'static str /* "reconnecting"|"recovered"|"gone" */,
+   pub attempt: u32 }` (or an enum serialized to those strings — pick one,
+   test pins it).
+2. Add `on_stream_state: Option<StreamStateCallback>` to `PtySidecarClient`
+   with a setter `set_stream_state_callback(...)`. Invoke it in
+   `reconnect_stream_socket` at attempt start (`"reconnecting"`, attempt N),
+   on successful reconnect (`"recovered"`), and where the session is
+   confirmed gone / strikes exhausted (`"gone"`) — the `:938-940` removal
+   site and the `:964-975` era paths.
+3. In the IPC layer where the sidecar client is constructed/adopted (locate
+   with `rg "PtySidecarClient::" src-tauri/src`), register the callback with
+   a captured `AppHandle`:
+   `app.emit(&format!("pty-stream-state-{id}"), payload)` — same naming
+   pattern as `pty-exit-<id>`.
+4. FE: subscribe in `PaneTreeContainer.tsx` next to the existing per-pane
+   `pty-exit` listener pattern (`:1149` era), using `listen` from
+   `@tauri-apps/api/event`. On `"reconnecting"` set the pane's lifecycle
+   map entry to `"reconnecting"`; on `"recovered"` back to `"live"`;
+   on `"gone"` to `"exited"`. Attempt count goes into the badge tooltip
+   (`title` attr) only.
+5. **Pre-answered decision:** the sidecar WS protocol carries ONLY raw
+   output bytes (`:906-912`) — it does NOT carry exit code/crash info. Do
+   NOT extend the protocol. The flat `ExitInfo{code:None,crashed:false}`
+   passthrough stays as-is; record it in `## Result` as a known follow-up.
+6. Tests: `pty_sidecar.rs` currently has NO test module — add the first
+   `#[cfg(test)] mod tests` with a payload-shape serialization test
+   (state strings + attempt). FE: vitest for the state-merge mapping
+   (reconnecting/recovered/gone → lifecycle values).
+
+### Q3 exact wiring (SIMPLIFIED — no new dialog component)
+Use the existing `showConfirm(opts): Promise<boolean>` from
+`src/shared/ui/ConfirmDialog.tsx:115` (options: `{title, description?,
+confirmLabel?, cancelLabel?, tone?: "default"|"danger"}`; call-site template
+`WorktreeManager.tsx:77-84`). Do NOT build a `PasteGuardDialog` — the
+ConfirmDialog IS the existing glass dialog surface.
+1. Extract a shared async helper in `IMEInputBar.tsx`:
+   `guardedPasteSubmit(text: string)`: if the setting is off OR the
+   normalized text has ≤1 line → submit exactly as today
+   (`onSubmit(text.replace(/\r\n|\r|\n/g, "\r"))`); else
+   `await showConfirm({ title: "Run N pasted lines?", description: first
+   3 lines + "…", confirmLabel: "Run", cancelLabel: "Cancel",
+   tone: "danger" })` and submit the SAME bytes on true.
+2. Wire it into BOTH paste paths: `handlePaste` (`IMEInputBar.tsx:550-570`,
+   detection at `:563`, submit at `:567`) and the native `onNativePaste`
+   listener (`:575-592`, submit at `:591`). `preventDefault()` and the
+   `handledPasteEvents` WeakSet dedupe (`:47`) MUST run synchronously
+   BEFORE the `await`. Composition events and `submit()` (`:453-473`) are
+   untouched.
+3. Setting (both sides, names fixed):
+   - Rust: `pub paste_guard: bool` with `#[serde(default = "default_true")]`
+     in `TerminalConfig` (`src-tauri/src/config/settings.rs:360-375`;
+     `default_true` helper already exists there).
+   - FE: `pasteGuard: boolean` + `setPasteGuard` in `appStore.ts` following
+     the `cursorBlink` template exactly (interface `:552-553`, impl
+     `:1107-1113`, localStorage key `aelyris:terminalPasteGuard`).
+   - Settings UI: one `Switch` in the Terminal section following the
+     `shutdown_sidecar_on_exit` block (`Settings.tsx:1170-1185`) with a
+     `.hint`; load/seed + save serialization follow the cursor_blink wiring
+     (`Settings.tsx:331-334, 371-374, 563`).
+4. Tests — extend `src/__tests__/IMEInputBar.test.tsx` (no paste-guard test
+   exists today): multi-line paste → confirm shown, confirm=true submits
+   byte-identical string, confirm=false submits nothing; single-line paste
+   → no dialog; setting off → no dialog; composition tests untouched-green.
+
 ## 4. Definition of done
 
 - `pnpm exec tsc --noEmit`, `pnpm test`, `pnpm exec biome lint src` green.
@@ -285,7 +414,7 @@ paste the full-run packet unless the owner explicitly selects it.
 ### Packet 1 — SAFETY SUBSET Q0–Q3 (default, use this one)
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md -> ui-quality-instructions.md を順に読み、ui-quality-instructions.md の Phase Q0 から Q3 のみを完遂して停止しろ（Q4 以降には着手するな。Q4-Q11 は別 work unit）。ブランチは feat/wu-uq-1-trust-cockpit を main から切る。Q0 の trust 検証器を最初に作り、それが baseline 緑になるまで trust surface の変更をコミットするな。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。pnpm と cargo は直列実行。src-tauri の編集は Q2（イベント emit のみ）に限定し、PTY の状態機械・プロトコル・レンダラ契約には触るな。**透過ウィンドウは絶対（owner law）**: DWM material / per-pixel see-through 経路・window background alpha・glass alpha トークン・backdrop-filter に一切触るな、新規オーバーレイ（Q3 の PasteGuardDialog 含む）は既存 glass dialog surface を使え、各フェーズ後に verify:renderer:transparency と verify:ui:glass-legibility が untouched-green であることを確認しろ、透過は CDP では検証不可なので疑義があれば OPERATOR GATE に回せ。既存テスト・検証器の弱体化禁止、F12 go-to-definition の claim 禁止。file:line アンカーは 2026-07-05 時点なので編集前に Grep で再特定しろ。IME 実機確認（Q3 後必須）と sidecar kill 実機観察（Q2 後必須）は OPERATOR GATE として Result に列挙し、自分で claim するな。fleet-api-instructions.md（WU-FA-1）と同一セッションで実行するな。main への push / force push / PR 作成禁止。完了したら feature branch を push して ui-quality-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
+/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md -> ui-quality-instructions.md を順に読み、ui-quality-instructions.md の Phase Q0 から Q3 のみを完遂して停止しろ（Q4 以降には着手するな。Q4-Q11 は別 work unit）。ブランチは feat/wu-uq-1-trust-cockpit を main から切る。Q0 の trust 検証器を最初に作り、それが baseline 緑になるまで trust surface の変更をコミットするな。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。pnpm と cargo は直列実行。src-tauri の編集は Q2（イベント emit のみ）に限定し、PTY の状態機械・プロトコル・レンダラ契約には触るな。**透過ウィンドウは絶対（owner law）**: DWM material / per-pixel see-through 経路・window background alpha・glass alpha トークン・backdrop-filter に一切触るな、Q3 のペースト確認は既存 showConfirm/ConfirmDialog を使い新規ダイアログを作るな（詳細は §3.5 detailed design が正）、各フェーズ後に verify:renderer:transparency と verify:ui:glass-legibility が untouched-green であることを確認しろ、透過は CDP では検証不可なので疑義があれば OPERATOR GATE に回せ。既存テスト・検証器の弱体化禁止、F12 go-to-definition の claim 禁止。file:line アンカーは 2026-07-05 時点なので編集前に Grep で再特定しろ。IME 実機確認（Q3 後必須）と sidecar kill 実機観察（Q2 後必須）は OPERATOR GATE として Result に列挙し、自分で claim するな。fleet-api-instructions.md（WU-FA-1）と同一セッションで実行するな。main への push / force push / PR 作成禁止。完了したら feature branch を push して ui-quality-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
 ```
 
 ### Packet 2 — FULL RUN Q0–Q10 (only on explicit owner selection)

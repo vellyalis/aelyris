@@ -74,7 +74,7 @@ are all **ungated** — CI verifies UI *source shape*, not rendered truth.
    and better than most dev tools. The trust surfaces — is this pane alive,
    is this verdict evidence-backed, who owns what — are the weak half.
 2. **Fake-alive pane is the single worst defect.** Sidecar stream drop retries
-   silently up to ~10 strikes (`src-tauri/src/pty/pty_sidecar.rs:947-984`);
+   silently up to ~10 strikes (`src-tauri/src/pty_sidecar.rs:947-984`);
    during that window the pane is frozen with a fully normal header. Session
    lifecycle (`paneLifecycleStates`, computed at
    `src/features/terminal/pane-tree/PaneTreeContainer.tsx:205,416-440`) is
