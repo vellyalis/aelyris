@@ -386,7 +386,9 @@ describe("Release evidence gates", () => {
     expect(commands).toContain("native_terminal_input_preedit");
     expect(commands).toContain("native_terminal_input_status");
     expect(commands).toContain("commit_native_terminal_input(&app, host, terminal_id, data, source).await");
-    expect(commands).toContain('"native-input-surface".to_string()');
+    // The pending-source label moved with the input pipeline into
+    // term/native_input.rs; assert it where it now lives.
+    expect(nativeInput).toContain('"native-input-surface".to_string()');
     expect(commands).toContain("terminal_write_async(app, &terminal_id, &bytes)");
     expect(commands).toContain("native_input_rejected");
     expect(lib).toContain("term::NativeTerminalInputHost::new()");
@@ -611,7 +613,10 @@ describe("Release evidence gates", () => {
     expect(score).toContain("live-command-evidence.json");
     expect(score).toContain('"live-command-evidence"');
     expect(score).toContain("Live terminal command-block evidence");
-    expect(score).toContain("live command block is missing prompt-mark/scrollback anchors");
+    // The anchor requirement split into explicit end + command-start checks
+    // (stronger than the old single message) — assert both refined forms.
+    expect(score).toContain("live command block is missing end prompt-mark/scrollback anchors");
+    expect(score).toContain("live command block is missing command-start prompt-mark/scrollback anchors");
     expect(score).toContain("promptMarksSource");
     expect(promptMarks).toContain('source: "prompt-marks"');
     expect(promptMarks).toContain('"term_prompt_marks"');
