@@ -25,9 +25,15 @@ Populated-cockpit live inspection remains an OPERATOR GATE (§8).
 
 These are fixed. Any recommendation violating them is void:
 
-1. **Transparency/glass is the product core — KEEP.** See-through, Mica,
-   glass alpha, backdrop-frost stay. "Subtraction" may only target decorative
-   layers stacked *on* glass, and only as an optional dial.
+1. **The transparent window is ABSOLUTE (owner law, reaffirmed 2026-07-05).**
+   Per-pixel see-through (`DWMSBT_NONE`, no DWM material), glass alpha,
+   backdrop-frost stay untouched — no phase of any work order may modify the
+   DWM path, window background alpha, or backdrop-filter chains, and no new
+   opaque full-bleed layer may be introduced. "Subtraction" may only target
+   decorative layers stacked *on* glass, and only as an optional dial.
+   Transparency cannot be verified via CDP; regressions are caught only by
+   `verify:renderer:transparency` + OS-level operator eyes — treat both as
+   standing gates.
 2. **The 2026-07-03 layout redesign proposal was rejected by the owner**
    ("現状UI維持"). This audit does NOT re-propose terminal-sovereignty
    layout changes, mode-rail retirement, or chrome flattening. If the owner
@@ -260,8 +266,10 @@ this is a hardening architecture, not a reshuffle):
    dot** (live / reconnecting / exited / detached) + durability marker when
    `degraded`. Sidecar reconnect becomes an emitted event rendered as a
    badge. Paste of >1 line opens preview-confirm (opt-out via settings).
-   Time-travel overlay dims the frozen grid slightly (glass-safe) in addition
-   to the pill.
+   Time-travel overlay gets a stronger "viewing the past" treatment than the
+   current pill — but any treatment must preserve window see-through (no
+   opaque scrim; prefer border/desaturation on glyphs) and passes the
+   operator transparency gate before claim.
 4. **Proofbook UX (future, gated).** When PB UI unlocks: run setup binds a
    validated PB (PB-1), step status streams from the runner ledger (PB-2),
    evidence links open artifacts, settlement mirrors PB-4 rules

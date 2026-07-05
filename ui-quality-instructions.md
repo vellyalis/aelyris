@@ -64,6 +64,16 @@ blockers visible, dangerous actions keyboard-safe, rendered UI truth gated.
   the verifier that can falsify it is green in baseline mode.
 - `src-tauri` edits are allowed ONLY in Q2 and ONLY as event emission —
   no PTY state machine, protocol, or renderer changes anywhere.
+- **WINDOW TRANSPARENCY IS ABSOLUTE (owner law).** The per-pixel
+  see-through window is the product core. Never touch: the DWM material /
+  see-through path (`DWMSBT_NONE` per-pixel transparency — see-through
+  requires NO material), window background alpha, glass alpha tokens, or
+  any `backdrop-filter` chain. No new opaque full-bleed layers; any new
+  overlay/dialog (Q3 PasteGuardDialog included) uses the existing glass
+  dialog surfaces. `pnpm verify:renderer:transparency` and
+  `pnpm verify:ui:glass-legibility` must stay untouched-green after every
+  phase. Note: transparency CANNOT be verified via CDP/Playwright — any
+  doubt is an OPERATOR GATE (OS-level visual), never a self-claim.
 - FORBIDDEN: transparency/glass token values, layout geometry redesign,
   `.bento-*` revival, renderer/paint contracts, weakening ANY existing test
   or verifier (`verify-terminal-density-contract`, font-render, glass
@@ -247,7 +257,8 @@ Result instead.
 - `cargo test --lib` green (Q2/Q9 only phases touching Rust).
 - `pnpm verify:ui:trust --enforce` green; `verify:terminal:density`,
   `verify:ui:glass-legibility`, `verify:right-rail-density`,
-  `verify:terminal:font-render` all untouched-green.
+  `verify:terminal:font-render`, `verify:renderer:transparency` all
+  untouched-green.
 - `pnpm verify:goal:safe` completes with the new step registered and no new
   implementation-fixable blockers introduced by this WU.
 - Branch pushed; `## Result` appended to THIS file: phases done with commit
@@ -258,5 +269,5 @@ Result instead.
 ## Pasteable goal for a cleared codex/opus session
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md -> ui-quality-instructions.md を順に読み、ui-quality-instructions.md の Phase Q0 から Q10 を完遂しろ（Q11 は任意）。ブランチは feat/wu-uq-1-trust-cockpit を main から切る。Q0 の trust 検証器を最初に作り、それが baseline 緑になるまで trust surface の変更をコミットするな。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。pnpm と cargo は直列実行。src-tauri の編集は Q2（イベント emit のみ）と Q9（未配線 keybindings 削除）に限定し、PTY の状態機械・プロトコル・レンダラ契約には触るな。透明感・ガラスのトークン値変更禁止、レイアウト再設計禁止、既存テスト・検証器の弱体化禁止、F12 go-to-definition の claim 禁止。file:line アンカーは 2026-07-05 時点なので編集前に Grep で再特定しろ。IME 実機確認・sidecar kill 実機観察・populated cockpit 目視・CI blocking 化は OPERATOR GATE として Result に列挙し、自分で claim するな。fleet-api-instructions.md（WU-FA-1）と同一セッションで実行するな。main への push / force push / PR 作成禁止。完了したら feature branch を push して ui-quality-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
+/goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_PRODUCT_QUALITY_AUDIT_2026-07-05.md -> ui-quality-instructions.md を順に読み、ui-quality-instructions.md の Phase Q0 から Q10 を完遂しろ（Q11 は任意）。ブランチは feat/wu-uq-1-trust-cockpit を main から切る。Q0 の trust 検証器を最初に作り、それが baseline 緑になるまで trust surface の変更をコミットするな。1フェーズ=1コミット、明示 stage、各フェーズのゲート緑を確認してから次へ。pnpm と cargo は直列実行。src-tauri の編集は Q2（イベント emit のみ）と Q9（未配線 keybindings 削除）に限定し、PTY の状態機械・プロトコル・レンダラ契約には触るな。**透過ウィンドウは絶対（owner law）**: DWM material / per-pixel see-through 経路・window background alpha・glass alpha トークン・backdrop-filter に一切触るな、新規オーバーレイは既存 glass dialog surface を使え、各フェーズ後に verify:renderer:transparency と verify:ui:glass-legibility が untouched-green であることを確認しろ、透過は CDP では検証不可なので疑義があれば OPERATOR GATE に回せ。透明感・ガラスのトークン値変更禁止、レイアウト再設計禁止、既存テスト・検証器の弱体化禁止、F12 go-to-definition の claim 禁止。file:line アンカーは 2026-07-05 時点なので編集前に Grep で再特定しろ。IME 実機確認・sidecar kill 実機観察・populated cockpit 目視・CI blocking 化は OPERATOR GATE として Result に列挙し、自分で claim するな。fleet-api-instructions.md（WU-FA-1）と同一セッションで実行するな。main への push / force push / PR 作成禁止。完了したら feature branch を push して ui-quality-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
 ```
