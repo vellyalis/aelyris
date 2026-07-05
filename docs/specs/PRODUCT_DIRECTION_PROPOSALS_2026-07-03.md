@@ -278,3 +278,13 @@ GUI equivalent of herdr's agent recipes; shareable as JSON in-repo.
 Everything above follows the standing rules: one work unit = one branch,
 verifier before claim, no weakening of existing gates, owner decides `DECIDE:`
 items before implementation starts.
+
+**Granularity rule (added 2026-07-06):** ledger items exist at three depths —
+zero-inference (code-anchored §-detailed-design + pasteable /goal, e.g.
+WU-UQ-1 Q0–Q3), work-order-ready (phased instructions, judgment calls
+flagged), and spec/design-only (e.g. Remote Continuity RC1–RC7, Proofbook
+UI). Do NOT pre-deepen future items: file:line anchors rot as main moves.
+Instead, when an item is selected for execution, run one deepening pass
+first (re-verify anchors against current main, pin exact wiring, add/refresh
+the instructions file + /goal packet — the WU-UQ-1 §3.5 pattern), then
+execute.
