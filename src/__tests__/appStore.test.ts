@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import {
+  DEFAULT_RIGHT_PANEL_WIDTH,
   sanitizeTerminalRendererMode,
   sanitizeThemeOverrides,
   type TerminalRendererMode,
@@ -51,6 +52,7 @@ beforeEach(() => {
     fallbackTelemetryEvents: [],
     moodPresetId: DEFAULT_MOOD_PRESET,
     appWindowOpacity: 0.95,
+    zenMode: false,
     moodMaterialOverrides: {},
     wallpaperSettingsByMood: {
       "aelyris-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
@@ -107,6 +109,15 @@ describe("appStore — UI visibility", () => {
     setSettingsVisible(true);
     expect(useAppStore.getState().paletteVisible).toBe(true);
     expect(useAppStore.getState().settingsVisible).toBe(true);
+  });
+
+  it("toggles zenMode without changing persisted sidebar state", () => {
+    const { setZenMode } = useAppStore.getState();
+    setZenMode(true);
+    expect(useAppStore.getState().zenMode).toBe(true);
+    setZenMode((prev) => !prev);
+    expect(useAppStore.getState().zenMode).toBe(false);
+    expect(localStorage.getItem("aelyris:sidebarCollapsed")).toBeNull();
   });
 });
 
@@ -481,7 +492,7 @@ describe("appStore — panel widths", () => {
     } catch {
       /* ignore */
     }
-    useAppStore.setState({ sidebarWidth: 240, rightPanelWidth: 320 });
+    useAppStore.setState({ sidebarWidth: 240, rightPanelWidth: DEFAULT_RIGHT_PANEL_WIDTH });
   });
 
   it("clamps sidebarWidth to [200, 480]", () => {
@@ -508,6 +519,11 @@ describe("appStore — panel widths", () => {
     expect(useAppStore.getState().rightPanelWidth).toBe(480);
     setRightPanelWidth(360);
     expect(useAppStore.getState().rightPanelWidth).toBe(360);
+  });
+
+  it("keeps the default right panel width compact", () => {
+    expect(DEFAULT_RIGHT_PANEL_WIDTH).toBe(280);
+    expect(useAppStore.getState().rightPanelWidth).toBe(DEFAULT_RIGHT_PANEL_WIDTH);
   });
 
   it("persists rightPanelWidth to localStorage", () => {

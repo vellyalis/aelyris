@@ -172,6 +172,14 @@ describe("TerminalInfoBar — exit status dot", () => {
     expect(onToggleSync).toHaveBeenCalledTimes(1);
   });
 
+  it("runs the snapshot bookmark action from the pane header", () => {
+    const onMarkSnapshot = vi.fn();
+    render(<TerminalInfoBar shell="pwsh" terminalId={null} onMarkSnapshot={onMarkSnapshot} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Bookmark current terminal state" }));
+    expect(onMarkSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it("does not duplicate global branch metadata inside each terminal pane bar", () => {
     render(<TerminalInfoBar shell="pwsh" terminalId={null} branch="feature/noise" cwd="C:/repo" />);
 

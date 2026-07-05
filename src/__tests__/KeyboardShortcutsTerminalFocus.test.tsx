@@ -104,4 +104,20 @@ describe("useKeyboardShortcuts terminal focus", () => {
       native.remove();
     }
   });
+
+  it("toggles Zen mode with Ctrl+Shift+M", () => {
+    const setZenMode = vi.fn();
+    const { unmount } = renderHook(() => useKeyboardShortcuts({ ...baseOptions(), setZenMode }));
+
+    try {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "M", ctrlKey: true, shiftKey: true, bubbles: true }));
+
+      expect(setZenMode).toHaveBeenCalledWith(expect.any(Function));
+      const toggle = setZenMode.mock.calls[0][0] as (prev: boolean) => boolean;
+      expect(toggle(false)).toBe(true);
+      expect(toggle(true)).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
 });

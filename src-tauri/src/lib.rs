@@ -28,6 +28,7 @@ pub mod mux;
 pub mod orchestrator;
 pub mod persistence;
 pub mod process;
+pub mod proofbook;
 pub mod pty;
 pub mod pty_sidecar;
 pub mod review;
@@ -204,6 +205,7 @@ pub fn run() {
         .manage(pty::PaneRegistry::new())
         .manage(ipc::FsWatcherRegistry::new())
         .manage(workflow::WorkflowExecutor::new())
+        .manage(proofbook::ProofbookRunner::new())
         .manage(lsp::LspManager::new(lsp_tx))
         .manage(std::sync::Arc::new(term::NativeTerminalRegistry::new()))
         .manage(std::sync::Arc::new(term::CommandBlockJournal::new()))
@@ -968,6 +970,7 @@ pub fn run() {
                     .state::<std::sync::Arc<knowledge_graph::KnowledgeGraphManager>>()
                     .inner()
                     .clone();
+                let proofbook_runner = app.state::<proofbook::ProofbookRunner>().inner().clone();
                 // P4: give the MCP face its own connection to the same db file so
                 // the autonomous loop persists escalations durably (WAL +
                 // busy_timeout make the extra writer safe). A failed open degrades
@@ -990,6 +993,7 @@ pub fn run() {
                     .with_context_store(context_store)
                     .with_intent_bus(intent_bus)
                     .with_knowledge_graph(knowledge_graph)
+                    .with_proofbook_runner(proofbook_runner)
                     // P0-4: the API face shares the SAME gate instance managed above, so the
                     // approval registry + line accumulator + audit sink are unified across the
                     // REST/WS/MCP and local IPC surfaces.
@@ -1190,6 +1194,14 @@ pub fn run() {
             ipc::workflow_status,
             ipc::list_running_workflows,
             ipc::workflow_remove,
+            // Proofbook (PB-2: local runner/ledger; MCP verbs remain future PB-3)
+            ipc::list_proofbooks,
+            ipc::validate_proofbook,
+            ipc::start_proofbook_run,
+            ipc::proofbook_run_status,
+            ipc::list_proofbook_runs,
+            ipc::cancel_proofbook_run,
+            ipc::resolve_proofbook_manual_gate,
             // Agent session persistence
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,

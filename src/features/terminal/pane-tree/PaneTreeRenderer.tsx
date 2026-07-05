@@ -105,6 +105,7 @@ export function PaneTreeRenderer({
 }: PaneTreeRendererProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const terminalTextClarity = useAppStore((s) => s.terminalTextClarity);
+  const [snapshotMarkHandlers, setSnapshotMarkHandlers] = useState<Map<string, () => void>>(new Map());
 
   // Accumulate all leaves ever seen (never remove — React handles unmount via key removal)
   const leavesRef = useRef(new Map<string, LeafInfo>());
@@ -115,6 +116,29 @@ export function PaneTreeRenderer({
   // PTY on restore, losing the previous shell/CLI state.
   const initializedRef = useRef(new Set<string>());
   const currentLeaves = useMemo(() => collectLeaves(tree), [tree]);
+  const registerSnapshotMarkHandler = useCallback((paneId: string, handler: (() => void) | null) => {
+    setSnapshotMarkHandlers((prev) => {
+      const current = prev.get(paneId);
+      if (current === handler || (!current && !handler)) return prev;
+      const next = new Map(prev);
+      if (handler) next.set(paneId, handler);
+      else next.delete(paneId);
+      return next;
+    });
+  }, []);
+  const snapshotMarkHandlerChangeCache = useRef(new Map<string, (handler: (() => void) | null) => void>());
+  const getSnapshotMarkHandlerChange = useCallback(
+    (id: string) => {
+      const cache = snapshotMarkHandlerChangeCache.current;
+      let cb = cache.get(id);
+      if (!cb) {
+        cb = (handler: (() => void) | null) => registerSnapshotMarkHandler(id, handler);
+        cache.set(id, cb);
+      }
+      return cb;
+    },
+    [registerSnapshotMarkHandler],
+  );
 
   // Update the accumulated leaf map
   const currentIds = new Set<string>();
@@ -212,6 +236,10 @@ export function PaneTreeRenderer({
     const cache = slotRefCache.current;
     for (const id of cache.keys()) {
       if (!currentIds.has(id)) cache.delete(id);
+    }
+    const snapshotHandlerCache = snapshotMarkHandlerChangeCache.current;
+    for (const id of snapshotHandlerCache.keys()) {
+      if (!currentIds.has(id)) snapshotHandlerCache.delete(id);
     }
   });
 
@@ -355,13 +383,16 @@ export function PaneTreeRenderer({
         // live identity so the pane reads as a fleet member, not a blank shell.
         const agent = agentMeta?.get(terminalId ?? leaf.id);
         const endedLifecycle = lifecycle === "detached" || lifecycle === "exited" || lifecycle === "crashed";
+        const shouldRecoverDetachedLonePane =
+          lifecycle === "detached" && !terminalId && currentLeaves.length === 1 && terminalIds.size === 0;
         const shouldSuspendForLeaf = suspendTerminalMounts && lifecycle !== "starting" && lifecycle !== "restarting";
         // A finished AGENT pane keeps its terminal mounted (not the "Ended pane"
         // placeholder) so claude's final output stays visible — the fleet persists
         // for review instead of vanishing the moment the agent exits.
-        const shouldHoldForAttach = endedLifecycle && (!agent || !terminalId);
+        const shouldHoldForAttach = endedLifecycle && !shouldRecoverDetachedLonePane && (!agent || !terminalId);
         const shouldMount =
           !shouldSuspendForLeaf && !shouldHoldForAttach && (hasRealSize || initializedRef.current.has(leaf.id));
+        const shouldShowPaneHeader = !maximizedPaneId || isMaximized;
 
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: the terminal mount itself claims focus without changing keyboard semantics.
@@ -385,26 +416,29 @@ export function PaneTreeRenderer({
             }
             onMouseDown={() => onFocusPane(leaf.id)}
           >
-            <TerminalInfoBar
-              shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
-              cwd={leaf.cwd}
-              terminalId={terminalId}
-              shortId={terminalId ? terminalShortIds?.get(terminalId) : undefined}
-              paneTitle={leaf.title}
-              paneRole={leaf.role}
-              activeAgent={agent ? { model: agent.model, status: agent.status } : null}
-              isActive={isActive}
-              isMaximized={isMaximized}
-              onRenamePane={(title) => onRenamePane(leaf.id, title)}
-              onCyclePaneRole={() => onCyclePaneRole(leaf.id)}
-              onSetPaneRole={(role) => onSetPaneRole(leaf.id, role)}
-              onSplitRight={() => onSplit(leaf.id, "right")}
-              onSplitDown={() => onSplit(leaf.id, "down")}
-              syncMode={synchronizedPanes}
-              onToggleSync={() => onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on")}
-              onToggleMaximize={() => onToggleMaximize(leaf.id)}
-              onClose={canClose ? () => onClose(leaf.id) : undefined}
-            />
+            {shouldShowPaneHeader && (
+              <TerminalInfoBar
+                shell={SHELL_LABELS[leaf.shell] ?? leaf.shell}
+                cwd={leaf.cwd}
+                terminalId={terminalId}
+                shortId={terminalId ? terminalShortIds?.get(terminalId) : undefined}
+                paneTitle={leaf.title}
+                paneRole={leaf.role}
+                activeAgent={agent ? { model: agent.model, status: agent.status } : null}
+                isActive={isActive}
+                isMaximized={isMaximized}
+                onRenamePane={(title) => onRenamePane(leaf.id, title)}
+                onCyclePaneRole={() => onCyclePaneRole(leaf.id)}
+                onSetPaneRole={(role) => onSetPaneRole(leaf.id, role)}
+                onSplitRight={() => onSplit(leaf.id, "right")}
+                onSplitDown={() => onSplit(leaf.id, "down")}
+                syncMode={synchronizedPanes}
+                onToggleSync={() => onLayoutCommand?.(synchronizedPanes ? "sync-panes-off" : "sync-panes-on")}
+                onMarkSnapshot={snapshotMarkHandlers.get(leaf.id)}
+                onToggleMaximize={() => onToggleMaximize(leaf.id)}
+                onClose={canClose ? () => onClose(leaf.id) : undefined}
+              />
+            )}
             {shouldMount ? (
               <NativeTerminalArea
                 shell={leaf.shell as ShellKind}
@@ -413,6 +447,7 @@ export function PaneTreeRenderer({
                 onTerminalReady={(tid) => onTerminalReady(leaf.id, tid)}
                 onLifecycleChange={(lifecycle) => onPaneLifecycleChange?.(leaf.id, lifecycle)}
                 restartRequest={restartPaneRequest?.paneId === leaf.id ? restartPaneRequest : null}
+                onSnapshotMarkHandlerChange={getSnapshotMarkHandlerChange(leaf.id)}
               />
             ) : shouldHoldForAttach ? (
               <div className={styles.lifecyclePlaceholder} data-lifecycle={lifecycle}>

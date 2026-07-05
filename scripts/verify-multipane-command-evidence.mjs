@@ -248,7 +248,12 @@ async function submitLongCommand(page, terminalId, label) {
   if (block.status !== "passed") throw new Error(`Command block did not pass for ${marker}: ${JSON.stringify(block)}`);
   if (block.exitCode !== 0)
     throw new Error(`Command block exit code was not 0 for ${marker}: ${JSON.stringify(block)}`);
-  if (typeof block.endSequence !== "number" || typeof block.endHistorySize !== "number") {
+  if (
+    typeof block.commandSequence !== "number" ||
+    typeof block.commandHistorySize !== "number" ||
+    typeof block.endSequence !== "number" ||
+    typeof block.endHistorySize !== "number"
+  ) {
     throw new Error(`Command block missing end anchors for ${marker}: ${JSON.stringify(block)}`);
   }
   const history = await waitForHistoryContains(page, terminalId, `${marker}_1`);
@@ -321,7 +326,12 @@ async function main() {
     }
     const baseAfterClose = await waitForCommandBlock(page, baseTerminalId, report.checks.base.marker);
     report.checks.baseAfterClose = baseAfterClose.block ?? null;
-    if (baseAfterClose.block?.status !== "passed" || typeof baseAfterClose.block?.endHistorySize !== "number") {
+    if (
+      baseAfterClose.block?.status !== "passed" ||
+      typeof baseAfterClose.block?.commandSequence !== "number" ||
+      typeof baseAfterClose.block?.commandHistorySize !== "number" ||
+      typeof baseAfterClose.block?.endHistorySize !== "number"
+    ) {
       throw new Error(`Base command evidence did not survive split close: ${JSON.stringify(baseAfterClose.block)}`);
     }
 

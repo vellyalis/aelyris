@@ -592,9 +592,10 @@ function drawCommands(context: TerminalGpuPaintContext) {
   }
 
   const { textureProgram } = context;
+  const bindProgram = gl.useProgram.bind(gl);
   for (const command of batched) {
     if (command.kind === "rect") {
-      gl.useProgram(rectProgram.program);
+      bindProgram(rectProgram.program);
       gl.uniform2f(rectProgram.uniforms.u_resolution, context.width, context.height);
       gl.bindBuffer(gl.ARRAY_BUFFER, rectBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(command.vertices), gl.STREAM_DRAW);
@@ -613,7 +614,7 @@ function drawCommands(context: TerminalGpuPaintContext) {
       gl.drawArrays(gl.TRIANGLES, 0, command.vertices.length / 6);
       continue;
     }
-    gl.useProgram(textureProgram.program);
+    bindProgram(textureProgram.program);
     gl.uniform2f(textureProgram.uniforms.u_resolution, context.width, context.height);
     gl.uniform1i(textureProgram.uniforms.u_texture, 0);
     gl.uniform1i(textureProgram.uniforms.u_mask, command.mask ? 1 : 0);

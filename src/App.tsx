@@ -277,6 +277,7 @@ import { deriveRightRailWorkforceSummary, type WorkforceGuardrailProfile } from 
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { isTauriRuntime } from "./shared/lib/tauriRuntime";
 import {
+  DEFAULT_RIGHT_PANEL_WIDTH,
   sanitizeDefaultShell,
   sanitizeTerminalCursorStyle,
   sanitizeWindowEffect,
@@ -345,6 +346,8 @@ export function App() {
     setSidebarWidth,
     rightPanelWidth,
     setRightPanelWidth,
+    zenMode,
+    setZenMode,
     paletteVisible,
     setPaletteVisible,
     settingsVisible,
@@ -1845,8 +1848,8 @@ export function App() {
       setRootProjectPath(devVisualQa.projectPath);
     }
     setRightRailMode(devVisualQa.railMode);
-    if (rightPanelWidth < 340) {
-      setRightPanelWidth(340);
+    if (rightPanelWidth < DEFAULT_RIGHT_PANEL_WIDTH) {
+      setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH);
     }
   }, [
     devVisualQa.enabled,
@@ -2396,6 +2399,7 @@ export function App() {
     focusPreviousPane: () => focusAdjacentPane(-1),
     setHelpVisible,
     setSidebarCollapsed,
+    setZenMode,
   });
 
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
@@ -2598,6 +2602,7 @@ export function App() {
     setWebInspectorVisible,
     setPrInspectorVisible,
     setMergeQueueVisible,
+    setZenMode,
   });
 
   // ── Render ──
@@ -3072,7 +3077,11 @@ export function App() {
     return (
       <TooltipProvider>
         <ToastProvider>
-          <div className="app-container" data-density={workspaceProfile.visualDensity}>
+          <div
+            className="app-container"
+            data-density={workspaceProfile.visualDensity}
+            data-zen-mode={zenMode ? "true" : "false"}
+          >
             <Suspense fallback={null}>
               <WelcomeScreen onOpenProject={handleOpenProject} onOpenSettings={() => setSettingsVisible(true)} />
             </Suspense>
@@ -3169,55 +3178,63 @@ export function App() {
   return (
     <TooltipProvider>
       <ToastProvider>
-        <div className="app-container" data-density={workspaceProfile.visualDensity}>
+        <div
+          className="app-container"
+          data-density={workspaceProfile.visualDensity}
+          data-zen-mode={zenMode ? "true" : "false"}
+        >
           <UpdateBanner />
-          <ProjectHeaderBar
-            projectName={projectName}
-            branch={branch}
-            changedCount={changedFiles.length}
-            status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
-            activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
-            onOpenSettings={() => setSettingsVisible(true)}
-            onRefresh={handleRefresh}
-            menus={menus}
-            sidebarCollapsed={sidebarCollapsed}
-            onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-          />
+          {!zenMode && (
+            <ProjectHeaderBar
+              projectName={projectName}
+              branch={branch}
+              changedCount={changedFiles.length}
+              status={headerStatus as "idle" | "edit" | "thinking" | "error" | "waiting" | "done"}
+              activeAgent={activeAgent ? { model: activeAgent.model, cost: activeAgent.cost } : null}
+              onOpenSettings={() => setSettingsVisible(true)}
+              onRefresh={handleRefresh}
+              menus={menus}
+              sidebarCollapsed={sidebarCollapsed}
+              onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+            />
+          )}
 
           <main className="app-main">
-            <nav className="mode-rail" aria-label={`${PRODUCT_NAME} mode rail`} data-active-mode={productMode}>
-              <div className="mode-rail-brand" aria-hidden="true">
-                {PRODUCT_NAME[0]}
-              </div>
-              <div className="mode-rail-list">
-                {PRODUCT_MODE_RAIL.map((mode) => {
-                  const Icon = mode.icon;
-                  const active = productMode === mode.id;
-                  return (
-                    <button
-                      key={mode.id}
-                      type="button"
-                      className="mode-rail-button"
-                      data-active={active ? "true" : "false"}
-                      data-product-mode={mode.id}
-                      aria-pressed={active}
-                      aria-label={`${mode.label}. ${mode.description} ${mode.shortcut}`}
-                      title={`${mode.shortcut} - ${mode.description}`}
-                      onClick={() => handleProductModeSelect(mode.id)}
-                    >
-                      <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
-                      <span className="mode-rail-label">{mode.label}</span>
-                      <span className="mode-rail-shortcut">{mode.shortcut.replace("Alt+", "")}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </nav>
+            {!zenMode && (
+              <nav className="mode-rail" aria-label={`${PRODUCT_NAME} mode rail`} data-active-mode={productMode}>
+                <div className="mode-rail-brand" aria-hidden="true">
+                  {PRODUCT_NAME[0]}
+                </div>
+                <div className="mode-rail-list">
+                  {PRODUCT_MODE_RAIL.map((mode) => {
+                    const Icon = mode.icon;
+                    const active = productMode === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        className="mode-rail-button"
+                        data-active={active ? "true" : "false"}
+                        data-product-mode={mode.id}
+                        aria-pressed={active}
+                        aria-label={`${mode.label}. ${mode.description} ${mode.shortcut}`}
+                        title={`${mode.shortcut} - ${mode.description}`}
+                        onClick={() => handleProductModeSelect(mode.id)}
+                      >
+                        <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
+                        <span className="mode-rail-label">{mode.label}</span>
+                        <span className="mode-rail-shortcut">{mode.shortcut.replace("Alt+", "")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </nav>
+            )}
             <nav
-              className={`left-panel${sidebarCollapsed ? " left-panel-collapsed" : ""}`}
+              className={`left-panel${sidebarCollapsed || zenMode ? " left-panel-collapsed" : ""}`}
               aria-label="Project sidebar"
-              data-collapsed={sidebarCollapsed}
-              style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
+              data-collapsed={sidebarCollapsed || zenMode}
+              style={sidebarCollapsed || zenMode ? undefined : { width: `${sidebarWidth}px` }}
             >
               <CollapsibleSection storageKey="files" title="Files" defaultOpen>
                 <ErrorBoundary>
@@ -3334,9 +3351,10 @@ export function App() {
             <aside
               className="right-panel"
               aria-label="Contextual inspector"
+              data-zen-hidden={zenMode ? "true" : undefined}
               /* `flex-basis` (not `width`) is what flex layout reads as
                * the preferred size. Setting only `width` left the
-               * computed width at the CSS default (320 px) on Chromium
+               * computed width at the CSS default (280 px) on Chromium
                * even with `flex-shrink: 0`, because `flex-basis: auto`
                * resolved against the *original* declared width rather
                * than re-resolving on inline-style change. Driving

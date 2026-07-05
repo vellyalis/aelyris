@@ -362,7 +362,10 @@ const checks = [
       nativeInput.includes("native_paste_guard_event_count") &&
       commands.includes("native_terminal_input_commit") &&
       commands.includes("commit_native_terminal_input(&app, host, terminal_id, data, source).await") &&
-      commands.includes('"native-input-surface".to_string()') &&
+      commands.includes("let Some((terminal_id, text, source)) = drained else") &&
+      commands.includes("commit_native_terminal_input(&app, host, terminal_id, text, source).await") &&
+      commands.includes('"native-clipboard-paste"') &&
+      commands.includes("GateMode::HoldUntilApproved") &&
       commands.includes("terminal_write_async(app, &terminal_id, &bytes)") &&
       commands.includes("native_input_rejected") &&
       lib.includes("ipc::native_terminal_input_commit"),

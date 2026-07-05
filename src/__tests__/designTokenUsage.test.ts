@@ -260,6 +260,10 @@ describe("design token usage", () => {
     const collapsible =
       Object.entries(cssSources).find(([file]) => file.includes("shared/ui/CollapsibleSection.module.css"))?.[1] ?? "";
 
+    const modeRailRule = global.match(/\.mode-rail\s*{[\s\S]*?}/)?.[0] ?? "";
+    const modeRailButtonRule = global.match(/\.mode-rail-button\s*{[\s\S]*?}/)?.[0] ?? "";
+    const modeRailLabelRule = global.match(/\.mode-rail-label\s*{[\s\S]*?}/)?.[0] ?? "";
+    const modeRailShortcutRule = [...global.matchAll(/\n\.mode-rail-shortcut\s*{[\s\S]*?}/g)].at(-1)?.[0] ?? "";
     const rightPanelRule = global.match(/\.right-panel\s*{[\s\S]*?}/)?.[0] ?? "";
     const rightPanelContentRule = global.match(/\.right-panel-content\s*{[\s\S]*?}/)?.[0] ?? "";
     const rightModeSwitchRule = global.match(/\.right-panel-mode-switch\s*{[\s\S]*?}/)?.[0] ?? "";
@@ -325,6 +329,14 @@ describe("design token usage", () => {
     const ledgerRowRule = ledger.match(/\.row\s*{[\s\S]*?}/)?.[0] ?? "";
     const ledgerMedia = ledger.match(/@container \(max-width: 330px\)\s*{[\s\S]*?}/)?.[0] ?? "";
 
+    expect(modeRailRule).toContain("width: 48px");
+    expect(modeRailRule).toContain("min-width: 48px");
+    expect(modeRailRule).toContain("max-width: 48px");
+    expect(modeRailButtonRule).toContain("grid-template-rows: 1fr");
+    expect(modeRailButtonRule).toContain("min-height: 36px");
+    expect(modeRailLabelRule).toContain("display: none");
+    expect(modeRailShortcutRule).toContain("display: none");
+    expect(rightPanelRule).toContain("width: 280px");
     expect(rightPanelRule).toContain("overflow-y: hidden");
     expect(rightPanelContentRule).toContain("overflow-x: hidden");
     expect(rightPanelContentRule).toContain("overflow-y: auto");
@@ -361,7 +373,7 @@ describe("design token usage", () => {
     expect(global).toContain("@container (max-width: 330px)");
     expect(global).toContain("@media (max-width: 860px)");
     expect(global).toContain("@media (max-width: 720px)");
-    expect(global).toContain("width: clamp(280px, 42vw, 320px) !important");
+    expect(global).toContain("width: clamp(260px, 36vw, 280px) !important");
     expect(global).toContain("flex-basis: clamp(224px, 38vw, 240px) !important");
     expect(global).toContain("width: clamp(224px, 38vw, 240px) !important");
     expect(advisorTargetRule).toContain("text-overflow: ellipsis");
@@ -525,17 +537,29 @@ describe("design token usage", () => {
     expect(combined).not.toContain("blur(20px)");
   });
 
-  it("keeps terminal shell gutters narrow so the canvas does not look pasted on", () => {
+  it("keeps terminal shell gutters collapsed while preserving the active focus ring", () => {
     const entry = Object.entries(cssSources).find(([file]) =>
       file.includes("features/terminal/pane-tree/PaneTreeRenderer.module.css"),
     );
+    const terminalAreaEntry = Object.entries(cssSources).find(([file]) =>
+      file.includes("features/terminal/TerminalArea.module.css"),
+    );
     expect(entry).toBeDefined();
+    expect(terminalAreaEntry).toBeDefined();
     const source = entry?.[1] ?? "";
+    const terminalAreaSource = terminalAreaEntry?.[1] ?? "";
     const mountRule = source.match(/\.terminalMount\s*{[\s\S]*?}/)?.[0] ?? "";
+    const activeMountRule = source.match(/\.terminalMount\[data-active="true"\]\s*{[\s\S]*?}/)?.[0] ?? "";
+    const terminalAreaRule = terminalAreaSource.match(/\.terminalArea\s*{[\s\S]*?}/)?.[0] ?? "";
+    const viewportRule = terminalAreaSource.match(/\.terminalViewport\s*{[\s\S]*?}/)?.[0] ?? "";
 
-    expect(mountRule).toContain("gap: var(--space-1)");
-    expect(mountRule).toContain("padding: var(--space-1)");
+    expect(mountRule).toContain("gap: var(--terminal-chrome-gap)");
+    expect(mountRule).toContain("padding: var(--terminal-chrome-mount-padding)");
     expect(mountRule).not.toContain("padding: var(--space-2)");
+    expect(activeMountRule).toContain("inset 0 0 0 1px");
+    expect(terminalAreaRule).toContain("padding: var(--terminal-chrome-area-padding)");
+    expect(viewportRule).toContain("padding: var(--terminal-canvas-gutter)");
+    expect(viewportRule).toContain("align-items: center");
   });
 
   it("keeps terminal water effects free of generated-looking screen glints", () => {
@@ -688,7 +712,7 @@ describe("design token usage", () => {
     expect(src).not.toContain("GitBranch");
     expect(src).not.toContain("styles.branch");
     expect(cssSource).not.toContain(".branch");
-    expect(barRule).toContain("min-height: 22px");
+    expect(barRule).toContain("min-height: var(--terminal-chrome-header-height)");
     expect(shellRule).toContain("background: transparent");
     expect(shellRule).toContain("box-shadow: none");
   });

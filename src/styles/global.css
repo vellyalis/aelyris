@@ -106,15 +106,18 @@
    * sakura (light) uses a WHITE wash so the light theme is lifted, never
    * darkened. Per-mood values live in moods/surfaces.ts; these :root defaults
    * back aelyris-dark / browser preview. */
-  --chrome-legibility-scrim:
-    linear-gradient(180deg, rgba(3, 9, 16, 0.46), rgba(3, 9, 16, 0.4) 60%, rgba(3, 9, 16, 0.5));
+  --chrome-legibility-scrim: linear-gradient(
+    180deg,
+    rgba(3, 9, 16, 0.46),
+    rgba(3, 9, 16, 0.4) 60%,
+    rgba(3, 9, 16, 0.5)
+  );
   --statusbar-legibility-scrim: linear-gradient(180deg, rgba(3, 9, 16, 0.5), rgba(3, 9, 16, 0.56));
 
   --chrome-frame-bg:
     linear-gradient(180deg, rgba(119, 211, 236, 0.014), transparent 72%),
     linear-gradient(90deg, rgba(80, 184, 220, 0.018), transparent 34%, transparent 66%, rgba(150, 221, 235, 0.008)),
-    var(--chrome-legibility-scrim),
-    var(--glass-frame);
+    var(--chrome-legibility-scrim), var(--glass-frame);
   --chrome-frame-filter: blur(16px) saturate(1.14) brightness(0.66) contrast(1.12);
   --chrome-frame-shadow: inset 0 1px 0 rgba(140, 220, 238, 0.032), inset 0 -1px 0 rgba(69, 152, 190, 0.026);
   --chrome-control-hover-bg: rgba(76, 184, 220, 0.04);
@@ -499,6 +502,13 @@
   --density-panel-gap: var(--space-5);
   --density-panel-padding: var(--space-5);
   --density-widget-gap: var(--space-4);
+  --terminal-chrome-header-height: 18px;
+  --terminal-chrome-timeline-height: 24px;
+  --terminal-chrome-ime-height: 30px;
+  --terminal-canvas-gutter: 4px;
+  --terminal-chrome-gap: var(--space-1);
+  --terminal-chrome-mount-padding: 0;
+  --terminal-chrome-area-padding: 0;
   --density-row-h-dense: var(--row-h-dense);
   --density-row-h-standard: var(--row-h-standard);
   --density-row-h-comfortable: var(--row-h-comfortable);
@@ -900,6 +910,13 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   --density-panel-gap: 12px;
   --density-panel-padding: 12px;
   --density-widget-gap: 10px;
+  --terminal-chrome-header-height: 18px;
+  --terminal-chrome-timeline-height: 24px;
+  --terminal-chrome-ime-height: 30px;
+  --terminal-canvas-gutter: 4px;
+  --terminal-chrome-gap: var(--space-1);
+  --terminal-chrome-mount-padding: 0;
+  --terminal-chrome-area-padding: 0;
   --space-2: 5px;
   --space-3: 7px;
   --space-4: 10px;
@@ -920,14 +937,28 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   --density-panel-gap: var(--space-5);
   --density-panel-padding: var(--space-5);
   --density-widget-gap: var(--space-4);
+  --terminal-chrome-header-height: 18px;
+  --terminal-chrome-timeline-height: 24px;
+  --terminal-chrome-ime-height: 30px;
+  --terminal-canvas-gutter: 4px;
+  --terminal-chrome-gap: var(--space-1);
+  --terminal-chrome-mount-padding: 0;
+  --terminal-chrome-area-padding: 0;
 }
 
 .app-container[data-density="dense"] {
   --density-mode: dense;
   --density-rail-inset: 6px;
-  --density-panel-gap: 8px;
-  --density-panel-padding: 8px;
-  --density-widget-gap: 6px;
+  --density-panel-gap: 4px;
+  --density-panel-padding: 4px;
+  --density-widget-gap: 5px;
+  --terminal-chrome-header-height: 18px;
+  --terminal-chrome-timeline-height: 24px;
+  --terminal-chrome-ime-height: 30px;
+  --terminal-canvas-gutter: 4px;
+  --terminal-chrome-gap: var(--space-1);
+  --terminal-chrome-mount-padding: 0;
+  --terminal-chrome-area-padding: 0;
   --space-2: 3px;
   --space-3: 5px;
   --space-4: 6px;
@@ -973,27 +1004,21 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .mode-rail {
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
-  padding: 8px 6px;
+  gap: 6px;
+  padding: 6px 4px;
   border-radius: var(--radius);
-  /* The mode-rail is a text-bearing chrome surface (icon + 9px label). It used
-   * to sit on the bare mood panel glass with only a blur(8px) frost and no
-   * scrim, so the bright wallpaper leaked through and the muted labels
-   * (Agents / Works / Review / Git / Context) measured ~4.1:1 with hot spots
-   * far worse. Composite the same legibility scrim used by the file-tree panel
-   * and adopt the harder panel frost so the rail labels clear AA regardless of
-   * the wallpaper region behind them. */
+  /* The mode rail is icon-only at rest, but still needs the same legibility
+   * scrim as the file tree because icons sit over a frosted wallpaper region. */
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 58%),
-    var(--panel-text-scrim),
-    var(--mood-left-panel-bg);
+    var(--panel-text-scrim), var(--mood-left-panel-bg);
   backdrop-filter: var(--panel-legibility-filter);
   -webkit-backdrop-filter: var(--panel-legibility-filter);
   box-shadow:
@@ -1003,7 +1028,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .mode-rail-brand {
-  height: 28px;
+  height: 26px;
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
@@ -1018,19 +1043,19 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 .mode-rail-list {
   min-height: 0;
   display: grid;
-  grid-template-rows: repeat(8, minmax(44px, 1fr));
-  gap: 5px;
+  grid-template-rows: repeat(8, minmax(36px, 1fr));
+  gap: 4px;
 }
 
 .mode-rail-button {
   position: relative;
   min-width: 0;
-  min-height: 44px;
+  min-height: 36px;
   display: grid;
-  grid-template-rows: 17px minmax(0, 1fr);
+  grid-template-rows: 1fr;
   place-items: center;
-  gap: 2px;
-  padding: 5px 3px;
+  gap: 0;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1073,6 +1098,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .mode-rail-label {
+  display: none;
   color: currentColor;
   font-size: 10px;
   font-weight: var(--weight-semibold);
@@ -1080,12 +1106,12 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .mode-rail-shortcut {
+  display: none;
   position: absolute;
   top: 2px;
   right: 3px;
   min-width: 13px;
   height: 13px;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-pill);
@@ -1247,7 +1273,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   /* Width is driven by inline `style` (Zustand `rightPanelWidth`).
    * The default applies before the user touches the drag handle;
    * the JS clamp keeps the live value within [260, 480]. */
-  width: 320px;
+  width: 280px;
   min-width: 260px;
   max-width: 480px;
   box-sizing: border-box;
@@ -1269,6 +1295,10 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   overflow-y: hidden;
   overflow-x: hidden;
   transition: width 120ms var(--ease-silk, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.right-panel[data-zen-hidden="true"] {
+  display: none;
 }
 
 .right-panel::before {
@@ -5333,15 +5363,15 @@ button:disabled,
  * secondary chrome for a stable centre well. */
 @media (max-width: 860px) {
   .app-main {
-    gap: var(--space-4);
-    padding: var(--space-4);
+    gap: var(--density-panel-gap);
+    padding: var(--density-panel-padding);
   }
 
   .mode-rail {
-    width: 52px;
-    min-width: 52px;
-    max-width: 52px;
-    padding-inline: 5px;
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    padding-inline: 4px;
   }
 
   .left-panel:not(.left-panel-collapsed) {
@@ -5351,9 +5381,9 @@ button:disabled,
   }
 
   .right-panel {
-    width: clamp(280px, 42vw, 320px) !important;
-    min-width: 280px;
-    max-width: 320px;
+    width: clamp(260px, 36vw, 280px) !important;
+    min-width: 260px;
+    max-width: 280px;
   }
 }
 

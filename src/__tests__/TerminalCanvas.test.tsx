@@ -125,6 +125,37 @@ describe("TerminalCanvas", () => {
     expect(canvas.parentElement?.getAttribute("data-terminal-text-clarity")).toBe("solid");
   });
 
+  it("keeps the canvas ref stable across parent rerenders", () => {
+    const onCanvasRef = vi.fn();
+    const { getByTestId, rerender } = render(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={10}
+        rows={3}
+        fontSize={14}
+        snapshotOverride={null}
+        onCanvasRef={onCanvasRef}
+      />,
+    );
+    const canvas = getByTestId("terminal-canvas") as HTMLCanvasElement;
+
+    expect(onCanvasRef).toHaveBeenCalledTimes(1);
+    expect(onCanvasRef).toHaveBeenLastCalledWith(canvas);
+
+    rerender(
+      <TerminalCanvas
+        terminalId="t1"
+        cols={10}
+        rows={3}
+        fontSize={14}
+        snapshotOverride={null}
+        onCanvasRef={onCanvasRef}
+      />,
+    );
+
+    expect(onCanvasRef).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the backing store at device-pixel ratio without CSS bitmap scaling", () => {
     const originalDpr = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
     Object.defineProperty(window, "devicePixelRatio", {
@@ -185,6 +216,7 @@ describe("TerminalCanvas", () => {
     expect(terminalCanvasSource).toContain("canvasGeometryChanged");
     expect(terminalCanvasSource).toContain("devicePixelRatio: canvasDevicePixelRatio");
     expect(terminalCanvasSource).toContain("configureTerminalCanvasText(ctx)");
+    expect(terminalCanvasSource).toContain('alignItems: "center"');
     // snapCanvasTextCoord moved into the extracted paint module; assert the
     // device-pixel snap is still wired there and that the canvas imports it.
     expect(terminalPaintSource).toContain("snapCanvasTextCoord");

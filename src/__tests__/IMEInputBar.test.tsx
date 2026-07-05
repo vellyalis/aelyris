@@ -1,5 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
+// @ts-expect-error Node types are intentionally absent from the app tsconfig.
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -16,6 +18,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
+const imeInputBarCssSource = readFileSync("src/features/terminal/IMEInputBar.module.css", "utf8");
+
 function renderBar(
   props: Partial<React.ComponentProps<typeof IMEInputBar>> & {
     ref?: React.Ref<IMEInputBarHandle>;
@@ -27,6 +31,7 @@ function renderBar(
     autoFocus: props.autoFocus,
     maxHistory: props.maxHistory,
     disabled: props.disabled,
+    collapsed: props.collapsed,
     pickAttachmentFiles: props.pickAttachmentFiles,
     saveClipboardImage: props.saveClipboardImage,
     readNativeClipboardImage: props.readNativeClipboardImage,
@@ -44,6 +49,15 @@ describe("IMEInputBar", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps compact pane footers from expanding wider than their pane", () => {
+    expect(imeInputBarCssSource).toContain("min-inline-size: 0");
+    expect(imeInputBarCssSource).toContain("width: 100%");
+    expect(imeInputBarCssSource).toContain("max-width: 100%");
+    expect(imeInputBarCssSource).toContain("container-type: inline-size");
+    expect(imeInputBarCssSource).toContain(".bar.focused .input");
+    expect(imeInputBarCssSource).toContain("@container (max-width: 220px)");
+  });
+
   it("submits the current value and \\r on Enter, then clears", () => {
     const { textarea, onSubmit } = renderBar();
     fireEvent.change(textarea, { target: { value: "echo hi" } });
@@ -56,6 +70,29 @@ describe("IMEInputBar", () => {
     const { textarea, onSubmit } = renderBar();
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledWith("\r");
+  });
+
+  it("collapses visually while keeping the textarea mounted", () => {
+    const { container, textarea } = renderBar({ collapsed: true });
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("true");
+    expect(textarea).toBeTruthy();
+  });
+
+  it("stays expanded when the parent reports the pane as focused", () => {
+    const { container } = renderBar({ collapsed: false });
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("expands on textarea focus even when the parent requests collapse", () => {
+    const { container, textarea } = renderBar({ collapsed: true });
+    fireEvent.focus(textarea);
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("expands while composing even when the parent requests collapse", () => {
+    const { container, textarea } = renderBar({ collapsed: true });
+    fireEvent.compositionStart(textarea);
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
   });
 
   it("Shift+Enter inserts a newline instead of submitting", () => {

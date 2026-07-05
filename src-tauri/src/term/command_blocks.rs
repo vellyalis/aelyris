@@ -45,9 +45,20 @@ impl CommandBlockJournal {
         command: &str,
         cwd: &str,
     ) -> Option<CommandBlockRecord> {
+        self.record_command_with_seed_mark(terminal_id, command_history_id, command, cwd, None)
+    }
+
+    pub fn record_command_with_seed_mark(
+        &self,
+        terminal_id: &str,
+        command_history_id: i64,
+        command: &str,
+        cwd: &str,
+        seed_mark: Option<PromptMark>,
+    ) -> Option<CommandBlockRecord> {
         let mut guard = self.blocks.lock().ok()?;
         let terminal_blocks = guard.entry(terminal_id.to_string()).or_default();
-        let record = CommandBlockRecord {
+        let mut record = CommandBlockRecord {
             id: format!("history-{command_history_id}"),
             terminal_id: terminal_id.to_string(),
             command_history_id,
@@ -65,6 +76,11 @@ impl CommandBlockJournal {
             output_screen_line: None,
             end_screen_line: None,
         };
+        if let Some(mark) = seed_mark.filter(|mark| mark.kind == PromptMarkKind::CommandStart) {
+            record.command_sequence = Some(mark.sequence);
+            record.command_history_size = Some(mark.history_size);
+            record.command_screen_line = Some(mark.screen_line);
+        }
         if terminal_blocks.len() >= MAX_BLOCKS_PER_TERMINAL {
             terminal_blocks.pop_front();
         }
@@ -157,6 +173,21 @@ impl CommandBlockJournal {
     }
 }
 
+pub fn latest_open_command_start_mark(marks: &[PromptMark]) -> Option<PromptMark> {
+    let latest_command_end_sequence = marks
+        .iter()
+        .rev()
+        .find(|mark| mark.kind == PromptMarkKind::CommandEnd)
+        .map(|mark| mark.sequence);
+
+    marks.iter().rev().copied().find(|mark| {
+        mark.kind == PromptMarkKind::CommandStart
+            && latest_command_end_sequence
+                .map(|end_sequence| mark.sequence > end_sequence)
+                .unwrap_or(true)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +220,72 @@ mod tests {
         assert_eq!(updated.end_sequence, Some(3));
         assert_eq!(updated.end_history_size, Some(13));
         assert_eq!(journal.recent("pty-a", 5), vec![updated]);
+    }
+
+    #[test]
+    fn command_blocks_seed_command_anchor_from_current_prompt_mark() {
+        let journal = CommandBlockJournal::new();
+        let seed = PromptMark {
+            kind: PromptMarkKind::CommandStart,
+            screen_line: 9,
+            exit_code: None,
+            sequence: 42,
+            history_size: 7,
+        };
+        let initial = journal
+            .record_command_with_seed_mark("pty-a", 42, "pnpm test", "C:/repo", Some(seed))
+            .expect("command block should be recorded");
+
+        assert_eq!(initial.command_sequence, Some(42));
+        assert_eq!(initial.command_history_size, Some(7));
+        assert_eq!(initial.command_screen_line, Some(9));
+
+        let updated = journal
+            .record_prompt_mark("pty-a", mark(PromptMarkKind::CommandEnd, 43, Some(0)))
+            .expect("command block should close");
+        assert_eq!(updated.status, "passed");
+        assert_eq!(updated.command_sequence, Some(42));
+        assert_eq!(updated.end_sequence, Some(43));
+    }
+
+    #[test]
+    fn latest_open_command_start_ignores_closed_prompt_cycles() {
+        let marks = [
+            PromptMark {
+                kind: PromptMarkKind::CommandStart,
+                screen_line: 1,
+                exit_code: None,
+                sequence: 10,
+                history_size: 0,
+            },
+            PromptMark {
+                kind: PromptMarkKind::CommandEnd,
+                screen_line: 2,
+                exit_code: Some(0),
+                sequence: 11,
+                history_size: 1,
+            },
+            PromptMark {
+                kind: PromptMarkKind::PromptStart,
+                screen_line: 3,
+                exit_code: None,
+                sequence: 12,
+                history_size: 1,
+            },
+            PromptMark {
+                kind: PromptMarkKind::CommandStart,
+                screen_line: 3,
+                exit_code: None,
+                sequence: 13,
+                history_size: 1,
+            },
+        ];
+
+        let seed = latest_open_command_start_mark(&marks).expect("open prompt should seed command");
+        assert_eq!(seed.sequence, 13);
+
+        let closed_marks = [marks[0], marks[1]];
+        assert!(latest_open_command_start_mark(&closed_marks).is_none());
     }
 
     #[test]

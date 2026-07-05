@@ -128,3 +128,64 @@ Skip freely if any ambiguity — file notes in Result instead.
 ```text
 /goal C:\Users\owner\Aether_Terminal で AGENTS.md -> docs/requirements.md -> docs/AGENT_WORKFLOWS.md -> docs/specs/README.md -> docs/specs/UI_DENSITY_AUDIT_2026-07-03.md -> ui-density-instructions.md を順に読み、ui-density-instructions.md の Phase U0 から U7 を完遂しろ（U8 は任意）。ブランチは feat/wu-ud-1-terminal-density を main から切る。U0 の density 検証器を最初に作り、それが緑になるまで密度変更をコミットするな。1フェーズ=1コミット、明示 stage、ゲート緑を確認してから次へ。IME の実機確認と壁紙コントラストは OPERATOR GATE として Result に列挙し、自分で claim するな。src-tauri は編集禁止。既存テスト・検証器の弱体化禁止。main への push / force push / PR 作成禁止、完了したら feature branch を push して ui-density-instructions.md 末尾に Result を追記して停止。ブロックしたら理由を報告して停止。
 ```
+
+## Result
+
+Date: 2026-07-03 JST.
+
+Branch: `feat/wu-ud-1-terminal-density`.
+
+Phases completed:
+- U0: `cc703e6` `test: add terminal density contract baseline`
+- U1: `2c22768` `feat: collapse terminal ime input chrome`
+- U2: `598b4be` `feat: hide empty terminal timeline chrome`
+- U3: `395ed43` `refactor: tighten terminal pane gutters`
+- U4: `5aac425` `feat: slim conditional terminal pane header`
+- U5: `c8307e7` `feat: enforce terminal chrome density tokens`
+- U6: `5a984a4` `feat: compact workspace rails`
+- U7: `aa0a422` `feat: add terminal zen mode`
+- Post-gate fixes: `bf212cc` `chore: clear final ui density lint gate`, `8581958` `fix: tighten dense shell spacing`
+
+Final gates:
+- `pnpm exec biome lint src`: pass (`Checked 543 files ... No fixes applied`)
+- `pnpm exec tsc --noEmit`: pass
+- `pnpm verify:terminal:density`: pass (`6/6 checks passed`; script runs `--enforce`)
+- `pnpm verify:terminal:font-render`: pass (`ok: true`, `status: pass`)
+- `pnpm test`: pass (`201 passed`, `1919 passed`); jsdom emitted known `HTMLCanvasElement.getContext` not-implemented warnings after the successful run
+
+Pixel measurements:
+- Method: Playwright 1.59.1, Chrome channel, `1440x900`, dpr `1`, `http://127.0.0.1:5173/?visualQa=1&projectPath=C:/Users/owner/Aether_Terminal&rail=command`.
+- Browser plugin note: in-app Browser was unavailable (`agent.browsers.list()=[]`), so the measurement used regular Playwright. Chromium bundle was missing; Chrome channel launched successfully.
+- Density mode: real persisted workspace profile set to `dense`; side rails open unless noted. 2x2 used a valid local pane-tree snapshot at `aelyris:paneTree:tab-visual-qa`.
+- Audit baseline: single `37.6%` window; 2x2 `29.7%` window.
+- Single-pane dense side-rails-open: `655200 / 1296000 = 50.56%` window, `97.34%` center (`1` visible canvas, no console errors/warnings). Target met: >=50% window, >=90% center.
+- 2x2 dense side-rails-open: `581256 / 1296000 = 44.85%` window, `86.36%` center (`4` visible canvases, no console errors/warnings). Target met: >=42% window, >=80% center.
+- Zen smoke, same dense profile: single `89.48%` window / `96.91%` center; 2x2 `81.68%` window / `88.46%` center.
+
+Operator gates not claimed by Codex:
+- OPERATOR GATE: live Japanese IME composition in the real Windows app.
+- OPERATOR GATE: wallpaper strip contrast pass against the owner's real wallpaper/material settings.
+
+Skipped:
+- U8 stretch polish was not selected. The 11px strip typography pass, automated wallpaper contrast extension, and additional motion audit remain out of scope here; wallpaper contrast is listed above as an operator gate.
+
+Scope notes:
+- `src-tauri/` was not edited.
+- No main push, force push, or PR creation was performed.
+
+## Post-Result amendment (owner review, 2026-07-05)
+
+- `ffcbe95` ("Fix terminal footer spacing", landed after this Result)
+  deliberately superseded two shipped items based on live use: **D1** is
+  disabled (`IMEInputBar collapsed={false}` — auto-collapse changed the
+  drawable height and churned the PTY row count) and **U4**'s lone-pane
+  header hiding is reverted (`shouldShowPaneHeader = !maximizedPaneId ||
+  isMaximized`). Tests were updated in the same commit; this section, not the
+  original Result text above, describes what ships on `main`.
+- The density verifier now requires the IMEInputBar binding to be either a
+  computed expression or a constant carrying an in-source
+  `density-decision:` marker, so a silent constant can no longer read as a
+  live collapse path.
+- Follow-up candidate (unscheduled): reclaim the input-bar strip via an
+  overlay-positioned bar that does not participate in layout (no drawable
+  height change), which would restore D1's savings without the row churn.

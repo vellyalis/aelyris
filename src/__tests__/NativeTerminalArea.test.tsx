@@ -6,8 +6,15 @@ import {
   IME_DIAGNOSTIC_STORAGE_KEY,
   type ImeDiagnosticDetail,
 } from "../features/terminal/hooks/useCanvasIME";
-import { commandHistoryTextFromSubmittedInput, NativeTerminalArea } from "../features/terminal/NativeTerminalArea";
+import {
+  commandHistoryTextFromSubmittedInput,
+  NativeTerminalArea,
+  shouldMountTimelineBar,
+  terminalRowsForDrawableHeight,
+} from "../features/terminal/NativeTerminalArea";
+import type { ActiveSnapshotOverlay } from "../features/timeline/TimelineBar";
 import { useTerminalSnapshot } from "../shared/hooks/useTerminalSnapshot";
+import type { SnapshotSummary } from "../shared/types/snapshot";
 
 vi.mock("../shared/hooks/useTerminalSnapshot", () => ({
   useTerminalSnapshot: vi.fn(() => null),
@@ -93,6 +100,12 @@ function deferred<T = void>() {
 }
 
 describe("NativeTerminalArea", () => {
+  it("rounds terminal rows up only when the extra row fits the decorative gutter", () => {
+    expect(terminalRowsForDrawableHeight(718, 20)).toBe(36);
+    expect(terminalRowsForDrawableHeight(714, 20)).toBe(35);
+    expect(terminalRowsForDrawableHeight(10, 20)).toBe(5);
+  });
+
   it("normalizes submitted input-bar commands for native command evidence", () => {
     expect(commandHistoryTextFromSubmittedInput("echo hi\r")).toBe("echo hi");
     expect(commandHistoryTextFromSubmittedInput("echo hi\n")).toBe("echo hi");
@@ -185,6 +198,34 @@ describe("NativeTerminalArea", () => {
     expect(nativeTerminalAreaSource).not.toContain("styles.previewPrompt");
   });
 
+  it("mounts the timeline bar only when snapshots or an overlay exist", () => {
+    const summary: SnapshotSummary = {
+      id: "snap-1",
+      sessionId: "term-1",
+      capturedAt: 1,
+      trigger: { kind: "userMarked" },
+      cols: 80,
+      rows: 24,
+    };
+    const overlay: ActiveSnapshotOverlay = {
+      layerId: "layer-1",
+      snapshotId: "snap-1",
+      grid: {
+        cols: 1,
+        rows: 1,
+        cells: [[{ ch: " ", fg: 0, bg: 0, attrs: 0 }]],
+        cursor: { row: 0, col: 0, shape: "block", blinking: false, visible: true },
+      },
+    };
+    expect(shouldMountTimelineBar([], null)).toBe(false);
+    expect(shouldMountTimelineBar([summary], null)).toBe(true);
+    expect(shouldMountTimelineBar([], overlay)).toBe(true);
+    expect(nativeTerminalAreaSource).toContain(
+      "const shouldRenderTimelineBar = shouldMountTimelineBar(timelineSnapshots, snapshotOverlay)",
+    );
+    expect(nativeTerminalAreaSource).toContain("{shouldRenderTimelineBar && (");
+  });
+
   it("shows a startup state instead of a blank pane while the PTY starts", async () => {
     const spawn = deferred<string>();
     const spawnPty = vi.fn(() => spawn.promise);
@@ -203,6 +244,17 @@ describe("NativeTerminalArea", () => {
     });
 
     await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+  });
+
+  it("does not mount the timeline bar for an empty live terminal", async () => {
+    const spawnPty = vi.fn().mockResolvedValue("term-empty-timeline");
+
+    const { container } = render(
+      <NativeTerminalArea shell="powershell" spawnPty={spawnPty} subscribeOutput={async () => () => {}} />,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
+    expect(container.querySelector("[data-testid='timeline-bar']")).toBeNull();
   });
 
   it("attaches an existing PTY without spawning a replacement", async () => {
@@ -242,13 +294,12 @@ describe("NativeTerminalArea", () => {
     expect(container.textContent).toContain("Resize failed: backend resize failed");
   });
 
-  it("renders the IME input bar on mount (always visible)", async () => {
+  it("keeps the IME input bar mounted and visible for attachment controls", async () => {
     const spawnPty = vi.fn().mockResolvedValue("term-perm");
     const { container } = render(<NativeTerminalArea spawnPty={spawnPty} subscribeOutput={async () => () => {}} />);
     await waitFor(() => expect(container.querySelector("[data-testid='terminal-canvas']")).not.toBeNull());
-    // The bar sits at the bottom and is always mounted; we don't conditionally
-    // render it based on AI-CLI detection.
-    expect(container.querySelector("[aria-label='ターミナル入力バー']")).not.toBeNull();
+    expect(container.querySelector("[aria-label='ターミナル入力バー']")?.getAttribute("data-collapsed")).toBe("false");
+    expect(container.querySelector("[aria-label='写真とファイルを追加']")).not.toBeNull();
   });
 
   it("activates AI CLI anchoring from live PTY output before Japanese IME input", async () => {

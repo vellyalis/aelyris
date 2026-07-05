@@ -8,7 +8,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2);
-  min-height: 24px;
+  min-height: var(--terminal-chrome-timeline-height);
   box-sizing: border-box;
   background:
     linear-gradient(180deg, var(--terminal-chrome-bg-focus), var(--terminal-chrome-bg)),
@@ -119,24 +119,6 @@
   background: rgba(142, 226, 241, 0.055);
 }
 
-.markBtn {
-  flex: 0 0 auto;
-  background: color-mix(in srgb, var(--terminal-canvas-bg) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--terminal-ui-primary, var(--ctp-magenta)) 18%, transparent);
-  color: var(--terminal-ui-primary, var(--text-primary));
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-xs);
-}
-
-.markBtn:hover {
-  background: color-mix(in srgb, var(--ctp-magenta) 9%, transparent);
-  color: var(--text-primary);
-}
-
-.markBtn:focus-visible,
 .dismissBtn:focus-visible,
 .tick:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--gold) 74%, transparent);

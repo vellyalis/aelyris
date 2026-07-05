@@ -211,7 +211,12 @@ function assertAnchoredPassed(block, label) {
   if (!block) throw new Error(`${label} command block is missing`);
   if (block.status !== "passed") throw new Error(`${label} command block did not pass: ${JSON.stringify(block)}`);
   if (block.exitCode !== 0) throw new Error(`${label} command block exit code was not 0: ${JSON.stringify(block)}`);
-  if (typeof block.endSequence !== "number" || typeof block.endHistorySize !== "number") {
+  if (
+    typeof block.commandSequence !== "number" ||
+    typeof block.commandHistorySize !== "number" ||
+    typeof block.endSequence !== "number" ||
+    typeof block.endHistorySize !== "number"
+  ) {
     throw new Error(`${label} command block is missing anchors: ${JSON.stringify(block)}`);
   }
 }

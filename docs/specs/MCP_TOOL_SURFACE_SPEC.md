@@ -229,6 +229,63 @@ remains the hot owner; SQLite is the restart source of truth.
 
 ---
 
+### 3.8 Proofbook domain (PB-3 runtime slice)
+
+PB-3 connects Proofbooks to the existing MCP face after the local PB-2 runner.
+Rows in this section describe the scoped PB-3 runtime slice when catalog rows,
+focused tests, and verifier artifacts are green. They are not a shipped
+end-user Proofbook product claim: canvas/UI, create/update/distill,
+agent/HTTP/fan-out/subProofbook, and Evidence Store behavior remain future
+phases.
+
+The implementation rule is strict: Proofbook MCP verbs and `mcpTool` steps are
+thin adapters over the single `src-tauri/src/proofbook` contract spine and the
+existing `tools/call` schema/governance/dispatch path. They do not create a
+second dispatcher, a second catalog, or a Proofbook-only schema validator.
+
+| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
+|------|-----------|---------|------------|-------|
+| `aelyris.proofbook.list` | **params** `{ projectPath: string }` -> **return** `{ proofbooks: ProofbookSummary[] }` | `proofbook::list_proofbook_files` via `src-tauri/src/api/mcp.rs` | FREE | Lists contained `.aelyris/proofbooks/*.proofbook.yaml` and `.proofbook.yml` files. No runner state is touched. |
+| `aelyris.proofbook.get` | **params** `{ projectPath: string, proofbookPath: string }` -> **return** `{ definition, definitionHash, validation }` | `proofbook::parse_proofbook` + `proofbook::validate_definition` | FREE | Reads one contained definition and returns validation status. Secret values are never resolved; definitions may contain only secret references. |
+| `aelyris.proofbook.validate` | **params** `{ projectPath: string, proofbookPath: string }` -> **return** `ProofbookValidationReport` | same validator as IPC `validate_proofbook` | FREE | Schema/DAG/preflight validation only. It cannot start a run. |
+| `aelyris.proofbook.run` | **params** `{ projectPath: string, proofbookPath: string, inputs?: object }` -> **return** `{ runId, status, ledgerPath, ledger }` | managed `ProofbookRunner::start_run` | **GATED** | Starts local PB-2/PB-3 execution through the Tauri-managed runner. Sidecar/test modes without an attached runtime fail closed instead of creating another runner. |
+| `aelyris.proofbook.status` | **params** `{ projectPath: string, runId: string }` -> **return** `{ ledger }` | `ProofbookRunner::status` | FREE | Reads the run ledger, waiting gates, decisions, artifacts, and residual blockers. |
+| `aelyris.proofbook.cancel` | **params** `{ projectPath: string, runId: string }` -> **return** `{ ledger }` | `ProofbookRunner::cancel_run` | **GATED** | Appends cancellation evidence and prevents new steps. It never deletes ledger files or artifacts. |
+| `aelyris.proofbook.approve_gate` | **params** `{ projectPath: string, runId: string, gateId: string, gateHash: string, actor?: string, comment?: string }` -> **return** `{ ledger }` | Proofbook runner gate resolver | **GATED** | Resolves a Proofbook gate only when the expected hash matches. Stale hashes fail closed. |
+| `aelyris.proofbook.reject_gate` | **params** `{ projectPath: string, runId: string, gateId: string, gateHash: string, actor?: string, comment?: string }` -> **return** `{ ledger }` | Proofbook runner gate resolver | **GATED** | Records a rejection with actor/comment metadata and leaves append-only evidence. |
+
+PB-3 deliberately excludes `aelyris.proofbook.create`,
+`aelyris.proofbook.update`, and `aelyris.proofbook.distill`. Those mutation and
+rewrite verbs are PB-6 work and remain absent from `tool_names()` and
+`tools_list()` until their own design gate is green.
+
+`mcpTool` step semantics:
+
+- A Proofbook `mcpTool` step names a catalog `toolName` and an `arguments`
+  object. The target tool must be present in `tool_names()` and `tools_list()`.
+- The step validates the arguments with the same inputSchema validator that
+  guards external `tools/call`. The machine-correctable `schema_violation`
+  payload is preserved in the ledger when validation fails.
+- The step authorizes through the same governance choke point as external MCP
+  callers. A denied policy is durably audited and recorded as
+  `mcp_governance_denied`; the runner must not retry through IPC or a less
+  governed helper.
+- FREE target tools may run immediately through the shared dispatch seam and the
+  step passes only when the MCP result is not an error result.
+- GATED target tools transition the Proofbook run to `waiting_gate` before the
+  privileged action. The ledger records `kind:"mcpTool"`, `toolName`, `safety`,
+  `gateId`, `gateHash`, `argumentsHash`, and any `pendingDecisionId`; success is
+  impossible until `aelyris.proofbook.approve_gate` resolves the expected hash.
+- `GATED_OBSERVE_ONLY` tools may run only when the row explicitly says the verb
+  is read-only and cannot resolve or mutate a decision. Otherwise any non-FREE
+  safety classification becomes a waiting gate.
+- PB-3 `mcpTool` cannot call `aelyris.proofbook.*`; recursive Proofbook runs and
+  gate mutation from inside a Proofbook stay out of scope until subProofbook
+  lineage exists.
+
+PB-3 drift tests must prove all Proofbook rows have `additionalProperties:false`,
+the expected FREE/GATED safety classification, and a handler entry. They must
+also prove the PB-6 mutation verbs are still absent.
 ## 4. Gate enforcement
 
 This is the **critical safety boundary**. The gate model:

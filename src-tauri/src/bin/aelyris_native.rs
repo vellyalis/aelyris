@@ -1066,10 +1066,14 @@ fn native_paste_guard_payload() -> Result<Value, String> {
         let drained = host.drain_native_surface_text()?;
         let drained_text = drained
             .as_ref()
-            .map(|(_, text)| text.clone())
+            .map(|(_, text, _)| text.clone())
+            .unwrap_or_default();
+        let drained_source = drained
+            .as_ref()
+            .map(|(_, _, source)| source.clone())
             .unwrap_or_default();
         let mut after_drain = host.status();
-        if let Some((terminal_id, text)) = drained.as_ref() {
+        if let Some((terminal_id, text, _source)) = drained.as_ref() {
             after_drain = host.record_commit(terminal_id, "native-paste-guard-proof", text.len());
         }
         let commit_advanced = after_drain.direct_pty_commit_count > before.direct_pty_commit_count;
@@ -1096,6 +1100,7 @@ fn native_paste_guard_payload() -> Result<Value, String> {
             "lastLineEndingsAfterPaste": after_paste.native_paste_guard_last_line_endings,
             "drained": drained.is_some(),
             "drainedText": drained_text,
+            "drainedSource": drained_source,
             "commitAdvanced": commit_advanced,
         }));
     }
@@ -8201,12 +8206,8 @@ impl NativeRasterFont {
     }
 
     fn font_ref(&self) -> Result<swash::FontRef<'_>, String> {
-        swash::FontRef::from_index(&self.data, self.collection_index).ok_or_else(|| {
-            format!(
-                "parse {}#{} with swash",
-                self.path, self.collection_index
-            )
-        })
+        swash::FontRef::from_index(&self.data, self.collection_index)
+            .ok_or_else(|| format!("parse {}#{} with swash", self.path, self.collection_index))
     }
 }
 

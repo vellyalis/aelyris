@@ -2103,17 +2103,10 @@ pub async fn native_terminal_input_drain(
     let drained = rx
         .recv_timeout(Duration::from_secs(2))
         .map_err(|err| format!("native input drain timed out: {err}"))??;
-    let Some((terminal_id, text)) = drained else {
+    let Some((terminal_id, text, source)) = drained else {
         return Ok(host.status());
     };
-    commit_native_terminal_input(
-        &app,
-        host,
-        terminal_id,
-        text,
-        "native-input-surface".to_string(),
-    )
-    .await
+    commit_native_terminal_input(&app, host, terminal_id, text, source).await
 }
 
 #[tauri::command]
@@ -2201,11 +2194,12 @@ async fn commit_native_terminal_input(
         );
         return Err(err);
     }
-    // P0-4: gate native input by its kind. A full submit (the app's own command-center) and a
-    // clipboard paste are complete payloads -> classify atomically (deny refused; review
-    // allowed under the local Balanced policy). Raw keystroke sources need char echo ->
-    // echo-preserving mode (a catastrophic submission's Enter becomes Ctrl-C). The
-    // keystroke source_kind is stable per kind so one terminal's pending line shares one mirror.
+    // P0-4: gate native input by its kind. The app's command-center is a full submit and
+    // classifies atomically. Clipboard paste is a programmatic complete-line stream, so it
+    // uses hold-until-approved semantics like send_keys: nothing reaches the PTY until the
+    // pasted line terminator is allowed. Raw keystroke sources need char echo ->
+    // echo-preserving mode (a catastrophic submission's Enter becomes Ctrl-C). The source_kind
+    // is stable per kind so one terminal's pending line shares one mirror.
     let (gate_source, gate_mode) = match source.as_str() {
         "command-center" => (
             "ipc-native-command-center",
@@ -2213,7 +2207,7 @@ async fn commit_native_terminal_input(
         ),
         "native-clipboard-paste" => (
             "ipc-native-paste",
-            crate::command_risk::gate::GateMode::Atomic,
+            crate::command_risk::gate::GateMode::HoldUntilApproved,
         ),
         _ => (
             "ipc-native-keystroke",

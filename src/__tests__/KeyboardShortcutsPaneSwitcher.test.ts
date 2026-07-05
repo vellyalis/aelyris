@@ -55,4 +55,14 @@ describe("pane switcher keyboard shortcut", () => {
     expect(menuSrc).toContain('id: "focus-previous-terminal-pane"');
     expect(menuSrc).toContain('shortcut: "Ctrl+Shift+["');
   });
+
+  it("exposes a non-conflicting Zen mode shortcut", () => {
+    const shortcutSrc = getOnlySource(sources);
+    const menuSrc = getOnlySource(menuSources);
+
+    expect(shortcutSrc).toContain('e.ctrlKey && e.shiftKey && e.key === "M"');
+    expect(shortcutSrc).toContain("setZenMode?.((v: boolean) => !v);");
+    expect(menuSrc).toContain('id: "toggle-zen-mode"');
+    expect(menuSrc).toContain('shortcut: "Ctrl+Shift+M"');
+  });
 });

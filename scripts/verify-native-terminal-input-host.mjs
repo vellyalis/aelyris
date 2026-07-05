@@ -101,7 +101,8 @@ const checks = [
   check(
     "surface-drain-shared-commit",
     commands.includes("commit_native_terminal_input(") &&
-      commands.includes('"native-input-surface".to_string()') &&
+      commands.includes("let Some((terminal_id, text, source)) = drained else") &&
+      commands.includes("commit_native_terminal_input(&app, host, terminal_id, text, source).await") &&
       commands.includes("native_input_rejected") &&
       commands.includes("validate_keys_payload(&data)"),
     "native HWND drain shares validation, audit rejection, command history, and PTY write semantics with explicit commits",

@@ -29,6 +29,8 @@ interface IMEInputBarProps {
   maxHistory?: number;
   /** Disable input when the backing PTY is not writable. */
   disabled?: boolean;
+  /** Collapse the visual chrome while keeping the textarea mounted for IME. */
+  collapsed?: boolean;
   /** Override for tests — defaults to Tauri's file dialog. */
   pickAttachmentFiles?: () => Promise<string[]>;
   /** Override for tests — defaults to `save_temp_image` IPC. */
@@ -39,6 +41,7 @@ interface IMEInputBarProps {
 
 const DEFAULT_MAX_HISTORY = 50;
 const TEXTAREA_MAX_ROWS = 5;
+const TEXTAREA_RENDER_GUARD_PX = 2;
 const CANDIDATE_POPUP_GUARD_PX = 440;
 const CANDIDATE_POPUP_HEIGHT_GUARD_PX = 260;
 const handledPasteEvents = new WeakSet<Event>();
@@ -237,9 +240,8 @@ export function measureTextareaImeAnchor(textarea: HTMLTextAreaElement): Textare
  * ships the user's committed line to the PTY on Enter.
  *
  * Design notes:
- * - Always rendered; no visibility toggle. The cost of a ~40px fixed bar is
- *   lower than the UX cost of a bar that appears/disappears based on shell
- *   heuristics.
+ * - Always mounted. Split panes may collapse the chrome visually, but the
+ *   textarea path remains present so IME composition still has a native input.
  * - `Enter`  — submit.
  * - `Shift+Enter` — insert literal newline (for AI CLI multi-line prompts).
  * - `ArrowUp` / `ArrowDown` — browse submission history when the cursor is at
@@ -257,6 +259,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     autoFocus = false,
     maxHistory = DEFAULT_MAX_HISTORY,
     disabled = false,
+    collapsed = false,
     pickAttachmentFiles = defaultPickAttachmentFiles,
     saveClipboardImage = defaultSaveClipboardImage,
     readNativeClipboardImage = defaultReadNativeClipboardImage,
@@ -436,8 +439,10 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     if (!ta) return;
     ta.style.height = "auto";
     const lineHeight = parseFloat(getComputedStyle(ta).lineHeight || "0") || 20;
-    const maxHeight = lineHeight * TEXTAREA_MAX_ROWS;
-    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+    // WebView2 rounds textarea scrollHeight a little tighter than the
+    // subpixel line-height + padding box, which clips the resting placeholder.
+    const maxHeight = lineHeight * TEXTAREA_MAX_ROWS + TEXTAREA_RENDER_GUARD_PX;
+    ta.style.height = `${Math.min(ta.scrollHeight + TEXTAREA_RENDER_GUARD_PX, maxHeight)}px`;
   }, [value]);
 
   useEffect(() => {
@@ -599,11 +604,13 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     : focused && value.length === 0
       ? "Enter で送信  ·  Shift+Enter で改行  ·  Esc でターミナル  ·  ↑↓ で履歴"
       : "メッセージを入力";
+  const visuallyCollapsed = collapsed && !focused && !composing;
   return (
     <fieldset
       className={`${styles.bar} ${focused ? styles.focused : ""} ${disabled ? styles.disabled : ""}`}
       aria-label="ターミナル入力バー"
       aria-disabled={disabled}
+      data-collapsed={visuallyCollapsed ? "true" : "false"}
     >
       {attachments.length > 0 && (
         <section className={styles.attachmentDock} aria-label="添付ファイル">

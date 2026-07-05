@@ -58,11 +58,18 @@ struct NativeSurfaceRuntime {
     active_terminal_id: Option<String>,
     composition_active: bool,
     composition_text: String,
-    pending_bytes: Vec<(String, String)>,
+    pending_bytes: Vec<NativeSurfacePendingBytes>,
     paste_guard_event_count: u64,
     last_paste_guard_action: Option<String>,
     last_paste_guard_reason: Option<String>,
     last_paste_guard_line_endings: usize,
+}
+
+#[derive(Debug)]
+struct NativeSurfacePendingBytes {
+    terminal_id: String,
+    bytes: String,
+    source: &'static str,
 }
 
 #[derive(Debug, Default)]
@@ -132,7 +139,7 @@ impl NativeTerminalInputHost {
         self.focus_native_surface_impl(parent_hwnd, terminal_id.into(), rect)
     }
 
-    pub fn drain_native_surface_text(&self) -> Result<Option<(String, String)>, String> {
+    pub fn drain_native_surface_text(&self) -> Result<Option<(String, String, String)>, String> {
         self.drain_native_surface_text_impl()
     }
 
@@ -241,13 +248,14 @@ fn count_native_paste_line_endings(text: &str) -> usize {
     count
 }
 
-/// Whether a clipboard paste contains a CATASTROPHIC (`deny`) command. Single source of
-/// truth: defer to the shared `command_risk` classifier — the SAME policy the P0-4
-/// `CommandRiskGate` enforces authoritatively at the commit path — instead of a divergent
-/// substring list. This early native-surface check blocks only catastrophic pastes; a
-/// `review`-level paste falls through to the multi-line confirmation and the authoritative
-/// gate (local "Balanced" policy), so the early guard and the gate never diverge.
+/// Whether a clipboard paste contains a CATASTROPHIC (`deny`) command.
+/// The native paste guard intentionally adds a small raw-signature preflight
+/// before the shared gate. WM_PASTE must be blocked before text enters the PTY,
+/// including command-looking destructive signatures embedded in pasted comments.
 fn native_paste_contains_destructive_command(text: &str) -> bool {
+    if native_paste_contains_destructive_signature(text) {
+        return true;
+    }
     matches!(
         crate::command_risk::classify_command(
             text,
@@ -256,6 +264,23 @@ fn native_paste_contains_destructive_command(text: &str) -> bool {
         .severity,
         crate::command_risk::CommandRiskSeverity::Deny
     )
+}
+
+fn native_paste_contains_destructive_signature(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "git reset --hard",
+        "git clean -fdx",
+        "rm -rf /",
+        "rm -rf .",
+        "rm -rf *",
+        "remove-item -recurse -force",
+        "remove-item -force -recurse",
+        "rmdir /s /q",
+        "format c:",
+    ]
+    .iter()
+    .any(|signature| lower.contains(signature))
 }
 
 fn classify_native_terminal_paste_input(text: &str) -> NativePasteGuard {
@@ -307,7 +332,7 @@ impl NativeTerminalInputHost {
         Ok(Self::snapshot(&state))
     }
 
-    fn drain_native_surface_text_impl(&self) -> Result<Option<(String, String)>, String> {
+    fn drain_native_surface_text_impl(&self) -> Result<Option<(String, String, String)>, String> {
         Ok(None)
     }
 
@@ -362,7 +387,7 @@ impl NativeTerminalInputHost {
         Ok(Self::snapshot(&state))
     }
 
-    fn drain_native_surface_text_impl(&self) -> Result<Option<(String, String)>, String> {
+    fn drain_native_surface_text_impl(&self) -> Result<Option<(String, String, String)>, String> {
         let state = self.lock_state();
         let Some(surface) = state.native_surface else {
             return Ok(None);
@@ -375,24 +400,38 @@ impl NativeTerminalInputHost {
                     let pending_terminal_id = runtime
                         .pending_bytes
                         .first()
-                        .map(|(terminal_id, _)| terminal_id.clone())
+                        .map(|pending| pending.terminal_id.clone())
                         .or_else(|| runtime.active_terminal_id.clone());
                     let mut pending = String::new();
+                    let mut pending_source = "native-input-surface".to_string();
                     if let Some(target_terminal_id) = pending_terminal_id.as_ref() {
                         let mut retained = Vec::new();
-                        for (terminal_id, bytes) in runtime.pending_bytes.drain(..) {
-                            if &terminal_id == target_terminal_id {
-                                pending.push_str(&bytes);
+                        for pending_bytes in runtime.pending_bytes.drain(..) {
+                            if &pending_bytes.terminal_id == target_terminal_id {
+                                if pending_bytes.source == "native-clipboard-paste" {
+                                    pending_source = "native-clipboard-paste".to_string();
+                                }
+                                pending.push_str(&pending_bytes.bytes);
                             } else {
-                                retained.push((terminal_id, bytes));
+                                retained.push(pending_bytes);
                             }
                         }
                         runtime.pending_bytes = retained;
                     }
-                    (runtime.composition_active, pending_terminal_id, pending)
+                    (
+                        runtime.composition_active,
+                        pending_terminal_id,
+                        pending,
+                        pending_source,
+                    )
                 })
             })
-            .unwrap_or((false, state.active_terminal_id.clone(), String::new()));
+            .unwrap_or((
+                false,
+                state.active_terminal_id.clone(),
+                String::new(),
+                "native-input-surface".to_string(),
+            ));
         let Some(terminal_id) = pending.1.or_else(|| state.active_terminal_id.clone()) else {
             return Ok(None);
         };
@@ -407,7 +446,7 @@ impl NativeTerminalInputHost {
         // The drain only extracts native HWND text. Commit counters and last
         // commit metadata are updated after validation and PTY write succeeds
         // in the shared IPC commit path.
-        Ok(Some((terminal_id, text)))
+        Ok(Some((terminal_id, text, pending.3)))
     }
 
     fn stage_native_clipboard_paste_impl(
@@ -520,7 +559,11 @@ unsafe extern "system" fn native_input_surface_window_proc(
                 };
                 if let Ok(mut runtime) = context.runtime.lock() {
                     if let Some(result) = result {
-                        push_native_surface_pending_bytes(&mut runtime, result);
+                        push_native_surface_pending_bytes(
+                            &mut runtime,
+                            result,
+                            "native-input-surface",
+                        );
                     }
                     match next_composition {
                         Some(text) if !text.is_empty() => {
@@ -565,7 +608,11 @@ unsafe extern "system" fn native_input_surface_window_proc(
             ) {
                 if let Ok(mut runtime) = context.runtime.lock() {
                     if !runtime.composition_active {
-                        push_native_surface_pending_bytes(&mut runtime, bytes);
+                        push_native_surface_pending_bytes(
+                            &mut runtime,
+                            bytes,
+                            "native-input-surface",
+                        );
                         return windows::Win32::Foundation::LRESULT(0);
                     }
                 }
@@ -575,7 +622,11 @@ unsafe extern "system" fn native_input_surface_window_proc(
             if let Some(bytes) = terminal_text_for_native_char(wparam.0 as u32) {
                 if let Ok(mut runtime) = context.runtime.lock() {
                     if !runtime.composition_active {
-                        push_native_surface_pending_bytes(&mut runtime, bytes);
+                        push_native_surface_pending_bytes(
+                            &mut runtime,
+                            bytes,
+                            "native-input-surface",
+                        );
                         return windows::Win32::Foundation::LRESULT(0);
                     }
                 }
@@ -596,7 +647,11 @@ unsafe extern "system" fn native_input_surface_window_proc(
                 runtime.last_paste_guard_reason = Some(guard.reason.to_string());
                 runtime.last_paste_guard_line_endings = guard.line_ending_count;
                 if guard.action == "allowed" {
-                    push_native_surface_pending_bytes(&mut runtime, guard.normalized_text);
+                    push_native_surface_pending_bytes(
+                        &mut runtime,
+                        guard.normalized_text,
+                        "native-clipboard-paste",
+                    );
                 }
             }
             return windows::Win32::Foundation::LRESULT(0);
@@ -890,12 +945,20 @@ unsafe fn native_surface_is_alive(hwnd: isize) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn push_native_surface_pending_bytes(runtime: &mut NativeSurfaceRuntime, bytes: String) {
+fn push_native_surface_pending_bytes(
+    runtime: &mut NativeSurfaceRuntime,
+    bytes: String,
+    source: &'static str,
+) {
     if bytes.is_empty() {
         return;
     }
     if let Some(terminal_id) = runtime.active_terminal_id.clone() {
-        runtime.pending_bytes.push((terminal_id, bytes));
+        runtime.pending_bytes.push(NativeSurfacePendingBytes {
+            terminal_id,
+            bytes,
+            source,
+        });
     }
 }
 
@@ -1240,6 +1303,19 @@ mod tests {
     #[test]
     fn native_paste_guard_blocks_destructive_commands_before_drain() {
         let guard = classify_native_terminal_paste_input("git reset --hard HEAD\n");
+        assert_eq!(guard.action, "blocked");
+        assert_eq!(
+            guard.reason,
+            "destructive command paste blocked by native input guard"
+        );
+        assert_eq!(guard.normalized_text, "");
+    }
+
+    #[test]
+    fn native_paste_guard_blocks_destructive_signature_in_comment_before_drain() {
+        let guard = classify_native_terminal_paste_input(
+            "$m='AELYRIS_BLOCK'; Write-Output $m # git reset --hard HEAD\n",
+        );
         assert_eq!(guard.action, "blocked");
         assert_eq!(
             guard.reason,

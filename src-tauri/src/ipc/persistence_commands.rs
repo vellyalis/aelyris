@@ -86,7 +86,20 @@ pub fn save_command_history(
     let db = app.state::<crate::db::ManagedDb>();
     let command_id = db.with(|d| d.save_command(&terminal_id, &command, &cwd))?;
     if let Some(journal) = app.try_state::<Arc<crate::term::CommandBlockJournal>>() {
-        if let Some(record) = journal.record_command(&terminal_id, command_id, &command, &cwd) {
+        let seed_mark = app
+            .try_state::<Arc<crate::term::NativeTerminalRegistry>>()
+            .and_then(|registry| {
+                crate::term::command_blocks::latest_open_command_start_mark(
+                    &registry.prompt_marks(&terminal_id),
+                )
+            });
+        if let Some(record) = journal.record_command_with_seed_mark(
+            &terminal_id,
+            command_id,
+            &command,
+            &cwd,
+            seed_mark,
+        ) {
             persist_command_block(&app, &record);
         }
     }

@@ -3,8 +3,6 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import type { ShellType } from "../../shared/types/terminalPane";
 import { useHistorySearch } from "../../shared/hooks/useHistorySearch";
 import { useSnapshots } from "../../shared/hooks/useSnapshots";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
@@ -16,6 +14,7 @@ import { useAppStore } from "../../shared/store/appStore";
 import type { LayerIdPayload } from "../../shared/types/ghostdiff";
 import type { SnapshotSummary } from "../../shared/types/snapshot";
 import { CellAttr, type CellSnapshot, type GridSnapshot } from "../../shared/types/terminal";
+import type { ShellType } from "../../shared/types/terminalPane";
 import { type ActiveSnapshotOverlay, TimelineBar } from "../timeline/TimelineBar";
 import { useAICliDetection } from "./hooks/useAICliDetection";
 import {
@@ -75,6 +74,8 @@ interface NativeTerminalAreaProps {
   /** Override for tests — opens any other URL via the OS handler.
    *  Defaults to `tauri-plugin-opener.openUrl`. */
   openExternal?: (url: string) => Promise<void> | void;
+  /** Registers the current terminal snapshot bookmark action with the pane header. */
+  onSnapshotMarkHandlerChange?: (handler: (() => void) | null) => void;
 }
 
 /**
@@ -94,7 +95,7 @@ const MIN_COLS = 20;
 const MIN_ROWS = 5;
 // Must match `.terminalViewport` padding so PTY cols/rows describe the
 // drawable canvas well, not the decorative glass gutter around it.
-const CANVAS_GUTTER = 10;
+const CANVAS_GUTTER = 4;
 
 interface Dims {
   cols: number;
@@ -103,6 +104,22 @@ interface Dims {
 
 type InputWritePath = "idle" | "input-bar" | "ghost-suggestion" | ImeDiagnosticWritePath;
 type SpawnStatus = "idle" | "starting" | "failed";
+
+export function terminalRowsForDrawableHeight(
+  drawableHeight: number,
+  cellHeight: number,
+  minRows = MIN_ROWS,
+  overflowGuardPx = CANVAS_GUTTER,
+): number {
+  if (!Number.isFinite(drawableHeight) || !Number.isFinite(cellHeight) || drawableHeight <= 0 || cellHeight <= 0) {
+    return minRows;
+  }
+  const baseRows = Math.floor(drawableHeight / cellHeight);
+  const remainder = drawableHeight - baseRows * cellHeight;
+  const overflowToNextRow = remainder > 0 ? cellHeight - remainder : Number.POSITIVE_INFINITY;
+  const rows = overflowToNextRow <= overflowGuardPx ? baseRows + 1 : baseRows;
+  return Math.max(minRows, rows);
+}
 
 function inputWritePathLabel(path: InputWritePath): string {
   switch (path) {
@@ -147,6 +164,13 @@ function shellDisplayName(shell: ShellType): string {
 const PREVIEW_TERMINAL_ID = "browser-preview-terminal";
 const NAMED_FOREGROUND = 256;
 const NAMED_BACKGROUND = 257;
+
+export function shouldMountTimelineBar(
+  snapshots: readonly SnapshotSummary[],
+  activeOverlay: ActiveSnapshotOverlay | null,
+): boolean {
+  return snapshots.length > 0 || activeOverlay !== null;
+}
 
 function previewCell(ch = " ", attrs = 0): CellSnapshot {
   return { ch, fg: NAMED_FOREGROUND, bg: NAMED_BACKGROUND, attrs };
@@ -355,6 +379,7 @@ export function NativeTerminalArea({
   forceRestartPty = defaultForceRestart,
   openInEditor,
   openExternal,
+  onSnapshotMarkHandlerChange,
 }: NativeTerminalAreaProps) {
   const previewMode = !isTauriRuntime();
   const terminalFontFamily = useAppStore((s) => s.terminalFontFamily);
@@ -482,6 +507,15 @@ export function NativeTerminalArea({
   const handleMarkSnapshot = useCallback(() => {
     void markSnapshot();
   }, [markSnapshot]);
+
+  useEffect(() => {
+    if (previewMode || !terminalId) {
+      onSnapshotMarkHandlerChange?.(null);
+      return;
+    }
+    onSnapshotMarkHandlerChange?.(handleMarkSnapshot);
+    return () => onSnapshotMarkHandlerChange?.(null);
+  }, [handleMarkSnapshot, onSnapshotMarkHandlerChange, previewMode, terminalId]);
 
   // Backend-initiated removal (ghost-diff panel X, dismiss IPC from another
   // caller). Listener is registered once at mount and reads the overlay ref
@@ -947,7 +981,7 @@ export function NativeTerminalArea({
       if (w <= 0 || h <= 0) return null;
       return {
         cols: Math.max(MIN_COLS, Math.floor(w / cellMetrics.width)),
-        rows: Math.max(MIN_ROWS, Math.floor(h / cellMetrics.height)),
+        rows: terminalRowsForDrawableHeight(h, cellMetrics.height),
       };
     };
     const apply = () => {
@@ -1268,6 +1302,7 @@ export function NativeTerminalArea({
   const diagnosticComposition = lastImeDiagnostic?.composing ? "composing" : "idle";
   const diagnosticCandidate = formatCandidateRect(lastImeDiagnostic);
   const diagnosticLastEvent = formatImeEventSummary(lastImeDiagnostic);
+  const shouldRenderTimelineBar = shouldMountTimelineBar(timelineSnapshots, snapshotOverlay);
   const startupMessage =
     spawnStatus === "failed"
       ? `Failed to start ${shellDisplayName(shell)}${spawnError ? `: ${spawnError}` : ""}`
@@ -1336,14 +1371,14 @@ export function NativeTerminalArea({
           </button>
         </div>
       )}
-      <TimelineBar
-        terminalId={terminalId}
-        snapshots={timelineSnapshots}
-        activeOverlay={snapshotOverlay}
-        onSelectSnapshot={selectSnapshot}
-        onDismissOverlay={dismissSnapshotOverlay}
-        onMarkSnapshot={handleMarkSnapshot}
-      />
+      {shouldRenderTimelineBar && (
+        <TimelineBar
+          snapshots={timelineSnapshots}
+          activeOverlay={snapshotOverlay}
+          onSelectSnapshot={selectSnapshot}
+          onDismissOverlay={dismissSnapshotOverlay}
+        />
+      )}
       {exitInfo && (
         <div
           className={`${styles.exitBanner} ${exitInfo.crashed ? styles.exitBannerCrashed : ""}`}
@@ -1504,7 +1539,16 @@ export function NativeTerminalArea({
           </div>
         )}
       </div>
-      <IMEInputBar ref={imeBarRef} onSubmit={sendIMEBytes} onRequestCanvasFocus={focusCanvas} />
+      <IMEInputBar
+        ref={imeBarRef}
+        onSubmit={sendIMEBytes}
+        onRequestCanvasFocus={focusCanvas}
+        // density-decision: ime-input-bar stays visible (ffcbe95) — auto-collapse
+        // changed the drawable height and churned the PTY row count ("footer
+        // spacing" jank). Reclaiming this strip needs an overlay-positioned bar
+        // that doesn't participate in layout, not a conditional mount.
+        collapsed={false}
+      />
     </div>
   );
 }

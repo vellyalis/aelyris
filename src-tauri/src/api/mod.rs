@@ -206,6 +206,9 @@ pub struct ApiState {
     /// Durable merge-intent store (P0-3). The single source of truth for the
     /// operator/MCP merge approval path; `None` = merge verbs fail closed.
     pub merge_store: Option<Arc<crate::merge_intent::store::MergeIntentStore>>,
+    /// Shared Proofbook runner (PB-3). The MCP face delegates list/validate/run/status
+    /// operations to the same Rust runner spine used by Tauri IPC; `None` = fail closed.
+    pub proofbook_runner: Option<crate::proofbook::ProofbookRunner>,
     /// Backend command-risk gate (P0-4). Every command-carrying write path classifies
     /// through it before reaching a PTY; `None` (tests) leaves writes ungated.
     pub command_risk_gate: Option<Arc<crate::command_risk::gate::CommandRiskGate>>,
@@ -262,6 +265,7 @@ impl ApiState {
             knowledge_graph: None,
             db: None,
             merge_store: None,
+            proofbook_runner: None,
             command_risk_gate: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             governance: Arc::new(crate::governance::Governance::new()),
@@ -375,6 +379,11 @@ impl ApiState {
         store: Option<Arc<crate::merge_intent::store::MergeIntentStore>>,
     ) -> Self {
         self.merge_store = store;
+        self
+    }
+
+    pub fn with_proofbook_runner(mut self, runner: crate::proofbook::ProofbookRunner) -> Self {
+        self.proofbook_runner = Some(runner);
         self
     }
 
