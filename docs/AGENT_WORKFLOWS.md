@@ -20,12 +20,12 @@ skill, verifier, or review gate should drive a task.
 If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
 
-Current machine truth refreshed 2026-07-04 JST: `pnpm verify:quality-score`
-reports `65/100` (`227/351`), grade `D`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `65/100`
-(`227/351`), still `releaseCandidateReady=false`.
-The current final-goal audit is `blocked` with `implementationFixableCount=19`,
-`policyBlockedCount=0`, and `externalBlockedCount=16`.
+Current machine truth refreshed 2026-07-06 JST: `pnpm verify:quality-score`
+reports `60/100` (`212/351`), grade `D`, `releaseCandidateReady=false`;
+after the final-goal evidence-map refresh the projected score is `60/100`
+(`212/351`), still `releaseCandidateReady=false`.
+The current final-goal audit is `blocked` with `implementationFixableCount=20`,
+`policyBlockedCount=3`, and `externalBlockedCount=18`.
 
 ## Workflow Routing
 

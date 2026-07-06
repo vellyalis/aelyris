@@ -22,10 +22,12 @@ either widens that moat or removes friction in front of it.
 - Quality score / grade / releaseCandidateReady: regenerate with
   `pnpm verify:quality-score`, read `.codex-auto/quality/release-quality-score.json`.
 - Final-goal audit residuals: `pnpm verify:final-goal-audit`,
-  read `.codex-auto/quality/final-goal-audit.json` (as of writing:
-  implementation-fixable residuals are zero; remaining blockers are
-  external/operator/upstream gated — signing, token-consented live prompts,
-  real-OS sleep, live host proofs).
+  read `.codex-auto/quality/final-goal-audit.json`. Do not quote residual
+  counts from prose (including this file) — they change on every
+  regeneration because evidence freshness is mtime-based. The triage of
+  every blocker class and its exact refresh command lives in
+  `FINAL_GOAL_SCORE_PATH_2026-07-06.md`; most "implementation-fixable"
+  entries are stale-evidence re-runs, not code.
 - Interpretation for planning purposes: the **backbone is functionally
   complete and machine-verified** (terminal core, mux, visible fleet,
   ownership, review/merge, MCP control plane, session lifecycle). What remains
@@ -278,6 +280,13 @@ GUI equivalent of herdr's agent recipes; shareable as JSON in-repo.
 Everything above follows the standing rules: one work unit = one branch,
 verifier before claim, no weakening of existing gates, owner decides `DECIDE:`
 items before implementation starts.
+
+**Parallel track (added 2026-07-06):** the release-score backlog (the
+final-goal audit's blocker list) is a separate ledger with its own route and
+resume rule: `FINAL_GOAL_SCORE_PATH_2026-07-06.md`. It is mostly evidence
+re-runs and operator gates, not feature work, so it can interleave with this
+ledger at any point. CODE-class residue found there re-enters through the
+same deepening-pass discipline described below.
 
 **Granularity rule (added 2026-07-06):** ledger items exist at three depths —
 zero-inference (code-anchored §-detailed-design + pasteable /goal, e.g.

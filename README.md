@@ -32,13 +32,13 @@ they are written from scratch in Rust for exactly this job.
 Every row names an architectural property with a runnable check behind it —
 see [Verification](#verification).
 
-Current machine truth, refreshed 2026-07-04 JST: `pnpm verify:quality-score`
-currently reports `65/100` (`227/351`), grade `D`,
+Current machine truth, refreshed 2026-07-06 JST: `pnpm verify:quality-score`
+currently reports `60/100` (`212/351`), grade `D`,
 `releaseCandidateReady=false`; after the final-goal evidence-map refresh the
-projected score is `65/100` (`227/351`), still
+projected score is `60/100` (`212/351`), still
 `releaseCandidateReady=false`. The final-goal audit is `blocked` with
-`implementationFixableCount=19`, `policyBlockedCount=0`, and
-`externalBlockedCount=16`; Aelyris remains alpha and not release-ready.
+`implementationFixableCount=20`, `policyBlockedCount=3`, and
+`externalBlockedCount=18`; Aelyris remains alpha and not release-ready.
 
 ## Why now
 
