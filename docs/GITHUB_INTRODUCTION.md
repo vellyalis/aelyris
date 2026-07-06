@@ -11,14 +11,16 @@ keep the current release status aligned with `docs/PUBLICATION_READINESS.md`.
 
 ## Short GitHub Description
 
-Aelyris is a Windows-first AI development workspace for coordinating agents,
-terminals, tasks, reviews, and evidence around one project.
+Aelyris is mission control for a fleet of AI coding agents on your own
+machine: every agent in a visible terminal pane, on its own git worktree,
+coordinated down to the function level, merged only through commit-bound,
+auditable gates.
 
 ## Tagline Options
 
-- Project-first AI development workspace for Windows.
-- A calm cockpit for multi-agent development.
-- Bring agents, terminals, and review into one shared workspace.
+- Mission control for a fleet of AI coding agents — on your own machine.
+- A calm cockpit for parallel, supervised AI development.
+- Visible panes, isolated worktrees, function-level coordination, gated merges.
 
 ## Why The Name Aelyris
 
@@ -36,70 +38,78 @@ Qralis is the coordination logic inside it.
 
 ## Main Introduction
 
-Aelyris is a Windows-first development workspace for people who want to work
-with AI agents without losing sight of the project.
+Aelyris is a Windows-first, local-first workspace for running many AI coding
+agents in parallel on one real project — without them stepping on each other,
+and without hiding their work behind invisible background jobs.
 
-It brings terminals, agent sessions, task lanes, Git worktrees, review flows,
-and verification evidence into one place. Instead of treating each AI agent as a
-separate chat window or a hidden background job, Aelyris is designed to make the
-work visible: what each agent is doing, where it is working, what changed, what
-needs review, and what proof exists.
+Every agent runs as a real, interactive AI CLI in its own visible terminal
+pane, on its own git worktree. Ownership is tracked per symbol, down to the
+function: agents owning disjoint functions run in parallel, overlapping work
+serializes automatically. Nothing reaches the main branch unsupervised —
+approval binds to the exact commit it was granted against, and mechanical
+build/test/lint gates can block a merge even after a human approves. The
+terminal, the multiplexer, and the agent control plane underneath are written
+from scratch in Rust for exactly this job, and everything the cockpit UI can
+do is also exposed as a typed MCP control plane with a full audit trail.
 
 The long-term goal is a calm, inspectable cockpit for multi-agent development.
-One agent can implement, another can test, another can review, while the human
-operator keeps the final judgment. Aelyris is not here to replace that judgment.
-It is here to make parallel AI work easier to guide, easier to trust, and easier
-to clean up before it reaches the main branch.
+One agent implements, another tests, another reviews, while the human operator
+keeps the final judgment. Aelyris is not here to replace that judgment. It is
+here to make parallel AI work easier to guide, easier to trust, and easier to
+clean up before it ships.
 
-The project is still in active development. The current codebase already has a
-real Rust/Tauri terminal foundation, visible agent paths, worktree-aware project
-tools, orchestration contracts, review surfaces, and local verification gates.
-Release-level claims are intentionally guarded by verifier output, so the public
-story can stay honest as the product matures.
+The project is alpha and in active development. One discipline shapes the
+public story: a capability is not claimed until a verifier you can run
+yourself proves it. Release-level claims stay gated behind verifier output as
+the product matures.
 
 ## Japanese Introduction
 
-Aelyris（エイリス）は、AI エージェントと人が同じプロジェクトを見ながら作業する
-ための Windows 向け開発ワークスペースです。
+Aelyris（エイリス）は、複数の AI コーディングエージェントを自分のマシンの上で
+並列に働かせるための管制室です。Windows ファースト・ローカルファーストで、
+ひとつの本物のプロジェクトを相手に、エージェント同士を衝突させず、しかも
+その仕事ぶりを隠さず見せることを目的にしています。
 
-ターミナル、エージェントのセッション、作業レーン、Git worktree、レビュー、
-検証の証跡をひとつの場所に集めます。AI を別々のチャットや見えない裏側の処理
-として動かすのではなく、誰が何をしているのか、どのファイルに触れているのか、
-何が検証済みなのかを見える形にすることを目指しています。
+エージェントは一体ずつ、目に見えるターミナルペインの中で本物の対話型 AI CLI
+として動き、それぞれ専用の git worktree を持ちます。所有権は関数単位で追跡
+され、別々の関数を持つエージェントは並列に、重なった作業は自動で直列に
+捌かれます。main ブランチには無監督では何も入りません——承認はその時点の
+コミットに紐づき、ビルド・テスト・リントの機械ゲートは人間が承認した後でも
+マージを止められます。土台のターミナルとマルチプレクサ、エージェント制御
+プレーンは、この用途のために Rust でゼロから書いたものです。
 
 Aelyris という名前は、air、astral、iris、Elysian のような響きを少しずつ
-残した造語です。軽さ、天体感、光、視界、そして AI らしい操作面を感じられる
-名前として選んでいます。
+残した造語です。軽さ、天体感、光、視界、そして澄んだ操作面を感じられる
+名前として選びました。**Qralis** は協調エンジンの名前です。実装する AI、
+テストする AI、レビューする AI が役割を分担し、最後の判断は人間が持つ——
+Qralis はその役割・メッセージ・ペイン・レビュー・証跡をつなぐ層で、
+Aelyris がワークスペース、Qralis がその中の協調ロジックにあたります。
 
-**Qralis** は協調エンジン名です。実装する AI、テストする AI、レビューする AI が
-役割を分担し、最後の判断は人間が持つ。Qralis はその役割、メッセージ、ペイン、
-レビュー、証跡をつなぐ層です。Aelyris はワークスペース、Qralis はその中の協調
-ロジックです。
-
-このプロジェクトは現在も開発中です。Rust/Tauri ベースのターミナル、見える
-エージェント実行、worktree を意識したプロジェクト操作、オーケストレーション、
-レビュー、ローカル検証ゲートの土台はあります。一方で、リリース品質などの
-大きな主張は、検証コマンドと証跡で確認できる状態になるまで控えめに扱います。
-Aelyris はアルファであり、製品としての完成は主張しません。
+プロジェクトはアルファ版で、開発は現在進行形です。方針はひとつだけ徹底して
+います——自分の手で実行できる verifier が証明するまで、その機能は「ある」と
+言わない。リリース品質のような大きな主張は、検証コマンドと証跡が揃うまで
+主張しません。
 
 ## README Opening Variant
 
 ```markdown
 # Aelyris
 
-Aelyris is a Windows-first AI development workspace for coordinating agents,
-terminals, tasks, reviews, and evidence around one project.
+Mission control for a fleet of AI coding agents — on your own machine.
+Aelyris runs many coding agents in parallel: each one lives in its own visible
+terminal pane, works on its own git worktree, is coordinated down to the
+function level, and reaches your main branch only through commit-bound,
+auditable merge gates.
 
-It is built for a workflow where multiple AI agents can work in visible lanes:
-one implementing, one testing, one reviewing, and the human operator keeping the
-final call. Aelyris brings the terminal, project context, Git worktrees, review
-surfaces, and verification gates into one calm cockpit, so parallel AI work stays
-inspectable instead of becoming scattered background activity.
+It is built for a workflow where one agent implements, one tests, one reviews,
+and the human operator keeps the final call — with the plumbing (persistent
+multiplexed terminals, governance, audit, worktrees, merge gates) bundled
+underneath so parallel AI work stays inspectable instead of becoming scattered
+background activity.
 
-The project is in active development. The current codebase includes a real
-Rust/Tauri terminal foundation, visible agent paths, orchestration contracts,
-worktree-aware tooling, and local release evidence checks. Public release claims
-remain gated by verifier output rather than marketing copy.
+The project is alpha and in active development. A capability is not claimed
+until a verifier you can run yourself proves it; public release claims remain
+gated by verifier output rather than marketing copy.
 ```
 
 ## GitHub About Fields
@@ -107,7 +117,7 @@ remain gated by verifier output rather than marketing copy.
 Description:
 
 ```text
-Windows-first AI development workspace for coordinating agents, terminals, tasks, reviews, and evidence.
+Mission control for a fleet of AI coding agents: visible panes, isolated git worktrees, function-level coordination, commit-bound merge gates. Windows-first, local-first.
 ```
 
 Website:
