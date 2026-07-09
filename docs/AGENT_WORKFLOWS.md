@@ -5,27 +5,31 @@ skill, verifier, or review gate should drive a task.
 
 ## Authority Order
 
-1. `AGENTS.md` - shared repo policy and current claim boundary.
-2. `docs/requirements.md` - stable requirements and machine-truth policy.
-3. Judgment material - `GOAL.md` plus the knowledge stack routed by
+1. `AGENTS.md` - shared repo policy, current claim boundary, and mandatory
+   preflight. Task routing starts only after its hard guardrails are checked.
+2. `docs/requirements.md` - stable requirements, machine-truth policy, and
+   Current Claim Policy when claims/readiness/public wording are touched.
+3. `AI_GUIDE.md` - Task Router for selecting only the relevant knowledge docs;
+   its layer model is reasoning order, not a requirement to read every file.
+4. Judgment material - `GOAL.md` plus the knowledge stack selected by
    `AI_GUIDE.md` (decision framework, delegation framework, architecture,
-   contracts). The canonical read order lives in `AI_GUIDE.md` section 0.
-4. Root work orders - read `refactor-instructions.md`,
-   `hardening-instructions.md`, and `renderer-instructions.md` explicitly for
-   status, but do not restart completed orders unless a current verifier shows a
-   regression.
-5. `docs/specs/README.md` - active spec index and current Work Unit routing.
-6. This file - operational routing for agents and skills.
+   contracts).
+5. Root work orders - read `refactor-instructions.md`,
+   `hardening-instructions.md`, and `renderer-instructions.md` explicitly when
+   `AGENTS.md` requires the work-order safety preflight; do not restart
+   completed orders unless a current verifier shows a regression.
+6. `docs/specs/README.md` - active spec index and current Work Unit routing.
+7. This file - operational routing for agents and skills.
 
 If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
 
-Current machine truth refreshed 2026-07-06 JST: `pnpm verify:quality-score`
-reports `60/100` (`212/351`), grade `D`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `60/100`
-(`212/351`), still `releaseCandidateReady=false`.
-The current final-goal audit is `blocked` with `implementationFixableCount=20`,
-`policyBlockedCount=3`, and `externalBlockedCount=18`.
+Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
+reports `62/100` (`216/351`), grade `D`, `releaseCandidateReady=false`;
+after the final-goal evidence-map refresh the projected score is `62/100`
+(`216/351`), still `releaseCandidateReady=false`.
+The current final-goal audit is `blocked` with `implementationFixableCount=19`,
+`policyBlockedCount=3`, and `externalBlockedCount=19`.
 
 ## Workflow Routing
 

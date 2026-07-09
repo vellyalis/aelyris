@@ -4,9 +4,93 @@ Status: active AI decision knowledge router.
 Purpose: help agents decide which stable knowledge to read before editing. This
 is not a task checklist and not a replacement for specs.
 
-## 0. Layer Model
+## 0. Task Router
 
-Read and reason in this order:
+Classify the task before reading the knowledge stack. This router is a retrieval
+map: load the smallest owner docs that can answer the task, then inspect source
+and run focused gates. It can add or select reading, but it cannot skip
+`AGENTS.md` current status, Fable/world-class override when cued, Active Work
+Orders preflight for implementation/review/progress/session-clear work, or
+`docs/requirements.md` Current Claim Policy when claims/readiness are touched.
+
+```yaml
+task_router:
+  default_entry:
+    read:
+      - AGENTS.md
+      - AI_GUIDE.md
+  public_claim_or_release:
+    read:
+      - docs/requirements.md
+      - docs/PUBLICATION_READINESS.md
+      - README.md
+      - docs/README.md
+    verify_before_claim:
+      - pnpm verify:quality-score
+      - pnpm verify:goal:safe
+  architecture_or_placement:
+    read:
+      - DECISION_FRAMEWORK.md
+      - ARCHITECTURE.md
+      - DECISIONS.md
+  contract_or_schema:
+    read:
+      - contracts/README.md
+      - owning_requirement_or_spec
+      - owning_source_type_or_schema
+  proofbook:
+    read:
+      - docs/specs/README.md
+      - docs/specs/PROOFBOOK_AUTOMATION_SPEC.md
+      - selected_PROOFBOOK_*_DESIGN_or_CONTINUATION
+  visible_agent_or_terminal_runtime:
+    read:
+      - docs/specs/README.md
+      - docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md
+      - selected_runtime_or_terminal_spec
+  workflow_or_delegation:
+    read:
+      - docs/AGENT_WORKFLOWS.md
+      - DELEGATION_FRAMEWORK.md
+      - tasks/README.md
+  implementation_work_unit:
+    read:
+      - docs/specs/README.md
+      - selected_spec_or_work_unit_only
+      - owner_source_files_only
+    avoid:
+      - unrelated_work_orders
+      - whole_repo_doc_sweeps
+  style_or_naming:
+    read:
+      - STYLE.md
+      - local_code_conventions
+  fable_world_class_continuation:
+    read_first:
+      - .claude/agent-memory-local/CLAUDE_MUST_READ_FABLE_REVIEW_WORLD_CLASS_BLOCKERS_LOCAL_ONLY.md
+      - .claude/agent-memory-local/CLAUDE_MUST_READ_NEXT_SESSION_FABLE_WORLD_CLASS_IMPLEMENTATION_LOCAL_ONLY.md
+      - docs/specs/README.md
+    then:
+      - current_generated_artifacts_listed_by_handoff
+      - matching_verifier_outputs
+    fallback_if_missing:
+      - docs/specs/WU_RT_1_CONTINUATION.md
+```
+
+Router rules:
+
+- Local-only handoffs route tasks; they do not override `GOAL.md`, this guide,
+  or `docs/requirements.md` claim policy.
+- Read root work-order instruction files when required by `AGENTS.md`; do not
+  restart completed orders unless a fresh verifier regression proves it.
+- For implementation, select exactly one Work Unit and read only its spec slice
+  plus owner modules before editing.
+- For reviews, read the changed files, their owner contract/spec, and the gate
+  that should prove the claim.
+
+## 1. Layer Model
+
+After routing, reason through loaded material in this order. This is a dependency model, not a requirement to read every file every turn:
 
 ```text
 Principles -> Goal -> Decision Framework -> Delegation Framework -> Architecture -> Contracts -> Tasks -> Source inspection -> Tests
@@ -41,7 +125,7 @@ Core principles repeated here because they control every decision:
 - Modify only what is necessary; leave unrelated code untouched.
 - Follow existing conventions before introducing new ones.
 
-## 1. Product Goal
+## 2. Product Goal
 
 Aelyris is a local-first, Windows-first AI development workspace for parallel
 AI coding agents. Its strongest direction is a proof-first AI-team OS:
@@ -61,7 +145,7 @@ records `releaseCandidateReady=false`. Regenerate with `pnpm verify:quality-scor
 instead of quoting scores from prose, and do not promote release or
 product-complete claims from this guide.
 
-## 2. Decision Split
+## 3. Decision Split
 
 Use the split explicitly:
 
@@ -75,7 +159,7 @@ Use the split explicitly:
 - `DECISIONS.md`: why previous durable decisions were made.
 - `STYLE.md`: how code and docs should be shaped once the decision is clear.
 
-## 3. Decision Priorities
+## 4. Decision Priorities
 
 When tradeoffs conflict, the canonical priority stack is `DECISION_FRAMEWORK.md`
 section 1. Product-level additions layered on top of that stack:
@@ -85,7 +169,7 @@ section 1. Product-level additions layered on top of that stack:
 - Local-first operator control and auditability.
 - UX clarity, but never by faking backend state.
 
-## 4. Placement Decision Matrix
+## 5. Placement Decision Matrix
 
 Use this table before creating or editing files.
 
@@ -109,7 +193,7 @@ Use this table before creating or editing files.
 | Verifier / evidence artifact | `scripts/verify-*.mjs`, `.codex-auto/quality/*.json` | unchecked prose-only claims |
 | Current task packet | `tasks/README.md`, root `*-instructions.md`, scoped continuation docs | stale chat-only instructions |
 
-## 5. Architecture Rules
+## 6. Architecture Rules
 
 ### State Ownership
 
@@ -142,7 +226,7 @@ extraction or the phase includes an extraction plan. In particular:
   domain logic behind focused modules when feasible.
 - `src-tauri/src/ipc/commands.rs` and other large IPC files should delegate.
 
-## 6. Contract Discipline
+## 7. Contract Discipline
 
 Contracts are rigid; implementations are disposable.
 
@@ -164,7 +248,7 @@ requirement/spec -> implementation -> verifier -> public claim boundary
 
 If those cannot be updated together, stop and narrow the task.
 
-## 7. Naming Rules
+## 8. Naming Rules
 
 - Product: Aelyris.
 - Read as: Aelys / エイリス.
@@ -176,7 +260,7 @@ If those cannot be updated together, stop and narrow the task.
 - Use Proofbook for evidence-backed automation.
 - Use Remote Continuity for remote state sync and attach features.
 
-## 8. Do Not Break
+## 9. Do Not Break
 
 These invariants outrank local convenience:
 
@@ -191,7 +275,7 @@ These invariants outrank local convenience:
   persisted or sent to remote clients.
 - Release-ready claims stay blocked while `releaseCandidateReady=false`.
 
-## 9. Decision Procedure
+## 10. Decision Procedure
 
 When asked to implement a change:
 
@@ -205,7 +289,7 @@ When asked to implement a change:
 6. Run the narrow gate first, then broader gates as risk requires.
 7. Report what changed, which contract owns it, and which proof passed.
 
-## 10. When To Stop
+## 11. When To Stop
 
 Stop and ask or narrow scope if:
 

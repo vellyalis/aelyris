@@ -2,7 +2,7 @@
 
 Status: active implementation index
 Last updated: 2026-06-27 JST
-Last reviewed: 2026-07-06 JST
+Last reviewed: 2026-07-10 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
@@ -67,12 +67,12 @@ The locally generated `.codex-auto/quality/*.json` artifacts are the current
 machine truth. They override stale prose, older promotion gates, and historical
 green snapshots.
 
-Current machine truth refreshed 2026-07-06 JST: `pnpm verify:quality-score`
-reports `60/100` (`212/351`), grade `D`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `60/100`
-(`212/351`), still `releaseCandidateReady=false`.
-The final-goal audit is `blocked` with `implementationFixableCount=20`,
-`policyBlockedCount=3`, and `externalBlockedCount=18`; Aelyris remains alpha
+Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
+reports `62/100` (`216/351`), grade `D`, `releaseCandidateReady=false`;
+after the final-goal evidence-map refresh the projected score is `62/100`
+(`216/351`), still `releaseCandidateReady=false`.
+The final-goal audit is `blocked` with `implementationFixableCount=19`,
+`policyBlockedCount=3`, and `externalBlockedCount=19`; Aelyris remains alpha
 and not release-ready.
 
 ## Documentation Maintenance Rule

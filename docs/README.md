@@ -10,7 +10,9 @@ The current project status is controlled by requirements, spec indexes, and
 machine-readable verifier artifacts. These sources override older progress notes
 and historical score snapshots.
 
-Read in this order:
+For broad public orientation, read in this order. Coding agents should use
+`../AI_GUIDE.md` as the Task Router after `../AGENTS.md` preflight instead of
+loading every file for every task:
 
 1. `../README.md` - public project overview and current alpha status.
 2. `GITHUB_INTRODUCTION.md` - public GitHub introduction and Aelyris naming copy.
@@ -38,12 +40,12 @@ pnpm verify:quality-score
 pnpm verify:goal:safe
 ```
 
-Current machine truth refreshed 2026-07-06 JST: `pnpm verify:quality-score`
-reports `60/100` (`212/351`), grade `D`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `60/100`
-(`212/351`), still `releaseCandidateReady=false`.
-The final-goal audit is `blocked` with `implementationFixableCount=20`,
-`policyBlockedCount=3`, and `externalBlockedCount=18`; this still does not make
+Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
+reports `62/100` (`216/351`), grade `D`, `releaseCandidateReady=false`;
+after the final-goal evidence-map refresh the projected score is `62/100`
+(`216/351`), still `releaseCandidateReady=false`.
+The final-goal audit is `blocked` with `implementationFixableCount=19`,
+`policyBlockedCount=3`, and `externalBlockedCount=19`; this still does not make
 Aelyris release-ready.
 
 Do not use older score mentions in historical progress files as current release
@@ -61,7 +63,7 @@ Aelyris separates long-lived AI context into decision layers:
 
 - Principles: `../AGENTS.md` and `../CLAUDE.md` define how agents behave.
 - Goal: `../GOAL.md` defines what the product is and what it must not claim.
-- Knowledge router: `../AI_GUIDE.md` defines the read order.
+- Knowledge router: `../AI_GUIDE.md` defines task-routed reading.
 - Decision Framework: `../DECISION_FRAMEWORK.md` defines what to choose.
 - Delegation Framework: `../DELEGATION_FRAMEWORK.md` defines who should explore, review, verify, or implement.
 - Architecture: `../ARCHITECTURE.md` defines owner modules and dependency direction.

@@ -93,6 +93,9 @@ const requiredAiGuideClauses = [
   "releaseCandidateReady=false",
   "Do Not Break",
   "Decision Procedure",
+  "Task Router",
+  "cannot skip",
+  "selected_spec_or_work_unit_only",
 ];
 
 const requiredDecisionFrameworkClauses = [
@@ -261,7 +264,7 @@ const requiredDocsReadmeClauses = [
   "Tasks",
 ];
 
-const requiredAgentWorkflowsClauses = ["GOAL.md", "AI_GUIDE.md", "canonical read order"];
+const requiredAgentWorkflowsClauses = ["GOAL.md", "AI_GUIDE.md", "Task Router", "relevant knowledge docs"];
 
 // Volatile machine-truth literals (scores, grades) belong to generated
 // artifacts and the freshness-gated current-state docs
@@ -304,29 +307,15 @@ const referencedOwnerPaths = [
   "docs/PUBLICATION_READINESS.md",
 ];
 
-// The canonical knowledge read order (AI_GUIDE.md section 0). Entry files may
-// list a subset, but the first mention of each file must follow this order.
-const canonicalOrder = [
-  "GOAL.md",
-  "AI_GUIDE.md",
-  "DECISION_FRAMEWORK.md",
-  "DELEGATION_FRAMEWORK.md",
-  "ARCHITECTURE.md",
-  "contracts/README.md",
-];
-const readOrderScope = ["agents", "claude", "docsReadme", "tasks"];
-
-function orderViolations(text, names) {
-  const indices = names.map((name) => ({ name, index: text.indexOf(name) })).filter((entry) => entry.index >= 0);
-  const violations = [];
-  for (let i = 1; i < indices.length; i += 1) {
-    if (indices[i].index < indices[i - 1].index) {
-      violations.push(`${indices[i].name} appears before ${indices[i - 1].name}`);
-    }
-  }
-  return violations;
-}
-
+// The knowledge entrypoint is now task-routed. AGENTS.md owns mandatory
+// preflight; AI_GUIDE.md section 0 owns retrieval routing; older linear read
+// order language may remain in downstream task packets, but entry docs must not
+// hide the mandatory preflight behind relevance-only routing.
+const routerConsistencyClauses = {
+  agents: ["Task-Routed Reading", "mandatory_preflight", "task_routed_expansion", "Fable override", "active work-order safety"],
+  aiGuide: ["## 0. Task Router", "cannot skip", "Active Work Orders preflight", "## 1. Layer Model"],
+  agentWorkflows: ["Task routing starts only after", "Task Router for selecting only the relevant knowledge docs"],
+};
 function duplicateSentences(text) {
   const seen = new Map();
   const duplicates = new Set();
@@ -371,9 +360,9 @@ for (const [id, text] of Object.entries(sourceTexts)) {
 
 const missingOwnerPaths = referencedOwnerPaths.filter((path) => !existsSync(fullPath(path)));
 
-const readOrderProblems = readOrderScope
-  .map((id) => ({ path: paths[id], violations: orderViolations(sourceTexts[id], canonicalOrder) }))
-  .filter((entry) => entry.violations.length > 0);
+const routerConsistencyProblems = Object.entries(routerConsistencyClauses)
+  .map(([id, clauses]) => ({ path: paths[id], missingClauses: missingFrom(sourceTexts[id], clauses) }))
+  .filter((entry) => entry.missingClauses.length > 0);
 
 const duplicateClauseWarnings = Object.entries(sourceTexts)
   .filter(([id]) => id !== "packageJson")
@@ -384,7 +373,7 @@ const checks = [
   check(
     "files-exist",
     Object.values(paths).every((path) => existsSync(fullPath(path))),
-    "AI decision knowledge, goal, architecture, contracts, tasks, decisions, style, workflow, read-order, and package files exist",
+    "AI decision knowledge, goal, architecture, contracts, tasks, decisions, style, workflow, task-router, and package files exist",
     { paths },
   ),
   check(
@@ -444,7 +433,7 @@ const checks = [
   check(
     "read-order-wired",
     missing.agents.length === 0 && missing.claude.length === 0 && missing.docsReadme.length === 0,
-    "AGENTS.md, CLAUDE.md, and docs/README.md route agents through the decision knowledge stack",
+    "AGENTS.md, CLAUDE.md, and docs/README.md route agents through the decision knowledge entrypoints",
     {
       missingAgentsClauses: missing.agents,
       missingClaudeClauses: missing.claude,
@@ -454,14 +443,14 @@ const checks = [
   check(
     "workflows-wired",
     missing.agentWorkflows.length === 0,
-    "docs/AGENT_WORKFLOWS.md routes workflow decisions through GOAL.md and the AI_GUIDE.md knowledge stack",
+    "docs/AGENT_WORKFLOWS.md routes workflow decisions through GOAL.md and the AI_GUIDE.md Task Router",
     { missingAgentWorkflowsClauses: missing.agentWorkflows },
   ),
   check(
-    "read-order-consistent",
-    readOrderProblems.length === 0,
-    "Entry files list the knowledge stack in the canonical AI_GUIDE.md section 0 order",
-    { canonicalOrder, readOrderProblems },
+    "task-router-consistent",
+    routerConsistencyProblems.length === 0,
+    "Entry files preserve mandatory preflight while routing knowledge through AI_GUIDE.md section 0",
+    { routerConsistencyClauses, routerConsistencyProblems },
   ),
   check(
     "no-volatile-score-literal",
@@ -501,7 +490,7 @@ const report = {
   sourceCutoffMs: Math.max(...sourcePaths.map((path) => mtime(path))),
   summary:
     failed.length === 0
-      ? "AI principles, goal, decision framework, delegation framework, architecture, contract index, task layer, decisions, style, and workflow routing are present, ordered, claim-safe, and wired into the read order."
+      ? "AI principles, goal, decision framework, delegation framework, architecture, contract index, task layer, decisions, style, and workflow routing are present, task-routed, claim-safe, and wired to mandatory preflight."
       : `${failed.length} AI decision knowledge checks failed`,
   warnings: {
     duplicateClauses: duplicateClauseWarnings,

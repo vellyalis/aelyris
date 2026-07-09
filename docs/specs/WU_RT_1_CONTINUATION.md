@@ -1,6 +1,6 @@
 # Aelyris Next Session Continuation
 
-Updated: 2026-07-06 JST
+Updated: 2026-07-10 JST
 
 Purpose: keep the next cleared Codex/Claude/Gemini session pointed at current
 machine truth after the refactor and hardening closeout work, without reviving
@@ -11,10 +11,10 @@ older RT-1-only task lists.
 - Repo: `C:\Users\owner\Aether_Terminal`
 - Branch: `main`
 - Latest pushed commits at this refresh:
-  - `bc4e08f fix: align final goal external gate truth`
-  - `3367acb fix: persist command evidence start anchors`
-  - `c29c74d fix: harden native hwnd paste proof`
-- Push status: `main` has been pushed to `origin/main` through `bc4e08f`.
+  - `94b416b docs: refresh ja README and GitHub introduction to current positioning`
+  - `c165e6a docs: add final-goal score-path triage ledger; refresh machine-truth numbers`
+  - `7f6f4ae docs: assign deepening to owner-side session; executors stop on design mismatch`
+- Push status: `main` has been pushed to `origin/main` through `94b416b`.
   Recheck with `git status --short --branch` before any next action.
 - Known dirty files at this refresh: none. If the next session starts dirty,
   classify that diff before unrelated work and do not overwrite it.
@@ -61,8 +61,11 @@ repo-owned regression.
    - Do not restart refactor phases unless a verifier shows a regression.
 
 2. `hardening-instructions.md`
-   - Status: H1-H8 repo-owned completion audit is closed out locally.
-   - Current proof shape: no implementation-fixable or policy blockers remain.
+   - Status: H1-H8 repo-owned completion audit is superseded by the current
+     final-goal audit truth.
+   - Current proof shape: the final-goal audit is blocked with
+     `implementationFixableCount=19`, `policyBlockedCount=3`, and
+     `externalBlockedCount=19`; do not reuse older external-only closeout text.
    - Remaining blockers must be read from the current final-goal audit before selecting the next workstream.
    - Do not restart H1-H8 unless a verifier regresses from the current contract.
 
@@ -82,16 +85,19 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `60/100` (`212/351`), grade `D`,
+- `pnpm verify:quality-score` -> `62/100` (`216/351`), grade `D`,
   `releaseCandidateReady=false`; after the final-goal evidence-map refresh the
-  projected score is `60/100` (`212/351`), still
+  projected score is `62/100` (`216/351`), still
   `releaseCandidateReady=false`.
 - `pnpm verify:final-goal-audit` -> `blocked`,
-  `implementationFixableCount=20`, `policyBlockedCount=3`,
-  `externalBlockedCount=18`.
-- `pnpm verify:goal:safe` -> required proof registry `28/28`,
-  `blocked-by-external-gates`, no failed steps, no non-consent blockers.
-- `pnpm verify:goal:closeout` -> `ready-external-gate-handoff`.
+  `implementationFixableCount=19`, `policyBlockedCount=3`,
+  `externalBlockedCount=19`.
+- `pnpm verify:goal:safe` -> `blocked`; failed steps include authenticated
+  preflight/consent packet, anti-stall, final-goal audit, documentation
+  freshness before this refresh, real OS sleep/operator handoff, completion
+  matrix, external-gate readiness, and operator finish.
+- `pnpm verify:goal:closeout` -> rerun after the docs/safe refresh before using
+  it as a handoff claim.
 - `pnpm verify:goal:docs` -> `pass-current-goal-docs-contract`.
 - `pnpm verify:goal:finalize` excludes git finalization by default; optional
   git finalization requires `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` and is not
