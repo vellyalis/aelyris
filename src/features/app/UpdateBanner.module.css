@@ -25,6 +25,10 @@
   font-weight: var(--weight-semibold);
 }
 
+.bannerError {
+  border-bottom-color: var(--danger);
+}
+
 .btn {
   background: var(--bg-surface);
   border: 1px solid var(--border);

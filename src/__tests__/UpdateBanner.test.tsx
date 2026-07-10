@@ -17,12 +17,19 @@ describe("UpdateBanner", () => {
     await waitFor(() => expect(container.querySelector("[role='status']")).toBeNull());
   });
 
-  it("stays silent on check errors so a misconfigured endpoint does not nag", async () => {
+  it("surfaces check errors and permits a retry", async () => {
     const checkUpdate = vi.fn<() => Promise<UpdateState>>().mockRejectedValue(new Error("network unreachable"));
     const { container } = render(<UpdateBanner checkUpdate={checkUpdate} relaunch={vi.fn()} />);
-    await waitFor(() => expect(checkUpdate).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 0));
-    expect(container.querySelector("[role='status']")).toBeNull();
+    const alert = await waitFor(() => {
+      const el = container.querySelector("[role='alert']");
+      if (!el) throw new Error("updater error not rendered");
+      return el as HTMLElement;
+    });
+    expect(alert.textContent).toContain("network unreachable");
+    const retry = Array.from(alert.querySelectorAll("button")).find((button) => button.textContent === "Retry");
+    expect(retry).toBeDefined();
+    fireEvent.click(retry as HTMLButtonElement);
+    await waitFor(() => expect(checkUpdate).toHaveBeenCalledTimes(2));
   });
 
   it("renders banner with version + current when an update is available", async () => {

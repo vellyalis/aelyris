@@ -44,26 +44,21 @@ export interface UpdateBannerProps {
  * component without resolving the Tauri runtime. The plugin's `check()`
  * returns `Update | null`; we adapt it into our flatter `UpdateState`.
  *
- * Errors are intentionally swallowed: the placeholder endpoint that
- * ships in `tauri.conf.json` is unreachable by design, and the user
- * should not see "update server unreachable" until they have configured
- * a real endpoint via `scripts/setup-updater-keys.ps1`.
+ * Check failures remain errors. The banner renders them as a dismissible,
+ * retryable degraded state so an unreachable or untrusted release channel is
+ * never presented as "no update available".
  */
 async function defaultCheckUpdate(): Promise<UpdateState> {
-  try {
-    const { check } = await import("@tauri-apps/plugin-updater");
-    const update = await check();
-    if (!update) return { available: false };
-    return {
-      available: true,
-      version: update.version,
-      currentVersion: update.currentVersion,
-      notes: update.body,
-      downloadAndInstall: () => update.downloadAndInstall(),
-    };
-  } catch {
-    return { available: false };
-  }
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return { available: false };
+  return {
+    available: true,
+    version: update.version,
+    currentVersion: update.currentVersion,
+    notes: update.body,
+    downloadAndInstall: () => update.downloadAndInstall(),
+  };
 }
 
 async function defaultRelaunch(): Promise<void> {
@@ -137,6 +132,24 @@ export function UpdateBanner({
   }, [state, relaunch]);
 
   if (dismissed) return null;
+  if (state.phase === "error") {
+    return (
+      <div className={`${styles.banner} ${styles.bannerError}`} role="alert" aria-live="assertive">
+        <span className={styles.text}>Update check failed: {state.error ?? "Unknown updater error"}</span>
+        <button type="button" className={styles.btn} onClick={() => void performCheck()}>
+          Retry
+        </button>
+        <button
+          type="button"
+          className={styles.btn}
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss updater error"
+        >
+          Dismiss
+        </button>
+      </div>
+    );
+  }
   if (state.phase !== "available" && state.phase !== "installing") return null;
   const update = state.update;
   if (!update) return null;
