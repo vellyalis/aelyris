@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
+import { shouldFailReleaseEnforcement } from "./release-evidence-truth.mjs";
 import {
   createEvidenceProvenance,
   deduplicateRootCauses,
@@ -13,6 +14,7 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "release-quality-score.json");
 const VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const BOOTSTRAP_RIGHT_RAIL_GOAL_TRACK = process.env.AELYRIS_RIGHT_RAIL_GOAL_TRACK_BOOTSTRAP === "1";
+const ENFORCE_RELEASE_SCORE = process.argv.includes("--enforce");
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const releaseFinalGoalArtifactLock = acquireFinalGoalArtifactLock("score-release-quality");
 process.on("exit", releaseFinalGoalArtifactLock);
@@ -626,20 +628,27 @@ add(
         ],
 );
 
+const releaseDoctorSigning = releaseDoctor?.checks?.find?.((check) => check?.id === "signing-state");
+const releaseDoctorUpdater = releaseDoctor?.checks?.find?.((check) => check?.id === "updater-latest-release");
 const artifactsReady =
-  fileFresh(appExe, 10 * 1024 * 1024) &&
-  fileFresh(nsis, 4 * 1024 * 1024) &&
-  fileFresh(msi, 4 * 1024 * 1024) &&
-  fileFresh(`${nsis}.sig`) &&
-  fileFresh(`${msi}.sig`);
+  releaseDoctorCurrent &&
+  releaseDoctorSigning?.status === "pass" &&
+  releaseDoctorSigning?.details?.authenticodeReady === true &&
+  releaseDoctorSigning?.details?.updaterSignatureReady === true &&
+  releaseDoctorUpdater?.status === "pass" &&
+  releaseDoctorUpdater?.details?.capabilityWired === true &&
+  releaseDoctorUpdater?.details?.endpointReachability?.reachable === true &&
+  releaseDoctorUpdater?.details?.lifecycleProof?.ready === true;
 add(
   scores,
   "distribution",
   "Signed distribution artifacts",
   artifactsReady ? 14 : 0,
   14,
-  artifactsReady ? "ready" : "missing/stale",
-  artifactsReady ? [] : ["signed exe/installer artifacts are incomplete"],
+  artifactsReady ? "authenticode-and-updater-lifecycle-proved" : "missing/stale/untrusted",
+  artifactsReady
+    ? []
+    : ["Authenticode timestamp chains, updater signatures, reachable metadata, and install/relaunch/rollback proof are incomplete"],
 );
 
 const muxSummary = muxPerf?.summary ?? muxPerf;
@@ -5217,9 +5226,15 @@ const report = {
   provenance: createEvidenceProvenance({
     root: ROOT,
     verifierPath: "scripts/score-release-quality.mjs",
-    inputPaths: ["package.json", "scripts/evidence-provenance.mjs", ...evidenceInputPaths],
+    inputPaths: [
+      "package.json",
+      "scripts/evidence-provenance.mjs",
+      "scripts/release-evidence-truth.mjs",
+      ...evidenceInputPaths,
+    ],
     generatedAt,
   }),
+  enforceMode: ENFORCE_RELEASE_SCORE,
 };
 
 mkdirSync(dirname(OUT), { recursive: true });
@@ -5230,3 +5245,4 @@ if (nativeHwndPasteLiveDegradedFresh) {
   );
 }
 console.log(JSON.stringify(report, null, 2));
+if (ENFORCE_RELEASE_SCORE && shouldFailReleaseEnforcement(report)) process.exitCode = 1;

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "release-signing-operator-handoff.json");
@@ -133,7 +134,10 @@ const checks = {
   signingWarningClassified:
     signingComplete ||
     (signingState?.status === "warn" &&
-      (signingState?.details?.freshness?.nsis === false || signingState?.details?.freshness?.msi === false)),
+      (signingState?.details?.authenticodeReady === false ||
+        signingState?.details?.updaterSignatureReady === false ||
+        signingState?.details?.freshness?.nsis === false ||
+        signingState?.details?.freshness?.msi === false)),
   updaterWarningClassified:
     signingComplete ||
     // A stale-but-PRESENT latest.json after a no-sign build is a classified
@@ -143,7 +147,9 @@ const checks = {
     (updaterLatest?.status === "warn" &&
       updaterLatest?.details?.invalidEndpoints?.length === 0 &&
       latest?.exists === true &&
-      Object.values(latestIntegrity).some((value) => value === false)),
+      (Object.values(latestIntegrity).some((value) => value === false) ||
+        updaterLatest?.details?.endpointReachability?.reachable === false ||
+        updaterLatest?.details?.lifecycleProof?.ready === false)),
   updaterEndpointConfigured:
     signingComplete ||
     (Array.isArray(updaterLatest?.details?.endpoints) &&
@@ -173,10 +179,11 @@ const failedChecks = Object.entries(checks)
 const readyForSigningOperator = failedChecks.length === 0 && !signingComplete;
 const ok = signingComplete || readyForSigningOperator;
 const status = signingComplete ? "release-signing-complete" : readyForSigningOperator ? "ready-for-release-signing-operator" : "failed";
+const generatedAt = new Date().toISOString();
 
 const report = {
   version: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   localDate: currentLocalDate(),
   timeZone: LOCAL_TIME_ZONE,
   ok,
@@ -196,7 +203,7 @@ const report = {
     latestIntegrity,
   },
   runbook: {
-    signingAndUpdater: {
+    updaterSigning: {
       command: "pnpm tauri:build:dist",
       env: {
         TAURI_SIGNING_PRIVATE_KEY: "<operator-provided>",
@@ -210,6 +217,16 @@ const report = {
         "src-tauri/target/release/bundle/latest.json",
       ],
     },
+    windowsCodeSigning: {
+      command: "signtool sign /fd SHA256 /tr <trusted-rfc3161-url> /td SHA256 <app-exe> <nsis-exe> <msi>",
+      requires:
+        "Use the operator-controlled Windows code-signing identity after the final build. All three files must report Valid Authenticode status with signer and timestamp certificates.",
+      expectedOutputs: [
+        "src-tauri/target/release/Aelyris.exe",
+        "src-tauri/target/release/bundle/nsis/Aelyris_0.2.3_x64-setup.exe",
+        "src-tauri/target/release/bundle/msi/Aelyris_0.2.3_x64_en-US.msi",
+      ],
+    },
     verification: [
       "pnpm verify:release:doctor",
       "pnpm verify:quality-score",
@@ -218,17 +235,23 @@ const report = {
       "pnpm verify:goal:closeout",
     ],
     safety:
-      "This handoff never signs artifacts, never reads signing private key values, and only reports whether current signatures/latest.json are fresh.",
+      "This handoff never signs artifacts or reads private key values. It separately verifies Authenticode timestamp chains and Tauri updater signatures/lifecycle evidence.",
   },
   nextRequiredAction: signingComplete
     ? "Rerun pnpm verify:quality-score, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout to close the release evidence loop."
-    : "Run pnpm tauri:build:dist in a secure shell with TAURI signing material, then rerun pnpm verify:release:doctor, pnpm verify:quality-score, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout.",
+    : "Run pnpm tauri:build:dist with Tauri updater signing material, Authenticode-sign and timestamp Aelyris.exe plus NSIS/MSI with the operator-controlled Windows identity, complete the updater install/relaunch/rollback proof, then rerun the release gates.",
   artifacts: {
     releaseDoctor: artifactSummary(paths.releaseDoctor, releaseDoctorArtifact),
     releaseScore: artifactSummary(paths.releaseScore, releaseScoreArtifact),
     distConfig: artifactSummary(paths.distConfig, distConfig),
     baseConfig: artifactSummary(paths.baseConfig, baseConfig),
   },
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-release-signing-operator-handoff.mjs",
+    inputPaths: ["scripts/evidence-provenance.mjs", ...Object.values(paths)],
+    generatedAt,
+  }),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });

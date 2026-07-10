@@ -78,7 +78,7 @@ const nativeVisualQaPath = ".codex-auto/quality/native-visual-qa-proof.json";
 const nativePrimaryShellPath = ".codex-auto/quality/native-primary-shell-proof.json";
 const upperCompatPath = ".codex-auto/quality/upper-compat-gates.json";
 const releaseQualityPath = ".codex-auto/quality/release-quality-score.json";
-const fullNativeAuditPath = ".codex-auto/quality/full-native-rust-gap-audit.json";
+const fullNativeAuditPath = ".codex-auto/quality/native-coverage-gap-audit.json";
 const rightRailSuitePath = ".codex-auto/production-smoke/right-rail-suite.json";
 const rightRailPreferencesPath = ".codex-auto/production-smoke/right-rail-preferences.json";
 const nativeSleepGuardPath = ".codex-auto/production-smoke/native-sleep-guard-refusal.json";
@@ -410,10 +410,10 @@ addItem(
     rightRailImplementationSubsmokesGreen,
     rightRailPreferencesGreen,
     strictFullNative: {
-      percent: fullNativeAudit?.percent,
+      measuredCoveragePercent: fullNativeAudit?.measuredCoveragePercent,
       total: fullNativeAudit?.total,
       max: fullNativeAudit?.max,
-      fullNativeReady: fullNativeAudit?.fullNativeReady,
+      shippingShellReady: fullNativeAudit?.shippingShellReady,
     },
   },
   ["refresh implementation score subset, right-rail preferences, right-rail subsmokes, and full-native stretch audit"],
@@ -437,7 +437,7 @@ const report = {
   nativeFirstHybridReady: status === "passed",
   implementationConfidence: status === "passed" ? "high" : "blocked",
   fullNativeRequiredForRelease: false,
-  strictFullNativeStretchReady: fullNativeAudit?.fullNativeReady === true,
+  strictFullNativeStretchReady: fullNativeAudit?.shippingShellReady === true,
   hostSleepResumeDogfood: {
     realMachineSleepExecuted: false,
     requiredForNativeFirstImplementationConfidence: false,

@@ -33,15 +33,16 @@ Every row names an architectural property with a runnable check behind it —
 see [Verification](#verification).
 
 Current machine truth, refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-currently reports `19/100` (`62/327`), grade `D`,
+currently reports `23/100` (`76/327`), grade `D`,
 `releaseCandidateReady=false`. The final-goal audit is downstream and does not
 feed points back into the score; it is `blocked` with
-`implementationFixableCount=196`, `policyBlockedCount=12`, and
-`externalBlockedCount=15`. The safe proof registry target is `28/28`.
+`implementationFixableCount=194`, `policyBlockedCount=12`, and
+`externalBlockedCount=17`. The safe proof registry target is `28/28`.
 `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
-`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`. `pnpm verify:goal:finalize`
-excludes git finalization by default; `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
+`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+`pnpm verify:goal:finalize` excludes git finalization by default;
+`AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
 optional, and git is not required for product/safe/finalize evidence. Aelyris
 remains alpha and not release-ready.
 

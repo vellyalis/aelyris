@@ -1,18 +1,27 @@
 import { createHash } from "node:crypto";
+import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { createEvidenceProvenance, validateEvidenceProvenance } from "./evidence-provenance.mjs";
+import { authenticodeEvidenceReady, updaterEvidenceReady } from "./release-evidence-truth.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const execFile = promisify(execFileCallback);
 const args = new Set(process.argv.slice(2));
 const strictSigning = args.has("--strict-signing") || process.env.AELYRIS_RELEASE_STRICT_SIGNING === "1";
 const failOnWarning = args.has("--fail-on-warn") || process.env.AELYRIS_RELEASE_FAIL_ON_WARN === "1";
 const failAcceptedReleaseRisk =
   args.has("--fail-accepted-release-risk") || process.env.AELYRIS_RELEASE_FAIL_ACCEPTED_RELEASE_RISK === "1";
 const outputDir = path.join(repoRoot, ".codex-auto", "release-doctor");
-const outputBasename = failAcceptedReleaseRisk ? "p2-08-production-release-doctor" : "p2-08-release-doctor";
+const outputBasename = failAcceptedReleaseRisk
+  ? "p2-08-production-release-doctor"
+  : strictSigning
+    ? "p2-08-release-doctor-strict-signing"
+    : "p2-08-release-doctor";
 const outputJson = path.join(outputDir, `${outputBasename}.json`);
 const outputMarkdown = path.join(outputDir, `${outputBasename}.md`);
 
@@ -182,6 +191,35 @@ function isFreshForArtifact(signatureInfo, artifactInfo) {
   return Boolean(signatureInfo?.exists && artifactInfo?.exists && signatureTime != null && artifactTime != null && signatureTime >= artifactTime);
 }
 
+async function inspectAuthenticode(filePath) {
+  if (!existsSync(filePath)) return { status: "Missing", valid: false, timestamped: false };
+  const script = [
+    "$s=Get-AuthenticodeSignature -LiteralPath $env:AELYRIS_AUTHENTICODE_TARGET",
+    "[pscustomobject]@{status=[string]$s.Status;statusMessage=$s.StatusMessage;signerThumbprint=$s.SignerCertificate.Thumbprint;signerSubject=$s.SignerCertificate.Subject;timestampThumbprint=$s.TimeStamperCertificate.Thumbprint;timestampSubject=$s.TimeStamperCertificate.Subject}|ConvertTo-Json -Compress",
+  ].join("; ");
+  try {
+    const { stdout } = await execFile("pwsh.exe", ["-NoProfile", "-Command", script], {
+      windowsHide: true,
+      timeout: 15_000,
+      maxBuffer: 1024 * 1024,
+      env: { ...process.env, AELYRIS_AUTHENTICODE_TARGET: filePath },
+    });
+    const parsed = JSON.parse(stdout.trim());
+    return {
+      ...parsed,
+      valid: parsed.status === "Valid" && Boolean(parsed.signerThumbprint),
+      timestamped: Boolean(parsed.timestampThumbprint),
+    };
+  } catch (error) {
+    return {
+      status: "InspectionFailed",
+      valid: false,
+      timestamped: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function basenameFromLatestUrl(value) {
   if (typeof value !== "string" || value.length === 0) return null;
   try {
@@ -256,6 +294,7 @@ async function checkTauriBuild(pkg, tauriConfig, tauriDistConfig) {
 async function checkSigning(version, tauriConfig) {
   const paths = artifactPaths(version, tauriConfig);
   const artifacts = {
+    appExe: await fileInfo(paths.appExe),
     nsis: await fileInfo(paths.nsis),
     msi: await fileInfo(paths.msi),
   };
@@ -271,14 +310,21 @@ async function checkSigning(version, tauriConfig) {
     nsis: isFreshForArtifact(sigs.nsis, artifacts.nsis),
     msi: isFreshForArtifact(sigs.msi, artifacts.msi),
   };
-  const signedReady = allSigsPresent && freshness.nsis && freshness.msi && !hasPlaceholderPubkey;
+  const authenticode = {
+    appExe: await inspectAuthenticode(paths.appExe),
+    nsis: await inspectAuthenticode(paths.nsis),
+    msi: await inspectAuthenticode(paths.msi),
+  };
+  const authenticodeReady = authenticodeEvidenceReady(Object.values(authenticode));
+  const updaterSignatureReady = allSigsPresent && freshness.nsis && freshness.msi && !hasPlaceholderPubkey;
+  const signedReady = authenticodeReady && updaterSignatureReady;
   const status = signedReady ? "pass" : strictSigning ? "fail" : "warn";
   return section(
     "signing-state",
     "Signing State",
     status,
     signedReady
-      ? "Updater signatures and a non-placeholder updater pubkey are present."
+      ? "Authenticode signer and timestamp chains plus updater signatures are valid."
       : allSigsPresent && (!freshness.nsis || !freshness.msi)
         ? "Updater signatures are present but older than the current installer artifacts; regenerate signatures before release."
       : "Current artifacts are suitable for local no-sign smoke only; signed updater release requires keys and .sig files.",
@@ -290,6 +336,9 @@ async function checkSigning(version, tauriConfig) {
       artifacts,
       signatures: sigs,
       freshness,
+      authenticode,
+      authenticodeReady,
+      updaterSignatureReady,
     },
   );
 }
@@ -334,6 +383,47 @@ async function checkUpdater(version, tauriConfig) {
   const platform = latestJson?.platforms?.["windows-x86_64"] ?? null;
   const urlBasename = basenameFromLatestUrl(platform?.url);
   const expectedNsisBasename = path.basename(paths.nsis);
+  const updateBannerSource = await readText("src/features/app/UpdateBanner.tsx");
+  const updateBannerTestSource = await readText("src/__tests__/UpdateBanner.test.tsx");
+  const capabilityWired =
+    updateBannerSource.includes('@tauri-apps/plugin-updater') &&
+    updateBannerSource.includes("downloadAndInstall") &&
+    updateBannerSource.includes("await relaunch()") &&
+    updateBannerTestSource.includes("install click triggers download + relaunch");
+  const resolvedEndpoint = endpointConfigured
+    ? endpoints[0].replace("{{target}}", "windows-x86_64").replace("{{current_version}}", version)
+    : null;
+  let endpointReachability = { url: resolvedEndpoint, reachable: false, status: null, error: null };
+  if (resolvedEndpoint && invalidEndpoints.length === 0) {
+    try {
+      const response = await fetch(resolvedEndpoint, { signal: AbortSignal.timeout(10_000) });
+      endpointReachability = { url: resolvedEndpoint, reachable: response.ok, status: response.status, error: null };
+    } catch (error) {
+      endpointReachability = {
+        url: resolvedEndpoint,
+        reachable: false,
+        status: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  const lifecycleProofPath = path.join(outputDir, "updater-lifecycle-proof.json");
+  let lifecycleProof = null;
+  if (existsSync(lifecycleProofPath)) {
+    try {
+      lifecycleProof = JSON.parse(await readFile(lifecycleProofPath, "utf8"));
+    } catch {
+      lifecycleProof = null;
+    }
+  }
+  const lifecycleProvenance = lifecycleProof
+    ? validateEvidenceProvenance({ root: repoRoot, artifact: lifecycleProof })
+    : { ok: false, errors: ["missing-updater-lifecycle-proof"] };
+  const lifecycleReady =
+    lifecycleProvenance.ok &&
+    lifecycleProof?.status === "pass" &&
+    lifecycleProof?.checks?.installRelaunch === true &&
+    lifecycleProof?.checks?.rollbackFailure === true;
   const latestIntegrity = {
     versionMatches: latestMatches,
     manifestFreshForNsis: latestTime != null && nsisTime != null && latestTime >= nsisTime,
@@ -341,7 +431,12 @@ async function checkUpdater(version, tauriConfig) {
     signatureMatchesNsisSig: Boolean(nsisSigText && platform?.signature === nsisSigText),
     urlTargetsCurrentNsis: urlBasename === expectedNsisBasename,
   };
-  const updaterReady = Object.values(latestIntegrity).every(Boolean);
+  const updaterReady = updaterEvidenceReady({
+    manifestIntegrity: Object.values(latestIntegrity),
+    capabilityWired,
+    endpointReachable: endpointReachability.reachable,
+    lifecycleReady,
+  });
   const status =
     !endpointConfigured || invalidEndpoints.length > 0 ? "fail" : updaterReady ? "pass" : strictSigning ? "fail" : "warn";
   return section(
@@ -359,6 +454,13 @@ async function checkUpdater(version, tauriConfig) {
       latest,
       latestJsonVersion: latestJson?.version ?? null,
       latestIntegrity,
+      capabilityWired,
+      endpointReachability,
+      lifecycleProof: {
+        path: normalizePath(rel(lifecycleProofPath)),
+        ready: lifecycleReady,
+        provenance: lifecycleProvenance,
+      },
       nsis,
       nsisSig,
       expectedNsisBasename,
@@ -633,6 +735,24 @@ async function main() {
       .filter((check) => ["version-match", "icon-integrity", "dist-artifacts", "tauri-build", "windows-smoke-path"].includes(check.id))
       .every((check) => check.status === "pass"),
     checks,
+    provenance: createEvidenceProvenance({
+      root: repoRoot,
+      verifierPath: "scripts/release-doctor.mjs",
+      inputPaths: [
+        "package.json",
+        "src-tauri/tauri.conf.json",
+        "src-tauri/tauri.dist.conf.json",
+        "scripts/evidence-provenance.mjs",
+        "scripts/release-evidence-truth.mjs",
+        "src/features/app/UpdateBanner.tsx",
+        "src/__tests__/UpdateBanner.test.tsx",
+        ...Object.values(artifactPaths(version, tauriConfig)),
+        `${artifactPaths(version, tauriConfig).nsis}.sig`,
+        `${artifactPaths(version, tauriConfig).msi}.sig`,
+        ".codex-auto/release-doctor/updater-lifecycle-proof.json",
+      ],
+      generatedAt,
+    }),
   };
 
   await mkdir(outputDir, { recursive: true });

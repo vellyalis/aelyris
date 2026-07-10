@@ -25,14 +25,15 @@ If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
 
 Current machine truth refreshed 2026-07-10 JST by the comprehensive audit safe
-chain: `pnpm verify:quality-score` reports `19/100` (`62/327`), grade `D`,
+chain: `pnpm verify:quality-score` reports `23/100` (`76/327`), grade `D`,
 `releaseCandidateReady=false`.
-The current final-goal audit is `blocked` with `implementationFixableCount=196`,
-`policyBlockedCount=12`, and `externalBlockedCount=15`. The safe proof registry
+The current final-goal audit is `blocked` with `implementationFixableCount=194`,
+`policyBlockedCount=12`, and `externalBlockedCount=17`. The safe proof registry
 target is `28/28`. `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
-`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`. `pnpm verify:goal:finalize`
-excludes git finalization by default; `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
+`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+`pnpm verify:goal:finalize` excludes git finalization by default;
+`AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
 optional, and git is not required for product/safe/finalize evidence.
 
 ## Workflow Routing

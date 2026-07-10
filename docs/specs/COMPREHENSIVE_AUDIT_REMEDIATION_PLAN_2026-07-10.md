@@ -54,7 +54,9 @@ R0 continuation contract
 ```
 
 A3 may read the existing WU-UQ-1 design, but it does not run concurrently with A1/A2.
-A8 is conditional and cannot start from the existing `98% full-native` artifact alone.
+A8 is conditional and cannot start from the historical `98% full-native` artifact.
+Current proof is `.codex-auto/quality/native-coverage-gap-audit.json` with measured
+coverage fields and a separate `shippingShellReady` claim.
 
 ## R0 - Continuation Contract
 

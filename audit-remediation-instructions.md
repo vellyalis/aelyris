@@ -2,9 +2,9 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A0` (`A0.1 complete`; `A0.2 complete`; `A0.3 active`; R0 complete at `fcd23a7`).
-NEXT PHASE: `A1` after all A0 authority/evidence slices are complete.
-NEXT IMPLEMENTATION SLICE: `A0.3 signing, updater, native-readiness naming, and enforce-mode truth`.
+CURRENT PHASE: `A1` (`A0.1-A0.3 complete`; R0 complete at `fcd23a7`).
+NEXT PHASE: `A2` after A1 terminal input authority is complete.
+NEXT IMPLEMENTATION SLICE: `A1 daemon-owned terminal write and approval authority`.
 
 ## Objective
 
@@ -202,6 +202,30 @@ Forbidden in A0.3:
 - lowering score thresholds,
 - terminal/product/UI implementation,
 - running token-spending prompt smoke.
+
+## A0.3 Complete - Windows Trust Claim And Enforcement Truth
+
+Completion contract:
+
+- signing readiness requires valid Authenticode signer and timestamp chains for
+  app exe, NSIS, and MSI plus separate current updater signatures.
+- updater readiness requires wired capability, valid current manifest, reachable
+  production metadata, and a provenance-valid install/relaunch plus rollback/failure
+  lifecycle proof.
+- unsigned local dist remains useful smoke evidence but receives zero signed
+  distribution credit.
+- native audit emits `aelyris.native-coverage-gap/v2` with
+  `measuredCoveragePercent` and `shippingShellReady=false`; it cannot emit the
+  old `fullNativeReady`/bare `percent` claim shape.
+- `pnpm verify:quality-score:enforce` exits non-zero while the score is D or
+  release-blocked.
+- `pnpm verify:release-evidence-truth` rejects unsigned, missing timestamp,
+  unreachable metadata, lifecycle failure, misleading native-ready label, and
+  blocked enforce-mode mutations.
+
+Current missing signing identity, endpoint reachability, and live updater lifecycle
+proof remain external/operator evidence blockers. They do not reopen A0.3 repo-owned
+truth logic.
 
 ## Work and Session Rules
 

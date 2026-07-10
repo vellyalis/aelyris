@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
+import { nativeCoverageReportIsHonest } from "./release-evidence-truth.mjs";
 
 const ROOT = resolve(process.cwd());
-const OUT = join(ROOT, ".codex-auto", "quality", "full-native-rust-gap-audit.json");
+const OUT = join(ROOT, ".codex-auto", "quality", "native-coverage-gap-audit.json");
 
 function source(path) {
   const full = join(ROOT, path);
@@ -1272,23 +1274,26 @@ const max = items.reduce((sum, entry) => sum + entry.max, 0);
 const percent = Math.round((total / max) * 100);
 const missing = items.filter((entry) => entry.status !== "complete");
 const strict = process.argv.includes("--strict");
+const generatedAt = new Date().toISOString();
 
 const report = {
-  version: 1,
-  generatedAt: new Date().toISOString(),
-  status: missing.length === 0 ? "complete" : "in-progress",
-  percent,
+  version: 2,
+  schema: "aelyris.native-coverage-gap/v2",
+  generatedAt,
+  status: missing.length === 0 ? "coverage-complete" : "coverage-in-progress",
+  measuredCoveragePercent: percent,
   total,
   max,
   grade: percent >= 95 ? "S" : percent >= 85 ? "A" : percent >= 70 ? "B" : percent >= 55 ? "C" : "D",
-  fullNativeReady: missing.length === 0,
+  measuredCoverageComplete: missing.length === 0,
+  shippingShellReady: false,
   currentTruth: {
     currentArchitecture: hasPrimaryNativeShellPromotion
       ? "aelyris-native primary shell with Tauri/React compatibility available"
       : hasReactWebViewShell
         ? "Tauri/React shell with Rust terminal core and native-client spike"
         : "native shell candidate",
-    canClaimFullNative: missing.length === 0,
+    canClaimFullNative: false,
     canClaimRustCoreProductBoundary: nativeBoundaryFresh,
     canClaimOperatorPrimaryNativeShell:
       hasWinitWgpuFontAtlasTerminal &&
@@ -1328,7 +1333,7 @@ const report = {
   })),
   nextRequiredAction:
     missing.length === 0
-      ? "Full-native Rust goal is complete."
+      ? "Measured native coverage is complete; shipping-shell readiness remains a separate product gate."
       : "Continue with native visual QA/sleep-resume dogfood, React compatibility demotion, and operator-primary promotion.",
   artifacts: {
     nativeClientPath,
@@ -1355,11 +1360,37 @@ const report = {
     nativeInspectorWindowPath,
     nativeRightRailDemotionPath,
   },
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-full-native-rust-gap-audit.mjs",
+    inputPaths: [
+      "package.json",
+      "scripts/evidence-provenance.mjs",
+      "scripts/release-evidence-truth.mjs",
+      "src-tauri/src/bin/aelyris_native.rs",
+      nativeClientPath,
+      nativeBoundaryPath,
+      nativeInputPath,
+      finalGoalPath,
+      nativeVisualQaPath,
+      nativePrimaryShellPath,
+      realOsSuspendPath,
+    ],
+    generatedAt,
+  }),
 };
+
+if (!nativeCoverageReportIsHonest(report)) throw new Error("Native coverage report would imply unsupported shipping-shell readiness.");
 
 writeJsonAtomic(OUT, report);
 
-console.log(JSON.stringify({ status: report.status, percent, total, max, missing: report.missingImplementation, artifact: OUT }, null, 2));
+console.log(
+  JSON.stringify(
+    { status: report.status, measuredCoveragePercent: percent, total, max, missing: report.missingImplementation, artifact: OUT },
+    null,
+    2,
+  ),
+);
 if (strict && missing.length > 0) {
   process.exitCode = 1;
 }

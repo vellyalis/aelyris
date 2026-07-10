@@ -13,15 +13,16 @@ readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
 Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-reports `19/100` (`62/327`), grade `D`, `releaseCandidateReady=false`.
+reports `23/100` (`76/327`), grade `D`, `releaseCandidateReady=false`.
 The current final-goal audit is `blocked` with
-`implementationFixableCount=196`, `policyBlockedCount=12`, and
-`externalBlockedCount=15`; `pnpm verify:goal:safe` is also `blocked` in the
+`implementationFixableCount=194`, `policyBlockedCount=12`, and
+`externalBlockedCount=17`; `pnpm verify:goal:safe` is also `blocked` in the
 current local run. The safe proof registry target is `28/28`.
 `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
-`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`. `pnpm verify:goal:finalize`
-excludes git finalization by default; `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
+`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+`pnpm verify:goal:finalize` excludes git finalization by default;
+`AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
 optional, and git is not required for product/safe/finalize evidence. This is
 not release-ready.
 
