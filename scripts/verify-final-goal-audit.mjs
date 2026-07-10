@@ -2,6 +2,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
+import {
+  createEvidenceProvenance,
+  validateEvidenceDependencyGraph,
+  validateEvidenceProvenance,
+} from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "final-goal-audit.json");
@@ -9,10 +14,20 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const releaseFinalGoalArtifactLock = acquireFinalGoalArtifactLock("verify-final-goal-audit");
 process.on("exit", releaseFinalGoalArtifactLock);
 
+const evidenceInputPaths = new Set();
+const provenanceRejections = [];
+
 function readJson(path) {
   const full = join(ROOT, path);
   if (!existsSync(full)) return null;
-  return JSON.parse(readFileSync(full, "utf8"));
+  evidenceInputPaths.add(path);
+  const artifact = JSON.parse(readFileSync(full, "utf8"));
+  const validation = validateEvidenceProvenance({ root: ROOT, artifact });
+  if (!validation.ok) {
+    provenanceRejections.push({ path: path.replaceAll("\\", "/"), errors: validation.errors });
+    return null;
+  }
+  return artifact;
 }
 
 function tryReadJson(path) {
@@ -1961,11 +1976,24 @@ const residualRiskRegister = {
   canContinueWithoutTokenSpend: implementationFixableRisks.length === 0 && externalBlockedRisks.length === 0,
   completionClaimAllowed: goalComplete,
 };
-const projectedFinalGoalEvidenceMapPoints = evidenceComplete ? finalGoalEvidenceMapMax : finalGoalEvidenceMapPoints;
-const projectedTotal = (releaseScore?.total ?? 0) - finalGoalEvidenceMapPoints + projectedFinalGoalEvidenceMapPoints;
-const projectedPercent = releaseScore?.max ? Math.round((projectedTotal / releaseScore.max) * 100) : 0;
+const projectedFinalGoalEvidenceMapPoints = 0;
+const projectedTotal = releaseScore?.total ?? 0;
+const projectedPercent = releaseScore?.score ?? 0;
 const scoreSelfReferenceNote =
-  "preAudit excludes the final-goal-evidence-map points that this audit artifact enables; projectedAfterEvidenceMap shows the score after rerunning pnpm verify:quality-score with this fresh audit.";
+  "The final-goal audit is downstream of the release score. It cannot add points back into its own score input.";
+
+const dependencyGraph = {
+  schema: "aelyris.evidence-dependency-graph/v1",
+  nodes: [
+    { id: "release-score", kind: "aggregate", dependsOn: [] },
+    { id: "final-goal-audit", kind: "derived", dependsOn: ["release-score"] },
+  ],
+};
+const dependencyGraphValidation = validateEvidenceDependencyGraph(dependencyGraph);
+if (!dependencyGraphValidation.ok) {
+  throw new Error(`Invalid final-goal dependency graph: ${dependencyGraphValidation.errors.join(", ")}`);
+}
+const generatedAt = new Date().toISOString();
 
 const report = {
   ok: evidenceComplete,
@@ -1976,7 +2004,7 @@ const report = {
       : evidenceComplete
         ? "blocked-by-explicit-consent"
         : "blocked",
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   localDate: currentLocalDate(),
   timeZone: LOCAL_TIME_ZONE,
   goalComplete,
@@ -2020,6 +2048,14 @@ const report = {
   residualRiskRegister,
   operationalEvidence,
   externalBlockerReadiness,
+  dependencyGraph,
+  provenanceRejections,
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-final-goal-audit.mjs",
+    inputPaths: ["scripts/evidence-provenance.mjs", ...evidenceInputPaths],
+    generatedAt,
+  }),
   nextRequiredAction: goalComplete
     ? "Goal is complete."
     : residualRiskRegister.state === "blocked-by-external-gates"

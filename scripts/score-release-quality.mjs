@@ -2,6 +2,12 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
+import {
+  createEvidenceProvenance,
+  deduplicateRootCauses,
+  validateEvidenceDependencyGraph,
+  validateEvidenceProvenance,
+} from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "release-quality-score.json");
@@ -11,14 +17,33 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const releaseFinalGoalArtifactLock = acquireFinalGoalArtifactLock("score-release-quality");
 process.on("exit", releaseFinalGoalArtifactLock);
 
+const evidenceInputPaths = new Set();
+const provenanceRejections = [];
+
 function readJson(path) {
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, "utf8"));
+  evidenceInputPaths.add(path);
+  const artifact = JSON.parse(readFileSync(path, "utf8"));
+  const validation = validateEvidenceProvenance({ root: ROOT, artifact });
+  if (!validation.ok) {
+    provenanceRejections.push({ path: path.slice(ROOT.length + 1).replaceAll("\\", "/"), errors: validation.errors });
+    return null;
+  }
+  return artifact;
 }
 
 function fileFresh(path, minBytes = 1) {
   if (!existsSync(path)) return false;
-  return statSync(path).size >= minBytes;
+  if (statSync(path).size < minBytes) return false;
+  const provenancePath = `${path}.provenance.json`;
+  if (!existsSync(provenancePath)) {
+    provenanceRejections.push({
+      path: path.slice(ROOT.length + 1).replaceAll("\\", "/"),
+      errors: ["missing-provenance-sidecar"],
+    });
+    return false;
+  }
+  return readJson(provenancePath) != null;
 }
 
 function mtimeMs(path) {
@@ -240,7 +265,9 @@ const nativeHwndPasteLive = readJson(nativeHwndPasteLivePath);
 const terminalFontRenderContractPath = join(ROOT, ".codex-auto", "quality", "terminal-font-render-contract.json");
 const terminalFontRenderContract = readJson(terminalFontRenderContractPath);
 const finalGoalAuditPath = join(ROOT, ".codex-auto", "quality", "final-goal-audit.json");
-const finalGoalAudit = readJson(finalGoalAuditPath);
+// The final-goal audit consumes this score. Reading it here would create a score ->
+// audit -> score cycle, so downstream final-goal status is never a score input.
+const finalGoalAudit = null;
 const finalGoalSafeSummaryPath = join(ROOT, ".codex-auto", "quality", "final-goal-safe-summary.json");
 const finalGoalSafeSummary = readJson(finalGoalSafeSummaryPath);
 const _goalDocumentationFreshnessPath = join(ROOT, ".codex-auto", "quality", "goal-documentation-freshness.json");
@@ -5129,22 +5156,70 @@ add(
       ],
 );
 
-const total = scores.reduce((sum, item) => sum + item.points, 0);
-const max = scores.reduce((sum, item) => sum + item.max, 0);
+const scoreKindById = new Map([
+  ["release-readiness-aggregate", "aggregate"],
+  ["final-goal-evidence-map", "derived"],
+]);
+for (const item of scores) item.kind = scoreKindById.get(item.id) ?? "direct";
+const finalGoalEvidenceRow = scores.find((item) => item.id === "final-goal-evidence-map");
+if (finalGoalEvidenceRow) {
+  finalGoalEvidenceRow.points = 0;
+  finalGoalEvidenceRow.max = 0;
+  finalGoalEvidenceRow.blockers = [];
+  finalGoalEvidenceRow.detail = "downstream derived view; verify-final-goal-audit consumes this score without feeding it back";
+}
+const countedScores = scores.filter((item) => item.kind === "direct");
+const total = countedScores.reduce((sum, item) => sum + item.points, 0);
+const max = countedScores.reduce((sum, item) => sum + item.max, 0);
 const percent = Math.round((total / max) * 100);
-const blockers = scores.flatMap((item) => item.blockers.map((blocker) => ({ area: item.id, blocker })));
+const allBlockers = scores.flatMap((item) =>
+  item.blockers.map((blocker) => ({ area: item.id, kind: item.kind, blocker })),
+);
+const blockers = deduplicateRootCauses(allBlockers.filter((item) => item.kind === "direct"));
+const dependencyGraph = {
+  schema: "aelyris.evidence-dependency-graph/v1",
+  nodes: [
+    ...scores.map((item) => ({
+      id: `score:${item.id}`,
+      kind: item.kind,
+      dependsOn: item.id === "release-readiness-aggregate" ? countedScores.map((score) => `score:${score.id}`) : [],
+    })),
+    { id: "final-goal-audit", kind: "derived", dependsOn: ["release-score"] },
+    { id: "release-score", kind: "aggregate", dependsOn: countedScores.map((item) => `score:${item.id}`) },
+  ],
+};
+const dependencyGraphValidation = validateEvidenceDependencyGraph(dependencyGraph);
+if (!dependencyGraphValidation.ok) {
+  throw new Error(`Invalid score dependency graph: ${dependencyGraphValidation.errors.join(", ")}`);
+}
+const generatedAt = new Date().toISOString();
 const report = {
   version: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   localDate: currentLocalDate(),
   timeZone: LOCAL_TIME_ZONE,
   score: percent,
   total,
   max,
   grade: gradeForPercent(percent),
-  releaseCandidateReady: percent >= 92 && blockers.length === 0,
+  releaseCandidateReady:
+    percent >= 92 && blockers.length === 0 && scores.filter((item) => item.kind === "aggregate").every((item) => item.points === item.max),
   scores,
   blockers,
+  allBlockers,
+  blockerCounts: {
+    uniqueDirect: blockers.length,
+    aggregate: allBlockers.filter((item) => item.kind === "aggregate").length,
+    derived: allBlockers.filter((item) => item.kind === "derived").length,
+  },
+  dependencyGraph,
+  provenanceRejections,
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/score-release-quality.mjs",
+    inputPaths: ["package.json", "scripts/evidence-provenance.mjs", ...evidenceInputPaths],
+    generatedAt,
+  }),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });

@@ -18,6 +18,7 @@
     "verify:release:ime": "node scripts/verify-release-gate.mjs --with-ime",
     "verify:release:production": "node scripts/verify-production-release-gate.mjs",
     "verify:quality-score": "node scripts/score-release-quality.mjs",
+    "verify:evidence-provenance-contract": "node scripts/verify-evidence-provenance-contract.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",

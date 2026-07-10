@@ -64,8 +64,8 @@ repo-owned regression.
    - Status: H1-H8 repo-owned completion audit is superseded by the current
      final-goal audit truth.
    - Current proof shape: the final-goal audit is blocked with
-     `implementationFixableCount=19`, `policyBlockedCount=3`, and
-     `externalBlockedCount=19`; do not reuse older external-only closeout text.
+     `implementationFixableCount=196`, `policyBlockedCount=12`, and
+     `externalBlockedCount=15`; do not reuse older external-only closeout text.
    - Remaining blockers must be read from the current final-goal audit before selecting the next workstream.
    - Do not restart H1-H8 unless a verifier regresses from the current contract.
 
@@ -85,13 +85,18 @@ artifacts must be regenerated before claiming quality, readiness, or score.
 
 Last confirmed machine truth for the hardening closeout:
 
-- `pnpm verify:quality-score` -> `62/100` (`216/351`), grade `D`,
-  `releaseCandidateReady=false`; after the final-goal evidence-map refresh the
-  projected score is `62/100` (`216/351`), still
-  `releaseCandidateReady=false`.
+- `pnpm verify:quality-score` -> `19/100` (`62/327`), grade `D`,
+  `releaseCandidateReady=false`; final-goal audit is downstream and does not
+  feed points back into the score.
 - `pnpm verify:final-goal-audit` -> `blocked`,
-  `implementationFixableCount=19`, `policyBlockedCount=3`,
-  `externalBlockedCount=19`.
+  `implementationFixableCount=196`, `policyBlockedCount=12`,
+  `externalBlockedCount=15`.
+- Safe proof registry target -> `28/28`; `authenticated-ai-cli-prompt-smoke`
+  requires `authenticated-ai-cli-consent-packet` and
+  `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
+- `pnpm verify:goal:finalize` excludes git finalization by default;
+  `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is optional, and git is not required for
+  product/safe/finalize evidence.
 - `pnpm verify:goal:safe` -> `blocked`; failed steps include authenticated
   preflight/consent packet, anti-stall, final-goal audit, documentation
   freshness before this refresh, real OS sleep/operator handoff, completion

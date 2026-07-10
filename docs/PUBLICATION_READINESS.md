@@ -13,13 +13,17 @@ readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
 Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-reports `62/100` (`216/351`), grade `D`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `62/100`
-(`216/351`), still `releaseCandidateReady=false`.
+reports `19/100` (`62/327`), grade `D`, `releaseCandidateReady=false`.
 The current final-goal audit is `blocked` with
-`implementationFixableCount=19`, `policyBlockedCount=3`, and
-`externalBlockedCount=19`; `pnpm verify:goal:safe` is also `blocked` in the
-current local run. This is not release-ready.
+`implementationFixableCount=196`, `policyBlockedCount=12`, and
+`externalBlockedCount=15`; `pnpm verify:goal:safe` is also `blocked` in the
+current local run. The safe proof registry target is `28/28`.
+`authenticated-ai-cli-prompt-smoke` requires
+`authenticated-ai-cli-consent-packet` and
+`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`. `pnpm verify:goal:finalize`
+excludes git finalization by default; `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
+optional, and git is not required for product/safe/finalize evidence. This is
+not release-ready.
 
 Regenerate the machine evidence locally before release decisions:
 

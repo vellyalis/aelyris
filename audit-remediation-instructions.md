@@ -2,9 +2,9 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A0` (`A0.1 complete`; `A0.2 active`; R0 complete at `fcd23a7`).
+CURRENT PHASE: `A0` (`A0.1 complete`; `A0.2 complete`; `A0.3 active`; R0 complete at `fcd23a7`).
 NEXT PHASE: `A1` after all A0 authority/evidence slices are complete.
-NEXT IMPLEMENTATION SLICE: `A0.2 evidence provenance, freshness, and score-cycle truth`.
+NEXT IMPLEMENTATION SLICE: `A0.3 signing, updater, native-readiness naming, and enforce-mode truth`.
 
 ## Objective
 
@@ -148,6 +148,60 @@ Forbidden in A0.2:
 - signing/updater implementation, terminal/product implementation, or UI work,
 - treating aggregate failures as additional unique direct defects,
 - running the operator token smoke merely to refresh score evidence.
+
+## A0.2 Complete - Evidence Provenance And Acyclic Score Truth
+
+Completion contract:
+
+- `aelyris.evidence-provenance/v1` binds evidence to Git HEAD, verifier digest,
+  input hashes, execution identity, generation time, and expiry.
+- score and final-audit readers fail closed on missing, stale, mismatched, or
+  expired provenance; non-JSON artifact credit requires a validated sidecar.
+- release score contains only direct rows in its numerator/denominator;
+  aggregate and derived rows remain visible but cannot duplicate score credit or
+  unique direct defect counts.
+- final-goal audit is downstream of release score and cannot feed points back
+  into its own input.
+- `pnpm verify:evidence-provenance-contract` rejects stale, wrong-HEAD,
+  wrong-verifier, wrong-input, cycle, duplicate-node, and duplicate-root-cause
+  mutations.
+
+Legacy artifacts without the envelope intentionally receive zero artifact-backed
+credit. Their migration is explicit evidence debt, not permission to restore mtime
+fallbacks.
+
+## A0.3 Exact Next Slice
+
+Objective: remove the remaining false-positive release credit and ambiguous native
+readiness wording, then make blocked release health enforceable in CI.
+
+Read/owner files:
+
+- release signing/updater verifiers and distribution score rows
+- `scripts/verify-full-native-rust-gap-audit.mjs`
+- `scripts/score-release-quality.mjs` enforce-mode entry point
+- release/claim docs selected by `AI_GUIDE.md`
+
+Required output:
+
+1. Authenticode identity and timestamp-chain proof; detached updater signatures
+   cannot substitute for Windows executable signing.
+2. Updater credit requires capability wiring, reachable metadata, signature
+   verification, install/relaunch, rollback/failure, and current provenance.
+3. Full-native artifact and score labels describe measured coverage/gap only and
+   cannot imply shipping-shell readiness.
+4. `--enforce` exits non-zero for a D or release-blocked result while the default
+   diagnostic command continues to emit the report.
+5. Focused mutations cover unsigned binaries, stale/unreachable metadata,
+   lifecycle failure, misleading native-ready labels, and enforce-mode blocking.
+
+Forbidden in A0.3:
+
+- creating signing material or committing signatures/secrets,
+- awarding partial signing credit from file existence,
+- lowering score thresholds,
+- terminal/product/UI implementation,
+- running token-spending prompt smoke.
 
 ## Work and Session Rules
 

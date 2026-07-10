@@ -24,21 +24,21 @@ holds — and the required action differs per case:
 | Artifact state | How it happens | Correct action |
 | --- | --- | --- |
 | **missing** | verifier never ran on this machine | run the verifier command |
-| **stale** | artifact `mtime` is older than any watched source file (the scorer compares against a per-area source list in `scripts/score-release-quality.mjs`) | **re-run the verifier command — do NOT write code** |
+| **unprovenanced** | artifact lacks `aelyris.evidence-provenance/v1`, has the wrong Git HEAD/verifier digest/input hash, or is expired | rerun its owning verifier after it emits the provenance envelope; the scorer fails closed and grants no artifact-backed credit |
+| **stale** | the provenance `expiresAt` is past or its bound verifier/input digest no longer matches | **re-run the verifier command — do NOT write code** |
 | **failing** | verifier ran and reported `ok:false` / blockers | read the artifact's own `blockers[]`, then classify per §1 |
 
-Because staleness is mtime-based, **any commit that touches watched sources
-invalidates evidence**, and the score drops without anything being broken.
+Because staleness is provenance-based, any change to a bound verifier or input
+invalidates evidence without implying a product regression. Legacy mtime-only JSON
+is deliberately rejected rather than grandfathered.
 A low score therefore does not mean regression until a fresh re-run confirms
 it.
 
-Note one modeling quirk: `release-readiness-aggregate` entries appear in
-**both** the implementation-fixable and external-blocked lists of the audit
-(double-counted), and the audit also emits umbrella `missing-requirement`
-entries (e.g. `rust-native-terminal-core`, `release-operations-proof`) that
-are **derived roll-ups** of the per-area blockers. Never work on umbrella or
-aggregate entries directly — fix the per-area leaves and the roll-ups
-recompute.
+The score dependency graph is acyclic: release score consumes direct evidence,
+and final-goal audit consumes release score. Final-goal audit never feeds points
+back into the score. `release-readiness-aggregate` and umbrella requirements are
+explicit aggregate/derived rows; they do not create additional unique direct
+defects. Work only on direct leaf root causes.
 
 ## 1. Triage classes
 
