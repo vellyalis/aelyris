@@ -89,3 +89,8 @@ A restartable handoff should include:
 - next work unit,
 - forbidden files or scopes,
 - pasteable command or `/goal` packet.
+
+For an active long-running program this minimum is mandatory and is implemented
+through `docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md`: a tracked work order and
+plan, an append-only ignored worklog, and one canonical local handoff. Session
+clear is `clear-safe` only after the program continuation verifier passes.

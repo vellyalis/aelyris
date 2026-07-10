@@ -24,11 +24,10 @@ skill, verifier, or review gate should drive a task.
 If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
 
-Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-reports `62/100` (`216/351`), grade `D`, `releaseCandidateReady=false`;
-after the final-goal evidence-map refresh the projected score is `62/100`
-(`216/351`), still `releaseCandidateReady=false`.
-The current final-goal audit is `blocked` with `implementationFixableCount=19`,
+Current machine truth refreshed 2026-07-10 JST by the comprehensive audit safe
+chain: `pnpm verify:quality-score` reports `65/100` (`228/351`), grade `D`,
+`releaseCandidateReady=false`.
+The current final-goal audit is `blocked` with `implementationFixableCount=17`,
 `policyBlockedCount=3`, and `externalBlockedCount=19`.
 
 ## Workflow Routing
@@ -38,7 +37,7 @@ The current final-goal audit is `blocked` with `implementationFixableCount=19`,
 | Public readiness or release claim check | `aelyris-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
 | Current proof and gate classification | `aelyris-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
 | Previous-turn Claude stop gate | `aelyris-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
-| Root work-order status | `refactor-instructions.md` and `hardening-instructions.md` are complete on this branch; `renderer-instructions.md` is the next selectable follow-up only if reopened | one phase at a time, one commit per phase, no concurrent execution |
+| Root work-order status | `audit-remediation-instructions.md` is ACTIVE; refactor/hardening are complete, UI quality belongs to phase A3, renderer is deferred to conditional A8 | one phase at a time, one commit per phase, no concurrent execution |
 | One scoped Work Unit or vertical slice | `docs/specs/README.md` plus the relevant phase/spec section and owner module verifier | implementation plan and focused checks |
 | Large drift-prone implementation | `codex-guided-implementation` | increment plan, read-only review gates, explicit boundaries |
 | MCP runtime orchestration | `aelyris-orchestrate` | local-only runtime loop; no public release claim |
@@ -69,3 +68,29 @@ Before calling work done, report:
 - generated artifact paths when applicable,
 - skipped checks and whether they are code gaps, stale evidence, or operator/environment gates,
 - remaining public-claim risk, if any.
+
+## Mandatory Work Record And Session Close
+
+Every active implementation/audit program must follow
+`docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md`.
+
+- Stable scope and acceptance live in a tracked root work order and plan.
+- Each session writes an ignored worklog under `.codex-auto/worklogs/<program>/`.
+- Each active program has one canonical local handoff under
+  `.claude/agent-memory-local/`; replace it at closeout instead of creating
+  competing latest files.
+- A handoff must name current branch/HEAD/dirty paths, commands and artifacts,
+  blocker split, one next exact action, and a pasteable `/goal`.
+- Session clear is `clear-safe` only after the program continuation verifier
+  passes and a final `git status --short --branch` confirms the recorded state.
+- A clear-safe handoff is not a release PASS; it only proves restartability.
+
+For the current comprehensive audit program, use:
+
+```powershell
+pnpm verify:audit-remediation:continuation
+```
+
+Until audit-remediation phase A0 splits the command contract, do not call
+`pnpm verify:goal:safe` a no-token gate. Its 2026-07-10 run reported
+`tokenSpendingPromptExecuted=true` under standing consent.
