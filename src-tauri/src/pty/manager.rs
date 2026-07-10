@@ -1,4 +1,4 @@
-use portable_pty::{Child, ChildKiller, CommandBuilder, PtyPair, PtySize, native_pty_system};
+use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, PtyPair, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -8,9 +8,9 @@ use std::time::Instant;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use super::buffer::{OutputBuffer, strip_ansi};
+use super::buffer::{strip_ansi, OutputBuffer};
 use super::error::PtyError;
-use super::scrollback::{FilePtyScrollbackStore, PtyScrollbackSearchMatch, search_scrollback_text};
+use super::scrollback::{search_scrollback_text, FilePtyScrollbackStore, PtyScrollbackSearchMatch};
 use super::shell::ShellType;
 
 pub const PTY_SCROLLBACK_DIR_ENV: &str = "AELYRIS_PTY_SCROLLBACK_DIR";

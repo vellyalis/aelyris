@@ -14,8 +14,7 @@ use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
 use crate::persistence::{
     SessionCheckpointRecord, SessionCheckpointRepo, SessionHandoffRecord, SessionHandoffState,
 };
-use crate::pty::PtyManager;
-use crate::pty_sidecar::{PtySidecarClient, PtySidecarState};
+use crate::pty_sidecar::PtySidecarClient;
 use crate::term::NativeTerminalRegistry;
 
 use super::interactive_commands::{
@@ -1486,13 +1485,19 @@ async fn write_interactive_input(
     info: &InteractiveSessionInfo,
     data: &[u8],
 ) -> Result<(), String> {
-    if let Some(client) = app
-        .try_state::<PtySidecarState>()
-        .and_then(|state| state.client())
-    {
-        return client.write(&info.pty_id, data).await;
-    }
-    app.state::<PtyManager>().write(&info.pty_id, data)
+    super::commands::terminal_write_authorized_async(
+        app,
+        &info.pty_id,
+        &info.id,
+        data,
+        "runtime-session-lifecycle",
+        crate::command_risk::authority::WriteActorKind::Runtime,
+        crate::command_risk::authority::WritePayloadMode::AgentInstruction,
+        None,
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 
 fn build_summary_validation_context(

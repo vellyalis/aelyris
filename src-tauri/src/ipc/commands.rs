@@ -3,18 +3,18 @@ use std::io::BufRead;
 use std::path::{Component, Path, PathBuf};
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::broadcast;
 
-use crate::pty::buffer::{OutputBuffer, strip_ansi};
+use crate::pty::buffer::{strip_ansi, OutputBuffer};
 use crate::pty::{ExitInfo, PtyError, PtyManager, ShellType};
 use crate::snapshot::{SnapshotStore, SnapshotTrigger, TerminalSnapshot};
 use crate::term::NativeTerminalRegistry;
 use crate::watchdog::auto_repair::AutoRepairManager;
-use crate::watchdog::{AutoRepairConfig, ErrorContext, pane_watcher};
+use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
 
 use super::persistence_commands::{normalize_command_history_cwd, save_command_history};
 
@@ -405,8 +405,8 @@ fn emit_pty_output_batch(
     if buffer.is_empty() {
         return;
     }
-    use base64::Engine;
     use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine;
     let payload = PtyOutputBatchPayload {
         data_base64: B64.encode(buffer.as_slice()),
         byte_count: buffer.len(),
@@ -1968,63 +1968,50 @@ pub async fn write_terminal(app: AppHandle, id: String, data: String) -> Result<
     // echoed keystrokes and the (possibly neutralizing) terminator cannot reorder on the PTY.
     let write_order = terminal_write_order_lock(&id);
     let _write_guard = write_order.lock().await;
-    let bytes = gate_ipc_input(
+    let ack = terminal_write_authorized_async(
         &app,
+        &id,
         &id,
         &raw,
         "ipc-write-terminal",
-        crate::command_risk::gate::GateMode::EchoPreserving,
-    )?;
-    if bytes.is_empty() {
+        crate::command_risk::authority::WriteActorKind::Human,
+        crate::command_risk::authority::WritePayloadMode::EchoPreserving,
+        None,
+        None,
+    )
+    .await?;
+    if ack.status == crate::command_risk::authority::TerminalWriteAckStatus::Held {
         return Ok(());
     }
-    save_submitted_command_history(&app, &id, &String::from_utf8_lossy(&bytes));
+    if ack.contains_enter {
+        save_submitted_command_history(&app, &id, &String::from_utf8_lossy(&raw));
+    }
     let metadata = serde_json::json!({
-        "bytes": bytes.len(),
-        "containsEnter": bytes.contains(&b'\r'),
+        "bytes": ack.bytes_written_per_target,
+        "containsEnter": ack.contains_enter,
+        "requestId": ack.request_id,
         "redacted": true,
     });
-    let write_result = terminal_write_async(&app, &id, &bytes).await;
-    match write_result {
-        Ok(()) => {
-            if bytes.contains(&b'\r') || bytes.len() >= 128 {
-                record_audit_event(
-                    &app,
-                    "terminal",
-                    if bytes.contains(&b'\r') {
-                        "submit"
-                    } else {
-                        "paste"
-                    },
-                    "info",
-                    Some("terminal"),
-                    Some(&id),
-                    "Terminal input sent",
-                    metadata,
-                );
-            }
-            capture_if_enter(&app, &id, &bytes);
-            Ok(())
-        }
-        Err(err) => {
-            record_audit_event(
-                &app,
-                "terminal",
-                "write_failed",
-                "warn",
-                Some("terminal"),
-                Some(&id),
-                "Terminal input failed",
-                serde_json::json!({
-                    "bytes": bytes.len(),
-                    "containsEnter": bytes.contains(&b'\r'),
-                    "error": sanitize_audit_error(&err),
-                    "redacted": true,
-                }),
-            );
-            Err(err)
-        }
+    if ack.contains_enter || ack.bytes_written_per_target >= 128 {
+        record_audit_event(
+            &app,
+            "terminal",
+            if ack.contains_enter {
+                "submit"
+            } else {
+                "paste"
+            },
+            "info",
+            Some("terminal"),
+            Some(&id),
+            "Terminal input sent",
+            metadata,
+        );
     }
+    if ack.contains_enter {
+        capture_if_enter(&app, &id, b"\r");
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2203,15 +2190,15 @@ async fn commit_native_terminal_input(
     let (gate_source, gate_mode) = match source.as_str() {
         "command-center" => (
             "ipc-native-command-center",
-            crate::command_risk::gate::GateMode::Atomic,
+            crate::command_risk::authority::WritePayloadMode::Atomic,
         ),
         "native-clipboard-paste" => (
             "ipc-native-paste",
-            crate::command_risk::gate::GateMode::HoldUntilApproved,
+            crate::command_risk::authority::WritePayloadMode::HoldUntilApproved,
         ),
         _ => (
             "ipc-native-keystroke",
-            crate::command_risk::gate::GateMode::EchoPreserving,
+            crate::command_risk::authority::WritePayloadMode::EchoPreserving,
         ),
     };
     let raw = data.into_bytes();
@@ -2219,8 +2206,20 @@ async fn commit_native_terminal_input(
     // (possibly neutralizing) terminator cannot reorder on the PTY (see TERMINAL_WRITE_ORDER).
     let write_order = terminal_write_order_lock(&terminal_id);
     let _write_guard = write_order.lock().await;
-    let bytes = match gate_ipc_input(app, &terminal_id, &raw, gate_source, gate_mode) {
-        Ok(bytes) => bytes,
+    let ack = match terminal_write_authorized_async(
+        app,
+        &terminal_id,
+        &terminal_id,
+        &raw,
+        gate_source,
+        crate::command_risk::authority::WriteActorKind::Human,
+        gate_mode,
+        None,
+        None,
+    )
+    .await
+    {
+        Ok(ack) => ack,
         Err(err) => {
             host.record_error(&terminal_id, sanitize_audit_error(&err));
             record_audit_event(
@@ -2240,59 +2239,39 @@ async fn commit_native_terminal_input(
             return Err(err);
         }
     };
-    if bytes.is_empty() {
+    if ack.status == crate::command_risk::authority::TerminalWriteAckStatus::Held {
         return Ok(host.record_commit(terminal_id, source, 0));
     }
-    save_submitted_command_history(app, &terminal_id, &String::from_utf8_lossy(&bytes));
+    if ack.contains_enter {
+        save_submitted_command_history(app, &terminal_id, &String::from_utf8_lossy(&raw));
+    }
     let metadata = serde_json::json!({
-        "bytes": bytes.len(),
-        "containsEnter": bytes.contains(&b'\r'),
+        "bytes": ack.bytes_written_per_target,
+        "containsEnter": ack.contains_enter,
+        "requestId": ack.request_id,
         "source": source.clone(),
         "redacted": true,
     });
-
-    match terminal_write_async(app, &terminal_id, &bytes).await {
-        Ok(()) => {
-            if bytes.contains(&b'\r') || bytes.len() >= 128 {
-                record_audit_event(
-                    app,
-                    "terminal",
-                    if bytes.contains(&b'\r') {
-                        "native_input_submit"
-                    } else {
-                        "native_input_paste"
-                    },
-                    "info",
-                    Some("terminal"),
-                    Some(&terminal_id),
-                    "Native terminal input sent",
-                    metadata,
-                );
-            }
-            capture_if_enter(app, &terminal_id, &bytes);
-            Ok(host.record_commit(terminal_id, source, bytes.len()))
-        }
-        Err(err) => {
-            host.record_error(&terminal_id, sanitize_audit_error(&err));
-            record_audit_event(
-                app,
-                "terminal",
-                "native_input_failed",
-                "warn",
-                Some("terminal"),
-                Some(&terminal_id),
-                "Native terminal input failed",
-                serde_json::json!({
-                    "bytes": bytes.len(),
-                    "containsEnter": bytes.contains(&b'\r'),
-                    "source": source,
-                    "error": sanitize_audit_error(&err),
-                    "redacted": true,
-                }),
-            );
-            Err(err)
-        }
+    if ack.contains_enter || ack.bytes_written_per_target >= 128 {
+        record_audit_event(
+            app,
+            "terminal",
+            if ack.contains_enter {
+                "native_input_submit"
+            } else {
+                "native_input_paste"
+            },
+            "info",
+            Some("terminal"),
+            Some(&terminal_id),
+            "Native terminal input sent",
+            metadata,
+        );
     }
+    if ack.contains_enter {
+        capture_if_enter(app, &terminal_id, b"\r");
+    }
+    Ok(host.record_commit(terminal_id, source, ack.bytes_written_per_target))
 }
 
 /// Trigger a `UserSubmitted` snapshot when the bytes just written to a PTY
@@ -2305,28 +2284,104 @@ pub(crate) fn capture_if_enter(app: &AppHandle, terminal_id: &str, data: &[u8]) 
     }
 }
 
-pub(crate) async fn terminal_write_async(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn terminal_write_authorized_async(
     app: &AppHandle,
     terminal_id: &str,
+    session_id: &str,
     data: &[u8],
-) -> Result<(), String> {
+    source: &str,
+    actor_kind: crate::command_risk::authority::WriteActorKind,
+    payload_mode: crate::command_risk::authority::WritePayloadMode,
+    command_approval_id: Option<&str>,
+    interactive_prompt_key: Option<&str>,
+) -> Result<crate::command_risk::authority::TerminalWriteAck, String> {
+    let targets = synchronized_input_targets(app, terminal_id);
+    let envelope = crate::command_risk::authority::TerminalWriteEnvelope::for_payload(
+        format!("write:{}", uuid::Uuid::new_v4()),
+        crate::command_risk::authority::WriteActor {
+            principal: "local-operator".to_string(),
+            kind: actor_kind,
+        },
+        source,
+        terminal_id,
+        session_id,
+        targets,
+        payload_mode,
+        data,
+        crate::command_risk::authority::WriteApprovalBinding {
+            command_approval_id: command_approval_id.map(str::to_string),
+            interactive_prompt_key: interactive_prompt_key.map(str::to_string),
+        },
+    );
     if let Some(sidecar) = app
         .try_state::<crate::pty_sidecar::PtySidecarState>()
         .and_then(|state| state.client())
     {
-        return sidecar.write(terminal_id, data).await;
+        return sidecar.write_authorized(&envelope, data).await;
     }
+    let authority = app
+        .try_state::<Arc<crate::command_risk::authority::TerminalInputAuthority>>()
+        .ok_or_else(|| "terminal input authority unavailable".to_string())?
+        .inner()
+        .clone();
     let pty_manager = app.state::<PtyManager>().inner().clone();
-    let targets = synchronized_input_targets(app, terminal_id);
-    let data = data.to_vec();
+    let payload = data.to_vec();
     tauri::async_runtime::spawn_blocking(move || {
-        for target in targets {
-            pty_manager.write(&target, &data)?;
-        }
-        Ok(())
+        authority.execute(&envelope, &payload, |target, writable| {
+            pty_manager.write(target, writable)
+        })
     })
     .await
-    .map_err(|err| format!("Terminal write task failed: {}", err))?
+    .map_err(|err| format!("Terminal authority task failed: {err}"))?
+    .map_err(|nack| format!("{}: {}", nack.code, nack.message))
+}
+
+pub(crate) async fn sync_terminal_interactive_approval_authority(
+    app: &AppHandle,
+    session_id: &str,
+) -> Result<(), String> {
+    let manager = app.state::<crate::agent::InteractiveSessionManager>();
+    let session = manager
+        .get(session_id)?
+        .or_else(|| {
+            manager.list().ok().and_then(|sessions| {
+                sessions
+                    .into_iter()
+                    .find(|session| session.pty_id == session_id)
+            })
+        })
+        .ok_or_else(|| format!("interactive session not found: {session_id}"))?;
+    let prompt_key = if session.status == "waiting_approval" {
+        session
+            .approval_prompt
+            .as_deref()
+            .map(super::send_keys_commands::stable_interactive_prompt_key)
+    } else {
+        None
+    };
+
+    if let Some(authority) =
+        app.try_state::<Arc<crate::command_risk::authority::TerminalInputAuthority>>()
+    {
+        match prompt_key.as_deref() {
+            Some(key) => authority.set_interactive_approval(
+                session.pty_id.clone(),
+                session.id.clone(),
+                key.to_string(),
+            ),
+            None => authority.clear_interactive_approval(&session.pty_id),
+        }
+    }
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .sync_interactive_approval_state(&session.pty_id, &session.id, prompt_key.as_deref())
+            .await?;
+    }
+    Ok(())
 }
 
 /// The effective fan-out target set for a write to `terminal_id`: the synchronized-input
@@ -2356,31 +2411,6 @@ pub(crate) fn synchronized_input_targets(app: &AppHandle, terminal_id: &str) -> 
 /// approval id is carried here. Hold/atomic modes return `Err` on a denied submission;
 /// echo-preserving never errors (it neutralizes in-band). When no gate is managed (some test
 /// harnesses) the input passes through unchanged.
-pub(crate) fn gate_ipc_input(
-    app: &AppHandle,
-    terminal_id: &str,
-    data: &[u8],
-    source_kind: &str,
-    mode: crate::command_risk::gate::GateMode,
-) -> Result<Vec<u8>, String> {
-    let Some(gate) = app.try_state::<Arc<crate::command_risk::gate::CommandRiskGate>>() else {
-        return Ok(data.to_vec());
-    };
-    let targets = synchronized_input_targets(app, terminal_id);
-    let options = crate::command_risk::CommandRiskOptions::default();
-    let ctx = crate::command_risk::gate::GateContext {
-        source_kind,
-        session_id: terminal_id,
-        target_ids: &targets,
-        approval_id: None,
-        options: &options,
-        mode,
-        review_requires_approval: false, // local IPC face = Balanced (deny-only hard block)
-    };
-    gate.check(&ctx, data)
-        .map_err(|denial| format!("command-risk: {}", denial.reason))
-}
-
 /// Per-terminal write-order locks (P0-4). In echo-preserving mode the gate WRITES echoed
 /// keystrokes to the PTY *before* they are classified, so the gate's per-terminal mirror is
 /// only consistent with the PTY's pending shell line if the gate-check and the resulting write
@@ -3823,7 +3853,7 @@ fn write_clipboard_text_impl(text: &str) -> Result<(), String> {
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
-    use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 
     const CF_UNICODETEXT: u32 = 13;
 

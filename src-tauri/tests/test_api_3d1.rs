@@ -594,7 +594,11 @@ async fn create_list_resize_delete_roundtrip() {
         .send()
         .await
         .unwrap();
-    assert_eq!(input_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(input_res.status(), StatusCode::OK);
+    let input_ack: serde_json::Value = input_res.json().await.unwrap();
+    assert_eq!(input_ack["status"], "executed");
+    assert_eq!(input_ack["acceptedTargets"], json!([id.clone()]));
+    assert!(input_ack["requestId"].as_str().is_some());
     let mut captured = String::new();
     for _ in 0..80 {
         let capture_res = c
@@ -688,7 +692,7 @@ async fn create_list_resize_delete_roundtrip() {
         .send()
         .await
         .unwrap();
-    assert_eq!(sync_input_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(sync_input_res.status(), StatusCode::OK);
     for pane_id in [&id, &child_id] {
         let mut pane_capture = String::new();
         for _ in 0..80 {
@@ -966,7 +970,7 @@ async fn create_list_resize_delete_roundtrip() {
         .send()
         .await
         .unwrap();
-    assert_eq!(detached_input_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(detached_input_res.status(), StatusCode::OK);
     let mut detached_capture = String::new();
     for _ in 0..80 {
         let capture_res = c
@@ -1251,7 +1255,7 @@ async fn durable_scrollback_survives_session_close() {
         .send()
         .await
         .unwrap();
-    assert_eq!(input_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(input_res.status(), StatusCode::OK);
 
     let mut captured = String::new();
     for _ in 0..80 {

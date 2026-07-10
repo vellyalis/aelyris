@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::broadcast;
 
 use crate::agent::context_lifecycle::{
-    ContextRemaining, parse_claude_context_remaining_from_grid, unix_now_secs,
+    parse_claude_context_remaining_from_grid, unix_now_secs, ContextRemaining,
 };
 use crate::agent::output_monitor;
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
@@ -605,6 +605,7 @@ async fn run_output_monitor(
                     let result = parser.parse_chunk(&clean);
 
                     let mut changed = false;
+                    let mut approval_state_changed = false;
                     if matches!(cli, &AgentCli::Claude) {
                         if let Some(snapshot) = native_registry.snapshot(session_id) {
                             if let Some(context_remaining) =
@@ -633,6 +634,7 @@ async fn run_output_monitor(
                                     Ok(()) => {
                                         last_status = status_str.to_string();
                                         changed = true;
+                                        approval_state_changed = true;
                                     }
                                     Err(err) => {
                                         log::warn!(
@@ -651,7 +653,10 @@ async fn run_output_monitor(
                                 if let Some(prompt) = result.approval_prompt.clone() {
                                     match session_mgr.set_approval_prompt(session_id, Some(prompt))
                                     {
-                                        Ok(true) => changed = true,
+                                        Ok(true) => {
+                                            changed = true;
+                                            approval_state_changed = true;
+                                        }
                                         Ok(false) => {}
                                         Err(err) => {
                                             log::warn!(
@@ -679,6 +684,16 @@ async fn run_output_monitor(
                     }
 
                     if changed {
+                        if approval_state_changed {
+                            if let Err(err) =
+                                super::commands::sync_terminal_interactive_approval_authority(
+                                    app, session_id,
+                                )
+                                .await
+                            {
+                                log::warn!("interactive approval authority sync failed: {}", err);
+                            }
+                        }
                         emit_interactive_sessions(app, &session_mgr);
                     }
                 }

@@ -901,6 +901,10 @@ pub fn run() {
                     .map(|d| std::sync::Arc::new(db::ManagedDb::new(d))),
             ));
             app.manage(command_risk_gate.clone());
+            let terminal_input_authority = std::sync::Arc::new(
+                command_risk::authority::TerminalInputAuthority::new(command_risk_gate.clone()),
+            );
+            app.manage(terminal_input_authority.clone());
 
             // G2: one durable merge-intent store for both local Tauri IPC and the
             // API/MCP face. Without it, autonomy-loop merges must fail closed
@@ -998,6 +1002,7 @@ pub fn run() {
                     // approval registry + line accumulator + audit sink are unified across the
                     // REST/WS/MCP and local IPC surfaces.
                     .with_command_risk_gate(Some(command_risk_gate.clone()))
+                    .with_terminal_input_authority(terminal_input_authority.clone())
                     .with_db(mcp_db)
                     .with_merge_store(merge_store.clone())
                     .with_env_mux_store();

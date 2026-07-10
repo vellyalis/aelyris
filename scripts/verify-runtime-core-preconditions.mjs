@@ -14,8 +14,13 @@ function record(id, ok, detail) {
 
 const outputMonitor = read("src-tauri/src/agent/output_monitor.rs");
 const sendKeys = read("src-tauri/src/ipc/send_keys_commands.rs");
+const inputAuthority = read("src-tauri/src/command_risk/authority.rs");
 const mcp = read("src-tauri/src/api/mcp.rs");
 const apiMod = read("src-tauri/src/api/mod.rs");
+const apiMux = read("src-tauri/src/api/mux.rs");
+const ipcCommands = read("src-tauri/src/ipc/commands.rs");
+const sessionLifecycle = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
+const sidecar = read("src-tauri/src/pty_sidecar.rs");
 const paneFleet = read("src-tauri/src/control/pane_fleet.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const decisionInbox = read("src/shared/lib/decisionInbox.ts");
@@ -27,6 +32,55 @@ const cursorRegexSection = outputMonitor.match(/static CURSOR_OPTION_RE:[\s\S]*?
 const promptCap = Number(outputMonitor.match(/const APPROVAL_PROMPT_MAX_CHARS: usize = (\d+);/)?.[1] ?? 0);
 
 const checks = [
+  record(
+    "a1-typed-terminal-write-envelope",
+    [
+      "request_id",
+      "actor",
+      "source",
+      "terminal_id",
+      "session_id",
+      "target_ids",
+      "payload_mode",
+      "command_hash",
+      "approval",
+    ].every((field) => inputAuthority.includes(`pub ${field}:`)) &&
+      inputAuthority.includes("TerminalWriteAck") &&
+      inputAuthority.includes("TerminalWriteNack"),
+    "A1 typed envelope carries identity, scope, payload mode, hash, approval binding, request id, and typed ACK/NACK",
+  ),
+  record(
+    "a1-daemon-authority-covers-write-faces",
+    apiMod.includes('"rest-session-input"') &&
+      apiMod.includes('"ws-session-input"') &&
+      mcp.includes('"mcp-pane-input"') &&
+      mcp.includes('"mcp-safe-input"') &&
+      apiMux.includes('"rest-mux-input"') &&
+      sendKeys.includes('"ipc-broadcast-keys"') &&
+      sendKeys.includes("SEND_KEYS_SOURCE") &&
+      ipcCommands.includes('"ipc-native-paste"') &&
+      ipcCommands.includes('"ipc-native-keystroke"') &&
+      sessionLifecycle.includes('"runtime-session-lifecycle"'),
+    "REST, WS, MCP, mux, broadcast/send-keys, native input/paste, and runtime prompt faces route through typed authority",
+  ),
+  record(
+    "a1-sidecar-capability-separate-from-bearer",
+    sidecar.includes("INPUT_AUTHORITY_TOKEN_FILE_NAME") &&
+      sidecar.includes('x-aelyris-input-authority') &&
+      apiMod.includes("verify_input_authority") &&
+      apiMod.includes("human input approval capability is required") &&
+      mcp.includes("humanApprovalCapability"),
+    "App-to-daemon input authority and human approval use a capability separate from the public bearer token",
+  ),
+  record(
+    "a1-adversarial-authority-tests",
+    inputAuthority.includes("raw_programmatic_enter_cannot_resolve_waiting_approval") &&
+      inputAuthority.includes("interactive approval claims are single-use") &&
+      inputAuthority.includes("payload_hash_and_cross_target_mutations_fail_closed") &&
+      inputAuthority.includes("queue_acceptance_is_not_reported_when_raw_write_fails") &&
+      inputAuthority.includes("ack_is_emitted_only_after_every_effective_target_writes"),
+    "Authority tests cover raw Enter, replay/stale/cross-target/hash failures, effective targets, and post-write ACK semantics",
+  ),
   record(
     "approval-detection-highlighted-yes-only",
     cursorRegexSection.includes("\\s+yes\\b") && !cursorRegexSection.includes("yes|no"),
@@ -84,25 +138,24 @@ const checks = [
   ),
   record(
     "approval-resolution-rechecks-current-session",
-    sendKeys.includes("InteractiveSessionManager") &&
-      sendKeys.includes("verify_current_interactive_approval") &&
-      sendKeys.includes('session.status != "waiting_approval"') &&
-      sendKeys.includes("approval_prompt.as_deref()"),
-    "resolve_interactive_approval re-checks the live interactive session status and prompt before writing",
+    sendKeys.includes("sync_terminal_interactive_approval_authority") &&
+      inputAuthority.includes("claim_interactive_approval") &&
+      inputAuthority.includes("state.session_id != envelope.session_id"),
+    "resolve_interactive_approval projects current state and the daemon authority claims the matching session before writing",
   ),
   record(
     "approval-resolution-requires-prompt-fingerprint",
     sendKeys.includes("expected_prompt_key: Option<String>") &&
       sendKeys.includes("expected_prompt_key.as_deref()") &&
-      sendKeys.includes("expected prompt fingerprint is required") &&
+      inputAuthority.includes("interactive approval requires the current prompt fingerprint") &&
       decisionInbox.includes("approvalPromptKey: promptKey"),
     "Decision Inbox passes a prompt fingerprint and the backend fails closed when it is absent",
   ),
   record(
     "approval-resolution-stale-error-contract",
     sendKeys.includes("stale_approval") &&
-      sendKeys.includes("prompt fingerprint changed") &&
-      sendKeys.includes("stable_text_key") &&
+      inputAuthority.includes("interactive approval fingerprint, session, or target set changed") &&
+      sendKeys.includes("stable_interactive_prompt_key") &&
       sendKeys.includes("stable_text_key_matches_decision_inbox_vectors"),
     "stale approval errors are typed and cross-language prompt fingerprint vectors are tested",
   ),
@@ -113,18 +166,17 @@ const checks = [
       if (fnStart < 0) return false;
       const body = sendKeys.slice(fnStart);
       const lockAt = body.indexOf("write_order.lock().await");
-      const verifyAt = body.indexOf("verify_current_interactive_approval(");
-      return lockAt >= 0 && verifyAt >= 0 && lockAt < verifyAt;
+      const authorityAt = body.indexOf("terminal_write_authorized_async(");
+      return lockAt >= 0 && authorityAt >= 0 && lockAt < authorityAt;
     })(),
-    "resolve_interactive_approval acquires the per-terminal write lock BEFORE the stale-approval fingerprint re-check (no check-then-lock TOCTOU)",
+    "resolve_interactive_approval acquires the per-terminal write lock BEFORE daemon-authority claim and delivery",
   ),
   record(
     "write-paths-block-targeted-waiting-approval",
-    sendKeys.includes("blocked_waiting_approval") &&
-      sendKeys.includes("reject_targeted_waiting_approval") &&
-      sendKeys.includes("waiting_approval_write_skip") &&
-      sendKeys.includes('session.status == "waiting_approval"'),
-    "targeted send-key paths fail closed when the pane is waiting at an approval gate",
+    inputAuthority.includes("blocked_waiting_approval") &&
+      inputAuthority.includes("programmatic input cannot resolve an interactive approval") &&
+      sendKeys.includes("terminal_write_authorized_async"),
+    "targeted send-key paths delegate waiting-approval enforcement to the daemon authority",
   ),
   record(
     "fanout-write-paths-skip-and-report-waiting-approval",
@@ -152,22 +204,20 @@ const checks = [
       mcp.includes('"aelyris.approval.resolve"') &&
       mcp.includes("mcp_approval_resolve") &&
       mcp.includes("crate::ipc::resolve_interactive_approval_core") &&
-      mcp.includes('"required": ["terminalId", "decision", "expectedPromptKey"]'),
+      mcp.includes('"required": ["terminalId", "decision", "expectedPromptKey", "humanApprovalCapability"]'),
     "aelyris.approval.resolve is cataloged, schema-required, and delegates to the shared approval core",
   ),
   record(
     "rest-and-mcp-write-faces-share-waiting-approval-guard",
-    sendKeys.includes("pub fn reject_waiting_approval_via_app") &&
-      apiMod.includes("reject_waiting_approval_via_app") &&
+    apiMod.includes("execute_terminal_write(") &&
+      apiMod.includes("terminal_input_authority") &&
       (() => {
         const arm = mcp.indexOf('"aelyris.pane_send_input" =>');
         if (arm < 0) return false;
         const body = mcp.slice(arm, arm + 2200);
-        const guardAt = body.indexOf("reject_waiting_approval_via_app");
-        const gateAt = body.indexOf("gate_command_input");
-        return guardAt >= 0 && gateAt >= 0 && guardAt < gateAt;
+        return body.includes("execute_terminal_write(") && body.includes("terminalWriteNack");
       })(),
-    "REST send_session_input and MCP aelyris.pane_send_input run the same waiting-approval rejection BEFORE the command gate — no unguarded write face",
+    "REST and MCP writes delegate classify-and-deliver to the same daemon terminal input authority",
   ),
   record(
     "by-target-single-resolution-uses-typed-error",
@@ -175,14 +225,14 @@ const checks = [
       const fn = sendKeys.indexOf("pub async fn send_keys_by_target");
       if (fn < 0) return false;
       const body = sendKeys.slice(fn, fn + 4000);
-      return /terminal_ids\.len\(\)\s*==\s*1[\s\S]{0,400}?reject_targeted_waiting_approval/.test(body);
+      return body.includes("write_to_terminals") && inputAuthority.includes("blocked_waiting_approval");
     })(),
     "send_keys_by_target treats a single-pane resolution as a targeted send (typed blocked_waiting_approval, not a silent fan-out skip)",
   ),
   record(
     "waiting-approval-audit-throttled-per-episode",
     sendKeys.includes("WAITING_SKIP_AUDIT_KEYS") &&
-      sendKeys.includes("stable_text_key(&prompt)"),
+      sendKeys.includes("stable_interactive_prompt_key(&prompt)"),
     "skipped-write audit events are throttled to one per pane per approval episode (prompt-fingerprint keyed)",
   ),
 ];

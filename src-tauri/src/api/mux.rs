@@ -713,18 +713,31 @@ pub(super) fn send_workspace_input(
             "mux workspace has no live PTY targets".to_string(),
         ));
     }
-    // P0-4: the gate returns the bytes that may reach the panes (it HOLDS unterminated
-    // streaming input and emits only complete, approved lines). Write those, not `bytes`.
-    let writable = super::gate_command_input(
+    let ack = super::execute_terminal_write(
         state,
+        crate::command_risk::authority::WriteActor {
+            principal: "operator".to_string(),
+            kind: crate::command_risk::authority::WriteActorKind::Programmatic,
+        },
         source_kind,
+        &targets[0],
         workspace_id,
-        &targets,
+        targets.clone(),
         approval_id,
         bytes,
-        mode,
+        match mode {
+            crate::command_risk::gate::GateMode::Atomic => {
+                crate::command_risk::authority::WritePayloadMode::Atomic
+            }
+            crate::command_risk::gate::GateMode::HoldUntilApproved => {
+                crate::command_risk::authority::WritePayloadMode::HoldUntilApproved
+            }
+            crate::command_risk::gate::GateMode::EchoPreserving => {
+                crate::command_risk::authority::WritePayloadMode::EchoPreserving
+            }
+        },
     )?;
-    if writable.is_empty() {
+    if ack.status == crate::command_risk::authority::TerminalWriteAckStatus::Held {
         return Ok(serde_json::json!({
             "workspaceId": workspace_id,
             "targets": targets.len(),
@@ -732,35 +745,13 @@ pub(super) fn send_workspace_input(
             "held": true,
         }));
     }
-    let bytes = writable.as_slice();
-
-    let mut accepted = 0usize;
-    let mut failed = 0usize;
-    let mut last_error: Option<String> = None;
-    for terminal_id in &targets {
-        if !state.pty.contains(terminal_id) {
-            failed += 1;
-            last_error = Some(format!("terminal not live: {terminal_id}"));
-            continue;
-        }
-        match state.pty.write(terminal_id, bytes) {
-            Ok(()) => accepted += 1,
-            Err(err) => {
-                failed += 1;
-                last_error = Some(err);
-            }
-        }
-    }
-    if accepted == 0 {
-        return Err(ApiError::BadRequest(last_error.unwrap_or_else(|| {
-            "mux workspace input was not accepted by any pane".to_string()
-        })));
-    }
     Ok(serde_json::json!({
         "workspaceId": workspace_id,
         "targets": targets.len(),
-        "accepted": accepted,
-        "failed": failed,
+        "accepted": ack.accepted_targets.len(),
+        "failed": targets.len().saturating_sub(ack.accepted_targets.len()),
+        "requestId": ack.request_id,
+        "status": ack.status,
     }))
 }
 

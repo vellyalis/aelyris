@@ -1,4 +1,4 @@
-use axum::{Json, extract::State};
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -361,6 +361,13 @@ async fn mcp_approval_resolve(
     };
     let decision = arg_string(args, "decision")?;
     let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
+    let human_capability = arg_string(args, "humanApprovalCapability")?;
+    if !state.auth.verify_input_authority(Some(&human_capability)) {
+        return Ok(Err(
+            "approval_capability_required: bearer API possession cannot resolve a human approval"
+                .to_string(),
+        ));
+    }
     Ok(crate::ipc::resolve_interactive_approval_core(
         app,
         terminal_id,
@@ -385,6 +392,7 @@ async fn mcp_approval_resolve(
     };
     let _decision = arg_string(args, "decision")?;
     let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
+    let _human_capability = arg_string(args, "humanApprovalCapability")?;
     if expected_prompt_key == "stale-test" {
         Ok(Err(
             "stale_approval: prompt fingerprint changed for session test".to_string(),
@@ -1650,11 +1658,12 @@ fn build_tools_list_value() -> serde_json::Value {
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["terminalId", "decision", "expectedPromptKey"],
+                    "required": ["terminalId", "decision", "expectedPromptKey", "humanApprovalCapability"],
                     "properties": {
                         "terminalId": { "type": "string" },
                         "decision": { "type": "string", "enum": ["approve", "deny"] },
-                        "expectedPromptKey": { "type": "string" }
+                        "expectedPromptKey": { "type": "string" },
+                        "humanApprovalCapability": { "type": "string", "minLength": 1 }
                     },
                     "additionalProperties": false
                 }
@@ -2819,37 +2828,34 @@ pub(super) async fn tools_call(
                     WS_MAX_INPUT_FRAME_BYTES
                 )));
             }
-            // FR-1: same rule as the REST/IPC faces — agent-injected input must
-            // never land on a pane waiting at an approval menu; resolve it via
-            // aelyris.approval.resolve instead. Typed tool error (aelys exit 2).
-            #[cfg(not(test))]
-            if let Some(app) = state.app_handle.as_ref() {
-                if let Err(err) = crate::ipc::reject_waiting_approval_via_app(app, &terminal_id) {
-                    return Ok(schema_tool_error(
-                        &body.name,
-                        serde_json::json!({ "error": err }),
-                    ));
-                }
-            }
-            // P0-4: classify the agent-injected command BEFORE it reaches the PTY
-            // (hard boundary #1). An agent steering a terminal is exactly the
-            // automated-injection path the gate exists to catch.
-            let targets = [terminal_id.clone()];
-            let writable = super::gate_command_input(
+            let ack = match super::execute_terminal_write(
                 &state,
+                crate::command_risk::authority::WriteActor {
+                    principal: actor.to_string(),
+                    kind: crate::command_risk::authority::WriteActorKind::Programmatic,
+                },
                 "mcp-pane-input",
                 &terminal_id,
-                &targets,
+                &terminal_id,
+                vec![terminal_id.clone()],
                 approval_id.as_deref(),
                 text.as_bytes(),
-                // arg_string trims the payload -> classify the whole bare command
-                crate::command_risk::gate::GateMode::Atomic,
-            )?;
-            state
-                .pty
-                .write(&terminal_id, &writable)
-                .map_err(ApiError::BadRequest)?;
-            serde_json::json!({ "terminalId": terminal_id, "accepted": true })
+                crate::command_risk::authority::WritePayloadMode::Atomic,
+            ) {
+                Ok(ack) => ack,
+                Err(ApiError::TerminalWriteRejected(_, nack)) => {
+                    return Ok(schema_tool_error(
+                        &body.name,
+                        serde_json::json!({ "terminalWriteNack": nack }),
+                    ));
+                }
+                Err(err) => return Err(err),
+            };
+            serde_json::json!({
+                "terminalId": terminal_id,
+                "accepted": ack.status == crate::command_risk::authority::TerminalWriteAckStatus::Executed,
+                "ack": ack,
+            })
         }
         "aelyris.agent_diff" => {
             let session_id = arg_string(&args, "sessionId")?;
@@ -4419,7 +4425,8 @@ mod tests {
         let ok = call(serde_json::json!({
             "terminalId": "pty-1",
             "decision": "approve",
-            "expectedPromptKey": "fresh-test"
+            "expectedPromptKey": "fresh-test",
+            "humanApprovalCapability": "human-test"
         }));
         assert_eq!(ok["ok"], serde_json::json!(true));
         assert_eq!(ok["result"]["ok"], serde_json::json!(true));
@@ -4427,7 +4434,8 @@ mod tests {
         let stale = call(serde_json::json!({
             "terminalId": "pty-1",
             "decision": "approve",
-            "expectedPromptKey": "stale-test"
+            "expectedPromptKey": "stale-test",
+            "humanApprovalCapability": "human-test"
         }));
         assert_eq!(stale["ok"], serde_json::json!(false));
         assert!(
@@ -4439,7 +4447,8 @@ mod tests {
 
         let missing_prompt = call(serde_json::json!({
             "terminalId": "pty-1",
-            "decision": "approve"
+            "decision": "approve",
+            "humanApprovalCapability": "human-test"
         }));
         assert_eq!(missing_prompt["ok"], serde_json::json!(false));
         assert_eq!(
@@ -5915,16 +5924,18 @@ settlement:
         };
 
         // A destructive command is refused (catastrophic) before the PTY write.
-        let err = call("rm -rf /tmp/x\r").unwrap_err();
-        assert!(
-            matches!(&err, ApiError::CommandRiskBlocked(d) if d.catastrophic),
-            "{err:?}"
+        let denied = call("rm -rf /tmp/x\r").unwrap();
+        assert_eq!(denied.0["ok"], false);
+        assert_eq!(
+            denied.0["error"]["terminalWriteNack"]["code"],
+            "command_denied"
         );
         // A review command without an approval id is refused (not catastrophic).
-        let err2 = call("git commit -m x\r").unwrap_err();
-        assert!(
-            matches!(&err2, ApiError::CommandRiskBlocked(d) if !d.catastrophic),
-            "{err2:?}"
+        let review = call("git commit -m x\r").unwrap();
+        assert_eq!(review.0["ok"], false);
+        assert_eq!(
+            review.0["error"]["terminalWriteNack"]["code"],
+            "command_approval_required"
         );
     }
 }

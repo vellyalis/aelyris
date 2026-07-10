@@ -8,10 +8,10 @@
 //! GET    /sessions             -> [TerminalInfo]
 //! DELETE /sessions/{id}         -> 204
 //! POST   /sessions/{id}/resize  { cols, rows } -> 204
-//! POST   /sessions/{id}/input   { text } -> 204
+//! POST   /sessions/{id}/input   { text } -> typed TerminalWriteAck
 //! GET    /sessions/{id}/capture?lines=200&clean=true -> { text, lines, clean }
 //! GET    /sessions/{id}/stream  -> WebSocket upgrade
-//!   server -> client: binary frames of PTY output
+//!   server -> client: binary PTY output + text terminalWriteAck/terminalWriteNack frames
 //!   client -> server: binary or text frames written into the PTY
 //! ```
 //!
@@ -35,18 +35,18 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::{
-    Json, Router,
     extract::{
-        ConnectInfo, Extension, Path, Query, Request, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
+        ConnectInfo, Extension, Path, Query, Request, State, WebSocketUpgrade,
     },
     http::{
-        HeaderMap, HeaderName, HeaderValue, Method, StatusCode,
         header::{self, AUTHORIZATION, CONTENT_TYPE},
+        HeaderMap, HeaderName, HeaderValue, Method, StatusCode,
     },
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
+    Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -54,12 +54,12 @@ use subtle::ConstantTimeEq;
 #[cfg(not(test))]
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
-use tokio::sync::{Mutex as AsyncMutex, Notify, broadcast};
+use tokio::sync::{broadcast, mpsc, Mutex as AsyncMutex, Notify};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::mux::graph::MUX_GRAPH_VERSION;
 use crate::mux::manager::MuxManager;
-use crate::mux::store::{FileMuxSnapshotStore, graph_for_snapshot_restore};
+use crate::mux::store::{graph_for_snapshot_restore, FileMuxSnapshotStore};
 #[cfg(test)]
 use crate::pty::ShellType;
 use crate::pty::{PtyError, PtyManager, TerminalInfo};
@@ -76,7 +76,7 @@ use self::session_common::{normalize_api_cwd, parse_shell};
 pub const DEFAULT_PORT: u16 = 9333;
 pub const PROCESS_KIND_EMBEDDED: &str = "embedded-api";
 pub const PROCESS_KIND_SIDE_CAR: &str = "pty-sidecar";
-pub const DAEMON_PROTOCOL_VERSION: u32 = 2;
+pub const DAEMON_PROTOCOL_VERSION: u32 = 3;
 pub const MUX_SNAPSHOT_DIR_ENV: &str = "AELYRIS_MUX_SNAPSHOT_DIR";
 
 /// Per-frame write deadline for the WS send half.
@@ -212,6 +212,11 @@ pub struct ApiState {
     /// Backend command-risk gate (P0-4). Every command-carrying write path classifies
     /// through it before reaching a PTY; `None` (tests) leaves writes ungated.
     pub command_risk_gate: Option<Arc<crate::command_risk::gate::CommandRiskGate>>,
+    /// A1: the one typed classify-and-deliver boundary for terminal input. Production
+    /// construction always installs it together with `command_risk_gate`; `None` remains
+    /// available only to narrow legacy unit fixtures.
+    pub terminal_input_authority:
+        Option<Arc<crate::command_risk::authority::TerminalInputAuthority>>,
     pub mcp_pending: Arc<Mutex<Vec<McpPendingDecision>>>,
     /// Governance policy (P5): the single authorization + tenancy choke point
     /// every MCP verb flows through. Defaults to allow-all + single-tenant, so
@@ -267,6 +272,7 @@ impl ApiState {
             merge_store: None,
             proofbook_runner: None,
             command_risk_gate: None,
+            terminal_input_authority: None,
             mcp_pending: Arc::new(Mutex::new(Vec::new())),
             governance: Arc::new(crate::governance::Governance::new()),
             mux_store: None,
@@ -366,7 +372,21 @@ impl ApiState {
         mut self,
         gate: Option<Arc<crate::command_risk::gate::CommandRiskGate>>,
     ) -> Self {
+        self.terminal_input_authority = gate.as_ref().map(|gate| {
+            Arc::new(crate::command_risk::authority::TerminalInputAuthority::new(
+                gate.clone(),
+            ))
+        });
         self.command_risk_gate = gate;
+        self
+    }
+
+    pub fn with_terminal_input_authority(
+        mut self,
+        authority: Arc<crate::command_risk::authority::TerminalInputAuthority>,
+    ) -> Self {
+        self.command_risk_gate = Some(authority.gate().clone());
+        self.terminal_input_authority = Some(authority);
         self
     }
 
@@ -1192,6 +1212,9 @@ impl Default for TicketRegistry {
 pub struct AuthConfig {
     /// `None` disables auth entirely. Only used in tests.
     token: Option<String>,
+    /// Separate app-to-daemon capability for typed terminal writes and approval-state
+    /// projection. Possessing the public bearer token alone never grants this authority.
+    input_authority_token: Option<String>,
 }
 
 impl AuthConfig {
@@ -1210,7 +1233,14 @@ impl AuthConfig {
                 generated
             }
         };
-        Self { token: Some(token) }
+        let input_authority_token = std::env::var("AELYRIS_INPUT_AUTHORITY_TOKEN")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        Self {
+            token: Some(token),
+            input_authority_token: Some(input_authority_token),
+        }
     }
 
     /// Build with an explicit token. Used when the caller wants to force a
@@ -1218,13 +1248,30 @@ impl AuthConfig {
     pub fn with_token(token: impl Into<String>) -> Self {
         Self {
             token: Some(token.into()),
+            input_authority_token: None,
         }
     }
 
     /// Disable auth. Intended for test harnesses only — production code paths
     /// always call `from_env()` which guarantees a token is set.
     pub fn disabled() -> Self {
-        Self { token: None }
+        Self {
+            token: None,
+            input_authority_token: None,
+        }
+    }
+
+    pub fn with_input_authority_token(mut self, token: impl Into<String>) -> Self {
+        self.input_authority_token = Some(token.into());
+        self
+    }
+
+    fn verify_input_authority(&self, supplied: Option<&str>) -> bool {
+        match (&self.input_authority_token, supplied) {
+            (Some(expected), Some(actual)) => ct_eq(expected.as_bytes(), actual.as_bytes()),
+            (None, None) if self.token.is_none() => true,
+            _ => false,
+        }
     }
 
     /// Check an `Authorization` header value against the configured token.
@@ -1499,6 +1546,9 @@ pub enum ApiError {
     /// structured denial so the operator UI can show the risk + mint an approval.
     #[error("command blocked by risk policy")]
     CommandRiskBlocked(Box<crate::command_risk::gate::GateDenial>),
+
+    #[error("terminal write rejected: {0}")]
+    TerminalWriteRejected(String, crate::command_risk::authority::TerminalWriteNack),
 }
 
 #[derive(Serialize)]
@@ -1522,6 +1572,17 @@ impl IntoResponse for ApiError {
             )
                 .into_response();
         }
+        if let ApiError::TerminalWriteRejected(_, nack) = &self {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": self.to_string(),
+                    "code": "terminal_write_rejected",
+                    "nack": nack,
+                })),
+            )
+                .into_response();
+        }
         let (status, code) = match &self {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
@@ -1531,6 +1592,7 @@ impl IntoResponse for ApiError {
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
             ApiError::CommandRiskBlocked(_) => unreachable!("handled above"),
+            ApiError::TerminalWriteRejected(_, _) => unreachable!("handled above"),
         };
         (
             status,
@@ -1549,6 +1611,7 @@ impl IntoResponse for ApiError {
 /// Returns the EXACT bytes that may be forwarded to the PTY (NOT necessarily `data`): the
 /// gate holds unterminated streaming input and emits only complete, approved lines. With no
 /// gate attached (tests) the input is returned unchanged.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn gate_command_input(
     state: &ApiState,
@@ -1575,6 +1638,81 @@ pub(crate) fn gate_command_input(
         review_requires_approval: true,
     };
     gate.check(&ctx, data).map_err(ApiError::CommandRiskBlocked)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_terminal_write(
+    state: &ApiState,
+    actor: crate::command_risk::authority::WriteActor,
+    source: &str,
+    terminal_id: &str,
+    session_id: &str,
+    target_ids: Vec<String>,
+    approval_id: Option<&str>,
+    data: &[u8],
+    mode: crate::command_risk::authority::WritePayloadMode,
+) -> ApiResult<crate::command_risk::authority::TerminalWriteAck> {
+    let Some(authority) = state.terminal_input_authority.as_ref() else {
+        for target_id in &target_ids {
+            state
+                .pty
+                .write(target_id, data)
+                .map_err(ApiError::Internal)?;
+        }
+        return Ok(crate::command_risk::authority::TerminalWriteAck {
+            request_id: "legacy-test-bypass".to_string(),
+            status: crate::command_risk::authority::TerminalWriteAckStatus::Executed,
+            accepted_targets: target_ids,
+            bytes_written_per_target: data.len(),
+            contains_enter: data.contains(&b'\r'),
+        });
+    };
+
+    // The app-attached daemon shares live interactive state. Refresh the authority projection
+    // immediately before classification so a raw REST/WS/MCP Enter cannot race a newly shown
+    // approval menu. The standalone sidecar receives the same projection over its internal
+    // control path (wired below in this phase).
+    #[cfg(not(test))]
+    if let Some(app) = state.app_handle.as_ref() {
+        if let Some(manager) = app.try_state::<crate::agent::InteractiveSessionManager>() {
+            let sessions = manager.list().map_err(ApiError::Internal)?;
+            for target in &target_ids {
+                if let Some(session) = sessions.iter().find(|session| session.pty_id == *target) {
+                    if session.status == "waiting_approval" {
+                        if let Some(prompt) = session.approval_prompt.as_deref() {
+                            authority.set_interactive_approval(
+                                target.clone(),
+                                session.id.clone(),
+                                crate::ipc::stable_interactive_prompt_key(prompt),
+                            );
+                            continue;
+                        }
+                    }
+                }
+                authority.clear_interactive_approval(target);
+            }
+        }
+    }
+
+    let envelope = crate::command_risk::authority::TerminalWriteEnvelope::for_payload(
+        format!("write:{}", uuid::Uuid::new_v4()),
+        actor,
+        source,
+        terminal_id,
+        session_id,
+        target_ids,
+        mode,
+        data,
+        crate::command_risk::authority::WriteApprovalBinding {
+            command_approval_id: approval_id.map(str::to_string),
+            interactive_prompt_key: None,
+        },
+    );
+    authority
+        .execute(&envelope, data, |target, writable| {
+            state.pty.write(target, writable)
+        })
+        .map_err(|nack| ApiError::TerminalWriteRejected(nack.code.clone(), nack))
 }
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -1631,6 +1769,11 @@ pub fn router(state: ApiState) -> Router {
         .route("/sessions/{id}", delete(close_session))
         .route("/sessions/{id}/resize", post(resize_session))
         .route("/sessions/{id}/input", post(send_session_input))
+        .route("/internal/terminal-write", post(internal_terminal_write))
+        .route(
+            "/internal/interactive-approval-state",
+            post(internal_interactive_approval_state),
+        )
         .route(
             "/sessions/{id}/input-approval",
             post(mint_session_input_approval),
@@ -1671,7 +1814,12 @@ fn build_cors_layer(origins: &[HeaderValue]) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins.iter().cloned()))
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE, client_id_header_name()])
+        .allow_headers([
+            AUTHORIZATION,
+            CONTENT_TYPE,
+            client_id_header_name(),
+            input_authority_header_name(),
+        ])
 }
 
 /// Bind `127.0.0.1:port` and serve until the state's shutdown Notify fires.
@@ -1793,8 +1941,10 @@ fn terminal_core_policy() -> TerminalCorePolicyResponse {
         render_pipeline_boundary: "rust-native-render-pipeline",
         next_renderer: "winit-wgpu-present-loop",
         current_presentation_surface: "react-canvas-presentation-with-rust-term-engine-truth",
-        native_renderer_status: "aelyris-native-no-webview-spike-proved-full-product-renderer-pending",
-        renderer_claim_policy: "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded",
+        native_renderer_status:
+            "aelyris-native-no-webview-spike-proved-full-product-renderer-pending",
+        renderer_claim_policy:
+            "do-not-claim-main-window-full-native-renderer-until-native-present-loop-dogfooded",
         webview_terminal_renderer_policy: "fallback-contained-not-source-of-truth",
         react_terminal_renderer_policy: "control-plane-only-not-terminal-core",
         mux_truth_source: "daemon-api",
@@ -1845,6 +1995,26 @@ struct InputBody {
     /// command-risk gate can authorize the write.
     #[serde(default, rename = "approvalId")]
     approval_id: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InternalTerminalWriteBody {
+    envelope: crate::command_risk::authority::TerminalWriteEnvelope,
+    payload: Vec<u8>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InternalInteractiveApprovalStateBody {
+    terminal_id: String,
+    session_id: String,
+    #[serde(default)]
+    prompt_key: Option<String>,
+}
+
+fn input_authority_header_name() -> HeaderName {
+    HeaderName::from_static("x-aelyris-input-authority")
 }
 
 #[derive(Deserialize)]
@@ -2159,9 +2329,11 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         transport: "loopback-http-websocket",
         auth_policy: "bearer-token-or-disabled-test-mode",
         client_detach_policy: "detach-keeps-live-pty-while-daemon-running",
-        restart_restore_policy: "snapshot-restores-graph-as-restore-pending-with-durable-scrollback",
+        restart_restore_policy:
+            "snapshot-restores-graph-as-restore-pending-with-durable-scrollback",
         attach_policy: "reattach-respawns-only-missing-or-restore-pending-pty-bindings",
-        live_process_preservation_policy: "daemon-live-detach-reattach-preserves-existing-pty-process-id",
+        live_process_preservation_policy:
+            "daemon-live-detach-reattach-preserves-existing-pty-process-id",
         shutdown_policy: "explicit-workspace-close-terminates-owned-child-ptys",
         max_sessions: state.max_sessions,
         active_sessions: state.pty.list_info().len(),
@@ -2263,7 +2435,7 @@ async fn send_session_input(
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<InputBody>,
-) -> ApiResult<StatusCode> {
+) -> ApiResult<Json<crate::command_risk::authority::TerminalWriteAck>> {
     let id = resolve_api_terminal_ref(&state, &id)?;
     let bytes = body.text.as_bytes();
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
@@ -2282,39 +2454,78 @@ async fn send_session_input(
             .controller_leases
             .ensure_can_control(target_id, client_id.as_deref())?;
     }
-    // FR-1: no write path may deliver input to a pane waiting at an approval
-    // gate — including synchronized-group fan-out. In-app the interactive
-    // registry is authoritative; a standalone sidecar daemon has no
-    // interactive sessions, so with no app handle there is nothing to check.
-    #[cfg(not(test))]
-    if let Some(app) = state.app_handle.as_ref() {
-        for target_id in &targets {
-            crate::ipc::reject_waiting_approval_via_app(app, target_id).map_err(ApiError::BadRequest)?;
-        }
-    }
-    // P0-4: the gate returns the bytes that may reach the PTY (it HOLDS unterminated input
-    // and emits only complete, approved lines — boundary #1). Write those, not `bytes`.
-    let writable = gate_command_input(
+    let ack = execute_terminal_write(
         &state,
+        crate::command_risk::authority::WriteActor {
+            principal: "operator".to_string(),
+            kind: crate::command_risk::authority::WriteActorKind::Programmatic,
+        },
         "rest-session-input",
         &id,
-        &targets,
+        &id,
+        targets,
         body.approval_id.as_deref(),
         bytes,
-        // REST input is an untrimmed byte stream -> accumulate, flush on \r/\n.
-        crate::command_risk::gate::GateMode::HoldUntilApproved,
+        crate::command_risk::authority::WritePayloadMode::HoldUntilApproved,
     )?;
-    if writable.is_empty() {
-        return Ok(StatusCode::NO_CONTENT); // input held pending a complete line
+    Ok(Json(ack))
+}
+
+async fn internal_terminal_write(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(body): Json<InternalTerminalWriteBody>,
+) -> ApiResult<Json<crate::command_risk::authority::TerminalWriteAck>> {
+    let supplied = headers
+        .get(input_authority_header_name())
+        .and_then(|value| value.to_str().ok());
+    if !state.auth.verify_input_authority(supplied) {
+        return Err(ApiError::Forbidden(
+            "input authority capability is required".to_string(),
+        ));
     }
-    for target_id in targets {
-        state.pty.write(&target_id, &writable).map_err(|err| {
-            if state.pty.contains(&target_id) {
-                ApiError::Internal(err)
-            } else {
-                ApiError::NotFound(target_id.clone())
-            }
-        })?;
+    if body.payload.len() > WS_MAX_INPUT_FRAME_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "input frame exceeds {} bytes",
+            WS_MAX_INPUT_FRAME_BYTES
+        )));
+    }
+    let Some(authority) = state.terminal_input_authority.as_ref() else {
+        return Err(ApiError::Internal(
+            "terminal input authority unavailable".to_string(),
+        ));
+    };
+    let ack = authority
+        .execute(&body.envelope, &body.payload, |target, writable| {
+            state.pty.write(target, writable)
+        })
+        .map_err(|nack| ApiError::TerminalWriteRejected(nack.code.clone(), nack))?;
+    Ok(Json(ack))
+}
+
+async fn internal_interactive_approval_state(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(body): Json<InternalInteractiveApprovalStateBody>,
+) -> ApiResult<StatusCode> {
+    let supplied = headers
+        .get(input_authority_header_name())
+        .and_then(|value| value.to_str().ok());
+    if !state.auth.verify_input_authority(supplied) {
+        return Err(ApiError::Forbidden(
+            "input authority capability is required".to_string(),
+        ));
+    }
+    let Some(authority) = state.terminal_input_authority.as_ref() else {
+        return Err(ApiError::Internal(
+            "terminal input authority unavailable".to_string(),
+        ));
+    };
+    match body.prompt_key.filter(|key| !key.is_empty()) {
+        Some(prompt_key) => {
+            authority.set_interactive_approval(body.terminal_id, body.session_id, prompt_key)
+        }
+        None => authority.clear_interactive_approval(&body.terminal_id),
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2325,6 +2536,14 @@ async fn mint_session_input_approval(
     headers: HeaderMap,
     Json(body): Json<InputApprovalBody>,
 ) -> ApiResult<Json<InputApprovalResponse>> {
+    let human_capability = headers
+        .get(input_authority_header_name())
+        .and_then(|value| value.to_str().ok());
+    if !state.auth.verify_input_authority(human_capability) {
+        return Err(ApiError::Forbidden(
+            "human input approval capability is required".to_string(),
+        ));
+    }
     let bytes = body.text.as_bytes();
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
         return Err(ApiError::BadRequest(format!(
@@ -2701,6 +2920,7 @@ async fn handle_ws(
         }
     };
     let (mut sender, mut receiver) = socket.split();
+    let (control_tx, mut control_rx) = mpsc::unbounded_channel::<String>();
 
     // Send task: broadcast rx -> WS.
     //
@@ -2727,7 +2947,20 @@ async fn handle_ws(
             }
         }
         loop {
-            match rx.recv().await {
+            tokio::select! {
+            control = control_rx.recv() => match control {
+                Some(control) => match tokio::time::timeout(
+                    WS_WRITE_TIMEOUT,
+                    sender.send(Message::Text(control.into())),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {}
+                    Ok(Err(_)) | Err(_) => break,
+                },
+                None => break,
+            },
+            output = rx.recv() => match output {
                 Ok(chunk) => {
                     match tokio::time::timeout(
                         WS_WRITE_TIMEOUT,
@@ -2764,7 +2997,7 @@ async fn handle_ws(
                     log::debug!("api: PTY {} broadcast closed", read_id);
                     break;
                 }
-            }
+            }}
         }
     });
 
@@ -2786,7 +3019,15 @@ async fn handle_ws(
                     write_id,
                     bytes.len()
                 );
-                break;
+                let _ = control_tx.send(
+                    serde_json::json!({
+                        "type": "terminalWriteNack",
+                        "code": "read_only_stream",
+                        "terminalId": write_id,
+                    })
+                    .to_string(),
+                );
+                continue;
             }
             if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
                 log::warn!(
@@ -2794,42 +3035,66 @@ async fn handle_ws(
                     write_id,
                     bytes.len()
                 );
-                break;
+                let _ = control_tx.send(
+                    serde_json::json!({
+                        "type": "terminalWriteNack",
+                        "code": "input_frame_too_large",
+                        "terminalId": write_id,
+                    })
+                    .to_string(),
+                );
+                continue;
             }
-            // P0-4: the WS stream is interactive bytes; the gate's per-{source,terminal}
-            // line accumulator reassembles a command across frames and refuses a
-            // destructive submission at its terminator (no approval id on this raw
-            // stream). A refused frame is DROPPED (the command is not executed); the
-            // session stays open so benign typing continues.
-            let targets = [write_id.clone()];
-            let writable = match gate_command_input(
+            // A1: raw WS bytes are programmatic input. The daemon authority owns both the
+            // waiting-approval check and command classification, and ACKs only after the PTY
+            // write. A rejected frame is dropped while the stream remains available.
+            let result = execute_terminal_write(
                 &write_state,
+                crate::command_risk::authority::WriteActor {
+                    principal: "operator".to_string(),
+                    kind: crate::command_risk::authority::WriteActorKind::Programmatic,
+                },
                 "ws-session-input",
                 &write_id,
-                &targets,
+                &write_id,
+                vec![write_id.clone()],
                 None,
                 &bytes,
-                // interactive byte stream -> accumulate, flush on \r/\n
-                crate::command_risk::gate::GateMode::HoldUntilApproved,
-            ) {
-                Ok(writable) => writable,
-                Err(d) => {
-                    if let ApiError::CommandRiskBlocked(denial) = &d {
-                        log::warn!(
-                            "api: WS {} input blocked by command-risk gate: {}",
-                            write_id,
-                            denial.reason
-                        );
-                    }
-                    continue;
+                crate::command_risk::authority::WritePayloadMode::HoldUntilApproved,
+            );
+            match result {
+                Ok(ack) => {
+                    let _ = control_tx.send(
+                        serde_json::json!({
+                            "type": "terminalWriteAck",
+                            "ack": ack,
+                        })
+                        .to_string(),
+                    );
                 }
-            };
-            if writable.is_empty() {
-                continue; // input held pending a complete line
-            }
-            if let Err(e) = write_state.pty.write(&write_id, &writable) {
-                log::warn!("api: PTY write to {} failed: {}", write_id, e);
-                break;
+                Err(ApiError::TerminalWriteRejected(_, nack)) => {
+                    let _ = control_tx.send(
+                        serde_json::json!({
+                            "type": "terminalWriteNack",
+                            "nack": nack,
+                        })
+                        .to_string(),
+                    );
+                }
+                Err(err) => {
+                    log::warn!("api: WS {} input rejected: {}", write_id, err);
+                    let _ = control_tx.send(
+                        serde_json::json!({
+                            "type": "terminalWriteNack",
+                            "code": "terminal_write_error",
+                            "message": err.to_string(),
+                        })
+                        .to_string(),
+                    );
+                    if matches!(err, ApiError::Internal(_)) {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -2858,6 +3123,16 @@ mod tests {
     fn auth_verifies_matching_bearer() {
         let cfg = AuthConfig::with_token("secret123");
         assert!(cfg.verify(Some("Bearer secret123")));
+    }
+
+    #[test]
+    fn bearer_possession_does_not_grant_input_or_human_approval_authority() {
+        let cfg =
+            AuthConfig::with_token("public-bearer").with_input_authority_token("human-capability");
+        assert!(cfg.verify(Some("Bearer public-bearer")));
+        assert!(!cfg.verify_input_authority(Some("public-bearer")));
+        assert!(!cfg.verify_input_authority(None));
+        assert!(cfg.verify_input_authority(Some("human-capability")));
     }
 
     #[test]

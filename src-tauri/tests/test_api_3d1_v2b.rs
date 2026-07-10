@@ -348,7 +348,7 @@ async fn exclusive_stream_ticket_returns_controller_client_id() {
 #[cfg(target_os = "windows")]
 #[tokio::test]
 async fn ws_accepts_ticket_query_param() {
-    use futures_util::SinkExt;
+    use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::tungstenite::Message;
 
     let (base, state, join) = spawn(base_state()).await;
@@ -395,6 +395,26 @@ async fn ws_accepts_ticket_query_param() {
     ws.send(Message::Text("\r\n".into()))
         .await
         .expect("ws write with ticket");
+    let mut typed_ack = None;
+    for _ in 0..20 {
+        let Some(message) = tokio::time::timeout(Duration::from_millis(250), ws.next())
+            .await
+            .ok()
+            .flatten()
+        else {
+            continue;
+        };
+        if let Ok(Message::Text(text)) = message {
+            let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+            if value["type"] == "terminalWriteAck" {
+                typed_ack = Some(value);
+                break;
+            }
+        }
+    }
+    let typed_ack = typed_ack.expect("WS input returns a typed terminalWriteAck");
+    assert_eq!(typed_ack["ack"]["status"], "executed");
+    assert!(typed_ack["ack"]["requestId"].as_str().is_some());
 
     // Redeeming the same ticket again must fail.
     let url2 = format!("{}/sessions/{}/stream?ticket={}", ws_url, id, ticket);

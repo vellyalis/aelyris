@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc, Mutex as AsyncMutex};
+use tokio::sync::{broadcast, Mutex as AsyncMutex};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::mux::graph::MuxGraph;
@@ -15,10 +15,9 @@ use crate::pty::{ShellType, TerminalInfo};
 
 const SIDE_CAR_PORT: u16 = 9334;
 const TOKEN_FILE_NAME: &str = "aelyris-pty-server.token";
+const INPUT_AUTHORITY_TOKEN_FILE_NAME: &str = "aelyris-input-authority.token";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(3);
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_millis(750);
-const INPUT_QUEUE_CAPACITY: usize = 256;
-const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(2);
 const SIDECAR_READY_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SIDECAR_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(75);
@@ -27,6 +26,7 @@ const SIDECAR_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(75);
 pub struct PtySidecarClient {
     base_url: String,
     token: String,
+    input_authority_token: String,
     http: reqwest::Client,
     streams: Arc<Mutex<HashMap<String, SidecarStream>>>,
     stream_connect_lock: Arc<AsyncMutex<()>>,
@@ -79,7 +79,6 @@ impl PtySidecarState {
 #[derive(Clone)]
 struct SidecarStream {
     output_tx: broadcast::Sender<Vec<u8>>,
-    input_tx: mpsc::Sender<Vec<u8>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -188,7 +187,7 @@ struct ZoomMuxPaneBody {
 }
 
 impl PtySidecarClient {
-    pub fn new(token: String) -> Self {
+    pub fn new(token: String, input_authority_token: String) -> Self {
         let http = reqwest::Client::builder()
             .timeout(HTTP_TIMEOUT)
             .connect_timeout(HTTP_CONNECT_TIMEOUT)
@@ -200,6 +199,7 @@ impl PtySidecarClient {
         Self {
             base_url: format!("http://127.0.0.1:{SIDE_CAR_PORT}"),
             token,
+            input_authority_token,
             http,
             streams: Arc::new(Mutex::new(HashMap::new())),
             stream_connect_lock: Arc::new(AsyncMutex::new(())),
@@ -355,27 +355,85 @@ impl PtySidecarClient {
         Err("PTY server command spawn failed: retry budget exhausted".to_string())
     }
 
-    pub async fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
-        if data.len() > crate::api::WS_MAX_INPUT_FRAME_BYTES {
+    pub async fn write_authorized(
+        &self,
+        envelope: &crate::command_risk::authority::TerminalWriteEnvelope,
+        payload: &[u8],
+    ) -> Result<crate::command_risk::authority::TerminalWriteAck, String> {
+        if payload.len() > crate::api::WS_MAX_INPUT_FRAME_BYTES {
             return Err(format!(
-                "PTY sidecar input frame too large for {id}: {} bytes",
-                data.len()
+                "PTY sidecar input frame too large for {}: {} bytes",
+                envelope.terminal_id,
+                payload.len()
             ));
         }
-        self.ensure_stream(id).await?;
-        let stream = self
-            .streams
-            .lock()
-            .map_err(|_| "PTY sidecar stream lock poisoned".to_string())?
-            .get(id)
-            .cloned()
-            .ok_or_else(|| format!("PTY sidecar stream missing for {id}"))?;
-        // Bounded wait: a stalled WS writer must surface as an error instead
-        // of blocking the IPC caller for as long as the queue stays full.
-        match tokio::time::timeout(WS_WRITE_TIMEOUT, stream.input_tx.send(data.to_vec())).await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(_)) => Err(format!("PTY sidecar stream closed for {id}")),
-            Err(_) => Err(format!("PTY sidecar input queue saturated for {id}")),
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Body<'a> {
+            envelope: &'a crate::command_risk::authority::TerminalWriteEnvelope,
+            payload: &'a [u8],
+        }
+        let response = self
+            .http
+            .post(format!("{}/internal/terminal-write", self.base_url))
+            .bearer_auth(&self.token)
+            .header("x-aelyris-input-authority", &self.input_authority_token)
+            .json(&Body { envelope, payload })
+            .send()
+            .await
+            .map_err(|err| format!("PTY server terminal write request failed: {err}"))?;
+        if response.status().is_success() {
+            return response
+                .json()
+                .await
+                .map_err(|err| format!("PTY server terminal write ACK invalid: {err}"));
+        }
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        Err(format!(
+            "PTY server terminal write rejected ({status}): {}",
+            detail.trim()
+        ))
+    }
+
+    pub async fn sync_interactive_approval_state(
+        &self,
+        terminal_id: &str,
+        session_id: &str,
+        prompt_key: Option<&str>,
+    ) -> Result<(), String> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Body<'a> {
+            terminal_id: &'a str,
+            session_id: &'a str,
+            prompt_key: Option<&'a str>,
+        }
+        let response = self
+            .http
+            .post(format!(
+                "{}/internal/interactive-approval-state",
+                self.base_url
+            ))
+            .bearer_auth(&self.token)
+            .header("x-aelyris-input-authority", &self.input_authority_token)
+            .json(&Body {
+                terminal_id,
+                session_id,
+                prompt_key,
+            })
+            .send()
+            .await
+            .map_err(|err| format!("PTY server approval-state sync failed: {err}"))?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let detail = response.text().await.unwrap_or_default();
+            Err(format!(
+                "PTY server approval-state sync rejected ({status}): {}",
+                detail.trim()
+            ))
         }
     }
 
@@ -825,7 +883,6 @@ impl PtySidecarClient {
 
         let socket = self.connect_stream_socket(id).await?;
         let (output_tx, _) = broadcast::channel::<Vec<u8>>(1024);
-        let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>(INPUT_QUEUE_CAPACITY);
 
         self.streams
             .lock()
@@ -834,7 +891,6 @@ impl PtySidecarClient {
                 id.to_string(),
                 SidecarStream {
                     output_tx: output_tx.clone(),
-                    input_tx,
                 },
             );
 
@@ -847,7 +903,7 @@ impl PtySidecarClient {
         let supervisor_id = id.to_string();
         tauri::async_runtime::spawn(async move {
             client
-                .run_stream_supervisor(supervisor_id, socket, output_tx, input_rx)
+                .run_stream_supervisor(supervisor_id, socket, output_tx)
                 .await;
         });
 
@@ -881,7 +937,6 @@ impl PtySidecarClient {
             tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
         >,
         output_tx: broadcast::Sender<Vec<u8>>,
-        mut input_rx: mpsc::Receiver<Vec<u8>>,
     ) {
         let mut socket = Some(socket);
         loop {
@@ -900,39 +955,18 @@ impl PtySidecarClient {
                     None => break,
                 },
             };
-            let (mut ws_write, mut ws_read) = current.split();
-            let input_closed = loop {
-                tokio::select! {
-                    msg = ws_read.next() => match msg {
-                        Some(Ok(Message::Binary(bytes))) => {
-                            let _ = output_tx.send(bytes.to_vec());
-                        }
-                        Some(Ok(Message::Text(text))) => {
-                            let _ = output_tx.send(text.to_string().into_bytes());
-                        }
-                        Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break false,
-                        Some(Ok(_)) => {}
-                    },
-                    bytes = input_rx.recv() => match bytes {
-                        Some(bytes) => {
-                            match tokio::time::timeout(
-                                WS_WRITE_TIMEOUT,
-                                ws_write.send(Message::Binary(bytes.into())),
-                            )
-                            .await
-                            {
-                                Ok(Ok(())) => {}
-                                Ok(Err(_)) | Err(_) => break false,
-                            }
-                        }
-                        // All input senders dropped: the terminal was closed
-                        // locally; stop supervising.
-                        None => break true,
-                    },
+            let (_ws_write, mut ws_read) = current.split();
+            loop {
+                match ws_read.next().await {
+                    Some(Ok(Message::Binary(bytes))) => {
+                        let _ = output_tx.send(bytes.to_vec());
+                    }
+                    Some(Ok(Message::Text(text))) => {
+                        let _ = output_tx.send(text.to_string().into_bytes());
+                    }
+                    Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                    Some(Ok(_)) => {}
                 }
-            };
-            if input_closed {
-                break;
             }
         }
         if let Ok(mut streams) = self.streams.lock() {
@@ -994,7 +1028,10 @@ impl PtySidecarClient {
         for attempt in 1..=MAX_TICKET_ATTEMPTS {
             let res = self
                 .http
-                .post(format!("{}/sessions/{}/stream-ticket", self.base_url, id))
+                .post(format!(
+                    "{}/sessions/{}/stream-ticket?mode=read",
+                    self.base_url, id
+                ))
                 .bearer_auth(&self.token)
                 .send()
                 .await
@@ -1025,11 +1062,12 @@ impl PtySidecarClient {
 
 pub fn launch_or_connect() -> Option<PtySidecarClient> {
     let token = load_or_create_token().ok()?;
-    let client = PtySidecarClient::new(token.clone());
+    let input_authority_token = load_or_create_input_authority_token().ok()?;
+    let client = PtySidecarClient::new(token.clone(), input_authority_token.clone());
     if probe_expected_sidecar(&client) {
         return Some(client);
     }
-    if let Err(err) = spawn_server_process(&token) {
+    if let Err(err) = spawn_server_process(&token, &input_authority_token) {
         log::warn!("PTY sidecar launch failed: {err}");
         return None;
     }
@@ -1206,11 +1244,12 @@ fn terminate_process_tree(pid: u32) {
 #[cfg(not(windows))]
 fn terminate_process_tree(_pid: u32) {}
 
-fn spawn_server_process(token: &str) -> Result<(), String> {
+fn spawn_server_process(token: &str, input_authority_token: &str) -> Result<(), String> {
     let exe = current_server_exe()?;
     let mut command = crate::process::hidden_command(exe);
     command
         .env("AELYRIS_API_TOKEN", token)
+        .env("AELYRIS_INPUT_AUTHORITY_TOKEN", input_authority_token)
         .env("AELYRIS_PTY_SERVER_PORT", SIDE_CAR_PORT.to_string())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -1278,7 +1317,14 @@ fn current_server_exe() -> Result<PathBuf, String> {
 }
 
 fn load_or_create_token() -> Result<String, String> {
-    let path = token_path()?;
+    load_or_create_token_at(token_path()?)
+}
+
+fn load_or_create_input_authority_token() -> Result<String, String> {
+    load_or_create_token_at(input_authority_token_path()?)
+}
+
+fn load_or_create_token_at(path: PathBuf) -> Result<String, String> {
     if let Ok(token) = std::fs::read_to_string(&path) {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
@@ -1378,6 +1424,10 @@ fn token_path() -> Result<PathBuf, String> {
     }
     let home = std::env::home_dir().ok_or_else(|| "home directory unavailable".to_string())?;
     Ok(home.join(".aelyris").join(TOKEN_FILE_NAME))
+}
+
+fn input_authority_token_path() -> Result<PathBuf, String> {
+    token_path().map(|path| path.with_file_name(INPUT_AUTHORITY_TOKEN_FILE_NAME))
 }
 
 fn shell_name(shell: &ShellType) -> &'static str {

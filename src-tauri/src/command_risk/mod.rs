@@ -7,6 +7,7 @@
 //! by both the Rust tests here and the Vitest suite, so the two policies cannot drift.
 
 pub mod approval;
+pub mod authority;
 pub mod gate;
 
 use std::collections::BTreeSet;

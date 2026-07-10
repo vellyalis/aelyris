@@ -2,9 +2,9 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A1` (`A0.1-A0.3 complete`; R0 complete at `fcd23a7`).
-NEXT PHASE: `A2` after A1 terminal input authority is complete.
-NEXT IMPLEMENTATION SLICE: `A1 daemon-owned terminal write and approval authority`.
+CURRENT PHASE: `A2` (`A0.1-A0.3 and A1 complete`; R0 complete at `fcd23a7`).
+NEXT PHASE: `A3` after A2 Windows trust and evidence DAG is complete.
+NEXT IMPLEMENTATION SLICE: `A2 Windows trust and evidence DAG`.
 
 ## Objective
 
@@ -226,6 +226,28 @@ Completion contract:
 Current missing signing identity, endpoint reachability, and live updater lifecycle
 proof remain external/operator evidence blockers. They do not reopen A0.3 repo-owned
 truth logic.
+
+## A1 Complete - Daemon-Owned Terminal Input Authority
+
+Completion contract:
+
+- every terminal write face constructs a typed envelope and delegates classification
+  and delivery to `TerminalInputAuthority`, including REST, WS, MCP, mux, IPC,
+  broadcast, native input/paste, sidecar, and runtime lifecycle prompts,
+- ACK is emitted only after every effective target accepts the raw write; failures
+  return a typed NACK and queue acceptance is never represented as execution success,
+- waiting interactive approvals are session, prompt-fingerprint, and effective-target
+  bound; raw programmatic Enter, stale claims, replay, and cross-target mutation fail
+  closed,
+- the sidecar input-authority capability and human-approval capability are separate
+  from public bearer possession,
+- `verify-runtime-core-preconditions` covers the authority contract and the full Rust
+  library suite passes 1207/1207.
+
+The two changed API integration executables compile but cannot start on the current
+host (`STATUS_ENTRYPOINT_NOT_FOUND`, `0xc0000139`); this is recorded as host execution
+evidence debt, not a passing integration run. `cargo check --all-targets` also exposes
+an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::parser`.
 
 ## Work and Session Rules
 
