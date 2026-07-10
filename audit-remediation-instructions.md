@@ -2,9 +2,10 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A2` (`A0.1-A0.3 and A1 complete`; R0 complete at `fcd23a7`).
-NEXT PHASE: `A3` after A2 Windows trust and evidence DAG is complete.
-NEXT IMPLEMENTATION SLICE: `A2 Windows trust and evidence DAG`.
+CURRENT PHASE: `A3` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
+signed lifecycle deferred to A9; R0 complete at `fcd23a7`).
+NEXT PHASE: `A4` after A3 UI trust surface is complete.
+NEXT IMPLEMENTATION SLICE: `A3 UI trust surface`.
 
 ## Objective
 
@@ -47,8 +48,8 @@ continuation_contract:
 | R0 | tracked plan, records, resume routing, continuation verifier | audit complete | continuation gate PASS |
 | A0 | consent, score, evidence provenance, signing/updater/native claim truth | R0 complete | authority/evidence gates PASS |
 | A1 | one daemon-owned terminal write/approval authority | A0 complete | adversarial all-face input tests PASS |
-| A2 | Windows trust, updater lifecycle, immutable evidence DAG | A1 complete | signed install/update/relaunch proof PASS |
-| A3 | pane liveness, reconnect, paste, close/shortcut/fleet truth | A2 complete | focused + rendered trust gates PASS |
+| A2 | Windows trust, updater lifecycle, immutable evidence DAG | A1 complete | repo-owned trust/evidence PASS; signed lifecycle remains an A9 release gate |
+| A3 | pane liveness, reconnect, paste, close/shortcut/fleet truth | A2 repo-owned work complete and release-only external proof explicitly deferred | focused + rendered trust gates PASS |
 | A4 | session/DB migration, backup, restore, failure durability | A3 complete | upgrade/restart/fault tests PASS |
 | A5 | supervised execution and lock/concurrency boundaries | A4 complete | timeout/cancel/concurrency gates PASS |
 | A6 | owner-based splits and modularity ratchets | A5 complete | ratchet + focused tests PASS |

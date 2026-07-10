@@ -53,7 +53,11 @@ R0 continuation contract
   -> A9 release lane and external proof closeout
 ```
 
-A3 may read the existing WU-UQ-1 design, but it does not run concurrently with A1/A2.
+A3 may read the existing WU-UQ-1 design, but it does not run concurrently with A1/A2
+repo-owned implementation. By owner decision on 2026-07-11, A2's unavailable
+operator-controlled signed lifecycle is deferred to A9 rather than blocking A3. This
+does not complete A2's release acceptance, remove the blocker, or permit a release-ready
+claim; `releaseLifecycleReady=false` remains authoritative until the real signed run.
 A8 is conditional and cannot start from the historical `98% full-native` artifact.
 Current proof is `.codex-auto/quality/native-coverage-gap-audit.json` with measured
 coverage fields and a separate `shippingShellReady` claim.
@@ -195,6 +199,13 @@ Required work:
 
 Acceptance requires a real signed lifecycle on the intended release channel. Local
 unsigned development artifacts remain valid for development but receive no release trust.
+
+Scheduling note (owner decision, 2026-07-11): repo-owned A2 updater wiring, immutable
+CI evidence, SBOM, provenance, and release-score enforcement are complete. Authenticode,
+reachable signed metadata, and install/update/relaunch/rollback evidence are deferred to
+A9 release closeout because the required operator signing identity is unavailable. A3
+may proceed, while A2 remains incomplete for release acceptance and all release claims
+continue to fail closed.
 
 ## A3 - UI Trust Surface
 
