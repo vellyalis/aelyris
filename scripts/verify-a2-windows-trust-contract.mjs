@@ -29,7 +29,10 @@ const checks = {
     ci.includes("release_candidate:") &&
     ci.includes("if: github.event_name == 'workflow_dispatch' && inputs.release_candidate"),
   sbomIsGenerated:
-    ci.includes("anchore/sbom-action@") && ci.includes("format: spdx-json") && ci.includes("aelyris.spdx.json"),
+    ci.includes("New-Item -ItemType Directory -Force .codex-auto/release-evidence") &&
+    ci.includes("anchore/sbom-action@") &&
+    ci.includes("format: spdx-json") &&
+    ci.includes("aelyris.spdx.json"),
   provenanceIsAttested:
     ci.includes("actions/attest-build-provenance@") &&
     ci.includes("subject-path: .codex-auto/release-evidence/aelyris.spdx.json"),

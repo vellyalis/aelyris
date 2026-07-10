@@ -160,6 +160,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Create release evidence directory
+        run: New-Item -ItemType Directory -Force .codex-auto/release-evidence | Out-Null
       - name: Generate source and dependency SBOM
         uses: anchore/sbom-action@43a17d6e7add2b5535efe4dcae9952337c479a93 # v0.20.11
         with:
