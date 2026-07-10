@@ -43,10 +43,10 @@ const PASSING_EDGE_ITEMS: RightRailGoalTrackEdgeItem[] = [
 const READY_CONSENT_PACKET = {
   status: "ready" as const,
   label: "Consent packet ready",
-  detail: "codex preflight green · prompt blocked until explicit consent",
+  detail: "codex preflight green · operator wrapper will mint a one-use packet",
   provider: "codex",
-  command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-  requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+  command: "pnpm verify:goal:operator:token-smoke",
+  requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   preflightReady: true,
   safeNoPromptSent: true,
   wouldSpendTokens: true,
@@ -55,22 +55,22 @@ const READY_CONSENT_PACKET = {
       provider: "codex",
       status: "ready" as const,
       failedChecks: [],
-      command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS AELYRIS_AUTH_PROMPT_PROVIDER=codex",
+      command: "pnpm verify:goal:operator:token-smoke",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex",
     },
     {
       provider: "claude",
       status: "ready" as const,
       failedChecks: [],
-      command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS AELYRIS_AUTH_PROMPT_PROVIDER=claude",
+      command: "pnpm verify:goal:operator:token-smoke",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=claude",
     },
     {
       provider: "gemini",
       status: "ready" as const,
       failedChecks: [],
-      command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS AELYRIS_AUTH_PROMPT_PROVIDER=gemini",
+      command: "pnpm verify:goal:operator:token-smoke",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=gemini",
     },
   ],
   artifactReadiness: [
@@ -106,7 +106,7 @@ const READY_CONSENT_PACKET = {
 const READY_SAFE_GATE = {
   source: "final-goal-safe-summary" as const,
   status: "blocked-by-explicit-consent" as const,
-  label: "Safe gate consent-gated",
+  label: "Safe gate operator token-gated",
   detail: "11 checks green · 8/8 requirements · 10/10 artifacts",
   ok: true,
   stepCount: 11,
@@ -130,7 +130,7 @@ const READY_SAFE_GATE = {
   localDate: "2026-05-21",
   timeZone: "Asia/Tokyo",
   nextRequiredAction:
-    "Set AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS and AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run pnpm verify:terminal:authenticated-ai-cli-prompt if token-spend validation is desired.",
+    "Set AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run pnpm verify:goal:operator:token-smoke if token-spend validation is desired; its wrapper mints the one-use execution packet.",
 };
 
 const READY_REQUIREMENT_PROOFS = [
@@ -151,7 +151,7 @@ const READY_REQUIREMENT_PROOFS = [
 ];
 
 describe("deriveRightRailGoalTrack", () => {
-  it("keeps the final goal blocked until the authenticated prompt smoke is explicitly consented", () => {
+  it("keeps the final goal blocked until the provider-selected operator smoke runs", () => {
     const track = deriveRightRailGoalTrack({
       edgeScore: 96,
       edgeGrade: "A",
@@ -189,9 +189,9 @@ describe("deriveRightRailGoalTrack", () => {
     });
 
     expect(track.status).toBe("blocked");
-    expect(track.confidenceLabel).toBe("Consent gate");
-    expect(track.label).toBe("Goal consent gated");
-    expect(track.detail).toBe("Non-token implementation proved · explicit token consent pending");
+    expect(track.confidenceLabel).toBe("Token operator gate");
+    expect(track.label).toBe("Goal operator gated");
+    expect(track.detail).toBe("Non-token implementation proved · operator token smoke pending");
     expect(track.percent).toBe(99);
     expect(track.doneCount).toBe(3);
     expect(track.activeMilestoneId).toBe("release-proof");
@@ -202,23 +202,26 @@ describe("deriveRightRailGoalTrack", () => {
       localDate: "2026-05-21",
       timeZone: "Asia/Tokyo",
     });
-    expect(track.blockers).toContain("Authenticated AI CLI prompt smoke still requires explicit token consent");
-    expect(track.remainingItems).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
+    expect(track.blockers).toContain(
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    );
+    expect(track.remainingItems).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
     expect(track.nextAction).toBe("Copy verified run command");
     expect(track.consentRunAction).toMatchObject({
       label: "Copy verified run command",
       provider: "codex",
-      command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+      command: "pnpm verify:goal:operator:token-smoke",
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       providerEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       defaultProvider: "codex",
       requiresExplicitConsent: true,
     });
     expect(track.consentRunAction?.powershellSnippet).toBe(
       [
-        '$env:AELYRIS_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
         '$env:AELYRIS_AUTH_PROMPT_PROVIDER="codex"',
-        "pnpm verify:terminal:authenticated-ai-cli-prompt",
+        "pnpm verify:goal:operator:token-smoke",
       ].join("\n"),
     );
     expect(track.consentRunActions).toHaveLength(3);
@@ -352,7 +355,7 @@ describe("deriveRightRailGoalTrack", () => {
       },
     ]);
     expect(track.milestones.find((item) => item.id === "release-proof")?.detail).toBe(
-      "Safe gate is green; token-spending proof is gated by explicit consent",
+      "Safe gate is green; token-spending proof requires a provider-selected operator run",
     );
   });
 
@@ -406,10 +409,14 @@ describe("deriveRightRailGoalTrack", () => {
       },
     });
 
-    expect(track.label).toBe("Goal consent gated");
+    expect(track.label).toBe("Goal operator gated");
     expect(track.percent).toBe(99);
-    expect(track.remainingItems).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
-    expect(track.blockers).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
+    expect(track.remainingItems).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
+    expect(track.blockers).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
     expect(track.boundaryProofs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -420,7 +427,7 @@ describe("deriveRightRailGoalTrack", () => {
       ]),
     );
     expect(track.milestones.find((item) => item.id === "release-proof")?.detail).toBe(
-      "Safe gate is waiting only for this Goal Track proof; token-spending proof is gated by explicit consent",
+      "Safe gate is waiting only for this Goal Track proof; token-spending proof requires a provider-selected operator run",
     );
   });
 
@@ -448,8 +455,12 @@ describe("deriveRightRailGoalTrack", () => {
     });
 
     const promptItems = track.remainingItems.filter((item) => /authenticated.*prompt/i.test(item));
-    expect(promptItems).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
-    expect(track.blockers).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
+    expect(promptItems).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
+    expect(track.blockers).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
   });
 
   it("keeps the authenticated prompt action visible when stale audit artifacts are being refreshed", () => {
@@ -485,7 +496,9 @@ describe("deriveRightRailGoalTrack", () => {
       ],
     });
 
-    expect(track.remainingItems[0]).toBe("Authenticated AI CLI prompt smoke still requires explicit token consent");
+    expect(track.remainingItems[0]).toBe(
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    );
     expect(track.remainingItems).not.toEqual(
       expect.arrayContaining([expect.stringContaining("right-rail-goal-track")]),
     );
@@ -533,8 +546,12 @@ describe("deriveRightRailGoalTrack", () => {
     });
 
     expect(track.percent).toBe(99);
-    expect(track.remainingItems).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
-    expect(track.blockers).toEqual(["Authenticated AI CLI prompt smoke still requires explicit token consent"]);
+    expect(track.remainingItems).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
+    expect(track.blockers).toEqual([
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    ]);
   });
 
   it("surfaces the user-initiated native sleep cycle as the next external gate action", () => {
@@ -587,7 +604,7 @@ describe("deriveRightRailGoalTrack", () => {
     expect(track.percent).toBe(96);
     expect(track.nextAction).toBe("Copy native sleep proof");
     expect(track.remainingItems).toEqual([
-      "Authenticated AI CLI prompt smoke still requires explicit token consent",
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
       sleepBlocker,
     ]);
     expect(track.externalGateActions).toEqual([
@@ -666,7 +683,7 @@ describe("deriveRightRailGoalTrack", () => {
         "1 AI CLI session still on native fallback",
         "2 human decision gates open",
         "2 risk or blocker nodes open: Missing regression proof, Approval gate",
-        "Authenticated AI CLI prompt smoke still requires explicit token consent",
+        "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
       ]),
     );
     expect(track.riskEvidence).toEqual([
@@ -808,7 +825,7 @@ describe("deriveRightRailGoalTrack", () => {
     expect(track.consentRunActions).toEqual([]);
     expect(track.refreshActions).toEqual([]);
     expect(track.blockers).toContain(
-      "Authenticated prompt consent packet unavailable; run pnpm verify:terminal:authenticated-ai-cli-prompt without consent",
+      "Authenticated prompt consent packet unavailable; run pnpm verify:terminal:authenticated-ai-cli-preflight-matrix",
     );
   });
 
@@ -837,14 +854,14 @@ describe("deriveRightRailGoalTrack", () => {
             exists: true,
             fresh: false,
             blockingReason: "explicit token-spend proof is stale",
-            refreshCommand: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+            refreshCommand: "pnpm verify:goal:operator:token-smoke",
             expiresAt: "2026-05-21T00:00:00.000Z",
           },
         ],
         artifactFreshness: {
           status: "attention",
           label: "Proof freshness needs refresh",
-          detail: "1/1 stale · authenticated-prompt · pnpm verify:terminal:authenticated-ai-cli-prompt",
+          detail: "1/1 stale · authenticated-prompt · pnpm verify:goal:operator:token-smoke",
           freshCount: 0,
           staleCount: 1,
           totalCount: 1,
@@ -852,7 +869,7 @@ describe("deriveRightRailGoalTrack", () => {
             id: "authenticated-prompt",
             path: ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json",
             expiresAt: "2026-05-21T00:00:00.000Z",
-            refreshCommand: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+            refreshCommand: "pnpm verify:goal:operator:token-smoke",
             refreshReason: "Runs a token-spending authenticated prompt proof.",
             costClass: "requires-explicit-consent-token-spend",
             fresh: false,
@@ -865,7 +882,7 @@ describe("deriveRightRailGoalTrack", () => {
     expect(track.refreshActions).toEqual([
       expect.objectContaining({
         id: "authenticated-prompt",
-        command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+        command: "pnpm verify:goal:operator:token-smoke",
         costClass: "requires-explicit-consent-token-spend",
         requiresExplicitConsent: true,
       }),
@@ -956,8 +973,8 @@ describe("deriveRightRailGoalTrack", () => {
     });
 
     expect(track.status).toBe("blocked");
-    expect(track.blockers).toContain("Final safe gate unavailable; run pnpm verify:goal:safe");
-    expect(track.remainingItems).toContain("Final safe gate unavailable; run pnpm verify:goal:safe");
+    expect(track.blockers).toContain("Final no-token gate unavailable; run pnpm verify:goal:safe:no-token");
+    expect(track.remainingItems).toContain("Final no-token gate unavailable; run pnpm verify:goal:safe:no-token");
     expect(track.boundaryProofs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "native-input-host", status: "unknown", source: "unavailable" }),

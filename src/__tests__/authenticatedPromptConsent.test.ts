@@ -14,7 +14,7 @@ describe("authenticated prompt consent packet", () => {
         provider: "codex",
         wouldSpendTokens: true,
         checks: {
-          requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+          requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
           tokenSpendingExecutionBlocked: true,
           safeNoPromptSent: true,
           consentPacketReady: true,
@@ -32,9 +32,8 @@ describe("authenticated prompt consent packet", () => {
           },
         },
         nextCommand: {
-          command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+          command: "pnpm verify:goal:operator:token-smoke",
           env: {
-            AELYRIS_AUTH_PROMPT_CONSENT: "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
             AELYRIS_AUTH_PROMPT_PROVIDER: "codex",
           },
         },
@@ -49,7 +48,7 @@ describe("authenticated prompt consent packet", () => {
     expect(packet.preflightReady).toBe(true);
     expect(packet.safeNoPromptSent).toBe(true);
     expect(packet.wouldSpendTokens).toBe(true);
-    expect(packet.requiredEnv).toBe("AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS");
+    expect(packet.requiredEnv).toBe("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
     expect(packet.checks.every((check) => check.status === "pass")).toBe(true);
   });
 
@@ -61,7 +60,7 @@ describe("authenticated prompt consent packet", () => {
         provider: "codex",
         wouldSpendTokens: true,
         checks: {
-          requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+          requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
           safeNoPromptSent: true,
           consentPacketReady: true,
           nonTokenPreflightReady: true,
@@ -99,9 +98,8 @@ describe("authenticated prompt consent packet", () => {
             promptTokenBlocked: true,
           },
           optInCommand: {
-            command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+            command: "pnpm verify:goal:operator:token-smoke",
             env: {
-              AELYRIS_AUTH_PROMPT_CONSENT: "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
               AELYRIS_AUTH_PROMPT_PROVIDER: provider,
             },
           },
@@ -125,7 +123,7 @@ describe("authenticated prompt consent packet", () => {
     const packet = deriveAuthenticatedPromptConsentPacket(report, matrix);
 
     expect(packet.status).toBe("ready");
-    expect(packet.detail).toBe("codex, claude, gemini preflight green · prompt blocked until explicit consent");
+    expect(packet.detail).toBe("codex, claude, gemini preflight green · operator wrapper will mint a one-use packet");
     expect(packet.providerReadiness.map((entry) => [entry.provider, entry.status])).toEqual([
       ["codex", "ready"],
       ["claude", "ready"],
@@ -229,7 +227,7 @@ describe("authenticated prompt consent packet", () => {
         provider: "gemini",
         status: "blocked",
         failedChecks: ["interactiveBoundary"],
-        command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+        command: "pnpm verify:goal:operator:token-smoke",
         requiredEnv: "",
       },
     ]);
@@ -267,7 +265,7 @@ describe("authenticated prompt consent packet", () => {
     expect(packet.status).toBe("missing");
     expect(packet.preflightReady).toBe(false);
     expect(packet.safeNoPromptSent).toBe(true);
-    expect(packet.detail).toContain("Run pnpm verify:terminal:authenticated-ai-cli-prompt");
+    expect(packet.detail).toContain("Run pnpm verify:terminal:authenticated-ai-cli-preflight-matrix");
     expect(packet.artifactFreshness).toMatchObject({
       status: "unavailable",
       label: "Proof freshness unavailable",

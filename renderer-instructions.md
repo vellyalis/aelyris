@@ -14,7 +14,9 @@ Replace the Canvas2D per-cell `fillText` renderer with a WebGL2 glyph-atlas rend
 
 - First action: `git status --short` — if `src/features/terminal/**`, `package.json`, or `scripts/verify-terminal-font-render-contract.mjs` are dirty, stop and report.
 - Baseline (record before any edit): `pnpm exec tsc --noEmit`, `pnpm test` (pass count), `cargo test --manifest-path src-tauri/Cargo.toml --lib` (count; serial with pnpm test, never parallel on Windows), `git log --oneline -3`.
-- One phase = one commit; stage files explicitly; push of the feature branch after green gates is allowed; never push main / never force / never open-merge PRs.
+- One phase = one commit; stage files explicitly. The current `AGENTS.md`
+  standing authorization covers local commits only; push, PR, merge, rebase,
+  reset, amend, force push, and history rewrite require fresh explicit authorization.
 - **The harness comes first (R1).** No renderer code may be committed before the harness that can falsify it is green. This ordering is non-negotiable — it is the anti-garbage-code mechanism.
 - Never weaken `verify-terminal-font-render-contract.mjs` or `terminalColors` tests to make GPU output pass. If the GPU path cannot satisfy a contract, stop and report.
 - No new dependencies without a stop-and-ask (goal: zero — WebGL2 is a browser API; the atlas uses offscreen Canvas2D rasterization).

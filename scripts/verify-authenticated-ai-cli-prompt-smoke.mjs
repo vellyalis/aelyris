@@ -1,7 +1,10 @@
-// Opt-in authenticated AI CLI prompt smoke.
+// Internal authenticated AI CLI prompt smoke.
 //
-// This verifier may spend real provider tokens. It refuses to launch an AI CLI
-// unless AELYRIS_AUTH_PROMPT_CONSENT is set to the exact consent phrase below.
+// Canonical public entrypoint: pnpm verify:goal:operator:token-smoke
+// This verifier may spend real provider tokens. The static consent phrase and
+// provider are not sufficient: the operator wrapper must mint a current,
+// HEAD- and verifier-bound one-use execution packet, which this script consumes
+// before loading Playwright, reaching CDP, or sending a prompt.
 //
 // Required for token-spending execution:
 //   AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS
@@ -12,14 +15,32 @@
 //   AELYRIS_TAURI_CDP=http://127.0.0.1:9222
 //   AELYRIS_AUTH_PROMPT_APP_URL=http://localhost:1420/
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
-import { chromium } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+import {
+  AUTHENTICATED_PROMPT_CANONICAL_COMMAND_ENV,
+  AUTHENTICATED_PROMPT_CONSENT_PHRASE,
+  AUTHENTICATED_PROMPT_EXECUTION_ID_ENV,
+  AUTHENTICATED_PROMPT_OPERATOR_COMMAND,
+  AUTHENTICATED_PROMPT_PACKET_ENV,
+  consumeAuthenticatedPromptExecutionPacket,
+  validateAuthenticatedPromptExecutionPacket,
+} from "./lib/authenticated-prompt-authority.mjs";
 
-const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
+const CONSENT_PHRASE = AUTHENTICATED_PROMPT_CONSENT_PHRASE;
 const CDP = process.env.AELYRIS_TAURI_CDP ?? process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
 const APP_URL = process.env.AELYRIS_AUTH_PROMPT_APP_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
@@ -40,6 +61,14 @@ const MARKER = `AELYRIS_AUTH_PROMPT_${Date.now().toString(36).toUpperCase()}`;
 const PROMPT =
   process.env.AELYRIS_AUTH_PROMPT_TEXT ??
   `Aelyris authenticated prompt smoke. Reply with the exact marker ${MARKER}, then stop.`;
+const PROMPT_VERIFIER_PATH = fileURLToPath(import.meta.url);
+const EXPECTED_EXECUTION_PACKET_PATH = resolve(
+  ROOT,
+  ".codex-auto",
+  "production-smoke",
+  "authenticated-ai-cli-token-execution-packet.json",
+);
+let chromium = null;
 
 function writeArtifact(report) {
   const path = resolve(OUT);
@@ -321,14 +350,73 @@ function providerModel(provider) {
 
 function optInCommand() {
   return {
-    command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+    command: AUTHENTICATED_PROMPT_OPERATOR_COMMAND,
     env: {
-      AELYRIS_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
       AELYRIS_AUTH_PROMPT_PROVIDER: PROVIDER,
       AELYRIS_TAURI_CDP: CDP,
       AELYRIS_AUTH_PROMPT_APP_URL: APP_URL,
     },
   };
+}
+
+function currentGitHead() {
+  const child = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" });
+  const head = String(child.stdout ?? "").trim();
+  return child.status === 0 ? head : "";
+}
+
+function consumeExecutionPacketBeforeCdp() {
+  const packetPath = resolve(String(process.env[AUTHENTICATED_PROMPT_PACKET_ENV] ?? ""));
+  const executionId = String(process.env[AUTHENTICATED_PROMPT_EXECUTION_ID_ENV] ?? "").trim();
+  const canonicalCommand = String(process.env[AUTHENTICATED_PROMPT_CANONICAL_COMMAND_ENV] ?? "").trim();
+  if (!executionId || packetPath !== EXPECTED_EXECUTION_PACKET_PATH || !existsSync(packetPath)) {
+    return {
+      ok: false,
+      executionId: executionId || null,
+      errors: [{ code: "packet-required", detail: "current operator execution packet is required" }],
+    };
+  }
+
+  const claimPath = `${packetPath}.consuming-${executionId}`;
+  try {
+    renameSync(packetPath, claimPath);
+    const packet = JSON.parse(readFileSync(claimPath, "utf8"));
+    const nowMs = Date.now();
+    const context = {
+      nowMs,
+      executionId,
+      provider: PROVIDER,
+      canonicalCommand,
+      gitHead: currentGitHead(),
+      promptVerifierSha256: createHash("sha256").update(readFileSync(PROMPT_VERIFIER_PATH)).digest("hex"),
+    };
+    const validation = validateAuthenticatedPromptExecutionPacket(packet, context);
+    if (!validation.ok) {
+      writeFileSync(
+        packetPath,
+        `${JSON.stringify({ ...packet, status: "rejected", rejectedAt: new Date(nowMs).toISOString(), validationErrors: validation.errors }, null, 2)}\n`,
+      );
+      return { ok: false, executionId, errors: validation.errors, checks: validation.checks };
+    }
+    const consumed = consumeAuthenticatedPromptExecutionPacket(packet, context);
+    writeFileSync(packetPath, `${JSON.stringify(consumed, null, 2)}\n`);
+    return {
+      ok: true,
+      executionId,
+      provider: PROVIDER,
+      canonicalCommand,
+      packetConsumedBeforeCdp: true,
+      checks: validation.checks,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      executionId,
+      errors: [{ code: "packet-consume", detail: error instanceof Error ? error.message : String(error) }],
+    };
+  } finally {
+    if (existsSync(claimPath)) unlinkSync(claimPath);
+  }
 }
 
 async function main() {
@@ -343,6 +431,7 @@ async function main() {
     provider: PROVIDER,
     marker: MARKER,
     wouldSpendTokens: true,
+    tokenSpendingPromptExecutedByThisRun: false,
     checks: {},
     errors: [],
   };
@@ -353,7 +442,7 @@ async function main() {
     report.status = "requires_opt_in";
     report.checks = {
       consent: false,
-      requiredEnv: `AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       tokenSpendingExecutionBlocked: true,
       safeNoPromptSent: true,
       consentPacketReady: true,
@@ -365,7 +454,7 @@ async function main() {
     report.nonTokenPreflight = noTokenPreflight;
     report.nextCommand = optInCommand();
     const artifact = writeArtifact(report);
-    console.error(`authenticated AI CLI prompt smoke requires explicit token-spend consent: ${artifact}`);
+    console.error(`authenticated AI CLI prompt smoke is internal; use ${AUTHENTICATED_PROMPT_OPERATOR_COMMAND}: ${artifact}`);
     process.exit(2);
   }
 
@@ -393,14 +482,36 @@ async function main() {
     process.exit(4);
   }
 
+  const executionAuthority = consumeExecutionPacketBeforeCdp();
+  report.executionAuthority = executionAuthority;
+  if (!executionAuthority.ok) {
+    report.status = "execution_packet_required";
+    report.checks = {
+      consent: true,
+      explicitProvider: true,
+      tokenSpendingExecutionBlocked: true,
+      safeNoPromptSent: true,
+      consentPacketReady: false,
+      executionPacketValidated: false,
+      executionPacketConsumedBeforeCdp: false,
+      nonTokenPreflightReady: true,
+      preflightReadyBeforePrompt: false,
+    };
+    const artifact = writeArtifact(report);
+    console.error(`authenticated AI CLI prompt smoke requires a current one-use execution packet: ${artifact}`);
+    process.exit(5);
+  }
+
   if (!noTokenPreflight.ready) {
     report.status = "preflight_blocked";
     report.checks = {
       consent: true,
-      requiredEnv: `AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       tokenSpendingExecutionBlocked: true,
       safeNoPromptSent: true,
       consentPacketReady: false,
+      executionPacketValidated: true,
+      executionPacketConsumedBeforeCdp: true,
       nonTokenPreflightReady: false,
       preflightReadyBeforePrompt: false,
       runtimeReadiness: "preflight_artifacts_incomplete_before_prompt",
@@ -409,6 +520,8 @@ async function main() {
     console.error(`authenticated AI CLI prompt smoke blocked before prompt by stale/incomplete preflight: ${artifact}`);
     process.exit(3);
   }
+
+  ({ chromium } = await import("@playwright/test"));
 
   let browser;
   let page = null;
@@ -472,6 +585,7 @@ async function main() {
       };
     }
 
+    report.tokenSpendingPromptExecutedByThisRun = true;
     const spawnResult = await call(page, "spawn_interactive_agent", {
       cwd: PROJECT_PATH,
       model: providerModel(PROVIDER),
@@ -490,6 +604,8 @@ async function main() {
     report.cleanupAfterSuccess = cleanupAfterSuccess;
     report.checks = {
       consent: true,
+      executionPacketValidated: true,
+      executionPacketConsumedBeforeCdp: true,
       nonTokenPreflightReady: true,
       preflightReadyBeforePrompt: true,
       sessionBaseline: report.sessionBaseline?.checked === true,

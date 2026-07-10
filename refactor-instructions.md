@@ -35,7 +35,10 @@ The goal is NOT visual cleanliness. Every phase must leave the app behaving iden
 ## 4. Non-Negotiables
 
 - **First action: `git status`.** The working tree may contain uncommitted WU-RT-1 work by another agent. If these files are dirty, DO NOT TOUCH THEM: `src-tauri/src/ipc/interactive_commands.rs`, `src-tauri/src/api/mod.rs`, `src-tauri/src/api/mux.rs`, `src-tauri/src/lib.rs`, `package.json`, `docs/specs/CONTEXT_SESSION_LIFECYCLE_*.md`, `docs/specs/README.md`, `AGENTS.md`, `CLAUDE.md`. Never mix their hunks into your commits; stage your files explicitly (`git add <path>`), never `git add -A`.
-- One phase = one commit (conventional commits: `fix:`/`refactor:`/`test:`/`chore:`). Pushing the current feature branch after a phase's gates are green is allowed (CI re-verifies); **never push to `main`, never `--force`, never open/merge a PR** — merges stay with the owner. If push fails (sandbox network), report "push pending" and continue.
+- One phase = one commit (conventional commits: `fix:`/`refactor:`/`test:`/`chore:`).
+  The current `AGENTS.md` standing authorization covers focused local commits
+  only; this historical work-order wording does not authorize push, PR, merge,
+  rebase, reset, amend, force push, or history rewrite.
 - No drive-by reformatting: do not run repo-wide formatters; `cargo fmt` only on files you created/edited (`rustfmt <file>` or scope-check), biome only on touched files.
 - On Windows never run `cargo test` and `pnpm test` at the same time (link.exe contention).
 - No behavior changes outside the CX-4 spec. No deletions without the evidence procedure in the phase. No API/DB/schema changes at all in this work order.

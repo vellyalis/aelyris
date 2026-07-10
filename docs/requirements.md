@@ -59,9 +59,17 @@ rather than any score quoted in prose:
 
 ```powershell
 pnpm verify:quality-score
-pnpm verify:goal:safe
+pnpm verify:goal:safe:no-token
 pnpm verify:current-readiness-source
 ```
+
+`verify:goal:safe:no-token` validates its complete descriptor graph before the
+first child process and scrubs prompt consent/provider/execution-packet env from
+every step. Token-spending proof is separate: set an explicit
+`AELYRIS_AUTH_PROMPT_PROVIDER` and run `pnpm verify:goal:operator:token-smoke`;
+the wrapper issues a HEAD- and verifier-bound, short-lived one-use packet under
+the repository's standing authorization. The broader legacy
+`pnpm verify:goal:safe` remains an ordered aggregate and is not a no-token claim.
 
 The locally generated `.codex-auto/quality/*.json` artifacts are the current
 machine truth. They override stale prose, older promotion gates, and historical

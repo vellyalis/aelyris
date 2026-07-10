@@ -2,9 +2,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import {
+  assertNoTokenStepGraph,
+  scrubNoTokenEnvironment,
+} from "./lib/authenticated-prompt-authority.mjs";
 
 const ROOT = resolve(process.cwd());
-const OUT = join(ROOT, ".codex-auto", "quality", "goal-non-token-refresh.json");
+const OUT = join(ROOT, ".codex-auto", "quality", "final-goal-safe-no-token.json");
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const RIGHT_RAIL_ENV_BLOCKED_PATH = join(
   ROOT,
@@ -71,14 +75,11 @@ function outputTail(value) {
 }
 
 function childEnv(extra = {}) {
-  const env = {
+  const env = scrubNoTokenEnvironment({
     ...process.env,
     ...extra,
     AELYRIS_NON_TOKEN_GOAL_REFRESH: "1",
-  };
-  delete env.AELYRIS_AUTH_PROMPT_CONSENT;
-  delete env.AELYRIS_AUTH_PROMPT_PROVIDER;
-  delete env.AELYRIS_ALLOW_OS_SLEEP;
+  });
   return env;
 }
 
@@ -348,63 +349,44 @@ function runNodeStep(id, label, script, options = {}) {
   return result;
 }
 
-const steps = [
-  runNodeStep("terminal-font-render", "Terminal text render contract", "verify-terminal-font-render-contract.mjs"),
-  runNodeStep("chunked-osc-live", "Chunked OSC inline-image live proof", "verify-chunked-osc-live-safe.mjs", {
+const stepDescriptors = [
+  { id: "terminal-font-render", label: "Terminal text render contract", script: "verify-terminal-font-render-contract.mjs", costClass: "no-token" },
+  { id: "chunked-osc-live", label: "Chunked OSC inline-image live proof", script: "verify-chunked-osc-live-safe.mjs", costClass: "no-token", options: {
     acceptChunkedOscEnvironmentBlocked: true,
     timeoutMs: Number(process.env.AELYRIS_CHUNKED_OSC_SAFE_TIMEOUT_MS ?? 45_000),
-  }),
-  runNodeStep("native-terminal-input", "Native terminal input host", "verify-native-terminal-input-host.mjs"),
-  runNodeStep("native-boundary", "Native terminal boundary contract", "verify-native-boundary-contract.mjs"),
-  runNodeStep(
-    "authenticated-provider-guard",
-    "Authenticated prompt provider guard",
-    "verify-authenticated-ai-cli-provider-guard.mjs",
-  ),
-  runNodeStep("real-ai-cli-binary-probe", "Real AI CLI binary no-token probe", "verify-real-ai-cli-binary-probe.mjs"),
-  runNodeStep("ai-cli-launch-planner", "AI CLI launch planner", "verify-ai-cli-launch-planner.mjs"),
-  runNodeStep(
-    "authenticated-preflight-matrix",
-    "Authenticated prompt no-token provider matrix",
-    "verify-authenticated-ai-cli-preflight-matrix.mjs",
-  ),
-  runNodeStep(
-    "authenticated-consent-packet",
-    "Authenticated prompt consent packet",
-    "verify-authenticated-ai-cli-consent-packet.mjs",
-  ),
-  runNodeStep("glass-legibility", "Glass legibility and opaque text contract", "verify-glass-legibility-contract.mjs"),
-  runNodeStep(
-    "right-rail-information-density",
-    "Right rail essential-first information density contract",
-    "verify-right-rail-information-density.mjs",
-  ),
-  runNodeStep("anti-stall-contract", "Anti-stall and operator self-check contract", "verify-goal-anti-stall-contract.mjs"),
-  runNodeStep(
-    "release-signing-operator-handoff",
-    "Release signing/updater operator handoff",
-    "verify-release-signing-operator-handoff.mjs",
-  ),
-  runNodeStep(
-    "real-os-sleep-operator-handoff",
-    "Real OS sleep operator handoff",
-    "verify-real-os-sleep-operator-handoff.mjs",
-  ),
-  runNodeStep("external-gate-readiness", "External gate readiness packet", "verify-goal-external-gate-readiness.mjs"),
-  runNodeStep("quality-score-pre-audit", "Release quality score before final audit", "score-release-quality.mjs"),
-  runNodeStep("final-goal-audit", "Final goal audit", "verify-final-goal-audit.mjs"),
-  runNodeStep("quality-score-post-audit", "Release quality score after final audit", "score-release-quality.mjs"),
-  runNodeStep("goal-documentation-freshness", "Goal documentation freshness", "verify-goal-documentation-freshness.mjs"),
-  runNodeStep("goal-completion-matrix", "Goal completion matrix", "verify-goal-completion-matrix.mjs"),
-  runNodeStep("quality-score-before-right-rail", "Release quality score before right rail", "score-release-quality.mjs"),
-  runNodeStep("right-rail-goal-track", "Right rail Goal Track Tauri proof", "verify-right-rail-goal-track-tauri.mjs", {
+  } },
+  { id: "native-terminal-input", label: "Native terminal input host", script: "verify-native-terminal-input-host.mjs", costClass: "no-token" },
+  { id: "native-boundary", label: "Native terminal boundary contract", script: "verify-native-boundary-contract.mjs", costClass: "no-token" },
+  { id: "real-ai-cli-binary-probe", label: "Real AI CLI binary no-token probe", script: "verify-real-ai-cli-binary-probe.mjs", costClass: "no-token" },
+  { id: "ai-cli-launch-planner", label: "AI CLI launch planner", script: "verify-ai-cli-launch-planner.mjs", costClass: "no-token" },
+  { id: "authenticated-preflight-matrix", label: "Authenticated prompt no-token provider matrix", script: "verify-authenticated-ai-cli-preflight-matrix.mjs", costClass: "no-token" },
+  { id: "authenticated-consent-packet", label: "Authenticated prompt consent packet", script: "verify-authenticated-ai-cli-consent-packet.mjs", costClass: "no-token" },
+  { id: "glass-legibility", label: "Glass legibility and opaque text contract", script: "verify-glass-legibility-contract.mjs", costClass: "no-token" },
+  { id: "right-rail-information-density", label: "Right rail essential-first information density contract", script: "verify-right-rail-information-density.mjs", costClass: "no-token" },
+  { id: "anti-stall-contract", label: "Anti-stall and operator self-check contract", script: "verify-goal-anti-stall-contract.mjs", costClass: "no-token" },
+  { id: "release-signing-operator-handoff", label: "Release signing/updater operator handoff", script: "verify-release-signing-operator-handoff.mjs", costClass: "no-token" },
+  { id: "real-os-sleep-operator-handoff", label: "Real OS sleep operator handoff", script: "verify-real-os-sleep-operator-handoff.mjs", costClass: "no-token" },
+  { id: "external-gate-readiness", label: "External gate readiness packet", script: "verify-goal-external-gate-readiness.mjs", costClass: "no-token" },
+  { id: "quality-score-pre-audit", label: "Release quality score before final audit", script: "score-release-quality.mjs", costClass: "no-token" },
+  { id: "final-goal-audit", label: "Final goal audit", script: "verify-final-goal-audit.mjs", costClass: "no-token" },
+  { id: "quality-score-post-audit", label: "Release quality score after final audit", script: "score-release-quality.mjs", costClass: "no-token" },
+  { id: "goal-documentation-freshness", label: "Goal documentation freshness", script: "verify-goal-documentation-freshness.mjs", costClass: "no-token" },
+  { id: "goal-completion-matrix", label: "Goal completion matrix", script: "verify-goal-completion-matrix.mjs", costClass: "no-token" },
+  { id: "quality-score-before-right-rail", label: "Release quality score before right rail", script: "score-release-quality.mjs", costClass: "no-token" },
+  { id: "right-rail-goal-track", label: "Right rail Goal Track Tauri proof", script: "verify-right-rail-goal-track-tauri.mjs", costClass: "no-token", options: {
     acceptRightRailEnvironmentBlocked: true,
     env: {
       AELYRIS_TAURI_GOAL_TRACK_WAIT_MS: process.env.AELYRIS_TAURI_GOAL_TRACK_WAIT_MS ?? "12000",
     },
-  }),
-  runNodeStep("quality-score-final", "Release quality score final refresh", "score-release-quality.mjs"),
+  } },
+  { id: "quality-score-final", label: "Release quality score final refresh", script: "score-release-quality.mjs", costClass: "no-token" },
 ];
+
+// This assertion deliberately runs before the first child process is created.
+const noTokenStepGraph = assertNoTokenStepGraph(stepDescriptors);
+const steps = stepDescriptors.map((descriptor) =>
+  runNodeStep(descriptor.id, descriptor.label, descriptor.script, descriptor.options),
+);
 
 const score = readJson(RELEASE_SCORE_PATH);
 const finalAudit = readJson(FINAL_AUDIT_PATH);
@@ -431,7 +413,8 @@ const report = {
   timeZone: LOCAL_TIME_ZONE,
   ok,
   status: ok ? (score?.releaseCandidateReady ? "complete" : (finalAudit?.status ?? "blocked")) : "failed",
-  tokenSpendingPromptExecuted: false,
+  tokenSpendingPromptExecutedByThisRun: false,
+  historicalTokenSpendingEvidenceObserved: finalSafe?.tokenSpendingPromptExecuted === true,
   realOsSleepInvoked: false,
   scope:
     "Non-token, non-sleep goal evidence refresh. It does not run the authenticated AI CLI prompt smoke and does not put Windows to sleep.",
@@ -460,6 +443,12 @@ const report = {
         tokenSpendingPromptExecuted: finalSafe.tokenSpendingPromptExecuted === true,
       }
     : null,
+  noTokenStepGraph: {
+    ...noTokenStepGraph,
+    assertionCompletedAt: new Date().toISOString(),
+    runtimeExecutedStepIds: steps.map((step) => step.id),
+    runtimeTokenBearingStepCount: 0,
+  },
   steps,
   failedSteps: failedSteps.map((step) => step.id),
   remainingBlockers,

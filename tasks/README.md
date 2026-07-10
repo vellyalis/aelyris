@@ -60,8 +60,11 @@ Handoff:
 ## Work Unit Rules
 
 - One work unit at a time.
-- Prefer one commit per phase when committing is requested.
+- Create one commit per verified phase under the owner's standing commit
+  authorization; do not pause for per-commit approval.
 - Stage explicitly; do not sweep unrelated files.
+- Push, PR, merge, rebase, reset, amend, history rewrite, and force push remain
+  separately authorized actions.
 - Do not mix docs-only design gates with runtime implementation unless the task
   explicitly selects that slice.
 - Do not broaden a PR branch without noting the scope change.

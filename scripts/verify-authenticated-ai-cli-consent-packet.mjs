@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "production-smoke", "authenticated-ai-cli-consent-packet.json");
 const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
-const REQUIRED_COMMAND = "pnpm verify:terminal:authenticated-ai-cli-prompt";
+const REQUIRED_COMMAND = "pnpm verify:goal:operator:token-smoke";
 const PROVIDERS = ["codex", "claude", "gemini"];
 const MAX_ARTIFACT_AGE_MS = Number.parseInt(
   process.env.AELYRIS_AUTH_CONSENT_PACKET_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
@@ -97,7 +97,7 @@ const providerReadiness = PROVIDERS.map((provider) => {
   const checks = {
     rowReady: row?.ready === true,
     commandExact: command === REQUIRED_COMMAND,
-    consentExact: env?.AELYRIS_AUTH_PROMPT_CONSENT === CONSENT_PHRASE,
+    standingAuthorizationUsesOneUsePacket: env?.AELYRIS_AUTH_PROMPT_CONSENT == null,
     providerExact: env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider,
   };
   return {
@@ -120,8 +120,8 @@ const sourceArtifactsFresh =
   (artifacts.authenticatedPrompt.fresh || providerGuardBlocksPrompt);
 const packetCore = {
   command: REQUIRED_COMMAND,
-  requiredEnv: `AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE}`,
-  tokenGate: "explicit consent",
+  requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
+  tokenGate: "per-execution one-use packet under standing repo authorization",
   wouldSpendTokens: true,
   promptState: promptExecutedWithConsent ? "executed_with_consent" : "blocked_without_consent",
   tokenSpendingPromptExecuted: promptExecutedWithConsent,
@@ -175,7 +175,7 @@ const report = {
   packet: packetCore,
   providerReadiness,
   artifacts: packetCore.sourceArtifacts,
-  nextRequiredAction: `Set AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} and AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run ${REQUIRED_COMMAND} only if token-spend validation is desired.`,
+  nextRequiredAction: `Set AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run ${REQUIRED_COMMAND}; the wrapper mints and consumes a one-use execution packet before token-spending execution.`,
 };
 
 writeReport(report);

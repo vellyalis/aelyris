@@ -2758,7 +2758,7 @@ export function App() {
         "Output evidence links panes, changed files, recovery actions, and handoff context.",
       ],
       guardrails: [
-        "Do not execute token-spending prompt smoke without explicit consent.",
+        "Run token-spending prompt smoke only through the provider-selected operator command.",
         "Do not use native fallback for AI CLI sessions when sidecar command-session is available.",
         "Do not persist raw terminal output as prompt evidence.",
       ],
@@ -3981,7 +3981,9 @@ export function App() {
                             <div>
                               <dt>Tokens</dt>
                               <dd>
-                                {rightRailGoalTrack.consentPacket.wouldSpendTokens ? "explicit consent" : "no spend"}
+                                {rightRailGoalTrack.consentPacket.wouldSpendTokens
+                                  ? "operator token spend"
+                                  : "no spend"}
                               </dd>
                             </div>
                             <div>

@@ -27,7 +27,7 @@ task_router:
       - docs/README.md
     verify_before_claim:
       - pnpm verify:quality-score
-      - pnpm verify:goal:safe
+      - pnpm verify:goal:safe:no-token
   architecture_or_placement:
     read:
       - DECISION_FRAMEWORK.md

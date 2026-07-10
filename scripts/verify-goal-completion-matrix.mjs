@@ -459,7 +459,7 @@ function providerRowsReady(matrix) {
   const rows = Array.isArray(matrix?.providerMatrix) ? matrix.providerMatrix : [];
   return ["codex", "claude", "gemini"].every((provider) => {
     const row = rows.find((entry) => entry?.provider === provider);
-    return row?.ready === true && row?.optInCommand?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt";
+    return row?.ready === true && row?.optInCommand?.command === "pnpm verify:goal:operator:token-smoke";
   });
 }
 

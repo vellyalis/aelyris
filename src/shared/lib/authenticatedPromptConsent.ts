@@ -1,6 +1,7 @@
 export type AuthenticatedPromptConsentStatus = "ready" | "missing" | "incomplete" | "pass" | "failed";
 
 const AUTHENTICATED_PROMPT_PREFLIGHT_MATRIX_COMMAND = "pnpm verify:terminal:authenticated-ai-cli-preflight-matrix";
+const AUTHENTICATED_PROMPT_OPERATOR_COMMAND = "pnpm verify:goal:operator:token-smoke";
 
 export interface AuthenticatedPromptConsentCheck {
   id: string;
@@ -236,7 +237,7 @@ function deriveProviderReadiness(
     const failedChecks = Object.entries(entry.checks)
       .filter(([, value]) => value !== true)
       .map(([key]) => key);
-    const command = entry.optInCommand?.command || "pnpm verify:terminal:authenticated-ai-cli-prompt";
+    const command = entry.optInCommand?.command || AUTHENTICATED_PROMPT_OPERATOR_COMMAND;
     return {
       provider: entry.provider,
       status: entry.ready && failedChecks.length === 0 ? "ready" : "blocked",
@@ -324,10 +325,10 @@ export function deriveAuthenticatedPromptConsentPacket(
     return {
       status: "missing",
       label: "Consent packet missing",
-      detail: "Run pnpm verify:terminal:authenticated-ai-cli-prompt without consent first",
+      detail: `Run ${AUTHENTICATED_PROMPT_PREFLIGHT_MATRIX_COMMAND} before the operator token smoke`,
       provider: "unknown",
-      command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-      requiredEnv: "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+      command: AUTHENTICATED_PROMPT_OPERATOR_COMMAND,
+      requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
       preflightReady: false,
       safeNoPromptSent: true,
       wouldSpendTokens: true,
@@ -346,10 +347,10 @@ export function deriveAuthenticatedPromptConsentPacket(
   const preflightReady = bool(checks.nonTokenPreflightReady) && bool(report.nonTokenPreflight?.ready) && matrixReady;
   const safeNoPromptSent = bool(checks.safeNoPromptSent);
   const consentPacketReady = bool(checks.consentPacketReady);
-  const command = report.nextCommand?.command || "pnpm verify:terminal:authenticated-ai-cli-prompt";
+  const command = report.nextCommand?.command || AUTHENTICATED_PROMPT_OPERATOR_COMMAND;
   const requiredEnv =
     text(checks.requiredEnv) ||
-    `AELYRIS_AUTH_PROMPT_CONSENT=${text(report.nextCommand?.env?.AELYRIS_AUTH_PROMPT_CONSENT)}`;
+    `AELYRIS_AUTH_PROMPT_PROVIDER=${text(report.nextCommand?.env?.AELYRIS_AUTH_PROMPT_PROVIDER)}`;
   const status: AuthenticatedPromptConsentStatus =
     report.status === "pass" && report.ok === true
       ? "pass"
@@ -372,7 +373,7 @@ export function deriveAuthenticatedPromptConsentPacket(
             : "Consent packet incomplete",
     detail:
       status === "ready"
-        ? `${providerListLabel(providerReadiness, provider)} preflight green · prompt blocked until explicit consent`
+        ? `${providerListLabel(providerReadiness, provider)} preflight green · operator wrapper will mint a one-use packet`
         : status === "pass"
           ? `${provider} prompt marker and cleanup passed`
           : `${provider} consent preflight needs attention`,

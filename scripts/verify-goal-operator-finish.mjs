@@ -2,13 +2,12 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { NO_TOKEN_SCRUBBED_ENV_KEYS } from "./lib/authenticated-prompt-authority.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "goal-operator-finish.json");
 const PROGRESS_OUT = join(ROOT, ".codex-auto", "quality", "goal-operator-progress.json");
-const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
 const SLEEP_PHRASE = "I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS";
-const PROVIDERS = new Set(["codex", "claude", "gemini"]);
 const DEFAULT_STEP_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_GOAL_OPERATOR_STEP_TIMEOUT_MS ?? "180000", 10);
 const SLEEP_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_GOAL_OPERATOR_SLEEP_TIMEOUT_MS ?? "2100000", 10);
 const HEARTBEAT_MS = Number.parseInt(process.env.AELYRIS_GOAL_OPERATOR_HEARTBEAT_MS ?? "30000", 10);
@@ -117,8 +116,7 @@ function artifactMeta(path) {
 
 function noTokenNoSleepEnv(extra = {}) {
   const env = { ...process.env, ...extra };
-  delete env.AELYRIS_AUTH_PROMPT_CONSENT;
-  delete env.AELYRIS_AUTH_PROMPT_PROVIDER;
+  for (const key of NO_TOKEN_SCRUBBED_ENV_KEYS) delete env[key];
   delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP;
   delete env.AELYRIS_ALLOW_OS_SLEEP;
   return env;
@@ -341,11 +339,10 @@ const consentEnv = String(process.env.AELYRIS_AUTH_PROMPT_CONSENT ?? "").trim();
 const sleepEnv = String(process.env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP ?? "").trim();
 const tokenEnvPresent = consentEnv.length > 0 || rawProvider.length > 0;
 const sleepEnvPresent = sleepEnv.length > 0;
-const tokenPromptRequested =
-  consentEnv === CONSENT_PHRASE && rawProvider.length > 0 && PROVIDERS.has(rawProvider);
+const tokenPromptRequested = false;
 const sleepUserCycleRequested = sleepEnv === SLEEP_PHRASE;
 const invalidOperatorEnv =
-  (tokenEnvPresent && !tokenPromptRequested) ||
+  tokenEnvPresent ||
   (sleepEnvPresent && !sleepUserCycleRequested) ||
   process.env.AELYRIS_ALLOW_OS_SLEEP === "1";
 
@@ -358,24 +355,6 @@ const steps = [
     { env: noTokenNoSleepEnv(), artifactFallback: externalReadinessArtifactReady },
   ),
 ];
-
-if (!invalidOperatorEnv && tokenPromptRequested) {
-  steps.push(
-    await runNodeStepStreaming(
-      "authenticated-ai-cli-prompt",
-      "Authenticated AI CLI prompt smoke",
-      "verify-authenticated-ai-cli-prompt-smoke.mjs",
-      [],
-      {
-        env: process.env,
-        timeoutMs: Number.parseInt(process.env.AELYRIS_AUTH_PROMPT_WAIT_MS ?? "90000", 10) + 30000,
-        externalGateKind: "token-spending-ai-cli-prompt",
-        requiresUserAction: false,
-        progressNextAction: "Wait for the consented AI CLI prompt smoke to finish; do not close the terminal.",
-      },
-    ),
-  );
-}
 
 if (!invalidOperatorEnv && sleepUserCycleRequested) {
   steps.push(
@@ -395,7 +374,7 @@ if (!invalidOperatorEnv && sleepUserCycleRequested) {
   );
 }
 
-const gatedRunRequested = tokenPromptRequested || sleepUserCycleRequested;
+const gatedRunRequested = sleepUserCycleRequested;
 if (!invalidOperatorEnv && gatedRunRequested) {
   steps.push(
     await runNodeStepStreaming("goal-finalize", "Ordered post-operator evidence finalization", "verify-goal-finalize-evidence.mjs", [], {
@@ -440,7 +419,7 @@ const reportStatus = invalidOperatorEnv
 const nextRequiredAction = goalComplete
   ? "Goal is complete."
   : invalidOperatorEnv
-    ? `Use AELYRIS_AUTH_PROMPT_CONSENT=${CONSENT_PHRASE} with AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, or AELYRIS_GOAL_OPERATOR_RUN_SLEEP=${SLEEP_PHRASE}; do not set AELYRIS_ALLOW_OS_SLEEP for this handoff.`
+    ? `Do not pass authenticated-prompt env to this no-token handoff. Use pnpm verify:goal:operator:token-smoke separately with AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, or set AELYRIS_GOAL_OPERATOR_RUN_SLEEP=${SLEEP_PHRASE} for the manual sleep flow.`
     : tokenPromptProved && !realSleepProved
       ? "Run the real sleep operator gate listed in runbook, then rerun pnpm verify:goal:operator-finish."
       : "Run the token prompt and real sleep operator gates listed in runbook, then rerun pnpm verify:goal:operator-finish.";
@@ -452,13 +431,12 @@ const runbook = {
     progressArtifact: ".codex-auto/quality/goal-operator-progress.json",
   },
   tokenPrompt: {
-    command: "pnpm verify:goal:operator-finish",
+    command: "pnpm verify:goal:operator:token-smoke",
     env: {
-      AELYRIS_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
       AELYRIS_AUTH_PROMPT_PROVIDER: "codex",
     },
     providerChoices: ["codex", "claude", "gemini"],
-    safety: "Runs only when the exact consent phrase and an explicit provider are present.",
+    safety: "Runs only with an explicit provider; the wrapper mints a HEAD- and verifier-bound one-use execution packet.",
     progressArtifact: ".codex-auto/quality/goal-operator-progress.json",
   },
   sleepResume: {
@@ -470,7 +448,7 @@ const runbook = {
     progressArtifact: ".codex-auto/quality/goal-operator-progress.json",
   },
   nonTokenRefresh: {
-    command: "pnpm verify:goal:refresh-safe",
+    command: "pnpm verify:goal:safe:no-token",
     script: "scripts/verify-goal-non-token-refresh.mjs",
     safety: "Refreshes non-token, no-sleep implementation evidence before the final safe summary is trusted.",
   },
@@ -494,7 +472,7 @@ const runbook = {
   },
   afterManualGate: [
     "pnpm verify:goal:operator-finish",
-    "pnpm verify:goal:refresh-safe",
+    "pnpm verify:goal:safe:no-token",
     "pnpm verify:goal:finalize",
     "pnpm verify:goal:safe",
     "pnpm verify:goal:closeout",
@@ -525,7 +503,7 @@ const report = {
   goalComplete,
   tokenSpendingPromptRequested: tokenPromptRequested,
   tokenSpendingPromptProved: tokenPromptProved,
-  tokenSpendingPromptExecutedByThisRun: tokenPromptRequested && steps.some((step) => step.id === "authenticated-ai-cli-prompt"),
+  tokenSpendingPromptExecutedByThisRun: false,
   realOsSleepUserCycleRequested: sleepUserCycleRequested,
   realOsSleepProved: realSleepProved,
   realOsSleepInvokedByThisRun: false,
@@ -537,7 +515,7 @@ const report = {
     sleepUserCycleRequested,
     noAelyrisAllowOsSleep: process.env.AELYRIS_ALLOW_OS_SLEEP !== "1",
     invalidOperatorEnv,
-    requiredTokenConsent: CONSENT_PHRASE,
+    tokenEntryPoint: "pnpm verify:goal:operator:token-smoke",
     requiredSleepPhrase: SLEEP_PHRASE,
   },
   score: releaseScore

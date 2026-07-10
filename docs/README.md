@@ -29,7 +29,7 @@ loading every file for every task:
 13. `../tasks/README.md` - current task packet and handoff shape.
 14. `../DECISIONS.md` - durable design decision log.
 15. `../STYLE.md` - coding, naming, verifier, and dependency style.
-16. Verifier commands such as `pnpm verify:quality-score` and `pnpm verify:goal:safe` - generate local `.codex-auto/quality/*.json` evidence.
+16. Verifier commands such as `pnpm verify:quality-score` and `pnpm verify:goal:safe:no-token` - generate local `.codex-auto/quality/*.json` evidence.
 
 Aelyris is alpha and does not claim production readiness; capability claims are
 gated by verifiers. Regenerate the machine evidence locally before release
@@ -37,8 +37,12 @@ decisions rather than quoting any score from older docs:
 
 ```powershell
 pnpm verify:quality-score
-pnpm verify:goal:safe
+pnpm verify:goal:safe:no-token
 ```
+
+Token-spending prompt proof is not part of that command. With an explicit
+provider, `pnpm verify:goal:operator:token-smoke` mints and consumes a one-use
+execution packet before the raw prompt verifier can reach CDP.
 
 Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
 reports `62/100` (`216/351`), grade `D`, `releaseCandidateReady=false`;

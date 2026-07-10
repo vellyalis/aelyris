@@ -295,8 +295,8 @@ function authenticatedPreflightMatrixVerdict(data) {
       return (
         row?.ready === true &&
         everyCheckPassed(row.checks) &&
-        row.optInCommand?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-        row.optInCommand?.env?.AELYRIS_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+        row.optInCommand?.command === "pnpm verify:goal:operator:token-smoke" &&
+        row.optInCommand?.env?.AELYRIS_AUTH_PROMPT_CONSENT == null &&
         row.optInCommand?.env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider
       );
     });
@@ -330,9 +330,9 @@ function authenticatedConsentPacketVerdict(data) {
     data?.checks?.providerMatrixReady === true &&
     data?.checks?.allProviderOptInCommandsReady === true &&
     data?.checks?.sourceArtifactsFresh === true &&
-    data?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-    data?.packet?.requiredEnv === "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-    data?.packet?.tokenGate === "explicit consent" &&
+    data?.packet?.command === "pnpm verify:goal:operator:token-smoke" &&
+    data?.packet?.requiredEnv === "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
+    data?.packet?.tokenGate === "per-execution one-use packet under standing repo authorization" &&
     data?.packet?.wouldSpendTokens === true &&
     typeof data?.consentPacketSha256 === "string" &&
     data.consentPacketSha256.length === 64 &&
@@ -341,7 +341,7 @@ function authenticatedConsentPacketVerdict(data) {
         (entry) =>
           entry?.provider === provider &&
           entry?.status === "ready" &&
-          entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
+          entry?.command === "pnpm verify:goal:operator:token-smoke" &&
           String(entry?.requiredEnv ?? "").includes(`AELYRIS_AUTH_PROMPT_PROVIDER=${provider}`),
       ),
     );
@@ -401,10 +401,10 @@ function externalGateReadinessVerdict(data) {
       data?.runbook?.tokenPromptSmoke?.some(
         (entry) =>
           entry?.provider === provider &&
-          entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-          entry?.env?.AELYRIS_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+          entry?.command === "pnpm verify:goal:operator:token-smoke" &&
+          entry?.env?.AELYRIS_AUTH_PROMPT_CONSENT == null &&
           entry?.env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider &&
-          entry?.costClass === "token-spending-explicit-consent",
+          entry?.costClass === "token-spending-per-execution-packet",
       ),
     );
   const complete =
@@ -527,8 +527,8 @@ function operatorFinishVerdict(data) {
     data?.envGuard?.invalidOperatorEnv === false &&
     externalReadinessStep?.ok === true &&
     data?.runbook?.readinessOnly?.command === "pnpm verify:goal:operator-finish" &&
-    data?.runbook?.tokenPrompt?.command === "pnpm verify:goal:operator-finish" &&
-    data?.runbook?.tokenPrompt?.env?.AELYRIS_AUTH_PROMPT_CONSENT === "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
+    data?.runbook?.tokenPrompt?.command === "pnpm verify:goal:operator:token-smoke" &&
+    data?.runbook?.tokenPrompt?.env?.AELYRIS_AUTH_PROMPT_CONSENT == null &&
     Array.isArray(data?.runbook?.tokenPrompt?.providerChoices) &&
     ["codex", "claude", "gemini"].every((provider) => data.runbook.tokenPrompt.providerChoices.includes(provider)) &&
     data?.runbook?.sleepResume?.env?.AELYRIS_GOAL_OPERATOR_RUN_SLEEP ===
@@ -2110,10 +2110,10 @@ function rightRailGoalTrackVerdict(data) {
     requirementProofsMatch &&
     (expectedPercent == null || goalTrack.percent === expectedPercent) &&
     consentPacket.status === "ready" &&
-    consentPacket.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
-    String(consentPacket.requiredEnv ?? "").includes("AELYRIS_AUTH_PROMPT_CONSENT=") &&
+    consentPacket.command === "pnpm verify:goal:operator:token-smoke" &&
+    String(consentPacket.requiredEnv ?? "").includes("AELYRIS_AUTH_PROMPT_PROVIDER=") &&
     String(consentPacket.providerEnvRequirement ?? "").includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") &&
-    consentPacket.tokenGate === "explicit consent" &&
+    consentPacket.tokenGate === "per-execution one-use packet under standing repo authorization" &&
     ["codex", "claude", "gemini"].every((provider) => readyProviders.includes(provider)) &&
     countAuthenticatedPromptBlockers(remaining) === (coreGoalComplete ? 0 : 1) &&
     !remaining.some((item) => qaFixtureLeakPattern.test(String(item ?? ""))) &&

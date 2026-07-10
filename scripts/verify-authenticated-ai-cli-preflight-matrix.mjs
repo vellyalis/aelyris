@@ -8,7 +8,7 @@ const MAX_ARTIFACT_AGE_MS = Number.parseInt(
   process.env.AELYRIS_AUTH_PREFLIGHT_MATRIX_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
   10,
 );
-const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
+const OPERATOR_TOKEN_COMMAND = "pnpm verify:goal:operator:token-smoke";
 const ARTIFACT_REFRESH_COMMANDS = {
   realAiCliBinaryProbe: {
     command: "pnpm verify:terminal:real-ai-cli",
@@ -41,9 +41,9 @@ const ARTIFACT_REFRESH_COMMANDS = {
     reason: "Refreshes the native sidecar AI CLI cleanup/chaos proof without WebView2/CDP.",
   },
   authenticatedPrompt: {
-    command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
-    costClass: "no-token-unless-consent-env-is-set",
-    reason: "Refreshes the opt-in gate proof; without consent env it must not send a prompt.",
+    command: OPERATOR_TOKEN_COMMAND,
+    costClass: "requires-explicit-provider-token-spend",
+    reason: "Runs the operator-only token smoke with a fresh one-use execution packet.",
   },
   providerGuard: {
     command: "pnpm verify:terminal:authenticated-ai-cli-provider-guard",
@@ -112,9 +112,8 @@ function artifactSummary(name, artifact) {
 
 function optInCommand(provider) {
   return {
-    command: "pnpm verify:terminal:authenticated-ai-cli-prompt",
+    command: OPERATOR_TOKEN_COMMAND,
     env: {
-      AELYRIS_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
       AELYRIS_AUTH_PROMPT_PROVIDER: provider,
     },
   };

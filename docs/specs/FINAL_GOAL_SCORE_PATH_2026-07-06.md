@@ -11,7 +11,7 @@
 > prose:
 >
 > ```powershell
-> pnpm verify:goal:safe          # refreshes the safe-step artifacts + audit + score
+> pnpm verify:goal:safe:no-token # descriptor-first no-token artifacts + audit + score
 > pnpm verify:quality-score      # .codex-auto/quality/release-quality-score.json
 > pnpm verify:final-goal-audit   # .codex-auto/quality/final-goal-audit.json
 > ```
@@ -50,10 +50,11 @@ Every blocker area belongs to exactly one class:
   (`AELYRIS_API_TOKEN=dev pnpm tauri:dev`, WebView2 CDP on `127.0.0.1:9222`)
   or a real user-initiated Windows sleep/resume cycle. No code, but needs an
   operator-attended host session.
-- **TOKEN-CONSENT** — verifier spends AI-provider tokens; runs only with the
-  explicit consent env (`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` +
-  consent packet). Standing owner consent exists for this repo, but execution
-  is operator-triggered, never autonomous.
+- **TOKEN-CONSENT** — verifier spends AI-provider tokens; runs only through
+  `pnpm verify:goal:operator:token-smoke` with an explicit provider. Standing
+  owner authorization lets the wrapper mint a short-lived one-use packet for
+  that invocation, but execution remains operator-triggered and is never part
+  of the no-token graph.
 - **UPSTREAM** — blocked on a third-party fix (e.g. a vulnerable transitive
   dependency); re-run periodically after dependency updates.
 - **DERIVED** — aggregate/umbrella rows; never actionable directly.
@@ -81,7 +82,7 @@ Every blocker area belongs to exactly one class:
 | `process-reconnect-command-evidence` | LIVE-HOST (CDP 9222) | `pnpm verify:terminal:process-reconnect-command-evidence` | `.codex-auto/production-smoke/` |
 | `live-ai-cli-post-launch-chaos` | LIVE-HOST (CDP 9222) | `pnpm verify:terminal:ai-cli-post-launch-chaos` + `pnpm verify:terminal:native-ai-cli-post-launch-chaos` | chaos artifacts |
 | `real-os-soak` | LIVE-HOST (user-initiated Windows sleep; programmatic suspend returns `GetLastError=50` on this host) | `pnpm verify:production:suspend:user-cycle` | `.codex-auto/production-smoke/real-os-suspend-resume.json` |
-| `authenticated-ai-cli-prompt-smoke` / `authenticated-ai-cli-preflight-gate` | TOKEN-CONSENT | `pnpm verify:terminal:authenticated-ai-cli-prompt` (consent env required); packet: `pnpm verify:terminal:authenticated-ai-cli-consent-packet` | `.codex-auto/production-smoke/` |
+| `authenticated-ai-cli-prompt-smoke` / `authenticated-ai-cli-preflight-gate` | TOKEN-CONSENT | `pnpm verify:goal:operator:token-smoke` with explicit provider; packet contract: `pnpm verify:terminal:authenticated-ai-cli-consent-packet` | `.codex-auto/production-smoke/` |
 | `supply-chain-audit` | UPSTREAM (current status `classified-upstream-bound`) | `pnpm verify:supply-chain` after dependency bumps | `.codex-auto/release-doctor/supply-chain-audit.json` |
 | `release-readiness-aggregate` (all rows) | DERIVED | `pnpm verify:release-readiness-aggregate` recomputes after leaves are fixed | `.codex-auto/quality/release-readiness-aggregate.json` |
 | `rust-native-terminal-core`, `rust-mux-daemon-boundary`, `right-rail-command-center`, `release-operations-proof` (umbrella `missing-requirement` rows) | DERIVED | fix the leaves above, rerun `pnpm verify:final-goal-audit` | — |
@@ -103,7 +104,8 @@ with §0/§1 before touching anything, and add the row here in the same change.
    commands; perform one user-initiated sleep/resume cycle for `real-os-soak`.
    Exit: CDP- and sleep-gated rows move to green or are re-classified.
 3. **TOKEN-CONSENT sweep (operator-triggered).** Run the authenticated prompt
-   smoke with the consent env per the consent packet. Record provider/model/
+   smoke through the operator wrapper; it issues and consumes the execution
+   packet before CDP. Record provider/model/
    command/artifact evidence; never persist secrets or transcripts with
    tokens.
 4. **CODE residue.** Whatever still fails after 1–3 with a fresh artifact is a
@@ -136,7 +138,7 @@ is *staying* ≥ 92 as capabilities land, not touching it once.
 - Never fabricate, hand-edit, or backdate an artifact JSON under
   `.codex-auto/`.
 - LIVE-HOST and TOKEN-CONSENT rows are operator gates: if the environment is
-  not available (no CDP, no consent env), **report the row as
+  not available (no CDP or no explicit provider), **report the row as
   environment-blocked and move on** — do not emulate, mock, or substitute a
   fixture run for live evidence.
 - If a §2 command no longer exists in `package.json`, or an artifact path

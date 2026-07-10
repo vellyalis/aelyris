@@ -248,7 +248,7 @@ describe("release quality goal inputs", () => {
           rightRailGoalTrackCycleBoundaryExplained: true,
         },
         nextRequiredAction:
-          "Set AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS and run pnpm verify:terminal:authenticated-ai-cli-prompt if token-spend validation is desired.",
+          "Set AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini, then run pnpm verify:goal:operator:token-smoke if token-spend validation is desired; its wrapper mints the one-use execution packet.",
       }),
     );
 
@@ -256,7 +256,7 @@ describe("release quality goal inputs", () => {
 
     expect(safeGate.source).toBe("final-goal-safe-summary");
     expect(safeGate.status).toBe("blocked-by-explicit-consent");
-    expect(safeGate.label).toBe("Safe gate consent-gated");
+    expect(safeGate.label).toBe("Safe gate operator token-gated");
     expect(safeGate.detail).toBe(
       "2 checks green · 8/8 requirements · 7/7 artifacts · core: hygiene/supply chain/inline image/native input/native paste/git handoff",
     );

@@ -148,11 +148,15 @@ claim boundaries.
 ## Status and Commit Discipline
 
 - One active phase at a time.
-- One phase equals one commit when a commit is authorized.
+- One phase equals one commit. The owner has granted standing authorization to
+  create a focused phase/Work Unit commit after its required gates pass; do not
+  pause for per-commit approval.
 - A phase can be `planned`, `active`, `blocked`, `ready-to-commit`, or `complete`.
 - `complete` requires its acceptance commands and artifacts, not narrative confidence.
 - `ready-to-commit` is not `complete` when the work order requires a phase commit.
-- Do not push, merge, rewrite history, or mutate Git ACLs unless explicitly authorized.
+- Standing commit authorization does not include push, PR, merge, rebase,
+  reset, amend, history rewrite, force push, or Git ACL mutation; those still
+  require explicit authorization.
 - A dirty tree is acceptable across session clear only when every intended path and
   exact next action are recorded in the canonical handoff.
 

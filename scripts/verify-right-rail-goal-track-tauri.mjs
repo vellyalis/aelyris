@@ -551,10 +551,10 @@ async function main() {
       failures.push("quality proof time zone is not visible in Tauri runtime");
     }
     if (goalTrack.consentPacket.status !== "ready") failures.push("consent packet is not ready in Tauri runtime");
-    if (goalTrack.consentPacket.command !== "pnpm verify:terminal:authenticated-ai-cli-prompt") {
+    if (goalTrack.consentPacket.command !== "pnpm verify:goal:operator:token-smoke") {
       failures.push("consent packet command is not visible in Tauri runtime");
     }
-    if (!String(goalTrack.consentPacket.requiredEnv ?? "").includes("AELYRIS_AUTH_PROMPT_CONSENT=")) {
+    if (!String(goalTrack.consentPacket.requiredEnv ?? "").includes("AELYRIS_AUTH_PROMPT_PROVIDER=")) {
       failures.push("consent packet required environment is not visible in Tauri runtime");
     }
     if (
@@ -564,7 +564,10 @@ async function main() {
     ) {
       failures.push("consent packet provider environment is not visible in Tauri runtime");
     }
-    if (goalTrack.consentPacket.tokenGate !== "explicit consent") {
+    if (
+      goalTrack.consentPacket.tokenGate !==
+      "per-execution one-use packet under standing repo authorization"
+    ) {
       failures.push("consent packet token gate is not visible in Tauri runtime");
     }
     if (goalTrack.consentPacket.runAction.label !== "Copy verified run command") {
@@ -573,7 +576,7 @@ async function main() {
     if (goalTrack.consentPacket.runAction.provider !== "codex") {
       failures.push("consent packet default verified run action does not expose the default provider");
     }
-    if (goalTrack.consentPacket.runAction.command !== "pnpm verify:terminal:authenticated-ai-cli-prompt") {
+    if (goalTrack.consentPacket.runAction.command !== "pnpm verify:goal:operator:token-smoke") {
       failures.push("consent packet verified run action does not expose the exact prompt smoke command");
     }
     if (
@@ -584,11 +587,11 @@ async function main() {
       failures.push("consent packet verified run action does not expose provider selection");
     }
     if (goalTrack.consentPacket.runAction.requiresExplicitConsent !== "true") {
-      failures.push("consent packet verified run action does not mark explicit consent requirement");
+      failures.push("consent packet verified run action does not mark the explicit token operator action");
     }
     if (
       !String(goalTrack.consentPacket.runAction.snippet ?? "").includes(
-        '$env:AELYRIS_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"',
+        '$env:AELYRIS_AUTH_PROMPT_PROVIDER="codex"',
       )
     ) {
       failures.push("consent packet verified run action does not expose a PowerShell consent snippet");
@@ -600,11 +603,11 @@ async function main() {
         failures.push(`consent packet verified run action matrix does not expose ${provider}`);
         continue;
       }
-      if (action.command !== "pnpm verify:terminal:authenticated-ai-cli-prompt") {
+      if (action.command !== "pnpm verify:goal:operator:token-smoke") {
         failures.push(`consent packet ${provider} action does not expose the exact prompt smoke command`);
       }
       if (action.requiresExplicitConsent !== "true") {
-        failures.push(`consent packet ${provider} action does not mark explicit consent requirement`);
+        failures.push(`consent packet ${provider} action does not mark the explicit token operator action`);
       }
       if (!String(action.snippet ?? "").includes(`$env:AELYRIS_AUTH_PROMPT_PROVIDER="${provider}"`)) {
         failures.push(`consent packet ${provider} action does not expose a provider-specific PowerShell snippet`);

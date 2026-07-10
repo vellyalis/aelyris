@@ -282,8 +282,10 @@ These are deliberate publication-readiness boundaries, not hidden footnotes:
 - Some live verification needs WebView2/CDP access, real Windows
   sleep/resume, and host process policies not available in every development
   sandbox.
-- Authenticated AI-CLI prompt smoke tests can spend tokens and never run
-  without explicit operator consent.
+- Authenticated AI-CLI prompt smoke tests can spend tokens. The operator-only
+  `pnpm verify:goal:operator:token-smoke` command requires an explicit provider
+  and mints a short-lived, one-use execution packet before the raw verifier can
+  reach CDP or send a prompt.
 - Release signing / updater artifacts are operator-owned and not produced by
   default.
 - Windows-first.
@@ -332,7 +334,7 @@ Useful non-token checks:
 pnpm verify:release:hygiene
 pnpm verify:requirements-spec-design-traceability
 pnpm verify:quality-score
-pnpm verify:goal:safe
+pnpm verify:goal:safe:no-token
 ```
 
 Claim gates:
@@ -343,11 +345,14 @@ pnpm verify:visible-agent-pane-binding
 pnpm verify:terminal:native-boundary
 ```
 
-Token-spending AI prompt validation is opt-in only and never runs without
-explicit operator consent:
+The no-token chain writes `.codex-auto/quality/final-goal-safe-no-token.json`
+and records `tokenSpendingPromptExecutedByThisRun=false`; a historical artifact
+with `tokenSpendingPromptExecuted=true` does not mean the current no-token run
+spent tokens. Token-spending validation is a separate operator command:
 
 ```powershell
-pnpm verify:terminal:authenticated-ai-cli-consent-packet
+$env:AELYRIS_AUTH_PROMPT_PROVIDER="codex"
+pnpm verify:goal:operator:token-smoke
 ```
 
 ## Documentation

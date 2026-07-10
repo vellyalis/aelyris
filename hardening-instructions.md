@@ -25,7 +25,10 @@ Land five hardening work units and two design-first work units, without changing
 - **H0 baseline:** run and record `pnpm exec tsc --noEmit`, `pnpm test`, `cargo test --manifest-path src-tauri/Cargo.toml --lib` (serial, never parallel with pnpm test), `git log --oneline -3`. Pre-existing reds are recorded, never "fixed" by weakening a test.
 - `refactor-instructions.md` must be complete (or its report filed) before H1. Its CX-4 fix is a dependency of nothing here, but the two work orders share reporting conventions and must not interleave commits.
 - One phase = one commit (`fix:` / `feat:` / `refactor:` / `test:`), stage files explicitly (`git add <path>`), never `git add -A`.
-- **Push policy**: pushing the current feature branch (`git push origin feat/wu-rt-1-context-lifecycle`) is ALLOWED and encouraged after each phase's gates are green — CI (frontend/rust/release-hardening jobs) then independently re-verifies your work. **Never push to `main`, never `--force`, never open/merge a PR** — merge decisions stay with the owner. If push fails (sandbox network may be off), just report "push pending" and continue; do not change sandbox config to make it work.
+- **Git policy**: the current `AGENTS.md` standing authorization covers focused
+  local phase commits only. Historical feature-branch push permission is
+  superseded; push, PR, merge, rebase, reset, amend, force push, and history
+  rewrite require fresh explicit authorization.
 - Read order if cold-starting: `AGENTS.md` → `docs/requirements.md` → `docs/specs/README.md` → `docs/specs/CONTEXT_SESSION_LIFECYCLE_SPEC.md` → `docs/specs/QUALITY_REMEDIATION_PLAN_2026-07-02.md` → this file.
 
 ## 3. Non-negotiables

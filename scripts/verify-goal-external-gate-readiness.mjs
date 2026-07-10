@@ -7,8 +7,7 @@ const MAX_ARTIFACT_AGE_MS = Number.parseInt(
   process.env.AELYRIS_EXTERNAL_GATE_MAX_AGE_MS ?? `${24 * 60 * 60 * 1000}`,
   10,
 );
-const CONSENT_PHRASE = "I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
-const AUTH_PROMPT_COMMAND = "pnpm verify:terminal:authenticated-ai-cli-prompt";
+const AUTH_PROMPT_COMMAND = "pnpm verify:goal:operator:token-smoke";
 const PROVIDERS = ["codex", "claude", "gemini"];
 
 const paths = {
@@ -321,7 +320,7 @@ function providerRowsReady(matrix) {
     return (
       row?.ready === true &&
       row?.optInCommand?.command === AUTH_PROMPT_COMMAND &&
-      row?.optInCommand?.env?.AELYRIS_AUTH_PROMPT_CONSENT === CONSENT_PHRASE &&
+      row?.optInCommand?.env?.AELYRIS_AUTH_PROMPT_CONSENT == null &&
       row?.optInCommand?.env?.AELYRIS_AUTH_PROMPT_PROVIDER === provider &&
       everyTrue(row?.checks)
     );
@@ -377,7 +376,7 @@ const consentPacketBaseReady =
   consentPacket?.ok === true &&
   consentPacket?.status === "pass" &&
   consentPacket?.packet?.command === AUTH_PROMPT_COMMAND &&
-  consentPacket?.packet?.tokenGate === "explicit consent" &&
+  consentPacket?.packet?.tokenGate === "per-execution one-use packet under standing repo authorization" &&
   consentPacket?.packet?.wouldSpendTokens === true &&
   consentPacket?.checks?.promptStateValid === true &&
   consentPacket?.checks?.promptConsentPacketReady === true &&
@@ -608,11 +607,10 @@ const externalRunbook = {
     provider,
     command: AUTH_PROMPT_COMMAND,
     env: {
-      AELYRIS_AUTH_PROMPT_CONSENT: CONSENT_PHRASE,
       AELYRIS_AUTH_PROMPT_PROVIDER: provider,
     },
-    costClass: "token-spending-explicit-consent",
-    safety: "Do not run unless the operator explicitly accepts token spend for the selected provider.",
+    costClass: "token-spending-per-execution-packet",
+    safety: "The operator wrapper mints a short-lived one-use packet for the explicitly selected provider.",
   })),
   realSleepResume: {
     command: "pnpm verify:production:suspend:native-user-cycle",

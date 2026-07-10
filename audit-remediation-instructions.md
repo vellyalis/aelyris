@@ -2,9 +2,9 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `R0` (`ready-to-commit`; continuation gate PASS).  
-NEXT PHASE: `A0` after the R0 phase commit is authorized and created.  
-NEXT IMPLEMENTATION SLICE: `A0.1 no-token/token-spending authority split`.
+CURRENT PHASE: `A0` (`A0.1 complete`; `A0.2 active`; R0 complete at `fcd23a7`).
+NEXT PHASE: `A1` after all A0 authority/evidence slices are complete.
+NEXT IMPLEMENTATION SLICE: `A0.2 evidence provenance, freshness, and score-cycle truth`.
 
 ## Objective
 
@@ -73,7 +73,7 @@ git status --short --branch
 R0 is `ready-to-commit` when these pass and the local handoff/worklog contain the exact
 dirty-tree truth. Mark R0 `complete` after its one phase commit when commit is authorized.
 
-## A0.1 Exact Next Slice
+## A0.1 Complete - No-Token / Token-Spending Authority Split
 
 Objective: ensure a command named or documented as no-token cannot execute an
 authenticated prompt, while retaining a separately consented operator smoke.
@@ -104,12 +104,60 @@ Forbidden in A0.1:
 - running a token prompt merely to make the no-token gate green,
 - renderer/full-native work.
 
+Completion evidence:
+
+- `pnpm verify:goal:authority-contract` passes the descriptor, environment-scrub,
+  one-use packet, replay, expiry, digest, provider, and path-indirection checks.
+- `pnpm verify:goal:safe:no-token` records
+  `tokenSpendingPromptExecutedByThisRun=false` and a separate historical evidence
+  field even when product, stale-evidence, policy, or external blockers keep the
+  aggregate safe chain blocked.
+- the token-bearing smoke has one operator entry point,
+  `pnpm verify:goal:operator:token-smoke -- --provider <provider>`, and is not part
+  of the no-token graph or operator-finish path.
+
+## A0.2 Exact Next Slice
+
+Objective: make every scored artifact prove where it came from and when it is valid,
+then remove score/final-audit dependency cycles so one direct defect is not multiplied
+through derived rows.
+
+Read/owner files:
+
+- `scripts/score-release-quality.mjs`
+- `scripts/verify-final-goal-audit.mjs`
+- score/final-audit artifact readers selected from those two owners
+- provenance/freshness helpers and focused mutation verifiers
+- score-path and claim-policy docs selected by `AI_GUIDE.md`
+
+Required output:
+
+1. One provenance schema binding generated evidence to Git HEAD, verifier digest,
+   input hashes, execution identity, generation time, and expiry/freshness policy.
+2. Fail-closed score ingestion for missing, stale, mismatched, or cyclic evidence.
+3. An explicit dependency graph that separates direct defects from aggregate and
+   derived rows.
+4. Focused mutations for stale evidence, wrong HEAD/digest/input hash, graph cycles,
+   and duplicate root-cause counting.
+5. Current score/final-audit/docs regenerated through commands only; generated JSON
+   is never edited by hand.
+
+Forbidden in A0.2:
+
+- lowering score thresholds or reclassifying failures to recover points,
+- signing/updater implementation, terminal/product implementation, or UI work,
+- treating aggregate failures as additional unique direct defects,
+- running the operator token smoke merely to refresh score evidence.
+
 ## Work and Session Rules
 
 - Follow `docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md` before every session clear.
 - Record exact commands and artifact paths; do not summarize a failure as PASS.
 - Keep implementation, stale evidence, policy, and external blockers separate.
 - Keep local handoff/worklogs ignored and secret-free.
-- Do not commit or push unless authorized. If dirty work crosses session clear, list every
-  intended path and the exact next action in the local handoff.
+- Verified phase commits are standing-authorized by the owner: explicitly stage the
+  phase paths and commit after its focused gates pass without asking again. Push,
+  PR, merge, rebase, reset, amend, history rewrite, and force push remain separately
+  authorized. If dirty work crosses session clear, list every intended path and the
+  exact next action in the local handoff.
 - At most one phase can be ACTIVE. Completed phases reopen only for a fresh regression.

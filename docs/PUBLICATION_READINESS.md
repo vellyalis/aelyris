@@ -25,7 +25,7 @@ Regenerate the machine evidence locally before release decisions:
 
 ```powershell
 pnpm verify:quality-score
-pnpm verify:goal:safe
+pnpm verify:goal:safe:no-token
 pnpm verify:release:hygiene
 pnpm verify:requirements-spec-design-traceability
 ```
@@ -57,8 +57,10 @@ Remaining gate classes:
 - real OS/operator host proof. The authenticated prompt gate
   `authenticated-ai-cli-prompt-smoke` and consent packet
   `authenticated-ai-cli-consent-packet` are current, and prompt/probe execution
-  still requires the documented provider env
-  `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` for refreshes. Evidence
+  still requires the documented provider env and the separate
+  `pnpm verify:goal:operator:token-smoke` wrapper. The wrapper automatically
+  issues a short-lived one-use execution packet for that invocation; it is not
+  part of `pnpm verify:goal:safe:no-token`. Evidence
   must record provider/model/command/artifact; secrets, token files, signing
   material, and secret-bearing transcripts must not be persisted or committed.
 
@@ -74,7 +76,7 @@ Before making the repository public:
 pnpm verify:release:hygiene
 pnpm verify:requirements-spec-design-traceability
 pnpm verify:quality-score
-pnpm verify:goal:safe
+pnpm verify:goal:safe:no-token
 ```
 
 Then confirm:

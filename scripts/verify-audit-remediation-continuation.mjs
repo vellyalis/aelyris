@@ -45,6 +45,15 @@ function includesAll(text, values) {
   return values.filter((value) => !haystack.includes(normalize(value)));
 }
 
+function backtickField(text, label) {
+  const match = text.match(new RegExp(`${label}:\\s*\`([^\`]+)\``));
+  return match?.[1]?.trim() ?? null;
+}
+
+function phaseId(value) {
+  return String(value ?? "").match(/\b(?:R\d+|A\d+(?:\.\d+)?)\b/)?.[0] ?? null;
+}
+
 function writeJsonAtomic(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -79,6 +88,10 @@ const head = git(["rev-parse", "--short", "HEAD"]);
 const branch = git(["branch", "--show-current"]);
 const shortStatus = git(["status", "--short", "--branch"]);
 const changedPaths = statusPaths();
+const currentProgramPhase = phaseId(backtickField(source.workOrder, "CURRENT PHASE"));
+const nextImplementationSlice = backtickField(source.workOrder, "NEXT IMPLEMENTATION SLICE");
+const activePhase = phaseId(nextImplementationSlice) ?? currentProgramPhase ?? "unknown";
+const nextPhase = phaseId(backtickField(source.workOrder, "NEXT PHASE")) ?? "unknown";
 
 const requiredFiles = [
   "agents",
@@ -101,8 +114,8 @@ for (const id of requiredFiles) {
 const workOrderMissing = includesAll(source.workOrder, [
   "STATUS: ACTIVE",
   "PROGRAM: audit-remediation",
-  "CURRENT PHASE: R0",
-  "A0.1 no-token/token-spending authority split",
+  "CURRENT PHASE:",
+  "NEXT IMPLEMENTATION SLICE:",
   paths.plan,
   paths.protocol,
   paths.handoff,
@@ -205,7 +218,7 @@ checks.push(check("worklog-present", worklogs.length > 0, "at least one session 
 const handoffMissing = includesAll(source.handoff, [
   "LOCAL ONLY. DO NOT COMMIT.",
   "program: audit-remediation",
-  "active_phase: R0",
+  `active_phase: ${activePhase}`,
   `branch: ${branch}`,
   `head: ${head}`,
   "Read Order",
@@ -267,8 +280,8 @@ const result = {
   status: failed.length === 0 ? "pass-current-audit-remediation-continuation" : "failed",
   ok: failed.length === 0,
   program: "audit-remediation",
-  activePhase: "R0",
-  nextPhase: "A0",
+  activePhase,
+  nextPhase,
   branch,
   head,
   gitStatus: shortStatus,
@@ -277,7 +290,7 @@ const result = {
   checks,
   nextAction:
     failed.length === 0
-      ? "Review and commit R0 when authorized, then start A0.1 from the canonical handoff."
+      ? `Continue ${activePhase} from the canonical handoff under the tracked phase contract.`
       : "Repair the failed continuation contract checks before session clear.",
 };
 

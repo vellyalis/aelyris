@@ -3001,10 +3001,11 @@ const authenticatedAiCliConsentPacketPass =
   authenticatedAiCliConsentPacket?.checks?.launchPlannerReady === true &&
   authenticatedAiCliConsentPacket?.checks?.sourceArtifactsFresh === true &&
   authenticatedAiCliConsentPacket?.checks?.noRawPromptTextPersisted === true &&
-  authenticatedAiCliConsentPacket?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
+  authenticatedAiCliConsentPacket?.packet?.command === "pnpm verify:goal:operator:token-smoke" &&
   authenticatedAiCliConsentPacket?.packet?.requiredEnv ===
-    "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-  authenticatedAiCliConsentPacket?.packet?.tokenGate === "explicit consent" &&
+    "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
+  authenticatedAiCliConsentPacket?.packet?.tokenGate ===
+    "per-execution one-use packet under standing repo authorization" &&
   authenticatedAiCliConsentPacket?.packet?.wouldSpendTokens === true &&
   typeof authenticatedAiCliConsentPacket?.consentPacketSha256 === "string" &&
   authenticatedAiCliConsentPacket.consentPacketSha256.length === 64 &&
@@ -3013,7 +3014,7 @@ const authenticatedAiCliConsentPacketPass =
       (entry) =>
         entry?.provider === provider &&
         entry?.status === "ready" &&
-        entry?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
+        entry?.command === "pnpm verify:goal:operator:token-smoke" &&
         String(entry?.requiredEnv ?? "").includes(`AELYRIS_AUTH_PROMPT_PROVIDER=${provider}`),
     ),
   );
@@ -3270,7 +3271,7 @@ const authenticatedAiCliPreflightMatrixSourcePass =
   authenticatedAiCliPreflightMatrixSource.includes("refreshCommand") &&
   authenticatedAiCliPreflightMatrixSource.includes("expiresAt") &&
   authenticatedAiCliPreflightMatrixSource.includes("blockingArtifacts") &&
-  authenticatedAiCliPreflightMatrixSource.includes("no-token-unless-consent-env-is-set") &&
+  authenticatedAiCliPreflightMatrixSource.includes("requires-explicit-provider-token-spend") &&
   authenticatedPromptConsentSource.includes("AuthenticatedPromptPreflightArtifactReadiness") &&
   authenticatedPromptConsentSource.includes("AuthenticatedPromptArtifactFreshnessRadar") &&
   authenticatedPromptConsentSource.includes("deriveArtifactFreshnessRadar") &&
@@ -3774,14 +3775,15 @@ const tauriGoalTrackSmokePass =
   tauriGoalTrackExpectedQualityCurrent &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.status === "ready" &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.command ===
-    "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
+    "pnpm verify:goal:operator:token-smoke" &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.requiredEnv ?? "").includes(
-    "AELYRIS_AUTH_PROMPT_CONSENT=",
+    "AELYRIS_AUTH_PROMPT_PROVIDER=",
   ) &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.providerEnvRequirement ?? "").includes(
     "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   ) &&
-  tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.tokenGate === "explicit consent" &&
+  tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.tokenGate ===
+    "per-execution one-use packet under standing repo authorization" &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.artifactFreshness?.status === "green" &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.artifactFreshness?.staleCount === 0 &&
   (tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.artifactFreshness?.totalCount ?? 0) > 0 &&
@@ -3882,9 +3884,9 @@ const goalTrackSignals = [
       rightRailGoalTrackSource.includes("artifactPath") &&
       rightRailGoalTrackSource.includes("refreshCommand") &&
       rightRailGoalTrackSource.includes("pnpm verify:terminal:native-input") &&
-      rightRailGoalTrackSource.includes("pnpm verify:goal:safe") &&
+      rightRailGoalTrackSource.includes("pnpm verify:goal:safe:no-token") &&
       rightRailGoalTrackSource.includes("residualImplementationBlockers") &&
-      rightRailGoalTrackSource.includes("Final safe gate unavailable; run pnpm verify:goal:safe") &&
+      rightRailGoalTrackSource.includes("Final no-token gate unavailable; run pnpm verify:goal:safe:no-token") &&
       rightRailGoalTrackSource.includes("qaRiskEvidence") &&
       rightRailGoalTrackSource.includes("runtimeFallbackEvidence") &&
       rightRailGoalTrackSource.includes("formatRuntimeFallbackBlocker") &&
@@ -3898,9 +3900,11 @@ const goalTrackSignals = [
       rightRailGoalTrackSource.includes("input.commandCenterScenarioReady === true") &&
       rightRailGoalTrackSource.includes("input.themeCustomizationReady === true") &&
       rightRailGoalTrackSource.includes("consentGateOnly") &&
-      rightRailGoalTrackSource.includes("Goal consent gated") &&
+      rightRailGoalTrackSource.includes("Goal operator gated") &&
       rightRailGoalTrackSource.includes("Authenticated prompt consent packet unavailable") &&
-      rightRailGoalTrackSource.includes("Authenticated AI CLI prompt smoke still requires explicit token consent"),
+      rightRailGoalTrackSource.includes(
+        "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+      ),
     blocker: "right rail goal tracker does not derive explicit milestones and authenticated-prompt blocker state",
   },
   {
@@ -4000,12 +4004,12 @@ const goalTrackSignals = [
   {
     ok:
       rightRailGoalTrackTestSource.includes(
-        "keeps the final goal blocked until the authenticated prompt smoke is explicitly consented",
+        "keeps the final goal blocked until the provider-selected operator smoke runs",
       ) &&
       rightRailGoalTrackTestSource.includes(
-        "Authenticated AI CLI prompt smoke still requires explicit token consent",
+        "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
       ) &&
-      rightRailGoalTrackTestSource.includes("Consent gate") &&
+      rightRailGoalTrackTestSource.includes("Token operator gate") &&
       rightRailGoalTrackTestSource.includes("Non-token implementation proved") &&
       rightRailGoalTrackTestSource.includes(
         "blocks release proof when authenticated prompt consent preflight is unavailable",
@@ -4840,9 +4844,10 @@ const finalGoalAuditSourcePass =
   finalGoalSafeVerifierSource.includes("pass-current-anti-stall-contract") &&
   finalGoalSafeVerifierSource.includes("operator-finish-no-stall-handoff") &&
   goalOperatorFinishSource.includes("goal-operator-finish.json") &&
-  goalOperatorFinishSource.includes("I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+  goalOperatorFinishSource.includes("pnpm verify:goal:operator:token-smoke") &&
+  goalOperatorFinishSource.includes("tokenSpendingPromptExecutedByThisRun: false") &&
   goalOperatorFinishSource.includes("I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS") &&
-  goalOperatorFinishSource.includes("delete env.AELYRIS_AUTH_PROMPT_CONSENT") &&
+  goalOperatorFinishSource.includes("NO_TOKEN_SCRUBBED_ENV_KEYS") &&
   goalOperatorFinishSource.includes("delete env.AELYRIS_ALLOW_OS_SLEEP") &&
   goalDocumentationFreshnessSource.includes("goal-documentation-freshness.json") &&
   goalDocumentationFreshnessSource.includes("CURRENT_STATE_DOCS") &&
@@ -5038,21 +5043,20 @@ const finalGoalAuditProviderReadyPass = ["codex", "claude", "gemini"].every((pro
 const finalGoalAuditNextAction = String(finalGoalAudit?.nextRequiredAction ?? "");
 const finalGoalAuditNextActionPass =
   finalGoalAuditComplete ||
-  (finalGoalAuditNextAction.includes("pnpm verify:terminal:authenticated-ai-cli-prompt") &&
-    finalGoalAuditNextAction.includes("AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+  (finalGoalAuditNextAction.includes("pnpm verify:goal:operator:token-smoke") &&
     finalGoalAuditNextAction.includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini"));
 const finalGoalAuditConsentGatePass =
   finalGoalAuditComplete ||
   (finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.command ===
-    "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
+    "pnpm verify:goal:operator:token-smoke" &&
     String(
       finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.requiredEnv ?? "",
-    ).includes("AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS") &&
+    ).includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.requiredProviderEnv ===
       "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.wouldSpendTokens === true &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.tokenGate ===
-      "explicit consent" &&
+      "per-execution one-use packet under standing repo authorization" &&
     finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.consentPacketReady === true &&
     (finalGoalAudit?.operationalEvidence?.authenticatedPromptConsent?.promptExecutionGate?.readyToRunAfterConsent ===
       true ||

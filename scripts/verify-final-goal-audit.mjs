@@ -869,10 +869,11 @@ const promptConsentPacketReady =
   authenticatedPromptConsentPacket?.checks?.providerMatrixReady === true &&
   authenticatedPromptConsentPacket?.checks?.allProviderOptInCommandsReady === true &&
   authenticatedPromptConsentPacket?.checks?.sourceArtifactsFresh === true &&
-  authenticatedPromptConsentPacket?.packet?.command === "pnpm verify:terminal:authenticated-ai-cli-prompt" &&
+  authenticatedPromptConsentPacket?.packet?.command === "pnpm verify:goal:operator:token-smoke" &&
   authenticatedPromptConsentPacket?.packet?.requiredEnv ===
-    "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS" &&
-  authenticatedPromptConsentPacket?.packet?.tokenGate === "explicit consent" &&
+    "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
+  authenticatedPromptConsentPacket?.packet?.tokenGate ===
+    "per-execution one-use packet under standing repo authorization" &&
   typeof authenticatedPromptConsentPacket?.consentPacketSha256 === "string";
 const glassLegibilityContractReady =
   glassLegibilityContract?.ok === true &&
@@ -954,15 +955,18 @@ const releaseOperationsExternalGateEvidenceReady =
     (externalGateReadiness?.checks?.noUnsafeConsentEnvPresent === true &&
       externalGateReadiness?.checks?.noOsSleepEnvPresent === true));
 const promptExecutionGate = {
-  command: authenticatedPrompt?.nextCommand?.command ?? "pnpm verify:terminal:authenticated-ai-cli-prompt",
-  requiredEnv: promptChecks.requiredEnv ?? "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS",
+  command: authenticatedPrompt?.nextCommand?.command ?? "pnpm verify:goal:operator:token-smoke",
+  requiredEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   requiredProviderEnv: "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini",
   env: authenticatedPrompt?.nextCommand?.env ?? {},
   provider:
     authenticatedPrompt?.provider ?? authenticatedPrompt?.nextCommand?.env?.AELYRIS_AUTH_PROMPT_PROVIDER ?? "unknown",
   cdp: authenticatedPrompt?.nextCommand?.env?.AELYRIS_TAURI_CDP ?? authenticatedPrompt?.cdp ?? null,
   wouldSpendTokens: authenticatedPrompt?.wouldSpendTokens === true,
-  tokenGate: authenticatedPrompt?.wouldSpendTokens === true ? "explicit consent" : "not required",
+  tokenGate:
+    authenticatedPrompt?.wouldSpendTokens === true
+      ? "per-execution one-use packet under standing repo authorization"
+      : "not required",
   consentPacketReady:
     (promptChecks.consentPacketReady === true || promptExecutedWithConsent) && promptConsentPacketReady,
   consentPacketArtifact: {
@@ -1730,7 +1734,7 @@ let externalBlockedRisks = unresolvedBlockers
         area: blocker?.area ?? "authenticated-ai-cli-prompt-smoke",
         blocker: blocker?.blocker ?? String(blocker),
         canAutoResolve: false,
-        requiredAction: `Run ${promptExecutionGate.command} with ${promptExecutionGate.requiredEnv}, ${promptExecutionGate.requiredProviderEnv}, and a reachable WebView2 CDP endpoint, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.`,
+        requiredAction: `Set ${promptExecutionGate.requiredProviderEnv}, run ${promptExecutionGate.command} with a reachable WebView2 CDP endpoint, then rerun pnpm verify:quality-score and pnpm verify:final-goal-audit.`,
       })),
   )
   .concat(
@@ -2019,9 +2023,9 @@ const report = {
   nextRequiredAction: goalComplete
     ? "Goal is complete."
     : residualRiskRegister.state === "blocked-by-external-gates"
-      ? `Run pnpm verify:production:suspend:native-user-cycle on this host and manually put Windows to sleep while the verifier waits, or run a real native sleep/resume cycle on a capable host; then close the evidence loop with pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout. If token-spend validation is also desired, set ${promptExecutionGate.requiredEnv} and ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command}.`
+      ? `Run pnpm verify:production:suspend:native-user-cycle on this host and manually put Windows to sleep while the verifier waits, or run a real native sleep/resume cycle on a capable host; then close the evidence loop with pnpm verify:goal:operator-finish, pnpm verify:goal:finalize, pnpm verify:goal:safe, and pnpm verify:goal:closeout. If token-spend validation is also desired, set ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command}; its wrapper mints the one-use execution packet.`
       : residualRiskRegister.state === "blocked-only-by-explicit-token-consent"
-        ? `Set ${promptExecutionGate.requiredEnv} and ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command} if token-spend validation is desired.`
+        ? `Set ${promptExecutionGate.requiredProviderEnv}, then run ${promptExecutionGate.command} if token-spend validation is desired; its wrapper mints the one-use execution packet.`
         : "Fix missing requirements and rerun pnpm verify:final-goal-audit.",
 };
 

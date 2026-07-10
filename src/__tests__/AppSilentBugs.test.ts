@@ -487,12 +487,18 @@ describe("Release evidence gates", () => {
   it("keeps the goal refresh chain non-token and non-sleep by construction", () => {
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const script = readFileSync(join(process.cwd(), "scripts/verify-goal-non-token-refresh.mjs"), "utf8");
+    const authority = readFileSync(join(process.cwd(), "scripts/lib/authenticated-prompt-authority.mjs"), "utf8");
+    const contract = readFileSync(join(process.cwd(), "scripts/verify-goal-authority-contract.mjs"), "utf8");
 
-    expect(packageJson).toContain('"verify:goal:refresh-safe": "node scripts/verify-goal-non-token-refresh.mjs"');
-    expect(script).toContain("goal-non-token-refresh.json");
-    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_CONSENT");
-    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_PROVIDER");
-    expect(script).toContain("delete env.AELYRIS_ALLOW_OS_SLEEP");
+    expect(packageJson).toContain('"verify:goal:safe:no-token": "node scripts/verify-goal-non-token-refresh.mjs"');
+    expect(packageJson).not.toContain('"verify:goal:refresh-safe"');
+    expect(packageJson).toContain('"verify:goal:authority-contract": "node scripts/verify-goal-authority-contract.mjs"');
+    expect(script).toContain("final-goal-safe-no-token.json");
+    expect(script).toContain("assertNoTokenStepGraph(stepDescriptors)");
+    expect(script.indexOf("assertNoTokenStepGraph(stepDescriptors)")).toBeLessThan(
+      script.indexOf("const steps = stepDescriptors.map"),
+    );
+    expect(script).toContain("scrubNoTokenEnvironment");
     expect(script).toContain("verify-terminal-font-render-contract.mjs");
     expect(script).toContain("verify-glass-legibility-contract.mjs");
     expect(script).toContain("verify-native-terminal-input-host.mjs");
@@ -503,7 +509,13 @@ describe("Release evidence gates", () => {
     expect(script).toContain("verify-right-rail-goal-track-tauri.mjs");
     expect(script).toContain("AELYRIS_TAURI_GOAL_TRACK_WAIT_MS");
     expect(script).toContain("environment-blocked-current-contract");
-    expect(script).toContain("tokenSpendingPromptExecuted: false");
+    expect(script).not.toContain('script: "verify-authenticated-ai-cli-provider-guard.mjs"');
+    expect(script).toContain("tokenSpendingPromptExecutedByThisRun: false");
+    expect(script).toContain("historicalTokenSpendingEvidenceObserved");
+    expect(authority).toContain("AUTHENTICATED_PROMPT_EXECUTION_ID_ENV");
+    expect(authority).toContain("validateAuthenticatedPromptExecutionPacket");
+    expect(authority).toContain("NO_TOKEN_GRAPH_REJECTED");
+    expect(contract).toContain("mutationResults.every");
     expect(script).toContain("realOsSleepInvoked: false");
   });
 
@@ -526,9 +538,9 @@ describe("Release evidence gates", () => {
     expect(script).toContain("AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("AELYRIS_AUTH_PROMPT_CONSENT");
     expect(script).toContain("pnpm verify:production:suspend:native-user-cycle");
-    expect(script).toContain("pnpm verify:terminal:authenticated-ai-cli-prompt");
+    expect(script).toContain("pnpm verify:goal:operator:token-smoke");
     expect(script).toContain("pnpm verify:goal:operator-finish");
-    expect(script).toContain("token-spending-explicit-consent");
+    expect(script).toContain("token-spending-per-execution-packet");
     expect(script).toContain("This readiness verifier does not set AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("external-operator-gates-complete");
     expect(script).toContain("completeExternalGatesProved");
@@ -548,21 +560,21 @@ describe("Release evidence gates", () => {
 
     expect(packageJson).toContain('"verify:goal:operator-finish": "node scripts/verify-goal-operator-finish.mjs"');
     expect(script).toContain("goal-operator-finish.json");
-    expect(script).toContain("I_UNDERSTAND_THIS_MAY_SPEND_TOKENS");
     expect(script).toContain("I_WILL_MANUALLY_SLEEP_WINDOWS_WHILE_VERIFIER_WAITS");
-    expect(script).toContain("verify-authenticated-ai-cli-prompt-smoke.mjs");
+    expect(script).toContain("pnpm verify:goal:operator:token-smoke");
+    expect(script).not.toContain("verify-goal-operator-token-smoke.mjs");
+    expect(script).not.toContain("verify-authenticated-ai-cli-prompt-smoke.mjs");
     expect(script).toContain("verify-real-os-suspend-evidence.mjs");
     expect(script).toContain("--user-sleep-cycle");
     expect(script).toContain("verify-goal-non-token-refresh.mjs");
     expect(script).toContain("verify-final-goal-safe.mjs");
-    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_CONSENT");
-    expect(script).toContain("delete env.AELYRIS_AUTH_PROMPT_PROVIDER");
+    expect(script).toContain("NO_TOKEN_SCRUBBED_ENV_KEYS");
     expect(script).toContain("delete env.AELYRIS_GOAL_OPERATOR_RUN_SLEEP");
     expect(script).toContain("delete env.AELYRIS_ALLOW_OS_SLEEP");
     expect(script).toContain("externalReadinessArtifactReady");
     expect(script).toContain("spawnBlocked");
     expect(script).toContain("pass-current-artifact-replay");
-    expect(script).toContain("tokenSpendingPromptExecutedByThisRun");
+    expect(script).toContain("tokenSpendingPromptExecutedByThisRun: false");
     expect(script).toContain("realOsSleepInvokedByThisRun: false");
   });
 
@@ -708,8 +720,9 @@ describe("Release evidence gates", () => {
       '"verify:terminal:ai-cli-post-launch-chaos": "node scripts/verify-live-tauri-pty-ai-cli-chaos.mjs"',
     );
     expect(packageJson).toContain(
-      '"verify:terminal:authenticated-ai-cli-prompt": "node scripts/verify-authenticated-ai-cli-prompt-smoke.mjs"',
+      '"verify:goal:operator:token-smoke": "node scripts/verify-goal-operator-token-smoke.mjs"',
     );
+    expect(packageJson).not.toContain('"verify:terminal:authenticated-ai-cli-prompt"');
     expect(packageJson).toContain(
       '"verify:terminal:authenticated-ai-cli-preflight-matrix": "node scripts/verify-authenticated-ai-cli-preflight-matrix.mjs"',
     );
@@ -794,7 +807,7 @@ describe("Release evidence gates", () => {
     expect(promptMatrix).toContain("blockingArtifacts");
     expect(promptMatrix).toContain("pnpm verify:terminal:ai-cli-post-launch-chaos");
     expect(promptMatrix).toContain("node scripts/verify-ime.mjs");
-    expect(promptMatrix).toContain("no-token-unless-consent-env-is-set");
+    expect(promptMatrix).toContain("requires-explicit-provider-token-spend");
     expect(consentPacket).toContain("authenticated-ai-cli-consent-packet.json");
     expect(consentPacket).toContain("consentPacketSha256");
     expect(consentPacket).toContain("consentPhraseSha256");
@@ -1226,7 +1239,7 @@ describe("Release evidence gates", () => {
     expect(goalTrack).toContain("pnpm verify:goal:safe");
     expect(goalTrack).toContain("qualityEvidenceLocalDate");
     expect(goalTrack).toContain("qualityEvidenceTimeZone");
-    expect(goalTrack).toContain("Final safe gate unavailable; run pnpm verify:goal:safe");
+    expect(goalTrack).toContain("Final no-token gate unavailable; run pnpm verify:goal:safe:no-token");
     expect(goalTrack).toContain("qaRiskEvidence");
     expect(goalTrack).toContain("runtimeFallbackEvidence");
     expect(goalTrack).toContain("qa-fixture");
@@ -1235,7 +1248,9 @@ describe("Release evidence gates", () => {
     expect(goalTrack).toContain("requiresConsentForRefresh");
     expect(goalTrack).toContain("requiresExplicitConsent: requiresConsentForRefresh");
     expect(goalTrack).toContain("Authenticated prompt consent packet unavailable");
-    expect(goalTrack).toContain("Authenticated AI CLI prompt smoke still requires explicit token consent");
+    expect(goalTrack).toContain(
+      "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run",
+    );
     expect(consentPacket).toContain("deriveAuthenticatedPromptConsentPacket");
     expect(consentPacket).toContain("safeNoPromptSent");
     expect(consentPacket).toContain("nonTokenPreflightReady");
@@ -1301,7 +1316,7 @@ describe("Release evidence gates", () => {
       "clears the prompt blocker once the authenticated prompt smoke is actually proven",
     );
     expect(goalTrackTest).toContain(
-      "keeps the final goal blocked until the authenticated prompt smoke is explicitly consented",
+      "keeps the final goal blocked until the provider-selected operator smoke runs",
     );
     expect(goalTrackTest).toContain("blocks release proof when authenticated prompt consent preflight is unavailable");
     expect(goalTrackTest).toContain("turns broken terminal boundary proofs into visible missing evidence");
@@ -1388,9 +1403,9 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain("consentPacketArtifact");
     expect(finalGoalAuditScript).toContain("readyToRunAfterConsent");
     expect(finalGoalAuditScript).toContain("providerReadiness");
-    expect(finalGoalAuditScript).toContain("AELYRIS_AUTH_PROMPT_CONSENT");
-    expect(finalGoalAuditScript).toContain("Set $" + "{promptExecutionGate.requiredEnv} and $");
-    expect(finalGoalAuditScript).toContain("{promptExecutionGate.requiredProviderEnv}, then run");
+    expect(finalGoalAuditScript).toContain("per-execution one-use packet under standing repo authorization");
+    expect(finalGoalAuditScript).toContain("Set $" + "{promptExecutionGate.requiredProviderEnv}");
+    expect(finalGoalAuditScript).toContain("then run $" + "{promptExecutionGate.command}");
     expect(finalGoalAuditScript).toContain("authenticated-ai-cli-provider-required-smoke.json");
     expect(finalGoalAuditScript).toContain("authenticated-ai-cli-consent-packet.json");
     expect(score).toContain("finalGoalSafeVerifierSource");

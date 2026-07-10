@@ -575,7 +575,7 @@ export function deriveFinalGoalSafeGate(report: FinalGoalSafeSummaryReport | nul
       : status === "blocked-by-external-gates"
         ? "Safe gate external-gated"
         : status === "blocked-by-explicit-consent"
-          ? "Safe gate consent-gated"
+          ? "Safe gate operator token-gated"
           : "Safe gate blocked";
   const requirementProof = report.coverage?.totalRequirementCount
     ? `${report.coverage.provedRequirementCount}/${report.coverage.totalRequirementCount} requirements`

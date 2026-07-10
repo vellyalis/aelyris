@@ -49,7 +49,16 @@ The current final-goal audit is `blocked` with `implementationFixableCount=17`,
 - Do not enable hooks that rewrite files or inject hidden session behavior.
 - Keep `.claude/skills` as Aelyris-specific workflows. They are not product capability proof.
 - Machine gates and local verifier outputs outrank reviewer-agent opinions.
-- Token-spending AI CLI prompt/probe verifiers have standing operator consent for this repo/WU. Use the documented provider/consent env vars when required, record provider/model/command/artifact evidence, and never persist secrets, token files, signing material, or secret-bearing transcripts.
+- Token-spending AI CLI prompt/probe verifiers have standing operator
+  authorization for this repo/WU. Run them only through
+  `pnpm verify:goal:operator:token-smoke` with an explicit provider; the wrapper
+  mints a short-lived one-use packet for that invocation. Record
+  provider/model/command/artifact evidence and never persist secrets, token
+  files, signing material, or secret-bearing transcripts.
+- Verified phase/Work Unit commits have standing owner authorization. Stage only
+  the intended paths and commit after focused gates pass without asking again;
+  push, PR, merge, rebase, reset, amend, history rewrite, force push, and Git
+  ACL changes remain separately authorized actions.
 
 ## Skill Design Rules
 
@@ -91,6 +100,6 @@ For the current comprehensive audit program, use:
 pnpm verify:audit-remediation:continuation
 ```
 
-Until audit-remediation phase A0 splits the command contract, do not call
-`pnpm verify:goal:safe` a no-token gate. Its 2026-07-10 run reported
-`tokenSpendingPromptExecuted=true` under standing consent.
+Use `pnpm verify:goal:safe:no-token` for descriptor-first no-token refreshes.
+The legacy `pnpm verify:goal:safe` aggregate may project historical token
+evidence and is not current-run no-token proof.

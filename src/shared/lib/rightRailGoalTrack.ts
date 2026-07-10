@@ -361,18 +361,17 @@ function buildConsentRunActions(
   if (packet.status !== "ready" && packet.status !== "pass") return [];
   const providers = consentProviders(packet);
   const defaultProvider = defaultConsentProvider(packet, providers);
-  const command = packet.command || "pnpm verify:terminal:authenticated-ai-cli-prompt";
-  const requiredEnv = packet.requiredEnv || "AELYRIS_AUTH_PROMPT_CONSENT=I_UNDERSTAND_THIS_MAY_SPEND_TOKENS";
+  const command = packet.command || "pnpm verify:goal:operator:token-smoke";
+  const requiredEnv = packet.requiredEnv || "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini";
   const providerEnv = `AELYRIS_AUTH_PROMPT_PROVIDER=${providers.join("|")}`;
   return providers.map((provider) => {
     const powershellSnippet = [
-      `$env:AELYRIS_AUTH_PROMPT_CONSENT="I_UNDERSTAND_THIS_MAY_SPEND_TOKENS"`,
       `$env:AELYRIS_AUTH_PROMPT_PROVIDER="${provider}"`,
       command,
     ].join("\n");
     return {
       label: provider === defaultProvider ? "Copy verified run command" : `Copy ${provider} run command`,
-      detail: `${provider}${provider === defaultProvider ? " default" : ""} · token-spend consent required`,
+      detail: `${provider}${provider === defaultProvider ? " default" : ""} · one-use token packet on run`,
       provider,
       command,
       requiredEnv,
@@ -407,7 +406,7 @@ function buildRefreshActions(packet: RightRailGoalConsentPacket | null): RightRa
     const id = entry.id?.trim() || command;
     const key = `${id}:${command}`;
     const tokenPrompt = /authenticated[-:]ai[-:]cli[-:]prompt|authenticated-ai-cli-prompt/i.test(command);
-    const costClass = entry.costClass ?? (tokenPrompt ? "guarded-no-token-unless-consent-env-is-set" : "no-token");
+    const costClass = entry.costClass ?? (tokenPrompt ? "requires-explicit-provider-token-spend" : "no-token");
     const nextAction: RightRailGoalRefreshAction = {
       id,
       label: entry.fresh === false ? `Refresh ${id}` : `Refresh next proof`,
@@ -654,17 +653,19 @@ export function deriveRightRailGoalTrack(input: RightRailGoalTrackInput): RightR
     qualityEvidenceStatus === "stale" ? "Release quality score stale; run pnpm verify:quality-score" : "",
     qualityEvidenceStatus === "unavailable" ? "Release quality score unavailable; run pnpm verify:quality-score" : "",
     !safeGate || safeGate.source === "unavailable"
-      ? "Final safe gate unavailable; run pnpm verify:goal:safe"
+      ? "Final no-token gate unavailable; run pnpm verify:goal:safe:no-token"
       : (safeGate.status === "blocked" && !rightRailSelfCycleOnly) || safeGate.failedStepCount > 0
-        ? safeGate.nextRequiredAction || "Final safe gate blocked; run pnpm verify:goal:safe"
+        ? safeGate.nextRequiredAction || "Final no-token gate blocked; run pnpm verify:goal:safe:no-token"
         : "",
     authenticatedPromptConsentRequired && !consentPacket
-      ? "Authenticated prompt consent packet unavailable; run pnpm verify:terminal:authenticated-ai-cli-prompt without consent"
+      ? "Authenticated prompt consent packet unavailable; run pnpm verify:terminal:authenticated-ai-cli-preflight-matrix"
       : "",
     authenticatedPromptConsentRequired && consentPacket && !consentPacketReady
       ? `Authenticated prompt consent packet ${consentPacket.status}; refresh non-token preflight`
       : "",
-    authenticatedPromptConsentRequired ? "Authenticated AI CLI prompt smoke still requires explicit token consent" : "",
+    authenticatedPromptConsentRequired
+      ? "Authenticated AI CLI prompt smoke requires an explicit provider-selected operator run"
+      : "",
   ]);
 
   const terminalStatus: RightRailGoalMilestoneStatus = terminalFallbackBlocked
@@ -737,13 +738,13 @@ export function deriveRightRailGoalTrack(input: RightRailGoalTrackInput): RightR
           ? "No release blocker is open"
           : safeGate?.status === "blocked-by-explicit-consent" &&
               residualRisk?.state === "blocked-only-by-explicit-token-consent"
-            ? "Safe gate is green; token-spending proof is gated by explicit consent"
+            ? "Safe gate is green; token-spending proof requires a provider-selected operator run"
             : safeGate?.status === "blocked-by-external-gates" && residualRisk?.state === "blocked-by-external-gates"
               ? "Implementation risks are closed; real OS sleep proof is host-gated"
               : rightRailSelfCycleOnly
-                ? "Safe gate is waiting only for this Goal Track proof; token-spending proof is gated by explicit consent"
+                ? "Safe gate is waiting only for this Goal Track proof; token-spending proof requires a provider-selected operator run"
                 : residualRisk?.state === "blocked-only-by-explicit-token-consent"
-                  ? "Implementation risks are closed; token-spending proof is gated by explicit consent"
+                  ? "Implementation risks are closed; token-spending proof requires a provider-selected operator run"
                   : authenticatedPromptConsentRequired
                     ? consentPacketReady
                       ? "Token-spending live prompt proof is gated with a ready consent packet"
@@ -804,7 +805,7 @@ export function deriveRightRailGoalTrack(input: RightRailGoalTrackInput): RightR
     status === "done"
       ? "Release candidate"
       : consentGateOnly
-        ? "Consent gate"
+        ? "Token operator gate"
         : status === "blocked"
           ? "Blocked"
           : percent >= 80
@@ -816,12 +817,12 @@ export function deriveRightRailGoalTrack(input: RightRailGoalTrackInput): RightR
       status === "done"
         ? "Goal ready"
         : consentGateOnly
-          ? "Goal consent gated"
+          ? "Goal operator gated"
           : status === "blocked"
             ? "Goal blocked"
             : "Goal in progress",
     detail: consentGateOnly
-      ? "Non-token implementation proved · explicit token consent pending"
+      ? "Non-token implementation proved · operator token smoke pending"
       : `${doneCount}/${totalCount} milestones closed · ${remainingItems.length} remaining`,
     status,
     confidenceLabel,

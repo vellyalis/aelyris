@@ -65,8 +65,10 @@ blockers visible, dangerous actions keyboard-safe, rendered UI truth gated.
 
 ## 2. Ground rules
 
-- Branch: `feat/wu-uq-1-trust-cockpit` off current `main`. Never push
-  `main`, never force-push, no PRs. Push the branch after green gates, stop.
+- Branch: `feat/wu-uq-1-trust-cockpit` off current `main`. Create verified
+  local phase commits under the current `AGENTS.md` standing authorization.
+  Push, PR, merge, rebase, reset, amend, force push, and history rewrite require
+  fresh explicit authorization.
 - One phase = one commit; explicit stage; serial pnpm/cargo (never parallel
   on Windows).
 - **The gate comes first (Q0).** No trust-surface change is committed before
@@ -403,12 +405,17 @@ ConfirmDialog IS the existing glass dialog surface.
   untouched-green.
 - `pnpm verify:goal:safe` completes with the new step registered and no new
   implementation-fixable blockers introduced by this WU.
-- Branch pushed; `## Result` appended to THIS file: phases done with commit
+- Local phase commits complete; `## Result` appended to THIS file: phases done with commit
   hashes, gate outputs, OPERATOR GATE list (IME live check, staged sidecar
   kill, populated-cockpit visual pass, CI blocking flip), skipped items with
   reasons, files touched, and any anchor drift discovered.
 
 ## Pasteable goals for a cleared codex/opus session
+
+Authority override: the two historical packets below contain feature-branch
+push wording. That wording is superseded by current `AGENTS.md`; treat it as
+"local commit complete, push pending explicit authorization" when reusing a
+packet.
 
 **Scheduling decision (owner, 2026-07-05, recorded in
 `PRODUCT_DIRECTION_PROPOSALS_2026-07-03.md` §5):** run the **safety subset
