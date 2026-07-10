@@ -491,7 +491,7 @@ pub fn run() {
             let sidecar_fallback_pty: PtyManager = app.state::<PtyManager>().inner().clone();
             let sidecar_adopt_app = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
-                let Some(client) = pty_sidecar::launch_or_connect() else {
+                let Some(mut client) = pty_sidecar::launch_or_connect() else {
                     // Surface the fallback: without this, a daemon that fails
                     // to start (port squatted by a foreign process, token
                     // mismatch after manual deletion, spawn failure) silently
@@ -511,6 +511,10 @@ pub fn run() {
                     );
                     return;
                 };
+                let stream_state_app = sidecar_adopt_app.clone();
+                client.set_stream_state_callback(std::sync::Arc::new(move |id, payload| {
+                    let _ = stream_state_app.emit(&format!("pty-stream-state-{id}"), payload);
+                }));
                 if !sidecar_fallback_pty.list().is_empty() {
                     log::info!(
                         "PTY sidecar became ready after native PTY sessions existed; keeping native backend for this app session"

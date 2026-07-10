@@ -17,7 +17,9 @@ import {
   savePaneTreeSnapshot,
   savePaneTreeSnapshotToBackend,
 } from "./persistence";
-import type {
+import {
+  lifecycleFromPtyStreamState,
+  type PtyStreamStateEvent,
   PaneHealthState,
   PaneLifecycleState,
   PaneNode,
@@ -206,6 +208,7 @@ export function PaneTreeContainer({
   const [paneLifecycleStates, setPaneLifecycleStates] = useState<ReadonlyMap<string, PaneLifecycleState>>(
     () => new Map(),
   );
+  const [paneLifecycleAttempts, setPaneLifecycleAttempts] = useState<ReadonlyMap<string, number>>(() => new Map());
   const initialAgentBindings = useMemo(
     () => new Map(Object.entries(initialSnapshot?.agentBindings ?? {})),
     [initialSnapshot],
@@ -484,6 +487,42 @@ export function PaneTreeContainer({
       window.removeEventListener("focus", requestRefresh);
     };
   }, [layoutHydrated, layoutStorageKey]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || terminalIds.size === 0) return;
+    let cancelled = false;
+    const unlisteners: Array<() => void> = [];
+    for (const [paneId, terminalId] of terminalIds) {
+      void Promise.resolve()
+        .then(() =>
+          listen<PtyStreamStateEvent>(`pty-stream-state-${terminalId}`, ({ payload }) => {
+            const lifecycle = lifecycleFromPtyStreamState(payload.state);
+            setPaneLifecycleStates((prev) => new Map(prev).set(paneId, lifecycle).set(terminalId, lifecycle));
+            setPaneLifecycleAttempts((prev) => {
+              const next = new Map(prev);
+              if (payload.state === "reconnecting") {
+                next.set(paneId, payload.attempt).set(terminalId, payload.attempt);
+              } else {
+                next.delete(paneId);
+                next.delete(terminalId);
+              }
+              return next;
+            });
+          }),
+        )
+        .then((unlisten) => {
+          if (cancelled) unlisten();
+          else unlisteners.push(unlisten);
+        })
+        .catch(() => {
+          /* Tauri event bridge unavailable; backend reconciliation remains authoritative. */
+        });
+    }
+    return () => {
+      cancelled = true;
+      for (const unlisten of unlisteners) unlisten();
+    };
+  }, [terminalIds]);
 
   useEffect(() => {
     if (terminalIds.size === 0 || orphanedBackendPanes.length === 0) return;
@@ -1280,6 +1319,7 @@ export function PaneTreeContainer({
       maximizedPaneId={maximizedPaneId}
       terminalIds={terminalIds}
       paneLifecycleStates={paneLifecycleStates}
+      paneLifecycleAttempts={paneLifecycleAttempts}
       agentMeta={agentMeta}
       terminalShortIds={terminalShortIds}
       synchronizedPanes={synchronizedPanes}

@@ -21,6 +21,7 @@ interface TerminalInfoBarProps {
   paneTitle?: string;
   paneRole?: PaneRole;
   lifecycle?: PaneLifecycleState;
+  lifecycleAttempt?: number;
   activeAgent?: { model: string; cost?: number; status?: "running" | "done" | "error" } | null;
   isActive?: boolean;
   isMaximized?: boolean;
@@ -44,6 +45,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   paneTitle,
   paneRole,
   lifecycle,
+  lifecycleAttempt,
   activeAgent,
   isActive,
   isMaximized,
@@ -140,7 +142,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
           <Pencil size={10} aria-hidden="true" />
         </button>
       )}
-      <LifecycleBadge lifecycle={lifecycle} />
+      <LifecycleBadge lifecycle={lifecycle} attempt={lifecycleAttempt} />
       {lastEnd && <ExitStatusDot exitCode={lastEnd.exitCode} />}
       {lag.active && <BackpressureBadge dropped={lag.dropped} />}
       {dir && <span className={styles.cwd}>~/{dir}</span>}
@@ -240,11 +242,16 @@ const LIFECYCLE_LABELS: Partial<Record<PaneLifecycleState, string>> = {
   reconnecting: "reconnecting…",
 };
 
-function LifecycleBadge({ lifecycle }: { lifecycle?: PaneLifecycleState }) {
+function LifecycleBadge({ lifecycle, attempt }: { lifecycle?: PaneLifecycleState; attempt?: number }) {
   const label = lifecycle ? LIFECYCLE_LABELS[lifecycle] : undefined;
   if (!label) return null;
   return (
-    <span className={styles.lifeBadge} data-lifecycle={lifecycle} role="status">
+    <span
+      className={styles.lifeBadge}
+      data-lifecycle={lifecycle}
+      role="status"
+      title={lifecycle === "reconnecting" && attempt ? `Reconnect attempt ${attempt}` : undefined}
+    >
       {label}
     </span>
   );

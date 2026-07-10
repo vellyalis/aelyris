@@ -19,6 +19,7 @@ interface PaneTreeRendererProps {
    */
   terminalIds: Map<string, string>;
   paneLifecycleStates?: ReadonlyMap<string, PaneLifecycleState>;
+  paneLifecycleAttempts?: ReadonlyMap<string, number>;
   /** terminalId → live agent identity for fleet panes (drives the agent chip). */
   agentMeta?: ReadonlyMap<string, { model: string; status: "running" | "done" | "error" }>;
   /** terminalId → process-local %N pane address. */
@@ -85,6 +86,7 @@ export function PaneTreeRenderer({
   maximizedPaneId,
   terminalIds,
   paneLifecycleStates,
+  paneLifecycleAttempts,
   agentMeta,
   terminalShortIds,
   synchronizedPanes = false,
@@ -426,6 +428,9 @@ export function PaneTreeRenderer({
                 paneRole={leaf.role}
                 lifecycle={
                   paneLifecycleStates?.get(leaf.id) ?? (terminalId ? paneLifecycleStates?.get(terminalId) : undefined)
+                }
+                lifecycleAttempt={
+                  paneLifecycleAttempts?.get(leaf.id) ?? (terminalId ? paneLifecycleAttempts?.get(terminalId) : undefined)
                 }
                 activeAgent={agent ? { model: agent.model, status: agent.status } : null}
                 isActive={isActive}

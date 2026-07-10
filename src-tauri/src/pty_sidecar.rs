@@ -22,6 +22,15 @@ const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(2);
 const SIDECAR_READY_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SIDECAR_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(75);
 
+pub type StreamStateCallback = Arc<dyn Fn(&str, SidecarStreamState) + Send + Sync>;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarStreamState {
+    pub state: &'static str,
+    pub attempt: u32,
+}
+
 #[derive(Clone)]
 pub struct PtySidecarClient {
     base_url: String,
@@ -30,6 +39,7 @@ pub struct PtySidecarClient {
     http: reqwest::Client,
     streams: Arc<Mutex<HashMap<String, SidecarStream>>>,
     stream_connect_lock: Arc<AsyncMutex<()>>,
+    on_stream_state: Option<StreamStateCallback>,
 }
 
 #[derive(Clone)]
@@ -79,6 +89,18 @@ impl PtySidecarState {
 #[derive(Clone)]
 struct SidecarStream {
     output_tx: broadcast::Sender<Vec<u8>>,
+}
+
+impl PtySidecarClient {
+    pub fn set_stream_state_callback(&mut self, callback: StreamStateCallback) {
+        self.on_stream_state = Some(callback);
+    }
+
+    fn report_stream_state(&self, id: &str, state: &'static str, attempt: u32) {
+        if let Some(callback) = &self.on_stream_state {
+            callback(id, SidecarStreamState { state, attempt });
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,6 +225,7 @@ impl PtySidecarClient {
             http,
             streams: Arc::new(Mutex::new(HashMap::new())),
             stream_connect_lock: Arc::new(AsyncMutex::new(())),
+            on_stream_state: None,
         }
     }
 
@@ -989,14 +1012,18 @@ impl PtySidecarClient {
         const MAX_DAEMON_UNREACHABLE_STRIKES: u32 = 10;
         let mut unreachable_strikes = 0u32;
         let mut delay = Duration::from_millis(500);
+        let mut attempt = 0u32;
         loop {
             tokio::time::sleep(delay).await;
+            attempt += 1;
+            self.report_stream_state(id, "reconnecting", attempt);
             delay = (delay * 2).min(Duration::from_secs(5));
             match self.list().await {
                 Ok(ids) => {
                     unreachable_strikes = 0;
                     if !ids.iter().any(|known| known == id) {
                         log::info!("PTY sidecar session {id} ended while stream was down");
+                        self.report_stream_state(id, "gone", attempt);
                         return None;
                     }
                 }
@@ -1006,6 +1033,7 @@ impl PtySidecarClient {
                         log::warn!(
                             "PTY sidecar unreachable while reconnecting stream {id}; giving up: {err}"
                         );
+                        self.report_stream_state(id, "gone", attempt);
                         return None;
                     }
                     continue;
@@ -1014,6 +1042,7 @@ impl PtySidecarClient {
             match self.connect_stream_socket(id).await {
                 Ok(socket) => {
                     log::info!("PTY sidecar stream {id} reconnected");
+                    self.report_stream_state(id, "recovered", attempt);
                     return Some(socket);
                 }
                 Err(err) => {
@@ -1318,6 +1347,19 @@ fn current_server_exe() -> Result<PathBuf, String> {
 
 fn load_or_create_token() -> Result<String, String> {
     load_or_create_token_at(token_path()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SidecarStreamState;
+
+    #[test]
+    fn stream_state_payload_serializes_contract_shape() {
+        for (state, attempt) in [("reconnecting", 2), ("recovered", 2), ("gone", 10)] {
+            let value = serde_json::to_value(SidecarStreamState { state, attempt }).unwrap();
+            assert_eq!(value, serde_json::json!({ "state": state, "attempt": attempt }));
+        }
+    }
 }
 
 fn load_or_create_input_authority_token() -> Result<String, String> {

@@ -40,4 +40,9 @@ describe("TerminalInfoBar pane lifecycle", () => {
     expect(badge.textContent).toBe(label);
     expect(badge.getAttribute("data-lifecycle")).toBe(lifecycle);
   });
+
+  it("shows the reconnect attempt only as tooltip detail", () => {
+    render(<TerminalInfoBar shell="pwsh" terminalId={null} lifecycle="reconnecting" lifecycleAttempt={3} />);
+    expect(screen.getByRole("status").getAttribute("title")).toBe("Reconnect attempt 3");
+  });
 });

@@ -18,6 +18,17 @@ export const PANE_LIFECYCLE_STATES = [
 
 export type PaneLifecycleState = (typeof PANE_LIFECYCLE_STATES)[number];
 
+export interface PtyStreamStateEvent {
+  state: "reconnecting" | "recovered" | "gone";
+  attempt: number;
+}
+
+export function lifecycleFromPtyStreamState(state: PtyStreamStateEvent["state"]): PaneLifecycleState {
+  if (state === "reconnecting") return "reconnecting";
+  if (state === "recovered") return "live";
+  return "exited";
+}
+
 export const PANE_ATTACH_STATES = ["attached", "detached", "orphaned", "ended", "restarting"] as const;
 
 export type PaneAttachState = (typeof PANE_ATTACH_STATES)[number];
