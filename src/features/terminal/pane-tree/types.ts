@@ -13,6 +13,7 @@ export const PANE_LIFECYCLE_STATES = [
   "exited",
   "crashed",
   "restarting",
+  "reconnecting",
 ] as const;
 
 export type PaneLifecycleState = (typeof PANE_LIFECYCLE_STATES)[number];

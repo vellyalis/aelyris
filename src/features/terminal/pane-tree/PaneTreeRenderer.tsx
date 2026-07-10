@@ -424,6 +424,9 @@ export function PaneTreeRenderer({
                 shortId={terminalId ? terminalShortIds?.get(terminalId) : undefined}
                 paneTitle={leaf.title}
                 paneRole={leaf.role}
+                lifecycle={
+                  paneLifecycleStates?.get(leaf.id) ?? (terminalId ? paneLifecycleStates?.get(terminalId) : undefined)
+                }
                 activeAgent={agent ? { model: agent.model, status: agent.status } : null}
                 isActive={isActive}
                 isMaximized={isMaximized}

@@ -3,7 +3,7 @@ import { ArrowLeftRight, Bookmark, Columns2, Maximize2, Minimize2, Pencil, Rows2
 import { memo } from "react";
 import { lastCommandEnd, usePromptMarks } from "../../shared/hooks/usePromptMarks";
 import { usePtyLag } from "../../shared/hooks/usePtyLag";
-import { PANE_ROLES, type PaneRole } from "./pane-tree/types";
+import { PANE_ROLES, type PaneLifecycleState, type PaneRole } from "./pane-tree/types";
 import styles from "./TerminalInfoBar.module.css";
 
 interface TerminalInfoBarProps {
@@ -20,6 +20,7 @@ interface TerminalInfoBarProps {
   shortId?: number;
   paneTitle?: string;
   paneRole?: PaneRole;
+  lifecycle?: PaneLifecycleState;
   activeAgent?: { model: string; cost?: number; status?: "running" | "done" | "error" } | null;
   isActive?: boolean;
   isMaximized?: boolean;
@@ -42,6 +43,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
   shortId,
   paneTitle,
   paneRole,
+  lifecycle,
   activeAgent,
   isActive,
   isMaximized,
@@ -138,6 +140,7 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
           <Pencil size={10} aria-hidden="true" />
         </button>
       )}
+      <LifecycleBadge lifecycle={lifecycle} />
       {lastEnd && <ExitStatusDot exitCode={lastEnd.exitCode} />}
       {lag.active && <BackpressureBadge dropped={lag.dropped} />}
       {dir && <span className={styles.cwd}>~/{dir}</span>}
@@ -227,6 +230,25 @@ export const TerminalInfoBar = memo(function TerminalInfoBar({
     </div>
   );
 });
+
+const LIFECYCLE_LABELS: Partial<Record<PaneLifecycleState, string>> = {
+  detached: "detached",
+  orphaned: "orphaned",
+  exited: "exited",
+  crashed: "crashed",
+  restarting: "restarting…",
+  reconnecting: "reconnecting…",
+};
+
+function LifecycleBadge({ lifecycle }: { lifecycle?: PaneLifecycleState }) {
+  const label = lifecycle ? LIFECYCLE_LABELS[lifecycle] : undefined;
+  if (!label) return null;
+  return (
+    <span className={styles.lifeBadge} data-lifecycle={lifecycle} role="status">
+      {label}
+    </span>
+  );
+}
 
 const ROLE_LABELS: Record<PaneRole, string> = {
   work: "Work",

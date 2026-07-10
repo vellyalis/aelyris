@@ -201,6 +201,26 @@
   box-shadow: 0 0 0 1px rgba(124, 214, 235, 0.035);
 }
 
+.lifeBadge {
+  flex: 0 0 auto;
+  padding: 1px var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--ctp-peach) 36%, var(--terminal-chrome-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ctp-peach) 14%, var(--terminal-chrome-bg));
+  color: color-mix(in srgb, var(--ctp-peach) 86%, var(--text-primary));
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.lifeBadge[data-lifecycle="crashed"],
+.lifeBadge[data-lifecycle="exited"] {
+  border-color: color-mix(in srgb, var(--ctp-red) 38%, var(--terminal-chrome-border));
+  background: color-mix(in srgb, var(--ctp-red) 13%, var(--terminal-chrome-bg));
+  color: color-mix(in srgb, var(--ctp-red) 84%, var(--text-primary));
+}
+
 /*
  * Backpressure badge. Caution colour rather than danger — the terminal
  * is keeping up, just not painting every byte; a red treatment would
