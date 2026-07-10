@@ -8,6 +8,9 @@ const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
 const banner = read("src/features/app/UpdateBanner.tsx");
 const bannerTest = read("src/__tests__/UpdateBanner.test.tsx");
 const packageJson = JSON.parse(read("package.json"));
+const ci = read(".github/workflows/ci.yml");
+
+const actionUses = [...ci.matchAll(/^\s*-?\s*uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
 
 const checks = {
   updaterCheckCapability: capability.permissions?.includes("updater:allow-check") === true,
@@ -21,6 +24,18 @@ const checks = {
     bannerTest.includes("surfaces check errors and permits a retry") && bannerTest.includes("network unreachable"),
   releaseEnforcementCommand:
     packageJson.scripts?.["verify:quality-score:enforce"] === "node scripts/score-release-quality.mjs --enforce",
+  workflowActionsPinned: actionUses.length > 0 && actionUses.every((use) => /@[0-9a-f]{40}$/i.test(use)),
+  releaseLaneIsExplicit:
+    ci.includes("release_candidate:") &&
+    ci.includes("if: github.event_name == 'workflow_dispatch' && inputs.release_candidate"),
+  sbomIsGenerated:
+    ci.includes("anchore/sbom-action@") && ci.includes("format: spdx-json") && ci.includes("aelyris.spdx.json"),
+  provenanceIsAttested:
+    ci.includes("actions/attest-build-provenance@") &&
+    ci.includes("subject-path: .codex-auto/release-evidence/aelyris.spdx.json"),
+  releaseScoreIsBlocking: ci.includes("run: pnpm verify:quality-score:enforce"),
+  immutableEvidenceIsUploaded:
+    ci.includes("name: release-evidence-$" + "{{ github.sha }}") && ci.includes("if-no-files-found: error"),
 };
 
 const failures = Object.entries(checks)
@@ -46,6 +61,7 @@ const report = {
       "src-tauri/capabilities/default.json",
       "src/features/app/UpdateBanner.tsx",
       "src/__tests__/UpdateBanner.test.tsx",
+      ".github/workflows/ci.yml",
       "package.json",
     ],
     generatedAt,
