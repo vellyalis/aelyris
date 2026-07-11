@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "ui-trust-contract.json");
@@ -168,23 +169,31 @@ add(
 
 const failedChecks = checks.filter((check) => !check.ok).map((check) => check.id);
 const implementationComplete = failedChecks.length === 0;
+const generatedAt = new Date().toISOString();
+const sourceFiles = Object.values(sourcePaths).map((path) => {
+  const full = join(ROOT, path);
+  return { path, exists: existsSync(full), mtimeMs: existsSync(full) ? statSync(full).mtimeMs : 0 };
+});
 const report = {
   artifact: OUT,
   version: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   localDate: localDate(),
   timeZone: "Asia/Tokyo",
   ok: enforce ? implementationComplete : true,
   status: enforce ? (implementationComplete ? "passed" : "failed") : "baseline-recorded",
-  sourceFiles: Object.values(sourcePaths).map((path) => {
-    const full = join(ROOT, path);
-    return { path, exists: existsSync(full), mtimeMs: existsSync(full) ? statSync(full).mtimeMs : 0 };
-  }),
+  sourceFiles,
   checks,
   failedChecks,
   nextRequiredAction: implementationComplete
     ? "Run rendered and operator trust checks before claiming A3 complete."
     : `Implement the first failed phase contract without weakening checks: ${failedChecks[0]}.`,
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-ui-trust-contract.mjs",
+    inputPaths: ["package.json", "scripts/evidence-provenance.mjs", ...Object.values(sourcePaths)],
+    generatedAt,
+  }),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });

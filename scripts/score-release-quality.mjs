@@ -484,6 +484,9 @@ const glassLegibilityContractSource = readFileSync(
   join(ROOT, "scripts", "verify-glass-legibility-contract.mjs"),
   "utf8",
 );
+const uiTrustContractPath = join(ROOT, ".codex-auto", "quality", "ui-trust-contract.json");
+const uiTrustContract = readJson(uiTrustContractPath);
+const uiTrustContractSource = readFileSync(join(ROOT, "scripts", "verify-ui-trust-contract.mjs"), "utf8");
 const goalAntiStallContractPath = join(ROOT, ".codex-auto", "quality", "goal-anti-stall-contract.json");
 const goalAntiStallContract = readJson(goalAntiStallContractPath);
 const goalAntiStallContractSource = readFileSync(join(ROOT, "scripts", "verify-goal-anti-stall-contract.mjs"), "utf8");
@@ -4315,6 +4318,49 @@ const glassLegibilityContractFresh =
   glassLegibilityContract?.materialTranslucencyProved === true &&
   glassLegibilityContract?.sourceFresh === true &&
   mtimeMs(glassLegibilityContractPath) >= glassLegibilitySourceMtime;
+
+const uiTrustSourcePaths = Array.isArray(uiTrustContract?.sourceFiles)
+  ? uiTrustContract.sourceFiles.map((entry) => entry?.path).filter(Boolean)
+  : [];
+const uiTrustContractFresh =
+  uiTrustContract?.ok === true &&
+  uiTrustContract?.status === "passed" &&
+  Array.isArray(uiTrustContract?.checks) &&
+  uiTrustContract.checks.length > 0 &&
+  uiTrustContract.checks.every((check) => check?.ok === true) &&
+  Array.isArray(uiTrustContract?.failedChecks) &&
+  uiTrustContract.failedChecks.length === 0 &&
+  uiTrustContract?.provenance?.schema === "aelyris.evidence-provenance/v1" &&
+  mtimeMs(uiTrustContractPath) + 5_000 >=
+    Math.max(
+      mtimeMs(join(ROOT, "scripts", "verify-ui-trust-contract.mjs")),
+      mtimeMs(join(ROOT, "package.json")),
+      ...uiTrustSourcePaths.map((path) => mtimeMs(resolve(ROOT, path))),
+    );
+const uiTrustContractSourcePass =
+  packageJsonSource.includes('"verify:ui:trust": "node scripts/verify-ui-trust-contract.mjs --enforce"') &&
+  uiTrustContractSource.includes('process.argv.includes("--enforce")') &&
+  uiTrustContractSource.includes("createEvidenceProvenance") &&
+  uiTrustContractSource.includes("ui-trust-contract.json");
+const uiTrustContractPass = uiTrustContractSourcePass && uiTrustContractFresh;
+add(
+  scores,
+  "ui-trust-contract",
+  "Enforced UI trust contract",
+  uiTrustContractPass ? 8 : 0,
+  8,
+  uiTrustContractPass ? "enforced, provenance-bound, and fresh" : "missing, stale, or unenforced",
+  uiTrustContractPass
+    ? []
+    : [
+        ...(uiTrustContractSourcePass
+          ? []
+          : ["UI trust verifier is not registered as an enforced provenance-producing contract"]),
+        ...(uiTrustContractFresh
+          ? []
+          : ["UI trust contract artifact is missing, stale, failing, or not provenance-bound"]),
+      ],
+);
 
 const goalAntiStallSourceMtime = Math.max(
   mtimeMs(join(ROOT, "scripts", "verify-goal-anti-stall-contract.mjs")),

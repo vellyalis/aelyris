@@ -16,6 +16,7 @@ const STEP_FALLBACK_ARTIFACTS = {
   "authenticated-preflight-matrix": [".codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json"],
   "authenticated-consent-packet": [".codex-auto/production-smoke/authenticated-ai-cli-consent-packet.json"],
   "glass-legibility": [".codex-auto/quality/glass-legibility-contract.json"],
+  "ui-trust-contract": [".codex-auto/quality/ui-trust-contract.json"],
   "right-rail-information-density": [".codex-auto/quality/right-rail-information-density-contract.json"],
   "agent-team-orchestration": [".codex-auto/quality/agent-team-orchestration-readiness.json"],
   "anti-stall-contract": [".codex-auto/quality/goal-anti-stall-contract.json"],
@@ -834,6 +835,47 @@ function glassLegibilityContractVerdict(data) {
   };
 }
 
+function uiTrustContractVerdict(data) {
+  const artifactPath = ".codex-auto/quality/ui-trust-contract.json";
+  const sourceFiles = Array.isArray(data?.sourceFiles) ? data.sourceFiles : [];
+  const sourcePaths = sourceFiles.map((entry) => entry?.path).filter(Boolean);
+  const sourceFresh =
+    sourceFiles.length > 0 &&
+    sourceFiles.every(
+      (entry) =>
+        entry?.exists === true &&
+        Number.isFinite(entry?.mtimeMs) &&
+        mtimeMs(entry.path) <= Number(entry.mtimeMs) + 5_000,
+    ) &&
+    mtimeMs(artifactPath) + 5_000 >=
+      Math.max(
+        mtimeMs("scripts/verify-ui-trust-contract.mjs"),
+        mtimeMs("package.json"),
+        ...sourcePaths.map((path) => mtimeMs(path)),
+      );
+  const checks = Array.isArray(data?.checks) ? data.checks : [];
+  const ok =
+    data?.ok === true &&
+    data?.status === "passed" &&
+    data?.provenance?.schema === "aelyris.evidence-provenance/v1" &&
+    checks.length > 0 &&
+    checks.every((check) => check?.ok === true) &&
+    Array.isArray(data?.failedChecks) &&
+    data.failedChecks.length === 0 &&
+    sourceFresh;
+  return {
+    ok,
+    status: ok ? "pass-current-ui-trust-contract" : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "the enforced UI trust contract is current, provenance-bound, and covers pane liveness, input safety, evidence honesty, and keyboard shell trust",
+    reason: ok
+      ? "UI trust contract is fresh, enforce-passing, and provenance-bound"
+      : "UI trust contract is missing, stale, failing, or missing valid provenance",
+    strictProof: ok,
+    semanticFreshness: ok ? "current-ui-trust-contract" : "stale-or-incomplete",
+  };
+}
+
 function rightRailInformationDensityVerdict(data) {
   const artifactPath = ".codex-auto/quality/right-rail-information-density-contract.json";
   const sourceFresh =
@@ -1595,18 +1637,19 @@ function safeStepEnv(id) {
   return env;
 }
 
-function runStep(id, label, script) {
-  const child = spawnSync(process.execPath, [join(ROOT, "scripts", script)], {
+function runStep(id, label, script, args = []) {
+  const command = [script, ...args].join(" ");
+  const child = spawnSync(process.execPath, [join(ROOT, "scripts", script), ...args], {
     cwd: ROOT,
     env: safeStepEnv(id),
     encoding: "utf8",
   });
-  const fallback = cachedStepFallback(id, label, script, child);
+  const fallback = cachedStepFallback(id, label, command, child);
   if (fallback) return fallback;
   return {
     id,
     label,
-    script,
+    script: command,
     ok: child.status === 0,
     exitCode: child.status,
     stdoutTail: outputTail(child.stdout),
@@ -1822,6 +1865,7 @@ const steps = [
     "verify-authenticated-ai-cli-consent-packet.mjs",
   ),
   runStep("glass-legibility", "Glass legibility and opaque text contract", "verify-glass-legibility-contract.mjs"),
+  runStep("ui-trust-contract", "Enforced UI trust contract", "verify-ui-trust-contract.mjs", ["--enforce"]),
   runStep(
     "right-rail-information-density",
     "Right rail essential-first information density contract",
@@ -2225,6 +2269,7 @@ const proofArtifacts = {
     ".codex-auto/quality/glass-legibility-contract.json",
     glassLegibilityContractVerdict,
   ),
+  uiTrustContract: artifactMeta(".codex-auto/quality/ui-trust-contract.json", uiTrustContractVerdict),
   rightRailInformationDensity: artifactMeta(
     ".codex-auto/quality/right-rail-information-density-contract.json",
     rightRailInformationDensityVerdict,
@@ -2339,6 +2384,7 @@ const report = {
     nativeHwndPasteLivePassed: proofArtifacts.nativeHwndPasteLive?.ok === true,
     nativeAiCliPostLaunchChaosPassed: proofArtifacts.nativeAiCliPostLaunchChaos?.ok === true,
     glassLegibilityContractPassed: proofArtifacts.glassLegibilityContract?.ok === true,
+    uiTrustContractPassed: proofArtifacts.uiTrustContract?.ok === true,
     agentTeamOrchestrationPassed: proofArtifacts.agentTeamOrchestration?.ok === true,
     goalAntiStallContractPassed: proofArtifacts.goalAntiStallContract?.ok === true,
     releaseSigningOperatorHandoffPassed: proofArtifacts.releaseSigningOperatorHandoff?.ok === true,

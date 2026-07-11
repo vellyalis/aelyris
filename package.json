@@ -93,7 +93,7 @@
     "verify:native-first:audit": "node scripts/verify-native-first-hybrid-audit.mjs",
     "verify:upper-compat": "node scripts/verify-upper-compat-gates.mjs",
     "verify:ui:mode-shell-refresh": "node scripts/verify-mode-shell-refresh-contract.mjs",
-    "verify:ui:trust": "node scripts/verify-ui-trust-contract.mjs",
+    "verify:ui:trust": "node scripts/verify-ui-trust-contract.mjs --enforce",
     "verify:ui:glass-legibility": "node scripts/verify-glass-legibility-contract.mjs",
     "verify:full-native:audit": "node scripts/verify-full-native-rust-gap-audit.mjs",
     "verify:native:coverage-gap": "node scripts/verify-full-native-rust-gap-audit.mjs",

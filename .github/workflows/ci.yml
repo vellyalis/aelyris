@@ -52,6 +52,69 @@ jobs:
         continue-on-error: true
         run: pnpm exec biome lint src
 
+  rendered-ui-trust:
+    name: Rendered UI trust (Playwright)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install chromium
+      - name: Enforced UI trust source contract
+        run: pnpm verify:ui:trust
+      - name: Start Vite server
+        shell: pwsh
+        run: |
+          $ciDir = Join-Path $env:GITHUB_WORKSPACE ".codex-auto\ci"
+          New-Item -ItemType Directory -Force -Path $ciDir | Out-Null
+          $stdout = Join-Path $ciDir "vite-rendered-ui-trust.out.log"
+          $stderr = Join-Path $ciDir "vite-rendered-ui-trust.err.log"
+          $server = Start-Process -WindowStyle Hidden -FilePath "pnpm.cmd" -ArgumentList @("dev", "--", "--host", "127.0.0.1", "--port", "1420") -WorkingDirectory $env:GITHUB_WORKSPACE -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          $server.Id | Set-Content -Path (Join-Path $ciDir "vite-rendered-ui-trust.pid")
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            try {
+              $response = Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:1420/" -TimeoutSec 3
+              if ($response.StatusCode -eq 200) {
+                $ready = $true
+                break
+              }
+            } catch {
+              Start-Sleep -Seconds 1
+            }
+          }
+          if (-not $ready) {
+            Get-Content -Path $stdout -ErrorAction SilentlyContinue
+            Get-Content -Path $stderr -ErrorAction SilentlyContinue
+            throw "Vite server did not become ready on port 1420"
+          }
+      - name: Rendered layout Playwright spec
+        env:
+          AELYRIS_E2E_PROJECT_PATH: ${{ github.workspace }}
+        run: pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend
+      - name: Upload rendered UI trust artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rendered-ui-trust-${{ github.sha }}
+          path: |
+            .codex-auto/quality/ui-trust-contract.json
+            .codex-auto/visual-qa/**
+            .codex-auto/ci/**
+            test-results/**
+            playwright-report/**
+          if-no-files-found: warn
+
   rust:
     name: Rust (cargo test --lib)
     runs-on: windows-latest
