@@ -35,6 +35,7 @@ interface UseKeyboardShortcutsOptions {
   setSidebarCollapsed?: (v: boolean | ((prev: boolean) => boolean)) => void;
   /** Toggle Zen mode (Ctrl+Shift+M) without disturbing persisted rail widths. */
   setZenMode?: (v: boolean | ((prev: boolean) => boolean)) => void;
+  openDecisionInbox?: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -62,6 +63,7 @@ export function useKeyboardShortcuts({
   setHelpVisible,
   setSidebarCollapsed,
   setZenMode,
+  openDecisionInbox,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -125,6 +127,9 @@ export function useKeyboardShortcuts({
       } else if (e.ctrlKey && e.shiftKey && e.key === "M") {
         e.preventDefault();
         setZenMode?.((v: boolean) => !v);
+      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        openDecisionInbox?.();
       } else if (e.ctrlKey && e.shiftKey && e.key === "`") {
         e.preventDefault();
         openPaneSwitcher?.();
@@ -235,5 +240,6 @@ export function useKeyboardShortcuts({
     setHelpVisible,
     setSidebarCollapsed,
     setZenMode,
+    openDecisionInbox,
   ]);
 }

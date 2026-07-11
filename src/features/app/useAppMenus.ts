@@ -80,6 +80,7 @@ interface UseAppMenusOptions {
   setPrInspectorVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setMergeQueueVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setZenMode?: (v: boolean | ((prev: boolean) => boolean)) => void;
+  openDecisionInbox?: () => void;
 }
 
 export function useAppMenus(opts: UseAppMenusOptions) {
@@ -119,6 +120,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     setPrInspectorVisible,
     setMergeQueueVisible,
     setZenMode,
+    openDecisionInbox,
   } = opts;
 
   // Compare Branch action extracted so the palette entry and the View menu
@@ -615,6 +617,16 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         action: handleOpenFolder,
       },
       {
+        id: "open-decision-inbox",
+        label: "Open Decision Inbox",
+        description: "Focus the first pending human approval",
+        shortcut: "Ctrl+Shift+D",
+        category: "Agent",
+        icon: Shield,
+        keywords: ["approval", "deny", "human gate", "decision"],
+        action: () => openDecisionInbox?.(),
+      },
+      {
         id: "create-watchdog",
         label: "Create Watchdog",
         description: "Auto-respond to agent prompts",
@@ -712,6 +724,7 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       handleStartAgent,
       handleOpenFolder,
       handleCloseFolder,
+      openDecisionInbox,
       compareBranch,
       sendToPaneTarget,
       broadcastToAllPanes,

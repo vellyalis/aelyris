@@ -20,6 +20,10 @@ const sourcePaths = {
   runGraph: "src/features/context/RunGraphPanel.tsx",
   reviewQueue: "src/features/review/ReviewQueuePanel.tsx",
   decisionInbox: "src/shared/lib/decisionInbox.ts",
+  decisionInboxPanel: "src/features/decision-inbox/DecisionInboxPanel.tsx",
+  keyboardShortcuts: "src/shared/hooks/useKeyboardShortcuts.ts",
+  appMenus: "src/features/app/useAppMenus.ts",
+  decisionInboxTests: "src/__tests__/DecisionInboxPanel.test.tsx",
   toast: "src/shared/ui/Toast.tsx",
 };
 
@@ -95,8 +99,18 @@ add(
 add(
   checks,
   "q5-approval-keybinding",
-  /key|keyboard|shortcut/i.test(s.decisionInbox) && /approval/i.test(s.decisionInbox),
-  "Approval decisions expose a keyboard-resolvable contract.",
+  s.keyboardShortcuts.includes("openDecisionInbox") &&
+    s.keyboardShortcuts.includes('e.key.toLowerCase() === "d"') &&
+    s.appMenus.includes('id: "open-decision-inbox"') &&
+    s.appMenus.includes('shortcut: "Ctrl+Shift+D"') &&
+    s.decisionInboxPanel.includes('runDecision("approve")') &&
+    s.decisionInboxPanel.includes('runDecision("deny")') &&
+    s.decisionInboxPanel.includes("event.repeat") &&
+    s.decisionInboxPanel.includes("ArrowDown") &&
+    s.decisionInboxPanel.includes("aria-keyshortcuts") &&
+    s.decisionInboxTests.includes("same latched handler") &&
+    s.decisionInboxTests.includes("ignores repeat keys"),
+  "The global shortcut and palette focus the inbox; item keys reuse the latched decision handler and reject repeats.",
 );
 add(
   checks,

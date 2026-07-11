@@ -183,6 +183,54 @@ describe("DecisionInboxPanel", () => {
     release();
   });
 
+  it("routes keyboard approval through the same latched handler and ignores repeat keys", () => {
+    const onDecide = vi.fn();
+    render(interactiveGate(onDecide));
+    const row = screen.getByRole("article");
+
+    fireEvent.keyDown(row, { key: "a" });
+    fireEvent.keyDown(row, { key: "a", repeat: true });
+    fireEvent.keyDown(row, { key: "d" });
+
+    expect(onDecide).toHaveBeenCalledTimes(1);
+    expect(onDecide).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "int", ptyId: "pty-1" }),
+      "approve",
+    );
+  });
+
+  it("focuses the first pending item on request and moves between items with arrow keys", () => {
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={vi.fn()}
+        focusRequestKey={1}
+        auditEvents={[]}
+        sessions={[
+          session("int-a", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-a",
+            approvalPrompt: "Bash(echo first) · Do you want to proceed?",
+          }),
+          session("int-b", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-b",
+            approvalPrompt: "Bash(echo second) · Do you want to proceed?",
+          }),
+        ]}
+      />,
+    );
+    const rows = screen.getAllByRole("article");
+    expect(document.activeElement).toBe(rows[0]);
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+  });
+
   it("does not render Approve/Deny for watchdog approvals that have no live agent pty", () => {
     const onDecide = vi.fn();
     render(

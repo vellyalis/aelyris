@@ -491,6 +491,7 @@ export function App() {
   const [productMode, setProductMode] = useState<ProductModeId>("terminal");
   const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
   const [rightRailFocusWidget, setRightRailFocusWidget] = useState<string | null>(null);
+  const [decisionInboxFocusRequest, setDecisionInboxFocusRequest] = useState(0);
   const [rightRailRouteConfirmation, setRightRailRouteConfirmation] = useState<RightRailRouteConfirmation | null>(null);
   const [rightRailDestinationPrompt, setRightRailDestinationPrompt] = useState<RightRailDestinationPrompt | null>(null);
   const [rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory] = useState<RightRailEdgeScoreFeedbackEntry[]>(
@@ -2373,6 +2374,12 @@ export function App() {
     onStartInteractiveSession: handleStartInteractiveSession,
   };
 
+  const openDecisionInbox = useCallback(() => {
+    setRightRailMode("command");
+    setRightRailFocusWidget("decision-inbox");
+    setDecisionInboxFocusRequest((request) => request + 1);
+  }, []);
+
   // ── Keyboard shortcuts (extracted hook) ──
 
   useKeyboardShortcuts({
@@ -2400,6 +2407,7 @@ export function App() {
     setHelpVisible,
     setSidebarCollapsed,
     setZenMode,
+    openDecisionInbox,
   });
 
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
@@ -2603,6 +2611,7 @@ export function App() {
     setPrInspectorVisible,
     setMergeQueueVisible,
     setZenMode,
+    openDecisionInbox,
   });
 
   // ── Render ──
@@ -4674,6 +4683,7 @@ export function App() {
                                 onOpenWorkflow={handleOpenDecisionWorkflow}
                                 onOpenAudit={handleOpenDecisionAudit}
                                 onDecide={handleDecideDecision}
+                                focusRequestKey={decisionInboxFocusRequest}
                               />
                             </RightRailWidgetFrame>
                           </Suspense>

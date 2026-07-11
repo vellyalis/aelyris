@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildDecisionInbox,
   type DecisionInboxSummary,
@@ -33,6 +33,7 @@ interface DecisionInboxPanelProps {
    * double-click cannot deliver duplicate keystrokes to the live PTY.
    */
   onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
+  focusRequestKey?: number;
 }
 
 const TYPE_LABELS: Record<HumanDecisionType, string> = {
@@ -71,6 +72,7 @@ export function DecisionInboxPanel({
   onOpenWorkflow,
   onOpenAudit,
   onDecide,
+  focusRequestKey = 0,
 }: DecisionInboxPanelProps) {
   const inbox = useMemo<DecisionInboxSummary>(
     () => buildDecisionInbox({ sessions, auditEvents, workflows }),
@@ -105,7 +107,7 @@ export function DecisionInboxPanel({
 
           {pending.length > 0 && (
             <section className={styles.queue} aria-label="Pending human decisions">
-              {pending.map((item) => (
+              {pending.map((item, index) => (
                 <DecisionRow
                   key={item.id}
                   item={item}
@@ -114,6 +116,7 @@ export function DecisionInboxPanel({
                   onOpenWorkflow={onOpenWorkflow}
                   onOpenAudit={onOpenAudit}
                   onDecide={onDecide}
+                  focusRequestKey={index === 0 ? focusRequestKey : 0}
                 />
               ))}
             </section>
@@ -152,6 +155,7 @@ function DecisionRow({
   onOpenWorkflow,
   onOpenAudit,
   onDecide,
+  focusRequestKey = 0,
 }: {
   item: HumanDecisionItem;
   active: boolean;
@@ -160,7 +164,9 @@ function DecisionRow({
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
   onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
+  focusRequestKey?: number;
 }) {
+  const rowRef = useRef<HTMLElement>(null);
   const canFocus = Boolean(item.sessionId);
   // Approve/Deny only for a pending agent gate that is keystroke-resolvable:
   // it must carry a live agent PTY id. Watchdog/blocked items without a ptyId
@@ -189,6 +195,29 @@ function DecisionRow({
         setDeciding(null); // delivery failed — allow a retry
       });
   };
+  useEffect(() => {
+    if (focusRequestKey > 0) rowRef.current?.focus();
+  }, [focusRequestKey]);
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const rows = Array.from(
+        rowRef.current?.parentElement?.querySelectorAll<HTMLElement>("[data-decision-row='pending']") ?? [],
+      );
+      const index = rows.indexOf(rowRef.current as HTMLElement);
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      rows[(index + delta + rows.length) % rows.length]?.focus();
+      return;
+    }
+    if (event.repeat || !canDecide) return;
+    if (event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      runDecision("approve");
+    } else if (event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      runDecision("deny");
+    }
+  };
   const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];
   const visibleEvidence = item.evidence.slice(0, compact ? 1 : 3);
@@ -212,6 +241,11 @@ function DecisionRow({
 
   return (
     <article
+      ref={rowRef}
+      tabIndex={item.status === "pending" ? 0 : -1}
+      onKeyDown={handleKeyDown}
+      aria-keyshortcuts={canDecide ? "A D ArrowUp ArrowDown" : "ArrowUp ArrowDown"}
+      data-decision-row={item.status}
       className={styles.item}
       data-status={item.status}
       data-risk={item.risk}
@@ -279,6 +313,7 @@ function DecisionRow({
               aria-disabled={deciding !== null}
               onClick={() => runDecision("approve")}
               aria-label={`Approve ${item.title}`}
+              aria-keyshortcuts="A"
               title={`Approve ${item.title}`}
             >
               <Check size={11} aria-hidden="true" />
@@ -292,6 +327,7 @@ function DecisionRow({
               aria-disabled={deciding !== null}
               onClick={() => runDecision("deny")}
               aria-label={`Deny ${item.title}`}
+              aria-keyshortcuts="D"
               title={`Deny ${item.title}`}
             >
               <X size={11} aria-hidden="true" />
