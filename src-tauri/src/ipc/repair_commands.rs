@@ -72,6 +72,18 @@ pub fn trigger_repair_manual(
     Ok(mgr.trigger(ctx, &PathBuf::from(repo_path)))
 }
 
+#[tauri::command]
+pub fn cancel_repair_job(app: AppHandle, job_id: String) -> Result<(), String> {
+    let state = app
+        .try_state::<Arc<Mutex<AutoRepairManager>>>()
+        .ok_or_else(|| "AutoRepairManager state missing".to_string())?;
+    let mut mgr = state
+        .inner()
+        .lock()
+        .map_err(|_| "auto-repair mutex poisoned".to_string())?;
+    mgr.cancel(&job_id)
+}
+
 /// Return the current auto-repair config. Reads from the in-memory managed
 /// state — falls back to disk if the state is missing (tests / early boot).
 #[tauri::command]

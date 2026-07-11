@@ -13,7 +13,9 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -36,8 +38,20 @@ pub enum RepairPhase {
     CreatingWorktree,
     RunningAgent,
     RunningTests,
+    Cancelling,
     Succeeded,
     Failed(String),
+    TimedOut(String),
+    Cancelled(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RepairOutcome {
+    Succeeded { branch: String },
+    Failed { code: String, message: String },
+    TimedOut { stage: String, message: String },
+    Cancelled { stage: String, message: String },
 }
 
 /// Captured error context from PTY output.
@@ -53,6 +67,7 @@ pub struct RepairNotification {
     pub job_id: String,
     pub message: String,
     pub is_success: bool,
+    pub outcome: RepairOutcome,
 }
 
 /// Read-only snapshot of a job (for UI display).
@@ -81,11 +96,23 @@ struct RepairJob {
     error_line: String,
     repo_path: String,
     started_at: Instant,
+    cancellation: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
 }
 
 enum WorkerMsg {
     PhaseChanged(String, RepairPhase),
-    Done(String, RepairNotification),
+    Done(String, RepairOutcome),
+}
+
+fn is_terminal(phase: &RepairPhase) -> bool {
+    matches!(
+        phase,
+        RepairPhase::Succeeded
+            | RepairPhase::Failed(_)
+            | RepairPhase::TimedOut(_)
+            | RepairPhase::Cancelled(_)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -133,11 +160,7 @@ impl AutoRepairManager {
         }
 
         // Capacity: limit concurrent active jobs
-        let active = self
-            .jobs
-            .iter()
-            .filter(|j| !matches!(j.phase, RepairPhase::Succeeded | RepairPhase::Failed(_)))
-            .count();
+        let active = self.jobs.iter().filter(|j| !is_terminal(&j.phase)).count();
         if active >= MAX_CONCURRENT_JOBS {
             log::warn!(
                 "auto-repair at capacity ({}/{}), dropping new trigger: {}",
@@ -160,6 +183,7 @@ impl AutoRepairManager {
             error.matched_line.chars().take(80).collect::<String>(),
         );
 
+        let cancellation = Arc::new(AtomicBool::new(false));
         self.jobs.push(RepairJob {
             id: id.clone(),
             phase: RepairPhase::CreatingWorktree,
@@ -167,6 +191,8 @@ impl AutoRepairManager {
             error_line: error.matched_line.clone(),
             repo_path: repo_path.to_string_lossy().to_string(),
             started_at: now,
+            cancellation: cancellation.clone(),
+            worker: None,
         });
 
         // Launch background worker
@@ -175,12 +201,25 @@ impl AutoRepairManager {
         let job_id = id.clone();
         let error_clone = error;
         let branch_clone = branch;
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name(format!("auto-repair-{}", job_id))
             .spawn(move || {
-                repair_worker(tx, job_id, repo, branch_clone, error_clone);
-            })
-            .ok();
+                repair_worker(tx, job_id, repo, branch_clone, error_clone, cancellation);
+            });
+        match spawned {
+            Ok(worker) => self.jobs.last_mut().expect("job inserted").worker = Some(worker),
+            Err(error) => {
+                self.jobs.last_mut().expect("job inserted").phase =
+                    RepairPhase::Failed(error.to_string());
+                let _ = self.tx.send(WorkerMsg::Done(
+                    id.clone(),
+                    RepairOutcome::Failed {
+                        code: "worker-spawn".into(),
+                        message: format!("Auto-repair worker could not start: {error}"),
+                    },
+                ));
+            }
+        }
 
         Some(id)
     }
@@ -198,12 +237,20 @@ impl AutoRepairManager {
                         job.phase = phase;
                     }
                 }
-                WorkerMsg::Done(job_id, notif) => {
+                WorkerMsg::Done(job_id, outcome) => {
+                    let notif = notification(&job_id, outcome.clone());
                     if let Some(job) = self.jobs.iter_mut().find(|j| j.id == job_id) {
-                        job.phase = if notif.is_success {
-                            RepairPhase::Succeeded
-                        } else {
-                            RepairPhase::Failed(notif.message.clone())
+                        job.phase = match &outcome {
+                            RepairOutcome::Succeeded { .. } => RepairPhase::Succeeded,
+                            RepairOutcome::Failed { message, .. } => {
+                                RepairPhase::Failed(message.clone())
+                            }
+                            RepairOutcome::TimedOut { message, .. } => {
+                                RepairPhase::TimedOut(message.clone())
+                            }
+                            RepairOutcome::Cancelled { message, .. } => {
+                                RepairPhase::Cancelled(message.clone())
+                            }
                         };
                     }
                     if notif.is_success {
@@ -216,18 +263,38 @@ impl AutoRepairManager {
             }
         }
 
+        for job in &mut self.jobs {
+            if job.worker.as_ref().is_some_and(JoinHandle::is_finished) {
+                if let Some(worker) = job.worker.take() {
+                    let _ = worker.join();
+                }
+            }
+        }
+
         // Prune completed jobs older than 5 minutes
         let cutoff = Instant::now() - Duration::from_secs(300);
-        self.jobs.retain(|j| {
-            j.started_at > cutoff
-                || !matches!(j.phase, RepairPhase::Succeeded | RepairPhase::Failed(_))
-        });
+        self.jobs
+            .retain(|j| j.started_at > cutoff || !is_terminal(&j.phase) || j.worker.is_some());
 
         // Prune stale debounce entries
         let debounce_cutoff = Instant::now() - Duration::from_secs(DEBOUNCE_SECS * 2);
         self.debounce.retain(|_, ts| *ts > debounce_cutoff);
 
         notifications
+    }
+
+    pub fn cancel(&mut self, job_id: &str) -> Result<(), String> {
+        let job = self
+            .jobs
+            .iter_mut()
+            .find(|job| job.id == job_id)
+            .ok_or_else(|| format!("repair job not found: {job_id}"))?;
+        if is_terminal(&job.phase) {
+            return Err(format!("repair job is already terminal: {job_id}"));
+        }
+        job.cancellation.store(true, Ordering::Release);
+        job.phase = RepairPhase::Cancelling;
+        Ok(())
     }
 
     /// Snapshot of all active/recent jobs (for UI display).
@@ -247,10 +314,36 @@ impl AutoRepairManager {
 
     /// Number of currently active (non-terminal) jobs.
     pub fn active_count(&self) -> usize {
-        self.jobs
-            .iter()
-            .filter(|j| !matches!(j.phase, RepairPhase::Succeeded | RepairPhase::Failed(_)))
-            .count()
+        self.jobs.iter().filter(|j| !is_terminal(&j.phase)).count()
+    }
+}
+
+impl Drop for AutoRepairManager {
+    fn drop(&mut self) {
+        for job in &self.jobs {
+            job.cancellation.store(true, Ordering::Release);
+        }
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline
+            && self
+                .jobs
+                .iter()
+                .any(|j| j.worker.as_ref().is_some_and(|w| !w.is_finished()))
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for job in &mut self.jobs {
+            if job.worker.as_ref().is_some_and(JoinHandle::is_finished) {
+                if let Some(worker) = job.worker.take() {
+                    let _ = worker.join();
+                }
+            } else if job.worker.is_some() {
+                log::warn!(
+                    "auto-repair worker did not stop before manager drop: {}",
+                    job.id
+                );
+            }
+        }
     }
 }
 
@@ -273,26 +366,28 @@ fn repair_worker(
     repo_path: PathBuf,
     branch: String,
     error: ErrorContext,
+    cancellation: Arc<AtomicBool>,
 ) {
-    // Step 1: Create worktree
-    let worktree_path = match crate::git::create_worktree(&repo_path.to_string_lossy(), &branch) {
-        Ok(info) => PathBuf::from(&info.path),
-        Err(e) => {
-            let _ = tx.send(WorkerMsg::Done(
-                job_id,
-                RepairNotification {
-                    job_id: String::new(),
-                    message: format!("Worktree creation failed: {}", e),
-                    is_success: false,
-                },
-            ));
-            return;
-        }
+    let outcome = repair_worker_inner(&tx, &job_id, &repo_path, &branch, &error, &cancellation);
+    let _ = tx.send(WorkerMsg::Done(job_id, outcome));
+}
+
+fn repair_worker_inner(
+    tx: &mpsc::Sender<WorkerMsg>,
+    job_id: &str,
+    repo_path: &Path,
+    branch: &str,
+    error: &ErrorContext,
+    cancellation: &Arc<AtomicBool>,
+) -> RepairOutcome {
+    let worktree_path = match create_worktree_bounded(repo_path, branch, cancellation) {
+        Ok(path) => path,
+        Err(outcome) => return outcome,
     };
 
     // Step 2: Run AI agent
     let _ = tx.send(WorkerMsg::PhaseChanged(
-        job_id.clone(),
+        job_id.to_string(),
         RepairPhase::RunningAgent,
     ));
 
@@ -302,23 +397,14 @@ fn repair_worker(
     agent_command
         .args(["-p", &prompt, "--output-format", "text"])
         .current_dir(&worktree_path);
-    let agent_result = run_bounded_command(&mut agent_command, AGENT_TIMEOUT);
-    let agent_ok = command_passed(agent_result.as_ref().ok());
-
-    if !agent_ok {
-        cleanup_worktree(&repo_path, &branch);
-        let _ = tx.send(WorkerMsg::Done(
-            job_id.clone(),
-            RepairNotification {
-                job_id: job_id.clone(),
-                message: format!(
-                    "Auto-repair: agent could not fix the error ({})",
-                    command_failure_kind(agent_result.as_ref())
-                ),
-                is_success: false,
-            },
-        ));
-        return;
+    let agent_result = run_bounded_command(
+        &mut agent_command,
+        AGENT_TIMEOUT,
+        Some(cancellation.clone()),
+    );
+    if !command_passed(agent_result.as_ref().ok()) {
+        cleanup_worktree(repo_path, branch);
+        return command_outcome("agent", agent_result.as_ref());
     }
 
     // Step 3: Check if agent made any changes
@@ -326,7 +412,11 @@ fn repair_worker(
     status_command
         .args(["status", "--porcelain"])
         .current_dir(&worktree_path);
-    let has_changes = run_bounded_command(&mut status_command, GIT_TIMEOUT)
+    let status_result =
+        run_bounded_command(&mut status_command, GIT_TIMEOUT, Some(cancellation.clone()));
+    let has_changes = status_result
+        .as_ref()
+        .map_err(|error| error)
         .map(|out| {
             if !command_passed(Some(&out)) {
                 return false;
@@ -337,100 +427,114 @@ fn repair_worker(
         .unwrap_or(false);
 
     if !has_changes {
-        cleanup_worktree(&repo_path, &branch);
-        let _ = tx.send(WorkerMsg::Done(
-            job_id.clone(),
-            RepairNotification {
-                job_id: job_id.clone(),
-                message: "Auto-repair: agent found no changes to make".into(),
-                is_success: false,
-            },
-        ));
-        return;
+        cleanup_worktree(repo_path, branch);
+        if !command_passed(status_result.as_ref().ok()) {
+            return command_outcome("git-status", status_result.as_ref());
+        }
+        return RepairOutcome::Failed {
+            code: "no-changes".into(),
+            message: "Auto-repair: agent found no changes to make".into(),
+        };
     }
 
     // Commit the changes
     let mut add_command = crate::process::hidden_command("git");
     add_command.args(["add", "-A"]).current_dir(&worktree_path);
-    let add_result = run_bounded_command(&mut add_command, GIT_TIMEOUT);
+    let add_result = run_bounded_command(&mut add_command, GIT_TIMEOUT, Some(cancellation.clone()));
     if !command_passed(add_result.as_ref().ok()) {
-        cleanup_worktree(&repo_path, &branch);
-        let _ = tx.send(WorkerMsg::Done(
-            job_id.clone(),
-            RepairNotification {
-                job_id: job_id.clone(),
-                message: format!(
-                    "Auto-repair: git add failed ({})",
-                    command_failure_kind(add_result.as_ref())
-                ),
-                is_success: false,
-            },
-        ));
-        return;
+        cleanup_worktree(repo_path, branch);
+        return command_outcome("git-add", add_result.as_ref());
     }
     let commit_msg = format!("fix(auto-repair): {}", truncate(&error.matched_line, 72));
     let mut commit_command = crate::process::hidden_command("git");
     commit_command
         .args(["commit", "-m", &commit_msg])
         .current_dir(&worktree_path);
-    let commit_result = run_bounded_command(&mut commit_command, GIT_TIMEOUT);
+    let commit_result =
+        run_bounded_command(&mut commit_command, GIT_TIMEOUT, Some(cancellation.clone()));
     if !command_passed(commit_result.as_ref().ok()) {
-        cleanup_worktree(&repo_path, &branch);
-        let _ = tx.send(WorkerMsg::Done(
-            job_id.clone(),
-            RepairNotification {
-                job_id: job_id.clone(),
-                message: format!(
-                    "Auto-repair: git commit failed ({})",
-                    command_failure_kind(commit_result.as_ref())
-                ),
-                is_success: false,
-            },
-        ));
-        return;
+        cleanup_worktree(repo_path, branch);
+        return command_outcome("git-commit", commit_result.as_ref());
     }
 
     // Step 4: Run tests
     let _ = tx.send(WorkerMsg::PhaseChanged(
-        job_id.clone(),
+        job_id.to_string(),
         RepairPhase::RunningTests,
     ));
 
     let test_passed = match detect_test_command(&worktree_path) {
-        Some(cmd) => run_test_command(&worktree_path, &cmd),
-        None => true, // No test command found — assume OK
+        Some(cmd) => {
+            let mut command = crate::process::hidden_command(&cmd.program);
+            command.args(&cmd.args).current_dir(&worktree_path);
+            let result =
+                run_bounded_command(&mut command, TEST_TIMEOUT, Some(cancellation.clone()));
+            if !command_passed(result.as_ref().ok()) {
+                cleanup_worktree(repo_path, branch);
+                return command_outcome("tests", result.as_ref());
+            }
+            true
+        }
+        None => true,
     };
 
     if test_passed {
-        let _ = tx.send(WorkerMsg::Done(
-            job_id.clone(),
-            RepairNotification {
-                job_id: job_id.clone(),
-                message: format!(
-                    "Auto-repair succeeded! Branch: {}. Review and merge.",
-                    branch
-                ),
-                is_success: true,
-            },
-        ));
+        RepairOutcome::Succeeded {
+            branch: branch.to_string(),
+        }
     } else {
-        let _ = tx.send(WorkerMsg::Done(
-            job_id.clone(),
-            RepairNotification {
-                job_id: job_id.clone(),
-                message: format!(
-                    "Auto-repair: fix applied but tests failed. Branch: {}",
-                    branch
-                ),
-                is_success: false,
-            },
-        ));
+        cleanup_worktree(repo_path, branch);
+        RepairOutcome::Failed {
+            code: "tests-failed".into(),
+            message: format!("Auto-repair: fix applied but tests failed. Branch: {branch}"),
+        }
     }
 }
 
 /// Clean up a worktree on failure (best-effort).
 fn cleanup_worktree(repo_path: &Path, branch: &str) {
-    let _ = crate::git::remove_worktree(&repo_path.to_string_lossy(), branch, true);
+    let path = crate::git::predict_worktree_path(&repo_path.to_string_lossy(), branch);
+    for args in [
+        vec![
+            "worktree",
+            "remove",
+            path.to_string_lossy().as_ref(),
+            "--force",
+        ],
+        vec!["worktree", "prune"],
+    ] {
+        let mut command = crate::process::hidden_command("git");
+        command.args(args).current_dir(repo_path);
+        let _ = run_bounded_command(&mut command, GIT_TIMEOUT, None);
+    }
+    let mut command = crate::process::hidden_command("git");
+    command
+        .args(["branch", "-D", branch])
+        .current_dir(repo_path);
+    let _ = run_bounded_command(&mut command, GIT_TIMEOUT, None);
+}
+
+fn create_worktree_bounded(
+    repo_path: &Path,
+    branch: &str,
+    cancellation: &Arc<AtomicBool>,
+) -> Result<PathBuf, RepairOutcome> {
+    crate::git::validate_branch_name(branch).map_err(|message| RepairOutcome::Failed {
+        code: "invalid-branch".into(),
+        message,
+    })?;
+    let path = crate::git::predict_worktree_path(&repo_path.to_string_lossy(), branch);
+    let path_text = path.to_string_lossy().to_string();
+    let mut command = crate::process::hidden_command("git");
+    command
+        .args(["worktree", "add", &path_text, "-b", branch])
+        .current_dir(repo_path);
+    let result = run_bounded_command(&mut command, GIT_TIMEOUT, Some(cancellation.clone()));
+    if command_passed(result.as_ref().ok()) {
+        Ok(path)
+    } else {
+        Err(command_outcome("create-worktree", result.as_ref()))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -491,29 +595,69 @@ pub(crate) struct TestCommand {
     pub args: Vec<String>,
 }
 
-/// Run a test command and return whether it passed.
-fn run_test_command(cwd: &Path, cmd: &TestCommand) -> bool {
-    let mut command = crate::process::hidden_command(&cmd.program);
-    command.args(&cmd.args).current_dir(cwd);
-    command_passed(
-        run_bounded_command(&mut command, TEST_TIMEOUT)
-            .as_ref()
-            .ok(),
-    )
-}
-
 fn run_bounded_command(
     command: &mut std::process::Command,
     deadline: Duration,
+    cancellation: Option<Arc<AtomicBool>>,
 ) -> std::io::Result<crate::process::SupervisedCommandOutput> {
     crate::process::run_supervised(
         command,
         &crate::process::SupervisedCommandConfig {
             deadline,
             output_limit_bytes: COMMAND_OUTPUT_LIMIT,
-            cancellation: None,
+            cancellation,
         },
     )
+}
+
+fn command_outcome(
+    stage: &str,
+    result: Result<&crate::process::SupervisedCommandOutput, &std::io::Error>,
+) -> RepairOutcome {
+    let message = format!(
+        "Auto-repair {stage} failed ({})",
+        command_failure_kind(result)
+    );
+    match result {
+        Ok(output) if output.status == crate::process::SupervisedCommandStatus::TimedOut => {
+            RepairOutcome::TimedOut {
+                stage: stage.into(),
+                message,
+            }
+        }
+        Ok(output) if output.status == crate::process::SupervisedCommandStatus::Cancelled => {
+            RepairOutcome::Cancelled {
+                stage: stage.into(),
+                message,
+            }
+        }
+        Err(_) => RepairOutcome::Failed {
+            code: "spawn-error".into(),
+            message,
+        },
+        _ => RepairOutcome::Failed {
+            code: "nonzero-exit".into(),
+            message,
+        },
+    }
+}
+
+fn notification(job_id: &str, outcome: RepairOutcome) -> RepairNotification {
+    let (message, is_success) = match &outcome {
+        RepairOutcome::Succeeded { branch } => (
+            format!("Auto-repair succeeded! Branch: {branch}. Review and merge."),
+            true,
+        ),
+        RepairOutcome::Failed { message, .. }
+        | RepairOutcome::TimedOut { message, .. }
+        | RepairOutcome::Cancelled { message, .. } => (message.clone(), false),
+    };
+    RepairNotification {
+        job_id: job_id.into(),
+        message,
+        is_success,
+        outcome,
+    }
 }
 
 fn command_passed(output: Option<&crate::process::SupervisedCommandOutput>) -> bool {
@@ -741,6 +885,60 @@ mod tests {
     fn test_manager_jobs_snapshot() {
         let mgr = AutoRepairManager::new();
         assert!(mgr.jobs().is_empty());
+    }
+
+    #[test]
+    fn test_supervisor_cancellation_is_typed() {
+        let cancellation = Arc::new(AtomicBool::new(true));
+        let mut command = crate::process::hidden_command("cmd.exe");
+        command.args(["/C", "ping -n 30 127.0.0.1 >NUL"]);
+        let result = run_bounded_command(&mut command, Duration::from_secs(5), Some(cancellation));
+        assert!(matches!(
+            command_outcome("test", result.as_ref()),
+            RepairOutcome::Cancelled { .. }
+        ));
+    }
+
+    #[test]
+    fn test_supervisor_timeout_is_typed() {
+        let mut command = crate::process::hidden_command("cmd.exe");
+        command.args(["/C", "ping -n 30 127.0.0.1 >NUL"]);
+        let result = run_bounded_command(&mut command, Duration::from_millis(50), None);
+        assert!(matches!(
+            command_outcome("test", result.as_ref()),
+            RepairOutcome::TimedOut { .. }
+        ));
+    }
+
+    #[test]
+    fn test_cancel_sets_owned_token_and_phase() {
+        let mut mgr = AutoRepairManager::new();
+        let cancellation = Arc::new(AtomicBool::new(false));
+        mgr.jobs.push(RepairJob {
+            id: "repair-test".into(),
+            phase: RepairPhase::RunningAgent,
+            branch: "fix/test".into(),
+            error_line: "error".into(),
+            repo_path: String::new(),
+            started_at: Instant::now(),
+            cancellation: cancellation.clone(),
+            worker: None,
+        });
+        mgr.cancel("repair-test").unwrap();
+        assert!(cancellation.load(Ordering::Acquire));
+        assert_eq!(mgr.jobs[0].phase, RepairPhase::Cancelling);
+        assert!(mgr.cancel("missing").is_err());
+    }
+
+    #[test]
+    fn test_notification_preserves_typed_outcome() {
+        let outcome = RepairOutcome::TimedOut {
+            stage: "tests".into(),
+            message: "deadline".into(),
+        };
+        let notification = notification("repair-1", outcome.clone());
+        assert!(!notification.is_success);
+        assert_eq!(notification.outcome, outcome);
     }
 
     /// Helper: create a temp dir with a marker file.

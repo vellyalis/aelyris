@@ -182,9 +182,8 @@ pub fn run() {
     let t0 = std::time::Instant::now();
     log::info!("Aelyris starting...");
     let (lsp_tx, lsp_rx) = std::sync::mpsc::channel::<lsp::LspMessage>();
-    let startup_reconciliation = std::sync::Arc::new(
-        startup_reconciliation::StartupReconciliationState::new(),
-    );
+    let startup_reconciliation =
+        std::sync::Arc::new(startup_reconciliation::StartupReconciliationState::new());
     let pty_manager = PtyManager::new()
         .with_env_scrollback_store()
         .with_startup_reconciliation(startup_reconciliation.clone());
@@ -858,7 +857,7 @@ pub fn run() {
                         for job in &jobs {
                             let is_terminal = matches!(
                                 job.phase,
-                                RepairPhase::Succeeded | RepairPhase::Failed(_)
+                                RepairPhase::Succeeded | RepairPhase::Failed(_) | RepairPhase::TimedOut(_) | RepairPhase::Cancelled(_)
                             );
 
                             // Register once the worktree exists on disk (fs
@@ -910,7 +909,7 @@ pub fn run() {
                                     j.id.clone(),
                                     matches!(
                                         j.phase,
-                                        RepairPhase::Succeeded | RepairPhase::Failed(_)
+                                        RepairPhase::Succeeded | RepairPhase::Failed(_) | RepairPhase::TimedOut(_) | RepairPhase::Cancelled(_)
                                     ),
                                 )
                             })
@@ -1304,6 +1303,7 @@ pub fn run() {
             // Auto-repair pipeline (Phase 3A-1)
             ipc::list_repair_jobs,
             ipc::trigger_repair_manual,
+            ipc::cancel_repair_job,
             ipc::get_auto_repair_config,
             ipc::set_auto_repair_config,
             // Fish-style command suggestion (Phase 3A-2)

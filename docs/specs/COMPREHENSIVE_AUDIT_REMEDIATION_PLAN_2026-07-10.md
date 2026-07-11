@@ -583,6 +583,27 @@ Acceptance evidence:
 The artifact reports `phaseComplete=false`; A5.7-A5.8 remain. A5.7 owns watchdog job
 cancellation, typed terminal outcomes, worker handles, and cleanup ordering.
 
+### A5.7 Complete - Watchdog Supervised Job Lifecycle
+
+Each repair job now owns a cancellation token and worker handle. All agent, Git,
+test, worktree-create, and cleanup subprocesses are supervised with deadlines and
+output caps. Cancellation is exposed through typed IPC, while spawn failure,
+nonzero exit, timeout, and cancellation settle as distinct terminal outcomes.
+Manager shutdown requests cancellation and performs a bounded join pass; completed
+jobs are not pruned while their worker remains owned.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:watchdog-lifecycle`
+- `.codex-auto/quality/a5-watchdog-lifecycle.json`
+- watchdog lifecycle matrix: 24/24 PASS
+- cancellation and timeout preserve typed terminal outcomes
+- worker spawn failure cannot strand an active job
+- failed/cancelled worktrees use bounded ordered cleanup
+
+The artifact reports `phaseComplete=false`; A5.8 owns combined fresh acceptance for
+the command, Proofbook, PTY, TaskGraph, LSP, and watchdog slices.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.
