@@ -645,6 +645,36 @@ Required work:
   baseline after each phase,
 - remove dead duplicate managers and unowned infrastructure.
 
+### A6.1 Complete - Ownership Hotspot and Ratchet Inventory
+
+The authoritative right-rail model path is
+`src/features/right-rail/rightRailModel.tsx`; the older `src/shared/lib` path is stale.
+`pnpm verify:a6:modularity-inventory` freezes current line-count ceilings for all six
+owners and fails on growth. These ceilings are debt baselines, not desired targets;
+every implementation slice must lower its owned ceiling in the same commit.
+
+Frozen owner order:
+
+1. A6.2: `App.tsx` and right-rail projection/selectors.
+2. A6.3: Tauri IPC adapter, typed facade, event registry, and handler classification.
+3. A6.4: MCP catalog/schema/governance/domain dispatch.
+4. A6.5: SQLite domain repositories behind the single Database/migration owner.
+5. A6.6: native proof CLI router and proof-domain modules.
+6. A6.7: callsite-proven duplicate/unowned infrastructure removal.
+7. A6.8: combined ratchet and regression acceptance; retire advisory mode.
+
+No unregistered IPC handler is deletion-authorized by inventory alone. A6.3 must prove
+registration, frontend invoke, MCP/HTTP reuse, tests, and compatibility aliases before
+classifying a handler dead.
+
+Acceptance evidence:
+
+- `pnpm verify:a6:modularity-inventory`
+- `.codex-auto/quality/a6-modularity-inventory.json`
+- six owner baselines reject growth
+- dependency-first A6.2-A6.8 contract is frozen
+- artifact reports `sliceComplete=true`, `phaseComplete=false`
+
 ## A7 - Evidence-Backed Product Completion
 
 Objective: complete one useful mission without inferred completion truth.
