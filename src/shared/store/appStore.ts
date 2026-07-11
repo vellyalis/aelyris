@@ -30,7 +30,6 @@ import {
 } from "../themes/moods";
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
-export type SidebarSection = "files" | "tasks" | "agents" | "tools";
 export type ProductModeId = "terminal" | "agents" | "workspace" | "review" | "git" | "context" | "history" | "settings";
 
 interface WorkspaceNavigationState {
@@ -622,9 +621,6 @@ interface AppState {
   rootProjectPath: string | null;
   setRootProjectPath: (path: string | null) => void;
 
-  // Sidebar
-  sidebarSection: SidebarSection;
-  setSidebarSection: (section: SidebarSection) => void;
   /** Whether the left sidebar (FileTree / Kanban / SCM) is hidden.
    *  Toggles via Ctrl+B and the chrome cluster's panel button.
    *  Persisted to localStorage so the choice survives reload. */
@@ -1240,9 +1236,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Sidebar
-  sidebarSection: "files" as SidebarSection,
-  setSidebarSection: (section: SidebarSection) => set({ sidebarSection: section }),
   sidebarCollapsed: (() => {
     try {
       return localStorage.getItem("aelyris:sidebarCollapsed") === "1";

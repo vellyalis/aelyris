@@ -287,8 +287,8 @@ aelyris/
 | Ctrl+B | toggle sidebar |
 | Ctrl+, | settings |
 | Ctrl+S | save editor file |
-| Ctrl+Shift+H | split horizontal |
-| Ctrl+Shift+V | split vertical |
+| Ctrl+B then `%` | split pane right |
+| Ctrl+B then `"` | split pane down |
 | Ctrl+Space | accept ghost text |
 | Escape | editor/search/diff -> terminal focus |
 

@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { loadRecentCommands, recordRecentCommand } from "../../shared/lib/recentCommands";
+import { formatShortcutForAria } from "../../shared/lib/shortcutRegistry";
 import styles from "./CommandPalette.module.css";
 
 export type CommandCategory = "Terminal" | "Agent" | "File" | "View" | "History" | "Help";
@@ -177,7 +178,7 @@ function CommandRow({ cmd, onRun }: CommandRowProps) {
       value={value}
       className={styles.item}
       aria-label={formatCommandLabel(cmd)}
-      aria-keyshortcuts={cmd.shortcut ? formatAriaShortcut(cmd.shortcut) : undefined}
+      aria-keyshortcuts={cmd.shortcut ? formatShortcutForAria(cmd.shortcut) : undefined}
       onSelect={() => onRun(cmd)}
     >
       <span className={styles.itemIcon} aria-hidden="true">
@@ -194,16 +195,4 @@ function CommandRow({ cmd, onRun }: CommandRowProps) {
 
 function formatCommandLabel(cmd: CommandItem): string {
   return cmd.shortcut ? `${cmd.label}, ${cmd.shortcut}` : cmd.label;
-}
-
-function formatAriaShortcut(shortcut: string): string {
-  return shortcut
-    .split("+")
-    .map((part) => {
-      const key = part.trim();
-      if (key.toLowerCase() === "ctrl") return "Control";
-      if (key.toLowerCase() === "cmd") return "Meta";
-      return key.length === 1 ? key.toUpperCase() : key;
-    })
-    .join("+");
 }

@@ -12,6 +12,12 @@ const menuSources = import.meta.glob("../features/app/useAppMenus.ts", {
   eager: true,
 }) as Record<string, string>;
 
+const registrySources = import.meta.glob("../shared/lib/shortcutRegistry.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 function getOnlySource(sourceMap: Record<string, string>): string {
   const entries = Object.entries(sourceMap);
   expect(entries.length).toBe(1);
@@ -21,8 +27,8 @@ function getOnlySource(sourceMap: Record<string, string>): string {
 describe("pane switcher keyboard shortcut", () => {
   it("opens the pane switcher before the Ctrl+` terminal focus fallback", () => {
     const src = getOnlySource(sources);
-    const paneSwitcher = src.indexOf('e.ctrlKey && e.shiftKey && e.key === "`"');
-    const terminalFocus = src.indexOf('e.ctrlKey && e.key === "`"');
+    const paneSwitcher = src.indexOf("matchesShortcut(e, SHORTCUTS.switchTerminalPane)");
+    const terminalFocus = src.indexOf("matchesShortcut(e, SHORTCUTS.focusTerminal)");
 
     expect(paneSwitcher).toBeGreaterThan(-1);
     expect(terminalFocus).toBeGreaterThan(-1);
@@ -37,32 +43,34 @@ describe("pane switcher keyboard shortcut", () => {
 
   it("advertises the same shortcut in the terminal command surface", () => {
     const src = getOnlySource(menuSources);
+    const registry = getOnlySource(registrySources);
 
     expect(src).toContain('id: "switch-terminal-pane"');
-    expect(src).toContain('shortcut: "Ctrl+Shift+`"');
+    expect(src).toContain('shortcut: shortcutFor("switchTerminalPane")');
+    expect(registry).toContain('display: "Ctrl+Shift+`"');
   });
 
   it("exposes mux-style next and previous pane cycling", () => {
     const shortcutSrc = getOnlySource(sources);
     const menuSrc = getOnlySource(menuSources);
 
-    expect(shortcutSrc).toContain('e.ctrlKey && e.shiftKey && e.key === "]"');
+    expect(shortcutSrc).toContain("matchesShortcut(e, SHORTCUTS.focusNextPane)");
     expect(shortcutSrc).toContain("void focusNextPane?.();");
-    expect(shortcutSrc).toContain('e.ctrlKey && e.shiftKey && e.key === "["');
+    expect(shortcutSrc).toContain("matchesShortcut(e, SHORTCUTS.focusPreviousPane)");
     expect(shortcutSrc).toContain("void focusPreviousPane?.();");
     expect(menuSrc).toContain('id: "focus-next-terminal-pane"');
-    expect(menuSrc).toContain('shortcut: "Ctrl+Shift+]"');
+    expect(menuSrc).toContain('shortcut: shortcutFor("focusNextPane")');
     expect(menuSrc).toContain('id: "focus-previous-terminal-pane"');
-    expect(menuSrc).toContain('shortcut: "Ctrl+Shift+["');
+    expect(menuSrc).toContain('shortcut: shortcutFor("focusPreviousPane")');
   });
 
   it("exposes a non-conflicting Zen mode shortcut", () => {
     const shortcutSrc = getOnlySource(sources);
     const menuSrc = getOnlySource(menuSources);
 
-    expect(shortcutSrc).toContain('e.ctrlKey && e.shiftKey && e.key === "M"');
+    expect(shortcutSrc).toContain("matchesShortcut(e, SHORTCUTS.toggleZenMode)");
     expect(shortcutSrc).toContain("setZenMode?.((v: boolean) => !v);");
     expect(menuSrc).toContain('id: "toggle-zen-mode"');
-    expect(menuSrc).toContain('shortcut: "Ctrl+Shift+M"');
+    expect(menuSrc).toContain('shortcut: shortcutFor("toggleZenMode")');
   });
 });

@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import { reportFallback } from "../lib/fallbackTelemetry";
+import { matchesShortcut, SHORTCUTS } from "../lib/shortcutRegistry";
 import { cycleWorkspaceRegion } from "../lib/workspaceRegionFocus";
 import { toast } from "../store/toastStore";
 import type { ShellType } from "../types/terminalPane";
@@ -70,7 +71,7 @@ export function useKeyboardShortcuts({
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "F6" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (matchesShortcut(e, SHORTCUTS.cycleWorkspaceRegion)) {
         e.preventDefault();
         cycleWorkspaceRegion(e.shiftKey);
         return;
@@ -80,7 +81,7 @@ export function useKeyboardShortcuts({
       // Watchdog rule inputs, Monaco, native terminal input, etc. F1 + the chord
       // shortcuts (Ctrl+Shift+*) stay global — those are app chrome,
       // not text input.
-      if (e.key === "F1") {
+      if (matchesShortcut(e, SHORTCUTS.help)) {
         e.preventDefault();
         setHelpVisible?.((v: boolean) => !v);
         return;
@@ -89,7 +90,7 @@ export function useKeyboardShortcuts({
       if (editableTarget && !(e.ctrlKey && e.shiftKey)) {
         return;
       }
-      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
+      if (matchesShortcut(e, SHORTCUTS.newFile)) {
         e.preventDefault();
         showPrompt("New File", { placeholder: "file name..." }).then(async (name) => {
           if (name && projectPath) {
@@ -103,54 +104,54 @@ export function useKeyboardShortcuts({
             }
           }
         });
-      } else if (e.ctrlKey && !e.shiftKey && e.key === "p") {
+      } else if (matchesShortcut(e, SHORTCUTS.quickOpen)) {
         e.preventDefault();
         setQuickOpenMode?.("files");
-      } else if (e.ctrlKey && !e.shiftKey && e.key === "r") {
+      } else if (matchesShortcut(e, SHORTCUTS.commandHistory)) {
         e.preventDefault();
         showHistorySearch();
-      } else if (e.ctrlKey && e.shiftKey && e.key === "P") {
+      } else if (matchesShortcut(e, SHORTCUTS.commandPalette)) {
         e.preventDefault();
         setPaletteVisible((v: boolean) => !v);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "T") {
+      } else if (matchesShortcut(e, SHORTCUTS.newTerminal)) {
         e.preventDefault();
         addTab("powershell");
-      } else if (e.ctrlKey && e.shiftKey && e.key === "W") {
+      } else if (matchesShortcut(e, SHORTCUTS.closeTerminalTab)) {
         e.preventDefault();
         closeTab(activeTabId);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "F") {
+      } else if (matchesShortcut(e, SHORTCUTS.searchFiles)) {
         e.preventDefault();
         setSearchVisible((v: boolean) => !v);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "O") {
+      } else if (matchesShortcut(e, SHORTCUTS.openFolder)) {
         e.preventDefault();
         handleOpenFolder();
-      } else if (e.ctrlKey && e.shiftKey && e.key === "E") {
+      } else if (matchesShortcut(e, SHORTCUTS.explorerFocus)) {
         e.preventDefault();
         setSearchVisible(false);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "A") {
+      } else if (matchesShortcut(e, SHORTCUTS.startAgent)) {
         e.preventDefault();
         showPrompt("Start Agent", { placeholder: "What should the agent do?" }).then((p) => {
           if (p) handleStartAgent(p);
         });
-      } else if (e.ctrlKey && e.shiftKey && e.key === "M") {
+      } else if (matchesShortcut(e, SHORTCUTS.toggleZenMode)) {
         e.preventDefault();
         setZenMode?.((v: boolean) => !v);
-      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
+      } else if (matchesShortcut(e, SHORTCUTS.openDecisionInbox)) {
         e.preventDefault();
         openDecisionInbox?.();
-      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "r") {
+      } else if (matchesShortcut(e, SHORTCUTS.toggleRightRail)) {
         e.preventDefault();
         setRightRailCollapsed?.((v: boolean) => !v);
-      } else if (e.ctrlKey && e.shiftKey && e.key === "`") {
+      } else if (matchesShortcut(e, SHORTCUTS.switchTerminalPane)) {
         e.preventDefault();
         openPaneSwitcher?.();
-      } else if (e.ctrlKey && e.shiftKey && e.key === "]") {
+      } else if (matchesShortcut(e, SHORTCUTS.focusNextPane)) {
         e.preventDefault();
         void focusNextPane?.();
-      } else if (e.ctrlKey && e.shiftKey && e.key === "[") {
+      } else if (matchesShortcut(e, SHORTCUTS.focusPreviousPane)) {
         e.preventDefault();
         void focusPreviousPane?.();
-      } else if (e.ctrlKey && e.key === "`") {
+      } else if (matchesShortcut(e, SHORTCUTS.focusTerminal)) {
         // Ctrl+` — focus the active terminal pane
         e.preventDefault();
         const activeNativeSurface = document.querySelector(
@@ -187,38 +188,38 @@ export function useKeyboardShortcuts({
             { throttleMs: 30_000 },
           );
         }
-      } else if (e.ctrlKey && !e.shiftKey && e.key === "w") {
+      } else if (matchesShortcut(e, SHORTCUTS.closeEditor)) {
         e.preventDefault();
         if (activeFile) handleCloseFile(activeFile);
-      } else if (e.ctrlKey && e.key === ",") {
+      } else if (matchesShortcut(e, SHORTCUTS.settings)) {
         e.preventDefault();
         setSettingsVisible((v: boolean) => !v);
-      } else if (e.ctrlKey && !e.shiftKey && (e.key === "b" || e.key === "B")) {
+      } else if (matchesShortcut(e, SHORTCUTS.toggleSidebar)) {
         // Ctrl+B — toggle left sidebar (matches VS Code / Claude Code Desktop).
         e.preventDefault();
         setSidebarCollapsed?.((v: boolean) => !v);
-      } else if (e.ctrlKey && e.key === "[") {
+      } else if (matchesShortcut(e, SHORTCUTS.previousSession)) {
         e.preventDefault();
         if (sessions.length > 0) {
           const idx = sessions.findIndex((s) => s.id === activeSessionId);
           const next = Math.max(0, (idx === -1 ? 0 : idx) - 1);
           setActiveSessionId(sessions[next].id);
         }
-      } else if (e.ctrlKey && e.key === "]") {
+      } else if (matchesShortcut(e, SHORTCUTS.nextSession)) {
         e.preventDefault();
         if (sessions.length > 0) {
           const idx = sessions.findIndex((s) => s.id === activeSessionId);
           const next = Math.min(sessions.length - 1, (idx === -1 ? 0 : idx) + 1);
           setActiveSessionId(sessions[next].id);
         }
-      } else if (e.ctrlKey && e.key === "Tab") {
+      } else if (matchesShortcut(e, SHORTCUTS.switchTerminalTab)) {
         e.preventDefault();
         if (tabs.length > 1) {
           const idx = tabs.findIndex((t) => t.id === activeTabId);
           const next = e.shiftKey ? (idx - 1 + tabs.length) % tabs.length : (idx + 1) % tabs.length;
           setActiveTabId(tabs[next].id);
         }
-      } else if (e.ctrlKey && e.key >= "0" && e.key <= "9") {
+      } else if (matchesShortcut(e, SHORTCUTS.sessionJump)) {
         e.preventDefault();
         const idx = parseInt(e.key, 10);
         if (idx < sessions.length) setActiveSessionId(sessions[idx].id);

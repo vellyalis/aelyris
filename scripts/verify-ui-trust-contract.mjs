@@ -24,6 +24,7 @@ const sourcePaths = {
   decisionInbox: "src/shared/lib/decisionInbox.ts",
   decisionInboxPanel: "src/features/decision-inbox/DecisionInboxPanel.tsx",
   keyboardShortcuts: "src/shared/hooks/useKeyboardShortcuts.ts",
+  shortcutRegistry: "src/shared/lib/shortcutRegistry.ts",
   appMenus: "src/features/app/useAppMenus.ts",
   decisionInboxTests: "src/__tests__/DecisionInboxPanel.test.tsx",
   toast: "src/shared/ui/Toast.tsx",
@@ -104,10 +105,11 @@ add(
 add(
   checks,
   "q5-approval-keybinding",
-  s.keyboardShortcuts.includes("openDecisionInbox") &&
-    s.keyboardShortcuts.includes('e.key.toLowerCase() === "d"') &&
+  s.keyboardShortcuts.includes("matchesShortcut(e, SHORTCUTS.openDecisionInbox)") &&
+    s.shortcutRegistry.includes('id: "openDecisionInbox"') &&
+    s.shortcutRegistry.includes('display: "Ctrl+Shift+D"') &&
     s.appMenus.includes('id: "open-decision-inbox"') &&
-    s.appMenus.includes('shortcut: "Ctrl+Shift+D"') &&
+    s.appMenus.includes('shortcut: shortcutFor("openDecisionInbox")') &&
     s.decisionInboxPanel.includes('runDecision("approve")') &&
     s.decisionInboxPanel.includes('runDecision("deny")') &&
     s.decisionInboxPanel.includes("event.repeat") &&
@@ -138,8 +140,12 @@ add(
 add(
   checks,
   "q8-keyboard-complete-shell",
-  s.keyboardShortcuts.includes('e.key === "F6"') &&
-    s.keyboardShortcuts.includes('e.key.toLowerCase() === "r"') &&
+  s.keyboardShortcuts.includes("matchesShortcut(e, SHORTCUTS.cycleWorkspaceRegion)") &&
+    s.keyboardShortcuts.includes("matchesShortcut(e, SHORTCUTS.toggleRightRail)") &&
+    s.shortcutRegistry.includes('id: "cycleWorkspaceRegion"') &&
+    s.shortcutRegistry.includes('id: "toggleRightRail"') &&
+    s.shortcutRegistry.includes('display: "Ctrl+B %"') &&
+    s.shortcutRegistry.includes("display: 'Ctrl+B \"") &&
     s.workspaceRegionFocus.includes('"sidebar", "center", "right-rail", "status-bar"') &&
     s.workspaceRegionFocusTests.includes("skips hidden regions") &&
     s.appMenus.includes('id: "toggle-right-rail"') &&

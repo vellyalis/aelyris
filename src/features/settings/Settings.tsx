@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { type EditorOpenMode, loadEditorOpenMode, saveEditorOpenMode } from "../../shared/lib/externalEditor";
+import { getShortcutHelpItems } from "../../shared/lib/shortcutRegistry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import {
   sanitizeDefaultShell,
@@ -1239,29 +1240,10 @@ export function Settings({ visible, onClose }: SettingsProps) {
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>Keyboard Shortcuts</h3>
               <div className={styles.shortcutList}>
-                {[
-                  ["Command Palette", "Ctrl+Shift+P"],
-                  ["New Terminal", "Ctrl+Shift+T"],
-                  ["Close Terminal Tab", "Ctrl+Shift+W"],
-                  ["New File", "Ctrl+N"],
-                  ["Close Editor", "Ctrl+W"],
-                  ["Save", "Ctrl+S"],
-                  ["Find in File", "Ctrl+F"],
-                  ["Replace", "Ctrl+H"],
-                  ["Go to Line", "Ctrl+G"],
-                  ["Search in Files", "Ctrl+Shift+F"],
-                  ["Open Folder", "Ctrl+Shift+O"],
-                  ["Explorer Focus", "Ctrl+Shift+E"],
-                  ["Start Agent", "Ctrl+Shift+A"],
-                  ["Split Horizontal", "Ctrl+Shift+H"],
-                  ["Split Vertical", "Ctrl+Shift+V"],
-                  ["Session Jump", "Ctrl+0-9"],
-                  ["Prev/Next Session", "Ctrl+[ / ]"],
-                  ["Settings", "Ctrl+,"],
-                ].map(([action, key]) => (
-                  <div key={action} className={styles.shortcutRow}>
-                    <span>{action}</span>
-                    <kbd className={styles.kbd}>{key}</kbd>
+                {getShortcutHelpItems().map(({ id, label, display }) => (
+                  <div key={id} className={styles.shortcutRow}>
+                    <span>{label}</span>
+                    <kbd className={styles.kbd}>{display}</kbd>
                   </div>
                 ))}
               </div>

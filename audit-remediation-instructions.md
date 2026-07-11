@@ -3,9 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A3` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
-signed lifecycle deferred to A9; R0 complete at `fcd23a7`).
+signed lifecycle deferred to A9; R0 complete at `fcd23a7`; A3 Q0-Q9 complete).
 NEXT PHASE: `A4` after A3 UI trust surface is complete.
-NEXT IMPLEMENTATION SLICE: `A3 Q9 dead-layer cleanup` (`Q0-Q8 complete`).
+NEXT IMPLEMENTATION SLICE: `A3 Q10 rendered-truth CI and enforced trust registration`
+(`Q0-Q9 complete`; operator blocking decision remains separate).
 
 ## Objective
 

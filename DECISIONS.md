@@ -133,3 +133,25 @@ Why:
 
 Implication: Release/capability copy does not change unless the relevant gate is
 green and current.
+
+## ADR-010 One Keyboard Binding Owner Per Surface
+
+Decision: Remove the unreferenced `src-tauri/src/config/keybindings.rs` TOML
+binding layer and the unused `Sidebar` section state. Global cockpit shortcuts
+are defined by `src/shared/lib/shortcutRegistry.ts`; terminal prefix commands
+remain owned by the Rust mux keymap.
+
+Why:
+
+- The Rust TOML layer had no runtime consumer and its `Ctrl+Shift+H/V` split
+  defaults did not fire.
+- The old Sidebar component and `sidebarSection` store field had no consumer,
+  so retaining them created capability-shaped dead code.
+- Separate frontend, Rust-config, and mux binding tables can advertise or
+  handle different shortcuts. One owner per surface keeps execution and help
+  copy aligned.
+
+Implication: Shortcut help and palette hints must be generated from the shared
+registry, and pane splits are documented as the mux prefix sequence (`Ctrl+B`
+then `%` or `"`). A future user-configurable shortcut system needs a new
+design decision and must not be reintroduced as a second owner.

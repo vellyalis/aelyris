@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { PRODUCT_NAME } from "../../shared/constants/product";
+import { getShortcutHelpItems } from "../../shared/lib/shortcutRegistry";
 import styles from "./HelpDialog.module.css";
 
 interface HelpDialogProps {
@@ -102,23 +103,7 @@ const HELP_CONTENT: Record<HelpSection, { title: string; items: string[] }> = {
   },
   shortcuts: {
     title: "Keyboard Shortcuts",
-    items: [
-      "Ctrl+Shift+P — Command Palette",
-      "Ctrl+P — Quick Open (file search)",
-      "Ctrl+N — New File",
-      "Ctrl+, — Settings",
-      "Ctrl+Shift+O — Open Folder",
-      "Ctrl+` — Focus Terminal",
-      "Ctrl+Shift+T — New Terminal Tab",
-      "Ctrl+Shift+W — Close Terminal Tab",
-      "Ctrl+Tab / Ctrl+Shift+Tab — Switch Tabs",
-      "Ctrl+F — Search in Terminal",
-      "Ctrl+S — Save File",
-      "Ctrl+W — Close File",
-      "Ctrl+Shift+F — Search in Files",
-      "Ctrl+Shift+A — Start Agent",
-      "Ctrl+[ / Ctrl+] — Previous/Next Agent Session",
-    ],
+    items: getShortcutHelpItems().map(({ label, display }) => `${display} — ${label}`),
   },
 };
 
