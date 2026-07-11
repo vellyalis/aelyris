@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { createEvidenceProvenance } from "./evidence-provenance.mjs";
+import { createEvidenceProvenance, validateEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const root = resolve(process.cwd());
 const read = (path) => readFileSync(join(root, path), "utf8");
@@ -20,6 +20,11 @@ const muxStore = read("src-tauri/src/mux/store.rs");
 const workflow = read("src-tauri/src/workflow/executor.rs");
 const proofbookLedger = read("src-tauri/src/proofbook/ledger.rs");
 const packageJson = JSON.parse(read("package.json"));
+const acceptancePath = join(root, ".codex-auto", "quality", "a4-durability-acceptance.json");
+const acceptance = existsSync(acceptancePath) ? JSON.parse(readFileSync(acceptancePath, "utf8")) : null;
+const acceptanceProvenance = acceptance
+  ? validateEvidenceProvenance({ root, artifact: acceptance })
+  : { ok: false, errors: ["missing-acceptance-artifact"] };
 
 const adoption = lib.indexOf("ipc::adopt_sidecar_terminals");
 const restore = lib.indexOf("ipc::restore_interactive_sessions");
@@ -108,6 +113,15 @@ const checks = {
     durableFile.includes("quota_removes_recovery_before_rejecting_primary_data") &&
     durableFile.includes(".pre-migration-v") &&
     durableFile.includes("DEFAULT_DURABILITY_QUOTA_BYTES"),
+  fullAcceptanceMatrix:
+    packageJson.scripts?.["verify:a4:durability:acceptance"] ===
+      "node scripts/verify-a4-durability-acceptance.mjs" &&
+    acceptance?.status === "pass-repo-owned-a4-durability" &&
+    acceptance?.repoOwnedComplete === true &&
+    acceptance?.phaseComplete === true &&
+    acceptance?.scenarios?.length === 12 &&
+    acceptance.scenarios.every((scenario) => scenario.status === "pass") &&
+    acceptanceProvenance.ok,
   packageEntryPoint:
     packageJson.scripts?.["verify:a4:durability"] ===
     "node scripts/verify-a4-durability-contract.mjs",
@@ -124,10 +138,11 @@ const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
   schema: "aelyris.a4-durability-contract/v1",
-  status: "pass-a4.2-a4.5-foundation",
-  activeSlice: "A4.5",
-  phaseComplete: false,
-  remainingSlices: ["A4.6"],
+  status: "pass-repo-owned-a4-durability",
+  activeSlice: "A4.6",
+  phaseComplete: true,
+  remainingSlices: [],
+  externalProof: acceptance.externalProof,
   checks,
   generatedAt,
   provenance: createEvidenceProvenance({
@@ -135,6 +150,8 @@ const report = {
     verifierPath: "scripts/verify-a4-durability-contract.mjs",
     inputPaths: [
       "scripts/evidence-provenance.mjs",
+      "scripts/verify-a4-durability-acceptance.mjs",
+      "scripts/verify-session-checkpoint-restore.mjs",
       "src-tauri/src/startup_reconciliation.rs",
       "src-tauri/src/lib.rs",
       "src-tauri/src/ipc/commands.rs",

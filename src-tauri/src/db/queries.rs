@@ -2587,6 +2587,21 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_database_fails_closed_without_replacing_source_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrupt.db");
+        let corrupt = b"not a sqlite database";
+        std::fs::write(&path, corrupt).unwrap();
+        let error = match Database::open(&path) {
+            Ok(_) => panic!("corrupt database unexpectedly opened"),
+            Err(error) => error,
+        };
+        assert!(error.contains("schema version") || error.contains("database"));
+        assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
     fn test_code_graph_replace_load_roundtrip() {
         use crate::knowledge_graph::{CodeNode, NodeKind};
         let db = Database::open_memory().unwrap();

@@ -17,6 +17,7 @@ const STEP_FALLBACK_ARTIFACTS = {
   "authenticated-consent-packet": [".codex-auto/production-smoke/authenticated-ai-cli-consent-packet.json"],
   "glass-legibility": [".codex-auto/quality/glass-legibility-contract.json"],
   "ui-trust-contract": [".codex-auto/quality/ui-trust-contract.json"],
+  "a4-durability-acceptance": [".codex-auto/quality/a4-durability-acceptance.json"],
   "right-rail-information-density": [".codex-auto/quality/right-rail-information-density-contract.json"],
   "agent-team-orchestration": [".codex-auto/quality/agent-team-orchestration-readiness.json"],
   "anti-stall-contract": [".codex-auto/quality/goal-anti-stall-contract.json"],
@@ -873,6 +874,28 @@ function uiTrustContractVerdict(data) {
       : "UI trust contract is missing, stale, failing, or missing valid provenance",
     strictProof: ok,
     semanticFreshness: ok ? "current-ui-trust-contract" : "stale-or-incomplete",
+  };
+}
+
+function a4DurabilityAcceptanceVerdict(data) {
+  const scenarios = Array.isArray(data?.scenarios) ? data.scenarios : [];
+  const ok =
+    data?.status === "pass-repo-owned-a4-durability" &&
+    data?.repoOwnedComplete === true &&
+    data?.phaseComplete === true &&
+    scenarios.length === 12 &&
+    scenarios.every((scenario) => scenario?.status === "pass") &&
+    data?.externalProof?.status === "deferred-to-a9-operator-proof";
+  return {
+    ok,
+    status: ok ? "pass-current-repo-owned-a4-durability" : (data?.status ?? "stale-or-incomplete"),
+    expectation:
+      "A4 restart, upgrade, locked/corrupt DB, power-loss injection, quota, and multi-connection acceptance is fresh while real-host proof remains explicit",
+    reason: ok
+      ? "all twelve repo-owned A4 durability scenarios passed and external proof remains separately classified"
+      : "A4 durability acceptance is missing, stale, incomplete, or hides external proof debt",
+    strictProof: ok,
+    semanticFreshness: ok ? "current-a4-durability-acceptance" : "stale-or-incomplete",
   };
 }
 
@@ -1867,6 +1890,11 @@ const steps = [
   runStep("glass-legibility", "Glass legibility and opaque text contract", "verify-glass-legibility-contract.mjs"),
   runStep("ui-trust-contract", "Enforced UI trust contract", "verify-ui-trust-contract.mjs", ["--enforce"]),
   runStep(
+    "a4-durability-acceptance",
+    "A4 repo-owned durability acceptance",
+    "verify-a4-durability-acceptance.mjs",
+  ),
+  runStep(
     "right-rail-information-density",
     "Right rail essential-first information density contract",
     "verify-right-rail-information-density.mjs",
@@ -2270,6 +2298,10 @@ const proofArtifacts = {
     glassLegibilityContractVerdict,
   ),
   uiTrustContract: artifactMeta(".codex-auto/quality/ui-trust-contract.json", uiTrustContractVerdict),
+  a4DurabilityAcceptance: artifactMeta(
+    ".codex-auto/quality/a4-durability-acceptance.json",
+    a4DurabilityAcceptanceVerdict,
+  ),
   rightRailInformationDensity: artifactMeta(
     ".codex-auto/quality/right-rail-information-density-contract.json",
     rightRailInformationDensityVerdict,

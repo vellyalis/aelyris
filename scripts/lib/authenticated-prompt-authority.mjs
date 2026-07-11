@@ -37,6 +37,7 @@ const NO_TOKEN_SCRIPT_ALLOWLIST = new Set([
   "verify-authenticated-ai-cli-preflight-matrix.mjs",
   "verify-authenticated-ai-cli-consent-packet.mjs",
   "verify-glass-legibility-contract.mjs",
+  "verify-a4-durability-acceptance.mjs",
   "verify-right-rail-information-density.mjs",
   "verify-goal-anti-stall-contract.mjs",
   "verify-release-signing-operator-handoff.mjs",

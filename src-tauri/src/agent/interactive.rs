@@ -694,6 +694,34 @@ mod tests {
     }
 
     #[test]
+    fn acknowledged_lifecycle_state_survives_database_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("restart.db");
+        {
+            let managed = crate::db::ManagedDb::new(crate::db::Database::open(&path).unwrap());
+            let mgr = InteractiveSessionManager::new();
+            mgr.attach_checkpoint_db(managed).unwrap();
+            mgr.register(make_session("restart-s1", AgentCli::Codex))
+                .unwrap();
+            mgr.update_status("restart-s1", "waiting_approval").unwrap();
+            mgr.set_approval_prompt("restart-s1", Some("Approve restart?".to_string()))
+                .unwrap();
+        }
+
+        let reopened = crate::db::Database::open(&path).unwrap();
+        let restored = crate::persistence::SessionCheckpointRepo::load_latest(
+            &reopened,
+            "restart-s1",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(restored.status, "waiting_approval");
+        assert_eq!(restored.approval_prompt.as_deref(), Some("Approve restart?"));
+        assert_eq!(restored.cli, "codex");
+        assert_eq!(restored.checkpoint_seq, 3);
+    }
+
+    #[test]
     fn active_count_excludes_done_but_keeps_idle() {
         let mgr = InteractiveSessionManager::new();
         mgr.register(make_session("s1", AgentCli::Claude)).unwrap();

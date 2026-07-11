@@ -134,9 +134,27 @@ impl SessionCheckpointRepo {
         db: &Database,
         checkpoint: &SessionCheckpointRecord,
     ) -> Result<SessionCheckpointRecord, String> {
-        let mut appended = checkpoint.clone();
-        appended.checkpoint_seq = Self::next_checkpoint_seq(db, &appended.logical_session_id)?;
-        Self::upsert_checkpoint(db, &appended)
+        db.conn()
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|error| format!("begin checkpoint append transaction: {error}"))?;
+        let result = (|| {
+            let mut appended = checkpoint.clone();
+            appended.checkpoint_seq =
+                Self::next_checkpoint_seq(db, &appended.logical_session_id)?;
+            Self::upsert_checkpoint(db, &appended)
+        })();
+        match result {
+            Ok(appended) => {
+                db.conn()
+                    .execute_batch("COMMIT")
+                    .map_err(|error| format!("commit checkpoint append transaction: {error}"))?;
+                Ok(appended)
+            }
+            Err(error) => {
+                let _ = db.conn().execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
     }
 
     pub fn upsert_checkpoint(
@@ -715,6 +733,52 @@ mod tests {
                 .unwrap()
                 .status,
             "thinking"
+        );
+    }
+
+    #[test]
+    fn concurrent_database_connections_allocate_unique_sequences() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("multi-instance.db");
+        let left = Database::open(&path).unwrap();
+        let right = Database::open(&path).unwrap();
+        let left_thread = std::thread::spawn(move || {
+            SessionCheckpointRepo::append_checkpoint(&left, &checkpoint(0)).unwrap()
+        });
+        let right_thread = std::thread::spawn(move || {
+            SessionCheckpointRepo::append_checkpoint(&right, &checkpoint(0)).unwrap()
+        });
+        let mut sequences = vec![
+            left_thread.join().unwrap().checkpoint_seq,
+            right_thread.join().unwrap().checkpoint_seq,
+        ];
+        sequences.sort_unstable();
+        assert_eq!(sequences, vec![1, 2]);
+        let verify = Database::open(&path).unwrap();
+        assert_eq!(
+            SessionCheckpointRepo::next_checkpoint_seq(&verify, "logical-a").unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn locked_database_returns_explicit_checkpoint_error_without_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("locked.db");
+        let lock_owner = Database::open(&path).unwrap();
+        let writer = Database::open(&path).unwrap();
+        writer
+            .conn()
+            .busy_timeout(std::time::Duration::from_millis(25))
+            .unwrap();
+        lock_owner.conn().execute_batch("BEGIN IMMEDIATE").unwrap();
+        let error = SessionCheckpointRepo::append_checkpoint(&writer, &checkpoint(0))
+            .unwrap_err();
+        assert!(error.contains("begin checkpoint append transaction"));
+        lock_owner.conn().execute_batch("ROLLBACK").unwrap();
+        assert_eq!(
+            SessionCheckpointRepo::next_checkpoint_seq(&writer, "logical-a").unwrap(),
+            1
         );
     }
 

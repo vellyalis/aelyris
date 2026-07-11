@@ -377,6 +377,16 @@ Fault injection proves failure before replace leaves the committed file unchange
 focused owner round-trip tests and `verify:a4:durability` pass. A4.6 is next; A4
 remains active.
 
+A4.6 completion note (2026-07-12): `verify:a4:durability:acceptance` executes twelve
+fresh scenarios covering numbered upgrade/newer-schema refusal, restart restoration,
+mutation rollback, locked DB, cross-connection sequence allocation, corrupt DB,
+injected pre-replace power loss, quota exhaustion, mux/workflow/proofbook/settings
+round trips, checkpoint semantics, resume idempotence, and an injected sleep gap.
+All repo-owned scenarios pass and `verify:a4:durability` validates current provenance.
+Real OS sleep/resume and abrupt host power-loss remain explicit A9 operator proof at
+the named artifact path; they are not counted as A4 repo-owned PASS. A4 repo-owned
+work is complete and A5.1 inventory is next.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.

@@ -61,6 +61,7 @@ const checks = [
     repo.includes("pub struct SessionCheckpointRecord") &&
       repo.includes("pub enum SessionHandoffState") &&
       repo.includes("next_checkpoint_seq") &&
+      repo.includes("append_checkpoint") &&
       repo.includes("upsert_checkpoint") &&
       repo.includes("load_latest_all") &&
       repo.includes("insert_or_get_handoff") &&
@@ -97,7 +98,7 @@ const checks = [
   check(
     "ipc-session-checkpoint-redacts-before-persist",
     commands.includes("parse_redacted_summary") &&
-      checkpointCommand.includes("SessionCheckpointRepo::upsert_checkpoint") &&
+      checkpointCommand.includes("SessionCheckpointRepo::append_checkpoint") &&
       checkpointCommand.includes("summary_json: summary.summary_json.clone()") &&
       checkpointCommand.includes("persist_agent_identity_context") &&
       !checkpointCommand.includes("end_session_and_remove_worktree"),
@@ -116,11 +117,12 @@ const checks = [
     "cx3-restore-does-not-resubscribe-adopted-sidecar",
     restoreBlock.includes("sidecar.list_info().await") &&
       restoreBlock.includes("live_ids.contains(&checkpoint.pty_id)") &&
-      restoreBlock.includes("session_mgr.register(info)") &&
+      restoreBlock.includes("session_mgr.register_restored(info)") &&
       restoreBlock.includes("already wires the surviving sidecar PTY") &&
       !restoreBlock.includes("sidecar.subscribe_output") &&
       !restoreBlock.includes("run_output_monitor") &&
-      lib.includes("adopt_sidecar_terminals(&app_handle, client.clone()).await") &&
+      lib.indexOf("ipc::adopt_sidecar_terminals") >= 0 &&
+      lib.indexOf("ipc::adopt_sidecar_terminals") < lib.indexOf("ipc::restore_interactive_sessions") &&
       lib.includes("restore_interactive_sessions(&app_handle, client).await"),
     "CX-3: restore attaches session/status metadata over the stream adopted by adopt_sidecar_terminals and never re-subscribes",
   ),

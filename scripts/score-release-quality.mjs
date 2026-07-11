@@ -487,6 +487,12 @@ const glassLegibilityContractSource = readFileSync(
 const uiTrustContractPath = join(ROOT, ".codex-auto", "quality", "ui-trust-contract.json");
 const uiTrustContract = readJson(uiTrustContractPath);
 const uiTrustContractSource = readFileSync(join(ROOT, "scripts", "verify-ui-trust-contract.mjs"), "utf8");
+const a4DurabilityAcceptancePath = join(ROOT, ".codex-auto", "quality", "a4-durability-acceptance.json");
+const a4DurabilityAcceptance = readJson(a4DurabilityAcceptancePath);
+const a4DurabilityAcceptanceSource = readFileSync(
+  join(ROOT, "scripts", "verify-a4-durability-acceptance.mjs"),
+  "utf8",
+);
 const goalAntiStallContractPath = join(ROOT, ".codex-auto", "quality", "goal-anti-stall-contract.json");
 const goalAntiStallContract = readJson(goalAntiStallContractPath);
 const goalAntiStallContractSource = readFileSync(join(ROOT, "scripts", "verify-goal-anti-stall-contract.mjs"), "utf8");
@@ -4360,6 +4366,32 @@ add(
           ? []
           : ["UI trust contract artifact is missing, stale, failing, or not provenance-bound"]),
       ],
+);
+
+const a4DurabilityAcceptancePass =
+  packageJsonSource.includes(
+    '"verify:a4:durability:acceptance": "node scripts/verify-a4-durability-acceptance.mjs"',
+  ) &&
+  a4DurabilityAcceptanceSource.includes("pass-repo-owned-a4-durability") &&
+  a4DurabilityAcceptance?.status === "pass-repo-owned-a4-durability" &&
+  a4DurabilityAcceptance?.repoOwnedComplete === true &&
+  a4DurabilityAcceptance?.phaseComplete === true &&
+  Array.isArray(a4DurabilityAcceptance?.scenarios) &&
+  a4DurabilityAcceptance.scenarios.length === 12 &&
+  a4DurabilityAcceptance.scenarios.every((scenario) => scenario?.status === "pass") &&
+  a4DurabilityAcceptance?.externalProof?.status === "deferred-to-a9-operator-proof";
+add(
+  scores,
+  "a4-durability-acceptance",
+  "A4 repo-owned durability acceptance",
+  a4DurabilityAcceptancePass ? 8 : 0,
+  8,
+  a4DurabilityAcceptancePass
+    ? "restart/upgrade/fault/multi-connection acceptance is fresh and external proof remains separate"
+    : "missing, stale, incomplete, or external proof classification is dishonest",
+  a4DurabilityAcceptancePass
+    ? []
+    : ["A4 durability acceptance must pass all twelve repo-owned scenarios with provenance"],
 );
 
 const goalAntiStallSourceMtime = Math.max(

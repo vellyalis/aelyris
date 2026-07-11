@@ -2,12 +2,11 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A4` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
-signed lifecycle deferred to A9; R0 complete at `fcd23a7`; A3 repo-owned work complete).
-NEXT PHASE: `A5` after A4 durability acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A4.6 restart/upgrade/fault/multi-instance acceptance closeout`.
-A4.1-A4.5 through crash-safe file replacement and global retention are complete;
-A4 remains active until the full durability acceptance matrix is fresh and green.
+CURRENT PHASE: `A5` (`R0-A4 repo-owned work complete`; A2 signed lifecycle and A4
+real-host sleep/power-loss proof remain explicit A9 operator gates).
+NEXT PHASE: `A6` after A5 supervision/concurrency acceptance is complete.
+NEXT IMPLEMENTATION SLICE: `A5.1 execution supervisor, process, lock, and concurrency inventory`
+before changing timeout/cancel/lock behavior.
 
 ## Objective
 
@@ -261,6 +260,16 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   remains an explicit operator visual check via `AELYRIS_E2E_EXTERNAL_DASHBOARD=1`.
 - live IME, staged sidecar kill, populated-cockpit review, and final DWM/WebView2 glass
   parity remain external/operator proof debt and do not become repo-owned PASS claims.
+
+## A4 Complete - Repo-Owned Session and Database Durability
+
+- `verify:a4:durability:acceptance` passes all twelve deterministic restart, upgrade,
+  locked/corrupt DB, injected power-loss, quota, restore, and multi-connection scenarios.
+- `verify:a4:durability` validates the provenance-bound A4 contract and acceptance
+  artifact; final-goal safe and release-score truth consume that evidence.
+- real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
+  deterministic matrix. It remains an A9 operator gate at
+  `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.
 
 ## Work and Session Rules
 

@@ -303,4 +303,21 @@ mod tests {
             .join(".primary.json.aelyris-recovery-1")
             .exists());
     }
+
+    #[test]
+    fn quota_exhaustion_fails_without_deleting_primary_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let primary = dir.path().join("primary.json");
+        fs::write(&primary, vec![1; 9]).unwrap();
+        let error = enforce_global_retention(
+            &[dir.path().into()],
+            RetentionPolicy {
+                max_total_bytes: 8,
+                max_recovery_files: 0,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("durability quota exceeded"));
+        assert_eq!(fs::read(primary).unwrap(), vec![1; 9]);
+    }
 }
