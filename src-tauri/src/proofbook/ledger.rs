@@ -157,6 +157,8 @@ impl ProofbookStepSummary {
 #[serde(rename_all = "camelCase")]
 pub struct ProofbookRunLedger {
     pub schema: String,
+    #[serde(default)]
+    pub revision: u64,
     pub run_id: String,
     pub proofbook_id: String,
     pub project_path: String,
@@ -215,6 +217,7 @@ pub fn new_run_ledger(
     let now = now_timestamp();
     let mut ledger = ProofbookRunLedger {
         schema: PROOFBOOK_RUN_SCHEMA_V1.to_string(),
+        revision: 0,
         run_id,
         proofbook_id: definition.id.clone(),
         project_path: normalize_path(project_root),
@@ -522,5 +525,33 @@ impl ProofbookStepOutcome {
             risk,
             ..Self::passed()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_v1_ledger_without_revision_adopts_revision_zero() {
+        let ledger: ProofbookRunLedger = serde_json::from_value(serde_json::json!({
+            "schema": PROOFBOOK_RUN_SCHEMA_V1,
+            "runId": "legacy-run",
+            "proofbookId": "legacy",
+            "projectPath": "C:/project",
+            "definitionPath": "C:/project/.aelyris/proofbooks/legacy.yaml",
+            "status": "pending",
+            "startedAt": "1",
+            "updatedAt": "1",
+            "definitionHash": "sha256:def",
+            "inputHash": "sha256:input",
+            "events": [],
+            "steps": [],
+            "artifacts": [],
+            "decisions": [],
+            "residualBlockers": []
+        }))
+        .unwrap();
+        assert_eq!(ledger.revision, 0);
     }
 }

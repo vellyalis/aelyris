@@ -30,7 +30,7 @@ struct ProofbookExecutorRefs<'a> {
 
 #[derive(Clone, Default)]
 pub struct ProofbookRunner {
-    runs: Arc<Mutex<BTreeMap<String, ProofbookRunLedger>>>,
+    runs: Arc<Mutex<BTreeMap<String, Arc<Mutex<ProofbookRunLedger>>>>>,
 }
 
 impl ProofbookRunner {
@@ -118,9 +118,11 @@ impl ProofbookRunner {
             return Err(validation_failed(report.errors));
         }
 
-        let mut ledger = ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?;
-        ledger::write_ledger(&root, &ledger)?;
-        self.remember(ledger.clone())?;
+        let candidate = ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?;
+        let (mut ledger, initialized) = self.initialize_ledger(&root, candidate)?;
+        if !initialized {
+            return Ok(ledger);
+        }
         self.drive_run(&root, &definition, &mut ledger, executors)?;
         self.remember(ledger.clone())?;
         Ok(ledger)
@@ -213,7 +215,7 @@ impl ProofbookRunner {
             Some(event_status.to_string()),
             completed_error,
         );
-        ledger::write_ledger(&root, &ledger)?;
+        self.commit_ledger(&root, &mut ledger)?;
 
         if completed_status == ProofbookStepStatus::Passed {
             self.drive_run(
@@ -256,7 +258,7 @@ impl ProofbookRunner {
             Some("cancelled".to_string()),
             None,
         );
-        ledger::write_ledger(&root, &ledger)?;
+        self.commit_ledger(&root, &mut ledger)?;
         self.remember(ledger.clone())?;
         Ok(ledger)
     }
@@ -358,7 +360,7 @@ impl ProofbookRunner {
         } else {
             ProofbookRunStatus::Failed
         };
-        ledger::write_ledger(&root, &ledger)?;
+        self.commit_ledger(&root, &mut ledger)?;
 
         if ledger.status == ProofbookRunStatus::Running {
             let definition = parse_proofbook(&ledger.definition_path)?;
@@ -380,7 +382,7 @@ impl ProofbookRunner {
                         "refresh and restart the Proofbook run before continuing",
                     )),
                 );
-                ledger::write_ledger(&root, &ledger)?;
+                self.commit_ledger(&root, &mut ledger)?;
             } else {
                 let report =
                     validate_definition(project_path, &definition, &ledger.definition_path);
@@ -402,7 +404,7 @@ impl ProofbookRunner {
                             error.message,
                         )),
                     );
-                    ledger::write_ledger(&root, &ledger)?;
+                    self.commit_ledger(&root, &mut ledger)?;
                 } else {
                     if gate_kind == "mcpTool" {
                         let executor = mcp_executor.ok_or_else(|| {
@@ -424,7 +426,7 @@ impl ProofbookRunner {
                             summary.status = ProofbookStepStatus::Running;
                             summary.started_at.get_or_insert_with(ledger::now_timestamp);
                         }
-                        ledger::write_ledger(&root, &ledger)?;
+                        self.commit_ledger(&root, &mut ledger)?;
                         let outcome = executor.execute_mcp_tool(
                             &ledger.run_id,
                             &ledger,
@@ -453,6 +455,15 @@ impl ProofbookRunner {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let mut restored = 0;
         for mut ledger in ledger::list_ledgers(&root)? {
+            let already_registered = self
+                .runs
+                .lock()
+                .map_err(|_| runner_lock_error())?
+                .contains_key(&ledger.run_id);
+            if !already_registered {
+                restored += 1;
+            }
+            self.remember(ledger.clone())?;
             let mut changed = false;
             if ledger.status == ProofbookRunStatus::Running {
                 for step in &mut ledger.steps {
@@ -496,20 +507,9 @@ impl ProofbookRunner {
                             "running steps cannot be resumed blindly",
                         )),
                     );
-                    ledger::write_ledger(&root, &ledger)?;
+                    self.commit_ledger(&root, &mut ledger)?;
                 }
             }
-            let id = ledger.run_id.clone();
-            let mut runs = self.runs.lock().map_err(|_| {
-                ProofbookError::new(
-                    ProofbookErrorCode::IoError,
-                    "proofbook runner lock poisoned",
-                )
-            })?;
-            if !runs.contains_key(&id) {
-                restored += 1;
-            }
-            runs.insert(id, ledger);
         }
         Ok(restored)
     }
@@ -535,7 +535,7 @@ impl ProofbookRunner {
             Some("running".to_string()),
             None,
         );
-        ledger::write_ledger(root, ledger)?;
+        self.commit_ledger(root, ledger)?;
 
         loop {
             let mut progressed = false;
@@ -588,7 +588,7 @@ impl ProofbookRunner {
             Some("running".to_string()),
             None,
         );
-        ledger::write_ledger(root, ledger)
+        self.commit_ledger(root, ledger)
     }
 
     fn execute_step(
@@ -748,7 +748,7 @@ impl ProofbookRunner {
             | ProofbookStepStatus::Skipped
             | ProofbookStepStatus::Pending => {}
         }
-        ledger::write_ledger(root, ledger)
+        self.commit_ledger(root, ledger)
     }
 
     fn settle_run(
@@ -759,7 +759,7 @@ impl ProofbookRunner {
     ) -> Result<(), ProofbookError> {
         let Some(settlement) = definition.settlement.as_ref() else {
             ledger.status = ProofbookRunStatus::Failed;
-            return ledger::write_ledger(root, ledger);
+            return self.commit_ledger(root, ledger);
         };
         for required in &settlement.required_steps {
             if ledger.step(required).map(|s| s.status) != Some(ProofbookStepStatus::Passed) {
@@ -776,7 +776,7 @@ impl ProofbookRunner {
                     Some("failed".to_string()),
                     Some(ProofbookRunError::new("required_step_not_passed", required)),
                 );
-                ledger::write_ledger(root, ledger)?;
+                self.commit_ledger(root, ledger)?;
                 return Ok(());
             }
         }
@@ -799,7 +799,7 @@ impl ProofbookRunner {
                         artifact,
                     )),
                 );
-                ledger::write_ledger(root, ledger)?;
+                self.commit_ledger(root, ledger)?;
                 return Ok(());
             }
         }
@@ -811,36 +811,145 @@ impl ProofbookRunner {
             Some("passed".to_string()),
             None,
         );
-        ledger::write_ledger(root, ledger)
+        self.commit_ledger(root, ledger)
     }
 
     fn remember(&self, ledger: ProofbookRunLedger) -> Result<(), ProofbookError> {
-        self.runs
+        let mut runs = self.runs.lock().map_err(|_| runner_lock_error())?;
+        match runs.get(&ledger.run_id) {
+            Some(slot) => {
+                let mut current = slot
+                    .lock()
+                    .map_err(|_| run_slot_lock_error(&ledger.run_id))?;
+                if ledger.revision > current.revision {
+                    *current = ledger;
+                }
+            }
+            None => {
+                runs.insert(ledger.run_id.clone(), Arc::new(Mutex::new(ledger)));
+            }
+        }
+        Ok(())
+    }
+
+    fn initialize_ledger(
+        &self,
+        root: &Path,
+        candidate: ProofbookRunLedger,
+    ) -> Result<(ProofbookRunLedger, bool), ProofbookError> {
+        let path = ledger::ledger_path(root, &candidate.run_id);
+        if path.exists() {
+            let existing = ledger::read_ledger(&path)?;
+            self.remember(existing.clone())?;
+            return Ok((existing, false));
+        }
+
+        let slot = {
+            let mut runs = self.runs.lock().map_err(|_| runner_lock_error())?;
+            if let Some(slot) = runs.get(&candidate.run_id).cloned() {
+                slot
+            } else {
+                let slot = Arc::new(Mutex::new(candidate.clone()));
+                runs.insert(candidate.run_id.clone(), slot.clone());
+                drop(runs);
+
+                // Another daemon/process may have durably initialized the same
+                // deterministic run after our first existence check. Adopt it rather
+                // than overwriting its newer state.
+                if path.exists() {
+                    let existing = ledger::read_ledger(&path)?;
+                    *slot
+                        .lock()
+                        .map_err(|_| run_slot_lock_error(&candidate.run_id))? = existing.clone();
+                    return Ok((existing, false));
+                }
+                if let Err(error) = ledger::write_ledger(root, &candidate) {
+                    self.runs
+                        .lock()
+                        .map_err(|_| runner_lock_error())?
+                        .remove(&candidate.run_id);
+                    return Err(error);
+                }
+                return Ok((candidate, true));
+            }
+        };
+        let existing = slot
             .lock()
-            .map_err(|_| {
+            .map_err(|_| run_slot_lock_error(&candidate.run_id))?
+            .clone();
+        Ok((existing, false))
+    }
+
+    /// Commit one ledger mutation iff the caller still owns the current revision.
+    ///
+    /// The global run map is held only long enough to clone the per-run slot. File
+    /// validation and durable replacement happen under that run's lock, so unrelated
+    /// Proofbooks remain concurrent while stale cancel/gate/worker snapshots fail closed.
+    fn commit_ledger(
+        &self,
+        root: &Path,
+        ledger: &mut ProofbookRunLedger,
+    ) -> Result<(), ProofbookError> {
+        let slot = self
+            .runs
+            .lock()
+            .map_err(|_| runner_lock_error())?
+            .get(&ledger.run_id)
+            .cloned()
+            .ok_or_else(|| {
                 ProofbookError::new(
-                    ProofbookErrorCode::IoError,
-                    "proofbook runner lock poisoned",
+                    ProofbookErrorCode::RunNotFound,
+                    format!("Proofbook run not registered: {}", ledger.run_id),
                 )
-            })?
-            .insert(ledger.run_id.clone(), ledger);
+            })?;
+        let mut current = slot
+            .lock()
+            .map_err(|_| run_slot_lock_error(&ledger.run_id))?;
+        if current.revision != ledger.revision {
+            return Err(stale_revision_error(
+                &ledger.run_id,
+                ledger.revision,
+                current.revision,
+            ));
+        }
+
+        let path = ledger::ledger_path(root, &ledger.run_id);
+        if path.exists() {
+            let durable = ledger::read_ledger(&path)?;
+            if durable.revision != ledger.revision {
+                return Err(stale_revision_error(
+                    &ledger.run_id,
+                    ledger.revision,
+                    durable.revision,
+                ));
+            }
+        }
+
+        let mut committed = ledger.clone();
+        committed.revision = committed.revision.checked_add(1).ok_or_else(|| {
+            ProofbookError::new(
+                ProofbookErrorCode::StaleLedgerRevision,
+                format!("Proofbook ledger revision exhausted: {}", ledger.run_id),
+            )
+        })?;
+        ledger::write_ledger(root, &committed)?;
+        *current = committed.clone();
+        *ledger = committed;
         Ok(())
     }
 
     fn load_run(&self, root: &Path, run_id: &str) -> Result<ProofbookRunLedger, ProofbookError> {
-        if let Some(ledger) = self
+        if let Some(slot) = self
             .runs
             .lock()
-            .map_err(|_| {
-                ProofbookError::new(
-                    ProofbookErrorCode::IoError,
-                    "proofbook runner lock poisoned",
-                )
-            })?
+            .map_err(|_| runner_lock_error())?
             .get(run_id)
             .cloned()
         {
-            return Ok(ledger);
+            return slot
+                .lock()
+                .map_err(|_| run_slot_lock_error(run_id))
+                .map(|ledger| ledger.clone());
         }
         let path = ledger::ledger_path(root, run_id);
         if !path.exists() {
@@ -853,6 +962,29 @@ impl ProofbookRunner {
         self.remember(ledger.clone())?;
         Ok(ledger)
     }
+}
+
+fn runner_lock_error() -> ProofbookError {
+    ProofbookError::new(
+        ProofbookErrorCode::IoError,
+        "proofbook runner lock poisoned",
+    )
+}
+
+fn run_slot_lock_error(run_id: &str) -> ProofbookError {
+    ProofbookError::new(
+        ProofbookErrorCode::IoError,
+        format!("proofbook run lock poisoned: {run_id}"),
+    )
+}
+
+fn stale_revision_error(run_id: &str, expected: u64, actual: u64) -> ProofbookError {
+    ProofbookError::new(
+        ProofbookErrorCode::StaleLedgerRevision,
+        format!(
+            "Proofbook ledger revision conflict for {run_id}: expected {expected}, current {actual}; refresh run status and retry"
+        ),
+    )
 }
 
 fn agent_session_completion_outcome(
@@ -1336,6 +1468,177 @@ mod tests {
 
     fn project_path(project: &tempfile::TempDir) -> String {
         project.path().to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn proofbook_ledger_commit_rejects_a_stale_snapshot_without_overwrite() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cas-stale
+steps:
+  - id: approve
+    type: manualGate
+    gateId: cas-check
+    options: [approve, reject]
+    default: reject
+    risk: medium
+settlement:
+  requiredSteps: [approve]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let current = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        let mut winner = current.clone();
+        let mut stale = current.clone();
+        winner.append_event("winner", None, "winner", None, None);
+        stale.append_event("stale", None, "stale", None, None);
+
+        runner.commit_ledger(project.path(), &mut winner).unwrap();
+        let error = runner
+            .commit_ledger(project.path(), &mut stale)
+            .unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::StaleLedgerRevision);
+        let durable =
+            ledger::read_ledger(&ledger::ledger_path(project.path(), &current.run_id)).unwrap();
+        assert_eq!(durable.revision, winner.revision);
+        assert!(durable.events.iter().any(|event| event.kind == "winner"));
+        assert!(!durable.events.iter().any(|event| event.kind == "stale"));
+    }
+
+    #[test]
+    fn proofbook_ledger_commit_detects_a_newer_durable_revision() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cas-durable
+steps:
+  - id: approve
+    type: manualGate
+    gateId: durable-check
+    options: [approve, reject]
+    default: reject
+    risk: medium
+settlement:
+  requiredSteps: [approve]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let mut stale = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        let mut external = stale.clone();
+        external.revision += 1;
+        external.append_event("external", None, "external", None, None);
+        ledger::write_ledger(project.path(), &external).unwrap();
+        stale.append_event("stale", None, "stale", None, None);
+
+        let error = runner
+            .commit_ledger(project.path(), &mut stale)
+            .unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::StaleLedgerRevision);
+        let durable =
+            ledger::read_ledger(&ledger::ledger_path(project.path(), &stale.run_id)).unwrap();
+        assert_eq!(durable.revision, external.revision);
+        assert!(durable.events.iter().any(|event| event.kind == "external"));
+    }
+
+    #[test]
+    fn proofbook_start_is_idempotent_for_an_existing_deterministic_run() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cas-idempotent
+steps:
+  - id: echo
+    type: shell
+    command: echo once
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let first = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        let second = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        assert_eq!(second.revision, first.revision);
+        assert_eq!(second.events.len(), first.events.len());
+        assert_eq!(second.status, ProofbookRunStatus::Passed);
+    }
+
+    #[test]
+    fn concurrent_proofbook_settlements_have_exactly_one_cas_winner() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cas-concurrent
+steps:
+  - id: approve
+    type: manualGate
+    gateId: concurrent-check
+    options: [approve, reject]
+    default: reject
+    risk: medium
+settlement:
+  requiredSteps: [approve]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let current = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let mut handles = Vec::new();
+        for kind in ["concurrent-a", "concurrent-b"] {
+            let runner = runner.clone();
+            let root = project.path().to_path_buf();
+            let barrier = barrier.clone();
+            let mut snapshot = current.clone();
+            handles.push(std::thread::spawn(move || {
+                snapshot.append_event(kind, None, kind, None, None);
+                barrier.wait();
+                runner.commit_ledger(&root, &mut snapshot)
+            }));
+        }
+        barrier.wait();
+        let outcomes: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|result| {
+                    result
+                        .as_ref()
+                        .err()
+                        .is_some_and(|error| error.code == ProofbookErrorCode::StaleLedgerRevision)
+                })
+                .count(),
+            1
+        );
+        let durable =
+            ledger::read_ledger(&ledger::ledger_path(project.path(), &current.run_id)).unwrap();
+        let committed = durable
+            .events
+            .iter()
+            .filter(|event| matches!(event.kind.as_str(), "concurrent-a" | "concurrent-b"))
+            .count();
+        assert_eq!(committed, 1);
     }
 
     #[test]

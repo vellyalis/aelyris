@@ -468,6 +468,35 @@ The artifact intentionally reports `phaseComplete=false`: A5.3-A5.8 remain. The 
 slice is A5.3 revisioned/CAS Proofbook settlement; cancellation tokens becoming
 run-owned rather than caller-supplied remains part of that ledger/run ownership slice.
 
+### A5.3 Complete - Revisioned Proofbook CAS Settlement
+
+`ProofbookRunLedger.revision` is now a backward-compatible monotonic generation
+(`serde(default)` adopts legacy v1 ledgers at revision zero). `ProofbookRunner` owns a
+short global run-map lookup plus a per-run mutex. Every production mutation after
+initialization compares both the in-memory slot and current durable revision before
+atomic replacement; stale memory or externally-newer durable state returns typed
+`StaleLedgerRevision` without overwriting the winner.
+
+Deterministic run initialization is idempotent and adopts an existing ledger rather
+than resetting it. Concurrent settlements from the same generation have exactly one
+winner. Unrelated run IDs use distinct slots, so the run map is not held across ledger
+file validation or durable replacement.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:proofbook-cas`
+- `.codex-auto/quality/a5-proofbook-cas.json`
+- Proofbook runner matrix: 18/18 PASS
+- stale memory snapshot cannot overwrite winner
+- newer durable revision cannot be overwritten
+- concurrent same-revision settlements produce exactly one CAS winner
+- deterministic re-start preserves revision/events
+- legacy v1 ledger without `revision` adopts revision zero
+
+The artifact reports `phaseComplete=false`; A5.4-A5.8 remain. A5.4 owns only PTY map
+lock/per-instance handle boundaries and must preserve spawn-token and live-process
+identity contracts.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.
