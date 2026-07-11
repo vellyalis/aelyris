@@ -2,6 +2,11 @@ import * as RadixToast from "@radix-ui/react-toast";
 import { type ToastItem, useToastStore } from "../store/toastStore";
 import styles from "./Toast.module.css";
 
+export function toastSeverityType(type: ToastItem["type"]): "foreground" | "background" {
+  // Keep severity mapped to Radix announcement priority in one typed contract.
+  return type === "error" ? "foreground" : "background";
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const { toasts, dismiss } = useToastStore();
 
@@ -13,6 +18,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           key={t.id}
           className={`${styles.root} ${styles[t.type]}`}
           open
+          type={toastSeverityType(t.type)}
+          role={t.type === "error" ? "alert" : "status"}
+          aria-live={t.type === "error" ? "assertive" : "polite"}
           onOpenChange={(open) => {
             if (!open) dismiss(t.id);
           }}

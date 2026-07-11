@@ -31,6 +31,7 @@ interface StatusBarProps {
   paneCount?: number;
   rightRailMode?: string;
   rightRailWidth?: number | null;
+  onOpenFile: (path: string) => void;
 }
 
 export function StatusBar({
@@ -43,6 +44,7 @@ export function StatusBar({
   paneCount = 0,
   rightRailMode = "command",
   rightRailWidth = null,
+  onOpenFile,
 }: StatusBarProps) {
   const [repairOpen, setRepairOpen] = useState(false);
   const [ghostOpen, setGhostOpen] = useState(false);
@@ -137,7 +139,12 @@ export function StatusBar({
         />
       )}
       {ghostOpen && (
-        <GhostDiffPanel layers={ghostLayers} onDismiss={dismissGhost} onClose={() => setGhostOpen(false)} />
+        <GhostDiffPanel
+          layers={ghostLayers}
+          onDismiss={dismissGhost}
+          onClose={() => setGhostOpen(false)}
+          onOpenFile={onOpenFile}
+        />
       )}
       {perfOpen && <PerformanceObservatoryPanel snapshot={performanceSnapshot} onClose={() => setPerfOpen(false)} />}
     </div>

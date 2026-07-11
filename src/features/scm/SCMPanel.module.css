@@ -311,3 +311,13 @@
 .fileActions button:hover {
   color: var(--text-primary);
 }
+
+.statusError {
+  margin: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--ctp-red) 45%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--ctp-red) 10%, transparent);
+  font-size: var(--text-xs);
+}

@@ -67,6 +67,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
   const [loading, setLoading] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -77,8 +78,12 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
       setUpstream(info.upstream);
       setAhead(info.ahead);
       setBehind(info.behind);
-    } catch {
-      /* not a git repo */
+      setStatusError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFiles([]);
+      setStatusError(message);
+      toast.error("Source control unavailable", message);
     }
   }, [projectPath]);
 
@@ -237,6 +242,11 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
   return (
     <div className={styles.panel}>
       <PanelHeader title="Source control" count={stagedCount} />
+      {statusError && (
+        <div className={styles.statusError} role="alert">
+          Git status failed: {statusError}
+        </div>
+      )}
       {/* Branch + tracking summary */}
       {branch && (
         <div className={styles.branchBar}>
@@ -383,7 +393,9 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
                       >
                         {fileName(f.path)}
                       </button>
-                      <span className={styles.filePath}>{f.path.slice(0, f.path.length - fileName(f.path).length)}</span>
+                      <span className={styles.filePath}>
+                        {f.path.slice(0, f.path.length - fileName(f.path).length)}
+                      </span>
                       <span className={styles.fileActions}>
                         {g.id === "changes" || g.id === "untracked" ? (
                           <>
@@ -432,7 +444,7 @@ export function SCMPanel({ projectPath, onOpenFile, onOpenDiff }: SCMPanelProps)
             </div>
           );
         })}
-        {files.length === 0 && (
+        {files.length === 0 && !statusError && (
           <EmptyState
             preset="files"
             title="Working tree clean"

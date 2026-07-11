@@ -5035,6 +5035,7 @@ export function App() {
             changedCount={changedFiles.length}
             agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
             terminalId={activePtyId}
+            onOpenFile={handleFileSelect}
             paneCount={visualTerminalPaneTargets.length}
             rightRailMode={rightRailMode}
             rightRailWidth={rightPanelWidth}

@@ -10,14 +10,15 @@ interface GhostDiffPanelProps {
   layers: LayerSummary[];
   onDismiss: (layerId: string) => void;
   onClose: () => void;
+  onOpenFile: (path: string) => void;
 }
 
 /**
  * Popover anchored to the StatusBar ghost-layer button. Shows every active
  * ghost layer with its file list; file-click opens each path inside the
- * editor (via 3C-1b inline ghost paint — for now the click is a stub).
+ * editor through the app-owned file-selection route.
  */
-export function GhostDiffPanel({ layers, onDismiss, onClose }: GhostDiffPanelProps) {
+export function GhostDiffPanel({ layers, onDismiss, onClose, onOpenFile }: GhostDiffPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -74,6 +75,7 @@ export function GhostDiffPanel({ layers, onDismiss, onClose }: GhostDiffPanelPro
               expanded={expanded.has(layer.id)}
               onToggle={() => toggleExpanded(layer.id)}
               onDismiss={() => onDismiss(layer.id)}
+              onOpenFile={onOpenFile}
             />
           ))
         )}
@@ -87,6 +89,7 @@ interface LayerRowProps {
   expanded: boolean;
   onToggle: () => void;
   onDismiss: () => void;
+  onOpenFile: (path: string) => void;
 }
 
 function layerCaption(source: LayerSummary["source"]): { caption: string; title: string } {
@@ -108,7 +111,7 @@ function layerCaption(source: LayerSummary["source"]): { caption: string; title:
   }
 }
 
-function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
+function LayerRow({ layer, expanded, onToggle, onDismiss, onOpenFile }: LayerRowProps) {
   const { tint, source, fileCount, hunkCount, isComplete, filePaths } = layer;
   const { caption, title } = layerCaption(source);
   const readOnly = isReadOnlyLayer(source);
@@ -159,8 +162,10 @@ function LayerRow({ layer, expanded, onToggle, onDismiss }: LayerRowProps) {
       {expanded && filePaths.length > 0 && (
         <ul className={styles.fileList}>
           {filePaths.map((path) => (
-            <li key={path} className={styles.fileRow} title={path}>
-              {path}
+            <li key={path}>
+              <button type="button" className={styles.fileRow} title={path} onClick={() => onOpenFile(path)}>
+                {path}
+              </button>
             </li>
           ))}
         </ul>
