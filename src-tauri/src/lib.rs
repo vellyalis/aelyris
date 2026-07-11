@@ -36,6 +36,7 @@ pub mod session;
 pub mod shared_brain;
 pub mod shell_integration;
 pub mod snapshot;
+pub mod startup_reconciliation;
 pub mod suggest;
 pub mod supervisor;
 pub mod symbol_ownership;
@@ -180,6 +181,12 @@ pub fn run() {
     let t0 = std::time::Instant::now();
     log::info!("Aelyris starting...");
     let (lsp_tx, lsp_rx) = std::sync::mpsc::channel::<lsp::LspMessage>();
+    let startup_reconciliation = std::sync::Arc::new(
+        startup_reconciliation::StartupReconciliationState::new(),
+    );
+    let pty_manager = PtyManager::new()
+        .with_env_scrollback_store()
+        .with_startup_reconciliation(startup_reconciliation.clone());
 
     tauri::Builder::default()
         .manage(log_ring)
@@ -194,8 +201,9 @@ pub fn run() {
         // docs/auto_updater_setup.md for the one-time key generation step
         // that swaps the placeholder for a real pubkey.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(PtyManager::new().with_env_scrollback_store())
+        .manage(pty_manager)
         .manage(pty_sidecar::PtySidecarState::new(None))
+        .manage(startup_reconciliation)
         .manage(AgentManager::new())
         .manage(InteractiveSessionManager::new())
         .manage(std::sync::Arc::new(std::sync::Mutex::new(mux::manager::MuxManager::new())))
@@ -406,9 +414,18 @@ pub fn run() {
                     restore_knowledge_graph(app.handle(), &managed);
                     restore_ownership(app.handle(), &managed);
                     app.handle().manage(managed);
+                    if let Err(error) = app
+                        .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
+                        .mark_database_ready()
+                    {
+                        log::error!("Failed to mark durable database ready: {error}");
+                    }
                 }
                 Err(e) => {
                     log::error!("Failed to initialize database: {}", e);
+                    let _ = app
+                        .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
+                        .fail("database", e.clone());
                     // Provide a fallback in-memory db so commands don't panic. The
                     // restore is an empty no-op and writes won't survive restart,
                     // but the store stays consistent and dispatch never breaks.
@@ -509,6 +526,9 @@ pub fn run() {
                             "port": 9334,
                         }),
                     );
+                    let _ = sidecar_adopt_app
+                        .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
+                        .fail("sidecar_connect", "PTY sidecar daemon unavailable");
                     return;
                 };
                 let stream_state_app = sidecar_adopt_app.clone();
@@ -519,6 +539,12 @@ pub fn run() {
                     log::info!(
                         "PTY sidecar became ready after native PTY sessions existed; keeping native backend for this app session"
                     );
+                    let _ = sidecar_adopt_app
+                        .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
+                        .fail(
+                            "sidecar_adoption",
+                            "native PTY sessions existed before durable startup reconciliation",
+                        );
                     return;
                 }
                 match sidecar_state.set_client(client.clone()) {
@@ -526,36 +552,65 @@ pub fn run() {
                         log::info!("PTY sidecar connected in background");
                         let app_handle = sidecar_adopt_app.clone();
                         tauri::async_runtime::spawn(async move {
-                            match ipc::adopt_sidecar_terminals(&app_handle, client.clone()).await {
-                                Ok(count) if count > 0 => {
-                                    log::info!("PTY sidecar adopted {count} existing terminal(s)")
-                                }
-                                Ok(_) => {}
-                                Err(err) => {
-                                    log::warn!("PTY sidecar terminal adoption failed: {err}")
-                                }
+                            let result = async {
+                                let adopted = ipc::adopt_sidecar_terminals(
+                                    &app_handle,
+                                    client.clone(),
+                                )
+                                .await?;
+                                let restored =
+                                    ipc::restore_interactive_sessions(&app_handle, client).await?;
+                                let reconciled =
+                                    ipc::reconcile_session_handoffs_on_boot(&app_handle).await?;
+                                Ok::<(usize, usize, usize), String>((
+                                    adopted,
+                                    restored,
+                                    reconciled,
+                                ))
                             }
-                            match ipc::restore_interactive_sessions(&app_handle, client).await {
-                                Ok(count) if count > 0 => {
-                                    log::info!("Restored {count} interactive session checkpoint(s)")
+                            .await;
+                            let state = app_handle.state::<std::sync::Arc<
+                                startup_reconciliation::StartupReconciliationState,
+                            >>();
+                            match result {
+                                Ok((adopted, restored, reconciled)) => {
+                                    match state.complete(adopted, restored, reconciled) {
+                                        Ok(true) => log::info!(
+                                            "Durable startup reconciliation ready: adopted={adopted} restored={restored} reconciled={reconciled}"
+                                        ),
+                                        Ok(false) => log::warn!(
+                                            "Durable startup reconciliation completed after terminal state"
+                                        ),
+                                        Err(error) => log::error!(
+                                            "Durable startup reconciliation completion failed: {error}"
+                                        ),
+                                    }
                                 }
-                                Ok(_) => {}
-                                Err(err) => {
-                                    log::warn!("Interactive session checkpoint restore failed: {err}")
-                                }
-                            }
-                            match ipc::reconcile_session_handoffs_on_boot(&app_handle).await {
-                                Ok(count) if count > 0 => {
-                                    log::info!("Reconciled {count} session handoff(s) after restart")
-                                }
-                                Ok(_) => {}
-                                Err(err) => {
-                                    log::warn!("Session handoff boot reconcile failed: {err}")
+                                Err(error) => {
+                                    log::error!("Durable startup reconciliation failed: {error}");
+                                    let _ = state.fail("adoption_reconciliation", error);
                                 }
                             }
                         });
                     }
-                    Err(err) => log::warn!("PTY sidecar state update failed: {err}"),
+                    Err(err) => {
+                        log::warn!("PTY sidecar state update failed: {err}");
+                        let _ = sidecar_adopt_app
+                            .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
+                            .fail("sidecar_state", err);
+                    }
+                }
+            });
+
+            let startup_timeout_app = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(
+                    startup_reconciliation::STARTUP_RECONCILIATION_TIMEOUT_SECS,
+                ));
+                let state = startup_timeout_app
+                    .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>();
+                if matches!(state.fail_if_pending(), Ok(true)) {
+                    log::error!("Durable startup reconciliation timed out; spawn remains blocked");
                 }
             });
 
@@ -1027,6 +1082,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ipc::startup_reconciliation_status,
             ipc::spawn_terminal,
             ipc::respawn_terminal,
             ipc::force_restart_terminal,

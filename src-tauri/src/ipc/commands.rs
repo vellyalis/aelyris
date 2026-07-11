@@ -697,6 +697,14 @@ fn is_dangerous_path(path: &Path) -> bool {
         .any(|d| normalized == *d || normalized.starts_with(&format!("{d}/")))
 }
 
+#[tauri::command]
+pub fn startup_reconciliation_status(
+    app: AppHandle,
+) -> Result<crate::startup_reconciliation::StartupReconciliationReport, String> {
+    app.state::<Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+        .snapshot()
+}
+
 /// Spawn a new terminal session
 #[tauri::command]
 pub async fn spawn_terminal(
@@ -706,6 +714,8 @@ pub async fn spawn_terminal(
     rows: u16,
     cwd: Option<String>,
 ) -> Result<String, String> {
+    app.state::<Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+        .require_spawn_admitted()?;
     let cwd = match normalize_cwd(cwd) {
         Ok(cwd) => cwd,
         Err(err) => {
@@ -964,6 +974,8 @@ pub async fn respawn_terminal(
     rows: u16,
     cwd: Option<String>,
 ) -> Result<(), String> {
+    app.state::<Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+        .require_spawn_admitted()?;
     let cwd = match normalize_cwd(cwd) {
         Ok(cwd) => cwd,
         Err(err) => {

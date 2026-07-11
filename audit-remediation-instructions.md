@@ -5,9 +5,9 @@ PROGRAM: `audit-remediation`
 CURRENT PHASE: `A4` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
 signed lifecycle deferred to A9; R0 complete at `fcd23a7`; A3 repo-owned work complete).
 NEXT PHASE: `A5` after A4 durability acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A4.3 bounded startup adoption and reconciliation`.
-A4.1 inventory and A4.2 numbered DB migration/open durability are complete;
-persistence behavior must continue in the frozen dependency order.
+NEXT IMPLEMENTATION SLICE: `A4.4 automatic checkpoint and persistence-failure semantics`.
+A4.1-A4.3 inventory, numbered DB migration/open durability, and bounded startup
+reconciliation are complete; persistence behavior must continue in dependency order.
 
 ## Objective
 

@@ -347,6 +347,15 @@ Focused fixtures prove legacy data survives in the backup, version adoption is
 idempotent, reopening does not create another backup, and newer schemas are not
 mutated. A4.3 is the next slice; A4 as a whole remains active.
 
+A4.3 completion note (2026-07-12): one typed startup reconciliation owner now gates
+all production `PtyManager` spawns plus the sidecar-backed terminal/interactive IPC
+faces. It moves terminally from pending to ready or failed, requires durable DB
+readiness, runs sidecar adoption -> checkpoint restore -> handoff reconciliation in
+order, exposes a typed status IPC, and fails closed after 15 seconds. Focused tests
+prove pending/failed spawn denial, late-success rejection, timeout behavior, and no
+PTY creation before admission. `verify:a4:durability` records the current A4.2-A4.3
+contract. A4.4 is next; A4 as a whole remains active.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.

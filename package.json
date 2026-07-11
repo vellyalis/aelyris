@@ -22,6 +22,7 @@
     "verify:evidence-provenance-contract": "node scripts/verify-evidence-provenance-contract.mjs",
     "verify:release-evidence-truth": "node scripts/verify-release-evidence-truth.mjs",
     "verify:a2:windows-trust-contract": "node scripts/verify-a2-windows-trust-contract.mjs",
+    "verify:a4:durability": "node scripts/verify-a4-durability-contract.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",

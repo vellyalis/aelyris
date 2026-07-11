@@ -139,6 +139,8 @@ pub struct PtyRuntimeIdentity {
 pub struct PtyManager {
     instances: Arc<Mutex<HashMap<String, PtyInstance>>>,
     scrollback_store: Option<Arc<FilePtyScrollbackStore>>,
+    startup_reconciliation:
+        Option<Arc<crate::startup_reconciliation::StartupReconciliationState>>,
 }
 
 impl PtyManager {
@@ -146,7 +148,16 @@ impl PtyManager {
         Self {
             instances: Arc::new(Mutex::new(HashMap::new())),
             scrollback_store: None,
+            startup_reconciliation: None,
         }
+    }
+
+    pub fn with_startup_reconciliation(
+        mut self,
+        state: Arc<crate::startup_reconciliation::StartupReconciliationState>,
+    ) -> Self {
+        self.startup_reconciliation = Some(state);
+        self
     }
 
     pub fn with_scrollback_dir(mut self, dir: impl Into<PathBuf>) -> Self {
@@ -244,6 +255,9 @@ impl PtyManager {
         cwd: Option<&str>,
         extra_env: Option<std::collections::HashMap<String, String>>,
     ) -> Result<(), String> {
+        if let Some(state) = &self.startup_reconciliation {
+            state.require_spawn_admitted()?;
+        }
         // Hold the session map lock from the collision check through insert.
         // This makes caller-provided ids atomic for concurrent restore/attach
         // paths: a second spawn with the same id blocks until the first either

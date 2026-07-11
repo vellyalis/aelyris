@@ -92,6 +92,8 @@ pub(crate) async fn spawn_interactive_agent_internal(
     rows: u16,
     options: SpawnInteractiveAgentOptions,
 ) -> Result<SpawnResult, String> {
+    app.state::<Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+        .require_spawn_admitted()?;
     let model_str = model.as_deref().unwrap_or("sonnet");
     let cli = AgentCli::from_model(model_str);
     cli.validate()?;
