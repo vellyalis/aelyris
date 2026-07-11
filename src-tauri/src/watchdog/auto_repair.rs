@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 
 const MAX_CONCURRENT_JOBS: usize = 3;
 const DEBOUNCE_SECS: u64 = 60;
+const AGENT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const GIT_TIMEOUT: Duration = Duration::from_secs(30);
+const TEST_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const COMMAND_OUTPUT_LIMIT: usize = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -294,15 +298,12 @@ fn repair_worker(
 
     let prompt = build_agent_prompt(&error);
     let agent_program = crate::agent::platform_cli_program("claude");
-    let agent_result = crate::process::hidden_command(agent_program)
+    let mut agent_command = crate::process::hidden_command(agent_program);
+    agent_command
         .args(["-p", &prompt, "--output-format", "text"])
-        .current_dir(&worktree_path)
-        .output();
-
-    let agent_ok = match agent_result {
-        Ok(out) => out.status.success(),
-        Err(_) => false,
-    };
+        .current_dir(&worktree_path);
+    let agent_result = run_bounded_command(&mut agent_command, AGENT_TIMEOUT);
+    let agent_ok = command_passed(agent_result.as_ref().ok());
 
     if !agent_ok {
         cleanup_worktree(&repo_path, &branch);
@@ -310,7 +311,10 @@ fn repair_worker(
             job_id.clone(),
             RepairNotification {
                 job_id: job_id.clone(),
-                message: "Auto-repair: agent could not fix the error".into(),
+                message: format!(
+                    "Auto-repair: agent could not fix the error ({})",
+                    command_failure_kind(agent_result.as_ref())
+                ),
                 is_success: false,
             },
         ));
@@ -318,12 +322,16 @@ fn repair_worker(
     }
 
     // Step 3: Check if agent made any changes
-    let has_changes = crate::process::hidden_command("git")
+    let mut status_command = crate::process::hidden_command("git");
+    status_command
         .args(["status", "--porcelain"])
-        .current_dir(&worktree_path)
-        .output()
+        .current_dir(&worktree_path);
+    let has_changes = run_bounded_command(&mut status_command, GIT_TIMEOUT)
         .map(|out| {
-            let text = String::from_utf8_lossy(&out.stdout);
+            if !command_passed(Some(&out)) {
+                return false;
+            }
+            let text = String::from_utf8_lossy(&out.stdout_tail);
             !text.trim().is_empty()
         })
         .unwrap_or(false);
@@ -342,15 +350,45 @@ fn repair_worker(
     }
 
     // Commit the changes
-    let _ = crate::process::hidden_command("git")
-        .args(["add", "-A"])
-        .current_dir(&worktree_path)
-        .output();
+    let mut add_command = crate::process::hidden_command("git");
+    add_command.args(["add", "-A"]).current_dir(&worktree_path);
+    let add_result = run_bounded_command(&mut add_command, GIT_TIMEOUT);
+    if !command_passed(add_result.as_ref().ok()) {
+        cleanup_worktree(&repo_path, &branch);
+        let _ = tx.send(WorkerMsg::Done(
+            job_id.clone(),
+            RepairNotification {
+                job_id: job_id.clone(),
+                message: format!(
+                    "Auto-repair: git add failed ({})",
+                    command_failure_kind(add_result.as_ref())
+                ),
+                is_success: false,
+            },
+        ));
+        return;
+    }
     let commit_msg = format!("fix(auto-repair): {}", truncate(&error.matched_line, 72));
-    let _ = crate::process::hidden_command("git")
+    let mut commit_command = crate::process::hidden_command("git");
+    commit_command
         .args(["commit", "-m", &commit_msg])
-        .current_dir(&worktree_path)
-        .output();
+        .current_dir(&worktree_path);
+    let commit_result = run_bounded_command(&mut commit_command, GIT_TIMEOUT);
+    if !command_passed(commit_result.as_ref().ok()) {
+        cleanup_worktree(&repo_path, &branch);
+        let _ = tx.send(WorkerMsg::Done(
+            job_id.clone(),
+            RepairNotification {
+                job_id: job_id.clone(),
+                message: format!(
+                    "Auto-repair: git commit failed ({})",
+                    command_failure_kind(commit_result.as_ref())
+                ),
+                is_success: false,
+            },
+        ));
+        return;
+    }
 
     // Step 4: Run tests
     let _ = tx.send(WorkerMsg::PhaseChanged(
@@ -455,12 +493,50 @@ pub(crate) struct TestCommand {
 
 /// Run a test command and return whether it passed.
 fn run_test_command(cwd: &Path, cmd: &TestCommand) -> bool {
-    crate::process::hidden_command(&cmd.program)
-        .args(&cmd.args)
-        .current_dir(cwd)
-        .output()
-        .map(|out| out.status.success())
-        .unwrap_or(false)
+    let mut command = crate::process::hidden_command(&cmd.program);
+    command.args(&cmd.args).current_dir(cwd);
+    command_passed(
+        run_bounded_command(&mut command, TEST_TIMEOUT)
+            .as_ref()
+            .ok(),
+    )
+}
+
+fn run_bounded_command(
+    command: &mut std::process::Command,
+    deadline: Duration,
+) -> std::io::Result<crate::process::SupervisedCommandOutput> {
+    crate::process::run_supervised(
+        command,
+        &crate::process::SupervisedCommandConfig {
+            deadline,
+            output_limit_bytes: COMMAND_OUTPUT_LIMIT,
+            cancellation: None,
+        },
+    )
+}
+
+fn command_passed(output: Option<&crate::process::SupervisedCommandOutput>) -> bool {
+    output.is_some_and(|output| {
+        output.status == crate::process::SupervisedCommandStatus::Exited
+            && output.exit_code == Some(0)
+    })
+}
+
+fn command_failure_kind(
+    result: Result<&crate::process::SupervisedCommandOutput, &std::io::Error>,
+) -> &'static str {
+    match result {
+        Err(_) => "spawn-error",
+        Ok(output) => match output.status {
+            crate::process::SupervisedCommandStatus::TimedOut => "timeout",
+            crate::process::SupervisedCommandStatus::Cancelled => "cancelled",
+            crate::process::SupervisedCommandStatus::Exited if output.exit_code == Some(0) => {
+                "passed"
+            }
+            crate::process::SupervisedCommandStatus::Exited => "nonzero-exit",
+        },
+    }
 }
 
 /// FNV-style hash for debounce keys.

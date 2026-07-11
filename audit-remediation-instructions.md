@@ -5,9 +5,9 @@ PROGRAM: `audit-remediation`
 CURRENT PHASE: `A5` (`R0-A4 repo-owned work complete`; A2 signed lifecycle and A4
 real-host sleep/power-loss proof remain explicit A9 operator gates).
 NEXT PHASE: `A6` after A5 supervision/concurrency acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A5.2 bounded command supervisor and typed outcome contract`
-for Proofbook shell/verifier, objective gate, and watchdog command paths. A5.1 inventory
-is frozen in the tracked plan; do not widen A5.2 into PTY/TaskGraph/LSP ownership changes.
+NEXT IMPLEMENTATION SLICE: `A5.3 revisioned/CAS Proofbook ledger settlement`.
+A5.1 inventory and A5.2 bounded command supervision are complete in the current
+focused slice; do not widen A5.3 into PTY/TaskGraph/LSP ownership changes.
 
 ## Objective
 

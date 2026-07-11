@@ -447,6 +447,27 @@ captured tails, and Windows descendants remain under the existing no-orphan boun
 It must not change Proofbook ledger settlement, PTY map ownership, TaskGraph semantics,
 or LSP framing.
 
+### A5.2 Complete - Bounded Command Supervision
+
+The shared supervisor in `src-tauri/src/process.rs` now owns non-interactive child
+deadline, cancellation classification, concurrent stdout/stderr draining, bounded tail
+capture, exit-code preservation, and timeout/cancel process-tree cleanup. Proofbook
+shell/verifier, objective gate, and watchdog agent/git/test commands use this contract.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:command-supervision`
+- `.codex-auto/quality/a5-command-supervision.json`
+- supervisor timeout/cancel/flood/normal-exit tests: 4/4 PASS
+- Proofbook timeout mapping/output-cap tests: 2/2 PASS
+- Proofbook runner regression: 14/14 PASS
+- objective gate regression: 5/5 PASS
+- watchdog regression: 20/20 PASS
+
+The artifact intentionally reports `phaseComplete=false`: A5.3-A5.8 remain. The next
+slice is A5.3 revisioned/CAS Proofbook settlement; cancellation tokens becoming
+run-owned rather than caller-supplied remains part of that ledger/run ownership slice.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.

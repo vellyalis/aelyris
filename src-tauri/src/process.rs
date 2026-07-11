@@ -1,5 +1,11 @@
 use std::ffi::OsStr;
+use std::io::{self, Read};
 use std::process::Command;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -24,6 +30,143 @@ pub fn hide_window(command: &mut Command) -> &mut Command {
         command.creation_flags(CREATE_NO_WINDOW);
     }
     command
+}
+
+#[derive(Debug, Clone)]
+pub struct SupervisedCommandConfig {
+    pub deadline: Duration,
+    pub output_limit_bytes: usize,
+    pub cancellation: Option<Arc<AtomicBool>>,
+}
+
+impl Default for SupervisedCommandConfig {
+    fn default() -> Self {
+        Self {
+            deadline: Duration::from_secs(10 * 60),
+            output_limit_bytes: 1024 * 1024,
+            cancellation: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupervisedCommandStatus {
+    Exited,
+    TimedOut,
+    Cancelled,
+}
+
+#[derive(Debug)]
+pub struct SupervisedCommandOutput {
+    pub status: SupervisedCommandStatus,
+    pub exit_code: Option<i32>,
+    pub stdout_tail: Vec<u8>,
+    pub stderr_tail: Vec<u8>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub duration: Duration,
+}
+
+/// Run a non-interactive child with one bounded lifecycle contract.
+///
+/// Both output pipes are drained concurrently so a flooding child cannot block on a
+/// full OS pipe. Only the final configured number of bytes is retained. Timeout and
+/// cancellation terminate the process tree before the reader threads are joined.
+pub fn run_supervised(
+    command: &mut Command,
+    config: &SupervisedCommandConfig,
+) -> io::Result<SupervisedCommandOutput> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let started = Instant::now();
+    let mut child = command.spawn()?;
+    guard_child_against_orphan(child.id());
+    let stdout = child.stdout.take().expect("piped stdout must exist");
+    let stderr = child.stderr.take().expect("piped stderr must exist");
+    let limit = config.output_limit_bytes;
+    let stdout_reader = thread::spawn(move || read_tail(stdout, limit));
+    let stderr_reader = thread::spawn(move || read_tail(stderr, limit));
+
+    let (status, exit_code) = loop {
+        if let Some(exit) = child.try_wait()? {
+            break (SupervisedCommandStatus::Exited, exit.code());
+        }
+        if config
+            .cancellation
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Acquire))
+        {
+            terminate_child_tree(&mut child);
+            break (
+                SupervisedCommandStatus::Cancelled,
+                child.wait().ok().and_then(|exit| exit.code()),
+            );
+        }
+        if started.elapsed() >= config.deadline {
+            terminate_child_tree(&mut child);
+            break (
+                SupervisedCommandStatus::TimedOut,
+                child.wait().ok().and_then(|exit| exit.code()),
+            );
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+
+    let (stdout_tail, stdout_truncated) = stdout_reader
+        .join()
+        .map_err(|_| io::Error::other("supervised stdout reader panicked"))??;
+    let (stderr_tail, stderr_truncated) = stderr_reader
+        .join()
+        .map_err(|_| io::Error::other("supervised stderr reader panicked"))??;
+    Ok(SupervisedCommandOutput {
+        status,
+        exit_code,
+        stdout_tail,
+        stderr_tail,
+        stdout_truncated,
+        stderr_truncated,
+        duration: started.elapsed(),
+    })
+}
+
+fn read_tail(mut reader: impl Read, limit: usize) -> io::Result<(Vec<u8>, bool)> {
+    let mut tail = Vec::with_capacity(limit.min(64 * 1024));
+    let mut truncated = false;
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        if limit == 0 {
+            truncated = true;
+            continue;
+        }
+        if read >= limit {
+            tail.clear();
+            tail.extend_from_slice(&chunk[read - limit..read]);
+            truncated = true;
+            continue;
+        }
+        let overflow = tail.len().saturating_add(read).saturating_sub(limit);
+        if overflow > 0 {
+            tail.drain(..overflow);
+            truncated = true;
+        }
+        tail.extend_from_slice(&chunk[..read]);
+    }
+    Ok((tail, truncated))
+}
+
+fn terminate_child_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let _ = hidden_command("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
 }
 
 /// Guarantee a spawned child process can never become an orphan ("zombie") that
@@ -225,5 +368,73 @@ mod tests {
         );
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    fn cmd(script: &str) -> Command {
+        let mut command = hidden_command("cmd");
+        command.args(["/C", script]);
+        command
+    }
+
+    #[test]
+    fn supervised_command_preserves_normal_exit_and_output() {
+        let output = run_supervised(
+            &mut cmd("echo out & echo err 1>&2 & exit /b 7"),
+            &SupervisedCommandConfig::default(),
+        )
+        .unwrap();
+        assert_eq!(output.status, SupervisedCommandStatus::Exited);
+        assert_eq!(output.exit_code, Some(7));
+        assert!(String::from_utf8_lossy(&output.stdout_tail).contains("out"));
+        assert!(String::from_utf8_lossy(&output.stderr_tail).contains("err"));
+    }
+
+    #[test]
+    fn supervised_command_times_out_a_hung_child() {
+        let output = run_supervised(
+            &mut cmd("ping -n 30 127.0.0.1 >nul"),
+            &SupervisedCommandConfig {
+                deadline: Duration::from_millis(50),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(output.status, SupervisedCommandStatus::TimedOut);
+        assert!(output.duration < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn supervised_command_reports_cancellation_distinctly() {
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let setter = cancellation.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            setter.store(true, Ordering::Release);
+        });
+        let output = run_supervised(
+            &mut cmd("ping -n 30 127.0.0.1 >nul"),
+            &SupervisedCommandConfig {
+                deadline: Duration::from_secs(5),
+                cancellation: Some(cancellation),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(output.status, SupervisedCommandStatus::Cancelled);
+    }
+
+    #[test]
+    fn supervised_command_drains_flood_and_retains_only_tail() {
+        let output = run_supervised(
+            &mut cmd("for /L %i in (1,1,5000) do @echo 0123456789abcdef"),
+            &SupervisedCommandConfig {
+                output_limit_bytes: 257,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(output.status, SupervisedCommandStatus::Exited);
+        assert_eq!(output.stdout_tail.len(), 257);
+        assert!(output.stdout_truncated);
     }
 }

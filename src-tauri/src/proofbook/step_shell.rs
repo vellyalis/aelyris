@@ -1,12 +1,14 @@
 use crate::command_risk::{classify_command, CommandRiskOptions, CommandRiskSeverity};
-use crate::process::hidden_command;
+use crate::process::{
+    hidden_command, run_supervised, SupervisedCommandConfig, SupervisedCommandStatus,
+};
 use crate::proofbook::ledger::{
     self, ProofbookRunError, ProofbookStepOutcome, ProofbookStepStatus,
 };
 use crate::proofbook::{ProofbookError, ProofbookErrorCode, ProofbookStep};
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::time::Duration;
 
 pub fn execute_shell_step(
     project_root: &Path,
@@ -62,21 +64,30 @@ pub fn execute_shell_step(
         CommandRiskSeverity::Allow => {}
     }
 
-    let output = shell_command(&command_text)
-        .current_dir(&cwd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| {
-            ProofbookError::new(
-                ProofbookErrorCode::IoError,
-                format!("failed to spawn proofbook command: {error}"),
-            )
-            .with_step(step.id.clone())
-        })?;
+    let timeout_ms = u64_param(step, "timeoutMs").unwrap_or(10 * 60 * 1_000);
+    let output_limit_bytes = u64_param(step, "outputLimitBytes")
+        .unwrap_or(1024 * 1024)
+        .clamp(1, 16 * 1024 * 1024) as usize;
+    let mut command = shell_command(&command_text);
+    command.current_dir(&cwd);
+    let output = run_supervised(
+        &mut command,
+        &SupervisedCommandConfig {
+            deadline: Duration::from_millis(timeout_ms.clamp(10, 60 * 60 * 1_000)),
+            output_limit_bytes,
+            cancellation: None,
+        },
+    )
+    .map_err(|error| {
+        ProofbookError::new(
+            ProofbookErrorCode::IoError,
+            format!("failed to spawn proofbook command: {error}"),
+        )
+        .with_step(step.id.clone())
+    })?;
 
-    let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout_text = String::from_utf8_lossy(&output.stdout_tail).to_string();
+    let stderr_text = String::from_utf8_lossy(&output.stderr_tail).to_string();
     let stdout =
         ledger::write_text_artifact(project_root, run_id, &step.id, "stdout", &stdout_text)?;
     let stderr =
@@ -84,7 +95,23 @@ pub fn execute_shell_step(
     let mut artifacts = vec![stdout.clone(), stderr.clone()];
     let mut artifact_refs = vec![stdout.id.clone(), stderr.id.clone()];
     let redaction_count = stdout.redaction_count + stderr.redaction_count;
-    let exit_code = output.status.code();
+    let exit_code = output.exit_code;
+
+    if output.status != SupervisedCommandStatus::Exited {
+        let (code, message, status) = supervision_failure(output.status, timeout_ms);
+        return Ok(ProofbookStepOutcome {
+            status,
+            stdout_ref: Some(stdout.id),
+            stderr_ref: Some(stderr.id),
+            exit_code,
+            artifacts,
+            artifact_refs,
+            redaction_count,
+            risk,
+            error: Some(ProofbookRunError::new(code, message)),
+            ..ProofbookStepOutcome::passed()
+        });
+    }
 
     if verifier {
         let expected = expected_artifact_paths(step);
@@ -131,7 +158,7 @@ pub fn execute_shell_step(
         }
     }
 
-    let passed = output.status.success();
+    let passed = exit_code == Some(0);
     Ok(ProofbookStepOutcome {
         status: if passed {
             ProofbookStepStatus::Passed
@@ -158,6 +185,25 @@ pub fn execute_shell_step(
             ))
         },
     })
+}
+
+fn supervision_failure(
+    status: SupervisedCommandStatus,
+    timeout_ms: u64,
+) -> (&'static str, String, ProofbookStepStatus) {
+    match status {
+        SupervisedCommandStatus::TimedOut => (
+            "command_timeout",
+            format!("command exceeded timeoutMs={timeout_ms}"),
+            ProofbookStepStatus::Failed,
+        ),
+        SupervisedCommandStatus::Cancelled => (
+            "command_cancelled",
+            "command was cancelled".to_string(),
+            ProofbookStepStatus::Cancelled,
+        ),
+        SupervisedCommandStatus::Exited => unreachable!("normal exit is not a supervision failure"),
+    }
 }
 
 fn shell_command(command_text: &str) -> std::process::Command {
@@ -228,5 +274,52 @@ fn expected_artifact_paths(step: &ProofbookStep) -> Vec<String> {
             })
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn shell_step(command: &str, timeout_ms: u64, output_limit_bytes: u64) -> ProofbookStep {
+        let mut params = BTreeMap::new();
+        params.insert("command".to_string(), serde_yaml::Value::from(command));
+        params.insert("timeoutMs".to_string(), serde_yaml::Value::from(timeout_ms));
+        params.insert(
+            "outputLimitBytes".to_string(),
+            serde_yaml::Value::from(output_limit_bytes),
+        );
+        ProofbookStep {
+            id: "bounded-shell".to_string(),
+            kind: "shell".to_string(),
+            depends_on: Vec::new(),
+            params,
+        }
+    }
+
+    #[test]
+    fn proofbook_shell_maps_supervision_failures_to_typed_outcomes() {
+        let timeout = supervision_failure(SupervisedCommandStatus::TimedOut, 50);
+        assert_eq!(timeout.0, "command_timeout");
+        assert_eq!(timeout.2, ProofbookStepStatus::Failed);
+        let cancelled = supervision_failure(SupervisedCommandStatus::Cancelled, 50);
+        assert_eq!(cancelled.0, "command_cancelled");
+        assert_eq!(cancelled.2, ProofbookStepStatus::Cancelled);
+    }
+
+    #[test]
+    fn proofbook_shell_caps_flooded_output_artifact() {
+        let root = tempfile::tempdir().unwrap();
+        let step = shell_step(&format!("echo {}", "x".repeat(5000)), 10_000, 257);
+        let outcome = execute_shell_step(root.path(), "flood-run", &step, false).unwrap();
+        assert_eq!(outcome.status, ProofbookStepStatus::Passed);
+        let stdout = outcome
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "stdout")
+            .unwrap();
+        let stdout_path = root.path().join(&stdout.path);
+        assert!(std::fs::metadata(stdout_path).unwrap().len() <= 257);
     }
 }

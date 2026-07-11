@@ -18,6 +18,7 @@
 //! and supply verdicts (leave the command unset).
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::control::loop_ports::GateRunner;
 use crate::review::GateResults;
@@ -64,14 +65,21 @@ impl CommandRunner for SystemCommandRunner {
         let Some((program, args)) = argv.split_first() else {
             return false;
         };
-        crate::process::hidden_command(program)
-            .args(args)
-            .current_dir(cwd)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false)
+        let mut command = crate::process::hidden_command(program);
+        command.args(args).current_dir(cwd);
+        crate::process::run_supervised(
+            &mut command,
+            &crate::process::SupervisedCommandConfig {
+                deadline: Duration::from_secs(10 * 60),
+                output_limit_bytes: 256 * 1024,
+                cancellation: None,
+            },
+        )
+        .map(|output| {
+            output.status == crate::process::SupervisedCommandStatus::Exited
+                && output.exit_code == Some(0)
+        })
+        .unwrap_or(false)
     }
 }
 
