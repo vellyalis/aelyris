@@ -33,6 +33,7 @@ beforeEach(() => {
     localStorage.removeItem("aelyris:windowOpacity");
     localStorage.removeItem("aelyris:workspaceProfiles");
     localStorage.removeItem("aelyris:terminalRendererMode");
+    localStorage.removeItem("aelyris:workspaceNavigation");
   } catch {
     /* ignore */
   }
@@ -53,6 +54,10 @@ beforeEach(() => {
     moodPresetId: DEFAULT_MOOD_PRESET,
     appWindowOpacity: 0.95,
     zenMode: false,
+    workspaceNavigationId: "",
+    productMode: "terminal",
+    rightRailMode: "command",
+    rightRailFocusWidget: null,
     moodMaterialOverrides: {},
     wallpaperSettingsByMood: {
       "aelyris-sky": { imagePath: null, opacity: 0, positionX: 50, positionY: 50, scale: 100 },
@@ -87,6 +92,27 @@ describe("appStore — project", () => {
 });
 
 describe("appStore — UI visibility", () => {
+  it("persists navigation independently per workspace", () => {
+    const store = useAppStore.getState();
+    store.hydrateWorkspaceNavigation("C:/one");
+    store.setProductMode("review");
+    store.setRightRailMode("review");
+    store.setRightRailFocusWidget("review-queue");
+
+    useAppStore.getState().hydrateWorkspaceNavigation("C:/two");
+    expect(useAppStore.getState()).toMatchObject({
+      productMode: "terminal",
+      rightRailMode: "command",
+      rightRailFocusWidget: null,
+    });
+
+    useAppStore.getState().hydrateWorkspaceNavigation("C:/one");
+    expect(useAppStore.getState()).toMatchObject({
+      productMode: "review",
+      rightRailMode: "review",
+      rightRailFocusWidget: "review-queue",
+    });
+  });
   it("toggles paletteVisible with boolean", () => {
     const { setPaletteVisible } = useAppStore.getState();
     setPaletteVisible(true);

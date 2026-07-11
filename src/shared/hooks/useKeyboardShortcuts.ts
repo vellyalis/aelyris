@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect } from "react";
 import { showHistorySearch } from "../../features/history/HistorySearchDialog";
 import { reportFallback } from "../lib/fallbackTelemetry";
+import { cycleWorkspaceRegion } from "../lib/workspaceRegionFocus";
 import { toast } from "../store/toastStore";
 import type { ShellType } from "../types/terminalPane";
 import { showPrompt } from "../ui/PromptDialog";
@@ -36,6 +37,7 @@ interface UseKeyboardShortcutsOptions {
   /** Toggle Zen mode (Ctrl+Shift+M) without disturbing persisted rail widths. */
   setZenMode?: (v: boolean | ((prev: boolean) => boolean)) => void;
   openDecisionInbox?: () => void;
+  setRightRailCollapsed?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -64,9 +66,15 @@ export function useKeyboardShortcuts({
   setSidebarCollapsed,
   setZenMode,
   openDecisionInbox,
+  setRightRailCollapsed,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.key === "F6" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        cycleWorkspaceRegion(e.shiftKey);
+        return;
+      }
       // Bail out when the user is typing into an editable surface so
       // Ctrl+N/P/R/W don't steal keystrokes from Kanban task labels,
       // Watchdog rule inputs, Monaco, native terminal input, etc. F1 + the chord
@@ -130,6 +138,9 @@ export function useKeyboardShortcuts({
       } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         openDecisionInbox?.();
+      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        setRightRailCollapsed?.((v: boolean) => !v);
       } else if (e.ctrlKey && e.shiftKey && e.key === "`") {
         e.preventDefault();
         openPaneSwitcher?.();
@@ -241,5 +252,6 @@ export function useKeyboardShortcuts({
     setSidebarCollapsed,
     setZenMode,
     openDecisionInbox,
+    setRightRailCollapsed,
   ]);
 }

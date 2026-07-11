@@ -346,6 +346,15 @@ export function App() {
     setSidebarWidth,
     rightPanelWidth,
     setRightPanelWidth,
+    rightRailCollapsed,
+    setRightRailCollapsed,
+    productMode,
+    setProductMode,
+    rightRailMode,
+    setRightRailMode,
+    rightRailFocusWidget,
+    setRightRailFocusWidget,
+    hydrateWorkspaceNavigation,
     zenMode,
     setZenMode,
     paletteVisible,
@@ -488,9 +497,6 @@ export function App() {
   const [openInDiff, setOpenInDiff] = useState(false);
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
-  const [productMode, setProductMode] = useState<ProductModeId>("terminal");
-  const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command");
-  const [rightRailFocusWidget, setRightRailFocusWidget] = useState<string | null>(null);
   const [decisionInboxFocusRequest, setDecisionInboxFocusRequest] = useState(0);
   const [rightRailRouteConfirmation, setRightRailRouteConfirmation] = useState<RightRailRouteConfirmation | null>(null);
   const [rightRailDestinationPrompt, setRightRailDestinationPrompt] = useState<RightRailDestinationPrompt | null>(null);
@@ -1361,7 +1367,13 @@ export function App() {
       setRightRailMode("observe");
       setRightRailFocusWidget("audit-timeline");
     },
-    [rightRailActionResult, scopedOperationalAuditEvents, showRightRailRouteConfirmation],
+    [
+      rightRailActionResult,
+      scopedOperationalAuditEvents,
+      showRightRailRouteConfirmation,
+      setRightRailFocusWidget,
+      setRightRailMode,
+    ],
   );
   const handleOpenRightRailOutcomeSource = useCallback(
     (result: RightRailActionResult) => {
@@ -1378,7 +1390,7 @@ export function App() {
       setRightRailMode(rightRailModeForOutcomeWidget(result.routeWidget));
       setRightRailFocusWidget(result.routeWidget);
     },
-    [handleOpenRightRailActionAudit, showRightRailRouteConfirmation],
+    [handleOpenRightRailActionAudit, showRightRailRouteConfirmation, setRightRailFocusWidget, setRightRailMode],
   );
   const handleOpenDecisionWorkflow = useCallback(
     (workflowId: string) => {
@@ -1390,7 +1402,7 @@ export function App() {
       setRightRailMode("command");
       setRightRailFocusWidget("workflow");
     },
-    [showRightRailRouteConfirmation],
+    [showRightRailRouteConfirmation, setRightRailFocusWidget, setRightRailMode],
   );
   const handleOpenDecisionAudit = useCallback(
     (auditEventId: number) => {
@@ -1406,7 +1418,7 @@ export function App() {
       setRightRailMode("observe");
       setRightRailFocusWidget("audit-timeline");
     },
-    [scopedOperationalAuditEvents, showRightRailRouteConfirmation],
+    [scopedOperationalAuditEvents, showRightRailRouteConfirmation, setRightRailMode, setRightRailFocusWidget],
   );
   const handleOpenRightRailEdgeScoreItem = useCallback(
     (item: RightRailEdgeScoreItem) => {
@@ -1454,7 +1466,7 @@ export function App() {
         });
       }
     },
-    [projectPath, rightRailMode, showRightRailRouteConfirmation],
+    [projectPath, rightRailMode, showRightRailRouteConfirmation, setRightRailMode, setRightRailFocusWidget],
   );
   const handleClearRightRailEdgeFeedbackHistory = useCallback(() => {
     clearRightRailEdgeFeedbackHistory(projectPath);
@@ -1860,6 +1872,7 @@ export function App() {
     rootProjectPath,
     setRightPanelWidth,
     setRootProjectPath,
+    setRightRailMode,
   ]);
 
   const handleTabSwitch = useCallback(
@@ -2333,6 +2346,8 @@ export function App() {
       selectOperationalPane,
       showRightRailActionResult,
       visualTerminalPaneTargets,
+      setRightRailMode,
+      setRightRailFocusWidget,
     ],
   );
 
@@ -2378,7 +2393,11 @@ export function App() {
     setRightRailMode("command");
     setRightRailFocusWidget("decision-inbox");
     setDecisionInboxFocusRequest((request) => request + 1);
-  }, []);
+  }, [setRightRailFocusWidget, setRightRailMode]);
+
+  useEffect(() => {
+    hydrateWorkspaceNavigation(projectPath);
+  }, [hydrateWorkspaceNavigation, projectPath]);
 
   // ── Keyboard shortcuts (extracted hook) ──
 
@@ -2408,6 +2427,7 @@ export function App() {
     setSidebarCollapsed,
     setZenMode,
     openDecisionInbox,
+    setRightRailCollapsed,
   });
 
   // ── Terminal notifications (bell → tab badge + Windows toast) ──
@@ -2612,6 +2632,23 @@ export function App() {
     setMergeQueueVisible,
     setZenMode,
     openDecisionInbox,
+    setRightRailCollapsed,
+    splitPaneRight: () => {
+      if (!visualActivePtyId) return;
+      document.dispatchEvent(
+        new CustomEvent(TERMINAL_PREFIX_COMMAND_EVENT, {
+          detail: { terminalId: visualActivePtyId, command: "split-right" },
+        }),
+      );
+    },
+    splitPaneDown: () => {
+      if (!visualActivePtyId) return;
+      document.dispatchEvent(
+        new CustomEvent(TERMINAL_PREFIX_COMMAND_EVENT, {
+          detail: { terminalId: visualActivePtyId, command: "split-down" },
+        }),
+      );
+    },
   });
 
   // ── Render ──
@@ -2621,14 +2658,14 @@ export function App() {
   const handleProductModeSelect = useCallback(
     (mode: ProductModeId) => {
       const route = PRODUCT_MODE_ROUTES[mode];
-      setProductMode(mode);
+      if (!route.openHistory && !route.openSettings) setProductMode(mode);
       if (route.expandSidebar) setSidebarCollapsed(false);
       if (route.rightRailMode) setRightRailMode(route.rightRailMode);
       if (route.focusWidget !== undefined) setRightRailFocusWidget(route.focusWidget);
       if (route.openHistory) showHistorySearch();
       if (route.openSettings) setSettingsVisible(true);
     },
-    [setSettingsVisible, setSidebarCollapsed],
+    [setProductMode, setRightRailFocusWidget, setRightRailMode, setSettingsVisible, setSidebarCollapsed],
   );
 
   useEffect(() => {
@@ -2657,7 +2694,7 @@ export function App() {
         document.querySelector<HTMLButtonElement>(`[data-right-rail-mode="${nextMode}"]`)?.focus();
       });
     },
-    [rightRailMode],
+    [rightRailMode, setRightRailMode],
   );
 
   const terminalTabs = tabs.map((tab) => (
@@ -3242,6 +3279,9 @@ export function App() {
             <nav
               className={`left-panel${sidebarCollapsed || zenMode ? " left-panel-collapsed" : ""}`}
               aria-label="Project sidebar"
+              aria-hidden={sidebarCollapsed || zenMode ? "true" : undefined}
+              data-workspace-region="sidebar"
+              tabIndex={-1}
               data-collapsed={sidebarCollapsed || zenMode}
               style={sidebarCollapsed || zenMode ? undefined : { width: `${sidebarWidth}px` }}
             >
@@ -3349,7 +3389,12 @@ export function App() {
               />
             </nav>
 
-            <section className="center-panel" aria-label="Terminal and editor">
+            <section
+              className="center-panel"
+              aria-label="Terminal and editor"
+              data-workspace-region="center"
+              tabIndex={-1}
+            >
               {editorArea ? (
                 <SplitPane direction="vertical" defaultRatio={0.5} first={editorArea} second={terminalSurface} />
               ) : (
@@ -3360,7 +3405,10 @@ export function App() {
             <aside
               className="right-panel"
               aria-label="Contextual inspector"
-              data-zen-hidden={zenMode ? "true" : undefined}
+              aria-hidden={zenMode || rightRailCollapsed ? "true" : undefined}
+              hidden={zenMode || rightRailCollapsed}
+              data-workspace-region="right-rail"
+              tabIndex={-1}
               /* `flex-basis` (not `width`) is what flex layout reads as
                * the preferred size. Setting only `width` left the
                * computed width at the CSS default (280 px) on Chromium
@@ -5029,17 +5077,19 @@ export function App() {
             onCloseInteractive={stopInteractiveSession}
           />
 
-          <StatusBar
-            shell={activeTab.shell}
-            branch={branch}
-            changedCount={changedFiles.length}
-            agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
-            terminalId={activePtyId}
-            onOpenFile={handleFileSelect}
-            paneCount={visualTerminalPaneTargets.length}
-            rightRailMode={rightRailMode}
-            rightRailWidth={rightPanelWidth}
-          />
+          <div data-workspace-region="status-bar" tabIndex={-1}>
+            <StatusBar
+              shell={activeTab.shell}
+              branch={branch}
+              changedCount={changedFiles.length}
+              agentStatus={activeAgent ? `${activeAgent.model} · $${activeAgent.cost.toFixed(2)}` : undefined}
+              terminalId={activePtyId}
+              onOpenFile={handleFileSelect}
+              paneCount={visualTerminalPaneTargets.length}
+              rightRailMode={rightRailMode}
+              rightRailWidth={rightPanelWidth}
+            />
+          </div>
 
           {paletteVisible && (
             <LazyDialog>

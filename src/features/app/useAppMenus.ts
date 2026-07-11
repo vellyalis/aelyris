@@ -81,6 +81,9 @@ interface UseAppMenusOptions {
   setMergeQueueVisible: (v: boolean | ((p: boolean) => boolean)) => void;
   setZenMode?: (v: boolean | ((prev: boolean) => boolean)) => void;
   openDecisionInbox?: () => void;
+  setRightRailCollapsed?: (v: boolean | ((prev: boolean) => boolean)) => void;
+  splitPaneRight?: () => void;
+  splitPaneDown?: () => void;
 }
 
 export function useAppMenus(opts: UseAppMenusOptions) {
@@ -121,6 +124,9 @@ export function useAppMenus(opts: UseAppMenusOptions) {
     setMergeQueueVisible,
     setZenMode,
     openDecisionInbox,
+    setRightRailCollapsed,
+    splitPaneRight,
+    splitPaneDown,
   } = opts;
 
   // Compare Branch action extracted so the palette entry and the View menu
@@ -582,6 +588,24 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         action: disableImeTrace,
       },
       {
+        id: "split-pane-right",
+        label: "Split Pane Right",
+        description: "Split the active terminal pane to the right through the mux owner",
+        shortcut: "Ctrl+Shift+V",
+        category: "Terminal",
+        icon: TerminalIcon,
+        action: () => splitPaneRight?.(),
+      },
+      {
+        id: "split-pane-down",
+        label: "Split Pane Down",
+        description: "Split the active terminal pane downward through the mux owner",
+        shortcut: "Ctrl+Shift+H",
+        category: "Terminal",
+        icon: TerminalIcon,
+        action: () => splitPaneDown?.(),
+      },
+      {
         id: "toggle-zen-mode",
         label: "Toggle Zen Mode",
         description: "Hide side rails and top chrome while keeping the status bar visible",
@@ -590,6 +614,15 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         icon: Maximize2,
         keywords: ["focus", "minimal", "chrome", "rails"],
         action: () => setZenMode?.((v: boolean) => !v),
+      },
+      {
+        id: "toggle-right-rail",
+        label: "Toggle Right Rail",
+        description: "Show or hide the contextual inspector",
+        shortcut: "Ctrl+Shift+R",
+        category: "View",
+        icon: Maximize2,
+        action: () => setRightRailCollapsed?.((v: boolean) => !v),
       },
       {
         id: "open-settings",
@@ -751,6 +784,9 @@ export function useAppMenus(opts: UseAppMenusOptions) {
       setWatchdogVisible,
       setWebInspectorVisible,
       setZenMode,
+      splitPaneRight,
+      splitPaneDown,
+      setRightRailCollapsed,
     ],
   );
 

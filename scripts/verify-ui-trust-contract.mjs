@@ -27,6 +27,9 @@ const sourcePaths = {
   appMenus: "src/features/app/useAppMenus.ts",
   decisionInboxTests: "src/__tests__/DecisionInboxPanel.test.tsx",
   toast: "src/shared/ui/Toast.tsx",
+  app: "src/App.tsx",
+  workspaceRegionFocus: "src/shared/lib/workspaceRegionFocus.ts",
+  workspaceRegionFocusTests: "src/__tests__/workspaceRegionFocus.test.ts",
 };
 
 function source(path) {
@@ -118,7 +121,7 @@ add(
   checks,
   "q6-inferred-marker",
   s.reviewQueueModel.includes('ReviewInferenceSource = "log-regex" | "filename-match"') &&
-    s.reviewQueueModel.includes('inference: Partial<Record<ReviewInferredState, ReviewInferenceSource>>') &&
+    s.reviewQueueModel.includes("inference: Partial<Record<ReviewInferredState, ReviewInferenceSource>>") &&
     s.reviewQueue.includes('data-inference="true"') &&
     s.reviewQueue.includes('data-verification="evidence-backed"') &&
     s.reviewQueue.includes('"unverified"') &&
@@ -131,6 +134,30 @@ add(
   "q7-toast-severity-type",
   /severity|tone/.test(s.toast) && /error|warning|warn/.test(s.toast),
   "Toast severity is represented by a typed visual contract.",
+);
+add(
+  checks,
+  "q8-keyboard-complete-shell",
+  s.keyboardShortcuts.includes('e.key === "F6"') &&
+    s.keyboardShortcuts.includes('e.key.toLowerCase() === "r"') &&
+    s.workspaceRegionFocus.includes('"sidebar", "center", "right-rail", "status-bar"') &&
+    s.workspaceRegionFocusTests.includes("skips hidden regions") &&
+    s.appMenus.includes('id: "toggle-right-rail"') &&
+    s.appMenus.includes('id: "split-pane-right"') &&
+    s.appMenus.includes('id: "split-pane-down"') &&
+    s.app.includes("TERMINAL_PREFIX_COMMAND_EVENT"),
+  "F6 cycles visible shell regions, the right rail has a conflict-checked toggle, and palette splits reuse the terminal prefix owner.",
+);
+add(
+  checks,
+  "q8-owned-navigation-state",
+  s.appStore.includes("WORKSPACE_NAVIGATION_KEY") &&
+    s.appStore.includes("hydrateWorkspaceNavigation") &&
+    s.appStore.includes("persistWorkspaceNavigation") &&
+    !s.app.includes('useState<ProductModeId>("terminal")') &&
+    !s.app.includes('useState<RightRailMode>("command")') &&
+    s.app.includes("!route.openHistory && !route.openSettings"),
+  "Workspace navigation is persisted by the Zustand owner while launcher routes do not rewrite product mode.",
 );
 
 const failedChecks = checks.filter((check) => !check.ok).map((check) => check.id);

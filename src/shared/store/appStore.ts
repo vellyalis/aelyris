@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { type FallbackTelemetryDetail, formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
+import type { RightRailMode } from "../lib/rightRailAdvisor";
 import {
   buildWorkspaceProfile,
   createWorkspaceProfileState,
@@ -30,6 +31,13 @@ import {
 import type { KanbanColumnId, KanbanTask } from "../types/kanban";
 
 export type SidebarSection = "files" | "tasks" | "agents" | "tools";
+export type ProductModeId = "terminal" | "agents" | "workspace" | "review" | "git" | "context" | "history" | "settings";
+
+interface WorkspaceNavigationState {
+  productMode: ProductModeId;
+  rightRailMode: RightRailMode;
+  rightRailFocusWidget: string | null;
+}
 
 const THEME_OVERRIDES_KEY = "aelyris:themeOverrides";
 const MOOD_PRESET_KEY = "aelyris:moodPreset";
@@ -53,7 +61,13 @@ const DEFAULT_SHELL_KEY = "aelyris:defaultShell";
 const UI_FONT_FAMILY_KEY = "aelyris:uiFontFamily";
 const WINDOW_EFFECT_KEY = "aelyris:windowEffect";
 const WORKSPACE_PROFILES_KEY = "aelyris:workspaceProfiles";
+const WORKSPACE_NAVIGATION_KEY = "aelyris:workspaceNavigation";
 const MAX_FALLBACK_TELEMETRY_EVENTS = 30;
+const DEFAULT_WORKSPACE_NAVIGATION: WorkspaceNavigationState = {
+  productMode: "terminal",
+  rightRailMode: "command",
+  rightRailFocusWidget: null,
+};
 const DEFAULT_TERMINAL_FONT_FAMILY =
   "Cascadia Code, Cascadia Mono, Cascadia Next JP, BIZ UDGothic, Yu Gothic UI, Meiryo, Noto Sans Mono CJK JP, IBM Plex Mono, monospace";
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
@@ -108,6 +122,33 @@ function reportStorageFailure(operation: string, err: unknown, severity: "info" 
     },
     { throttleMs: 10_000 },
   );
+}
+
+function loadWorkspaceNavigation(workspaceId: string): WorkspaceNavigationState {
+  if (!workspaceId) return DEFAULT_WORKSPACE_NAVIGATION;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WORKSPACE_NAVIGATION_KEY) ?? "{}") as Record<
+      string,
+      Partial<WorkspaceNavigationState>
+    >;
+    return { ...DEFAULT_WORKSPACE_NAVIGATION, ...parsed[workspaceId] };
+  } catch (err) {
+    reportStorageFailure("load_workspace_navigation", err, "info");
+    return DEFAULT_WORKSPACE_NAVIGATION;
+  }
+}
+
+function persistWorkspaceNavigation(workspaceId: string, navigation: WorkspaceNavigationState): void {
+  if (!workspaceId) return;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WORKSPACE_NAVIGATION_KEY) ?? "{}") as Record<
+      string,
+      WorkspaceNavigationState
+    >;
+    localStorage.setItem(WORKSPACE_NAVIGATION_KEY, JSON.stringify({ ...parsed, [workspaceId]: navigation }));
+  } catch (err) {
+    reportStorageFailure("persist_workspace_navigation", err);
+  }
 }
 
 function sanitizeAppWindowOpacity(value: unknown): number {
@@ -599,6 +640,16 @@ interface AppState {
    *  writes here. Clamped to [260, 480] in the setter. */
   rightPanelWidth: number;
   setRightPanelWidth: (v: number) => void;
+  rightRailCollapsed: boolean;
+  setRightRailCollapsed: (v: boolean | ((prev: boolean) => boolean)) => void;
+  workspaceNavigationId: string;
+  productMode: ProductModeId;
+  rightRailMode: RightRailMode;
+  rightRailFocusWidget: string | null;
+  hydrateWorkspaceNavigation: (workspaceId: string) => void;
+  setProductMode: (mode: ProductModeId) => void;
+  setRightRailMode: (mode: RightRailMode) => void;
+  setRightRailFocusWidget: (widget: string | null) => void;
   /** Zen mode hides side rails and top chrome while keeping the status bar visible. */
   zenMode: boolean;
   setZenMode: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -1253,6 +1304,30 @@ export const useAppStore = create<AppState>((set, get) => ({
         reportStorageFailure("persist_right_panel_width", err, "warning");
       }
       return { rightPanelWidth: clamped };
+    }),
+  rightRailCollapsed: false,
+  setRightRailCollapsed: (v) => set((s) => ({ rightRailCollapsed: toggleOrSet(v, s.rightRailCollapsed) })),
+  workspaceNavigationId: "",
+  ...DEFAULT_WORKSPACE_NAVIGATION,
+  hydrateWorkspaceNavigation: (workspaceNavigationId) =>
+    set({ workspaceNavigationId, ...loadWorkspaceNavigation(workspaceNavigationId) }),
+  setProductMode: (productMode) =>
+    set((s) => {
+      const navigation = { productMode, rightRailMode: s.rightRailMode, rightRailFocusWidget: s.rightRailFocusWidget };
+      persistWorkspaceNavigation(s.workspaceNavigationId, navigation);
+      return navigation;
+    }),
+  setRightRailMode: (rightRailMode) =>
+    set((s) => {
+      const navigation = { productMode: s.productMode, rightRailMode, rightRailFocusWidget: s.rightRailFocusWidget };
+      persistWorkspaceNavigation(s.workspaceNavigationId, navigation);
+      return navigation;
+    }),
+  setRightRailFocusWidget: (rightRailFocusWidget) =>
+    set((s) => {
+      const navigation = { productMode: s.productMode, rightRailMode: s.rightRailMode, rightRailFocusWidget };
+      persistWorkspaceNavigation(s.workspaceNavigationId, navigation);
+      return navigation;
     }),
   zenMode: false,
   setZenMode: (v) => set((s) => ({ zenMode: toggleOrSet(v, s.zenMode) })),
