@@ -675,6 +675,28 @@ Acceptance evidence:
 - dependency-first A6.2-A6.8 contract is frozen
 - artifact reports `sliceComplete=true`, `phaseComplete=false`
 
+### A6.2a Complete - Frontend Registry and Bootstrap Schema Owners
+
+The lazy-loaded secondary UI registry now has one owner in
+`src/features/app/lazyPanels.tsx`; `App.tsx` only composes those components. The app
+bootstrap configuration schema now lives in `bootstrapAppConfig.ts` and is re-exported
+through the existing right-rail surface for compatibility.
+
+The enforced ceilings were lowered in the same slice:
+
+- `src/App.tsx`: 5213 -> 5173 lines
+- `src/features/right-rail/rightRailModel.tsx`: 2072 -> 2037 lines
+
+Acceptance evidence:
+
+- `pnpm verify:a6:frontend-ratchet`
+- `.codex-auto/quality/a6-frontend-ratchet.json`
+- `pnpm build` PASS
+- TypeScript no-emit PASS
+
+The artifact reports `phaseComplete=false`; A6.2b continues with right-rail
+persistence/projection ownership and must lower both ceilings again.
+
 ## A7 - Evidence-Backed Product Completion
 
 Objective: complete one useful mission without inferred completion truth.

@@ -2,7 +2,6 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Activity, ClipboardCopy, Users } from "lucide-react";
 import {
-  lazy,
   type KeyboardEvent as ReactKeyboardEvent,
   Suspense,
   useCallback,
@@ -14,6 +13,40 @@ import {
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
 import { UpdateBanner } from "./features/app/UpdateBanner";
+import {
+  AboutDialog,
+  AgentInspector,
+  AuditTimelinePanel,
+  CommandPalette,
+  ContextPanel,
+  DecisionInboxPanel,
+  EditorPanel,
+  FleetHud,
+  HelpDialog,
+  KanbanBoard,
+  LivePanesPanel,
+  LogsPanel,
+  MergeQueuePanel,
+  OnboardingOverlay,
+  OrchestratorPanel,
+  PaneSwitcherDialog,
+  PRInspector,
+  ProcessManagerPanel,
+  QuickOpen,
+  ReliabilityPanel,
+  ReviewQueuePanel,
+  RunGraphPanel,
+  SCMPanel,
+  SearchPanel,
+  Settings,
+  ToolLedgerPanel,
+  ToolkitPanel,
+  WatchdogDialog,
+  WebInspector,
+  WelcomeScreen,
+  WorkflowPanel,
+  WorkstationPulse,
+} from "./features/app/lazyPanels";
 import { useAppMenus } from "./features/app/useAppMenus";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
@@ -70,79 +103,6 @@ import {
 } from "./shared/lib/workstationGraph";
 import type { AuditEventRecord, AuditJournalEventRecord } from "./shared/types/audit";
 import type { CommandHistoryRecord } from "./shared/types/history";
-
-// Right-panel + secondary UIs: lazy-loaded so they do not block first paint.
-const KanbanBoard = lazy(() => import("./features/kanban/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
-const AgentInspector = lazy(() =>
-  import("./features/agent-inspector/AgentInspector").then((m) => ({ default: m.AgentInspector })),
-);
-const OrchestratorPanel = lazy(() =>
-  import("./features/orchestrator/OrchestratorPanel").then((m) => ({ default: m.OrchestratorPanel })),
-);
-const ToolkitPanel = lazy(() => import("./features/toolkit/ToolkitPanel").then((m) => ({ default: m.ToolkitPanel })));
-const WorkflowPanel = lazy(() =>
-  import("./features/workflow/WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })),
-);
-const ContextPanel = lazy(() => import("./features/context/ContextPanel").then((m) => ({ default: m.ContextPanel })));
-const DecisionInboxPanel = lazy(() =>
-  import("./features/decision-inbox").then((m) => ({ default: m.DecisionInboxPanel })),
-);
-const WorkstationPulse = lazy(() =>
-  import("./features/context/WorkstationPulse").then((m) => ({ default: m.WorkstationPulse })),
-);
-const RunGraphPanel = lazy(() =>
-  import("./features/context/RunGraphPanel").then((m) => ({ default: m.RunGraphPanel })),
-);
-const ToolLedgerPanel = lazy(() =>
-  import("./features/context/ToolLedgerPanel").then((m) => ({ default: m.ToolLedgerPanel })),
-);
-const AuditTimelinePanel = lazy(() =>
-  import("./features/context/AuditTimelinePanel").then((m) => ({ default: m.AuditTimelinePanel })),
-);
-const LivePanesPanel = lazy(() =>
-  import("./features/context/LivePanesPanel").then((m) => ({ default: m.LivePanesPanel })),
-);
-const ReliabilityPanel = lazy(() =>
-  import("./features/context/ReliabilityPanel").then((m) => ({ default: m.ReliabilityPanel })),
-);
-const LogsPanel = lazy(() => import("./features/logs/LogsPanel").then((m) => ({ default: m.LogsPanel })));
-const ProcessManagerPanel = lazy(() =>
-  import("./features/process-manager").then((m) => ({ default: m.ProcessManagerPanel })),
-);
-const ReviewQueuePanel = lazy(() =>
-  import("./features/review/ReviewQueuePanel").then((m) => ({ default: m.ReviewQueuePanel })),
-);
-const SCMPanel = lazy(() => import("./features/scm/SCMPanel").then((m) => ({ default: m.SCMPanel })));
-const QuickOpen = lazy(() => import("./features/quick-open/QuickOpen").then((m) => ({ default: m.QuickOpen })));
-
-const EditorPanel = lazy(() => import("./features/editor/EditorPanel").then((m) => ({ default: m.EditorPanel })));
-const CommandPalette = lazy(() =>
-  import("./features/command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })),
-);
-const PaneSwitcherDialog = lazy(() =>
-  import("./features/terminal/pane-switcher").then((m) => ({ default: m.PaneSwitcherDialog })),
-);
-const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
-const WatchdogDialog = lazy(() =>
-  import("./features/watchdog/WatchdogDialog").then((m) => ({ default: m.WatchdogDialog })),
-);
-const WelcomeScreen = lazy(() =>
-  import("./features/welcome/WelcomeScreen").then((m) => ({ default: m.WelcomeScreen })),
-);
-const SearchPanel = lazy(() => import("./features/search/SearchPanel").then((m) => ({ default: m.SearchPanel })));
-const AboutDialog = lazy(() => import("./features/about/AboutDialog").then((m) => ({ default: m.AboutDialog })));
-const HelpDialog = lazy(() => import("./features/help/HelpDialog").then((m) => ({ default: m.HelpDialog })));
-const PRInspector = lazy(() => import("./features/pr-inspector/PRInspector").then((m) => ({ default: m.PRInspector })));
-const MergeQueuePanel = lazy(() =>
-  import("./features/merge-queue/MergeQueuePanel").then((m) => ({ default: m.MergeQueuePanel })),
-);
-const WebInspector = lazy(() =>
-  import("./features/web-inspector/WebInspector").then((m) => ({ default: m.WebInspector })),
-);
-const FleetHud = lazy(() => import("./features/fleet-hud/FleetHud").then((m) => ({ default: m.FleetHud })));
-const OnboardingOverlay = lazy(() =>
-  import("./shared/ui/OnboardingOverlay").then((m) => ({ default: m.OnboardingOverlay })),
-);
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
 import {
