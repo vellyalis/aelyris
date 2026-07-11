@@ -120,4 +120,21 @@ describe("useKeyboardShortcuts terminal focus", () => {
       unmount();
     }
   });
+
+  it("keeps Settings global while terminal input is focused", () => {
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    const setSettingsVisible = vi.fn();
+    const { unmount } = renderHook(() => useKeyboardShortcuts({ ...baseOptions(), setSettingsVisible }));
+
+    try {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: ",", ctrlKey: true, bubbles: true, cancelable: true }));
+
+      expect(setSettingsVisible).toHaveBeenCalledWith(expect.any(Function));
+    } finally {
+      unmount();
+      input.remove();
+    }
+  });
 });

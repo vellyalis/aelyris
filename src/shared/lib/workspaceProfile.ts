@@ -132,7 +132,7 @@ export const DEFAULT_WORKSPACE_PROFILE_DEFAULTS: WorkspaceProfileDefaults = {
     density: "balanced",
     sidebarCollapsed: false,
     sidebarWidth: 240,
-    rightPanelWidth: 280,
+    rightPanelWidth: 320,
     rightRailMode: "command",
   },
   riskPolicy: {

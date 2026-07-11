@@ -548,7 +548,7 @@ describe("appStore — panel widths", () => {
   });
 
   it("keeps the default right panel width compact", () => {
-    expect(DEFAULT_RIGHT_PANEL_WIDTH).toBe(280);
+    expect(DEFAULT_RIGHT_PANEL_WIDTH).toBe(320);
     expect(useAppStore.getState().rightPanelWidth).toBe(DEFAULT_RIGHT_PANEL_WIDTH);
   });
 

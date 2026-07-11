@@ -86,7 +86,7 @@ const DEFAULT_SHELL: DefaultShellId = "powershell";
 const DEFAULT_UI_FONT_FAMILY = '"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif';
 export const MIN_RIGHT_PANEL_WIDTH = 260;
 export const MAX_RIGHT_PANEL_WIDTH = 480;
-export const DEFAULT_RIGHT_PANEL_WIDTH = 280;
+export const DEFAULT_RIGHT_PANEL_WIDTH = 320;
 // "transparent" = per-pixel see-through to the desktop/windows behind (no DWM
 // material). "mica"/"acrylic" are opt-in OPAQUE Win11 materials that disable
 // see-through (a material occludes the wry transparent window — see

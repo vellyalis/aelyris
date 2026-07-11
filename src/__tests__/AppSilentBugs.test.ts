@@ -1872,7 +1872,7 @@ describe("App right rail composition", () => {
     expect(rightPanelContent).toContain("overscroll-behavior: contain;");
     expect(rightPanelContent).toContain("scrollbar-gutter: stable;");
     expect(rightPanelContent).not.toContain("overflow: hidden;");
-    expect(rightPanelStack).toContain("flex: 0 0 auto;");
+    expect(rightPanelStack).toContain("flex: 1 1 auto;");
     expect(rightPanelStack).toContain("overflow: visible;");
     expect(rightPanelStack).not.toContain("overflow-y: auto;");
   });

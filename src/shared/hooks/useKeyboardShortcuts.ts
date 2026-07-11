@@ -86,6 +86,11 @@ export function useKeyboardShortcuts({
         setHelpVisible?.((v: boolean) => !v);
         return;
       }
+      if (matchesShortcut(e, SHORTCUTS.settings)) {
+        e.preventDefault();
+        setSettingsVisible((v: boolean) => !v);
+        return;
+      }
       const editableTarget = isEditableTarget(e.target);
       if (editableTarget && !(e.ctrlKey && e.shiftKey)) {
         return;
@@ -191,9 +196,6 @@ export function useKeyboardShortcuts({
       } else if (matchesShortcut(e, SHORTCUTS.closeEditor)) {
         e.preventDefault();
         if (activeFile) handleCloseFile(activeFile);
-      } else if (matchesShortcut(e, SHORTCUTS.settings)) {
-        e.preventDefault();
-        setSettingsVisible((v: boolean) => !v);
       } else if (matchesShortcut(e, SHORTCUTS.toggleSidebar)) {
         // Ctrl+B — toggle left sidebar (matches VS Code / Claude Code Desktop).
         e.preventDefault();

@@ -907,8 +907,8 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 .app-container[data-density="focus"] {
   --density-mode: focus;
   --density-rail-inset: 10px;
-  --density-panel-gap: 12px;
-  --density-panel-padding: 12px;
+  --density-panel-gap: 8px;
+  --density-panel-padding: 8px;
   --density-widget-gap: 10px;
   --terminal-chrome-header-height: 18px;
   --terminal-chrome-timeline-height: 24px;
@@ -977,6 +977,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   position: relative;
   isolation: isolate;
   flex: 1;
+  min-height: 0;
   display: flex;
   gap: var(--density-panel-gap);
   padding: var(--density-panel-padding);
@@ -4755,8 +4756,8 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .right-panel-stack {
-  flex: 0 0 auto;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 1px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -5384,6 +5385,14 @@ button:disabled,
     width: clamp(260px, 36vw, 280px) !important;
     min-width: 260px;
     max-width: 280px;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1000px) {
+  .left-panel:not(.left-panel-collapsed) {
+    width: 220px !important;
+    min-width: 200px;
+    max-width: 220px;
   }
 }
 

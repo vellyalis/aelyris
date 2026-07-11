@@ -3229,7 +3229,7 @@ export function App() {
           data-density={workspaceProfile.visualDensity}
           data-zen-mode={zenMode ? "true" : "false"}
         >
-          <UpdateBanner />
+          <UpdateBanner disableAutoCheck={!isTauriRuntime()} />
           {!zenMode && (
             <ProjectHeaderBar
               projectName={projectName}
