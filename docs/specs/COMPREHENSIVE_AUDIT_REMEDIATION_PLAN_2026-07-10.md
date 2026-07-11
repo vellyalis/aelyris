@@ -340,6 +340,13 @@ and persistence-failure semantics` -> `A4.5 crash-safe file replacement and glob
 retention` -> `A4.6 restart/upgrade/fault/multi-instance acceptance closeout`.
 Persistence or schema behavior must change only in this order.
 
+A4.2 completion note (2026-07-12): SQLite now records schema version 1 through a
+transactional numbered runner, rejects schemas newer than the binary, and creates a
+quick-check-valid `VACUUM INTO` backup before adopting an existing version-0 DB.
+Focused fixtures prove legacy data survives in the backup, version adoption is
+idempotent, reopening does not create another backup, and newer schemas are not
+mutated. A4.3 is the next slice; A4 as a whole remains active.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.

@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::migrations;
@@ -252,7 +252,15 @@ impl Database {
                 .map_err(|e| format!("Failed to create db directory: {}", e))?;
         }
 
+        let existed_before_open = path.exists();
         let conn = Connection::open(path).map_err(|e| format!("Failed to open database: {}", e))?;
+
+        if existed_before_open
+            && migrations::schema_version(&conn).map_err(|e| format!("Read schema version: {e}"))?
+                < migrations::CURRENT_SCHEMA_VERSION
+        {
+            create_pre_migration_backup(&conn, path)?;
+        }
 
         migrations::run_migrations(&conn).map_err(|e| format!("Migration failed: {}", e))?;
 
@@ -1922,6 +1930,33 @@ impl Database {
     }
 }
 
+fn create_pre_migration_backup(conn: &Connection, path: &Path) -> Result<PathBuf, String> {
+    let integrity: String = conn
+        .query_row("PRAGMA quick_check", [], |row| row.get(0))
+        .map_err(|e| format!("Pre-migration integrity check failed: {e}"))?;
+    if integrity != "ok" {
+        return Err(format!(
+            "Pre-migration integrity check rejected database: {integrity}"
+        ));
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Read backup clock: {e}"))?
+        .as_millis();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Database path has no UTF-8 file name".to_string())?;
+    let backup_path = path.with_file_name(format!(
+        "{file_name}.pre-migration-v{}-to-v{}-{stamp}.bak",
+        migrations::schema_version(conn).map_err(|e| format!("Read schema version: {e}"))?,
+        migrations::CURRENT_SCHEMA_VERSION
+    ));
+    conn.execute("VACUUM INTO ?1", [backup_path.to_string_lossy().as_ref()])
+        .map_err(|e| format!("Create pre-migration backup: {e}"))?;
+    Ok(backup_path)
+}
+
 fn audit_journal_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AuditJournalEventRecord> {
     let redacted_payload_text: String = row.get(16)?;
     let redacted_payload_json = serde_json::from_str(&redacted_payload_text)
@@ -2492,6 +2527,60 @@ fn opt_i64_to_u16(value: Option<i64>) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_open_backs_up_legacy_schema_once_before_versioned_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE legacy_sentinel (value TEXT NOT NULL);\
+                 INSERT INTO legacy_sentinel (value) VALUES ('preserved');",
+            )
+            .unwrap();
+        }
+
+        let db = Database::open(&path).unwrap();
+        assert_eq!(
+            migrations::schema_version(db.conn()).unwrap(),
+            migrations::CURRENT_SCHEMA_VERSION
+        );
+        drop(db);
+
+        let backups: Vec<PathBuf> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|candidate| {
+                candidate
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v1-"))
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        let backup = Connection::open(&backups[0]).unwrap();
+        let sentinel: String = backup
+            .query_row("SELECT value FROM legacy_sentinel", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sentinel, "preserved");
+        assert_eq!(migrations::schema_version(&backup).unwrap(), 0);
+        drop(backup);
+
+        Database::open(&path).unwrap();
+        let backup_count = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v1-"))
+            })
+            .count();
+        assert_eq!(backup_count, 1);
+    }
 
     #[test]
     fn test_code_graph_replace_load_roundtrip() {

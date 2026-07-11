@@ -1,9 +1,8 @@
 use rusqlite::Connection;
 
-/// Run all migrations (idempotent — safe to call on every startup)
-pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute_batch(
-        "
+pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+
+const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
             id          TEXT PRIMARY KEY,
             name        TEXT NOT NULL,
@@ -568,8 +567,19 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         BEGIN
             SELECT RAISE(ABORT, 'merge_intents: rows are permanent (append-only)');
         END;
-        ",
-    )?;
+        ";
+
+pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+}
+
+/// Run numbered migrations transactionally. Version zero is the legacy schema
+/// adopted by A4; a version newer than this binary is rejected rather than opened.
+pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let version = schema_version(conn)?;
+    if version > CURRENT_SCHEMA_VERSION {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
 
     // REPLACE-conflict deletes only fire DELETE triggers when recursive triggers
     // are enabled; the append-only guard above relies on this to block an
@@ -588,6 +598,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     // source of truth". A modest timeout makes the loser wait for the lock.
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
+    if version < 1 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V1_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 1)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -601,6 +627,7 @@ mod tests {
         // Running twice must not error (IF NOT EXISTS / INSERT OR IGNORE).
         run_migrations(&conn).unwrap();
         run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
 
         // P1 Context Store table round-trips a decision.
         conn.execute(
@@ -719,6 +746,15 @@ mod tests {
             )
             .unwrap();
         assert_eq!(handoff_state, "pending_summary");
+    }
+
+    #[test]
+    fn newer_schema_is_rejected_without_mutation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION + 1)
+            .unwrap();
+        assert!(run_migrations(&conn).is_err());
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION + 1);
     }
 
     #[test]
