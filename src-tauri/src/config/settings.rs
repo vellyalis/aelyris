@@ -367,6 +367,8 @@ pub struct TerminalConfig {
     pub cursor_style: String,
     #[serde(default = "default_true")]
     pub cursor_blink: bool,
+    #[serde(default = "default_true")]
+    pub paste_guard: bool,
     /// When true, quitting the app also shuts down the PTY sidecar daemon
     /// and every session it hosts. Default false: sessions survive app
     /// restarts and crashes (the daemon keeps running detached).
@@ -398,6 +400,7 @@ impl Default for AppConfig {
                 scrollback: default_scrollback(),
                 cursor_style: default_cursor_style(),
                 cursor_blink: true,
+                paste_guard: true,
                 shutdown_sidecar_on_exit: false,
             },
             window: WindowConfig::default(),

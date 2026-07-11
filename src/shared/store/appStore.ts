@@ -48,6 +48,7 @@ const TERMINAL_LIGATURES_KEY = "aelyris:terminalLigatures";
 const TERMINAL_RENDERER_MODE_KEY = "aelyris:terminalRendererMode";
 const TERMINAL_CURSOR_STYLE_KEY = "aelyris:terminalCursorStyle";
 const TERMINAL_CURSOR_BLINK_KEY = "aelyris:terminalCursorBlink";
+const TERMINAL_PASTE_GUARD_KEY = "aelyris:terminalPasteGuard";
 const DEFAULT_SHELL_KEY = "aelyris:defaultShell";
 const UI_FONT_FAMILY_KEY = "aelyris:uiFontFamily";
 const WINDOW_EFFECT_KEY = "aelyris:windowEffect";
@@ -66,6 +67,7 @@ const DEFAULT_TERMINAL_RENDERER_MODE: TerminalRendererMode = "canvas2d";
 export type TerminalCursorStyle = "bar" | "block" | "underline";
 const DEFAULT_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = "bar";
 const DEFAULT_TERMINAL_CURSOR_BLINK = true;
+const DEFAULT_TERMINAL_PASTE_GUARD = true;
 export type DefaultShellId = "powershell" | "cmd" | "gitbash" | "wsl";
 const DEFAULT_SHELL: DefaultShellId = "powershell";
 const DEFAULT_UI_FONT_FAMILY = '"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif';
@@ -242,6 +244,16 @@ function loadTerminalCursorBlink(): boolean {
   } catch (err) {
     reportStorageFailure("load_terminal_cursor_blink", err, "info");
     return DEFAULT_TERMINAL_CURSOR_BLINK;
+  }
+}
+
+function loadTerminalPasteGuard(): boolean {
+  try {
+    const raw = localStorage.getItem(TERMINAL_PASTE_GUARD_KEY);
+    return raw == null ? DEFAULT_TERMINAL_PASTE_GUARD : raw === "1";
+  } catch (err) {
+    reportStorageFailure("load_terminal_paste_guard", err, "info");
+    return DEFAULT_TERMINAL_PASTE_GUARD;
   }
 }
 
@@ -551,6 +563,9 @@ interface AppState {
   /** Whether the terminal cursor blinks. */
   cursorBlink: boolean;
   setCursorBlink: (blink: boolean) => void;
+  /** Whether multi-line terminal paste requires preview confirmation. */
+  pasteGuard: boolean;
+  setPasteGuard: (enabled: boolean) => void;
   /** Shell used to seed the first tab and new terminals on startup. */
   defaultShell: DefaultShellId;
   /** Accepts any persisted shell string (config.toml or picker id); sanitized to a valid id. */
@@ -1112,6 +1127,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem(TERMINAL_CURSOR_BLINK_KEY, next ? "1" : "0");
     } catch (err) {
       reportStorageFailure("persist_terminal_cursor_blink", err);
+    }
+  },
+  pasteGuard: loadTerminalPasteGuard(),
+  setPasteGuard: (enabled) => {
+    const next = Boolean(enabled);
+    set({ pasteGuard: next });
+    try {
+      localStorage.setItem(TERMINAL_PASTE_GUARD_KEY, next ? "1" : "0");
+    } catch (err) {
+      reportStorageFailure("persist_terminal_paste_guard", err);
     }
   },
   defaultShell: loadDefaultShell(),

@@ -181,6 +181,7 @@ function previewConfig(theme: string, moodPreset: string, shell: string, liveMod
       scrollback: 10000,
       cursor_style: "bar",
       cursor_blink: true,
+      paste_guard: true,
       shutdown_sidecar_on_exit: false,
     },
     ghost_diff: {
@@ -215,6 +216,7 @@ interface LoadedConfig {
     scrollback: number;
     cursor_style: string;
     cursor_blink: boolean;
+    paste_guard?: boolean;
     shutdown_sidecar_on_exit?: boolean;
   };
   window?: {
@@ -256,6 +258,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const storeTerminalRendererMode = useAppStore((s) => s.terminalRendererMode);
   const setStoreCursorStyle = useAppStore((s) => s.setCursorStyle);
   const setStoreCursorBlink = useAppStore((s) => s.setCursorBlink);
+  const setStorePasteGuard = useAppStore((s) => s.setPasteGuard);
   const setStoreDefaultShell = useAppStore((s) => s.setDefaultShell);
   const setStoreUiFontFamily = useAppStore((s) => s.setUiFontFamily);
   const setStoreWindowEffect = useAppStore((s) => s.setWindowEffect);
@@ -273,6 +276,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const [defaultShell, setDefaultShell] = useState("powershell");
   const [cursorStyle, setCursorStyle] = useState("bar");
   const [cursorBlink, setCursorBlink] = useState(true);
+  const [pasteGuard, setPasteGuard] = useState(true);
   const [uiFont, setUiFont] = useState(storeUiFontFamily);
   const [windowEffect, setWindowEffect] = useState<WindowEffect>(storeWindowEffect);
   const [shutdownSidecarOnExit, setShutdownSidecarOnExit] = useState(false);
@@ -331,6 +335,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
       setDefaultShell(cfg.terminal.default_shell);
       setCursorStyle(cfg.terminal.cursor_style);
       setCursorBlink(cfg.terminal.cursor_blink);
+      setPasteGuard(cfg.terminal.paste_guard ?? true);
       setShutdownSidecarOnExit(cfg.terminal.shutdown_sidecar_on_exit ?? false);
       setLiveMode(cfg.ghost_diff?.live_mode ?? false);
       setWindowOpacity(cfg.appearance.opacity);
@@ -371,6 +376,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         setDefaultShell(cfg.terminal.default_shell);
         setCursorStyle(cfg.terminal.cursor_style);
         setCursorBlink(cfg.terminal.cursor_blink);
+        setPasteGuard(cfg.terminal.paste_guard ?? true);
         setShutdownSidecarOnExit(cfg.terminal.shutdown_sidecar_on_exit ?? false);
         setWindowOpacity(cfg.appearance.opacity);
         setAppWindowOpacity(cfg.appearance.opacity);
@@ -561,6 +567,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         default_shell: defaultShell,
         cursor_style: cursorStyle,
         cursor_blink: cursorBlink,
+        paste_guard: pasteGuard,
         shutdown_sidecar_on_exit: shutdownSidecarOnExit,
       },
       ghost_diff: {
@@ -588,6 +595,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
         });
         setStoreCursorStyle(cursorStyle as TerminalCursorStyle);
         setStoreCursorBlink(cursorBlink);
+        setStorePasteGuard(pasteGuard);
         setStoreDefaultShell(defaultShell);
         setStoreUiFontFamily(uiFont);
         setStoreWindowEffect(windowEffect);
@@ -1182,6 +1190,19 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   scrollback after an app restart or crash. On: quitting Aelyris also stops the daemon and every session
                   it hosts.
                 </p>
+              </div>
+              <div className={styles.field}>
+                <Switch
+                  id="settings-terminal-paste-guard"
+                  label="Confirm multi-line paste"
+                  checked={pasteGuard}
+                  onCheckedChange={(next) => {
+                    markEdited();
+                    setPasteGuard(next);
+                    setStorePasteGuard(next);
+                  }}
+                />
+                <p className={styles.hint}>Preview and confirm commands that span more than one pasted line.</p>
               </div>
             </section>
 

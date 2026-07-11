@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Clipboard, Image as ImageIcon, Paperclip, X } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { useAppStore } from "../../shared/store/appStore";
+import { showConfirm } from "../../shared/ui/ConfirmDialog";
 import styles from "./IMEInputBar.module.css";
 
 export interface IMEInputBarHandle {
@@ -273,6 +275,7 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentChip[]>([]);
   const [attachmentStatus, setAttachmentStatus] = useState<AttachmentStatus | null>(null);
+  const pasteGuard = useAppStore((state) => state.pasteGuard);
   const attachmentBusyRef = useRef(false);
 
   const historyRef = useRef<string[]>([]);
@@ -547,6 +550,27 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
     [disabled],
   );
 
+  const guardedPasteSubmit = useCallback(
+    async (text: string) => {
+      const lines = text.replace(/\r\n|\r/g, "\n").split("\n");
+      const submitBytes = text.replace(/\r\n|\r|\n/g, "\r");
+      if (!pasteGuard || lines.length <= 1) {
+        onSubmit(submitBytes);
+        return;
+      }
+      const preview = `${lines.slice(0, 3).join("\n")}${lines.length > 3 ? "\n…" : ""}`;
+      const confirmed = await showConfirm({
+        title: `Run ${lines.length} pasted lines?`,
+        description: preview,
+        confirmLabel: "Run",
+        cancelLabel: "Cancel",
+        tone: "danger",
+      });
+      if (confirmed) onSubmit(submitBytes);
+    },
+    [onSubmit, pasteGuard],
+  );
+
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       if (handledPasteEvents.has(e.nativeEvent)) return;
@@ -564,9 +588,9 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
 
       e.preventDefault();
       e.stopPropagation();
-      onSubmit(text.replace(/\r\n|\r|\n/g, "\r"));
+      void guardedPasteSubmit(text);
     },
-    [addClipboardImages, onSubmit],
+    [addClipboardImages, guardedPasteSubmit],
   );
 
   useEffect(() => {
@@ -588,11 +612,11 @@ export const IMEInputBar = forwardRef<IMEInputBarHandle, IMEInputBarProps>(funct
 
       event.preventDefault();
       event.stopPropagation();
-      onSubmit(text.replace(/\r\n|\r|\n/g, "\r"));
+      void guardedPasteSubmit(text);
     };
     textarea.addEventListener("paste", onNativePaste);
     return () => textarea.removeEventListener("paste", onNativePaste);
-  }, [addClipboardImages, onSubmit]);
+  }, [addClipboardImages, guardedPasteSubmit]);
 
   const indicator = composing ? "あ" : "A";
   // Resting placeholder stays short so narrow panes (split-right ×2)

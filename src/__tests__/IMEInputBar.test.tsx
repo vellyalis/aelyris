@@ -1,9 +1,8 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { createRef } from "react";
 // @ts-expect-error Node types are intentionally absent from the app tsconfig.
 import { readFileSync } from "node:fs";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import {
   clampImeBarCandidateX,
   clampImeBarCandidateY,
@@ -11,11 +10,17 @@ import {
   type IMEInputBarHandle,
   measureTextareaImeAnchor,
 } from "../features/terminal/IMEInputBar";
+import { useAppStore } from "../shared/store/appStore";
 
 const invokeMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const showConfirmMock = vi.hoisted(() => vi.fn(() => Promise.resolve(true)));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
+}));
+
+vi.mock("../shared/ui/ConfirmDialog", () => ({
+  showConfirm: showConfirmMock,
 }));
 
 const imeInputBarCssSource = readFileSync("src/features/terminal/IMEInputBar.module.css", "utf8");
@@ -46,6 +51,9 @@ function renderBar(
 describe("IMEInputBar", () => {
   afterEach(() => {
     invokeMock.mockClear();
+    showConfirmMock.mockReset();
+    showConfirmMock.mockResolvedValue(true);
+    useAppStore.getState().setPasteGuard(true);
     vi.restoreAllMocks();
   });
 
@@ -109,6 +117,60 @@ describe("IMEInputBar", () => {
     fireEvent.compositionStart(textarea);
     fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("previews multi-line paste and submits byte-identical normalized content after confirmation", async () => {
+    const { textarea, onSubmit } = renderBar();
+    const pasted = "echo one\r\necho two\nthird";
+
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [], items: [], getData: () => pasted },
+    });
+
+    await waitFor(() => expect(showConfirmMock).toHaveBeenCalledTimes(1));
+    expect(showConfirmMock).toHaveBeenCalledWith({
+      title: "Run 3 pasted lines?",
+      description: "echo one\necho two\nthird",
+      confirmLabel: "Run",
+      cancelLabel: "Cancel",
+      tone: "danger",
+    });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("echo one\recho two\rthird"));
+  });
+
+  it("does not submit multi-line paste when confirmation is cancelled", async () => {
+    showConfirmMock.mockResolvedValueOnce(false);
+    const { textarea, onSubmit } = renderBar();
+
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [], items: [], getData: () => "echo one\necho two" },
+    });
+
+    await waitFor(() => expect(showConfirmMock).toHaveBeenCalledTimes(1));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("passes single-line paste through without a dialog", () => {
+    const { textarea, onSubmit } = renderBar();
+
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [], items: [], getData: () => "echo one" },
+    });
+
+    expect(showConfirmMock).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("submits multi-line paste without a dialog when the guard setting is off", async () => {
+    useAppStore.getState().setPasteGuard(false);
+    const { textarea, onSubmit } = renderBar();
+
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [], items: [], getData: () => "echo one\necho two" },
+    });
+
+    expect(showConfirmMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("echo one\recho two"));
   });
 
   it("Esc calls onRequestCanvasFocus", () => {
