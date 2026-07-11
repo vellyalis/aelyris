@@ -366,6 +366,17 @@ hydrates without appending a duplicate and restores approval state. Focused migr
 repository, mutation, rollback, and A4 contract tests pass. A4.5 is next; A4 remains
 active.
 
+A4.5 completion note (2026-07-12): `durable_file` is the single crash-safe file
+replacement and retention owner. It writes and flushes a same-directory temp file,
+uses Windows `ReplaceFileW` (atomic rename elsewhere), preserves the prior committed
+version as recovery, and cleans temp files after failure. Settings, mux snapshots,
+workflow runs, proofbook ledgers, and pre-migration DB backups all route through its
+global quota contract. Retention removes oldest recovery/temp evidence first, never
+deletes primary state, and fails explicitly if primary data alone exceeds the quota.
+Fault injection proves failure before replace leaves the committed file unchanged;
+focused owner round-trip tests and `verify:a4:durability` pass. A4.6 is next; A4
+remains active.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.

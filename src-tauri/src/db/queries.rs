@@ -1954,6 +1954,10 @@ fn create_pre_migration_backup(conn: &Connection, path: &Path) -> Result<PathBuf
     ));
     conn.execute("VACUUM INTO ?1", [backup_path.to_string_lossy().as_ref()])
         .map_err(|e| format!("Create pre-migration backup: {e}"))?;
+    crate::durable_file::enforce_global_retention(
+        &crate::durable_file::durability_roots(path),
+        crate::durable_file::RetentionPolicy::default(),
+    )?;
     Ok(backup_path)
 }
 

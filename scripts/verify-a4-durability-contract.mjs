@@ -14,6 +14,11 @@ const queries = read("src-tauri/src/db/queries.rs");
 const checkpointRepo = read("src-tauri/src/persistence/session_checkpoint_repo.rs");
 const interactiveManager = read("src-tauri/src/agent/interactive.rs");
 const lifecycle = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
+const durableFile = read("src-tauri/src/durable_file.rs");
+const settings = read("src-tauri/src/config/settings.rs");
+const muxStore = read("src-tauri/src/mux/store.rs");
+const workflow = read("src-tauri/src/workflow/executor.rs");
+const proofbookLedger = read("src-tauri/src/proofbook/ledger.rs");
 const packageJson = JSON.parse(read("package.json"));
 
 const adoption = lib.indexOf("ipc::adopt_sidecar_terminals");
@@ -84,6 +89,25 @@ const checks = {
     interactiveManager.includes("checkpoint_failure_rolls_back_in_memory_mutation") &&
     interactiveManager.includes("persist interactive session checkpoint") &&
     interactive.includes("close_interactive_pty(&app, &pty_id).await"),
+  crashSafeReplacementOwner:
+    durableFile.includes("pub fn atomic_write") &&
+    durableFile.includes("file.sync_all()") &&
+    durableFile.includes("ReplaceFileW") &&
+    durableFile.includes("replacement_failure_keeps_last_committed_version") &&
+    !workflow.includes("remove_file(&path)") &&
+    !proofbookLedger.includes("remove_file(&path)"),
+  allFileStoresUseDurabilityOwner:
+    settings.includes("crate::durable_file::atomic_write") &&
+    muxStore.includes("crate::durable_file::atomic_write") &&
+    workflow.includes("crate::durable_file::atomic_write") &&
+    proofbookLedger.includes("crate::durable_file::atomic_write") &&
+    queries.includes("crate::durable_file::enforce_global_retention"),
+  globalRetentionFailsClosed:
+    durableFile.includes("pub fn enforce_global_retention") &&
+    durableFile.includes("durability quota exceeded") &&
+    durableFile.includes("quota_removes_recovery_before_rejecting_primary_data") &&
+    durableFile.includes(".pre-migration-v") &&
+    durableFile.includes("DEFAULT_DURABILITY_QUOTA_BYTES"),
   packageEntryPoint:
     packageJson.scripts?.["verify:a4:durability"] ===
     "node scripts/verify-a4-durability-contract.mjs",
@@ -100,10 +124,10 @@ const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
   schema: "aelyris.a4-durability-contract/v1",
-  status: "pass-a4.2-a4.4-foundation",
-  activeSlice: "A4.4",
+  status: "pass-a4.2-a4.5-foundation",
+  activeSlice: "A4.5",
   phaseComplete: false,
-  remainingSlices: ["A4.5", "A4.6"],
+  remainingSlices: ["A4.6"],
   checks,
   generatedAt,
   provenance: createEvidenceProvenance({
@@ -121,6 +145,11 @@ const report = {
       "src-tauri/src/persistence/session_checkpoint_repo.rs",
       "src-tauri/src/agent/interactive.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
+      "src-tauri/src/durable_file.rs",
+      "src-tauri/src/config/settings.rs",
+      "src-tauri/src/mux/store.rs",
+      "src-tauri/src/workflow/executor.rs",
+      "src-tauri/src/proofbook/ledger.rs",
       "package.json",
     ],
     generatedAt,

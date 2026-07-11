@@ -83,18 +83,10 @@ fn save_project_instances(
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("Failed to create workflow state directory: {err}"))?;
     }
-    let tmp_path = path.with_extension("json.tmp");
     let content = serde_json::to_string_pretty(&instances)
         .map_err(|err| format!("Failed to serialize workflow run state: {err}"))?;
-    std::fs::write(&tmp_path, format!("{content}\n"))
-        .map_err(|err| format!("Failed to write workflow run state: {err}"))?;
-    if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|err| format!("Failed to replace workflow run state: {err}"))?;
-    }
-    std::fs::rename(&tmp_path, &path)
-        .map_err(|err| format!("Failed to commit workflow run state: {err}"))?;
-    Ok(())
+    crate::durable_file::atomic_write(&path, format!("{content}\n").as_bytes())
+        .map_err(|err| format!("Failed to commit workflow run state: {err}"))
 }
 
 fn persist_project_locked(

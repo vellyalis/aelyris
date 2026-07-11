@@ -440,7 +440,7 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {}", e))?;
     }
     let toml_str = toml::to_string_pretty(config).map_err(|e| format!("serialize: {}", e))?;
-    std::fs::write(&path, toml_str).map_err(|e| format!("write: {}", e))
+    crate::durable_file::atomic_write(&path, toml_str.as_bytes())
 }
 
 fn default_theme() -> String {

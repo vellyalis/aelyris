@@ -330,20 +330,14 @@ pub fn write_ledger(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| io_error("create proofbook run dir", error))?;
     }
-    let tmp_path = path.with_extension("json.tmp");
     let content = serde_json::to_string_pretty(ledger).map_err(|error| {
         ProofbookError::new(
             ProofbookErrorCode::IoError,
             format!("cannot serialize proofbook run ledger: {error}"),
         )
     })?;
-    fs::write(&tmp_path, format!("{content}\n"))
-        .map_err(|error| io_error("write proofbook run ledger", error))?;
-    if path.exists() {
-        fs::remove_file(&path).map_err(|error| io_error("replace proofbook run ledger", error))?;
-    }
-    fs::rename(&tmp_path, &path).map_err(|error| io_error("commit proofbook run ledger", error))?;
-    Ok(())
+    crate::durable_file::atomic_write(&path, format!("{content}\n").as_bytes())
+        .map_err(|error| io_error("commit proofbook run ledger", std::io::Error::other(error)))
 }
 
 pub fn read_ledger(path: &Path) -> Result<ProofbookRunLedger, ProofbookError> {

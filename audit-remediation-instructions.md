@@ -5,9 +5,9 @@ PROGRAM: `audit-remediation`
 CURRENT PHASE: `A4` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
 signed lifecycle deferred to A9; R0 complete at `fcd23a7`; A3 repo-owned work complete).
 NEXT PHASE: `A5` after A4 durability acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A4.5 crash-safe file replacement and global retention`.
-A4.1-A4.4 through automatic transactional checkpoint/failure semantics are complete;
-persistence behavior must continue in dependency order.
+NEXT IMPLEMENTATION SLICE: `A4.6 restart/upgrade/fault/multi-instance acceptance closeout`.
+A4.1-A4.5 through crash-safe file replacement and global retention are complete;
+A4 remains active until the full durability acceptance matrix is fresh and green.
 
 ## Objective
 

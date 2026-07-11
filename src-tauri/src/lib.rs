@@ -11,6 +11,7 @@ pub mod context_store;
 pub mod control;
 pub mod cost;
 pub mod db;
+pub mod durable_file;
 pub mod event_bus;
 pub mod failure_policy;
 pub mod file_ownership;

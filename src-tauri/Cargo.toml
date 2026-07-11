@@ -151,6 +151,7 @@ features = [
     "Win32_System_Variant",
     "Win32_System_JobObjects",
     "Win32_System_Threading",
+    "Win32_Storage_FileSystem",
 ]
 
 [target.'cfg(windows)'.dependencies.windows-core]

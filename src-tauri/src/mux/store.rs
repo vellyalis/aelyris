@@ -60,12 +60,8 @@ impl FileMuxSnapshotStore {
         let snapshot = VersionedMuxSnapshot::new(graph.clone())?;
         fs::create_dir_all(&self.root).map_err(MuxStoreError::Io)?;
         let path = self.snapshot_path(&graph.active_workspace_id);
-        let tmp_path = self.tmp_snapshot_path(&graph.active_workspace_id);
-        fs::write(&tmp_path, snapshot.to_json()?).map_err(MuxStoreError::Io)?;
-        fs::rename(&tmp_path, &path).map_err(|err| {
-            let _ = fs::remove_file(&tmp_path);
-            MuxStoreError::Io(err)
-        })?;
+        crate::durable_file::atomic_write(&path, snapshot.to_json()?.as_bytes())
+        .map_err(|error| MuxStoreError::Io(io::Error::other(error)))?;
         Ok(path)
     }
 
@@ -107,13 +103,6 @@ impl FileMuxSnapshotStore {
             .join(format!("{}.json", encode_workspace_id(workspace_id)))
     }
 
-    fn tmp_snapshot_path(&self, workspace_id: &str) -> PathBuf {
-        self.root.join(format!(
-            "{}.{}.tmp",
-            encode_workspace_id(workspace_id),
-            std::process::id()
-        ))
-    }
 }
 
 fn encode_workspace_id(workspace_id: &str) -> String {
