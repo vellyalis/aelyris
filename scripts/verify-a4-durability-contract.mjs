@@ -11,6 +11,9 @@ const interactive = read("src-tauri/src/ipc/interactive_commands.rs");
 const ptyManager = read("src-tauri/src/pty/manager.rs");
 const migrations = read("src-tauri/src/db/migrations.rs");
 const queries = read("src-tauri/src/db/queries.rs");
+const checkpointRepo = read("src-tauri/src/persistence/session_checkpoint_repo.rs");
+const interactiveManager = read("src-tauri/src/agent/interactive.rs");
+const lifecycle = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
 const packageJson = JSON.parse(read("package.json"));
 
 const adoption = lib.indexOf("ipc::adopt_sidecar_terminals");
@@ -20,8 +23,9 @@ const ready = lib.indexOf("state.complete(adopted, restored, reconciled)");
 
 const checks = {
   numberedSchemaVersion:
-    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 1") &&
+    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 2") &&
     migrations.includes('pragma_update(None, "user_version", 1)') &&
+    migrations.includes('pragma_update(None, "user_version", 2)') &&
     migrations.includes('execute_batch("BEGIN IMMEDIATE")') &&
     migrations.includes('execute_batch("ROLLBACK")'),
   newerSchemaFailsClosed:
@@ -60,6 +64,26 @@ const checks = {
   typedStatusIsPublished:
     terminal.includes("pub fn startup_reconciliation_status") &&
     lib.includes("ipc::startup_reconciliation_status"),
+  approvalCheckpointSchema:
+    migrations.includes("ALTER TABLE session_checkpoints ADD COLUMN approval_prompt TEXT") &&
+    checkpointRepo.includes("pub approval_prompt: Option<String>") &&
+    lifecycle.includes("approval_prompt: checkpoint.approval_prompt.clone()") &&
+    migrations.includes("version_one_upgrades_to_approval_checkpoint_schema"),
+  automaticMutationCheckpointing:
+    interactiveManager.includes("attach_checkpoint_db") &&
+    checkpointRepo.includes("pub fn append_checkpoint") &&
+    interactiveManager.includes("SessionCheckpointRepo::append_checkpoint") &&
+    lifecycle.includes("SessionCheckpointRepo::append_checkpoint") &&
+    interactiveManager.includes("self.persist_snapshot(&info)?") &&
+    interactiveManager.includes("self.persist_snapshot(session)?") &&
+    interactiveManager.includes("self.persist_snapshot(&candidate)?") &&
+    interactiveManager.includes(
+      "durable_mutations_append_identity_status_lineage_and_approval_checkpoints",
+    ),
+  mutationFailureRollsBack:
+    interactiveManager.includes("checkpoint_failure_rolls_back_in_memory_mutation") &&
+    interactiveManager.includes("persist interactive session checkpoint") &&
+    interactive.includes("close_interactive_pty(&app, &pty_id).await"),
   packageEntryPoint:
     packageJson.scripts?.["verify:a4:durability"] ===
     "node scripts/verify-a4-durability-contract.mjs",
@@ -76,10 +100,10 @@ const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
   schema: "aelyris.a4-durability-contract/v1",
-  status: "pass-a4.2-a4.3-foundation",
-  activeSlice: "A4.3",
+  status: "pass-a4.2-a4.4-foundation",
+  activeSlice: "A4.4",
   phaseComplete: false,
-  remainingSlices: ["A4.4", "A4.5", "A4.6"],
+  remainingSlices: ["A4.5", "A4.6"],
   checks,
   generatedAt,
   provenance: createEvidenceProvenance({
@@ -94,6 +118,9 @@ const report = {
       "src-tauri/src/pty/manager.rs",
       "src-tauri/src/db/migrations.rs",
       "src-tauri/src/db/queries.rs",
+      "src-tauri/src/persistence/session_checkpoint_repo.rs",
+      "src-tauri/src/agent/interactive.rs",
+      "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "package.json",
     ],
     generatedAt,

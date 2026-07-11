@@ -79,7 +79,11 @@ async fn run_session_summarize(
 
     let request = format!("{}\r\n", prompt);
     if let Err(err) = write_interactive_input(&app, &info, request.as_bytes()).await {
-        let _ = session_mgr.update_status(&info.id, "blocked");
+        if let Err(checkpoint_error) = session_mgr.update_status(&info.id, "blocked") {
+            return Err(format!(
+                "session_summarize prompt injection failed: {err}; blocked checkpoint failed: {checkpoint_error}"
+            ));
+        }
         emit_interactive_sessions(&app, &session_mgr);
         return Err(format!("session_summarize prompt injection failed: {err}"));
     }
@@ -87,7 +91,11 @@ async fn run_session_summarize(
     let timeout =
         std::time::Duration::from_millis(timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000));
     if let Err(err) = wait_for_done_marker(&files.done_path, timeout).await {
-        let _ = session_mgr.update_status(&info.id, "blocked");
+        if let Err(checkpoint_error) = session_mgr.update_status(&info.id, "blocked") {
+            return Err(format!(
+                "{err}; blocked checkpoint failed: {checkpoint_error}"
+            ));
+        }
         emit_interactive_sessions(&app, &session_mgr);
         return Err(err);
     }
@@ -96,7 +104,11 @@ async fn run_session_summarize(
     let (redacted, validation) = match read_redacted_summary(&files, &context) {
         Ok(result) => result,
         Err(err) => {
-            let _ = session_mgr.update_status(&info.id, "blocked");
+            if let Err(checkpoint_error) = session_mgr.update_status(&info.id, "blocked") {
+                return Err(format!(
+                    "{err}; blocked checkpoint failed: {checkpoint_error}"
+                ));
+            }
             emit_interactive_sessions(&app, &session_mgr);
             return Err(err);
         }
@@ -144,12 +156,10 @@ pub fn session_checkpoint(
     let db = app
         .try_state::<crate::db::ManagedDb>()
         .ok_or_else(|| "session_checkpoint requires database state".to_string())?;
-    let checkpoint_seq =
-        db.with(|d| SessionCheckpointRepo::next_checkpoint_seq(d, &info.logical_session_id))?;
     let now = unix_now_secs();
     let record = SessionCheckpointRecord {
         logical_session_id: info.logical_session_id.clone(),
-        checkpoint_seq,
+        checkpoint_seq: 0,
         pty_id: info.pty_id.clone(),
         cli: agent_cli_label(&info.cli).to_string(),
         model: info.model.clone(),
@@ -158,6 +168,7 @@ pub fn session_checkpoint(
         worktree_path: info.worktree_path.clone(),
         repo_path: info.repo_path.clone(),
         status: info.status.clone(),
+        approval_prompt: info.approval_prompt.clone(),
         cost: info.cost,
         tokens_used: info.tokens_used,
         started_at: info.started_at,
@@ -171,7 +182,7 @@ pub fn session_checkpoint(
         created_at: now,
         updated_at: now,
     };
-    let checkpoint = db.with(|d| SessionCheckpointRepo::upsert_checkpoint(d, &record))?;
+    let checkpoint = db.with(|d| SessionCheckpointRepo::append_checkpoint(d, &record))?;
     let identity_context_persisted = persist_agent_identity_context(&app, &info, &checkpoint);
     Ok(SessionCheckpointResult {
         session_id: info.id,
@@ -796,7 +807,7 @@ pub async fn restore_interactive_sessions(
             status: checkpoint.status.clone(),
             model: checkpoint.model.clone(),
             initial_prompt: None,
-            approval_prompt: None,
+            approval_prompt: checkpoint.approval_prompt.clone(),
             cwd: checkpoint.cwd.clone(),
             worktree_branch: checkpoint.worktree_branch.clone(),
             worktree_path: checkpoint.worktree_path.clone(),
@@ -808,7 +819,7 @@ pub async fn restore_interactive_sessions(
             turn_count: checkpoint.turn_count,
             context_remaining: checkpoint.context_remaining.clone(),
         };
-        session_mgr.register(info)?;
+        session_mgr.register_restored(info)?;
         if let Err(err) = native_registry.create(&checkpoint.pty_id, 120, 30) {
             log::debug!(
                 "restore_interactive_sessions native create skipped for {}: {}",

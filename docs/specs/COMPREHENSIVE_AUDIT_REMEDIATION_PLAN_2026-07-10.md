@@ -356,6 +356,16 @@ prove pending/failed spawn denial, late-success rejection, timeout behavior, and
 PTY creation before admission. `verify:a4:durability` records the current A4.2-A4.3
 contract. A4.4 is next; A4 as a whole remains active.
 
+A4.4 completion note (2026-07-12): checkpoint schema version 2 persists approval
+state. The existing `SessionCheckpointRepo` remains the sole owner and now allocates
+monotonic append sequences under the shared `ManagedDb` lock for both manual and
+automatic writers. `InteractiveSessionManager` checkpoints registration identity,
+status, lineage, and approval mutations before publishing in-memory state; a failed
+write returns an explicit error and leaves the prior state intact. Startup restore
+hydrates without appending a duplicate and restores approval state. Focused migration,
+repository, mutation, rollback, and A4 contract tests pass. A4.5 is next; A4 remains
+active.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.

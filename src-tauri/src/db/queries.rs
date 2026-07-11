@@ -2556,7 +2556,7 @@ mod tests {
                 candidate
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v1-"))
+                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v2-"))
             })
             .collect();
         assert_eq!(backups.len(), 1);
@@ -2576,7 +2576,7 @@ mod tests {
                 entry
                     .file_name()
                     .to_str()
-                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v1-"))
+                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v2-"))
             })
             .count();
         assert_eq!(backup_count, 1);

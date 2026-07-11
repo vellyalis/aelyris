@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -569,6 +569,10 @@ const V1_SCHEMA: &str = "
         END;
         ";
 
+const V2_SCHEMA: &str = "
+    ALTER TABLE session_checkpoints ADD COLUMN approval_prompt TEXT;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -614,12 +618,29 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         }
     }
 
+    if version < 2 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V2_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 2)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::OptionalExtension;
 
     #[test]
     fn migrations_are_idempotent_and_create_runtime_core_tables() {
@@ -755,6 +776,25 @@ mod tests {
             .unwrap();
         assert!(run_migrations(&conn).is_err());
         assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION + 1);
+    }
+
+    #[test]
+    fn version_one_upgrades_to_approval_checkpoint_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 2);
+        let approval: Option<String> = conn
+            .query_row(
+                "SELECT approval_prompt FROM session_checkpoints LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap()
+            .flatten();
+        assert_eq!(approval, None);
     }
 
     #[test]

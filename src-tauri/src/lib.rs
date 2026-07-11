@@ -408,6 +408,15 @@ pub fn run() {
                 Ok(database) => {
                     log::info!("Database initialized at {:?}", db_path);
                     let managed = db::ManagedDb::new(database);
+                    if let Err(error) = app
+                        .state::<InteractiveSessionManager>()
+                        .attach_checkpoint_db(managed.clone())
+                    {
+                        log::error!("Failed to attach interactive checkpoint DB: {error}");
+                        let _ = app
+                            .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
+                            .fail("checkpoint_db", error);
+                    }
                     restore_context_store(app.handle(), &managed);
                     restore_intent_bus(app.handle(), &managed);
                     restore_task_graph(app.handle(), &managed);

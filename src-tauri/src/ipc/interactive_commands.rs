@@ -217,7 +217,10 @@ pub(crate) async fn spawn_interactive_agent_internal(
     };
 
     let session_mgr = app.state::<InteractiveSessionManager>();
-    session_mgr.register(info)?;
+    if let Err(error) = session_mgr.register(info) {
+        close_interactive_pty(&app, &pty_id).await;
+        return Err(error);
+    }
 
     // Phase 3C-1a: orchestra agents running in a worktree get mirrored as
     // a ghost layer so the panel (and later editor ghosts) see their work.
@@ -329,7 +332,7 @@ pub async fn stop_interactive_agent(app: AppHandle, id: String) -> Result<(), St
 
     // Update status to "done" before closing PTY so the frontend sees the
     // final state even if the output monitor thread hasn't caught up yet.
-    let _ = session_mgr.update_status(&id, "done");
+    session_mgr.update_status(&id, "done")?;
 
     // Close PTY (kills the process, output monitor thread will exit on read EOF)
     close_interactive_pty(&app, &pty_id).await;

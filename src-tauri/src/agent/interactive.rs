@@ -352,6 +352,7 @@ pub struct InteractiveSessionInfo {
 #[derive(Clone)]
 pub struct InteractiveSessionManager {
     sessions: Arc<Mutex<HashMap<String, InteractiveSessionInfo>>>,
+    checkpoint_db: Arc<Mutex<Option<crate::db::ManagedDb>>>,
 }
 
 impl Default for InteractiveSessionManager {
@@ -364,7 +365,16 @@ impl InteractiveSessionManager {
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            checkpoint_db: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn attach_checkpoint_db(&self, db: crate::db::ManagedDb) -> Result<(), String> {
+        *self
+            .checkpoint_db
+            .lock()
+            .map_err(|_| "Interactive checkpoint DB lock poisoned".to_string())? = Some(db);
+        Ok(())
     }
 
     /// Register a new interactive session
@@ -375,6 +385,14 @@ impl InteractiveSessionManager {
             info.cli,
             info.model
         );
+        self.persist_snapshot(&info)?;
+        self.lock_sessions()?.insert(info.id.clone(), info);
+        Ok(())
+    }
+
+    /// Hydrate a session whose durable checkpoint was already loaded at startup.
+    /// This must not append a duplicate checkpoint during reconciliation.
+    pub fn register_restored(&self, info: InteractiveSessionInfo) -> Result<(), String> {
         self.lock_sessions()?.insert(info.id.clone(), info);
         Ok(())
     }
@@ -401,9 +419,11 @@ impl InteractiveSessionManager {
     /// Update session status (e.g. "thinking", "coding", "idle", "done")
     pub fn update_status(&self, id: &str, status: &str) -> Result<(), String> {
         let mut sessions = self.lock_sessions()?;
-        let session = sessions
-            .get_mut(id)
+        let current = sessions
+            .get(id)
             .ok_or_else(|| format!("Interactive session not found for status update: {id}"))?;
+        let mut candidate = current.clone();
+        let session = &mut candidate;
         let previous_status = session.status.clone();
         if previous_status != status {
             log::debug!(
@@ -441,18 +461,23 @@ impl InteractiveSessionManager {
         if status != "waiting_approval" {
             session.approval_prompt = None;
         }
+        self.persist_snapshot(session)?;
+        sessions.insert(id.to_string(), candidate);
         Ok(())
     }
 
     pub fn set_approval_prompt(&self, id: &str, prompt: Option<String>) -> Result<bool, String> {
         let mut sessions = self.lock_sessions()?;
-        let session = sessions.get_mut(id).ok_or_else(|| {
+        let current = sessions.get(id).ok_or_else(|| {
             format!("Interactive session not found for approval prompt update: {id}")
         })?;
-        if session.approval_prompt == prompt {
+        if current.approval_prompt == prompt {
             return Ok(false);
         }
-        session.approval_prompt = prompt;
+        let mut candidate = current.clone();
+        candidate.approval_prompt = prompt;
+        self.persist_snapshot(&candidate)?;
+        sessions.insert(id.to_string(), candidate);
         Ok(true)
     }
 
@@ -504,6 +529,66 @@ impl InteractiveSessionManager {
             .lock()
             .map_err(|_| "Interactive session lock poisoned".to_string())
     }
+
+    fn persist_snapshot(&self, info: &InteractiveSessionInfo) -> Result<(), String> {
+        let db = self
+            .checkpoint_db
+            .lock()
+            .map_err(|_| "Interactive checkpoint DB lock poisoned".to_string())?
+            .clone();
+        let Some(db) = db else {
+            return Ok(());
+        };
+        db.with(|database| {
+            let predecessor_session_id =
+                crate::persistence::SessionCheckpointRepo::load_latest_handoff_for_session(
+                    database,
+                    &info.logical_session_id,
+                )?
+                .and_then(|handoff| {
+                    (handoff.successor_id == info.logical_session_id)
+                        .then_some(handoff.predecessor_id)
+                });
+            let now = unix_now_secs();
+            let record = crate::persistence::SessionCheckpointRecord {
+                logical_session_id: info.logical_session_id.clone(),
+                checkpoint_seq: 0,
+                pty_id: info.pty_id.clone(),
+                cli: agent_cli_checkpoint_label(&info.cli),
+                model: info.model.clone(),
+                cwd: info.cwd.clone(),
+                worktree_branch: info.worktree_branch.clone(),
+                worktree_path: info.worktree_path.clone(),
+                repo_path: info.repo_path.clone(),
+                status: info.status.clone(),
+                approval_prompt: info.approval_prompt.clone(),
+                cost: info.cost,
+                tokens_used: info.tokens_used,
+                started_at: info.started_at,
+                last_activity: info.last_activity,
+                turn_count: info.turn_count,
+                context_remaining: info.context_remaining.clone(),
+                summary_json: None,
+                summary_path: None,
+                inflight_ref: None,
+                predecessor_session_id,
+                created_at: now,
+                updated_at: now,
+            };
+            crate::persistence::SessionCheckpointRepo::append_checkpoint(database, &record)
+                .map(|_| ())
+        })
+        .map_err(|error| format!("persist interactive session checkpoint: {error}"))
+    }
+}
+
+fn agent_cli_checkpoint_label(cli: &AgentCli) -> String {
+    match cli {
+        AgentCli::Claude => "claude".to_string(),
+        AgentCli::Gemini => "gemini".to_string(),
+        AgentCli::Codex => "codex".to_string(),
+        AgentCli::Custom(program) => format!("custom:{program}"),
+    }
 }
 
 #[cfg(test)]
@@ -540,6 +625,72 @@ mod tests {
         mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
         mgr.register(make_session("s2", AgentCli::Gemini)).unwrap();
         assert_eq!(mgr.list().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn durable_mutations_append_identity_status_lineage_and_approval_checkpoints() {
+        let database = crate::db::Database::open_memory().unwrap();
+        let managed = crate::db::ManagedDb::new(database);
+        managed
+            .with(|db| {
+                crate::persistence::SessionCheckpointRepo::insert_or_get_handoff(
+                    db,
+                    &crate::persistence::SessionHandoffRecord {
+                        predecessor_id: "predecessor".to_string(),
+                        successor_id: "s1".to_string(),
+                        handoff_seq: 1,
+                        state: crate::persistence::SessionHandoffState::SuccessorSpawning,
+                        correlation_id: "corr-1".to_string(),
+                        checkpoint_seq: None,
+                        summary_path: None,
+                        failure_reason: None,
+                        created_at: 1,
+                        updated_at: 1,
+                    },
+                )
+                .map(|_| ())
+            })
+            .unwrap();
+        let mgr = InteractiveSessionManager::new();
+        mgr.attach_checkpoint_db(managed.clone()).unwrap();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+        mgr.update_status("s1", "waiting_approval").unwrap();
+        mgr.set_approval_prompt("s1", Some("Approve command?".to_string()))
+            .unwrap();
+
+        let latest = managed
+            .with(|db| crate::persistence::SessionCheckpointRepo::load_latest(db, "s1"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.checkpoint_seq, 3);
+        assert_eq!(latest.status, "waiting_approval");
+        assert_eq!(latest.approval_prompt.as_deref(), Some("Approve command?"));
+        assert_eq!(latest.predecessor_session_id.as_deref(), Some("predecessor"));
+    }
+
+    #[test]
+    fn checkpoint_failure_rolls_back_in_memory_mutation() {
+        let database = crate::db::Database::open_memory().unwrap();
+        let managed = crate::db::ManagedDb::new(database);
+        let mgr = InteractiveSessionManager::new();
+        mgr.attach_checkpoint_db(managed.clone()).unwrap();
+        mgr.register(make_session("s1", AgentCli::Claude)).unwrap();
+        managed
+            .with(|db| {
+                db.conn()
+                    .execute_batch("DROP TABLE session_checkpoints")
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+
+        let error = mgr.update_status("s1", "coding").unwrap_err();
+        assert!(error.contains("persist interactive session checkpoint"));
+        assert_eq!(mgr.get("s1").unwrap().unwrap().status, "idle");
+        let approval_error = mgr
+            .set_approval_prompt("s1", Some("must not commit".to_string()))
+            .unwrap_err();
+        assert!(approval_error.contains("persist interactive session checkpoint"));
+        assert_eq!(mgr.get("s1").unwrap().unwrap().approval_prompt, None);
     }
 
     #[test]

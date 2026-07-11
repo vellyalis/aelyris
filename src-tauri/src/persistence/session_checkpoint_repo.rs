@@ -19,6 +19,7 @@ pub struct SessionCheckpointRecord {
     pub worktree_path: Option<String>,
     pub repo_path: Option<String>,
     pub status: String,
+    pub approval_prompt: Option<String>,
     pub cost: f64,
     pub tokens_used: u64,
     pub started_at: u64,
@@ -92,7 +93,7 @@ pub struct SessionHandoffRecord {
 }
 
 const CHECKPOINT_COLUMNS: &str = "logical_session_id, checkpoint_seq, pty_id, cli, model, cwd, \
-     worktree_branch, worktree_path, repo_path, status, cost, tokens_used, started_at, \
+     worktree_branch, worktree_path, repo_path, status, approval_prompt, cost, tokens_used, started_at, \
      last_activity, turn_count, context_remaining_json, summary_json, summary_path, \
      inflight_ref, predecessor_session_id, created_at, updated_at";
 
@@ -126,6 +127,18 @@ impl SessionCheckpointRepo {
         nonnegative_u64("handoff_seq", next)
     }
 
+    /// Append the next immutable checkpoint while the caller holds the single
+    /// `ManagedDb` owner lock. This keeps sequence selection and insert in one
+    /// critical section across manual and automatic checkpoint writers.
+    pub fn append_checkpoint(
+        db: &Database,
+        checkpoint: &SessionCheckpointRecord,
+    ) -> Result<SessionCheckpointRecord, String> {
+        let mut appended = checkpoint.clone();
+        appended.checkpoint_seq = Self::next_checkpoint_seq(db, &appended.logical_session_id)?;
+        Self::upsert_checkpoint(db, &appended)
+    }
+
     pub fn upsert_checkpoint(
         db: &Database,
         checkpoint: &SessionCheckpointRecord,
@@ -145,11 +158,11 @@ impl SessionCheckpointRepo {
             .execute(
                 "INSERT INTO session_checkpoints (
                     logical_session_id, checkpoint_seq, pty_id, cli, model, cwd,
-                    worktree_branch, worktree_path, repo_path, status, cost, tokens_used,
+                    worktree_branch, worktree_path, repo_path, status, approval_prompt, cost, tokens_used,
                     started_at, last_activity, turn_count, context_remaining_json,
                     summary_json, summary_path, inflight_ref, predecessor_session_id,
                     created_at, updated_at
-                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)
+                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)
                  ON CONFLICT(logical_session_id, checkpoint_seq) DO UPDATE SET
                     pty_id = excluded.pty_id,
                     cli = excluded.cli,
@@ -159,6 +172,7 @@ impl SessionCheckpointRepo {
                     worktree_path = excluded.worktree_path,
                     repo_path = excluded.repo_path,
                     status = excluded.status,
+                    approval_prompt = excluded.approval_prompt,
                     cost = excluded.cost,
                     tokens_used = excluded.tokens_used,
                     started_at = excluded.started_at,
@@ -181,6 +195,7 @@ impl SessionCheckpointRepo {
                     checkpoint.worktree_path,
                     checkpoint.repo_path,
                     checkpoint.status,
+                    checkpoint.approval_prompt,
                     checkpoint.cost,
                     checkpoint.tokens_used,
                     checkpoint.started_at,
@@ -435,6 +450,7 @@ type RawCheckpointRow = (
     Option<String>,
     Option<String>,
     String,
+    Option<String>,
     f64,
     i64,
     i64,
@@ -486,6 +502,7 @@ fn checkpoint_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawCheckpoin
         row.get(19)?,
         row.get(20)?,
         row.get(21)?,
+        row.get(22)?,
     ))
 }
 
@@ -516,18 +533,19 @@ fn raw_checkpoint_into_record(row: RawCheckpointRow) -> Result<SessionCheckpoint
         worktree_path: row.7,
         repo_path: row.8,
         status: row.9,
-        cost: row.10,
-        tokens_used: nonnegative_u64("tokens_used", row.11)?,
-        started_at: nonnegative_u64("started_at", row.12)?,
-        last_activity: nonnegative_u64("last_activity", row.13)?,
-        turn_count: nonnegative_u64("turn_count", row.14)?,
-        context_remaining: parse_json_opt("context_remaining_json", row.15)?,
-        summary_json: parse_json_opt("summary_json", row.16)?,
-        summary_path: row.17,
-        inflight_ref: row.18,
-        predecessor_session_id: row.19,
-        created_at: nonnegative_u64("created_at", row.20)?,
-        updated_at: nonnegative_u64("updated_at", row.21)?,
+        approval_prompt: row.10,
+        cost: row.11,
+        tokens_used: nonnegative_u64("tokens_used", row.12)?,
+        started_at: nonnegative_u64("started_at", row.13)?,
+        last_activity: nonnegative_u64("last_activity", row.14)?,
+        turn_count: nonnegative_u64("turn_count", row.15)?,
+        context_remaining: parse_json_opt("context_remaining_json", row.16)?,
+        summary_json: parse_json_opt("summary_json", row.17)?,
+        summary_path: row.18,
+        inflight_ref: row.19,
+        predecessor_session_id: row.20,
+        created_at: nonnegative_u64("created_at", row.21)?,
+        updated_at: nonnegative_u64("updated_at", row.22)?,
     })
 }
 
@@ -609,6 +627,7 @@ mod tests {
             worktree_path: Some("C:/repo/.worktrees/a".to_string()),
             repo_path: Some("C:/repo".to_string()),
             status: "idle".to_string(),
+            approval_prompt: Some("approve fixture".to_string()),
             cost: 1.5,
             tokens_used: 42,
             started_at: 10,
@@ -680,6 +699,23 @@ mod tests {
         let rows = SessionCheckpointRepo::load_latest_all(&db).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].status, "summarizing");
+    }
+
+    #[test]
+    fn append_checkpoint_allocates_monotonic_sequences() {
+        let db = Database::open_memory().unwrap();
+        let mut record = checkpoint(0);
+        let first = SessionCheckpointRepo::append_checkpoint(&db, &record).unwrap();
+        record.status = "thinking".to_string();
+        let second = SessionCheckpointRepo::append_checkpoint(&db, &record).unwrap();
+        assert_eq!((first.checkpoint_seq, second.checkpoint_seq), (1, 2));
+        assert_eq!(
+            SessionCheckpointRepo::load_latest(&db, "logical-a")
+                .unwrap()
+                .unwrap()
+                .status,
+            "thinking"
+        );
     }
 
     #[test]
