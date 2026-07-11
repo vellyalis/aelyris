@@ -33,7 +33,14 @@ describe("FleetHud", () => {
     hud.value = {
       agents: [
         agent({ taskId: "a", title: "A", bucket: "running", status: "running" }),
-        agent({ taskId: "b", title: "B", bucket: "attention", status: "blocked", model: "opus" }),
+        agent({
+          taskId: "b",
+          title: "B",
+          bucket: "attention",
+          status: "blocked",
+          model: "opus",
+          attentionReason: "Waiting for Setup workspace",
+        }),
       ],
       summary: { total: 2, running: 1, review: 0, attention: 1 },
       hasAgents: true,
@@ -44,5 +51,6 @@ describe("FleetHud", () => {
     expect(screen.getByText("2")).toBeTruthy(); // count badge
     expect(screen.getByText("1 running")).toBeTruthy();
     expect(screen.getByText("1 attn")).toBeTruthy();
+    expect(screen.getByLabelText(/Waiting for Setup workspace/)).toBeTruthy();
   });
 });

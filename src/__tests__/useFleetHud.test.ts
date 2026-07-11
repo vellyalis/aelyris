@@ -59,4 +59,15 @@ describe("useFleetHud", () => {
     rerender({ t: tasks });
     await waitFor(() => expect(result.current.hasAgents).toBe(false));
   });
+
+  it("derives a blocked reason from TaskGraph dependencies without a second fleet owner", async () => {
+    const blocked = { ...task("blocked", "blocked"), dependencies: ["setup"] };
+    const tasks = [blocked, { ...task("setup", "running"), title: "Setup workspace" }];
+    const { result, rerender } = renderHook(({ t }) => useFleetHud(t), { initialProps: { t: tasks } });
+    await waitFor(() => expect(typeof emit).toBe("function"));
+    act(() => emit(spawn("blocked", "codex")));
+    rerender({ t: tasks });
+    await waitFor(() => expect(result.current.agents).toHaveLength(1));
+    expect(result.current.agents[0].attentionReason).toBe("Waiting for Setup workspace");
+  });
 });

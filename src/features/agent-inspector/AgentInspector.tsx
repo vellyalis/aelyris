@@ -41,6 +41,7 @@ import { FleetGridTerminal } from "./FleetGridTerminal";
 import { InlineResultPanel } from "./InlineResultPanel";
 import { InteractiveSessionCard } from "./InteractiveSessionCard";
 import { SessionCard } from "./SessionCard";
+import { SessionTrustMeta } from "./SessionTrustMeta";
 
 export const RIGHT_RAIL_COMPATIBILITY_CLIENT = {
   schema: "aelyris.react.right-rail-compatibility-client.v1",
@@ -812,6 +813,7 @@ export function AgentInspector({
                       />
                     )}
                   </div>
+                  <SessionTrustMeta session={s} />
                   <div className={styles.parallelProgress}>
                     <div
                       className={styles.parallelProgressBar}

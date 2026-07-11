@@ -46,13 +46,17 @@ interface FleetHudCardProps {
 
 export const FleetHudCard = memo(function FleetHudCard({ agent, now }: FleetHudCardProps) {
   const cls = STATUS_CLASS[agent.bucket];
+  const title = [agent.title, agent.model, STATUS_LABEL[agent.status], agent.attentionReason]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div
+    <article
       className={`${styles.card} ${cls}`}
       data-testid="fleet-hud-card"
       data-agent-id={agent.taskId}
       data-bucket={agent.bucket}
-      title={`${agent.title} · ${agent.model} · ${STATUS_LABEL[agent.status]}`}
+      title={title}
+      aria-label={title}
     >
       <span className={`${styles.rail} ${cls}`} aria-hidden />
       <span className={styles.cardBody}>
@@ -66,6 +70,6 @@ export const FleetHudCard = memo(function FleetHudCard({ agent, now }: FleetHudC
           <span className={styles.elapsed}>{elapsed(now, agent.startedAt)}</span>
         </span>
       </span>
-    </div>
+    </article>
   );
 });

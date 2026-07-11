@@ -389,6 +389,34 @@
   color: var(--text-muted);
   align-items: center;
 }
+
+.trustMeta {
+  display: grid;
+  gap: 3px;
+  margin: 5px 0;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.ownershipLine,
+.blockerLine {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.blockerLine {
+  color: var(--color-warning);
+}
+
+.trustMetaLabel {
+  flex: 0 0 auto;
+  color: var(--text-subtle);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .lineagePanel {
   display: flex;
   min-width: 0;

@@ -21,6 +21,8 @@ export interface FleetHudAgent {
   bucket: FleetBucket;
   /** Epoch ms the agent was dispatched (from the spawn event), for elapsed. */
   startedAt: number;
+  /** TaskGraph-owned reason for attention state; never inferred from logs. */
+  attentionReason?: string;
 }
 
 export interface FleetHudSummary {
@@ -55,6 +57,17 @@ function bucketOf(status: TaskStatus): FleetBucket {
 
 // attention first (needs a human), then error, then live work, then review.
 const ORDER: Record<FleetBucket, number> = { attention: 0, error: 1, running: 2, review: 3 };
+
+function attentionReason(task: Task, tasksById: ReadonlyMap<string, Task>): string | undefined {
+  if (task.status === "failed") return "Task execution failed; no structured failure reason was recorded.";
+  if (task.status !== "blocked") return undefined;
+  const incomplete = task.dependencies.flatMap((id) => {
+    const dependency = tasksById.get(id);
+    return dependency && dependency.status !== "done" ? [dependency] : [];
+  });
+  if (incomplete.length === 0) return "Task is blocked; no structured reason was recorded.";
+  return `Waiting for ${incomplete.map((dependency) => dependency.title || dependency.id).join(", ")}`;
+}
 
 export function useFleetHud(tasks: Task[]): {
   agents: FleetHudAgent[];
@@ -120,6 +133,7 @@ export function useFleetHud(tasks: Task[]): {
 
   const agents = useMemo(() => {
     const list: FleetHudAgent[] = [];
+    const tasksById = new Map(tasks.map((task) => [task.id, task]));
     for (const task of tasks) {
       const spawn = spawns.get(task.id);
       if (!spawn || !ACTIVE.has(task.status)) continue;
@@ -130,6 +144,7 @@ export function useFleetHud(tasks: Task[]): {
         status: task.status,
         bucket: bucketOf(task.status),
         startedAt: spawn.startedAt,
+        attentionReason: attentionReason(task, tasksById),
       });
     }
     list.sort((a, b) => ORDER[a.bucket] - ORDER[b.bucket] || b.startedAt - a.startedAt);

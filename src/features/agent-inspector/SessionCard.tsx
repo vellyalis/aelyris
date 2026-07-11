@@ -20,6 +20,7 @@ import { PixelAvatar } from "../../shared/ui/PixelAvatar";
 import { StatusIcon } from "../../shared/ui/StatusIcon";
 import { StopButton } from "../../shared/ui/StopButton";
 import styles from "./AgentInspector.module.css";
+import { SessionTrustMeta } from "./SessionTrustMeta";
 
 interface SessionCardProps {
   session: AgentSession;
@@ -206,6 +207,7 @@ export function SessionCard({
               <span className={styles.cardPreviewText}>{lastLog.content}</span>
             </div>
           )}
+          <SessionTrustMeta session={s} />
           {isLive && (
             <div className={styles.cardMeta}>
               <StopButton className={styles.stopBtn} label={`Stop session ${s.name}`} onStop={() => onStop?.(s.id)} />
