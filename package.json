@@ -26,6 +26,7 @@
     "verify:a4:durability:acceptance": "node scripts/verify-a4-durability-acceptance.mjs",
     "verify:a5:command-supervision": "node scripts/verify-a5-command-supervision.mjs",
     "verify:a5:proofbook-cas": "node scripts/verify-a5-proofbook-cas.mjs",
+    "verify:a5:pty-concurrency": "node scripts/verify-a5-pty-concurrency.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",

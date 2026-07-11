@@ -497,6 +497,32 @@ The artifact reports `phaseComplete=false`; A5.4-A5.8 remain. A5.4 owns only PTY
 lock/per-instance handle boundaries and must preserve spawn-token and live-process
 identity contracts.
 
+### A5.4 Complete - Per-PTY Handles and Short Map Locks
+
+`PtyManager` now stores `Initializing` reservations or ready
+`Arc<Mutex<PtyInstance>>` handles. Caller-provided IDs are reserved atomically, while
+ConPTY creation, child spawn, reader construction, writes, flushes, resize, capture,
+kill, and wait-related handle transfer happen after the session-map lock is released.
+Failed/cancelled initialization removes its reservation; publication fails closed if a
+concurrent close cancelled the reservation.
+
+Close-all drains ready handles before termination. Generation-safe reaping snapshots a
+handle/token, then uses `Arc::ptr_eq` under a short second map lock so an old waiter
+cannot remove a replacement PTY that reused the same ID. List operations first clone
+ready handles and only then inspect per-instance metadata.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:pty-concurrency`
+- `.codex-auto/quality/a5-pty-concurrency.json`
+- same-ID concurrent spawn has exactly one published child
+- stale reaper cannot remove a reused terminal ID
+- locking one instance does not block another terminal lookup
+- ConPTY child remains assigned to the kill-on-close Job Object
+
+The artifact reports `phaseComplete=false`; A5.5-A5.8 remain. A5.5 owns TaskGraph
+revisioned snapshot/plan/unlocked-side-effect/version-checked apply behavior.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.

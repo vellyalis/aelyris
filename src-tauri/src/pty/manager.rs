@@ -62,6 +62,11 @@ struct PtyInstance {
     child_killer: Arc<Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>>,
 }
 
+enum PtySlot {
+    Initializing,
+    Ready(Arc<Mutex<PtyInstance>>),
+}
+
 /// Best-effort exit information for a PTY child process.
 ///
 /// `crashed` is a heuristic, not a guarantee:
@@ -137,10 +142,9 @@ pub struct PtyRuntimeIdentity {
 /// external HTTP/WS server without going through Tauri's managed state.
 #[derive(Clone)]
 pub struct PtyManager {
-    instances: Arc<Mutex<HashMap<String, PtyInstance>>>,
+    instances: Arc<Mutex<HashMap<String, PtySlot>>>,
     scrollback_store: Option<Arc<FilePtyScrollbackStore>>,
-    startup_reconciliation:
-        Option<Arc<crate::startup_reconciliation::StartupReconciliationState>>,
+    startup_reconciliation: Option<Arc<crate::startup_reconciliation::StartupReconciliationState>>,
 }
 
 impl PtyManager {
@@ -190,8 +194,8 @@ impl PtyManager {
         env.insert("AELYRIS_SHELL".to_string(), program.clone());
 
         let id = self.spawn_command(&program, &args, cols, rows, cwd, Some(env))?;
-        if let Ok(mut instances) = self.instances.lock() {
-            if let Some(instance) = instances.get_mut(&id) {
+        if let Ok(instance) = self.instance_handle(&id) {
+            if let Ok(mut instance) = instance.lock() {
                 instance.shell_type = shell.clone();
             }
         }
@@ -214,8 +218,8 @@ impl PtyManager {
         env.insert("AELYRIS_SHELL".to_string(), program.clone());
 
         self.spawn_command_with_id(id, &program, &args, cols, rows, cwd, Some(env))?;
-        if let Ok(mut instances) = self.instances.lock() {
-            if let Some(instance) = instances.get_mut(id) {
+        if let Ok(instance) = self.instance_handle(id) {
+            if let Ok(mut instance) = instance.lock() {
                 instance.shell_type = shell.clone();
             }
         }
@@ -258,119 +262,144 @@ impl PtyManager {
         if let Some(state) = &self.startup_reconciliation {
             state.require_spawn_admitted()?;
         }
-        // Hold the session map lock from the collision check through insert.
-        // This makes caller-provided ids atomic for concurrent restore/attach
-        // paths: a second spawn with the same id blocks until the first either
-        // publishes the instance or returns an error.
-        let mut instances = self.lock_instances()?;
-        if instances.contains_key(id) {
-            return Err(format!("terminal id {} already exists", id));
-        }
-        let pty_system = native_pty_system();
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-
-        let pair = pty_system
-            .openpty(size)
-            .map_err(|e| format!("Failed to open PTY: {}", e))?;
-
-        let mut cmd = CommandBuilder::new(program);
-        for arg in args {
-            cmd.arg(arg);
-        }
-
-        let resolved_cwd = cwd.unwrap_or(".").to_string();
-        cmd.cwd(&resolved_cwd);
-
-        // Inject Aelyris metadata
-        cmd.env("AELYRIS_TERMINAL_ID", id);
-        cmd.env("AELYRIS_PROJECT", &resolved_cwd);
-
-        // Extra environment variables (e.g. AELYRIS_SHELL for shells, model info for agents)
-        if let Some(envs) = &extra_env {
-            for (k, v) in envs {
-                cmd.env(k, v);
+        // Reserve the id under the short map lock, then perform every blocking OS
+        // operation outside it. A concurrent same-id spawn observes Initializing
+        // and fails without creating a second child.
+        {
+            let mut instances = self.lock_instances()?;
+            if instances.contains_key(id) {
+                return Err(format!("terminal id {} already exists", id));
             }
+            instances.insert(id.to_string(), PtySlot::Initializing);
         }
+        let constructed = (|| -> Result<PtyInstance, String> {
+            let pty_system = native_pty_system();
+            let size = PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            };
 
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn command '{}': {}", program, e))?;
-        // No-orphan guard: assign the child to this process's kill-on-close Job
-        // Object so an agent CLI/shell can never outlive its host (app or
-        // sidecar), even on an abnormal crash where no shutdown code runs.
-        // Assigns by PID synchronously, immediately after spawn. A real (small)
-        // window exists between CreateProcessW inside portable-pty and this assign:
-        // a host crash THERE leaves the child unguarded. It is not closeable on the
-        // ConPTY path without vendoring portable-pty to add CREATE_SUSPENDED + assign
-        // + ResumeThread, so the guard is best-effort against crashes and exact for
-        // normal teardown. The required PROCESS_SET_QUOTA|PROCESS_TERMINATE rights
-        // bound which PIDs can be opened, so PID recycling is not a concern.
-        let process_id = child.process_id();
-        if let Some(pid) = process_id {
-            crate::process::guard_child_against_orphan(pid);
-        }
-        let child_killer = child.clone_killer();
+            let pair = pty_system
+                .openpty(size)
+                .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+            let mut cmd = CommandBuilder::new(program);
+            for arg in args {
+                cmd.arg(arg);
+            }
 
-        // Clone the master reader once, before insertion, so a failure here
-        // surfaces as a spawn error rather than a half-constructed session.
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
+            let resolved_cwd = cwd.unwrap_or(".").to_string();
+            cmd.cwd(&resolved_cwd);
 
-        let (output_tx, initial_rx) = broadcast::channel::<Vec<u8>>(OUTPUT_BROADCAST_CAPACITY);
+            // Inject Aelyris metadata
+            cmd.env("AELYRIS_TERMINAL_ID", id);
+            cmd.env("AELYRIS_PROJECT", &resolved_cwd);
 
-        let reader_alive = Arc::new(AtomicBool::new(true));
-        let output_buffer = Arc::new(Mutex::new(OutputBuffer::new(CAPTURE_BUFFER_MAX_LINES)));
-        spawn_reader_thread(
-            id.to_string(),
-            reader,
-            output_tx.clone(),
-            reader_alive.clone(),
-            output_buffer.clone(),
-            self.scrollback_store.clone(),
-        );
+            // Extra environment variables (e.g. AELYRIS_SHELL for shells, model info for agents)
+            if let Some(envs) = &extra_env {
+                for (k, v) in envs {
+                    cmd.env(k, v);
+                }
+            }
 
-        let instance = PtyInstance {
-            spawn_token: Uuid::new_v4(),
-            process_id,
-            pair,
-            writer,
-            shell_type: ShellType::PowerShell, // placeholder for non-shell commands
-            cwd: resolved_cwd,
-            spawned_at: Instant::now(),
-            output_tx,
-            initial_rx: Mutex::new(Some(initial_rx)),
-            output_buffer,
-            reader_alive,
-            child: Arc::new(Mutex::new(Some(child))),
-            child_killer: Arc::new(Mutex::new(Some(child_killer))),
+            let child = pair
+                .slave
+                .spawn_command(cmd)
+                .map_err(|e| format!("Failed to spawn command '{}': {}", program, e))?;
+            // No-orphan guard: assign the child to this process's kill-on-close Job
+            // Object so an agent CLI/shell can never outlive its host (app or
+            // sidecar), even on an abnormal crash where no shutdown code runs.
+            // Assigns by PID synchronously, immediately after spawn. A real (small)
+            // window exists between CreateProcessW inside portable-pty and this assign:
+            // a host crash THERE leaves the child unguarded. It is not closeable on the
+            // ConPTY path without vendoring portable-pty to add CREATE_SUSPENDED + assign
+            // + ResumeThread, so the guard is best-effort against crashes and exact for
+            // normal teardown. The required PROCESS_SET_QUOTA|PROCESS_TERMINATE rights
+            // bound which PIDs can be opened, so PID recycling is not a concern.
+            let process_id = child.process_id();
+            if let Some(pid) = process_id {
+                crate::process::guard_child_against_orphan(pid);
+            }
+            let child_killer = child.clone_killer();
+
+            let writer = pair
+                .master
+                .take_writer()
+                .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+
+            // Clone the master reader once, before insertion, so a failure here
+            // surfaces as a spawn error rather than a half-constructed session.
+            let reader = pair
+                .master
+                .try_clone_reader()
+                .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
+
+            let (output_tx, initial_rx) = broadcast::channel::<Vec<u8>>(OUTPUT_BROADCAST_CAPACITY);
+
+            let reader_alive = Arc::new(AtomicBool::new(true));
+            let output_buffer = Arc::new(Mutex::new(OutputBuffer::new(CAPTURE_BUFFER_MAX_LINES)));
+            spawn_reader_thread(
+                id.to_string(),
+                reader,
+                output_tx.clone(),
+                reader_alive.clone(),
+                output_buffer.clone(),
+                self.scrollback_store.clone(),
+            );
+
+            Ok(PtyInstance {
+                spawn_token: Uuid::new_v4(),
+                process_id,
+                pair,
+                writer,
+                shell_type: ShellType::PowerShell, // placeholder for non-shell commands
+                cwd: resolved_cwd,
+                spawned_at: Instant::now(),
+                output_tx,
+                initial_rx: Mutex::new(Some(initial_rx)),
+                output_buffer,
+                reader_alive,
+                child: Arc::new(Mutex::new(Some(child))),
+                child_killer: Arc::new(Mutex::new(Some(child_killer))),
+            })
+        })();
+
+        let instance = match constructed {
+            Ok(instance) => Arc::new(Mutex::new(instance)),
+            Err(error) => {
+                if let Ok(mut instances) = self.instances.lock() {
+                    if matches!(instances.get(id), Some(PtySlot::Initializing)) {
+                        instances.remove(id);
+                    }
+                }
+                return Err(error);
+            }
         };
 
-        instances.insert(id.to_string(), instance);
+        let mut instances = self.lock_instances()?;
+        if !matches!(instances.get(id), Some(PtySlot::Initializing)) {
+            drop(instances);
+            if let Ok(mut instance) = instance.lock() {
+                terminate_instance(&mut instance);
+            }
+            return Err(format!("terminal id {} reservation was cancelled", id));
+        }
+        instances.insert(id.to_string(), PtySlot::Ready(instance));
 
         Ok(())
     }
 
     /// Write input data to a PTY
     pub fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
-        let mut instances = self.lock_instances()?;
-
-        let instance = instances.get_mut(id).ok_or_else(|| {
+        let instance = self.instance_handle(id).map_err(|error| {
             log::warn!("pty write: unknown terminal id={id}");
-            PtyError::NotFound(id.to_string()).to_string()
+            error.to_string()
         })?;
+        let mut instance = instance
+            .lock()
+            .map_err(|_| PtyError::LockPoisoned.to_string())?;
 
         instance.writer.write_all(data).map_err(|e| {
             log::error!("pty write error id={id}: {e}");
@@ -394,7 +423,7 @@ impl PtyManager {
     pub fn contains(&self, id: &str) -> bool {
         self.instances
             .lock()
-            .map(|i| i.contains_key(id))
+            .map(|instances| matches!(instances.get(id), Some(PtySlot::Ready(_))))
             .unwrap_or(false)
     }
 
@@ -403,10 +432,8 @@ impl PtyManager {
     /// child into a waiter thread, so mux attach/detach can prove it preserved
     /// the same live PTY process instead of silently respawning it.
     pub fn runtime_identity(&self, id: &str) -> Result<PtyRuntimeIdentity, PtyError> {
-        let instances = self.lock_instances()?;
-        let instance = instances
-            .get(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+        let instance = self.instance_handle(id)?;
+        let instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
         Ok(PtyRuntimeIdentity {
             id: id.to_string(),
             process_id: instance.process_id,
@@ -432,15 +459,15 @@ impl PtyManager {
     /// assigned the ConPTY child to the kill-on-close job.
     #[cfg(test)]
     pub fn child_pid(&self, id: &str) -> Option<u32> {
-        let instances = self.instances.lock().ok()?;
-        let instance = instances.get(id)?;
+        let instance = self.instance_handle(id).ok()?;
+        let instance = instance.lock().ok()?;
         let slot = instance.child.lock().ok()?;
         slot.as_ref().and_then(|child| child.process_id())
     }
 
     fn take_child_with_token(&self, id: &str) -> Option<(Box<dyn Child + Send + Sync>, Uuid)> {
-        let instances = self.instances.lock().ok()?;
-        let instance = instances.get(id)?;
+        let instance = self.instance_handle(id).ok()?;
+        let instance = instance.lock().ok()?;
         let spawn_token = instance.spawn_token;
         let mut slot = instance.child.lock().ok()?;
         slot.take().map(|child| (child, spawn_token))
@@ -505,11 +532,8 @@ impl PtyManager {
     /// Callers pick their own policy (e.g. the API surfaces a sentinel,
     /// the UI drops silently).
     pub fn subscribe_output(&self, id: &str) -> Result<broadcast::Receiver<Vec<u8>>, PtyError> {
-        let instances = self.lock_instances()?;
-
-        let instance = instances
-            .get(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+        let instance = self.instance_handle(id)?;
+        let instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
 
         let mut initial_rx = instance
             .initial_rx
@@ -537,11 +561,8 @@ impl PtyManager {
         lines: usize,
         clean: bool,
     ) -> Result<(String, broadcast::Receiver<Vec<u8>>), PtyError> {
-        let instances = self.lock_instances()?;
-
-        let instance = instances
-            .get(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+        let instance = self.instance_handle(id)?;
+        let instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
 
         let buffer = instance
             .output_buffer
@@ -556,21 +577,24 @@ impl PtyManager {
 
     /// Capture the recent PTY output from the daemon-side ring buffer.
     pub fn capture(&self, id: &str, lines: usize, clean: bool) -> Result<String, PtyError> {
-        let instances = self.lock_instances()?;
-        if let Some(instance) = instances.get(id) {
-            let buffer = instance
-                .output_buffer
-                .lock()
-                .map_err(|_| PtyError::LockPoisoned)?;
-            let line_count = lines.clamp(1, CAPTURE_BUFFER_MAX_LINES);
-            let output = buffer.tail_including_partial(line_count).join("\n");
-            return if clean {
-                Ok(strip_ansi(&output))
-            } else {
-                Ok(output)
-            };
+        match self.instance_handle(id) {
+            Ok(instance) => {
+                let instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
+                let buffer = instance
+                    .output_buffer
+                    .lock()
+                    .map_err(|_| PtyError::LockPoisoned)?;
+                let line_count = lines.clamp(1, CAPTURE_BUFFER_MAX_LINES);
+                let output = buffer.tail_including_partial(line_count).join("\n");
+                return if clean {
+                    Ok(strip_ansi(&output))
+                } else {
+                    Ok(output)
+                };
+            }
+            Err(PtyError::NotFound(_)) => {}
+            Err(error) => return Err(error),
         }
-        drop(instances);
         if let Some(store) = &self.scrollback_store {
             if store.has_terminal(id) {
                 return store
@@ -592,21 +616,24 @@ impl PtyManager {
         let line_count = lines.clamp(1, CAPTURE_BUFFER_MAX_LINES);
         let hit_limit = limit.clamp(1, 1000);
 
-        let instances = self.lock_instances()?;
-        if let Some(instance) = instances.get(id) {
-            let buffer = instance
-                .output_buffer
-                .lock()
-                .map_err(|_| PtyError::LockPoisoned)?;
-            let output = buffer.tail_including_partial(line_count).join("\n");
-            return Ok(search_scrollback_text(
-                &output,
-                query,
-                case_sensitive,
-                hit_limit,
-            ));
+        match self.instance_handle(id) {
+            Ok(instance) => {
+                let instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
+                let buffer = instance
+                    .output_buffer
+                    .lock()
+                    .map_err(|_| PtyError::LockPoisoned)?;
+                let output = buffer.tail_including_partial(line_count).join("\n");
+                return Ok(search_scrollback_text(
+                    &output,
+                    query,
+                    case_sensitive,
+                    hit_limit,
+                ));
+            }
+            Err(PtyError::NotFound(_)) => {}
+            Err(error) => return Err(error),
         }
-        drop(instances);
         if let Some(store) = &self.scrollback_store {
             if store.has_terminal(id) {
                 return store
@@ -620,11 +647,8 @@ impl PtyManager {
     /// Resize a PTY. Typed errors so callers can distinguish NotFound from
     /// a real failure without string-matching.
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), PtyError> {
-        let instances = self.lock_instances()?;
-
-        let instance = instances
-            .get(id)
-            .ok_or_else(|| PtyError::NotFound(id.to_string()))?;
+        let instance = self.instance_handle(id)?;
+        let instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
 
         instance
             .pair
@@ -659,12 +683,20 @@ impl PtyManager {
     /// without this guard, the old wait thread can wake after the new PTY is
     /// inserted and delete the replacement.
     pub fn remove_exited_if_current(&self, id: &str, spawn_token: Uuid) -> Result<bool, PtyError> {
+        let handle = self.instance_handle(id)?;
+        let current_token = handle
+            .lock()
+            .map_err(|_| PtyError::LockPoisoned)?
+            .spawn_token;
+        if current_token != spawn_token {
+            return Ok(false);
+        }
         let mut instances = self.lock_instances()?;
-        let Some(instance) = instances.get(id) else {
-            log::debug!("pty reaper: unknown terminal id={id}");
-            return Err(PtyError::NotFound(id.to_string()));
-        };
-        if instance.spawn_token != spawn_token {
+        let still_current = matches!(
+            instances.get(id),
+            Some(PtySlot::Ready(current)) if Arc::ptr_eq(current, &handle)
+        );
+        if !still_current {
             return Ok(false);
         }
         instances.remove(id);
@@ -674,38 +706,36 @@ impl PtyManager {
 
     /// List active terminal IDs (sorted by spawn time, newest first)
     pub fn list(&self) -> Vec<String> {
-        self.instances
-            .lock()
-            .map(|i| {
-                let mut entries: Vec<_> = i
-                    .iter()
-                    .map(|(id, inst)| (id.clone(), inst.spawned_at))
-                    .collect();
-                entries.sort_by(|a, b| b.1.cmp(&a.1)); // newest first
-                entries.into_iter().map(|(id, _)| id).collect()
+        let handles = self.ready_handles();
+        let mut entries: Vec<_> = handles
+            .into_iter()
+            .filter_map(|(id, instance)| {
+                instance
+                    .lock()
+                    .ok()
+                    .map(|instance| (id, instance.spawned_at))
             })
-            .unwrap_or_default()
+            .collect();
+        entries.sort_by(|a, b| b.1.cmp(&a.1)); // newest first
+        entries.into_iter().map(|(id, _)| id).collect()
     }
 
     /// List active terminals with metadata
     pub fn list_info(&self) -> Vec<TerminalInfo> {
-        self.instances
-            .lock()
-            .map(|instances| {
-                instances
-                    .iter()
-                    .map(|(id, inst)| TerminalInfo {
-                        id: id.clone(),
-                        short_id: None,
-                        shell_type: inst.shell_type.clone(),
-                        cwd: inst.cwd.clone(),
-                        uptime_secs: inst.spawned_at.elapsed().as_secs(),
-                        process_id: inst.process_id,
-                        spawn_token: inst.spawn_token.to_string(),
-                    })
-                    .collect()
+        self.ready_handles()
+            .into_iter()
+            .filter_map(|(id, instance)| {
+                instance.lock().ok().map(|instance| TerminalInfo {
+                    id,
+                    short_id: None,
+                    shell_type: instance.shell_type.clone(),
+                    cwd: instance.cwd.clone(),
+                    uptime_secs: instance.spawned_at.elapsed().as_secs(),
+                    process_id: instance.process_id,
+                    spawn_token: instance.spawn_token.to_string(),
+                })
             })
-            .unwrap_or_default()
+            .collect()
     }
 
     /// Close all PTY sessions. Called explicitly from the app-exit hook.
@@ -715,30 +745,70 @@ impl PtyManager {
     /// so a drop-driven `close_all` would wipe the shared session map every
     /// time a handler's `State<_>` extraction was released.
     pub fn close_all(&self) {
-        if let Ok(mut instances) = self.instances.lock() {
-            let count = instances.len();
-            for (_, instance) in instances.iter_mut() {
-                terminate_instance(instance);
+        let handles = match self.instances.lock() {
+            Ok(mut instances) => instances
+                .drain()
+                .filter_map(|(_, slot)| match slot {
+                    PtySlot::Ready(instance) => Some(instance),
+                    PtySlot::Initializing => None,
+                })
+                .collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+        let count = handles.len();
+        for handle in handles {
+            if let Ok(mut instance) = handle.lock() {
+                terminate_instance(&mut instance);
             }
-            instances.clear();
-            log::info!("Closed {} PTY sessions", count);
         }
+        log::info!("Closed {} PTY sessions", count);
     }
 
     fn remove_instance(&self, id: &str, terminate: bool) -> Result<(), PtyError> {
-        let mut instance = self.lock_instances()?.remove(id).ok_or_else(|| {
+        let slot = self.lock_instances()?.remove(id).ok_or_else(|| {
             log::debug!("pty close: unknown terminal id={id}");
             PtyError::NotFound(id.to_string())
         })?;
+        let PtySlot::Ready(instance) = slot else {
+            return Err(PtyError::Other(format!(
+                "terminal {id} is still initializing"
+            )));
+        };
         if terminate {
+            let mut instance = instance.lock().map_err(|_| PtyError::LockPoisoned)?;
             terminate_instance(&mut instance);
         }
         Ok(())
     }
 
+    fn instance_handle(&self, id: &str) -> Result<Arc<Mutex<PtyInstance>>, PtyError> {
+        match self.lock_instances()?.get(id) {
+            Some(PtySlot::Ready(instance)) => Ok(instance.clone()),
+            Some(PtySlot::Initializing) => Err(PtyError::Other(format!(
+                "terminal {id} is still initializing"
+            ))),
+            None => Err(PtyError::NotFound(id.to_string())),
+        }
+    }
+
+    fn ready_handles(&self) -> Vec<(String, Arc<Mutex<PtyInstance>>)> {
+        self.instances
+            .lock()
+            .map(|instances| {
+                instances
+                    .iter()
+                    .filter_map(|(id, slot)| match slot {
+                        PtySlot::Ready(instance) => Some((id.clone(), instance.clone())),
+                        PtySlot::Initializing => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn lock_instances(
         &self,
-    ) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtyInstance>>, PtyError> {
+    ) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtySlot>>, PtyError> {
         self.instances.lock().map_err(|_| PtyError::LockPoisoned)
     }
 }
@@ -824,6 +894,16 @@ fn spawn_reader_thread(
 mod tests {
     use super::*;
 
+    fn sleeper_args() -> Vec<String> {
+        vec![
+            "/c".to_string(),
+            "ping".to_string(),
+            "-n".to_string(),
+            "10".to_string(),
+            "127.0.0.1".to_string(),
+        ]
+    }
+
     /// Settles the no-orphan guarantee for the highest-value target: agent CLIs
     /// hosted in a ConPTY pane. Spawns a real, long-lived ConPTY child through
     /// the production spawn path and proves the guard made it an actual MEMBER
@@ -834,22 +914,8 @@ mod tests {
     fn conpty_child_is_assigned_to_the_kill_on_close_job() {
         let mgr = PtyManager::new();
         let id = "no-orphan-conpty-membership";
-        mgr.spawn_command_with_id(
-            id,
-            "cmd",
-            &[
-                "/c".to_string(),
-                "ping".to_string(),
-                "-n".to_string(),
-                "10".to_string(),
-                "127.0.0.1".to_string(),
-            ],
-            80,
-            24,
-            None,
-            None,
-        )
-        .expect("spawn ConPTY child");
+        mgr.spawn_command_with_id(id, "cmd", &sleeper_args(), 80, 24, None, None)
+            .expect("spawn ConPTY child");
 
         let pid = mgr.child_pid(id).expect("ConPTY child should expose a pid");
         let member = crate::process::is_orphan_guarded(pid);
@@ -860,5 +926,75 @@ mod tests {
             Some(true),
             "ConPTY child (pid {pid}) must be a member of the kill-on-close job"
         );
+    }
+
+    #[test]
+    fn concurrent_same_id_spawn_has_exactly_one_published_child() {
+        let manager = PtyManager::new();
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let mut handles = Vec::new();
+        for _ in 0..2 {
+            let manager = manager.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                manager.spawn_command_with_id("same-id", "cmd", &sleeper_args(), 80, 24, None, None)
+            }));
+        }
+        barrier.wait();
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert!(manager.contains("same-id"));
+        manager.close("same-id").unwrap();
+    }
+
+    #[test]
+    fn stale_reaper_cannot_remove_a_reused_terminal_id() {
+        let manager = PtyManager::new();
+        manager
+            .spawn_command_with_id("reused-id", "cmd", &sleeper_args(), 80, 24, None, None)
+            .unwrap();
+        let old_token = manager
+            .runtime_identity("reused-id")
+            .unwrap()
+            .spawn_token
+            .parse::<Uuid>()
+            .unwrap();
+        manager.close("reused-id").unwrap();
+        manager
+            .spawn_command_with_id("reused-id", "cmd", &sleeper_args(), 80, 24, None, None)
+            .unwrap();
+        assert!(!manager
+            .remove_exited_if_current("reused-id", old_token)
+            .unwrap());
+        assert!(manager.contains("reused-id"));
+        manager.close("reused-id").unwrap();
+    }
+
+    #[test]
+    fn one_locked_instance_does_not_block_another_terminal_lookup() {
+        let manager = PtyManager::new();
+        for id in ["locked-a", "free-b"] {
+            manager
+                .spawn_command_with_id(id, "cmd", &sleeper_args(), 80, 24, None, None)
+                .unwrap();
+        }
+        let locked = manager.instance_handle("locked-a").unwrap();
+        let guard = locked.lock().unwrap();
+        let other = manager.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            tx.send(other.runtime_identity("free-b")).unwrap();
+        });
+        let identity = rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("free terminal lookup must not wait for another instance lock")
+            .unwrap();
+        assert_eq!(identity.id, "free-b");
+        drop(guard);
+        manager.close_all();
     }
 }
