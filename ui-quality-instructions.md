@@ -412,6 +412,23 @@ ConfirmDialog IS the existing glass dialog surface.
 
 ## Pasteable goals for a cleared codex/opus session
 
+## Result
+
+- Q0-Q10 and the rendered repair are complete through `8fb3d4e`; the final A3
+  CI-boundary closeout is recorded by the audit-remediation work order.
+- `pnpm verify:ui:trust` passes 14/14 including the blocking rendered-CI source
+  contract.
+- the Aelyris-owned Playwright suite passes 71/71 with four external roadmap
+  dashboard cases explicitly skipped; the representative Aelyris screenshot case
+  remains in the blocking suite.
+- `AELYRIS_E2E_EXTERNAL_DASHBOARD=1` is the explicit operator path for the separate
+  port-48371 roadmap dashboard visual check.
+- operator evidence debt remains: live IME, staged sidecar kill, populated-cockpit
+  review, the external roadmap dashboard, and final DWM/WebView2 glass parity.
+- the next implementation phase is audit-remediation A4, beginning with A4.1 durable
+  session/DB owner and migration inventory; the historical packets below are not
+  current routing instructions.
+
 Authority override: the two historical packets below contain feature-branch
 push wording. That wording is superseded by current `AGENTS.md`; treat it as
 "local commit complete, push pending explicit authorization" when reusing a

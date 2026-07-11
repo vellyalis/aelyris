@@ -32,6 +32,8 @@ const sourcePaths = {
   app: "src/App.tsx",
   workspaceRegionFocus: "src/shared/lib/workspaceRegionFocus.ts",
   workspaceRegionFocusTests: "src/__tests__/workspaceRegionFocus.test.ts",
+  renderedUiWorkflow: ".github/workflows/ci.yml",
+  visualQaLayout: "e2e/visual-qa-layout.spec.ts",
 };
 
 function source(path) {
@@ -53,6 +55,7 @@ function localDate() {
 }
 
 const s = Object.fromEntries(Object.entries(sourcePaths).map(([id, path]) => [id, source(path)]));
+const renderedUiJob = s.renderedUiWorkflow.split("\n  rendered-ui-trust:")[1]?.split("\n  rust:")[0] ?? "";
 const checks = [];
 
 add(
@@ -166,6 +169,16 @@ add(
     s.app.includes("!route.openHistory && !route.openSettings"),
   "Workspace navigation is persisted by the Zustand owner while launcher routes do not rewrite product mode.",
 );
+add(
+  checks,
+  "q10-blocking-rendered-ui-trust",
+  renderedUiJob.length > 0 &&
+    !renderedUiJob.includes("continue-on-error: true") &&
+    renderedUiJob.includes('AELYRIS_E2E_EXTERNAL_DASHBOARD: "0"') &&
+    s.visualQaLayout.includes('AELYRIS_E2E_EXTERNAL_DASHBOARD === "1"') &&
+    s.visualQaLayout.includes("External roadmap dashboard is an operator-owned visual gate."),
+  "The Aelyris rendered suite blocks CI while the external roadmap dashboard remains an explicit operator-owned gate.",
+);
 
 const failedChecks = checks.filter((check) => !check.ok).map((check) => check.id);
 const implementationComplete = failedChecks.length === 0;
@@ -186,7 +199,7 @@ const report = {
   checks,
   failedChecks,
   nextRequiredAction: implementationComplete
-    ? "Run rendered and operator trust checks before claiming A3 complete."
+    ? "Keep the blocking Aelyris rendered suite green; retain live host and external dashboard checks as operator evidence debt."
     : `Implement the first failed phase contract without weakening checks: ${failedChecks[0]}.`,
   provenance: createEvidenceProvenance({
     root: ROOT,

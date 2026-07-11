@@ -235,6 +235,14 @@ Required work:
 
 Acceptance includes rendered timing/interaction tests, not state-mapping tests alone.
 
+Completion note (2026-07-12): A3 repo-owned work is complete. The Aelyris-owned
+rendered Playwright suite blocks Windows CI. The separate roadmap dashboard fixture
+is opt-in through `AELYRIS_E2E_EXTERNAL_DASHBOARD=1` and remains operator-owned;
+live IME, staged sidecar kill, populated-cockpit, and final DWM/WebView2 glass checks
+remain explicit external proof debt. The next implementation slice is A4.1: inventory
+the durable session/DB owners, current schemas, migrations, backup/restore paths, and
+startup reconciliation before changing persistence behavior.
+
 ## A4 - Session and Database Durability
 
 Objective: acknowledged state survives restart, upgrade, disk pressure, and partial failure.

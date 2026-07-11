@@ -2,11 +2,11 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A3` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
-signed lifecycle deferred to A9; R0 complete at `fcd23a7`; A3 Q0-Q9 complete).
-NEXT PHASE: `A4` after A3 UI trust surface is complete.
-NEXT IMPLEMENTATION SLICE: `A3 Q10 rendered-truth CI and enforced trust registration`
-(`Q0-Q9 complete`; operator blocking decision remains separate).
+CURRENT PHASE: `A4` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
+signed lifecycle deferred to A9; R0 complete at `fcd23a7`; A3 repo-owned work complete).
+NEXT PHASE: `A5` after A4 durability acceptance is complete.
+NEXT IMPLEMENTATION SLICE: `A4.1 durable session/DB owner and migration inventory`
+before changing persistence behavior or schemas.
 
 ## Objective
 
@@ -250,6 +250,16 @@ The two changed API integration executables compile but cannot start on the curr
 host (`STATUS_ENTRYPOINT_NOT_FOUND`, `0xc0000139`); this is recorded as host execution
 evidence debt, not a passing integration run. `cargo check --all-targets` also exposes
 an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::parser`.
+
+## A3 Complete - Repo-Owned UI Trust Surface
+
+- Q0-Q10 and the rendered repair are committed through `8fb3d4e`.
+- `verify:ui:trust` is enforced and registered in goal-safe and quality-score truth.
+- the Aelyris-owned rendered Playwright suite is a blocking Windows CI job.
+- the unrelated roadmap dashboard on port 48371 is excluded from that product gate and
+  remains an explicit operator visual check via `AELYRIS_E2E_EXTERNAL_DASHBOARD=1`.
+- live IME, staged sidecar kill, populated-cockpit review, and final DWM/WebView2 glass
+  parity remain external/operator proof debt and do not become repo-owned PASS claims.
 
 ## Work and Session Rules
 
