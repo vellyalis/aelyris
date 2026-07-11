@@ -267,6 +267,79 @@ Required work:
 Acceptance includes restart, old-schema upgrade, disk-full/locked DB, corrupt-state,
 power-loss, and multi-instance policy tests.
 
+### A4.1 Frozen Inventory and Dependency Contract (2026-07-12)
+
+This inventory is the required behavior-change barrier for A4. It records the current
+owners and gaps; generated artifacts are not authority for these ownership decisions.
+
+Current durable owners:
+
+- `src-tauri/src/db/queries.rs::Database` owns SQLite open/create and exposes the
+  connection to typed repositories. `src-tauri/src/db/migrations.rs` owns the complete
+  schema plus WAL, foreign-key, recursive-trigger, and busy-timeout pragmas.
+- `src-tauri/src/persistence/session_checkpoint_repo.rs` owns durable visible-agent
+  checkpoints and handoff state. `src-tauri/src/ipc/session_lifecycle_commands.rs`
+  restores live sidecar-backed checkpoints and reconciles unresolved handoffs.
+- `src-tauri/src/session/manager.rs` owns legacy terminal session/window/pane restore;
+  `src-tauri/src/mux/store.rs` owns versioned file snapshots for the mux graph.
+- `src-tauri/src/lib.rs` is the startup composition owner. It opens the same SQLite
+  file for the managed DB, Context Store, Intent Bus, Task Graph, Event Bus, merge,
+  and MCP surfaces, hydrates several projections, then starts sidecar adoption.
+- `src-tauri/src/config/settings.rs`, `src-tauri/src/workflow/executor.rs`, and
+  `src-tauri/src/proofbook/ledger.rs` separately own settings, workflow-run, and
+  proofbook-ledger files. They do not share an atomic-file/retention owner.
+
+Current migration and recovery truth:
+
+- schema creation is one idempotent `CREATE TABLE IF NOT EXISTS` batch; there is no
+  numbered migration ledger, `user_version` compatibility contract, old-schema
+  fixture chain, or downgrade/newer-schema refusal policy,
+- DB open runs schema setup on every independently opened connection; there is no
+  single bounded startup migration barrier, pre-migration backup, integrity check,
+  WAL checkpoint policy, restore path, or global retention quota,
+- primary DB initialization can fall back to an in-memory DB and continue with an
+  explicit log warning, so acknowledged writes can become non-durable,
+- checkpoint restore only re-adopts records whose PTY is still live; unresolved
+  handoffs fail closed, but startup does not expose one typed adoption/reconciliation
+  result before the first new terminal spawn,
+- mux snapshots use temp-plus-rename, but settings write directly and workflow and
+  proofbook replacement delete the last committed file before rename,
+- existing tests cover migration idempotence, busy timeout, checkpoint/handoff
+  round trips, session restore, mux snapshots, workflow restore, proofbook restore,
+  session checkpoint/no-loss/idempotence verifiers, and DB lock/sleep chaos. They do
+  not cover old-schema upgrade, backup restore, corrupt DB, disk-full, power-loss
+  replacement, retention quota, or the multi-instance startup policy as one gate.
+
+Frozen A4 implementation contract:
+
+1. SQLite remains the only durable owner for relational session/control state; file
+   stores remain format-specific projections and must not become competing session
+   authorities.
+2. A numbered transactional migration runner must execute once behind a bounded
+   startup barrier. It must reject unsupported newer schemas, back up the last known
+   good DB before mutation, run integrity/WAL checks, and restore or fail closed with
+   a typed durability state. No in-memory fallback may acknowledge durable success.
+3. Startup must publish one typed reconciliation report covering DB readiness,
+   surviving sidecar PTYs, checkpoints, handoffs, and mux projections before new
+   terminal spawn is admitted. Reconciliation is idempotent and duplicate adoption
+   is forbidden.
+4. Identity, status, lineage, and approval mutations must checkpoint transactionally;
+   a failed checkpoint returns an explicit error or durable retry record rather than
+   log-and-drop behavior.
+5. All file-backed owners must use one crash-safe replace primitive that flushes the
+   temp file, preserves the last committed version until replacement succeeds, and
+   leaves recoverable backup state. One quota owner accounts for DB backups, WAL and
+   file-backed durable artifacts.
+6. The focused A4 verifier must mutate old/new/corrupt schemas, locked and disk-full
+   writes, interrupted replacement, duplicate startup, and retention pressure. It
+   must not convert unavailable real-host sleep/power proof into repo-owned PASS.
+
+Dependency order is frozen as: `A4.2 numbered DB migration/open durability foundation`
+-> `A4.3 bounded startup adoption and reconciliation` -> `A4.4 automatic checkpoint
+and persistence-failure semantics` -> `A4.5 crash-safe file replacement and global
+retention` -> `A4.6 restart/upgrade/fault/multi-instance acceptance closeout`.
+Persistence or schema behavior must change only in this order.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.
