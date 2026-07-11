@@ -604,6 +604,24 @@ Acceptance evidence:
 The artifact reports `phaseComplete=false`; A5.8 owns combined fresh acceptance for
 the command, Proofbook, PTY, TaskGraph, LSP, and watchdog slices.
 
+### A5.8 Complete - Combined Supervision and Concurrency Acceptance
+
+`pnpm verify:a5:supervision-concurrency` reruns every A5.2-A5.7 verifier and rejects
+missing, failing, or incorrectly phase-complete child evidence. The aggregate is the
+only A5 artifact with `phaseComplete=true`; all six dependency slices remain narrowly
+classified with `phaseComplete=false`.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:supervision-concurrency`
+- `.codex-auto/quality/a5-supervision-concurrency.json`
+- command supervisor, Proofbook CAS, PTY, TaskGraph, LSP, and watchdog: 6/6 PASS
+- aggregate `sliceComplete=true`, `phaseComplete=true`
+
+A5 repo-owned supervision/concurrency work is complete. A6 starts with an ownership
+hotspot and ratchet inventory; it must not move code or lower baselines before that
+contract is frozen.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.

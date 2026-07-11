@@ -2,12 +2,12 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A5` (`R0-A4 repo-owned work complete`; A2 signed lifecycle and A4
+CURRENT PHASE: `A6` (`R0-A5 repo-owned work complete`; A2 signed lifecycle and A4
 real-host sleep/power-loss proof remain explicit A9 operator gates).
-NEXT PHASE: `A6` after A5 supervision/concurrency acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A5.8 combined supervision/concurrency acceptance`.
-A5.1-A5.7 are complete in the current focused sequence; A5.8 owns fresh combined
-acceptance before A6 begins.
+NEXT PHASE: `A7` after A6 modularity ratchet acceptance is complete.
+NEXT IMPLEMENTATION SLICE: `A6.1 ownership hotspot and ratchet inventory`.
+A5.1-A5.8 are complete with fresh combined evidence. Inventory A6 owners and current
+ratchet baselines before moving code or changing modularity thresholds.
 
 ## Objective
 

@@ -30,6 +30,7 @@
     "verify:a5:taskgraph-concurrency": "node scripts/verify-a5-taskgraph-concurrency.mjs",
     "verify:a5:lsp-lifecycle": "node scripts/verify-a5-lsp-lifecycle.mjs",
     "verify:a5:watchdog-lifecycle": "node scripts/verify-a5-watchdog-lifecycle.mjs",
+    "verify:a5:supervision-concurrency": "node scripts/verify-a5-supervision-concurrency.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",
