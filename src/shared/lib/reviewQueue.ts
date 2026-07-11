@@ -29,6 +29,8 @@ export type ReviewRiskClass =
 export type ReviewCoverageState = "covered" | "missing" | "not_required" | "unknown";
 export type ReviewValidationState = "passed" | "failed" | "missing" | "unknown";
 export type ReviewMergeReadiness = "blocked" | "needs_validation" | "needs_review" | "ready";
+export type ReviewInferenceSource = "log-regex" | "filename-match";
+export type ReviewInferredState = "risk" | "coverage" | "validation" | "mergeReadiness";
 
 export interface ReviewQueueSession {
   id: string;
@@ -56,6 +58,7 @@ export interface ReviewQueueItem {
   coverage: ReviewCoverageState;
   validation: ReviewValidationState;
   mergeReadiness: ReviewMergeReadiness;
+  inference: Partial<Record<ReviewInferredState, ReviewInferenceSource>>;
   score: number;
   scoreBreakdown: {
     diffstat: number;
@@ -340,8 +343,8 @@ export function buildReviewQueue(
     const fileRisk = classifyFile(entry.path, entry.status, entry.action, conflict, entry.binary, entry.generated);
     const coverage =
       entry.coverage ?? inferCoverage(entry.path, fileRisk.riskClass, entry.binary, entry.generated, relatedTests);
-    const validation =
-      entry.validation ?? inferValidation(entry.path, fileRisk.riskClass, itemSessions, agentSessionsById);
+    const inferredValidation = inferValidation(entry.path, fileRisk.riskClass, itemSessions, agentSessionsById);
+    const validation = entry.validation ?? inferredValidation.state;
     const agentAuthors = itemSessions.map((session) => session.owner ?? session.role ?? session.name);
     const scoreBreakdown = scoreReviewItem({
       conflict,
@@ -355,6 +358,14 @@ export function buildReviewQueue(
     });
     const risk = riskFromScore(scoreBreakdown.total, conflict, validation);
     const mergeReadiness = readinessFor({ conflict, risk, coverage, validation });
+    const inference: ReviewQueueItem["inference"] = {};
+    if (!conflict) inference.risk = "filename-match";
+    if (entry.coverage === undefined) inference.coverage = "filename-match";
+    if (entry.validation === undefined) inference.validation = inferredValidation.source;
+    if (!conflict && entry.validation !== "failed") {
+      inference.mergeReadiness =
+        inference.validation ?? inference.coverage ?? inference.risk ?? "filename-match";
+    }
     const signals = compactSignals([
       ...fileRisk.signals,
       diffstat.total > 0 ? `${diffstat.additions}+/${diffstat.deletions}-` : null,
@@ -375,6 +386,7 @@ export function buildReviewQueue(
       coverage,
       validation,
       mergeReadiness,
+      inference,
       riskClass: fileRisk.riskClass,
       signals,
       score: scoreBreakdown.total,
@@ -574,20 +586,20 @@ function inferValidation(
   riskClass: ReviewRiskClass,
   sessions: readonly ReviewQueueSession[],
   sessionById: Map<string, AgentSession>,
-): ReviewValidationState {
+): { state: ReviewValidationState; source: ReviewInferenceSource } {
   let sawPass = false;
   for (const session of sessions) {
     const source = sessionById.get(session.id);
     if (!source) continue;
     const state = validationFromLogs(source.logs);
-    if (state === "failed") return "failed";
+    if (state === "failed") return { state: "failed", source: "log-regex" };
     if (state === "passed") sawPass = true;
   }
-  if (sawPass) return "passed";
+  if (sawPass) return { state: "passed", source: "log-regex" };
   if (isCodePath(path) || riskClass === "security" || riskClass === "dependency" || riskClass === "backend") {
-    return "missing";
+    return { state: "missing", source: "filename-match" };
   }
-  return "unknown";
+  return { state: "unknown", source: "filename-match" };
 }
 
 function validationFromLogs(logs: AgentSession["logs"]): ReviewValidationState {

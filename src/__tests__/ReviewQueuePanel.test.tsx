@@ -55,6 +55,45 @@ describe("ReviewQueuePanel", () => {
     expect(screen.getByText("Validate")).toBeTruthy();
     expect(screen.getByText("implementer")).toBeTruthy();
     expect(screen.getByText("reviewer")).toBeTruthy();
+    expect(screen.getAllByText("unverified").length).toBeGreaterThan(0);
+    expect(screen.getByText("inferred").getAttribute("title")).toContain("coverage from filename-match");
+  });
+
+  it("makes critical and blocked verdicts open command evidence when an actionable trace exists", () => {
+    const onOpenCommandEvidence = vi.fn();
+    const workstationGraph = buildWorkstationGraph({
+      workspaceId: "C:/repo",
+      changedFiles: [{ path: "src/security/auth.ts", status: "modified" }],
+      commandBlocks: [
+        {
+          id: "cmd-security",
+          command: "pnpm test -- auth",
+          cwd: "C:/repo",
+          exitCode: 1,
+          paneId: "pane-security",
+          terminalId: "pty-security",
+          filePaths: ["src/security/auth.ts"],
+        },
+      ],
+    });
+
+    render(
+      <ReviewQueuePanel
+        activeSessionId={null}
+        changedFiles={[{ path: "src/security/auth.ts", status: "conflicted", conflicted: true }]}
+        sessions={[]}
+        onOpenDiff={vi.fn()}
+        onSelectSession={vi.fn()}
+        onOpenCommandEvidence={onOpenCommandEvidence}
+        workstationGraph={workstationGraph}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open evidence for critical verdict on src/security/auth.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open evidence for blocked verdict on src/security/auth.ts" }));
+    expect(onOpenCommandEvidence).toHaveBeenCalledTimes(2);
+    expect(onOpenCommandEvidence).toHaveBeenCalledWith(expect.objectContaining({ terminalId: "pty-security" }));
+    expect(screen.queryByText("unverified")).toBeNull();
   });
 
   it("opens diffs and can start a reviewer agent", () => {

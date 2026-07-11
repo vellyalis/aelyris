@@ -158,6 +158,10 @@ export function ReviewQueuePanel({
             {visibleItems.map((item) => {
               const active = item.sessions.some((session) => session.id === activeSessionId);
               const provenance = provenanceByPath.get(item.path);
+              const commandEvidence = provenance?.commands.find(
+                (command) => Boolean(onOpenCommandEvidence && command.terminalId),
+              );
+              const inferenceEntries = Object.entries(item.inference);
               return (
                 <div key={item.path} className={styles.item} data-risk={item.risk} data-active={active || undefined}>
                   <div className={styles.itemTop}>
@@ -173,9 +177,29 @@ export function ReviewQueuePanel({
                       <span className={styles.fileName}>{fileName(item.path)}</span>
                       <span className={styles.filePath}>{parentPath(item.path)}</span>
                     </button>
-                    <span className={styles.riskBadge} data-risk={item.risk}>
-                      {RISK_LABELS[item.risk]}
-                    </span>
+                    {item.risk === "critical" && commandEvidence ? (
+                      <button
+                        type="button"
+                        className={styles.riskBadge}
+                        data-risk={item.risk}
+                        data-verification="evidence-backed"
+                        onClick={() => onOpenCommandEvidence?.(commandEvidence)}
+                        title="Open evidence for this critical review verdict"
+                        aria-label={`Open evidence for critical verdict on ${item.path}`}
+                      >
+                        {RISK_LABELS[item.risk]}
+                      </button>
+                    ) : (
+                      <span
+                        className={styles.riskBadge}
+                        data-risk={item.risk}
+                        data-verification={item.risk === "critical" ? "unverified" : undefined}
+                        title={item.risk === "critical" ? "Critical heuristic without clickable evidence" : undefined}
+                      >
+                        <span>{RISK_LABELS[item.risk]}</span>
+                        {item.risk === "critical" && <span className={styles.unverifiedMarker}>unverified</span>}
+                      </span>
+                    )}
                     <span className={styles.scoreBadge} title={`Review score ${item.score}`}>
                       {item.score}
                     </span>
@@ -184,13 +208,47 @@ export function ReviewQueuePanel({
                     <span className={styles.reason}>{item.reason}</span>
                     <span className={styles.status}>{item.status}</span>
                     <span className={styles.itemScoreLine}>
-                      <span data-readiness={item.mergeReadiness}>{READINESS_LABELS[item.mergeReadiness]}</span>
+                      {item.mergeReadiness === "blocked" && commandEvidence ? (
+                        <button
+                          type="button"
+                          data-readiness={item.mergeReadiness}
+                          data-verification="evidence-backed"
+                          className={styles.verdictButton}
+                          onClick={() => onOpenCommandEvidence?.(commandEvidence)}
+                          title="Open evidence for this blocked review verdict"
+                          aria-label={`Open evidence for blocked verdict on ${item.path}`}
+                        >
+                          {READINESS_LABELS[item.mergeReadiness]}
+                        </button>
+                      ) : (
+                        <span
+                          data-readiness={item.mergeReadiness}
+                          data-verification={item.mergeReadiness === "blocked" ? "unverified" : undefined}
+                          title={item.mergeReadiness === "blocked" ? "Blocked heuristic without clickable evidence" : undefined}
+                        >
+                          <span>{READINESS_LABELS[item.mergeReadiness]}</span>
+                          {item.mergeReadiness === "blocked" && (
+                            <span className={styles.unverifiedMarker}>unverified</span>
+                          )}
+                        </span>
+                      )}
                       <span>
                         {item.diffstat.binary ? "binary" : `${item.diffstat.additions}+/${item.diffstat.deletions}-`}
                       </span>
                       <span>{COVERAGE_LABELS[item.coverage]}</span>
                       <span>{VALIDATION_LABELS[item.validation]}</span>
                     </span>
+                    {inferenceEntries.length > 0 && (
+                      <span
+                        className={styles.inferenceMarker}
+                        data-inference="true"
+                        title={`Inferred state: ${inferenceEntries
+                          .map(([state, source]) => `${state} from ${source}`)
+                          .join(", ")}`}
+                      >
+                        inferred
+                      </span>
+                    )}
                     {item.signals.length > 0 && (
                       <span className={styles.signalChips}>
                         {item.signals.slice(0, 5).map((signal) => (

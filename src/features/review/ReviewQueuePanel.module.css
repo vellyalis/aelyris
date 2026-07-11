@@ -208,6 +208,31 @@
   white-space: nowrap;
 }
 
+button.riskBadge,
+.verdictButton {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.unverifiedMarker {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 8px;
+  font-weight: var(--weight-medium);
+}
+
+.inferenceMarker {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 1px 5px;
+  border: 1px dashed rgba(244, 214, 146, 0.22);
+  border-radius: 999px;
+  color: var(--gold);
+  font-size: 9px;
+  text-transform: lowercase;
+}
+
 .riskBadge[data-risk="critical"] {
   background: rgba(243, 139, 168, 0.14);
   color: var(--ctp-red);
@@ -216,6 +241,12 @@
 .riskBadge[data-risk="high"] {
   background: rgba(244, 214, 146, 0.14);
   color: var(--gold);
+}
+
+.riskBadge[data-verification="unverified"] {
+  max-width: 112px;
+  color: var(--text-secondary);
+  outline: 1px dashed rgba(243, 139, 168, 0.22);
 }
 
 .scoreBadge {
@@ -287,6 +318,12 @@
   color: var(--ctp-red);
 }
 
+.itemScoreLine span[data-verification="unverified"] {
+  max-width: 112px;
+  color: var(--text-secondary);
+  outline: 1px dashed rgba(243, 139, 168, 0.22);
+}
+
 .itemScoreLine span[data-readiness="needs_validation"],
 .itemScoreLine span[data-readiness="needs_review"] {
   color: var(--gold);
@@ -294,6 +331,19 @@
 
 .itemScoreLine span[data-readiness="ready"] {
   color: var(--ctp-green);
+}
+
+.itemScoreLine .verdictButton {
+  min-width: 0;
+  max-width: 92px;
+  overflow: hidden;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(142, 226, 241, 0.055);
+  color: var(--ctp-red);
+  font-size: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .signalChips {

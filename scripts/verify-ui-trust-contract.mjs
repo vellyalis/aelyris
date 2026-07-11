@@ -19,6 +19,8 @@ const sourcePaths = {
   fleet: "src/features/agent-inspector/AgentInspector.tsx",
   runGraph: "src/features/context/RunGraphPanel.tsx",
   reviewQueue: "src/features/review/ReviewQueuePanel.tsx",
+  reviewQueueModel: "src/shared/lib/reviewQueue.ts",
+  reviewQueueTests: "src/__tests__/ReviewQueuePanel.test.tsx",
   decisionInbox: "src/shared/lib/decisionInbox.ts",
   decisionInboxPanel: "src/features/decision-inbox/DecisionInboxPanel.tsx",
   keyboardShortcuts: "src/shared/hooks/useKeyboardShortcuts.ts",
@@ -115,8 +117,14 @@ add(
 add(
   checks,
   "q6-inferred-marker",
-  /inferred|advisory/i.test(s.reviewQueue),
-  "Review readiness visibly distinguishes inferred evidence.",
+  s.reviewQueueModel.includes('ReviewInferenceSource = "log-regex" | "filename-match"') &&
+    s.reviewQueueModel.includes('inference: Partial<Record<ReviewInferredState, ReviewInferenceSource>>') &&
+    s.reviewQueue.includes('data-inference="true"') &&
+    s.reviewQueue.includes('data-verification="evidence-backed"') &&
+    s.reviewQueue.includes('"unverified"') &&
+    s.reviewQueueTests.includes("blocked verdicts open command evidence") &&
+    s.reviewQueueTests.includes('getAllByText("unverified")'),
+  "Review states name their inference source; critical and blocked verdicts require actionable evidence or render unverified.",
 );
 add(
   checks,

@@ -5,7 +5,7 @@ PROGRAM: `audit-remediation`
 CURRENT PHASE: `A3` (`A0.1-A0.3 and A1 complete`; A2 repo-owned work complete,
 signed lifecycle deferred to A9; R0 complete at `fcd23a7`).
 NEXT PHASE: `A4` after A3 UI trust surface is complete.
-NEXT IMPLEMENTATION SLICE: `A3 Q6 evidence honesty` (`Q0-Q5 complete`).
+NEXT IMPLEMENTATION SLICE: `A3 Q7 small-honesty batch` (`Q0-Q6 complete`).
 
 ## Objective
 

@@ -94,6 +94,12 @@ describe("buildReviewQueue", () => {
       validation: "passed",
       mergeReadiness: "ready",
       agentAuthors: ["codex"],
+      inference: {
+        risk: "filename-match",
+        coverage: "filename-match",
+        validation: "log-regex",
+        mergeReadiness: "log-regex",
+      },
     });
     expect(source?.diffstat).toEqual({ additions: 140, deletions: 12, total: 152, binary: false });
     expect(source?.scoreBreakdown.diffstat).toBeGreaterThan(0);
@@ -131,6 +137,12 @@ describe("buildReviewQueue", () => {
       risk: "critical",
       validation: "failed",
       mergeReadiness: "blocked",
+      inference: {
+        coverage: "filename-match",
+        validation: "log-regex",
+      },
     });
+    expect(queue.items[0]?.inference).not.toHaveProperty("risk");
+    expect(queue.items[0]?.inference).not.toHaveProperty("mergeReadiness");
   });
 });
