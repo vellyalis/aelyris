@@ -153,6 +153,10 @@ impl Task {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum TaskGraphError {
+    #[error("task graph mutation is temporarily leased by autonomy step {0}; retry")]
+    MutationInProgress(u64),
+    #[error("stale task graph revision: expected {expected}, current {actual}")]
+    StaleRevision { expected: u64, actual: u64 },
     #[error("task not found: {0}")]
     NotFound(String),
     #[error("task already exists: {0}")]

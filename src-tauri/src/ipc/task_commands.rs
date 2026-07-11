@@ -296,10 +296,15 @@ pub fn task_list(manager: State<'_, Arc<TaskManager>>) -> Vec<Task> {
 
 /// Re-run the dependency gate explicitly and broadcast the new graph.
 #[tauri::command]
-pub fn task_recompute_ready(app: AppHandle, manager: State<'_, Arc<TaskManager>>) -> Vec<String> {
-    let changed = manager.recompute_ready();
+pub fn task_recompute_ready(
+    app: AppHandle,
+    manager: State<'_, Arc<TaskManager>>,
+) -> Result<Vec<String>, String> {
+    let changed = manager
+        .recompute_ready()
+        .map_err(|error| error.to_string())?;
     emit_task_graph(&app, &manager);
-    changed
+    Ok(changed)
 }
 
 #[cfg(test)]

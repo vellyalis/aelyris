@@ -736,7 +736,7 @@ pub fn run_step(
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
-) -> crate::orchestrator::autonomy::StepReport {
+) -> Result<crate::orchestrator::autonomy::StepReport, String> {
     let caps = cost.caps();
     // The shared ADR, injected into every agent dispatched this step.
     let adr_header = build_adr_header(&context.all());
@@ -747,40 +747,42 @@ pub fn run_step(
     // Each task's owner + declared file paths (outputs), captured before the
     // step so dispatched/merged tasks can claim/free their file lanes.
     let lanes = capture_lanes(tasks);
-    let report = tasks.with_graph_mut(|graph| {
-        // Snapshots captured before the step mutates the graph — the adapter
-        // never re-locks the manager (std Mutex is not reentrant).
-        let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = spawn_specs(
-            graph,
-            &repo_path,
-            &adr_header,
-            &guidelines_header,
-            claims_snapshot.as_deref(),
-        );
-        // Objective gates (tests/lint/types) run mechanically in each task's
-        // worktree when a command is configured; otherwise they (and the
-        // subjective gates always) fall back to the caller's supplied verdict.
-        let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
-            repo_path.clone(),
-            gate_commands.unwrap_or_default(),
-            gates,
-            crate::control::gate_runner::SystemCommandRunner,
-        );
-        let mut ports = LoopPortsAdapter::new(
-            repo_path,
-            reviewer_id,
-            gate_runner,
-            AgentDispatcher {
-                manager: agents,
-                specs,
-            },
-            info,
-            symbol_ownership.clone(),
-        )
-        .with_durable_merge_store(merge_store.clone());
-        crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
-    });
+    let report = tasks
+        .run_autonomy_step(|graph| {
+            // Snapshots captured before the step mutates the graph — the adapter
+            // never re-locks the manager (std Mutex is not reentrant).
+            let info = TaskBranchSnapshot::from_graph(graph);
+            let specs = spawn_specs(
+                graph,
+                &repo_path,
+                &adr_header,
+                &guidelines_header,
+                claims_snapshot.as_deref(),
+            );
+            // Objective gates (tests/lint/types) run mechanically in each task's
+            // worktree when a command is configured; otherwise they (and the
+            // subjective gates always) fall back to the caller's supplied verdict.
+            let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
+                repo_path.clone(),
+                gate_commands.unwrap_or_default(),
+                gates,
+                crate::control::gate_runner::SystemCommandRunner,
+            );
+            let mut ports = LoopPortsAdapter::new(
+                repo_path,
+                reviewer_id,
+                gate_runner,
+                AgentDispatcher {
+                    manager: agents,
+                    specs,
+                },
+                info,
+                symbol_ownership.clone(),
+            )
+            .with_durable_merge_store(merge_store.clone());
+            crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
+        })
+        .map_err(|error| error.to_string())?;
     apply_file_lanes(ownership, events, &lanes, &report, db);
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
@@ -790,7 +792,7 @@ pub fn run_step(
     if let Some(db) = db {
         crate::supervisor::escalation_sink::persist_escalations(db, &report);
     }
-    report
+    Ok(report)
 }
 
 /// Drive one autonomy step exactly like [`run_step`], but dispatch each ready
@@ -817,38 +819,40 @@ pub fn run_step_visible(
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
-) -> crate::orchestrator::autonomy::StepReport {
+) -> Result<crate::orchestrator::autonomy::StepReport, String> {
     let caps = cost.caps();
     let adr_header = build_adr_header(&context.all());
     let guidelines_header = build_guidelines_header(&repo_path);
     let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
     let lanes = capture_lanes(tasks);
-    let report = tasks.with_graph_mut(|graph| {
-        let info = TaskBranchSnapshot::from_graph(graph);
-        let specs = pane_spawn_specs(
-            graph,
-            &repo_path,
-            &adr_header,
-            &guidelines_header,
-            claims_snapshot.as_deref(),
-        );
-        let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
-            repo_path.clone(),
-            gate_commands.unwrap_or_default(),
-            gates,
-            crate::control::gate_runner::SystemCommandRunner,
-        );
-        let mut ports = LoopPortsAdapter::new(
-            repo_path,
-            reviewer_id,
-            gate_runner,
-            PaneDispatcher { fleet, specs },
-            info,
-            symbol_ownership.clone(),
-        )
-        .with_durable_merge_store(merge_store.clone());
-        crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
-    });
+    let report = tasks
+        .run_autonomy_step(|graph| {
+            let info = TaskBranchSnapshot::from_graph(graph);
+            let specs = pane_spawn_specs(
+                graph,
+                &repo_path,
+                &adr_header,
+                &guidelines_header,
+                claims_snapshot.as_deref(),
+            );
+            let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
+                repo_path.clone(),
+                gate_commands.unwrap_or_default(),
+                gates,
+                crate::control::gate_runner::SystemCommandRunner,
+            );
+            let mut ports = LoopPortsAdapter::new(
+                repo_path,
+                reviewer_id,
+                gate_runner,
+                PaneDispatcher { fleet, specs },
+                info,
+                symbol_ownership.clone(),
+            )
+            .with_durable_merge_store(merge_store.clone());
+            crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
+        })
+        .map_err(|error| error.to_string())?;
     apply_file_lanes(ownership, events, &lanes, &report, db);
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report);
@@ -858,7 +862,7 @@ pub fn run_step_visible(
     if let Some(db) = db {
         crate::supervisor::escalation_sink::persist_escalations(db, &report);
     }
-    report
+    Ok(report)
 }
 
 /// Push each give-up escalation from the step onto the coordination stream as an

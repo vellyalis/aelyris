@@ -1,3 +1,4 @@
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
 use super::graph::{Task, TaskGraph, TaskGraphError};
@@ -12,17 +13,26 @@ use crate::persistence::TaskRepo;
 /// `Blocked`) and can broadcast a `task-graph-updated` event.
 ///
 /// In-memory is the hot read cache; SQLite (via [`TaskRepo`]) is the source of
-/// truth. Because `with_graph_mut` lets the autonomy loop mutate the graph
-/// opaquely (status, crash/rework/timeout counters, branch bindings), every
-/// mutating method persists the WHOLE graph snapshot afterwards — eliminating
-/// the "missed write-through site" bug class. A `db` is attached at startup
+/// truth. The autonomy loop mutates a revisioned clone and applies it through
+/// one CAS boundary (status, crash/rework/timeout counters, branch bindings),
+/// and every accepted mutation persists the WHOLE graph snapshot afterwards —
+/// eliminating the "missed write-through site" bug class. A `db` is attached at startup
 /// ([`attach_db`]); when absent (tests, non-persistent mode) the manager is
 /// purely in-memory, exactly as before. Persist failures are logged loudly,
 /// never silently swallowed.
 #[derive(Default)]
+struct TaskGraphState {
+    graph: TaskGraph,
+    revision: u64,
+    active_autonomy_lease: Option<u64>,
+    next_lease: u64,
+}
+
+#[derive(Default)]
 pub struct TaskManager {
-    graph: Mutex<TaskGraph>,
+    state: Mutex<TaskGraphState>,
     db: Mutex<Option<Arc<ManagedDb>>>,
+    persistence: Mutex<()>,
 }
 
 impl TaskManager {
@@ -32,8 +42,8 @@ impl TaskManager {
 
     /// Poison-tolerant lock: a panicked holder must not wedge the whole task
     /// subsystem, so recover the inner graph rather than propagate the poison.
-    fn lock(&self) -> std::sync::MutexGuard<'_, TaskGraph> {
-        self.graph
+    fn lock(&self) -> std::sync::MutexGuard<'_, TaskGraphState> {
+        self.state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -45,12 +55,38 @@ impl TaskManager {
             .clone()
     }
 
-    /// Persist the full graph snapshot. Called while the graph lock is held so
-    /// the in-memory state and SQLite never diverge. A no-op without a `db`.
-    fn persist(&self, graph: &TaskGraph) {
-        if let Some(db) = self.db() {
-            if let Err(e) = db.with(|d| TaskRepo::save_graph(d, graph)) {
-                tracing::error!(error = %e, "task graph persist failed");
+    fn require_mutation_available(state: &TaskGraphState) -> Result<(), TaskGraphError> {
+        match state.active_autonomy_lease {
+            Some(lease) => Err(TaskGraphError::MutationInProgress(lease)),
+            None => Ok(()),
+        }
+    }
+
+    fn publish_mutation(state: &mut TaskGraphState, graph: TaskGraph) {
+        state.graph = graph;
+        state.revision = state.revision.saturating_add(1);
+    }
+
+    /// Persist the newest graph revision without holding the graph lock across
+    /// SQLite I/O. Concurrent mutations are coalesced: after each write, the
+    /// writer snapshots again until the durable image catches current memory.
+    fn persist_latest(&self) {
+        let Some(db) = self.db() else { return };
+        let _writer = self
+            .persistence
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        loop {
+            let (graph, revision) = {
+                let state = self.lock();
+                (state.graph.clone(), state.revision)
+            };
+            if let Err(error) = db.with(|database| TaskRepo::save_graph(database, &graph)) {
+                tracing::error!(%revision, %error, "task graph persist failed");
+                return;
+            }
+            if self.lock().revision == revision {
+                return;
             }
         }
     }
@@ -81,21 +117,32 @@ impl TaskManager {
         }
         restored.recompute_ready();
         let len = restored.len();
-        *self.lock() = restored;
+        {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state).map_err(|error| error.to_string())?;
+            Self::publish_mutation(&mut state, restored);
+        }
         *self
             .db
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(db);
+        self.persist_latest();
         Ok(len)
     }
 
     /// Add a task, then re-run the dependency gate. Returns the ids whose
     /// status changed as a result (e.g. a root task that became `Ready`).
     pub fn create(&self, task: Task) -> Result<Vec<String>, TaskGraphError> {
-        let mut graph = self.lock();
-        graph.add(task)?;
-        let changed = graph.recompute_ready();
-        self.persist(&graph);
+        let changed = {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state)?;
+            let mut graph = state.graph.clone();
+            graph.add(task)?;
+            let changed = graph.recompute_ready();
+            Self::publish_mutation(&mut state, graph);
+            changed
+        };
+        self.persist_latest();
         Ok(changed)
     }
 
@@ -110,16 +157,20 @@ impl TaskManager {
     /// `Ready`/`Blocked`.
     pub fn submit_plan(&self, tasks: Vec<Task>) -> Result<Vec<String>, Vec<String>> {
         let ordered = validate_plan(tasks)?;
-        let mut graph = self.lock();
-        let mut staging = graph.clone();
-        for task in ordered {
-            staging
-                .add(task)
-                .map_err(|e| vec![format!("plan rejected — {e}")])?;
-        }
-        let changed = staging.recompute_ready();
-        *graph = staging;
-        self.persist(&graph);
+        let changed = {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state).map_err(|error| vec![error.to_string()])?;
+            let mut staging = state.graph.clone();
+            for task in ordered {
+                staging
+                    .add(task)
+                    .map_err(|e| vec![format!("plan rejected — {e}")])?;
+            }
+            let changed = staging.recompute_ready();
+            Self::publish_mutation(&mut state, staging);
+            changed
+        };
+        self.persist_latest();
         Ok(changed)
     }
 
@@ -137,69 +188,118 @@ impl TaskManager {
         failed_id: &str,
         subtasks: Vec<Task>,
     ) -> Result<super::replan::ReplanOutcome, Vec<String>> {
-        let mut graph = self.lock();
-        let mut staging = graph.clone();
-        let outcome = super::replan::replan_into(&mut staging, failed_id, subtasks)?;
-        *graph = staging;
-        self.persist(&graph);
+        let outcome = {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state).map_err(|error| vec![error.to_string()])?;
+            let mut staging = state.graph.clone();
+            let outcome = super::replan::replan_into(&mut staging, failed_id, subtasks)?;
+            Self::publish_mutation(&mut state, staging);
+            outcome
+        };
+        self.persist_latest();
         Ok(outcome)
     }
 
     /// Transition a task, then re-run the gate (finishing a dependency can
     /// unblock dependents). Returns ids whose status changed by the gate.
     pub fn transition(&self, id: &str, to: TaskStatus) -> Result<Vec<String>, TaskGraphError> {
-        let mut graph = self.lock();
-        graph.transition(id, to)?;
-        let changed = graph.recompute_ready();
-        self.persist(&graph);
+        let changed = {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state)?;
+            let mut graph = state.graph.clone();
+            graph.transition(id, to)?;
+            let changed = graph.recompute_ready();
+            Self::publish_mutation(&mut state, graph);
+            changed
+        };
+        self.persist_latest();
         Ok(changed)
     }
 
     /// Re-run the dependency gate explicitly. Returns ids whose status changed.
     /// Persists only when the gate actually changed something — a no-op gate
     /// pass must not issue a full-graph write (and add WAL write contention).
-    pub fn recompute_ready(&self) -> Vec<String> {
-        let mut graph = self.lock();
-        let changed = graph.recompute_ready();
+    pub fn recompute_ready(&self) -> Result<Vec<String>, TaskGraphError> {
+        let changed = {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state)?;
+            let mut graph = state.graph.clone();
+            let changed = graph.recompute_ready();
+            if !changed.is_empty() {
+                Self::publish_mutation(&mut state, graph);
+            }
+            changed
+        };
         if !changed.is_empty() {
-            self.persist(&graph);
+            self.persist_latest();
         }
-        changed
+        Ok(changed)
     }
 
     /// A snapshot of every task in insertion order.
     pub fn list(&self) -> Vec<Task> {
-        self.lock().list().into_iter().cloned().collect()
+        self.lock().graph.list().into_iter().cloned().collect()
     }
 
     pub fn get(&self, id: &str) -> Option<Task> {
-        self.lock().get(id).cloned()
+        self.lock().graph.get(id).cloned()
     }
 
     /// Run a read-only computation over the locked graph without exposing or
     /// cloning it. Lets a higher layer (the orchestrator's scheduling decision)
     /// read the graph while keeping `task` independent of `orchestrator`.
     pub fn read<R>(&self, f: impl FnOnce(&TaskGraph) -> R) -> R {
-        f(&self.lock())
+        f(&self.lock().graph)
     }
 
-    /// Run a mutating computation over the locked graph. The autonomy
-    /// controller uses this to drive `orchestrator::autonomy::step`/`run` over
-    /// the live graph in one critical section.
-    ///
-    /// The closure holds the graph lock, so it must not re-enter the manager
-    /// (`get`/`list`/`read`/... would deadlock — std `Mutex` is not reentrant).
-    /// Any task metadata the loop needs (branch bindings, owners) must be read
-    /// from the `&mut TaskGraph` it is handed — e.g. via a `TaskBranchSnapshot`
-    /// captured before the mutation.
-    pub fn with_graph_mut<R>(&self, f: impl FnOnce(&mut TaskGraph) -> R) -> R {
-        let mut graph = self.lock();
-        let result = f(&mut graph);
-        // The closure may have mutated status, recovery counters, or branch
-        // bindings (the autonomy loop does all three). Persist the snapshot so
-        // none of it is lost on restart.
-        self.persist(&graph);
-        result
+    /// Run one autonomy pass on a revisioned snapshot with no graph mutex held
+    /// across dispatcher/gate/merge side effects. Other writers fail fast with
+    /// `MutationInProgress` while the lease exists; readers remain available.
+    /// The mutated snapshot is installed only if the lease and revision still
+    /// match, then persisted outside the graph lock.
+    pub fn run_autonomy_step<R>(
+        &self,
+        f: impl FnOnce(&mut TaskGraph) -> R,
+    ) -> Result<R, TaskGraphError> {
+        let (mut snapshot, expected_revision, lease) = {
+            let mut state = self.lock();
+            Self::require_mutation_available(&state)?;
+            state.next_lease = state.next_lease.saturating_add(1).max(1);
+            let lease = state.next_lease;
+            state.active_autonomy_lease = Some(lease);
+            (state.graph.clone(), state.revision, lease)
+        };
+
+        let outcome = catch_unwind(AssertUnwindSafe(|| f(&mut snapshot)));
+        let result = match outcome {
+            Ok(result) => result,
+            Err(payload) => {
+                let mut state = self.lock();
+                if state.active_autonomy_lease == Some(lease) {
+                    state.active_autonomy_lease = None;
+                }
+                drop(state);
+                resume_unwind(payload);
+            }
+        };
+
+        {
+            let mut state = self.lock();
+            if state.active_autonomy_lease != Some(lease) || state.revision != expected_revision {
+                let actual = state.revision;
+                if state.active_autonomy_lease == Some(lease) {
+                    state.active_autonomy_lease = None;
+                }
+                return Err(TaskGraphError::StaleRevision {
+                    expected: expected_revision,
+                    actual,
+                });
+            }
+            state.active_autonomy_lease = None;
+            Self::publish_mutation(&mut state, snapshot);
+        }
+        self.persist_latest();
+        Ok(result)
     }
 }
 
@@ -356,17 +456,78 @@ mod tests {
     }
 
     #[test]
-    fn with_graph_mut_drives_a_mutation_over_the_live_graph() {
+    fn autonomy_snapshot_apply_drives_a_mutation_over_the_live_graph() {
         let mgr = TaskManager::new();
         mgr.create(Task::new("a", "A")).unwrap(); // -> Ready
-        let from = mgr.with_graph_mut(|graph| {
-            let before = graph.get("a").unwrap().status;
-            graph.transition("a", TaskStatus::Running).unwrap();
-            before
-        });
+        let from = mgr
+            .run_autonomy_step(|graph| {
+                let before = graph.get("a").unwrap().status;
+                graph.transition("a", TaskStatus::Running).unwrap();
+                before
+            })
+            .unwrap();
         assert_eq!(from, TaskStatus::Ready);
         // The mutation is visible on the shared graph after the lock is released.
         assert_eq!(mgr.get("a").unwrap().status, TaskStatus::Running);
+    }
+
+    #[test]
+    fn autonomy_side_effect_window_keeps_reads_live_and_writers_fail_fast() {
+        let manager = Arc::new(TaskManager::new());
+        manager.create(Task::new("a", "A")).unwrap();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = manager.clone();
+        let handle = std::thread::spawn(move || {
+            worker.run_autonomy_step(|graph| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                graph.transition("a", TaskStatus::Running).unwrap();
+            })
+        });
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+
+        assert_eq!(manager.list().len(), 1, "reads stay available under lease");
+        assert!(matches!(
+            manager.create(Task::new("b", "B")),
+            Err(TaskGraphError::MutationInProgress(_))
+        ));
+        release_tx.send(()).unwrap();
+        handle.join().unwrap().unwrap();
+        assert_eq!(manager.get("a").unwrap().status, TaskStatus::Running);
+        assert!(manager.get("b").is_none());
+    }
+
+    #[test]
+    fn autonomy_apply_rejects_revision_drift_and_clears_lease() {
+        let manager = Arc::new(TaskManager::new());
+        manager.create(Task::new("a", "A")).unwrap();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = manager.clone();
+        let handle = std::thread::spawn(move || {
+            worker.run_autonomy_step(|graph| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                graph.transition("a", TaskStatus::Running).unwrap();
+            })
+        });
+        entered_rx.recv().unwrap();
+        {
+            // Inject impossible internal drift to prove the final CAS guard. Public
+            // writers cannot do this: they fail fast while the lease is active.
+            let mut state = manager.lock();
+            state.revision += 1;
+        }
+        release_tx.send(()).unwrap();
+        assert!(matches!(
+            handle.join().unwrap(),
+            Err(TaskGraphError::StaleRevision { .. })
+        ));
+        assert_eq!(manager.get("a").unwrap().status, TaskStatus::Ready);
+        manager.create(Task::new("b", "B")).unwrap();
     }
 
     fn mem_db() -> Arc<ManagedDb> {
@@ -402,20 +563,22 @@ mod tests {
     }
 
     #[test]
-    fn autonomy_style_mutations_through_with_graph_mut_are_persisted() {
-        // The autonomy loop mutates the graph opaquely via with_graph_mut —
+    fn autonomy_snapshot_mutations_are_persisted() {
+        // The autonomy loop mutates a revisioned snapshot —
         // crash/rework/timeout counters must survive restart (the bug class
         // full-snapshot persistence closes).
         let db = mem_db();
         let first = TaskManager::new();
         first.attach_db(db.clone()).unwrap();
         first.create(Task::new("t", "T")).unwrap();
-        first.with_graph_mut(|graph| {
-            graph.transition("t", TaskStatus::Running).unwrap();
-            graph.record_crash("t");
-            graph.record_crash("t");
-            graph.record_timeout("t");
-        });
+        first
+            .run_autonomy_step(|graph| {
+                graph.transition("t", TaskStatus::Running).unwrap();
+                graph.record_crash("t");
+                graph.record_crash("t");
+                graph.record_timeout("t");
+            })
+            .unwrap();
         drop(first);
 
         let second = TaskManager::new();

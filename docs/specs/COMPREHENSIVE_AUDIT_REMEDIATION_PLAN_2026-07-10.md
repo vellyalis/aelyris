@@ -523,6 +523,36 @@ Acceptance evidence:
 The artifact reports `phaseComplete=false`; A5.5-A5.8 remain. A5.5 owns TaskGraph
 revisioned snapshot/plan/unlocked-side-effect/version-checked apply behavior.
 
+### A5.5 Complete - TaskGraph Snapshot/Plan/Versioned Apply
+
+`TaskManager` now owns a revisioned `TaskGraphState`. An autonomy pass takes a short
+lease and graph clone, releases the state mutex, runs dispatcher/gate/merge side
+effects against the clone, and installs it only when the lease and expected revision
+still match. The old `with_graph_mut` live-graph escape hatch is removed.
+
+Readers remain available during side effects. Concurrent writers fail immediately
+with typed `MutationInProgress` instead of blocking behind an external command. The
+final apply has a separate typed `StaleRevision` guard, clears its lease on stale state
+or panic, and never publishes a partial clone. Public Tauri/MCP callers propagate
+mutation conflicts as errors.
+
+Full-graph SQLite persistence is also moved outside the graph mutex. A serialized
+writer snapshots the current graph/revision, writes it, and repeats if memory advanced
+during the write, coalescing concurrent mutations until durable state catches up.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:taskgraph-concurrency`
+- `.codex-auto/quality/a5-taskgraph-concurrency.json`
+- TaskManager revision/lease/persistence matrix: 17/17 PASS
+- loop adapter regression matrix: 27/27 PASS
+- reads stay live and writers fail fast during a side-effect lease
+- injected revision drift is rejected and the lease is cleared
+- restart persistence of autonomy counters remains PASS
+
+The artifact reports `phaseComplete=false`; A5.6-A5.8 remain. A5.6 owns LSP framing
+caps, per-server lifecycle handles, bounded shutdown, and reader cleanup.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.

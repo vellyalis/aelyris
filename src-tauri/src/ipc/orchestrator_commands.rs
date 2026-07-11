@@ -63,7 +63,7 @@ pub fn orchestrator_step(
     repo_path: String,
     reviewer_id: String,
     gates: HashMap<String, GateResults>,
-) -> StepReport {
+) -> Result<StepReport, String> {
     let report = run_step_visible(
         &tasks,
         &cost,
@@ -85,7 +85,7 @@ pub fn orchestrator_step(
         // task survives restart instead of living only in the volatile Event Bus
         // ring. ManagedDb is always managed (file, or in-memory fallback).
         Some(app.state::<crate::db::ManagedDb>().inner()),
-    );
+    )?;
 
     // Make each freshly dispatched agent visible: the loop spawned its PTY
     // through PaneFleet; connect that terminal to the frontend (native engine +
@@ -130,5 +130,5 @@ pub fn orchestrator_step(
             AgentEvent::new(AgentEventKind::TaskCompleted, json!({ "id": id })),
         );
     }
-    report
+    Ok(report)
 }

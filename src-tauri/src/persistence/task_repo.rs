@@ -2,7 +2,7 @@
 //!
 //! The Task Graph's live state (status, crash/rework/timeout attempts, branch
 //! bindings, outputs) is mutated through `TaskManager` — including the opaque
-//! `with_graph_mut` escape hatch the autonomy loop drives. Rather than try to
+//! revisioned snapshot/apply boundary the autonomy loop drives. Rather than try to
 //! diff which tasks changed inside that closure (a missed site = a silent
 //! durability hole), `save_graph` persists the WHOLE graph snapshot atomically
 //! after each mutation. The graph is small (a single operator's fleet), so a
