@@ -408,6 +408,45 @@ Required work:
 - LSP framing caps, lifecycle cleanup, and tests,
 - watchdog actions with typed outcomes and bounded timeouts.
 
+### A5.1 Complete - Execution/Concurrency Owner Inventory and Frozen Order
+
+Inventory at clean baseline `7fb620f` (no execution behavior changed in this slice):
+
+| Owner | Current boundary and failure mode | Frozen remediation slice |
+| --- | --- | --- |
+| `proofbook/step_shell.rs`, `control/gate_runner.rs`, `watchdog/auto_repair.rs` | synchronous `Command::output`/`status`; no common deadline, cancellation, bounded capture, or typed timeout result | A5.2: one bounded command supervisor with explicit deadline/cancel/output-limit/cleanup outcome; migrate these call sites first |
+| `proofbook/runner.rs`, `proofbook/ledger.rs` | cloned ledgers are settled and rewritten without a revision/CAS token, so cancel/gate/worker settlement can overwrite newer state | A5.3: revisioned ledger snapshots and compare-and-swap apply; stale settlement must return a typed conflict |
+| `pty/manager.rs` | the `instances` map mutex is held across writer I/O, resize, bulk termination, and some nested child-handle acquisition | A5.4: map contains cloneable per-PTY handles only; take a short map lock, perform I/O/kill/wait through the selected handle after unlock |
+| `task/manager.rs`, `orchestrator/autonomy.rs` | graph mutex is held through autonomy closures and synchronous database persistence; side-effect planning and version-checked apply are not separated | A5.5: revisioned snapshot/plan, unlocked side effects, version-checked apply and persistence; stale plans cannot mutate the live graph |
+| `lsp/manager.rs` | server map lock can cover stdin writes and kill/wait; reader accepts unbounded header/body lengths and detached reader threads have no lifecycle handle | A5.6: framing/header/body caps, per-server handle, bounded stop, reader ownership and deterministic cleanup |
+| `watchdog/auto_repair.rs` | concurrency count is bounded, but worker threads and subprocess stages have no cancellation/deadline/output caps and spawn failure is silently discarded | A5.7: supervised repair job lifecycle with typed rejection/failure/timeout/cancel outcomes and ordered cleanup |
+
+Cross-cutting inventory findings:
+
+- `process.rs` already supplies hidden-window creation and Windows kill-on-close Job
+  Object assignment, but it is not a command execution supervisor and assignment is
+  best-effort. A5.2 owns the reusable deadline/cancel/capture contract; call sites keep
+  their domain-specific policy and result mapping.
+- `proofbook/step_wait.rs` uses a bounded synchronous sleep loop. It is not migrated
+  before A5.2, but A5 acceptance must prove it cannot monopolize an async runtime lane.
+- PTY process lifetime has an existing Job Object and reaper path. A5.4 changes lock
+  ownership only; it must preserve spawn-token generation checks and live-process
+  preservation contracts.
+- No A5 slice may hold a global/map/graph mutex while waiting for process exit, pipe
+  output, filesystem/database work, or external side effects.
+
+Frozen dependency order: `A5.2 command supervisor -> A5.3 Proofbook CAS -> A5.4 PTY
+handles -> A5.5 TaskGraph snapshot/apply -> A5.6 LSP bounds/lifecycle -> A5.7 watchdog
+job lifecycle -> A5.8 combined timeout/cancel/flood/concurrent-pane acceptance`.
+
+A5.2 contract is intentionally narrow: define the shared supervised-command types and
+move Proofbook shell/verifier, objective gate, and watchdog subprocess execution onto
+them. It must prove a hung child times out and is cleaned up, cancellation is distinct
+from timeout, stdout/stderr are capped without deadlock, normal exit preserves code and
+captured tails, and Windows descendants remain under the existing no-orphan boundary.
+It must not change Proofbook ledger settlement, PTY map ownership, TaskGraph semantics,
+or LSP framing.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.
