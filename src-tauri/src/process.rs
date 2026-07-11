@@ -158,15 +158,23 @@ fn read_tail(mut reader: impl Read, limit: usize) -> io::Result<(Vec<u8>, bool)>
 }
 
 fn terminate_child_tree(child: &mut std::process::Child) {
+    terminate_process_tree(child.id());
+    let _ = child.kill();
+}
+
+/// Best-effort terminate a child and its descendants by PID. Callers still own
+/// and must reap their direct `Child` handle after this returns.
+pub(crate) fn terminate_process_tree(pid: u32) {
     #[cfg(windows)]
     {
         let _ = hidden_command("taskkill")
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
     }
-    let _ = child.kill();
+    #[cfg(not(windows))]
+    let _ = pid;
 }
 
 /// Guarantee a spawned child process can never become an orphan ("zombie") that

@@ -5,9 +5,9 @@ PROGRAM: `audit-remediation`
 CURRENT PHASE: `A5` (`R0-A4 repo-owned work complete`; A2 signed lifecycle and A4
 real-host sleep/power-loss proof remain explicit A9 operator gates).
 NEXT PHASE: `A6` after A5 supervision/concurrency acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A5.6 LSP framing caps and lifecycle cleanup`.
-A5.1-A5.5 are complete in the current focused sequence; do not widen A5.6 into
-watchdog job-lifecycle changes.
+NEXT IMPLEMENTATION SLICE: `A5.7 watchdog supervised job lifecycle`.
+A5.1-A5.6 are complete in the current focused sequence; do not start combined A5.8
+acceptance until watchdog job cancellation/timeout/cleanup is complete.
 
 ## Objective
 

@@ -553,6 +553,36 @@ Acceptance evidence:
 The artifact reports `phaseComplete=false`; A5.6-A5.8 remain. A5.6 owns LSP framing
 caps, per-server lifecycle handles, bounded shutdown, and reader cleanup.
 
+### A5.6 Complete - LSP Framing and Lifecycle Bounds
+
+`LspManager` clones now share one `LspManagerInner`; dropping a temporary clone no
+longer stops every server. The server map contains only initialization reservations or
+per-server `Arc<LspProcess>` handles and is released before stdin I/O, child waits, or
+reader joins.
+
+Inbound framing enforces bounded header lines, aggregate header bytes, header count,
+and body length before allocation. Missing/duplicate/invalid `Content-Length`, invalid
+UTF-8, partial bodies, and oversized frames fail closed. Outbound bodies use the same
+body ceiling.
+
+Each reader has an owned join handle and completion signal. Stop drains the map first,
+terminates the process tree, bounds child exit and reader completion, then joins.
+Unexpected reader EOF/error retires the server from the map and reaps or terminates the
+child. Initialization/publish failures also clean up the spawned process.
+
+Acceptance evidence:
+
+- `pnpm verify:a5:lsp-lifecycle`
+- `.codex-auto/quality/a5-lsp-lifecycle.json`
+- LSP framing/lifecycle matrix: 6/6 PASS
+- oversized header/body rejected before unbounded allocation
+- duplicate/missing length rejected
+- temporary manager clone drop preserves shared state
+- real child/reader stop completes within bounded timeout
+
+The artifact reports `phaseComplete=false`; A5.7-A5.8 remain. A5.7 owns watchdog job
+cancellation, typed terminal outcomes, worker handles, and cleanup ordering.
+
 ## A6 - Modularity Ratchet
 
 Objective: shrink ownership hotspots and prevent regrowth.
