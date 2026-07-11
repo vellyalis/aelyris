@@ -5,11 +5,10 @@ PROGRAM: `audit-remediation`
 CURRENT PHASE: `A6` (`R0-A5 repo-owned work complete`; A2 signed lifecycle and A4
 real-host sleep/power-loss proof remain explicit A9 operator gates).
 NEXT PHASE: `A7` after A6 modularity ratchet acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A6.2b right-rail persistence and projection split`.
-A5.1-A5.8, A6.1, and A6.2a are complete with fresh evidence. A6.2a moved the lazy UI
-registry and bootstrap schema to dedicated owners and lowered both frontend ceilings.
-Continue extracting right-rail persistence/projection without changing durable state
-ownership or weakening rendered-trust gates.
+NEXT IMPLEMENTATION SLICE: `A6.2c right-rail persistence and projection split`.
+A6.2b moved shared right-rail types and App bootstrap effects to dedicated owners,
+repaired source-contract tests, and lowered both frontend ceilings again. Continue
+extracting persistence/projection without weakening rendered-trust gates.
 
 ## Objective
 

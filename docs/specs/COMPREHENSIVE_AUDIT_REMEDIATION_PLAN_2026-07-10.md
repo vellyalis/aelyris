@@ -697,6 +697,17 @@ Acceptance evidence:
 The artifact reports `phaseComplete=false`; A6.2b continues with right-rail
 persistence/projection ownership and must lower both ceilings again.
 
+### A6.2b Complete - Shared Types and Bootstrap Effect Owners
+
+Shared right-rail contracts now live in `rightRailTypes.ts`; the runtime model re-exports
+them without owning their declarations. Startup configuration mutation now lives in
+`useBootstrapAppConfig.ts`, leaving `App.tsx` as the hook consumer. Source-contract tests
+follow these authoritative owners and pass 33/33.
+
+Ratchets lowered again: `App.tsx` 5173 -> 5111 and `rightRailModel.tsx` 2037 -> 1917.
+The A6 frontend artifact remains `phaseComplete=false`; A6.2c owns persistence and
+projection extraction.
+
 ## A7 - Evidence-Backed Product Completion
 
 Objective: complete one useful mission without inferred completion truth.

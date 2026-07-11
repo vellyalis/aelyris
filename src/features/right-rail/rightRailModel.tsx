@@ -15,7 +15,6 @@ import {
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { VISUAL_QA_FALLBACK_PROJECT_PATH } from "../../shared/hooks/useTabManager";
 import { type AgentFleetSession, headlessToFleetSession } from "../../shared/lib/agentFleet";
-import type { AiCliLaunchPreflightEvidence, AiCliProbeEvidence } from "../../shared/lib/aiCliLaunchPlanner";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { writeClipboardText as writeNativeClipboardText } from "../../shared/lib/nativeClipboard";
 import type { GitChangedFile } from "../../shared/lib/reviewQueue";
@@ -31,124 +30,16 @@ import type { AgentSession } from "../../shared/types/agent";
 import type { AuditEventRecord, AuditJournalEventRecord } from "../../shared/types/audit";
 import { SHELL_LABELS, type ShellType, type TerminalPaneTarget } from "../../shared/types/terminalPane";
 
-export type RightRailActionResultTone = "success" | "warn" | "error";
-export type RightRailGuardrailSelection = "Auto" | WorkforceGuardrailProfile;
-
 import type { BootstrapAppConfig } from "./bootstrapAppConfig";
 export type { BootstrapAppConfig } from "./bootstrapAppConfig";
-
-export interface RightRailActionResult {
-  id: string;
-  label: string;
-  detail: string;
-  tone: RightRailActionResultTone;
-  timestamp: number;
-  auditEventId: number | null;
-  auditCorrelationId: string | null;
-  auditKind: string | null;
-  auditTimestamp: string | null;
-  routeWidget: RightRailWidgetId | null;
-  routeLabel: string | null;
-  routeDetail: string | null;
-}
-
-export interface RightRailAiCliLaunchEvidenceState {
-  evidence: AiCliProbeEvidence | null;
-  preflight: AiCliLaunchPreflightEvidence | null;
-}
-
-export interface RightRailRouteConfirmation {
-  widget: RightRailWidgetId;
-  title: string;
-  detail: string;
-  createdAt: number;
-}
-
-export interface RightRailEdgeScoreItem {
-  id: "decision" | "evidence" | "recovery" | "live";
-  label: string;
-  score: number;
-  max: number;
-  status: "pass" | "watch" | "gap";
-  detail: string;
-  actionLabel: string;
-  routeMode: RightRailMode;
-  focusWidget: string;
-  routeTitle: string;
-  routeDetail: string;
-  promptTitle: string;
-  promptDetail: string;
-}
-
-export interface RightRailEdgeScore {
-  score: number;
-  grade: "S" | "A" | "B" | "C" | "D";
-  tone: "strong" | "watch" | "gap";
-  label: string;
-  detail: string;
-  items: RightRailEdgeScoreItem[];
-}
-
-export interface RightRailDestinationPrompt {
-  widget: string;
-  axisLabel: string;
-  title: string;
-  detail: string;
-  actionLabel: string;
-  item: RightRailEdgeScoreItem;
-  edgeScore: number;
-  edgeGrade: RightRailEdgeScore["grade"];
-  fromMode: RightRailMode;
-  createdAt: number;
-  reachedAt?: number;
-}
-
-export interface RightRailEdgeScoreFeedbackEntry {
-  id: string;
-  axisId: string;
-  axisLabel: string;
-  actionLabel: string;
-  targetWidget: string;
-  score: number;
-  grade: RightRailEdgeScore["grade"];
-  previousScore: number | null;
-  delta: number;
-  trend: "baseline" | "improved" | "flat" | "regressed";
-  createdAt: number;
-}
-
-export interface RightRailEdgeFeedbackAxisSummary {
-  axisId: string;
-  axisLabel: string;
-  count: number;
-  trend: RightRailEdgeScoreFeedbackEntry["trend"];
-}
-
-export interface RightRailEdgeFeedbackStaleGroup {
-  axisId: string;
-  axisLabel: string;
-  count: number;
-  score: number;
-  grade: RightRailEdgeScore["grade"];
-  staleReason: string;
-}
-
-export interface RightRailEdgeNextBestAction {
-  item: RightRailEdgeScoreItem;
-  reason: "repeated-axis" | "weakest-axis";
-}
-
-export interface RightRailEdgeRecommendationOutcome {
-  status: "reached" | "replayed" | "stale";
-  label: string;
-  detail: string;
-}
-
-export interface RightRailEdgeFeedbackResetNotice {
-  createdAt: number;
-  label: string;
-  detail: string;
-}
+import type {
+  RightRailActionResult, RightRailActionResultTone,
+  RightRailDestinationPrompt, RightRailEdgeFeedbackAxisSummary,
+  RightRailEdgeFeedbackStaleGroup, RightRailEdgeNextBestAction, RightRailEdgeRecommendationOutcome,
+  RightRailEdgeScore, RightRailEdgeScoreFeedbackEntry, RightRailEdgeScoreItem,
+  RightRailGuardrailSelection, RightRailRouteConfirmation, RightRailWidgetId,
+} from "./rightRailTypes";
+export type * from "./rightRailTypes";
 
 export const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
 export const RIGHT_RAIL_EDGE_FEEDBACK_LIMIT = 4;
@@ -196,17 +87,6 @@ export const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-syn
 export const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:";
 export const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync";
 
-export type RightRailWidgetId =
-  | "decision-inbox"
-  | "sessions"
-  | "orchestrator"
-  | "workflow"
-  | "toolkit"
-  | "context"
-  | "audit-timeline"
-  | "run-graph"
-  | "tool-ledger"
-  | "logs";
 export const RIGHT_RAIL_WIDGET_IDS: readonly RightRailWidgetId[] = [
   "decision-inbox",
   "sessions",

@@ -41,6 +41,14 @@ function getAppStoreSource(): string {
   return readFileSync(join(process.cwd(), "src/shared/store/appStore.ts"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getBootstrapAppConfigHookSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/useBootstrapAppConfig.ts"), "utf8").replace(/\r\n/g, "\n");
+}
+
+function getRightRailTypesSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailTypes.ts"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -1891,6 +1899,7 @@ describe("App right rail composition", () => {
     const rightRailModelSrc = getRightRailModelSource();
     const lazyPanelsSrc = getLazyPanelsSource();
     const appStoreSrc = getAppStoreSource();
+    const rightRailTypesSrc = getRightRailTypesSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -1969,7 +1978,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("onClick={() => handleOpenRightRailEdgeScoreItem(item)}");
     expect(rightRailModelSrc).toContain('actionLabel: pendingDecisionCount > 0 ? "Open inbox" : "Inspect inbox"');
     expect(rightRailModelSrc).toContain('focusWidget: "decision-inbox"');
-    expect(rightRailModelSrc).toContain("interface RightRailDestinationPrompt");
+    expect(rightRailTypesSrc).toContain("interface RightRailDestinationPrompt");
     expect(rightRailModelSrc).toContain("function RightRailDestinationPromptCard");
     expect(src).toContain("const [rightRailDestinationPrompt, setRightRailDestinationPrompt]");
     expect(src).toContain("setRightRailDestinationPrompt({");
@@ -1980,8 +1989,8 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain(`kind: \`right_rail.edge_score.${templatePlaceholder("stage")}\``);
     expect(rightRailModelSrc).toContain('stage: "clicked"');
     expect(rightRailModelSrc).toContain('"clicked" | "destination-reached"');
-    expect(rightRailModelSrc).toContain("interface RightRailEdgeScoreFeedbackEntry");
-    expect(rightRailModelSrc).toContain("axisId: string");
+    expect(rightRailTypesSrc).toContain("interface RightRailEdgeScoreFeedbackEntry");
+    expect(rightRailTypesSrc).toContain("axisId: string");
     expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_LIMIT");
     expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX");
     expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY");
@@ -2016,10 +2025,10 @@ describe("App right rail composition", () => {
     expect(src).toContain("formatRightRailEdgeFeedbackStaleReason");
     expect(src).toContain("deriveRightRailEdgeFeedbackStaleEntries");
     expect(src).toContain("deriveRightRailEdgeRecommendationOutcome");
-    expect(rightRailModelSrc).toContain("interface RightRailEdgeNextBestAction");
-    expect(rightRailModelSrc).toContain("interface RightRailEdgeRecommendationOutcome");
-    expect(rightRailModelSrc).toContain("interface RightRailEdgeFeedbackAxisSummary");
-    expect(rightRailModelSrc).toContain("interface RightRailEdgeFeedbackResetNotice");
+    expect(rightRailTypesSrc).toContain("interface RightRailEdgeNextBestAction");
+    expect(rightRailTypesSrc).toContain("interface RightRailEdgeRecommendationOutcome");
+    expect(rightRailTypesSrc).toContain("interface RightRailEdgeFeedbackAxisSummary");
+    expect(rightRailTypesSrc).toContain("interface RightRailEdgeFeedbackResetNotice");
     expect(src).toContain("const [rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory]");
     expect(src).toContain("const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly]");
     expect(src).toContain("const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice]");
@@ -2058,7 +2067,7 @@ describe("App right rail composition", () => {
     expect(src).toContain(
       "const rightRailEdgeFeedbackAxisSummary = deriveRightRailEdgeFeedbackAxisSummary(rightRailEdgeFeedbackHistory)",
     );
-    expect(rightRailModelSrc).toContain("interface RightRailEdgeFeedbackStaleGroup");
+    expect(rightRailTypesSrc).toContain("interface RightRailEdgeFeedbackStaleGroup");
     expect(rightRailModelSrc).toContain("function deriveRightRailEdgeFeedbackStaleGroups(");
     expect(src).toContain("const rightRailEdgeFeedbackStaleEntries = useMemo(");
     expect(src).toContain("deriveRightRailEdgeFeedbackStaleEntries(rightRailEdgeFeedbackHistory, rightRailEdgeScore)");
@@ -2508,15 +2517,17 @@ describe("App visual QA bootstrap", () => {
 describe("App config bootstrap", () => {
   it("hydrates appearance customization from config.toml at startup", () => {
     const src = getSrc();
+    const bootstrap = getBootstrapAppConfigHookSource();
 
-    expect(src).toContain('invoke<BootstrapAppConfig>("load_app_config")');
-    expect(src).toContain("store.setThemeId(cfg.appearance.theme)");
-    expect(src).toContain("store.setMoodPresetId(normalizeMoodPreset");
-    expect(src).toContain("store.replaceThemeOverrides(cfg.appearance.theme_overrides ?? {})");
-    expect(src).toContain("store.replaceMoodMaterialOverrides(cfg.appearance.mood_material_overrides ?? {})");
-    expect(src).toContain("store.replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood ?? {})");
-    expect(src).toContain("store.setAppWindowOpacity(cfg.appearance.opacity)");
-    expect(src).toContain('operation: "load_app_config_bootstrap"');
+    expect(src).toContain("useBootstrapAppConfig()");
+    expect(bootstrap).toContain('invoke<BootstrapAppConfig>("load_app_config")');
+    expect(bootstrap).toContain("store.setThemeId(cfg.appearance.theme)");
+    expect(bootstrap).toContain("store.setMoodPresetId(normalizeMoodPreset");
+    expect(bootstrap).toContain("store.replaceThemeOverrides(cfg.appearance.theme_overrides ?? {})");
+    expect(bootstrap).toContain("store.replaceMoodMaterialOverrides(cfg.appearance.mood_material_overrides ?? {})");
+    expect(bootstrap).toContain("store.replaceWallpaperSettingsByMood(cfg.appearance.wallpaper_settings_by_mood ?? {})");
+    expect(bootstrap).toContain("store.setAppWindowOpacity(cfg.appearance.opacity)");
+    expect(bootstrap).toContain('operation: "load_app_config_bootstrap"');
   });
 });
 
