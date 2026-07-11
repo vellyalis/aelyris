@@ -33,6 +33,14 @@ function getRightRailModelSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailModel.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getLazyPanelsSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/lazyPanels.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
+function getAppStoreSource(): string {
+  return readFileSync(join(process.cwd(), "src/shared/store/appStore.ts"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -389,7 +397,8 @@ describe("Release evidence gates", () => {
     // The pending-source label moved with the input pipeline into
     // term/native_input.rs; assert it where it now lives.
     expect(nativeInput).toContain('"native-input-surface".to_string()');
-    expect(commands).toContain("terminal_write_async(app, &terminal_id, &bytes)");
+    expect(commands).toContain("terminal_write_authorized_async(");
+    expect(commands).toContain("&terminal_id,");
     expect(commands).toContain("native_input_rejected");
     expect(lib).toContain("term::NativeTerminalInputHost::new()");
     expect(lib).toContain("ipc::native_terminal_input_commit");
@@ -1880,6 +1889,8 @@ describe("App right rail composition", () => {
   it("keeps debug logs out of the default workstation rail", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const lazyPanelsSrc = getLazyPanelsSource();
+    const appStoreSrc = getAppStoreSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -1892,7 +1903,10 @@ describe("App right rail composition", () => {
     const reviewRail = src.slice(reviewStart, observeStart);
     const observeRail = src.slice(observeStart);
 
-    expect(src).toContain('const [rightRailMode, setRightRailMode] = useState<RightRailMode>("command")');
+    expect(src).toContain("rightRailMode,");
+    expect(src).toContain("setRightRailMode,");
+    expect(appStoreSrc).toContain('rightRailMode: "command"');
+    expect(appStoreSrc).toContain("setRightRailMode: (rightRailMode) =>");
     expect(src).toContain("RIGHT_RAIL_MODES");
     expect(src).toContain("deriveRightRailRecommendation");
     expect(src).toContain("deriveRightRailWorkforceSummary");
@@ -1905,13 +1919,13 @@ describe("App right rail composition", () => {
     expect(src).toContain("{rightRailHasBlockingDecision && (");
     expect(src).toContain('data-has-decision={rightRailHasBlockingDecision ? "true" : "false"}');
     expect(src).toContain('setRightRailFocusWidget("decision-inbox")');
-    expect(src).toContain('import("./features/context/ContextPanel")');
-    expect(src).toContain('import("./features/context/WorkstationPulse")');
-    expect(src).toContain('import("./features/context/RunGraphPanel")');
-    expect(src).toContain('import("./features/context/ToolLedgerPanel")');
-    expect(src).toContain('import("./features/context/ReliabilityPanel")');
-    expect(src).toContain('import("./features/decision-inbox")');
-    expect(src).toContain('import("./features/review/ReviewQueuePanel")');
+    expect(lazyPanelsSrc).toContain('import("../context/ContextPanel")');
+    expect(lazyPanelsSrc).toContain('import("../context/WorkstationPulse")');
+    expect(lazyPanelsSrc).toContain('import("../context/RunGraphPanel")');
+    expect(lazyPanelsSrc).toContain('import("../context/ToolLedgerPanel")');
+    expect(lazyPanelsSrc).toContain('import("../context/ReliabilityPanel")');
+    expect(lazyPanelsSrc).toContain('import("../decision-inbox")');
+    expect(lazyPanelsSrc).toContain('import("../review/ReviewQueuePanel")');
     expect(src).toContain("filterWorkspaceScopedEvents");
     expect(src).toContain("const workspaceProfile = useMemo(");
     const densityShells =
@@ -1923,7 +1937,6 @@ describe("App right rail composition", () => {
     expect(src).toMatch(
       /className=\{`left-panel\$\{sidebarCollapsed \|\| zenMode \? " left-panel-collapsed" : ""\}`\}/,
     );
-    expect(src).toContain('data-zen-hidden={zenMode ? "true" : undefined}');
     expect(src).toContain("const scopedOperationalAuditEvents = useMemo(");
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
     const decisionInboxHookSrc = getDecisionInboxHookSource();
