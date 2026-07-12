@@ -13,7 +13,6 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { VISUAL_QA_FALLBACK_PROJECT_PATH } from "../../shared/hooks/useTabManager";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { writeClipboardText as writeNativeClipboardText } from "../../shared/lib/nativeClipboard";
 import type { GitChangedFile } from "../../shared/lib/reviewQueue";
@@ -24,8 +23,8 @@ import {
 import { WORKFORCE_GUARDRAIL_PROFILES, type WorkforceGuardrailProfile } from "../../shared/lib/rightRailWorkforce";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import type { AgentSession } from "../../shared/types/agent";
-import type { AuditEventRecord, AuditJournalEventRecord } from "../../shared/types/audit";
-import { SHELL_LABELS, type ShellType, type TerminalPaneTarget } from "../../shared/types/terminalPane";
+import type { AuditJournalEventRecord } from "../../shared/types/audit";
+import { SHELL_LABELS, type ShellType } from "../../shared/types/terminalPane";
 
 import type { BootstrapAppConfig } from "./bootstrapAppConfig";
 export type { BootstrapAppConfig } from "./bootstrapAppConfig";
@@ -303,156 +302,6 @@ export function formatTerminalTarget(shell: ShellType, terminalId: string | null
   const shellLabel = SHELL_LABELS[shell] ?? shell;
   if (!terminalId) return `${shellLabel} · starting`;
   return `${shellLabel} · ${terminalId.slice(0, 8)}`;
-}
-
-export function createDevVisualQaAuditEvents(): AuditEventRecord[] {
-  return [
-    {
-      id: 3,
-      timestamp: "2026-05-01T12:10:00.000Z",
-      category: "terminal",
-      action: "stream_lagged",
-      severity: "warn",
-      entityType: "terminal",
-      entityId: "visual-terminal-with-a-very-long-id",
-      summary: "Terminal stream lagged while rendering dense output",
-      metadata: { droppedChunks: 12, redacted: true },
-    },
-    {
-      id: 2,
-      timestamp: "2026-05-01T12:09:00.000Z",
-      category: "terminal",
-      action: "spawn_failed",
-      severity: "error",
-      entityType: "terminal",
-      entityId: "review-pane",
-      summary: "Terminal spawn failed",
-      metadata: { redacted: true },
-    },
-    {
-      id: 1,
-      timestamp: "2026-05-01T12:08:00.000Z",
-      category: "workflow",
-      action: "reject_gate",
-      severity: "warn",
-      entityType: "workflow",
-      entityId: "bug-fix",
-      summary: "Workflow gate rejected",
-      metadata: { redacted: true },
-    },
-  ];
-}
-
-export function createDevVisualQaPanes(
-  projectPath: string,
-  tabId: string,
-  tabLabel: string,
-  tabShell: ShellType,
-  attachFixture = false,
-): TerminalPaneTarget[] {
-  const cwd = projectPath || VISUAL_QA_FALLBACK_PROJECT_PATH;
-  if (attachFixture) {
-    return [
-      {
-        paneId: "qa-detached-left",
-        terminalId: null,
-        lifecycle: "detached",
-        index: 0,
-        shell: tabShell,
-        cwd,
-        title: "Detached Left",
-        role: "work",
-        label: "Detached Left",
-        route: `${tabLabel}.1 Detached Left`,
-        tabId,
-        tabLabel,
-        tabShell,
-        tabCwd: cwd,
-      },
-      {
-        paneId: "qa-detached-review",
-        terminalId: null,
-        lifecycle: "detached",
-        index: 1,
-        shell: tabShell,
-        cwd,
-        title: "Review Resume Target",
-        role: "review",
-        label: "Review Resume Target",
-        route: `${tabLabel}.2 Review Resume Target`,
-        tabId,
-        tabLabel,
-        tabShell,
-        tabCwd: cwd,
-      },
-      {
-        paneId: "qa-orphaned-backend",
-        terminalId: "qa-orphaned-agent-pty",
-        lifecycle: "orphaned",
-        index: 2,
-        shell: tabShell,
-        cwd,
-        title: "Orphaned Agent PTY",
-        role: "agent",
-        label: "Orphaned Agent PTY",
-        route: `${tabLabel}.3 Orphaned Agent PTY`,
-        tabId,
-        tabLabel,
-        tabShell,
-        tabCwd: cwd,
-      },
-    ];
-  }
-  return [
-    {
-      paneId: "qa-work",
-      terminalId: "qa-main-powershell",
-      lifecycle: "live",
-      index: 0,
-      shell: tabShell,
-      cwd,
-      title: "PowerShell",
-      role: "work",
-      label: "PowerShell",
-      route: `${tabLabel}.1 PowerShell`,
-      tabId,
-      tabLabel,
-      tabShell,
-      tabCwd: cwd,
-    },
-    {
-      paneId: "qa-agent",
-      terminalId: "qa-gemini-agent",
-      lifecycle: "live",
-      index: 1,
-      shell: tabShell,
-      cwd,
-      title: "Gemini CLI",
-      role: "agent",
-      label: "Gemini CLI",
-      route: `${tabLabel}.2 Gemini CLI`,
-      tabId,
-      tabLabel,
-      tabShell,
-      tabCwd: cwd,
-    },
-    {
-      paneId: "qa-review",
-      terminalId: "qa-review-shell",
-      lifecycle: "live",
-      index: 2,
-      shell: tabShell,
-      cwd,
-      title: "Review Shell",
-      role: "review",
-      label: "Review Shell",
-      route: `${tabLabel}.3 Review Shell`,
-      tabId,
-      tabLabel,
-      tabShell,
-      tabCwd: cwd,
-    },
-  ];
 }
 
 export const RIGHT_RAIL_MODES: Array<{
