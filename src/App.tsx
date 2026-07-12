@@ -75,11 +75,6 @@ import {
   nativeCommandBlockRecordsToCommandBlocks,
 } from "./shared/lib/commandHistoryGraph";
 import { buildContextPack } from "./shared/lib/contextPack";
-import {
-  clearEndedOperationalTerminal,
-  type OperationalPaneSelection,
-  reconcileOperationalPaneSelection,
-} from "./shared/lib/operationalPaneSelection";
 import { TERMINAL_COMMAND_EVIDENCE_EVENT } from "./shared/lib/terminalEvidence";
 import { filterWorkspaceScopedEvents } from "./shared/lib/workspaceProfile";
 import {
@@ -89,7 +84,6 @@ import {
   listWorkstationGraphChangedFiles,
   type WorkstationGraphCommandBlock,
 } from "./shared/lib/workstationGraph";
-import type { AuditEventRecord } from "./shared/types/audit";
 import type { CommandHistoryRecord } from "./shared/types/history";
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
@@ -159,6 +153,7 @@ import { useEditorOpenMode } from "./features/editor/useEditorOpenMode";
 import { usePaneRegistry } from "./features/terminal/usePaneRegistry";
 import { usePaneAgentSpawns } from "./features/terminal/usePaneAgentSpawns";
 import { usePaneRequestController } from "./features/terminal/usePaneRequestController";
+import { useOperationalPaneSelection } from "./features/terminal/useOperationalPaneSelection";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -441,9 +436,6 @@ export function App() {
   // — `spawn_terminal` returns a freshly-allocated id that lives in the
   // pane-tree's private `terminalIds` map, so this lift is the only way
   // to thread it through to global UI without leaking pane-tree state.
-  const [selectedAuditEventId, setSelectedAuditEventId] = useState<number | null>(null);
-  const [selectedAuditTraceFilter, setSelectedAuditTraceFilter] = useState<string | null>(null);
-  const [selectedOperationalPane, setSelectedOperationalPane] = useState<OperationalPaneSelection | null>(null);
 
   const {
     tabs,
@@ -545,56 +537,19 @@ export function App() {
   );
   const auditStream = useAuditEvents({ enabled: visualAuditEvents === undefined, limit: 40, pollMs: 3_000 });
   const operationalAuditEvents = visualAuditEvents ?? auditStream.entries;
-  const selectedOperationalPaneTarget = useMemo(
-    () =>
-      selectedOperationalPane
-        ? visualTerminalPaneTargets.find(
-            (pane) => pane.tabId === selectedOperationalPane.tabId && pane.paneId === selectedOperationalPane.paneId,
-          )
-        : undefined,
-    [selectedOperationalPane, visualTerminalPaneTargets],
-  );
-
-  const selectOperationalPane = useCallback((pane?: TerminalPaneTarget) => {
-    setSelectedOperationalPane(
-      pane
-        ? {
-            tabId: pane.tabId,
-            paneId: pane.paneId,
-            terminalId: pane.terminalId,
-          }
-        : null,
-    );
-  }, []);
-
-  useEffect(() => {
-    setSelectedOperationalPane((selected) => reconcileOperationalPaneSelection(selected, visualTerminalPaneTargets));
-  }, [visualTerminalPaneTargets]);
-
-  const handleSelectAuditEvent = useCallback(
-    (entry: AuditEventRecord, pane?: TerminalPaneTarget) => {
-      setSelectedAuditEventId(entry.id);
-      selectOperationalPane(pane);
-    },
-    [selectOperationalPane],
-  );
-
-  const handleSelectReliabilityIncident = useCallback(
-    (incident: { eventId: number; pane?: TerminalPaneTarget }) => {
-      setSelectedAuditEventId(incident.eventId);
-      selectOperationalPane(incident.pane);
-    },
-    [selectOperationalPane],
-  );
-
-  const handleTraceReliabilityIncident = useCallback(
-    (correlationId: string, incident: { eventId: number; pane?: TerminalPaneTarget }) => {
-      setSelectedAuditTraceFilter(correlationId);
-      setSelectedAuditEventId(incident.eventId);
-      selectOperationalPane(incident.pane);
-    },
-    [selectOperationalPane],
-  );
+  const {
+    clearEndedOperationalPane,
+    handleSelectAuditEvent,
+    handleSelectReliabilityIncident,
+    handleTraceReliabilityIncident,
+    selectOperationalPane,
+    setSelectedAuditEventId,
+    setSelectedAuditTraceFilter,
+    selectedAuditEventId,
+    selectedAuditTraceFilter,
+    selectedOperationalPane,
+    selectedOperationalPaneTarget,
+  } = useOperationalPaneSelection(visualTerminalPaneTargets);
 
 
   const handleCloseTab = useCallback(
@@ -4338,9 +4293,7 @@ export function App() {
                               onRestartPane={handlePaneRestart}
                               onAttachProcess={handlePaneAttach}
                               onProcessEnded={(terminalId) => {
-                                setSelectedOperationalPane((selected) =>
-                                  clearEndedOperationalTerminal(selected, terminalId),
-                                );
+                                clearEndedOperationalPane(terminalId);
                                 clearActivePtyId(terminalId);
                               }}
                             />

@@ -97,6 +97,10 @@ function getPaneRequestControllerSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRequestController.ts"), "utf8");
 }
 
+function getOperationalPaneSelectionSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/terminal/useOperationalPaneSelection.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -214,6 +218,19 @@ describe("App pane request controller ownership", () => {
     expect(owner).toContain("Attach target tab is unavailable.");
     expect(owner).toContain("onComplete: (error)");
     expect(owner).toContain("selectInteractiveSession(\"\")");
+  });
+});
+
+describe("App operational pane selection ownership", () => {
+  it("keeps pane reconciliation and audit/reliability trace selection in one hook", () => {
+    const src = getSrc();
+    const owner = getOperationalPaneSelectionSource();
+
+    expect(src).toContain("useOperationalPaneSelection(visualTerminalPaneTargets)");
+    expect(owner).toContain("reconcileOperationalPaneSelection(selected, panes)");
+    expect(owner).toContain("clearEndedOperationalTerminal(selected, terminalId)");
+    expect(owner).toContain("setSelectedAuditTraceFilter(correlationId)");
+    expect(owner).toContain("setSelectedAuditEventId(incident.eventId)");
   });
 });
 
