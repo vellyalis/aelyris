@@ -105,6 +105,10 @@ function getReleaseGoalEvidenceSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useReleaseGoalEvidence.ts"), "utf8");
 }
 
+function getAuthenticatedPromptEvidenceSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/useAuthenticatedPromptEvidence.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -249,6 +253,19 @@ describe("App release goal evidence ownership", () => {
     expect(owner).toContain("final-goal-safe-summary.json");
     expect(owner).toContain("deriveFinalGoalRequirementProofs(null)");
     expect(owner).toContain("const REFRESH_INTERVAL_MS = 60_000");
+  });
+});
+
+describe("App authenticated prompt evidence ownership", () => {
+  it("preserves partial consent/preflight evidence and fail-closed defaults in one hook", () => {
+    const src = getSrc();
+    const owner = getAuthenticatedPromptEvidenceSource();
+
+    expect(src).toContain("useAuthenticatedPromptEvidence(projectPath)");
+    expect(owner).toContain("Promise.allSettled");
+    expect(owner).toContain("authenticated-ai-cli-prompt-smoke.json");
+    expect(owner).toContain("authenticated-ai-cli-preflight-matrix.json");
+    expect(owner).toContain("deriveAuthenticatedPromptConsentPacket(null)");
   });
 });
 
@@ -1218,14 +1235,17 @@ describe("Release evidence gates", () => {
     expect(releaseGoalEvidence).toContain("deriveFinalGoalRequirementProofs");
     expect(releaseGoalEvidence).toContain("deriveFinalGoalSafeGate");
     expect(releaseGoalEvidence).toContain("parseFinalGoalSafeSummaryReport");
-    expect(src).toContain("deriveAuthenticatedPromptConsentPacket");
-    expect(src).toContain("parseAuthenticatedPromptConsentReport");
+    const authenticatedPromptEvidence = getAuthenticatedPromptEvidenceSource();
+    expect(authenticatedPromptEvidence).toContain("deriveAuthenticatedPromptConsentPacket");
+    expect(authenticatedPromptEvidence).toContain("parseAuthenticatedPromptConsentReport");
     expect(releaseGoalEvidence).toContain('invoke<string>("read_file", { path })');
-    expect(src).toContain('invoke<string>("read_file", { path: consentPath })');
+    expect(authenticatedPromptEvidence).toContain('invoke<string>("read_file", { path: consentPath })');
     expect(releaseGoalEvidence).toContain('".codex-auto/quality/release-quality-score.json"');
     expect(releaseGoalEvidence).toContain('".codex-auto/quality/final-goal-audit.json"');
     expect(releaseGoalEvidence).toContain('".codex-auto/quality/final-goal-safe-summary.json"');
-    expect(src).toContain('".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"');
+    expect(authenticatedPromptEvidence).toContain(
+      '".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"',
+    );
     expect(src).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
     expect(src).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
     expect(src).toContain('".codex-auto/production-smoke/process-reconnect-command-evidence.json"');

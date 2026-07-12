@@ -48,6 +48,7 @@ import {
 } from "./features/app/lazyPanels";
 import { useAppMenus } from "./features/app/useAppMenus";
 import { useBootstrapAppConfig } from "./features/app/useBootstrapAppConfig";
+import { useAuthenticatedPromptEvidence } from "./features/app/useAuthenticatedPromptEvidence";
 import { useReleaseGoalEvidence } from "./features/app/useReleaseGoalEvidence";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
@@ -166,12 +167,6 @@ import { useTerminalNotifications } from "./shared/hooks/useTerminalNotification
 import { useThemeApplier } from "./shared/hooks/useTheme";
 import { useWorktreeActions } from "./shared/hooks/useWorktreeActions";
 import { summarizeAgentLane } from "./shared/lib/agentLaneSummary";
-import {
-  type AuthenticatedPromptConsentPacket,
-  deriveAuthenticatedPromptConsentPacket,
-  parseAuthenticatedPromptConsentReport,
-  parseAuthenticatedPromptPreflightMatrixReport,
-} from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
 import {
   FALLBACK_TELEMETRY_EVENT,
@@ -332,8 +327,6 @@ export function App() {
   const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly] = useState(false);
   const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice] =
     useState<RightRailEdgeFeedbackResetNotice | null>(null);
-  const [authenticatedPromptConsentPacket, setAuthenticatedPromptConsentPacket] =
-    useState<AuthenticatedPromptConsentPacket>(() => deriveAuthenticatedPromptConsentPacket(null));
   const [rightRailAiCliLaunchEvidence, setRightRailAiCliLaunchEvidence] = useState<RightRailAiCliLaunchEvidenceState>(
     () => ({
       evidence: null,
@@ -566,6 +559,7 @@ export function App() {
   } = useAgentFleet();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  const authenticatedPromptConsentPacket = useAuthenticatedPromptEvidence(projectPath);
   const { finalGoalRequirementProofs, finalGoalResidualRisk, finalGoalSafeGate, releaseQualityGoalInputs } =
     useReleaseGoalEvidence(projectPath);
   const { handleFileSelect, handleOpenDiff } = useEditorOpenMode({
@@ -576,56 +570,6 @@ export function App() {
   });
   rightRailProjectPathRef.current = projectPath;
   useRightRailFeedbackPersistence(projectPath, rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory);
-  useEffect(() => {
-    let active = true;
-    let interval: number | null = null;
-    if (!projectPath || !isTauriRuntime()) {
-      setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
-      return () => {
-        active = false;
-      };
-    }
-
-    const consentPath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json",
-    );
-    const matrixPath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json",
-    );
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) =>
-          Promise.allSettled([
-            invoke<string>("read_file", { path: consentPath }),
-            invoke<string>("read_file", { path: matrixPath }),
-          ]),
-        )
-        .then(([consentResult, matrixResult]) => {
-          if (!active) return;
-          const consentText = consentResult.status === "fulfilled" ? consentResult.value : "";
-          const matrixText = matrixResult.status === "fulfilled" ? matrixResult.value : "";
-          setAuthenticatedPromptConsentPacket(
-            deriveAuthenticatedPromptConsentPacket(
-              parseAuthenticatedPromptConsentReport(consentText),
-              parseAuthenticatedPromptPreflightMatrixReport(matrixText),
-            ),
-          );
-        })
-        .catch(() => {
-          if (!active) return;
-          setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
-        });
-    };
-
-    refresh();
-    interval = window.setInterval(refresh, 60_000);
-    return () => {
-      active = false;
-      if (interval != null) window.clearInterval(interval);
-    };
-  }, [projectPath]);
   useEffect(() => {
     let active = true;
     let interval: number | null = null;
