@@ -50,7 +50,11 @@ import {
   RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM,
 } from "./rightRailFeedbackContract";
 export * from "./rightRailFeedbackContract";
-import { normalizeProjectPath, rightRailEdgeFeedbackStorageKey } from "./rightRailFeedbackPersistence";
+import {
+  isPlainRecord, isRightRailEdgeFeedbackGrade, isRightRailEdgeFeedbackTrend,
+  isSafeRightRailEdgeFeedbackAxisId, normalizeProjectPath, rightRailEdgeFeedbackStorageKey,
+  sanitizeBoundedNumber,
+} from "./rightRailFeedbackPersistence";
 export * from "./rightRailFeedbackPersistence";
 
 export const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
@@ -1261,16 +1265,8 @@ export function isLiveInteractiveSessionStatus(status: string): boolean {
   return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
 }
 
-export function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export function isRightRailEdgeFeedbackAxisId(value: unknown): value is RightRailEdgeScoreItem["id"] {
   return typeof value === "string" && RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS.includes(value as RightRailEdgeScoreItem["id"]);
-}
-
-export function isSafeRightRailEdgeFeedbackAxisId(value: unknown): value is string {
-  return typeof value === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(value);
 }
 
 export function sanitizeRightRailEdgeFeedbackAxisLabel(axisId: string, value: unknown): string {
@@ -1282,19 +1278,6 @@ export function sanitizeRightRailEdgeFeedbackAxisLabel(axisId: string, value: un
     .replace(/\s+/g, " ")
     .slice(0, 32);
   return normalized.length > 0 ? normalized : "Legacy axis";
-}
-
-export function isRightRailEdgeFeedbackTrend(value: unknown): value is RightRailEdgeScoreFeedbackEntry["trend"] {
-  return value === "baseline" || value === "improved" || value === "flat" || value === "regressed";
-}
-
-export function isRightRailEdgeFeedbackGrade(value: unknown): value is RightRailEdgeScore["grade"] {
-  return value === "S" || value === "A" || value === "B" || value === "C" || value === "D";
-}
-
-export function sanitizeBoundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 export function sanitizeRightRailEdgeFeedbackEntry(value: unknown): RightRailEdgeScoreFeedbackEntry | null {
