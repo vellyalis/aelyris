@@ -2017,13 +2017,13 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain("axisId: item.id");
     expect(rightRailFeedbackStorageSrc).toContain("rightRailWorkspaceStorageHash");
     expect(rightRailFeedbackStorageSrc).toContain("rightRailEdgeFeedbackStorageKey");
-    expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackEntry");
-    expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackHistory");
+    expect(rightRailFeedbackStorageSrc).toContain("sanitizeRightRailEdgeFeedbackEntry");
+    expect(rightRailFeedbackStorageSrc).toContain("sanitizeRightRailEdgeFeedbackHistory");
     expect(rightRailFeedbackStorageSrc).toContain("isSafeRightRailEdgeFeedbackAxisId");
-    expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackAxisLabel");
+    expect(rightRailFeedbackStorageSrc).toContain("sanitizeRightRailEdgeFeedbackAxisLabel");
     expect(rightRailFeedbackStorageSrc).toContain("Legacy axis");
-    expect(rightRailModelSrc).toContain("if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null");
-    expect(rightRailModelSrc).toContain(
+    expect(rightRailFeedbackStorageSrc).toContain("if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null");
+    expect(rightRailFeedbackStorageSrc).toContain(
       "axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel)",
     );
     expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryState");

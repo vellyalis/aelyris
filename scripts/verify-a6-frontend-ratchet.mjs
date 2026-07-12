@@ -20,7 +20,7 @@ const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailMod
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
 for (const [id, ok, evidence] of [
   ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 5093, { lines: source.app.split(/\r?\n/).length, ceiling: 5093 }],
-  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1840, { lines: source.model.split(/\r?\n/).length, ceiling: 1840 }],
+  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1800, { lines: source.model.split(/\r?\n/).length, ceiling: 1800 }],
   ["lazy-registry-owned", source.app.includes('from "./features/app/lazyPanels"') && source.lazy.includes("export const AgentInspector = lazy"), {}],
   ["bootstrap-schema-owned", source.model.includes('from "./bootstrapAppConfig"') && source.config.includes("export type BootstrapAppConfig"), {}],
   ["bootstrap-effects-owned", source.app.includes("useBootstrapAppConfig()") && source.bootstrapHook.includes('invoke<BootstrapAppConfig>("load_app_config")'), {}],

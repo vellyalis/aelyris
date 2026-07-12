@@ -1,7 +1,10 @@
 import {
+  RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS,
   RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS,
   RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS,
+  RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
   RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX,
+  RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS,
 } from "./rightRailFeedbackContract";
 import type { RightRailEdgeScore, RightRailEdgeScoreFeedbackEntry, RightRailEdgeScoreItem } from "./rightRailTypes";
 
@@ -29,6 +32,43 @@ export function isRightRailEdgeFeedbackGrade(value: unknown): value is RightRail
 export function sanitizeBoundedNumber(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+export function sanitizeRightRailEdgeFeedbackEntry(value: unknown): RightRailEdgeScoreFeedbackEntry | null {
+  if (!isPlainRecord(value)) return null;
+  const rawAxisId =
+    typeof value.axisId === "string" ? value.axisId : typeof value.id === "string" ? value.id.split(":")[0] : null;
+  if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null;
+  const createdAt = sanitizeBoundedNumber(value.createdAt, Date.now(), 0, Number.MAX_SAFE_INTEGER);
+  const actionLabel =
+    typeof value.actionLabel === "string" && RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS.has(value.actionLabel)
+      ? value.actionLabel
+      : "Replay action";
+  const targetWidget =
+    typeof value.targetWidget === "string" && RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS.has(value.targetWidget)
+      ? value.targetWidget
+      : "decision-inbox";
+  return {
+    id: `${rawAxisId}:${createdAt}`,
+    axisId: rawAxisId,
+    axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel),
+    actionLabel,
+    targetWidget,
+    score: sanitizeBoundedNumber(value.score, 0, 0, 100),
+    grade: isRightRailEdgeFeedbackGrade(value.grade) ? value.grade : "D",
+    previousScore: value.previousScore == null ? null : sanitizeBoundedNumber(value.previousScore, 0, 0, 100),
+    delta: sanitizeBoundedNumber(value.delta, 0, -100, 100),
+    trend: isRightRailEdgeFeedbackTrend(value.trend) ? value.trend : "baseline",
+    createdAt,
+  };
+}
+
+export function sanitizeRightRailEdgeFeedbackHistory(history: unknown): RightRailEdgeScoreFeedbackEntry[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .map((entry) => sanitizeRightRailEdgeFeedbackEntry(entry))
+    .filter((entry): entry is RightRailEdgeScoreFeedbackEntry => entry != null)
+    .slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT);
 }
 
 export function normalizeProjectPath(path?: string | null): string | null {

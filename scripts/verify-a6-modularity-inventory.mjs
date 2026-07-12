@@ -6,7 +6,7 @@ const root = resolve(process.cwd());
 const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.json");
 const owners = [
   { path: "src/App.tsx", owner: "frontend composition shell", baselineLines: 5093, targetLines: 800, nextSlice: "A6.2" },
-  { path: "src/features/right-rail/rightRailModel.tsx", owner: "right-rail projection and action model", baselineLines: 1840, targetLines: 800, nextSlice: "A6.2" },
+  { path: "src/features/right-rail/rightRailModel.tsx", owner: "right-rail projection and action model", baselineLines: 1800, targetLines: 800, nextSlice: "A6.2" },
   { path: "src-tauri/src/ipc/commands.rs", owner: "legacy Tauri IPC adapter", baselineLines: 4574, targetLines: 800, nextSlice: "A6.3" },
   { path: "src-tauri/src/api/mcp.rs", owner: "MCP catalog, governance adapter, and dispatcher", baselineLines: 5943, targetLines: 1200, nextSlice: "A6.4" },
   { path: "src-tauri/src/db/queries.rs", owner: "legacy SQLite repository facade", baselineLines: 3330, targetLines: 1200, nextSlice: "A6.5" },
