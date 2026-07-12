@@ -57,6 +57,10 @@ function getRightRailFeedbackContractSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailFeedbackContract.ts"), "utf8");
 }
 
+function getRightRailFeedbackStorageSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailFeedbackPersistence.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -1910,6 +1914,7 @@ describe("App right rail composition", () => {
     const rightRailTypesSrc = getRightRailTypesSource();
     const rightRailFeedbackPersistenceSrc = getRightRailFeedbackPersistenceSource();
     const rightRailFeedbackContractSrc = getRightRailFeedbackContractSource();
+    const rightRailFeedbackStorageSrc = getRightRailFeedbackStorageSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -2010,8 +2015,8 @@ describe("App right rail composition", () => {
     expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS");
     expect(src).toContain("createRightRailEdgeScoreFeedbackEntry");
     expect(rightRailModelSrc).toContain("axisId: item.id");
-    expect(rightRailModelSrc).toContain("rightRailWorkspaceStorageHash");
-    expect(rightRailModelSrc).toContain("rightRailEdgeFeedbackStorageKey");
+    expect(rightRailFeedbackStorageSrc).toContain("rightRailWorkspaceStorageHash");
+    expect(rightRailFeedbackStorageSrc).toContain("rightRailEdgeFeedbackStorageKey");
     expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackEntry");
     expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackHistory");
     expect(rightRailModelSrc).toContain("isSafeRightRailEdgeFeedbackAxisId");

@@ -46,11 +46,12 @@ import {
   RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS,
   RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY,
   RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
-  RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX,
   RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS,
   RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM,
 } from "./rightRailFeedbackContract";
 export * from "./rightRailFeedbackContract";
+import { normalizeProjectPath, rightRailEdgeFeedbackStorageKey } from "./rightRailFeedbackPersistence";
+export * from "./rightRailFeedbackPersistence";
 
 export const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
 export const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID = "right-panel-edge-feedback-list";
@@ -1260,29 +1261,8 @@ export function isLiveInteractiveSessionStatus(status: string): boolean {
   return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
 }
 
-export function normalizeProjectPath(path?: string | null): string | null {
-  if (!path) return null;
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
-
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function rightRailWorkspaceStorageHash(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-export function rightRailEdgeFeedbackStorageKey(projectPath: string): string | null {
-  const normalized = normalizeProjectPath(projectPath);
-  if (!normalized) return null;
-  return `${RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX}${rightRailWorkspaceStorageHash(normalized)}`;
 }
 
 export function isRightRailEdgeFeedbackAxisId(value: unknown): value is RightRailEdgeScoreItem["id"] {
