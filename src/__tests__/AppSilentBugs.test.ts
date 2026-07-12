@@ -69,6 +69,10 @@ function getRightRailVisualQaSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailVisualQa.ts"), "utf8");
 }
 
+function getRightRailWidgetFrameSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailWidgetFrame.tsx"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -2221,7 +2225,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("const [rightRailRouteConfirmation, setRightRailRouteConfirmation]");
     expect(src).toContain("showRightRailRouteConfirmation");
     expect(src).toContain("focusConfirmation={");
-    expect(rightRailModelSrc).toContain("right-panel-widget-focus-confirmation");
+    expect(getRightRailWidgetFrameSource()).toContain("right-panel-widget-focus-confirmation");
     expect(src).toContain("setSelectedAuditTraceFilter(traceId)");
     expect(src).toContain("const rightRailGraph = useMemo(");
     expect(src).toContain("buildWorkstationGraph({");
@@ -2295,14 +2299,14 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain("RIGHT_RAIL_ACTION_HISTORY_LIMIT");
     expect(src).toContain("const [rightRailGuardrailSelection, setRightRailGuardrailSelection]");
     expect(src).toContain("RIGHT_RAIL_GUARDRAIL_OPTIONS");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY");
-    expect(rightRailModelSrc).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync"');
-    expect(rightRailModelSrc).toContain("loadRightRailGuardrailSelection");
-    expect(rightRailModelSrc).toContain("saveRightRailGuardrailSelection");
-    expect(rightRailModelSrc).toContain("saveRightRailGuardrailSelectionToNativeConfig");
-    expect(rightRailModelSrc).toContain("hydrateRightRailGuardrailSelectionFromConfig");
-    expect(rightRailModelSrc).toContain("right_rail_guardrail_profile");
-    expect(rightRailModelSrc).toContain('operation: "save_right_rail_guardrail_config"');
+    expect(getRightRailWidgetFrameSource()).toContain("RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY");
+    expect(getRightRailWidgetFrameSource()).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync"');
+    expect(getRightRailWidgetFrameSource()).toContain("loadRightRailGuardrailSelection");
+    expect(getRightRailWidgetFrameSource()).toContain("saveRightRailGuardrailSelection");
+    expect(getRightRailWidgetFrameSource()).toContain("saveRightRailGuardrailSelectionToNativeConfig");
+    expect(getRightRailWidgetFrameSource()).toContain("hydrateRightRailGuardrailSelectionFromConfig");
+    expect(getRightRailWidgetFrameSource()).toContain("right_rail_guardrail_profile");
+    expect(getRightRailWidgetFrameSource()).toContain('operation: "save_right_rail_guardrail_config"');
     expect(src).toContain('rightRailGuardrailSelection === "Auto"');
     expect(src).toContain("rightRailGuardrailProfileRef.current = rightRailGuardrailProfile");
     expect(src).toContain("allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join");
@@ -2357,24 +2361,23 @@ describe("App right rail composition", () => {
 
   it("persists secondary right rail widget collapse preferences without hiding core flows", () => {
     const src = getSrc();
-    const rightRailModelSrc = getRightRailModelSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
 
     expect(src).toContain("type RightRailWidgetId");
-    expect(rightRailModelSrc).toContain("function RightRailWidgetFrame");
-    expect(rightRailModelSrc).toContain("loadRightRailWidgetOpen");
-    expect(rightRailModelSrc).toContain("saveRightRailWidgetOpen");
-    expect(rightRailModelSrc).toContain('const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:"');
-    expect(rightRailModelSrc).toContain('const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync"');
-    expect(rightRailModelSrc).toContain("hydrateRightRailWidgetOpenFromConfig");
-    expect(rightRailModelSrc).toContain("saveRightRailWidgetOpenToNativeConfig");
-    expect(rightRailModelSrc).toContain("right_rail_widgets");
-    expect(rightRailModelSrc).toContain('operation: "save_right_rail_widget_config"');
-    expect(rightRailModelSrc).toContain("if (!forceOpen) return");
-    expect(rightRailModelSrc).toContain("saveRightRailWidgetOpen(widget, true)");
-    expect(rightRailModelSrc).toContain("right-panel-widget-frame-header");
+    expect(getRightRailWidgetFrameSource()).toContain("function RightRailWidgetFrame");
+    expect(getRightRailWidgetFrameSource()).toContain("loadRightRailWidgetOpen");
+    expect(getRightRailWidgetFrameSource()).toContain("saveRightRailWidgetOpen");
+    expect(getRightRailWidgetFrameSource()).toContain('const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:"');
+    expect(getRightRailWidgetFrameSource()).toContain('const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync"');
+    expect(getRightRailWidgetFrameSource()).toContain("hydrateRightRailWidgetOpenFromConfig");
+    expect(getRightRailWidgetFrameSource()).toContain("saveRightRailWidgetOpenToNativeConfig");
+    expect(getRightRailWidgetFrameSource()).toContain("right_rail_widgets");
+    expect(getRightRailWidgetFrameSource()).toContain('operation: "save_right_rail_widget_config"');
+    expect(getRightRailWidgetFrameSource()).toContain("if (!forceOpen) return");
+    expect(getRightRailWidgetFrameSource()).toContain("saveRightRailWidgetOpen(widget, true)");
+    expect(getRightRailWidgetFrameSource()).toContain("right-panel-widget-frame-header");
     expect(src).toContain('widget="workflow"');
     expect(src).toContain('widget="toolkit"');
     expect(src).toContain('widget="context"');
