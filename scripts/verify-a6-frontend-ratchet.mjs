@@ -16,11 +16,11 @@ try {
   failed = true;
   scenarios.push({ id: "typescript-contract", status: "fail", error: error instanceof Error ? error.message : String(error) });
 }
-const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts", feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts", feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts" };
+const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", audit: "src/features/right-rail/rightRailAudit.ts", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts", feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts", feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts" };
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
 for (const [id, ok, evidence] of [
   ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 5093, { lines: source.app.split(/\r?\n/).length, ceiling: 5093 }],
-  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1638, { lines: source.model.split(/\r?\n/).length, ceiling: 1638 }],
+  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1406, { lines: source.model.split(/\r?\n/).length, ceiling: 1406 }],
   ["lazy-registry-owned", source.app.includes('from "./features/app/lazyPanels"') && source.lazy.includes("export const AgentInspector = lazy"), {}],
   ["bootstrap-schema-owned", source.model.includes('from "./bootstrapAppConfig"') && source.config.includes("export type BootstrapAppConfig"), {}],
   ["bootstrap-effects-owned", source.app.includes("useBootstrapAppConfig()") && source.bootstrapHook.includes('invoke<BootstrapAppConfig>("load_app_config")'), {}],
@@ -28,6 +28,7 @@ for (const [id, ok, evidence] of [
   ["feedback-lifecycle-owned", source.app.includes("useRightRailFeedbackPersistence(") && source.feedbackHook.includes("skipSaveKeyRef"), {}],
   ["feedback-contract-owned", source.model.includes('from "./rightRailFeedbackContract"') && source.feedbackContract.includes("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX"), {}],
   ["feedback-storage-owned", source.model.includes('from "./rightRailFeedbackPersistence"') && source.feedbackStorage.includes("rightRailWorkspaceStorageHash"), {}],
+  ["right-rail-audit-owned", source.model.includes('export * from "./rightRailAudit"') && source.audit.includes("export async function appendRightRailActionAudit"), {}],
 ]) {
   scenarios.push({ id, status: ok ? "pass" : "fail", ...evidence });
   failed ||= !ok;

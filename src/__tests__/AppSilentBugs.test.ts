@@ -61,6 +61,10 @@ function getRightRailFeedbackStorageSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailFeedbackPersistence.ts"), "utf8");
 }
 
+function getRightRailAuditSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailAudit.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -1616,7 +1620,7 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain("const PRODUCT_MODE_RAIL");
     expect(rightRailModelSrc).toContain("const PRODUCT_MODE_ROUTES");
     expect(rightRailModelSrc).toContain("const PRODUCT_MODE_INSPECTOR_SUMMARY");
-    expect(rightRailModelSrc).toContain("function formatInspectorProof");
+    expect(getRightRailAuditSource()).toContain("function formatInspectorProof");
     expect(rightRailModelSrc).toContain('id: "terminal"');
     expect(rightRailModelSrc).toContain('id: "agents"');
     expect(rightRailModelSrc).toContain('id: "workspace"');
@@ -1709,6 +1713,7 @@ describe("App right rail composition", () => {
   it("labels ranked actions with the command-center run-loop phase", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const rightRailAuditSrc = getRightRailAuditSource();
     const styles = getStyles();
     const advisor = getRightRailAdvisorSource();
     const score = readFileSync(join(process.cwd(), "scripts/score-release-quality.mjs"), "utf8");
@@ -1725,9 +1730,9 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain('"review-queue": "Review"');
     expect(rightRailModelSrc).toContain('"handoff-context": "Preserve"');
     expect(rightRailModelSrc).toContain('"recover-attention": "Recover"');
-    expect(rightRailModelSrc).toContain("function formatRightRailActionOwner");
-    expect(rightRailModelSrc).toContain("compactRightRailOwnerId");
-    expect(rightRailModelSrc).toContain("formatRightRailPathOwner");
+    expect(rightRailAuditSrc).toContain("function formatRightRailActionOwner");
+    expect(rightRailAuditSrc).toContain("compactRightRailOwnerId");
+    expect(rightRailAuditSrc).toContain("formatRightRailPathOwner");
     expect(src).toContain("const actionOwnerLabel = formatRightRailActionOwner(action)");
     expect(src).toContain("data-owner-kind={action.target.kind}");
     expect(src).toContain("data-owner-label={actionOwnerLabel}");
@@ -1915,6 +1920,7 @@ describe("App right rail composition", () => {
     const rightRailFeedbackPersistenceSrc = getRightRailFeedbackPersistenceSource();
     const rightRailFeedbackContractSrc = getRightRailFeedbackContractSource();
     const rightRailFeedbackStorageSrc = getRightRailFeedbackStorageSource();
+    const rightRailAuditSrc = getRightRailAuditSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -2001,9 +2007,9 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain("promptDetail:");
     expect(src).toContain("appendRightRailEdgeScoreInteractionAudit");
     expect(src).toContain("appendRightRailEdgeFeedbackStaleAudit");
-    expect(rightRailModelSrc).toContain(`kind: \`right_rail.edge_score.${templatePlaceholder("stage")}\``);
-    expect(rightRailModelSrc).toContain('stage: "clicked"');
-    expect(rightRailModelSrc).toContain('"clicked" | "destination-reached"');
+    expect(rightRailAuditSrc).toContain(`kind: \`right_rail.edge_score.${templatePlaceholder("stage")}\``);
+    expect(src).toContain('stage: "clicked"');
+    expect(rightRailAuditSrc).toContain('"clicked" | "destination-reached"');
     expect(rightRailTypesSrc).toContain("interface RightRailEdgeScoreFeedbackEntry");
     expect(rightRailTypesSrc).toContain("axisId: string");
     expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_LIMIT");
@@ -2166,16 +2172,14 @@ describe("App right rail composition", () => {
     );
     expect(src).toContain("rightRailProjectPathRef.current = projectPath");
     expect(src).toContain("rightRailDestinationReachedTelemetryRef");
-    expect(rightRailModelSrc).toContain('privacy: "no command text, prompt text, file path, or user input captured"');
-    expect(rightRailModelSrc).toContain("targetWidget: item.focusWidget");
+    expect(rightRailAuditSrc).toContain('privacy: "no command text, prompt text, file path, or user input captured"');
+    expect(rightRailAuditSrc).toContain("targetWidget: item.focusWidget");
     expect(rightRailFeedbackStorageSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
     expect(rightRailFeedbackStorageSrc).toContain("if (!allowDebugUrlFallback) return []");
     expect(rightRailFeedbackStorageSrc).toContain("if (shouldMirrorRightRailEdgeFeedbackHistoryUrl())");
     expect(src).not.toContain("promptDetail: item.promptDetail,");
     expect(src).not.toContain("promptText");
-    const staleAudit = rightRailModelSrc.match(
-      /async function appendRightRailEdgeFeedbackStaleAudit[\s\S]*?\n}\n\nexport function formatRightRailRecoveryDetail/,
-    );
+    const staleAudit = rightRailAuditSrc.match(/async function appendRightRailEdgeFeedbackStaleAudit[\s\S]*$/);
     expect(staleAudit).not.toBeNull();
     const staleAuditBody = staleAudit?.[0] ?? "";
     expect(staleAuditBody).toContain('kind: "right_rail.edge_feedback.stale"');
@@ -2319,17 +2323,17 @@ describe("App right rail composition", () => {
     expect(src).toContain('role="status"');
     expect(src).toContain('aria-live="polite"');
     expect(src).toContain("rightRailActionResult.detail");
-    expect(rightRailModelSrc).toContain("payloadJson: buildRightRailActionAuditPayload(action, previousMode)");
+    expect(getRightRailAuditSource()).toContain("payloadJson: buildRightRailActionAuditPayload(action, previousMode)");
     expect(advisor).toContain("evidence: action.execution.evidence");
     expect(advisor).toContain("target: action.target");
     expect(src).toContain(`Evidence: ${templatePlaceholder("action.execution.evidence")}`);
     expect(src).toContain("{action.target.label}");
     expect(src).toContain("action.execution.evidence");
-    expect(rightRailModelSrc).toContain("Promise<AuditJournalEventRecord | null>");
+    expect(getRightRailAuditSource()).toContain("Promise<AuditJournalEventRecord | null>");
     expect(src).toContain("appendRightRailActionOutcomeAudit");
     expect(src).toContain("formatRightRailRecoveryDetail");
     expect(src).toContain("showRecoverableActionResult");
-    expect(rightRailModelSrc).toContain("append_right_rail_action_outcome_audit");
+    expect(getRightRailAuditSource()).toContain("append_right_rail_action_outcome_audit");
     expect(rightRailModelSrc).toContain("Recovery:");
     expect(rightRailModelSrc).toContain("auditEventId: auditRecord?.id ?? null");
     expect(rightRailModelSrc).toContain("auditCorrelationId: auditRecord?.correlationId ?? null");
