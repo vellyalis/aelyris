@@ -53,6 +53,10 @@ function getRightRailFeedbackPersistenceSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/useRightRailFeedbackPersistence.ts"), "utf8");
 }
 
+function getRightRailFeedbackContractSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailFeedbackContract.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -1905,6 +1909,7 @@ describe("App right rail composition", () => {
     const appStoreSrc = getAppStoreSource();
     const rightRailTypesSrc = getRightRailTypesSource();
     const rightRailFeedbackPersistenceSrc = getRightRailFeedbackPersistenceSource();
+    const rightRailFeedbackContractSrc = getRightRailFeedbackContractSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -1996,13 +2001,13 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain('"clicked" | "destination-reached"');
     expect(rightRailTypesSrc).toContain("interface RightRailEdgeScoreFeedbackEntry");
     expect(rightRailTypesSrc).toContain("axisId: string");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_LIMIT");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS");
-    expect(rightRailModelSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_LIMIT");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS");
+    expect(rightRailFeedbackContractSrc).toContain("RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS");
     expect(src).toContain("createRightRailEdgeScoreFeedbackEntry");
     expect(rightRailModelSrc).toContain("axisId: item.id");
     expect(rightRailModelSrc).toContain("rightRailWorkspaceStorageHash");

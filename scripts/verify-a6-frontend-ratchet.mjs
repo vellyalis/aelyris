@@ -16,16 +16,17 @@ try {
   failed = true;
   scenarios.push({ id: "typescript-contract", status: "fail", error: error instanceof Error ? error.message : String(error) });
 }
-const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts" };
+const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts", feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts" };
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
 for (const [id, ok, evidence] of [
   ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 5093, { lines: source.app.split(/\r?\n/).length, ceiling: 5093 }],
-  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1917, { lines: source.model.split(/\r?\n/).length, ceiling: 1917 }],
+  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1894, { lines: source.model.split(/\r?\n/).length, ceiling: 1894 }],
   ["lazy-registry-owned", source.app.includes('from "./features/app/lazyPanels"') && source.lazy.includes("export const AgentInspector = lazy"), {}],
   ["bootstrap-schema-owned", source.model.includes('from "./bootstrapAppConfig"') && source.config.includes("export type BootstrapAppConfig"), {}],
   ["bootstrap-effects-owned", source.app.includes("useBootstrapAppConfig()") && source.bootstrapHook.includes('invoke<BootstrapAppConfig>("load_app_config")'), {}],
   ["right-rail-types-owned", source.model.includes('from "./rightRailTypes"') && source.types.includes("export interface RightRailEdgeScore"), {}],
   ["feedback-lifecycle-owned", source.app.includes("useRightRailFeedbackPersistence(") && source.feedbackHook.includes("skipSaveKeyRef"), {}],
+  ["feedback-contract-owned", source.model.includes('from "./rightRailFeedbackContract"') && source.feedbackContract.includes("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX"), {}],
 ]) {
   scenarios.push({ id, status: ok ? "pass" : "fail", ...evidence });
   failed ||= !ok;
