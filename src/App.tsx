@@ -48,6 +48,7 @@ import {
 } from "./features/app/lazyPanels";
 import { useAppMenus } from "./features/app/useAppMenus";
 import { useBootstrapAppConfig } from "./features/app/useBootstrapAppConfig";
+import { useReleaseGoalEvidence } from "./features/app/useReleaseGoalEvidence";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
@@ -180,19 +181,6 @@ import {
 } from "./shared/lib/fallbackTelemetry";
 import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
 import { ORCHESTRA_ROLES } from "./shared/lib/orchestrator";
-import {
-  deriveFinalGoalRequirementProofs,
-  deriveFinalGoalResidualRisk,
-  deriveFinalGoalSafeGate,
-  deriveReleaseQualityGoalInputs,
-  type FinalGoalRequirementProof,
-  type FinalGoalResidualRisk,
-  type FinalGoalSafeGate,
-  parseFinalGoalAuditReport,
-  parseFinalGoalSafeSummaryReport,
-  parseReleaseQualityReport,
-  type ReleaseQualityGoalInputs,
-} from "./shared/lib/releaseQuality";
 import {
   deriveRightRailActions,
   deriveRightRailNowState,
@@ -344,10 +332,6 @@ export function App() {
   const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly] = useState(false);
   const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice] =
     useState<RightRailEdgeFeedbackResetNotice | null>(null);
-  const [releaseQualityGoalInputs, setReleaseQualityGoalInputs] = useState<ReleaseQualityGoalInputs | null>(null);
-  const [finalGoalResidualRisk, setFinalGoalResidualRisk] = useState<FinalGoalResidualRisk | null>(null);
-  const [finalGoalRequirementProofs, setFinalGoalRequirementProofs] = useState<FinalGoalRequirementProof[]>([]);
-  const [finalGoalSafeGate, setFinalGoalSafeGate] = useState<FinalGoalSafeGate | null>(null);
   const [authenticatedPromptConsentPacket, setAuthenticatedPromptConsentPacket] =
     useState<AuthenticatedPromptConsentPacket>(() => deriveAuthenticatedPromptConsentPacket(null));
   const [rightRailAiCliLaunchEvidence, setRightRailAiCliLaunchEvidence] = useState<RightRailAiCliLaunchEvidenceState>(
@@ -582,6 +566,8 @@ export function App() {
   } = useAgentFleet();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  const { finalGoalRequirementProofs, finalGoalResidualRisk, finalGoalSafeGate, releaseQualityGoalInputs } =
+    useReleaseGoalEvidence(projectPath);
   const { handleFileSelect, handleOpenDiff } = useEditorOpenMode({
     projectPath,
     openFile,
@@ -590,121 +576,6 @@ export function App() {
   });
   rightRailProjectPathRef.current = projectPath;
   useRightRailFeedbackPersistence(projectPath, rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory);
-  useEffect(() => {
-    let active = true;
-    let interval: number | null = null;
-    if (!projectPath || !isTauriRuntime()) {
-      setReleaseQualityGoalInputs(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    const releaseQualityPath = resolveProjectFilePath(projectPath, ".codex-auto/quality/release-quality-score.json");
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) => invoke<string>("read_file", { path: releaseQualityPath }))
-        .then((text) => {
-          if (!active) return;
-          setReleaseQualityGoalInputs(deriveReleaseQualityGoalInputs(parseReleaseQualityReport(text)));
-        })
-        .catch((err) => {
-          if (!active) return;
-          setReleaseQualityGoalInputs(deriveReleaseQualityGoalInputs(null));
-          reportInvokeFailure({
-            source: "app",
-            operation: "read_release_quality_score",
-            err,
-            severity: "warning",
-          });
-        });
-    };
-
-    refresh();
-    interval = window.setInterval(refresh, 60_000);
-    return () => {
-      active = false;
-      if (interval != null) window.clearInterval(interval);
-    };
-  }, [projectPath]);
-  useEffect(() => {
-    let active = true;
-    let interval: number | null = null;
-    if (!projectPath || !isTauriRuntime()) {
-      setFinalGoalResidualRisk(null);
-      setFinalGoalRequirementProofs([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const finalGoalAuditPath = resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-audit.json");
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) => invoke<string>("read_file", { path: finalGoalAuditPath }))
-        .then((text) => {
-          if (!active) return;
-          const report = parseFinalGoalAuditReport(text);
-          setFinalGoalResidualRisk(deriveFinalGoalResidualRisk(report));
-          setFinalGoalRequirementProofs(deriveFinalGoalRequirementProofs(report));
-        })
-        .catch((err) => {
-          if (!active) return;
-          setFinalGoalResidualRisk(deriveFinalGoalResidualRisk(null));
-          setFinalGoalRequirementProofs(deriveFinalGoalRequirementProofs(null));
-          reportInvokeFailure({
-            source: "app",
-            operation: "read_final_goal_audit",
-            err,
-            severity: "warning",
-          });
-        });
-    };
-
-    refresh();
-    interval = window.setInterval(refresh, 60_000);
-    return () => {
-      active = false;
-      if (interval != null) window.clearInterval(interval);
-    };
-  }, [projectPath]);
-  useEffect(() => {
-    let active = true;
-    let interval: number | null = null;
-    if (!projectPath || !isTauriRuntime()) {
-      setFinalGoalSafeGate(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    const finalGoalSafePath = resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-safe-summary.json");
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) => invoke<string>("read_file", { path: finalGoalSafePath }))
-        .then((text) => {
-          if (!active) return;
-          setFinalGoalSafeGate(deriveFinalGoalSafeGate(parseFinalGoalSafeSummaryReport(text)));
-        })
-        .catch((err) => {
-          if (!active) return;
-          setFinalGoalSafeGate(deriveFinalGoalSafeGate(null));
-          reportInvokeFailure({
-            source: "app",
-            operation: "read_final_goal_safe_gate",
-            err,
-            severity: "warning",
-          });
-        });
-    };
-
-    refresh();
-    interval = window.setInterval(refresh, 60_000);
-    return () => {
-      active = false;
-      if (interval != null) window.clearInterval(interval);
-    };
-  }, [projectPath]);
   useEffect(() => {
     let active = true;
     let interval: number | null = null;

@@ -101,6 +101,10 @@ function getOperationalPaneSelectionSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/useOperationalPaneSelection.ts"), "utf8");
 }
 
+function getReleaseGoalEvidenceSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/useReleaseGoalEvidence.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -231,6 +235,20 @@ describe("App operational pane selection ownership", () => {
     expect(owner).toContain("clearEndedOperationalTerminal(selected, terminalId)");
     expect(owner).toContain("setSelectedAuditTraceFilter(correlationId)");
     expect(owner).toContain("setSelectedAuditEventId(incident.eventId)");
+  });
+});
+
+describe("App release goal evidence ownership", () => {
+  it("keeps release, final audit, and safe-gate polling fail closed in one hook", () => {
+    const src = getSrc();
+    const owner = getReleaseGoalEvidenceSource();
+
+    expect(src).toContain("useReleaseGoalEvidence(projectPath)");
+    expect(owner).toContain("release-quality-score.json");
+    expect(owner).toContain("final-goal-audit.json");
+    expect(owner).toContain("final-goal-safe-summary.json");
+    expect(owner).toContain("deriveFinalGoalRequirementProofs(null)");
+    expect(owner).toContain("const REFRESH_INTERVAL_MS = 60_000");
   });
 });
 
@@ -1192,22 +1210,21 @@ describe("Release evidence gates", () => {
     );
 
     expect(src).toContain("deriveRightRailGoalTrack");
-    expect(src).toContain("deriveReleaseQualityGoalInputs");
-    expect(src).toContain("parseReleaseQualityReport");
-    expect(src).toContain("deriveFinalGoalResidualRisk");
-    expect(src).toContain("parseFinalGoalAuditReport");
-    expect(src).toContain("deriveFinalGoalRequirementProofs");
-    expect(src).toContain("deriveFinalGoalSafeGate");
-    expect(src).toContain("parseFinalGoalSafeSummaryReport");
+    const releaseGoalEvidence = getReleaseGoalEvidenceSource();
+    expect(releaseGoalEvidence).toContain("deriveReleaseQualityGoalInputs");
+    expect(releaseGoalEvidence).toContain("parseReleaseQualityReport");
+    expect(releaseGoalEvidence).toContain("deriveFinalGoalResidualRisk");
+    expect(releaseGoalEvidence).toContain("parseFinalGoalAuditReport");
+    expect(releaseGoalEvidence).toContain("deriveFinalGoalRequirementProofs");
+    expect(releaseGoalEvidence).toContain("deriveFinalGoalSafeGate");
+    expect(releaseGoalEvidence).toContain("parseFinalGoalSafeSummaryReport");
     expect(src).toContain("deriveAuthenticatedPromptConsentPacket");
     expect(src).toContain("parseAuthenticatedPromptConsentReport");
-    expect(src).toContain('invoke<string>("read_file", { path: releaseQualityPath })');
-    expect(src).toContain('invoke<string>("read_file", { path: finalGoalAuditPath })');
-    expect(src).toContain('invoke<string>("read_file", { path: finalGoalSafePath })');
+    expect(releaseGoalEvidence).toContain('invoke<string>("read_file", { path })');
     expect(src).toContain('invoke<string>("read_file", { path: consentPath })');
-    expect(src).toContain('".codex-auto/quality/release-quality-score.json"');
-    expect(src).toContain('".codex-auto/quality/final-goal-audit.json"');
-    expect(src).toContain('".codex-auto/quality/final-goal-safe-summary.json"');
+    expect(releaseGoalEvidence).toContain('".codex-auto/quality/release-quality-score.json"');
+    expect(releaseGoalEvidence).toContain('".codex-auto/quality/final-goal-audit.json"');
+    expect(releaseGoalEvidence).toContain('".codex-auto/quality/final-goal-safe-summary.json"');
     expect(src).toContain('".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"');
     expect(src).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
     expect(src).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
