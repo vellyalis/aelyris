@@ -55,7 +55,6 @@ import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { useOrchestraDispatch } from "./features/orchestrator/useOrchestraDispatch";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { TERMINAL_PREFIX_COMMAND_EVENT } from "./features/terminal/hooks/useCanvasIME";
-import type { PaneSwitcherEntry } from "./features/terminal/pane-tree";
 import {
   deletePaneTreeSnapshot,
   deletePaneTreeSnapshotFromBackend,
@@ -169,6 +168,7 @@ import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightR
 import { useRightRailActionFeedback } from "./features/right-rail/useRightRailActionFeedback";
 import { useRightRailGuardrailSelection } from "./features/right-rail/useRightRailGuardrailSelection";
 import { useEditorOpenMode } from "./features/editor/useEditorOpenMode";
+import { usePaneRegistry } from "./features/terminal/usePaneRegistry";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -479,14 +479,6 @@ export function App() {
   // — `spawn_terminal` returns a freshly-allocated id that lives in the
   // pane-tree's private `terminalIds` map, so this lift is the only way
   // to thread it through to global UI without leaking pane-tree state.
-  const [tabActivePtyIds, setTabActivePtyIds] = useState<Record<string, string | null>>({});
-  const setTabActivePtyId = useCallback((tabId: string, ptyId: string | null) => {
-    setTabActivePtyIds((prev) => {
-      if (prev[tabId] === ptyId) return prev;
-      return { ...prev, [tabId]: ptyId };
-    });
-  }, []);
-  const [tabPaneRegistries, setTabPaneRegistries] = useState<Record<string, PaneSwitcherEntry[]>>({});
   const [paneFocusRequest, setPaneFocusRequest] = useState<AppPaneFocusRequest | null>(null);
   const [paneCloseRequest, setPaneCloseRequest] = useState<AppPaneCloseRequest | null>(null);
   const [paneRestartRequest, setPaneRestartRequest] = useState<AppPaneRestartRequest | null>(null);
@@ -497,12 +489,6 @@ export function App() {
   const [selectedAuditEventId, setSelectedAuditEventId] = useState<number | null>(null);
   const [selectedAuditTraceFilter, setSelectedAuditTraceFilter] = useState<string | null>(null);
   const [selectedOperationalPane, setSelectedOperationalPane] = useState<OperationalPaneSelection | null>(null);
-  const setTabPaneRegistry = useCallback((tabId: string, panes: PaneSwitcherEntry[]) => {
-    setTabPaneRegistries((prev) => {
-      if (paneRegistryEqual(prev[tabId] ?? [], panes)) return prev;
-      return { ...prev, [tabId]: panes };
-    });
-  }, []);
 
   const {
     tabs,
@@ -520,7 +506,10 @@ export function App() {
     // via getState so the initializer is stable — useTabManager only consults
     // the value when creating the initial tab and via addTab's shell argument.
   } = useTabManager(useAppStore.getState().defaultShell);
-  const activePtyId = tabActivePtyIds[activeTabId] ?? null;
+  const { activePtyId, clearActivePtyId, setTabActivePtyId, setTabPaneRegistry, tabPaneRegistries } = usePaneRegistry(
+    activeTabId,
+    tabs,
+  );
 
   // Loop-dispatched agents → real split panes in the active terminal tab. We
   // accumulate the live agent terminals from the agent_spawned event stream and
@@ -753,36 +742,6 @@ export function App() {
     [selectOperationalPane],
   );
 
-  // Prune `tabActivePtyIds` entries whose tab has been closed. Without
-  // this the map grows unboundedly across the lifetime of the session
-  // — minor in practice but trivial to guard against.
-  useEffect(() => {
-    const liveIds = new Set(tabs.map((t) => t.id));
-    setTabActivePtyIds((prev) => {
-      let mutated = false;
-      const next: Record<string, string | null> = {};
-      for (const [id, ptyId] of Object.entries(prev)) {
-        if (liveIds.has(id)) {
-          next[id] = ptyId;
-        } else {
-          mutated = true;
-        }
-      }
-      return mutated ? next : prev;
-    });
-    setTabPaneRegistries((prev) => {
-      let mutated = false;
-      const next: Record<string, PaneSwitcherEntry[]> = {};
-      for (const [id, panes] of Object.entries(prev)) {
-        if (liveIds.has(id)) {
-          next[id] = panes;
-        } else {
-          mutated = true;
-        }
-      }
-      return mutated ? next : prev;
-    });
-  }, [tabs]);
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
@@ -4620,17 +4579,7 @@ export function App() {
                                 setSelectedOperationalPane((selected) =>
                                   clearEndedOperationalTerminal(selected, terminalId),
                                 );
-                                setTabActivePtyIds((prev) => {
-                                  let changed = false;
-                                  const next = { ...prev };
-                                  for (const [tabId, ptyId] of Object.entries(next)) {
-                                    if (ptyId === terminalId) {
-                                      next[tabId] = null;
-                                      changed = true;
-                                    }
-                                  }
-                                  return changed ? next : prev;
-                                });
+                                clearActivePtyId(terminalId);
                               }}
                             />
                           </div>
@@ -4903,26 +4852,6 @@ export function App() {
   );
 }
 
-function paneRegistryEqual(a: PaneSwitcherEntry[], b: PaneSwitcherEntry[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((left, index) => {
-    const right = b[index];
-    return (
-      !!right &&
-      left.paneId === right.paneId &&
-      left.terminalId === right.terminalId &&
-      left.shortId === right.shortId &&
-      left.lifecycle === right.lifecycle &&
-      left.index === right.index &&
-      left.shell === right.shell &&
-      left.cwd === right.cwd &&
-      left.title === right.title &&
-      left.role === right.role &&
-      left.label === right.label &&
-      left.route === right.route
-    );
-  });
-}
 
 function findActivePaneIndex(
   panes: readonly TerminalPaneTarget[],

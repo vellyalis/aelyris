@@ -85,6 +85,10 @@ function getEditorOpenModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/editor/useEditorOpenMode.ts"), "utf8");
 }
 
+function getPaneRegistrySource(): string {
+  return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRegistry.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -161,6 +165,19 @@ describe("App editor open-mode ownership", () => {
     expect(owner).toContain('operation: "open_git_file_diff_in_vscode"');
     expect(owner).toContain("setOpenInDiff(true)");
     expect(owner).toContain("openFile(path)");
+  });
+});
+
+describe("App pane registry ownership", () => {
+  it("keeps registry deduplication, ended-process cleanup, and closed-tab pruning in one hook", () => {
+    const src = getSrc();
+    const owner = getPaneRegistrySource();
+
+    expect(src).toContain("usePaneRegistry(");
+    expect(owner).toContain("paneRegistryEqual");
+    expect(owner).toContain("clearActivePtyId");
+    expect(owner).toContain("const liveIds = new Set(tabs.map");
+    expect(owner).toContain("previous[tabId] === ptyId");
   });
 });
 
