@@ -1,5 +1,4 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Activity, ClipboardCopy, Users } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -62,7 +61,6 @@ import {
   paneTreeStorageKey,
 } from "./features/terminal/pane-tree";
 import type {
-  PaneAgentSpawnRequest,
   PaneAttachRequest,
   PaneCloseRequest,
   PaneFocusRequest,
@@ -169,6 +167,7 @@ import { useRightRailActionFeedback } from "./features/right-rail/useRightRailAc
 import { useRightRailGuardrailSelection } from "./features/right-rail/useRightRailGuardrailSelection";
 import { useEditorOpenMode } from "./features/editor/useEditorOpenMode";
 import { usePaneRegistry } from "./features/terminal/usePaneRegistry";
+import { usePaneAgentSpawns } from "./features/terminal/usePaneAgentSpawns";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -516,108 +515,7 @@ export function App() {
   // hand the set to the active tab's PaneTreeContainer, which splits the active
   // pane and binds each agent's PTY (1 pane = 1 agent), so the operator watches
   // them work in genuine terminal panes.
-  const [paneAgentSpawns, setPaneAgentSpawns] = useState<{
-    tabId: string;
-    agents: PaneAgentSpawnRequest["agents"][number][];
-    sequence: number;
-  } | null>(null);
-  // Always-current active tab id read by the identity-stable mountAgentPtyInPane
-  // below, so the agent-event listener does not have to re-subscribe per tab.
-  const activeTabIdRef = useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
-  // Globally monotonic spawn-request sequence. Each tab's PaneTreeContainer only
-  // processes a request whose sequence exceeds the last it handled, so deriving
-  // the next sequence from the *last active tab's* request (mount A→B→A) would
-  // reset it to 1 and the re-mount into A would be silently ignored. A global
-  // counter keeps every tab's requests strictly increasing.
-  const paneSpawnSequenceRef = useRef(0);
-
-  // Single owner of agent-pty → central-pane mounting. Both the autonomous loop
-  // (agent-event payload.terminalId) and the orchestra/manual dispatch
-  // (SpawnResult.pty_id) funnel through here so the two paths can't diverge
-  // (WU-VP-2). Dedups by terminalId and bumps the sequence the PaneTreeContainer
-  // watches; an array argument mounts N roles in ONE tiling pass.
-  const mountAgentPtyInPane = useCallback(
-    (
-      agents: PaneAgentSpawnRequest["agents"][number] | PaneAgentSpawnRequest["agents"][number][],
-      tabId: string = activeTabIdRef.current,
-    ) => {
-      const incoming = Array.isArray(agents) ? agents : [agents];
-      if (incoming.length === 0) return;
-      // Compute the next sequence once per call (not inside the updater, which
-      // React may invoke twice under StrictMode) so the counter stays monotonic.
-      paneSpawnSequenceRef.current += 1;
-      const nextSequence = paneSpawnSequenceRef.current;
-      setPaneAgentSpawns((prev) => {
-        const sameTab = prev && prev.tabId === tabId ? prev : null;
-        const existing = sameTab?.agents ?? [];
-        const merged = [...existing];
-        for (const agent of incoming) {
-          if (!merged.some((mounted) => mounted.terminalId === agent.terminalId)) merged.push(agent);
-        }
-        if (merged.length === existing.length) return prev;
-        return { tabId, agents: merged, sequence: nextSequence };
-      });
-    },
-    [],
-  );
-  useEffect(() => {
-    if (!isTauriRuntime()) return;
-    let unlisten: UnlistenFn | null = null;
-    let cancelled = false;
-    void tauriListen<{
-      kind?: string;
-      payload?: {
-        terminalId?: unknown;
-        model?: unknown;
-        taskId?: unknown;
-        roleId?: unknown;
-        backend?: unknown;
-        durability?: unknown;
-        branchName?: unknown;
-      };
-    }>("agent-event", (event) => {
-      if (cancelled) return;
-      const message = event.payload;
-      if (message?.kind !== "agent_spawned") return;
-      const payload = message.payload;
-      const terminalId = payload?.terminalId;
-      if (typeof terminalId !== "string") return;
-      const model = typeof payload?.model === "string" ? payload.model : "sonnet";
-      const taskId = typeof payload?.taskId === "string" ? payload.taskId : undefined;
-      const roleId = typeof payload?.roleId === "string" ? payload.roleId : undefined;
-      const branchName = typeof payload?.branchName === "string" ? payload.branchName : undefined;
-      const backend = payload?.backend === "sidecar" || payload?.backend === "native" ? payload.backend : "native";
-      const durability =
-        payload?.durability === "tmux-durable" || payload?.durability === "degraded"
-          ? payload.durability
-          : backend === "sidecar"
-            ? "tmux-durable"
-            : "degraded";
-      const agent: PaneAgentSpawnRequest["agents"][number] = {
-        terminalId,
-        model,
-        backend,
-        durability,
-        spawnedAt: new Date().toISOString(),
-        ...(taskId ? { taskId } : {}),
-        ...(roleId ? { roleId } : {}),
-        ...(branchName ? { branchName } : {}),
-      };
-      mountAgentPtyInPane(agent);
-    })
-      .then((fn) => {
-        if (cancelled) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {
-        /* backend unreachable (e.g. tests) — fleet panes are best-effort */
-      });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [mountAgentPtyInPane]);
+  const { mountAgentPtyInPane, paneAgentSpawns } = usePaneAgentSpawns(activeTabId);
 
   const activeTerminalTarget = useMemo<ActiveTerminalTarget>(
     () => ({

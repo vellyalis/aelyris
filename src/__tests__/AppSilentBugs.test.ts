@@ -89,6 +89,10 @@ function getPaneRegistrySource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRegistry.ts"), "utf8");
 }
 
+function getPaneAgentSpawnsSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/terminal/usePaneAgentSpawns.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -178,6 +182,19 @@ describe("App pane registry ownership", () => {
     expect(owner).toContain("clearActivePtyId");
     expect(owner).toContain("const liveIds = new Set(tabs.map");
     expect(owner).toContain("previous[tabId] === ptyId");
+  });
+});
+
+describe("App pane agent spawn ownership", () => {
+  it("keeps event parsing, global sequencing, and terminal deduplication in one hook", () => {
+    const src = getSrc();
+    const owner = getPaneAgentSpawnsSource();
+
+    expect(src).toContain("usePaneAgentSpawns(activeTabId)");
+    expect(owner).toContain('tauriListen<AgentSpawnedEvent>("agent-event"');
+    expect(owner).toContain("sequenceRef.current += 1");
+    expect(owner).toContain("mounted.terminalId === agent.terminalId");
+    expect(owner).toContain('event.payload?.kind !== "agent_spawned"');
   });
 });
 

@@ -90,8 +90,14 @@ describe("App orchestra → central pane wiring", () => {
     import: "default",
     eager: true,
   }) as Record<string, string>;
+  const paneSpawnSources = import.meta.glob("../features/terminal/usePaneAgentSpawns.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>;
   const src = Object.values(sources)[0] ?? "";
   const orchestraHookSrc = Object.values(hookSources)[0] ?? "";
+  const paneSpawnHookSrc = Object.values(paneSpawnSources)[0] ?? "";
 
   it("mounts orchestra launches as central panes instead of discarding a count", () => {
     expect(orchestraHookSrc).toContain("const launches = await launchOrchestraPrompts(");
@@ -99,8 +105,10 @@ describe("App orchestra → central pane wiring", () => {
   });
 
   it("routes the autonomous loop path through the same unified mount (WU-VP-2)", () => {
-    expect(src).toContain("mountAgentPtyInPane(agent)");
+    expect(src).toContain("usePaneAgentSpawns(activeTabId)");
+    expect(paneSpawnHookSrc).toContain("mountAgentPtyInPane(agent)");
+    expect(paneSpawnHookSrc).toContain('tauriListen<AgentSpawnedEvent>("agent-event"');
     // The old divergent inline spawn-merge must be gone from the listener.
-    expect(src).not.toContain("agents: [...agents, agent],");
+    expect(paneSpawnHookSrc).not.toContain("agents: [...agents, agent],");
   });
 });
