@@ -16,10 +16,10 @@ try {
   failed = true;
   scenarios.push({ id: "typescript-contract", status: "fail", error: error instanceof Error ? error.message : String(error) });
 }
-const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", audit: "src/features/right-rail/rightRailAudit.ts", visualQa: "src/features/right-rail/rightRailVisualQa.ts", widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts", feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts", feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts" };
+const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", audit: "src/features/right-rail/rightRailAudit.ts", visualQa: "src/features/right-rail/rightRailVisualQa.ts", widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx", actionFeedback: "src/features/right-rail/useRightRailActionFeedback.ts", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts", feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts", feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts" };
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
 for (const [id, ok, evidence] of [
-  ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 5093, { lines: source.app.split(/\r?\n/).length, ceiling: 5093 }],
+  ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 5031, { lines: source.app.split(/\r?\n/).length, ceiling: 5031 }],
   ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 688, { lines: source.model.split(/\r?\n/).length, ceiling: 688 }],
   ["lazy-registry-owned", source.app.includes('from "./features/app/lazyPanels"') && source.lazy.includes("export const AgentInspector = lazy"), {}],
   ["bootstrap-schema-owned", source.model.includes('from "./bootstrapAppConfig"') && source.config.includes("export type BootstrapAppConfig"), {}],
@@ -31,6 +31,7 @@ for (const [id, ok, evidence] of [
   ["right-rail-audit-owned", source.model.includes('export * from "./rightRailAudit"') && source.audit.includes("export async function appendRightRailActionAudit"), {}],
   ["right-rail-visual-qa-owned", source.model.includes('export * from "./rightRailVisualQa"') && source.visualQa.includes("export function readDevVisualQaState") && source.visualQa.includes("export function createDevVisualQaCommandBlocks") && source.visualQa.includes("export function createDevVisualQaPanes"), {}],
   ["right-rail-widget-frame-owned", source.model.includes('export * from "./rightRailWidgetFrame"') && source.widgetFrame.includes("export function RightRailWidgetFrame"), {}],
+  ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
 ]) {
   scenarios.push({ id, status: ok ? "pass" : "fail", ...evidence });
   failed ||= !ok;

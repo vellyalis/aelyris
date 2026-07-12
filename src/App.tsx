@@ -102,7 +102,7 @@ import {
   listWorkstationGraphChangedFiles,
   type WorkstationGraphCommandBlock,
 } from "./shared/lib/workstationGraph";
-import type { AuditEventRecord, AuditJournalEventRecord } from "./shared/types/audit";
+import type { AuditEventRecord } from "./shared/types/audit";
 import type { CommandHistoryRecord } from "./shared/types/history";
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
@@ -119,8 +119,6 @@ import {
   createDevVisualQaNegativePathAction,
   createDevVisualQaPanes,
   createDevVisualQaSessions,
-  createRightRailActionResult,
-  createRightRailDestinationResult,
   createRightRailEdgeScoreFeedbackEntry,
   deriveRightRailEdgeFeedbackAxisSummary,
   deriveRightRailEdgeFeedbackStaleEntries,
@@ -145,7 +143,6 @@ import {
   PRODUCT_MODE_ROUTES,
   type ProductModeId,
   parseJsonArtifact,
-  RIGHT_RAIL_ACTION_HISTORY_LIMIT,
   RIGHT_RAIL_ACTION_PHASE,
   RIGHT_RAIL_ACTION_WIDGET,
   RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
@@ -164,9 +161,7 @@ import {
   type RightRailEdgeScoreFeedbackEntry,
   type RightRailEdgeScoreItem,
   type RightRailGuardrailSelection,
-  type RightRailRouteConfirmation,
   RightRailWidgetFrame,
-  type RightRailWidgetId,
   readDevVisualQaState,
   resolveProjectFilePath,
   rightRailModeForOutcomeWidget,
@@ -175,6 +170,7 @@ import {
   sessionTabMatches,
 } from "./features/right-rail/rightRailModel";
 import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightRailFeedbackPersistence";
+import { useRightRailActionFeedback } from "./features/right-rail/useRightRailActionFeedback";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -395,7 +391,6 @@ export function App() {
   const [fileTreeKey, setFileTreeKey] = useState(0);
   const [quickOpenMode, setQuickOpenMode] = useState<"files" | "buffers" | null>(null);
   const [decisionInboxFocusRequest, setDecisionInboxFocusRequest] = useState(0);
-  const [rightRailRouteConfirmation, setRightRailRouteConfirmation] = useState<RightRailRouteConfirmation | null>(null);
   const [rightRailDestinationPrompt, setRightRailDestinationPrompt] = useState<RightRailDestinationPrompt | null>(null);
   const [rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory] = useState<RightRailEdgeScoreFeedbackEntry[]>(
     [],
@@ -415,16 +410,20 @@ export function App() {
       preflight: null,
     }),
   );
-  const [rightRailActionResult, setRightRailActionResult] = useState<RightRailActionResult | null>(null);
-  const [rightRailActionHistory, setRightRailActionHistory] = useState<RightRailActionResult[]>([]);
+  const {
+    rightRailActionHistory,
+    rightRailActionResult,
+    rightRailRouteConfirmation,
+    showRightRailActionResult,
+    showRightRailDestinationOutcome,
+    showRightRailRouteConfirmation,
+  } = useRightRailActionFeedback();
   const [rightRailGuardrailSelection, setRightRailGuardrailSelection] = useState<RightRailGuardrailSelection>(
     loadRightRailGuardrailSelection,
   );
   const [rightRailFixtureSelectedSessionId, setRightRailFixtureSelectedSessionId] = useState<string | null>(null);
   const [paneSwitcherVisible, setPaneSwitcherVisible] = useState(false);
   const rightRailPanelRef = useRef<HTMLDivElement | null>(null);
-  const rightRailActionResultTimerRef = useRef<number | null>(null);
-  const rightRailRouteConfirmationTimerRef = useRef<number | null>(null);
   const rightRailEdgeFeedbackResetNoticeTimerRef = useRef<number | null>(null);
   const rightRailDestinationReachedTelemetryRef = useRef<string | null>(null);
   const rightRailEdgeScoreRef = useRef<Pick<RightRailEdgeScore, "score" | "grade">>({ score: 0, grade: "D" });
@@ -460,12 +459,6 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      if (rightRailActionResultTimerRef.current != null) {
-        window.clearTimeout(rightRailActionResultTimerRef.current);
-      }
-      if (rightRailRouteConfirmationTimerRef.current != null) {
-        window.clearTimeout(rightRailRouteConfirmationTimerRef.current);
-      }
       if (rightRailEdgeFeedbackResetNoticeTimerRef.current != null) {
         window.clearTimeout(rightRailEdgeFeedbackResetNoticeTimerRef.current);
       }
@@ -490,61 +483,6 @@ export function App() {
     }
     saveRightRailGuardrailSelection(rightRailGuardrailSelection);
   }, [rightRailGuardrailSelection]);
-
-  const showRightRailActionResult = useCallback(
-    (
-      action: RightRailAction,
-      tone: RightRailActionResultTone,
-      detail: string,
-      auditRecord: AuditJournalEventRecord | null = null,
-    ) => {
-      if (rightRailActionResultTimerRef.current != null) {
-        window.clearTimeout(rightRailActionResultTimerRef.current);
-      }
-      const result = createRightRailActionResult(action, tone, detail, auditRecord);
-      setRightRailActionResult(result);
-      setRightRailActionHistory((history) => [result, ...history].slice(0, RIGHT_RAIL_ACTION_HISTORY_LIMIT));
-      rightRailActionResultTimerRef.current = window.setTimeout(() => {
-        setRightRailActionResult(null);
-        rightRailActionResultTimerRef.current = null;
-      }, 6_500);
-    },
-    [],
-  );
-  const showRightRailDestinationOutcome = useCallback(
-    (outcome: {
-      label: string;
-      detail: string;
-      tone: RightRailActionResultTone;
-      auditEventId?: number | null;
-      auditCorrelationId?: string | null;
-      routeWidget?: RightRailWidgetId | null;
-      routeLabel?: string | null;
-      routeDetail?: string | null;
-    }) => {
-      if (rightRailActionResultTimerRef.current != null) {
-        window.clearTimeout(rightRailActionResultTimerRef.current);
-      }
-      const result = createRightRailDestinationResult(outcome);
-      setRightRailActionResult(result);
-      setRightRailActionHistory((history) => [result, ...history].slice(0, RIGHT_RAIL_ACTION_HISTORY_LIMIT));
-      rightRailActionResultTimerRef.current = window.setTimeout(() => {
-        setRightRailActionResult(null);
-        rightRailActionResultTimerRef.current = null;
-      }, 6_500);
-    },
-    [],
-  );
-  const showRightRailRouteConfirmation = useCallback((confirmation: Omit<RightRailRouteConfirmation, "createdAt">) => {
-    if (rightRailRouteConfirmationTimerRef.current != null) {
-      window.clearTimeout(rightRailRouteConfirmationTimerRef.current);
-    }
-    setRightRailRouteConfirmation({ ...confirmation, createdAt: Date.now() });
-    rightRailRouteConfirmationTimerRef.current = window.setTimeout(() => {
-      setRightRailRouteConfirmation(null);
-      rightRailRouteConfirmationTimerRef.current = null;
-    }, 5_500);
-  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rightRailMode retriggers focus after tab-panel content swaps while the target widget id stays the same.
   useEffect(() => {

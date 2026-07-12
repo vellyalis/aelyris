@@ -73,6 +73,10 @@ function getRightRailWidgetFrameSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailWidgetFrame.tsx"), "utf8");
 }
 
+function getRightRailActionFeedbackSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/useRightRailActionFeedback.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -2222,7 +2226,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("onOpenWorkflow={handleOpenDecisionWorkflow}");
     expect(src).toContain("onOpenAudit={handleOpenDecisionAudit}");
     expect(src).toContain('setRightRailFocusWidget("workflow")');
-    expect(src).toContain("const [rightRailRouteConfirmation, setRightRailRouteConfirmation]");
+    expect(getRightRailActionFeedbackSource()).toContain("const [rightRailRouteConfirmation, setRightRailRouteConfirmation]");
     expect(src).toContain("showRightRailRouteConfirmation");
     expect(src).toContain("focusConfirmation={");
     expect(getRightRailWidgetFrameSource()).toContain("right-panel-widget-focus-confirmation");
@@ -2290,10 +2294,10 @@ describe("App right rail composition", () => {
     const rightRailModelSrc = getRightRailModelSource();
     const advisor = getRightRailAdvisorSource();
 
-    expect(src).toContain(
+    expect(getRightRailActionFeedbackSource()).toContain(
       "const [rightRailActionResult, setRightRailActionResult] = useState<RightRailActionResult | null>(null)",
     );
-    expect(src).toContain(
+    expect(getRightRailActionFeedbackSource()).toContain(
       "const [rightRailActionHistory, setRightRailActionHistory] = useState<RightRailActionResult[]>([])",
     );
     expect(rightRailModelSrc).toContain("RIGHT_RAIL_ACTION_HISTORY_LIMIT");
@@ -2312,17 +2316,17 @@ describe("App right rail composition", () => {
     expect(src).toContain("allowedToolsForGuardrailProfile(rightRailGuardrailProfile).join");
     expect(src).toContain('className="right-panel-workforce-profile"');
     expect(src).toContain("setRightRailGuardrailSelection(event.currentTarget.value as RightRailGuardrailSelection)");
-    expect(src).toContain("rightRailActionResultTimerRef");
+    expect(getRightRailActionFeedbackSource()).toContain("actionResultTimerRef");
     expect(src).toContain("window.setTimeout");
-    expect(src).toContain("window.clearTimeout(rightRailActionResultTimerRef.current)");
-    expect(src).toContain(
+    expect(getRightRailActionFeedbackSource()).toContain("window.clearTimeout(actionResultTimerRef.current)");
+    expect(getRightRailActionFeedbackSource()).toContain(
       "setRightRailActionHistory((history) => [result, ...history].slice(0, RIGHT_RAIL_ACTION_HISTORY_LIMIT))",
     );
     expect(src).toContain("showRightRailActionResult(action");
-    expect(src).toContain("createRightRailDestinationResult");
-    expect(src).toContain("routeWidget?: RightRailWidgetId | null");
-    expect(src).toContain("routeLabel?: string | null");
-    expect(src).toContain("routeDetail?: string | null");
+    expect(getRightRailActionFeedbackSource()).toContain("createRightRailDestinationResult");
+    expect(getRightRailActionFeedbackSource()).toContain("routeWidget?: RightRailWidgetId | null");
+    expect(getRightRailActionFeedbackSource()).toContain("routeLabel?: string | null");
+    expect(getRightRailActionFeedbackSource()).toContain("routeDetail?: string | null");
     expect(src).toContain("showRightRailDestinationOutcome");
     expect(src).toContain("onDestinationOutcome={showRightRailDestinationOutcome}");
     expect(src).toContain('className="right-panel-action-result"');
@@ -2365,7 +2369,7 @@ describe("App right rail composition", () => {
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
 
-    expect(src).toContain("type RightRailWidgetId");
+    expect(getRightRailTypesSource()).toContain("type RightRailWidgetId");
     expect(getRightRailWidgetFrameSource()).toContain("function RightRailWidgetFrame");
     expect(getRightRailWidgetFrameSource()).toContain("loadRightRailWidgetOpen");
     expect(getRightRailWidgetFrameSource()).toContain("saveRightRailWidgetOpen");
