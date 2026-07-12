@@ -49,6 +49,10 @@ function getRightRailTypesSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailTypes.ts"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getRightRailFeedbackPersistenceSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/useRightRailFeedbackPersistence.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -1900,6 +1904,7 @@ describe("App right rail composition", () => {
     const lazyPanelsSrc = getLazyPanelsSource();
     const appStoreSrc = getAppStoreSource();
     const rightRailTypesSrc = getRightRailTypesSource();
+    const rightRailFeedbackPersistenceSrc = getRightRailFeedbackPersistenceSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -2018,8 +2023,8 @@ describe("App right rail composition", () => {
     expect(src).toContain("clearRightRailEdgeFeedbackHistory");
     expect(rightRailModelSrc).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID");
     expect(rightRailModelSrc).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID");
-    expect(src).toContain("loadRightRailEdgeFeedbackHistory");
-    expect(src).toContain("saveRightRailEdgeFeedbackHistory");
+    expect(rightRailFeedbackPersistenceSrc).toContain("loadRightRailEdgeFeedbackHistory");
+    expect(rightRailFeedbackPersistenceSrc).toContain("saveRightRailEdgeFeedbackHistory");
     expect(src).toContain("deriveRightRailEdgeFeedbackAxisSummary");
     expect(src).toContain("deriveRightRailEdgeNextBestAction");
     expect(src).toContain("formatRightRailEdgeFeedbackStaleReason");
@@ -2035,8 +2040,8 @@ describe("App right rail composition", () => {
     expect(src).toContain("setRightRailEdgeFeedbackHistory((history) =>");
     expect(src).toContain("const nextHistory = [");
     expect(src).toContain("saveRightRailEdgeFeedbackHistory(projectPath, nextHistory)");
-    expect(src).toContain("const rightRailEdgeFeedbackHydratedKeyRef = useRef<string | null>(null)");
-    expect(src).toContain("const rightRailEdgeFeedbackSkipSaveKeyRef = useRef<string | null>(null)");
+    expect(rightRailFeedbackPersistenceSrc).toContain("const hydratedKeyRef = useRef<string | null>(null)");
+    expect(rightRailFeedbackPersistenceSrc).toContain("const skipSaveKeyRef = useRef<string | null>(null)");
     expect(src).toContain("const rightRailEdgeFeedbackStaleTelemetryRef = useRef<Set<string>>(new Set())");
     expect(src).toContain("const rightRailEdgeFeedbackResetNoticeTimerRef = useRef<number | null>(null)");
     expect(src).toContain("const handleClearRightRailEdgeFeedbackHistory = useCallback");
@@ -2050,9 +2055,9 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain("window.localStorage.removeItem(key)");
     expect(rightRailModelSrc).toContain("delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]");
     expect(rightRailModelSrc).toContain("url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
-    expect(src).toContain("setRightRailEdgeFeedbackHistory(loadRightRailEdgeFeedbackHistory(projectPath))");
-    expect(src).toContain("saveRightRailEdgeFeedbackHistory(projectPath, rightRailEdgeFeedbackHistory)");
-    expect(src).toContain("rightRailEdgeFeedbackSkipSaveKeyRef.current === key");
+    expect(rightRailFeedbackPersistenceSrc).toContain("setHistory(loadRightRailEdgeFeedbackHistory(projectPath))");
+    expect(rightRailFeedbackPersistenceSrc).toContain("saveRightRailEdgeFeedbackHistory(projectPath, history)");
+    expect(rightRailFeedbackPersistenceSrc).toContain("skipSaveKeyRef.current === key");
     expect(rightRailModelSrc).toContain(
       "({ id, axisId, axisLabel, actionLabel, targetWidget, score, grade, previousScore, delta, trend, createdAt }) => ({",
     );

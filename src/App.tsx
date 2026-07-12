@@ -138,7 +138,6 @@ import {
   isRightRailGuardrailSelection,
   isRightRailQaFixtureRisk,
   isRightRailWidgetId,
-  loadRightRailEdgeFeedbackHistory,
   loadRightRailGuardrailSelection,
   mergeRightRailChangedFiles,
   PRODUCT_MODE_INSPECTOR_SUMMARY,
@@ -170,12 +169,12 @@ import {
   type RightRailWidgetId,
   readDevVisualQaState,
   resolveProjectFilePath,
-  rightRailEdgeFeedbackStorageKey,
   rightRailModeForOutcomeWidget,
   saveRightRailEdgeFeedbackHistory,
   saveRightRailGuardrailSelection,
   sessionTabMatches,
 } from "./features/right-rail/rightRailModel";
+import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightRailFeedbackPersistence";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -429,8 +428,6 @@ export function App() {
   const rightRailEdgeFeedbackResetNoticeTimerRef = useRef<number | null>(null);
   const rightRailDestinationReachedTelemetryRef = useRef<string | null>(null);
   const rightRailEdgeScoreRef = useRef<Pick<RightRailEdgeScore, "score" | "grade">>({ score: 0, grade: "D" });
-  const rightRailEdgeFeedbackHydratedKeyRef = useRef<string | null>(null);
-  const rightRailEdgeFeedbackSkipSaveKeyRef = useRef<string | null>(null);
   const rightRailEdgeFeedbackStaleTelemetryRef = useRef<Set<string>>(new Set());
   const rightRailProjectPathRef = useRef("");
   const rightRailGuardrailProfileRef = useRef<WorkforceGuardrailProfile>("Research");
@@ -933,21 +930,7 @@ export function App() {
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
   rightRailProjectPathRef.current = projectPath;
-  useEffect(() => {
-    const key = rightRailEdgeFeedbackStorageKey(projectPath);
-    rightRailEdgeFeedbackHydratedKeyRef.current = key;
-    rightRailEdgeFeedbackSkipSaveKeyRef.current = key;
-    setRightRailEdgeFeedbackHistory(loadRightRailEdgeFeedbackHistory(projectPath));
-  }, [projectPath]);
-  useEffect(() => {
-    const key = rightRailEdgeFeedbackStorageKey(projectPath);
-    if (!key || rightRailEdgeFeedbackHydratedKeyRef.current !== key) return;
-    if (rightRailEdgeFeedbackSkipSaveKeyRef.current === key) {
-      rightRailEdgeFeedbackSkipSaveKeyRef.current = null;
-      return;
-    }
-    saveRightRailEdgeFeedbackHistory(projectPath, rightRailEdgeFeedbackHistory);
-  }, [projectPath, rightRailEdgeFeedbackHistory]);
+  useRightRailFeedbackPersistence(projectPath, rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory);
   useEffect(() => {
     let active = true;
     let interval: number | null = null;
@@ -1368,7 +1351,6 @@ export function App() {
   );
   const handleClearRightRailEdgeFeedbackHistory = useCallback(() => {
     clearRightRailEdgeFeedbackHistory(projectPath);
-    rightRailEdgeFeedbackSkipSaveKeyRef.current = null;
     setRightRailEdgeFeedbackHistory([]);
     setRightRailEdgeFeedbackResetNotice({
       createdAt: Date.now(),
