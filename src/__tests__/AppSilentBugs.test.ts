@@ -65,6 +65,10 @@ function getRightRailAuditSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailAudit.ts"), "utf8");
 }
 
+function getRightRailVisualQaSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailVisualQa.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -2446,22 +2450,22 @@ describe("App right rail composition", () => {
 
   it("keeps a dev-only negative path fixture for native right rail release smoke", () => {
     const src = getSrc();
-    const rightRailModelSrc = getRightRailModelSource();
+    const rightRailVisualQaSrc = getRightRailVisualQaSource();
 
-    expect(rightRailModelSrc).toContain('negativePath: "missing-diff" | "stale-pane" | null');
-    expect(rightRailModelSrc).toContain('params.get("negativePath") ?? params.get("rightRailNegativePath")');
-    expect(rightRailModelSrc).toContain("function createDevVisualQaNegativePathAction");
-    expect(rightRailModelSrc).toContain('label: "QA missing diff"');
-    expect(rightRailModelSrc).toContain('reason: "Negative-path fixture intentionally omits a file target."');
-    expect(rightRailModelSrc).toContain('evidence: "QA URL requested a missing diff target fixture."');
-    expect(rightRailModelSrc).toContain('auditEvent: "right_rail.qa_missing_diff.opened"');
-    expect(rightRailModelSrc).toContain('operation: "open-primary-diff"');
-    expect(rightRailModelSrc).toContain('label: "QA stale pane"');
-    expect(rightRailModelSrc).toContain('targetPaneRole: "__qa_missing_pane__"');
-    expect(rightRailModelSrc).toContain('reason: "Negative-path fixture intentionally points at a stale pane role."');
-    expect(rightRailModelSrc).toContain('evidence: "QA URL requested a stale pane target fixture."');
-    expect(rightRailModelSrc).toContain('auditEvent: "right_rail.qa_stale_pane.opened"');
-    expect(rightRailModelSrc).toContain('operation: "focus-pane"');
+    expect(rightRailVisualQaSrc).toContain('negativePath: "missing-diff" | "stale-pane" | null');
+    expect(rightRailVisualQaSrc).toContain('params.get("negativePath") ?? params.get("rightRailNegativePath")');
+    expect(rightRailVisualQaSrc).toContain("function createDevVisualQaNegativePathAction");
+    expect(rightRailVisualQaSrc).toContain('label: "QA missing diff"');
+    expect(rightRailVisualQaSrc).toContain('reason: "Negative-path fixture intentionally omits a file target."');
+    expect(rightRailVisualQaSrc).toContain('evidence: "QA URL requested a missing diff target fixture."');
+    expect(rightRailVisualQaSrc).toContain('auditEvent: "right_rail.qa_missing_diff.opened"');
+    expect(rightRailVisualQaSrc).toContain('operation: "open-primary-diff"');
+    expect(rightRailVisualQaSrc).toContain('label: "QA stale pane"');
+    expect(rightRailVisualQaSrc).toContain('targetPaneRole: "__qa_missing_pane__"');
+    expect(rightRailVisualQaSrc).toContain('reason: "Negative-path fixture intentionally points at a stale pane role."');
+    expect(rightRailVisualQaSrc).toContain('evidence: "QA URL requested a stale pane target fixture."');
+    expect(rightRailVisualQaSrc).toContain('auditEvent: "right_rail.qa_stale_pane.opened"');
+    expect(rightRailVisualQaSrc).toContain('operation: "focus-pane"');
     expect(src).toContain(
       "const rightRailNegativePathAction = createDevVisualQaNegativePathAction(devVisualQa.negativePath)",
     );
@@ -2483,22 +2487,23 @@ describe("App visual QA bootstrap", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
     const rightRailFeedbackStorageSrc = getRightRailFeedbackStorageSource();
+    const rightRailVisualQaSrc = getRightRailVisualQaSource();
 
-    expect(rightRailModelSrc).toContain("function readDevVisualQaState()");
+    expect(rightRailVisualQaSrc).toContain("function readDevVisualQaState()");
     expect(rightRailFeedbackStorageSrc).toContain("function isExplicitDevVisualQaRequest()");
     expect(rightRailFeedbackStorageSrc).toContain("import.meta.env.DEV");
     expect(rightRailFeedbackStorageSrc).toContain('params.get("aelyrisVisualQa") === "1"');
     expect(rightRailModelSrc).not.toContain('window.localStorage.getItem("aelyris:visualQa") === "1"');
-    expect(rightRailModelSrc).toContain('params.get("diagnostics") === "1"');
-    expect(rightRailModelSrc).toContain("railScenarioParam");
-    expect(rightRailModelSrc).toContain("usesDeprecatedStateAlias");
-    expect(rightRailModelSrc).toContain("hasUrlEdgeLoop");
+    expect(rightRailVisualQaSrc).toContain('params.get("diagnostics") === "1"');
+    expect(rightRailVisualQaSrc).toContain("railScenarioParam");
+    expect(rightRailVisualQaSrc).toContain("usesDeprecatedStateAlias");
+    expect(rightRailVisualQaSrc).toContain("hasUrlEdgeLoop");
     expect(src).toContain("rightRailTruthNotice");
     expect(src).toContain('className="right-panel-truth-notice"');
     expect(src).toContain("Visual QA simulation");
     expect(src).toContain("runtime truth is unchanged");
-    expect(rightRailModelSrc).toContain('requestedRail === "command"');
-    expect(rightRailModelSrc).toContain('requestedRail === "review"');
+    expect(rightRailVisualQaSrc).toContain('requestedRail === "command"');
+    expect(rightRailVisualQaSrc).toContain('requestedRail === "review"');
     expect(src).toContain("createDevVisualQaPanes");
     expect(src).toContain("visualTerminalPaneTargets");
     expect(src).toContain("setRightRailMode(devVisualQa.railMode)");
