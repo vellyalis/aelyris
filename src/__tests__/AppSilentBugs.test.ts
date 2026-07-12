@@ -81,6 +81,10 @@ function getRightRailGuardrailSelectionSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/useRightRailGuardrailSelection.ts"), "utf8");
 }
 
+function getEditorOpenModeSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/editor/useEditorOpenMode.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -142,6 +146,21 @@ describe("App unsaved editor guards", () => {
     const body = tabSwitch?.[0] ?? "";
     expect(body.indexOf("await confirmDiscardUnsavedFiles")).toBeLessThan(body.indexOf("clearFiles()"));
     expect(body).toMatch(/if\s*\(!\(await confirmDiscardUnsavedFiles/);
+  });
+});
+
+describe("App editor open-mode ownership", () => {
+  it("keeps mode synchronization and external-editor fallbacks in one hook owner", () => {
+    const src = getSrc();
+    const owner = getEditorOpenModeSource();
+
+    expect(src).toContain("useEditorOpenMode({");
+    expect(owner).toContain("EDITOR_OPEN_MODE_CHANGE_EVENT");
+    expect(owner).toContain("EDITOR_OPEN_MODE_STORAGE_KEY");
+    expect(owner).toContain('operation: "open_in_vscode"');
+    expect(owner).toContain('operation: "open_git_file_diff_in_vscode"');
+    expect(owner).toContain("setOpenInDiff(true)");
+    expect(owner).toContain("openFile(path)");
   });
 });
 

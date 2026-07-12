@@ -168,6 +168,7 @@ import {
 import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightRailFeedbackPersistence";
 import { useRightRailActionFeedback } from "./features/right-rail/useRightRailActionFeedback";
 import { useRightRailGuardrailSelection } from "./features/right-rail/useRightRailGuardrailSelection";
+import { useEditorOpenMode } from "./features/editor/useEditorOpenMode";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -186,14 +187,6 @@ import {
   parseAuthenticatedPromptPreflightMatrixReport,
 } from "./shared/lib/authenticatedPromptConsent";
 import { markFirstPaint } from "./shared/lib/bootMetrics";
-import {
-  EDITOR_OPEN_MODE_CHANGE_EVENT,
-  EDITOR_OPEN_MODE_STORAGE_KEY,
-  type EditorOpenMode,
-  loadEditorOpenMode,
-  openGitDiffInVSCode,
-  openInVSCode,
-} from "./shared/lib/externalEditor";
 import {
   FALLBACK_TELEMETRY_EVENT,
   type FallbackTelemetryDetail,
@@ -382,7 +375,6 @@ export function App() {
 
   const devVisualQa = useMemo(readDevVisualQaState, []);
 
-  const [editorOpenMode, setEditorOpenMode] = useState(loadEditorOpenMode);
   const [editorLine, setEditorLine] = useState<number | undefined>(undefined);
   const [openInDiff, setOpenInDiff] = useState(false);
   const [fileTreeKey, setFileTreeKey] = useState(0);
@@ -425,26 +417,6 @@ export function App() {
   const rightRailEdgeFeedbackStaleTelemetryRef = useRef<Set<string>>(new Set());
   const rightRailProjectPathRef = useRef("");
   const rightRailGuardrailProfileRef = useRef<WorkforceGuardrailProfile>("Research");
-
-  useEffect(() => {
-    const onEditorModeChange = (event: Event) => {
-      const next = (event as CustomEvent<EditorOpenMode>).detail;
-      if (next === "vscode" || next === "builtin") {
-        setEditorOpenMode(next);
-      }
-    };
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === EDITOR_OPEN_MODE_STORAGE_KEY) {
-        setEditorOpenMode(loadEditorOpenMode());
-      }
-    };
-    window.addEventListener(EDITOR_OPEN_MODE_CHANGE_EVENT, onEditorModeChange);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener(EDITOR_OPEN_MODE_CHANGE_EVENT, onEditorModeChange);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: this effect intentionally resets fixture selection when the visual-QA scenario changes.
   useEffect(() => {
@@ -842,6 +814,12 @@ export function App() {
   } = useAgentFleet();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  const { handleFileSelect, handleOpenDiff } = useEditorOpenMode({
+    projectPath,
+    openFile,
+    setEditorLine,
+    setOpenInDiff,
+  });
   rightRailProjectPathRef.current = projectPath;
   useRightRailFeedbackPersistence(projectPath, rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory);
   useEffect(() => {
@@ -1865,52 +1843,6 @@ export function App() {
       }
     },
     [startAgent, projectPath],
-  );
-
-  const handleFileSelect = useCallback(
-    (path: string, options: { line?: number } = {}) => {
-      setOpenInDiff(false);
-      if (editorOpenMode === "vscode") {
-        void openInVSCode(path, { line: options.line }).catch((err) => {
-          reportInvokeFailure({
-            source: "editor",
-            operation: "open_in_vscode",
-            err,
-          });
-          if (options.line !== undefined) {
-            setEditorLine(options.line);
-          }
-          openFile(path);
-        });
-        return;
-      }
-      if (options.line !== undefined) {
-        setEditorLine(options.line);
-      }
-      openFile(path);
-    },
-    [editorOpenMode, openFile],
-  );
-
-  const handleOpenDiff = useCallback(
-    (path: string) => {
-      if (editorOpenMode === "vscode") {
-        setOpenInDiff(false);
-        void openGitDiffInVSCode(projectPath, path).catch((err) => {
-          reportInvokeFailure({
-            source: "editor",
-            operation: "open_git_file_diff_in_vscode",
-            err,
-          });
-          setOpenInDiff(true);
-          openFile(path);
-        });
-        return;
-      }
-      setOpenInDiff(true);
-      openFile(path);
-    },
-    [editorOpenMode, openFile, projectPath],
   );
 
   const unsavedFiles = useAppStore((s) => s.unsavedFiles);
