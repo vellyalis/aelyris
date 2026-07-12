@@ -2021,7 +2021,7 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackHistory");
     expect(rightRailFeedbackStorageSrc).toContain("isSafeRightRailEdgeFeedbackAxisId");
     expect(rightRailModelSrc).toContain("sanitizeRightRailEdgeFeedbackAxisLabel");
-    expect(rightRailModelSrc).toContain("Legacy axis");
+    expect(rightRailFeedbackStorageSrc).toContain("Legacy axis");
     expect(rightRailModelSrc).toContain("if (!isSafeRightRailEdgeFeedbackAxisId(rawAxisId)) return null");
     expect(rightRailModelSrc).toContain(
       "axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel)",

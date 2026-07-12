@@ -42,8 +42,6 @@ import type {
 export type * from "./rightRailTypes";
 import {
   RIGHT_RAIL_EDGE_FEEDBACK_ACTION_LABELS,
-  RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS,
-  RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS,
   RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY,
   RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
   RIGHT_RAIL_EDGE_FEEDBACK_TARGET_WIDGETS,
@@ -53,7 +51,7 @@ export * from "./rightRailFeedbackContract";
 import {
   isPlainRecord, isRightRailEdgeFeedbackGrade, isRightRailEdgeFeedbackTrend,
   isSafeRightRailEdgeFeedbackAxisId, normalizeProjectPath, rightRailEdgeFeedbackStorageKey,
-  sanitizeBoundedNumber,
+  sanitizeBoundedNumber, sanitizeRightRailEdgeFeedbackAxisLabel,
 } from "./rightRailFeedbackPersistence";
 export * from "./rightRailFeedbackPersistence";
 
@@ -1263,21 +1261,6 @@ export const CLOSED_INTERACTIVE_STATUSES = new Set([
 export function isLiveInteractiveSessionStatus(status: string): boolean {
   const normalized = status.trim().toLowerCase();
   return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
-}
-
-export function isRightRailEdgeFeedbackAxisId(value: unknown): value is RightRailEdgeScoreItem["id"] {
-  return typeof value === "string" && RIGHT_RAIL_EDGE_FEEDBACK_AXIS_IDS.includes(value as RightRailEdgeScoreItem["id"]);
-}
-
-export function sanitizeRightRailEdgeFeedbackAxisLabel(axisId: string, value: unknown): string {
-  if (isRightRailEdgeFeedbackAxisId(axisId)) return RIGHT_RAIL_EDGE_FEEDBACK_AXIS_LABELS[axisId];
-  if (typeof value !== "string") return "Legacy axis";
-  const normalized = value
-    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 32);
-  return normalized.length > 0 ? normalized : "Legacy axis";
 }
 
 export function sanitizeRightRailEdgeFeedbackEntry(value: unknown): RightRailEdgeScoreFeedbackEntry | null {
