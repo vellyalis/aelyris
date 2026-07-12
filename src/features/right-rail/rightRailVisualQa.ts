@@ -1,5 +1,8 @@
 import { VISUAL_QA_FALLBACK_PROJECT_PATH } from "../../shared/hooks/useTabManager";
+import { type AgentFleetSession, headlessToFleetSession } from "../../shared/lib/agentFleet";
 import type { RightRailAction, RightRailMode } from "../../shared/lib/rightRailAdvisor";
+import type { WorkstationGraphCommandBlock } from "../../shared/lib/workstationGraph";
+import type { AgentSession } from "../../shared/types/agent";
 import { RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM } from "./rightRailFeedbackContract";
 
 export interface DevVisualQaState {
@@ -113,4 +116,105 @@ export function createDevVisualQaNegativePathAction(negativePath: DevVisualQaSta
     };
   }
   return null;
+}
+
+export function createDevVisualQaSessions(
+  scenario: DevVisualQaState["railScenario"],
+  projectPath: string,
+): AgentFleetSession[] {
+  const now = Date.now();
+  const worktree = {
+    name: "aelyris-command-center",
+    path: `${projectPath}/.aelyris/worktrees/command-center`,
+    branch: "feature/command-center",
+    is_main: false,
+    head_sha: "qa12345",
+    status: "Modified" as const,
+  };
+  const base = (id: string, overrides: Partial<AgentSession> = {}): AgentFleetSession =>
+    headlessToFleetSession({
+      id,
+      name: id,
+      status: "coding",
+      model: "claude-sonnet",
+      prompt: "Harden Aelyris Command Center",
+      startedAt: now - 120_000,
+      logs: [
+        { timestamp: now - 90_000, type: "tool_use", content: 'Edit({"file":"src/App.tsx"})' },
+        { timestamp: now - 30_000, type: "text", content: "Mapped right rail state into next actions." },
+      ],
+      cost: 0.42,
+      tokensUsed: 18_000,
+      branch: "feature/command-center",
+      filesChanged: 2,
+      changedFileDetails: [
+        { path: "src/App.tsx", action: "edit", toolName: "Edit", timestamp: now - 60_000 },
+        { path: "src/shared/lib/rightRailAdvisor.ts", action: "edit", toolName: "Edit", timestamp: now - 45_000 },
+      ],
+      worktree,
+      workspaceScope: projectPath,
+      ...overrides,
+    });
+
+  if (scenario === "idle") return [];
+  if (scenario === "review") {
+    return [base("qa-review", { name: "Review ready", status: "done", role: "reviewer", finalReport: { status: "ready", title: "Command Center review", updatedAt: now - 5_000 }, closeState: "collectable" })];
+  }
+  if (scenario === "blocked") {
+    return [base("qa-blocked", { name: "Blocked implementer", status: "waiting", role: "implementer", blockedReason: "Destructive file-system write requires explicit approval before deleting generated output.", nextActor: "human" })];
+  }
+  if (scenario === "unhealthy") {
+    return [base("qa-unhealthy", { name: "Long context runner", status: "coding", role: "implementer", tokensUsed: 192_000, logs: [{ timestamp: now - 45_000, type: "error", content: "Context pressure is above handoff threshold." }] })];
+  }
+  if (scenario === "conductor") {
+    return [
+      base("qa-impl", { name: "Implementer", role: "implementer", startedAt: now - 180_000 }),
+      base("qa-test", { name: "Tester", role: "tester", handoffFrom: "qa-impl", startedAt: now - 120_000 }),
+      base("qa-reviewer", { name: "Reviewer", role: "reviewer", handoffFrom: "qa-test", startedAt: now - 60_000 }),
+    ];
+  }
+  return [
+    base("qa-impl", { name: "Implementer", role: "implementer" }),
+    base("qa-reviewer", { name: "Reviewer", role: "reviewer", handoffFrom: "qa-impl" }),
+  ];
+}
+
+export function createDevVisualQaChangedFiles(scenario: DevVisualQaState["railScenario"]): Array<{ path: string; status: string }> {
+  if (scenario === "idle") return [];
+  const files = [
+    { path: "src/App.tsx", status: "modified" },
+    { path: "src/shared/lib/rightRailAdvisor.ts", status: "modified" },
+  ];
+  return scenario === "blocked" || scenario === "unhealthy"
+    ? files
+    : [...files, { path: "src/styles/global.css", status: "modified" }];
+}
+
+export function createDevVisualQaCommandBlocks(
+  scenario: DevVisualQaState["railScenario"],
+  projectPath: string,
+): WorkstationGraphCommandBlock[] {
+  if (scenario === "idle") return [];
+  const cwd = projectPath || VISUAL_QA_FALLBACK_PROJECT_PATH;
+  const agentId = scenario === "review" ? "qa-review" : scenario === "blocked" ? "qa-blocked" : "qa-impl";
+  return [{
+    id: "qa-command-typecheck",
+    command: "pnpm exec tsc --noEmit",
+    cwd,
+    status: "passed",
+    exitCode: 0,
+    terminalId: "qa-review-shell",
+    agentId,
+    filePaths: ["src/App.tsx", "src/shared/lib/rightRailAdvisor.ts"],
+    validationKind: "typecheck",
+    commandSequence: 101,
+    outputSequence: 102,
+    endSequence: 103,
+    commandHistorySize: 18,
+    outputHistorySize: 19,
+    endHistorySize: 21,
+    commandScreenLine: 4,
+    outputScreenLine: 5,
+    endScreenLine: 7,
+  }];
 }

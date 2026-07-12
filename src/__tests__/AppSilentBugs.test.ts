@@ -2209,10 +2209,10 @@ describe("App right rail composition", () => {
     expect(src).toContain('{renderRightRailDestinationPrompt("live-panes")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("processes")}');
     expect(rightRailModelSrc).toContain("Weakest:");
-    expect(rightRailModelSrc).toContain(
+    expect(getRightRailVisualQaSource()).toContain(
       'blockedReason: "Destructive file-system write requires explicit approval before deleting generated output."',
     );
-    expect(rightRailModelSrc).toContain('nextActor: "human"');
+    expect(getRightRailVisualQaSource()).toContain('nextActor: "human"');
     expect(src).toContain('widget="decision-inbox"');
     expect(src).toContain("<DecisionInboxPanel");
     expect(src).toContain("onOpenWorkflow={handleOpenDecisionWorkflow}");

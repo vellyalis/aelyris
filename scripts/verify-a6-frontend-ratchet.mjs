@@ -20,7 +20,7 @@ const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailMod
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
 for (const [id, ok, evidence] of [
   ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 5093, { lines: source.app.split(/\r?\n/).length, ceiling: 5093 }],
-  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1234, { lines: source.model.split(/\r?\n/).length, ceiling: 1234 }],
+  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 1098, { lines: source.model.split(/\r?\n/).length, ceiling: 1098 }],
   ["lazy-registry-owned", source.app.includes('from "./features/app/lazyPanels"') && source.lazy.includes("export const AgentInspector = lazy"), {}],
   ["bootstrap-schema-owned", source.model.includes('from "./bootstrapAppConfig"') && source.config.includes("export type BootstrapAppConfig"), {}],
   ["bootstrap-effects-owned", source.app.includes("useBootstrapAppConfig()") && source.bootstrapHook.includes('invoke<BootstrapAppConfig>("load_app_config")'), {}],
@@ -29,7 +29,7 @@ for (const [id, ok, evidence] of [
   ["feedback-contract-owned", source.model.includes('from "./rightRailFeedbackContract"') && source.feedbackContract.includes("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX"), {}],
   ["feedback-storage-owned", source.model.includes('from "./rightRailFeedbackPersistence"') && source.feedbackStorage.includes("rightRailWorkspaceStorageHash"), {}],
   ["right-rail-audit-owned", source.model.includes('export * from "./rightRailAudit"') && source.audit.includes("export async function appendRightRailActionAudit"), {}],
-  ["right-rail-visual-qa-owned", source.model.includes('export * from "./rightRailVisualQa"') && source.visualQa.includes("export function readDevVisualQaState"), {}],
+  ["right-rail-visual-qa-owned", source.model.includes('export * from "./rightRailVisualQa"') && source.visualQa.includes("export function readDevVisualQaState") && source.visualQa.includes("export function createDevVisualQaCommandBlocks"), {}],
 ]) {
   scenarios.push({ id, status: ok ? "pass" : "fail", ...evidence });
   failed ||= !ok;
