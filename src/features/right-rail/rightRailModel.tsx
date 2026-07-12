@@ -41,15 +41,10 @@ import type {
 } from "./rightRailTypes";
 export type * from "./rightRailTypes";
 import {
-  RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY,
-  RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
   RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM,
 } from "./rightRailFeedbackContract";
 export * from "./rightRailFeedbackContract";
-import {
-  isPlainRecord, normalizeProjectPath, rightRailEdgeFeedbackStorageKey,
-  sanitizeRightRailEdgeFeedbackEntry, sanitizeRightRailEdgeFeedbackHistory,
-} from "./rightRailFeedbackPersistence";
+import { normalizeProjectPath } from "./rightRailFeedbackPersistence";
 export * from "./rightRailFeedbackPersistence";
 
 export const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
@@ -419,26 +414,6 @@ export function readDevVisualQaState(): DevVisualQaState {
     usesDeprecatedStateAlias: requestedScenarioParam === "state",
     hasUrlEdgeLoop: params.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM),
   };
-}
-
-export function isExplicitDevVisualQaRequest(): boolean {
-  if (!import.meta.env.DEV || typeof window === "undefined") return false;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("aelyrisVisualQa") === "1" || params.get("visualQa") === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function shouldMirrorRightRailEdgeFeedbackHistoryUrl(): boolean {
-  if (!isExplicitDevVisualQaRequest()) return false;
-  try {
-    const url = new URL(window.location.href);
-    return url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
-  } catch {
-    return false;
-  }
 }
 
 export function createDevVisualQaNegativePathAction(
@@ -1258,143 +1233,6 @@ export const CLOSED_INTERACTIVE_STATUSES = new Set([
 export function isLiveInteractiveSessionStatus(status: string): boolean {
   const normalized = status.trim().toLowerCase();
   return normalized.length > 0 && !CLOSED_INTERACTIVE_STATUSES.has(normalized);
-}
-
-export function readRightRailEdgeFeedbackHistoryState(key: string): RightRailEdgeScoreFeedbackEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const state: unknown = window.history.state;
-    if (!isPlainRecord(state)) return [];
-    const payload = state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY];
-    if (!isPlainRecord(payload) || payload.key !== key) return [];
-    return sanitizeRightRailEdgeFeedbackHistory(payload.history);
-  } catch {
-    return [];
-  }
-}
-
-export function readRightRailEdgeFeedbackHistoryUrl(key: string): RightRailEdgeScoreFeedbackEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const url = new URL(window.location.href);
-    const raw = url.searchParams.get(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!isPlainRecord(parsed) || parsed.key !== key) return [];
-    return sanitizeRightRailEdgeFeedbackHistory(parsed.history);
-  } catch {
-    return [];
-  }
-}
-
-export function writeRightRailEdgeFeedbackHistoryState(key: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    const state = isPlainRecord(window.history.state) ? window.history.state : {};
-    window.history.replaceState(
-      {
-        ...state,
-        [RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]: {
-          key,
-          history,
-        },
-      },
-      "",
-      window.location.href,
-    );
-  } catch {
-    /* history.state can be unavailable in constrained browser harnesses */
-  }
-}
-
-export function writeRightRailEdgeFeedbackHistoryUrl(key: string, history: RightRailEdgeScoreFeedbackEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    const url = new URL(window.location.href);
-    url.searchParams.set(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM, JSON.stringify({ key, history }));
-    window.history.replaceState(window.history.state, "", url.toString());
-  } catch {
-    /* URL fallback is best-effort and still privacy-safe when unavailable */
-  }
-}
-
-export function clearRightRailEdgeFeedbackHistory(projectPath: string): void {
-  const key = rightRailEdgeFeedbackStorageKey(projectPath);
-  if (!key || typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    /* localStorage can be unavailable in locked-down WebView contexts */
-  }
-  try {
-    const state = isPlainRecord(window.history.state) ? { ...window.history.state } : {};
-    delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY];
-    const url = new URL(window.location.href);
-    url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM);
-    window.history.replaceState(state, "", url.toString());
-  } catch {
-    /* reset remains best-effort when history or URL mutation is unavailable */
-  }
-}
-
-export function loadRightRailEdgeFeedbackHistory(projectPath: string): RightRailEdgeScoreFeedbackEntry[] {
-  const key = rightRailEdgeFeedbackStorageKey(projectPath);
-  if (!key || typeof window === "undefined") return [];
-  const allowDebugUrlFallback = isExplicitDevVisualQaRequest();
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      if (!allowDebugUrlFallback) return [];
-      const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
-      return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
-    }
-    const parsed: unknown = JSON.parse(raw);
-    return sanitizeRightRailEdgeFeedbackHistory(parsed);
-  } catch {
-    if (!allowDebugUrlFallback) return [];
-    const stateHistory = readRightRailEdgeFeedbackHistoryState(key);
-    return stateHistory.length > 0 ? stateHistory : readRightRailEdgeFeedbackHistoryUrl(key);
-  }
-}
-
-export function saveRightRailEdgeFeedbackHistory(
-  projectPath: string,
-  history: RightRailEdgeScoreFeedbackEntry[],
-): void {
-  const key = rightRailEdgeFeedbackStorageKey(projectPath);
-  if (!key || typeof window === "undefined") return;
-  const persisted = history
-    .slice(0, RIGHT_RAIL_EDGE_FEEDBACK_LIMIT)
-    .map((entry) => sanitizeRightRailEdgeFeedbackEntry(entry))
-    .filter((entry): entry is RightRailEdgeScoreFeedbackEntry => entry != null)
-    .map(
-      ({ id, axisId, axisLabel, actionLabel, targetWidget, score, grade, previousScore, delta, trend, createdAt }) => ({
-        id,
-        axisId,
-        axisLabel,
-        actionLabel,
-        targetWidget,
-        score,
-        grade,
-        previousScore,
-        delta,
-        trend,
-        createdAt,
-      }),
-    );
-  if (persisted.length === 0) {
-    clearRightRailEdgeFeedbackHistory(projectPath);
-    return;
-  }
-  writeRightRailEdgeFeedbackHistoryState(key, persisted);
-  if (shouldMirrorRightRailEdgeFeedbackHistoryUrl()) {
-    writeRightRailEdgeFeedbackHistoryUrl(key, persisted);
-  }
-  try {
-    window.localStorage.setItem(key, JSON.stringify(persisted));
-  } catch {
-    /* localStorage can be unavailable in locked-down WebView contexts */
-  }
 }
 
 export function sameOrNestedPath(left: string, right: string): boolean {

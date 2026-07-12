@@ -2026,10 +2026,10 @@ describe("App right rail composition", () => {
     expect(rightRailFeedbackStorageSrc).toContain(
       "axisLabel: sanitizeRightRailEdgeFeedbackAxisLabel(rawAxisId, value.axisLabel)",
     );
-    expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryState");
-    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryState");
-    expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryUrl");
-    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryUrl");
+    expect(rightRailFeedbackStorageSrc).toContain("readRightRailEdgeFeedbackHistoryState");
+    expect(rightRailFeedbackStorageSrc).toContain("writeRightRailEdgeFeedbackHistoryState");
+    expect(rightRailFeedbackStorageSrc).toContain("readRightRailEdgeFeedbackHistoryUrl");
+    expect(rightRailFeedbackStorageSrc).toContain("writeRightRailEdgeFeedbackHistoryUrl");
     expect(src).toContain("clearRightRailEdgeFeedbackHistory");
     expect(rightRailModelSrc).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID");
     expect(rightRailModelSrc).toContain("const RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID");
@@ -2062,22 +2062,22 @@ describe("App right rail composition", () => {
     expect(src).toContain('detail: "Workspace guidance was reset."');
     expect(src).toContain("setRightRailEdgeFeedbackResetNotice(null)");
     expect(src).toContain("window.clearTimeout(rightRailEdgeFeedbackResetNoticeTimerRef.current)");
-    expect(rightRailModelSrc).toContain("window.localStorage.removeItem(key)");
-    expect(rightRailModelSrc).toContain("delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]");
-    expect(rightRailModelSrc).toContain("url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
+    expect(rightRailFeedbackStorageSrc).toContain("window.localStorage.removeItem(key)");
+    expect(rightRailFeedbackStorageSrc).toContain("delete state[RIGHT_RAIL_EDGE_FEEDBACK_HISTORY_STATE_KEY]");
+    expect(rightRailFeedbackStorageSrc).toContain("url.searchParams.delete(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
     expect(rightRailFeedbackPersistenceSrc).toContain("setHistory(loadRightRailEdgeFeedbackHistory(projectPath))");
     expect(rightRailFeedbackPersistenceSrc).toContain("saveRightRailEdgeFeedbackHistory(projectPath, history)");
     expect(rightRailFeedbackPersistenceSrc).toContain("skipSaveKeyRef.current === key");
-    expect(rightRailModelSrc).toContain(
+    expect(rightRailFeedbackStorageSrc).toContain(
       "({ id, axisId, axisLabel, actionLabel, targetWidget, score, grade, previousScore, delta, trend, createdAt }) => ({",
     );
-    expect(rightRailModelSrc).toContain("axisId,");
-    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryState(key, persisted)");
-    expect(rightRailModelSrc).toContain("writeRightRailEdgeFeedbackHistoryUrl(key, persisted)");
-    expect(rightRailModelSrc).toContain("const stateHistory = readRightRailEdgeFeedbackHistoryState(key)");
-    expect(rightRailModelSrc).toContain("readRightRailEdgeFeedbackHistoryUrl(key)");
-    expect(rightRailModelSrc).toContain("if (persisted.length === 0)");
-    expect(rightRailModelSrc).toContain("JSON.stringify(persisted)");
+    expect(rightRailFeedbackStorageSrc).toContain("axisId,");
+    expect(rightRailFeedbackStorageSrc).toContain("writeRightRailEdgeFeedbackHistoryState(key, persisted)");
+    expect(rightRailFeedbackStorageSrc).toContain("writeRightRailEdgeFeedbackHistoryUrl(key, persisted)");
+    expect(rightRailFeedbackStorageSrc).toContain("const stateHistory = readRightRailEdgeFeedbackHistoryState(key)");
+    expect(rightRailFeedbackStorageSrc).toContain("readRightRailEdgeFeedbackHistoryUrl(key)");
+    expect(rightRailFeedbackStorageSrc).toContain("if (persisted.length === 0)");
+    expect(rightRailFeedbackStorageSrc).toContain("JSON.stringify(persisted)");
     expect(src).not.toContain("JSON.stringify(history)");
     expect(src).toContain(
       "const rightRailEdgeFeedbackAxisSummary = deriveRightRailEdgeFeedbackAxisSummary(rightRailEdgeFeedbackHistory)",
@@ -2168,9 +2168,9 @@ describe("App right rail composition", () => {
     expect(src).toContain("rightRailDestinationReachedTelemetryRef");
     expect(rightRailModelSrc).toContain('privacy: "no command text, prompt text, file path, or user input captured"');
     expect(rightRailModelSrc).toContain("targetWidget: item.focusWidget");
-    expect(rightRailModelSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
-    expect(rightRailModelSrc).toContain("if (!allowDebugUrlFallback) return []");
-    expect(rightRailModelSrc).toContain("if (shouldMirrorRightRailEdgeFeedbackHistoryUrl())");
+    expect(rightRailFeedbackStorageSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
+    expect(rightRailFeedbackStorageSrc).toContain("if (!allowDebugUrlFallback) return []");
+    expect(rightRailFeedbackStorageSrc).toContain("if (shouldMirrorRightRailEdgeFeedbackHistoryUrl())");
     expect(src).not.toContain("promptDetail: item.promptDetail,");
     expect(src).not.toContain("promptText");
     const staleAudit = rightRailModelSrc.match(
@@ -2478,11 +2478,12 @@ describe("App visual QA bootstrap", () => {
   it("has a dev-only project view entrypoint for browser-based UI inspection", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const rightRailFeedbackStorageSrc = getRightRailFeedbackStorageSource();
 
     expect(rightRailModelSrc).toContain("function readDevVisualQaState()");
-    expect(rightRailModelSrc).toContain("function isExplicitDevVisualQaRequest()");
-    expect(rightRailModelSrc).toContain("import.meta.env.DEV");
-    expect(rightRailModelSrc).toContain('params.get("aelyrisVisualQa") === "1"');
+    expect(rightRailFeedbackStorageSrc).toContain("function isExplicitDevVisualQaRequest()");
+    expect(rightRailFeedbackStorageSrc).toContain("import.meta.env.DEV");
+    expect(rightRailFeedbackStorageSrc).toContain('params.get("aelyrisVisualQa") === "1"');
     expect(rightRailModelSrc).not.toContain('window.localStorage.getItem("aelyris:visualQa") === "1"');
     expect(rightRailModelSrc).toContain('params.get("diagnostics") === "1"');
     expect(rightRailModelSrc).toContain("railScenarioParam");
@@ -2503,7 +2504,7 @@ describe("App visual QA bootstrap", () => {
 
   it("keeps stale URL debug state separated from runtime truth", () => {
     const src = getSrc();
-    const rightRailModelSrc = getRightRailModelSource();
+    const rightRailFeedbackStorageSrc = getRightRailFeedbackStorageSource();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const script = readFileSync(join(process.cwd(), "scripts/verify-right-rail-stale-url-truth.mjs"), "utf8");
     const score = readFileSync(join(process.cwd(), "scripts/score-release-quality.mjs"), "utf8");
@@ -2513,10 +2514,10 @@ describe("App visual QA bootstrap", () => {
     expect(src).toContain("runtime truth is unchanged");
     expect(src).toContain("edgeLoop is replay evidence, not current runtime state.");
     expect(src).toContain("Use railState instead of the deprecated state alias.");
-    expect(rightRailModelSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
-    expect(rightRailModelSrc).toContain("function shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
-    expect(rightRailModelSrc).toContain("url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
-    expect(rightRailModelSrc).toContain("shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
+    expect(rightRailFeedbackStorageSrc).toContain("const allowDebugUrlFallback = isExplicitDevVisualQaRequest()");
+    expect(rightRailFeedbackStorageSrc).toContain("function shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
+    expect(rightRailFeedbackStorageSrc).toContain("url.searchParams.has(RIGHT_RAIL_EDGE_FEEDBACK_URL_PARAM)");
+    expect(rightRailFeedbackStorageSrc).toContain("shouldMirrorRightRailEdgeFeedbackHistoryUrl()");
     expect(packageJson).toContain(
       '"verify:right-rail-stale-url": "node scripts/verify-right-rail-stale-url-truth.mjs"',
     );
