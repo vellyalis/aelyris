@@ -60,16 +60,6 @@ import {
   PaneTreeContainer,
   paneTreeStorageKey,
 } from "./features/terminal/pane-tree";
-import type {
-  PaneAttachRequest,
-  PaneCloseRequest,
-  PaneFocusRequest,
-  PaneLayoutCommand,
-  PaneLayoutRequest,
-  PaneRenameRequest,
-  PaneRestartRequest,
-  PaneRoleCycleRequest,
-} from "./features/terminal/pane-tree/PaneTreeContainer";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import { PRODUCT_NAME } from "./shared/constants/product";
 import {
@@ -168,6 +158,7 @@ import { useRightRailGuardrailSelection } from "./features/right-rail/useRightRa
 import { useEditorOpenMode } from "./features/editor/useEditorOpenMode";
 import { usePaneRegistry } from "./features/terminal/usePaneRegistry";
 import { usePaneAgentSpawns } from "./features/terminal/usePaneAgentSpawns";
+import { usePaneRequestController } from "./features/terminal/usePaneRequestController";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -242,34 +233,6 @@ interface ActiveTerminalTarget {
   shell: ShellType;
   label: string;
   ready: boolean;
-}
-
-interface AppPaneFocusRequest extends PaneFocusRequest {
-  tabId: string;
-}
-
-interface AppPaneCloseRequest extends PaneCloseRequest {
-  tabId: string;
-}
-
-interface AppPaneRestartRequest extends PaneRestartRequest {
-  tabId: string;
-}
-
-interface AppPaneAttachRequest extends PaneAttachRequest {
-  tabId: string;
-}
-
-interface AppPaneRenameRequest extends PaneRenameRequest {
-  tabId: string;
-}
-
-interface AppPaneRoleCycleRequest extends PaneRoleCycleRequest {
-  tabId: string;
-}
-
-interface AppPaneLayoutRequest extends PaneLayoutRequest {
-  tabId: string;
 }
 
 export function App() {
@@ -478,13 +441,6 @@ export function App() {
   // — `spawn_terminal` returns a freshly-allocated id that lives in the
   // pane-tree's private `terminalIds` map, so this lift is the only way
   // to thread it through to global UI without leaking pane-tree state.
-  const [paneFocusRequest, setPaneFocusRequest] = useState<AppPaneFocusRequest | null>(null);
-  const [paneCloseRequest, setPaneCloseRequest] = useState<AppPaneCloseRequest | null>(null);
-  const [paneRestartRequest, setPaneRestartRequest] = useState<AppPaneRestartRequest | null>(null);
-  const [paneAttachRequest, setPaneAttachRequest] = useState<AppPaneAttachRequest | null>(null);
-  const [paneRenameRequest, setPaneRenameRequest] = useState<AppPaneRenameRequest | null>(null);
-  const [paneRoleCycleRequest, setPaneRoleCycleRequest] = useState<AppPaneRoleCycleRequest | null>(null);
-  const [paneLayoutRequest, setPaneLayoutRequest] = useState<AppPaneLayoutRequest | null>(null);
   const [selectedAuditEventId, setSelectedAuditEventId] = useState<number | null>(null);
   const [selectedAuditTraceFilter, setSelectedAuditTraceFilter] = useState<string | null>(null);
   const [selectedOperationalPane, setSelectedOperationalPane] = useState<OperationalPaneSelection | null>(null);
@@ -1514,19 +1470,22 @@ export function App() {
     [activeTabId, clearFiles, confirmDiscardUnsavedFiles, setActiveTabId],
   );
 
-  const handlePaneSwitch = useCallback(
-    async (tabId: string, paneId: string) => {
-      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
-      if (!switched) return;
-      if (interactiveSessionId) selectInteractiveSession("");
-      setPaneFocusRequest((prev) => ({
-        tabId,
-        paneId,
-        sequence: (prev?.sequence ?? 0) + 1,
-      }));
-    },
-    [activeTabId, handleTabSwitch, interactiveSessionId, selectInteractiveSession],
-  );
+  const {
+    applyPaneLayoutCommand,
+    handlePaneAttach,
+    handlePaneClose,
+    handlePaneRename,
+    handlePaneRestart,
+    handlePaneRoleCycle,
+    handlePaneSwitch,
+    paneAttachRequest,
+    paneCloseRequest,
+    paneFocusRequest,
+    paneLayoutRequest,
+    paneRenameRequest,
+    paneRestartRequest,
+    paneRoleCycleRequest,
+  } = usePaneRequestController({ activeTabId, handleTabSwitch, interactiveSessionId, selectInteractiveSession });
 
   const handleFocusOperationalPane = useCallback(
     async (tabId: string, paneId: string) => {
@@ -1588,101 +1547,6 @@ export function App() {
       selectOperationalPane(target);
     },
     [activeTabId, handlePaneSwitch, selectOperationalPane, visualActivePtyId, visualTerminalPaneTargets],
-  );
-
-  const applyPaneLayoutCommand = useCallback(
-    (command: PaneLayoutCommand, tabId = activeTabId) => {
-      setPaneLayoutRequest((prev) => ({
-        tabId,
-        command,
-        sequence: (prev?.sequence ?? 0) + 1,
-      }));
-    },
-    [activeTabId],
-  );
-
-  const handlePaneClose = useCallback((tabId: string, paneId: string) => {
-    setPaneCloseRequest((prev) => ({
-      tabId,
-      paneId,
-      sequence: (prev?.sequence ?? 0) + 1,
-    }));
-  }, []);
-
-  const handlePaneRestart = useCallback(
-    async (tabId: string, paneId: string) => {
-      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
-      if (!switched) {
-        throw new Error("Restart target tab is unavailable.");
-      }
-      await new Promise<void>((resolve, reject) => {
-        setPaneRestartRequest((prev) => ({
-          tabId,
-          paneId,
-          sequence: (prev?.sequence ?? 0) + 1,
-          onComplete: (error) => {
-            if (error) {
-              reject(new Error(error));
-              return;
-            }
-            resolve();
-          },
-        }));
-      });
-    },
-    [activeTabId, handleTabSwitch],
-  );
-
-  const handlePaneAttach = useCallback(
-    async (tabId: string, paneId: string, terminalId: string) => {
-      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
-      if (!switched) {
-        throw new Error("Attach target tab is unavailable.");
-      }
-      await new Promise<void>((resolve, reject) => {
-        setPaneAttachRequest((prev) => ({
-          tabId,
-          paneId,
-          terminalId,
-          sequence: (prev?.sequence ?? 0) + 1,
-          onComplete: (error) => {
-            if (error) {
-              reject(new Error(error));
-              return;
-            }
-            resolve();
-          },
-        }));
-      });
-    },
-    [activeTabId, handleTabSwitch],
-  );
-
-  const handlePaneRename = useCallback(
-    async (tabId: string, paneId: string, title: string | null) => {
-      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
-      if (!switched) return;
-      setPaneRenameRequest((prev) => ({
-        tabId,
-        paneId,
-        title,
-        sequence: (prev?.sequence ?? 0) + 1,
-      }));
-    },
-    [activeTabId, handleTabSwitch],
-  );
-
-  const handlePaneRoleCycle = useCallback(
-    async (tabId: string, paneId: string) => {
-      const switched = tabId === activeTabId ? true : await handleTabSwitch(tabId);
-      if (!switched) return;
-      setPaneRoleCycleRequest((prev) => ({
-        tabId,
-        paneId,
-        sequence: (prev?.sequence ?? 0) + 1,
-      }));
-    },
-    [activeTabId, handleTabSwitch],
   );
 
   const handleStartAgent = useCallback(

@@ -93,6 +93,10 @@ function getPaneAgentSpawnsSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/usePaneAgentSpawns.ts"), "utf8");
 }
 
+function getPaneRequestControllerSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRequestController.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -195,6 +199,21 @@ describe("App pane agent spawn ownership", () => {
     expect(owner).toContain("sequenceRef.current += 1");
     expect(owner).toContain("mounted.terminalId === agent.terminalId");
     expect(owner).toContain('event.payload?.kind !== "agent_spawned"');
+  });
+});
+
+describe("App pane request controller ownership", () => {
+  it("keeps routed request state, tab switching, completion, and independent sequences in one hook", () => {
+    const src = getSrc();
+    const owner = getPaneRequestControllerSource();
+
+    expect(src).toContain("usePaneRequestController({");
+    expect(owner).toContain("const [paneFocusRequest");
+    expect(owner).toContain("const [paneLayoutRequest");
+    expect(owner).toContain("Restart target tab is unavailable.");
+    expect(owner).toContain("Attach target tab is unavailable.");
+    expect(owner).toContain("onComplete: (error)");
+    expect(owner).toContain("selectInteractiveSession(\"\")");
   });
 });
 
