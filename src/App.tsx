@@ -133,10 +133,8 @@ import {
   formatTerminalTarget,
   getNextRightRailMode,
   isLiveInteractiveSessionStatus,
-  isRightRailGuardrailSelection,
   isRightRailQaFixtureRisk,
   isRightRailWidgetId,
-  loadRightRailGuardrailSelection,
   mergeRightRailChangedFiles,
   PRODUCT_MODE_INSPECTOR_SUMMARY,
   PRODUCT_MODE_RAIL,
@@ -149,7 +147,6 @@ import {
   RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID,
   RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID,
   RIGHT_RAIL_GUARDRAIL_OPTIONS,
-  RIGHT_RAIL_GUARDRAIL_SYNC_EVENT,
   RIGHT_RAIL_MODES,
   type RightRailActionResult,
   type RightRailActionResultTone,
@@ -166,11 +163,11 @@ import {
   resolveProjectFilePath,
   rightRailModeForOutcomeWidget,
   saveRightRailEdgeFeedbackHistory,
-  saveRightRailGuardrailSelection,
   sessionTabMatches,
 } from "./features/right-rail/rightRailModel";
 import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightRailFeedbackPersistence";
 import { useRightRailActionFeedback } from "./features/right-rail/useRightRailActionFeedback";
+import { useRightRailGuardrailSelection } from "./features/right-rail/useRightRailGuardrailSelection";
 import { type StartAgentMeta, useAgentFleet } from "./shared/hooks/useAgentFleet";
 import { useAgentFleetToasts } from "./shared/hooks/useAgentFleetToasts";
 import { useAuditEvents } from "./shared/hooks/useAuditEvents";
@@ -418,9 +415,7 @@ export function App() {
     showRightRailDestinationOutcome,
     showRightRailRouteConfirmation,
   } = useRightRailActionFeedback();
-  const [rightRailGuardrailSelection, setRightRailGuardrailSelection] = useState<RightRailGuardrailSelection>(
-    loadRightRailGuardrailSelection,
-  );
+  const { rightRailGuardrailSelection, setRightRailGuardrailSelection } = useRightRailGuardrailSelection();
   const [rightRailFixtureSelectedSessionId, setRightRailFixtureSelectedSessionId] = useState<string | null>(null);
   const [paneSwitcherVisible, setPaneSwitcherVisible] = useState(false);
   const rightRailPanelRef = useRef<HTMLDivElement | null>(null);
@@ -430,7 +425,6 @@ export function App() {
   const rightRailEdgeFeedbackStaleTelemetryRef = useRef<Set<string>>(new Set());
   const rightRailProjectPathRef = useRef("");
   const rightRailGuardrailProfileRef = useRef<WorkforceGuardrailProfile>("Research");
-  const rightRailGuardrailInitialPersistRef = useRef(false);
 
   useEffect(() => {
     const onEditorModeChange = (event: Event) => {
@@ -464,25 +458,6 @@ export function App() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    const onSync = (event: Event) => {
-      const selection = (event as CustomEvent<{ selection?: unknown }>).detail?.selection;
-      if (typeof selection === "string" && isRightRailGuardrailSelection(selection)) {
-        setRightRailGuardrailSelection(selection);
-      }
-    };
-    window.addEventListener(RIGHT_RAIL_GUARDRAIL_SYNC_EVENT, onSync);
-    return () => window.removeEventListener(RIGHT_RAIL_GUARDRAIL_SYNC_EVENT, onSync);
-  }, []);
-
-  useEffect(() => {
-    if (!rightRailGuardrailInitialPersistRef.current) {
-      rightRailGuardrailInitialPersistRef.current = true;
-      if (rightRailGuardrailSelection === "Auto") return;
-    }
-    saveRightRailGuardrailSelection(rightRailGuardrailSelection);
-  }, [rightRailGuardrailSelection]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rightRailMode retriggers focus after tab-panel content swaps while the target widget id stays the same.
   useEffect(() => {

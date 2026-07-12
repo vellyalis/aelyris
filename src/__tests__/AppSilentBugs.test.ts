@@ -77,6 +77,10 @@ function getRightRailActionFeedbackSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/useRightRailActionFeedback.ts"), "utf8");
 }
 
+function getRightRailGuardrailSelectionSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/useRightRailGuardrailSelection.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -2301,7 +2305,12 @@ describe("App right rail composition", () => {
       "const [rightRailActionHistory, setRightRailActionHistory] = useState<RightRailActionResult[]>([])",
     );
     expect(rightRailModelSrc).toContain("RIGHT_RAIL_ACTION_HISTORY_LIMIT");
-    expect(src).toContain("const [rightRailGuardrailSelection, setRightRailGuardrailSelection]");
+    expect(src).toContain("useRightRailGuardrailSelection()");
+    expect(getRightRailGuardrailSelectionSource()).toContain(
+      "const [rightRailGuardrailSelection, setRightRailGuardrailSelection]",
+    );
+    expect(getRightRailGuardrailSelectionSource()).toContain("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT");
+    expect(getRightRailGuardrailSelectionSource()).toContain("saveRightRailGuardrailSelection");
     expect(src).toContain("RIGHT_RAIL_GUARDRAIL_OPTIONS");
     expect(getRightRailWidgetFrameSource()).toContain("RIGHT_RAIL_GUARDRAIL_SELECTION_STORAGE_KEY");
     expect(getRightRailWidgetFrameSource()).toContain('const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-sync"');
