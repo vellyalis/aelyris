@@ -49,6 +49,7 @@ import {
 import { useAppMenus } from "./features/app/useAppMenus";
 import { useBootstrapAppConfig } from "./features/app/useBootstrapAppConfig";
 import { useAuthenticatedPromptEvidence } from "./features/app/useAuthenticatedPromptEvidence";
+import { useAiCliLaunchEvidence } from "./features/app/useAiCliLaunchEvidence";
 import { useReleaseGoalEvidence } from "./features/app/useReleaseGoalEvidence";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
@@ -65,9 +66,7 @@ import {
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import { PRODUCT_NAME } from "./shared/constants/product";
 import {
-  type AiCliLaunchPreflightEvidence,
   type AiCliLaunchPromptContract,
-  type AiCliProbeEvidence,
   deriveAiCliLaunchPlan,
 } from "./shared/lib/aiCliLaunchPlanner";
 import { getAuditCorrelationId } from "./shared/lib/auditRecovery";
@@ -123,7 +122,6 @@ import {
   PRODUCT_MODE_RAIL,
   PRODUCT_MODE_ROUTES,
   type ProductModeId,
-  parseJsonArtifact,
   RIGHT_RAIL_ACTION_PHASE,
   RIGHT_RAIL_ACTION_WIDGET,
   RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
@@ -133,7 +131,6 @@ import {
   RIGHT_RAIL_MODES,
   type RightRailActionResult,
   type RightRailActionResultTone,
-  type RightRailAiCliLaunchEvidenceState,
   type RightRailDestinationPrompt,
   RightRailDestinationPromptCard,
   type RightRailEdgeFeedbackResetNotice,
@@ -327,12 +324,6 @@ export function App() {
   const [rightRailEdgeFeedbackStaleOnly, setRightRailEdgeFeedbackStaleOnly] = useState(false);
   const [rightRailEdgeFeedbackResetNotice, setRightRailEdgeFeedbackResetNotice] =
     useState<RightRailEdgeFeedbackResetNotice | null>(null);
-  const [rightRailAiCliLaunchEvidence, setRightRailAiCliLaunchEvidence] = useState<RightRailAiCliLaunchEvidenceState>(
-    () => ({
-      evidence: null,
-      preflight: null,
-    }),
-  );
   const {
     rightRailActionHistory,
     rightRailActionResult,
@@ -559,6 +550,7 @@ export function App() {
   } = useAgentFleet();
 
   const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  const rightRailAiCliLaunchEvidence = useAiCliLaunchEvidence(projectPath);
   const authenticatedPromptConsentPacket = useAuthenticatedPromptEvidence(projectPath);
   const { finalGoalRequirementProofs, finalGoalResidualRisk, finalGoalSafeGate, releaseQualityGoalInputs } =
     useReleaseGoalEvidence(projectPath);
@@ -570,124 +562,6 @@ export function App() {
   });
   rightRailProjectPathRef.current = projectPath;
   useRightRailFeedbackPersistence(projectPath, rightRailEdgeFeedbackHistory, setRightRailEdgeFeedbackHistory);
-  useEffect(() => {
-    let active = true;
-    let interval: number | null = null;
-    if (!projectPath || !isTauriRuntime()) {
-      setRightRailAiCliLaunchEvidence({ evidence: null, preflight: null });
-      return () => {
-        active = false;
-      };
-    }
-
-    const realProbePath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/production-smoke/real-ai-cli-binary-probe.json",
-    );
-    const nativeInputPath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/production-smoke/native-terminal-input-host.json",
-    );
-    const imePath = resolveProjectFilePath(projectPath, ".codex-auto/production-smoke/verify-ime.json");
-    const processReconnectPath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/production-smoke/process-reconnect-command-evidence.json",
-    );
-    const muxLiveProcessPreservationPath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/quality/mux-live-process-preservation.json",
-    );
-    const interactiveBoundaryPath = resolveProjectFilePath(
-      projectPath,
-      ".codex-auto/production-smoke/interactive-ai-cli-boundary.json",
-    );
-
-    const refresh = () => {
-      Promise.resolve({ invoke: tauriInvoke })
-        .then(({ invoke }) =>
-          Promise.allSettled([
-            invoke<string>("read_file", { path: realProbePath }),
-            invoke<string>("read_file", { path: nativeInputPath }),
-            invoke<string>("read_file", { path: imePath }),
-            invoke<string>("read_file", { path: processReconnectPath }),
-            invoke<string>("read_file", { path: muxLiveProcessPreservationPath }),
-            invoke<string>("read_file", { path: interactiveBoundaryPath }),
-          ]),
-        )
-        .then(
-          ([
-            realProbeResult,
-            nativeInputResult,
-            imeResult,
-            processReconnectResult,
-            muxLiveProcessPreservationResult,
-            interactiveBoundaryResult,
-          ]) => {
-            if (!active) return;
-            const evidence =
-              realProbeResult.status === "fulfilled"
-                ? parseJsonArtifact<AiCliProbeEvidence>(realProbeResult.value)
-                : null;
-            const nativeInputHost =
-              nativeInputResult.status === "fulfilled"
-                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["nativeInputHost"]>>(
-                    nativeInputResult.value,
-                  )
-                : null;
-            const ime =
-              imeResult.status === "fulfilled"
-                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["ime"]>>(imeResult.value)
-                : null;
-            const processReconnect =
-              processReconnectResult.status === "fulfilled"
-                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["processReconnect"]>>(
-                    processReconnectResult.value,
-                  )
-                : null;
-            const muxLiveProcessPreservation =
-              muxLiveProcessPreservationResult.status === "fulfilled"
-                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["muxLiveProcessPreservation"]>>(
-                    muxLiveProcessPreservationResult.value,
-                  )
-                : null;
-            const interactiveBoundary =
-              interactiveBoundaryResult.status === "fulfilled"
-                ? parseJsonArtifact<NonNullable<AiCliLaunchPreflightEvidence["interactiveBoundary"]>>(
-                    interactiveBoundaryResult.value,
-                  )
-                : null;
-            const preflight =
-              nativeInputHost || ime || processReconnect || muxLiveProcessPreservation || interactiveBoundary
-                ? {
-                    nativeInputHost,
-                    ime,
-                    processReconnect,
-                    muxLiveProcessPreservation,
-                    interactiveBoundary,
-                  }
-                : null;
-            setRightRailAiCliLaunchEvidence({ evidence, preflight });
-          },
-        )
-        .catch((err) => {
-          if (!active) return;
-          setRightRailAiCliLaunchEvidence({ evidence: null, preflight: null });
-          reportInvokeFailure({
-            source: "app",
-            operation: "read_ai_cli_launch_evidence",
-            err,
-            severity: "warning",
-          });
-        });
-    };
-
-    refresh();
-    interval = window.setInterval(refresh, 60_000);
-    return () => {
-      active = false;
-      if (interval != null) window.clearInterval(interval);
-    };
-  }, [projectPath]);
   const projectName = projectPath ? (projectPath.split("/").filter(Boolean).pop() ?? PRODUCT_NAME) : PRODUCT_NAME;
   const workspaceProfile = useMemo(
     () => resolveWorkspaceProfile(projectPath || rootProjectPath || "workspace", activeTabId),

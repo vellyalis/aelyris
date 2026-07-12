@@ -109,6 +109,10 @@ function getAuthenticatedPromptEvidenceSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useAuthenticatedPromptEvidence.ts"), "utf8");
 }
 
+function getAiCliLaunchEvidenceSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/useAiCliLaunchEvidence.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -266,6 +270,19 @@ describe("App authenticated prompt evidence ownership", () => {
     expect(owner).toContain("authenticated-ai-cli-prompt-smoke.json");
     expect(owner).toContain("authenticated-ai-cli-preflight-matrix.json");
     expect(owner).toContain("deriveAuthenticatedPromptConsentPacket(null)");
+  });
+});
+
+describe("App AI CLI launch evidence ownership", () => {
+  it("preserves six-artifact partial preflight assembly and fail-closed telemetry", () => {
+    const src = getSrc();
+    const owner = getAiCliLaunchEvidenceSource();
+
+    expect(src).toContain("useAiCliLaunchEvidence(projectPath)");
+    expect(owner).toContain("Promise.allSettled");
+    expect(owner).toContain("nativeInputHost || ime || processReconnect || muxLiveProcessPreservation");
+    expect(owner).toContain('operation: "read_ai_cli_launch_evidence"');
+    expect(owner).toContain("const EMPTY_EVIDENCE");
   });
 });
 
@@ -1246,11 +1263,14 @@ describe("Release evidence gates", () => {
     expect(authenticatedPromptEvidence).toContain(
       '".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"',
     );
-    expect(src).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
-    expect(src).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
-    expect(src).toContain('".codex-auto/production-smoke/process-reconnect-command-evidence.json"');
-    expect(src).toContain('".codex-auto/production-smoke/interactive-ai-cli-boundary.json"');
-    expect(src).toContain("setRightRailAiCliLaunchEvidence");
+    const aiCliLaunchEvidence = getAiCliLaunchEvidenceSource();
+    expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
+    expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
+    expect(aiCliLaunchEvidence).toContain(
+      '".codex-auto/production-smoke/process-reconnect-command-evidence.json"',
+    );
+    expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/interactive-ai-cli-boundary.json"');
+    expect(aiCliLaunchEvidence).toContain("setLaunchEvidence");
     expect(src).toContain("rightRailAiCliPromptContract");
     expect(src).toContain("evidence: rightRailAiCliLaunchEvidence.evidence");
     expect(src).toContain("preflight: rightRailAiCliLaunchEvidence.preflight");
