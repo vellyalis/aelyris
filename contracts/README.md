@@ -18,8 +18,10 @@ user explicitly selected a contract-changing work unit.
 | Contract | Owner | Source / adapter | Verifier |
 | --- | --- | --- | --- |
 | Current claim boundary | `docs/requirements.md`, `docs/PUBLICATION_READINESS.md` | public docs and `.codex-auto/quality/*` | `pnpm verify:requirements-spec-design-traceability`, `pnpm verify:current-readiness-source` |
+| Verifiable Agent Work OS target | `docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md`, adjacent detailed design/roadmap | existing runtime/domain owners composed under Mission; target only | `pnpm verify:verifiable-agent-work-os-spec` |
+| Canonical Control API / MCP boundary | `docs/specs/AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md` | one Control Kernel; Tauri IPC/MCP/REST/WS/CLI/PTY/Proofbook/review/merge adapters | target `verify:control-*`, `verify:mcp-control-adapter`; current MCP gates remain implementation evidence |
 | Visible agent runtime | `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md` | `src-tauri/src/agent/*`, `src-tauri/src/ipc/interactive_commands.rs`, `src/features/terminal/*` | `pnpm verify:visible-agent-pane-binding`, terminal gates |
-| MCP tool surface | `docs/specs/MCP_TOOL_SURFACE_SPEC.md` | `src-tauri/src/api/mcp.rs` | MCP drift/schema/governance tests and focused verifiers |
+| MCP implemented/catalog surface | `docs/specs/MCP_TOOL_SURFACE_SPEC.md` under the Control API authority above | `src-tauri/src/api/mcp.rs` compatibility adapter | MCP drift/schema/governance tests and focused verifiers |
 | Proofbook automation | `docs/specs/PROOFBOOK_AUTOMATION_SPEC.md` | `src-tauri/src/proofbook/*`, `src-tauri/src/ipc/proofbook_commands.rs` | `pnpm verify:proofbook:spec`, `pnpm verify:proofbook:runner`, `pnpm verify:proofbook:agent-session` |
 | Differentiation polish | `docs/specs/AELYRIS_DIFFERENTIATION_POLISH_SPEC.md` | future D0-D8 implementation slices | `pnpm verify:differentiation-polish-spec` |
 | Remote Continuity | `docs/specs/AELYRIS_REMOTE_CONTINUITY_SPEC.md` | future remote snapshot/events/SSH attach adapters | `pnpm verify:differentiation-polish-spec`, future `verify:remote-continuity:*` |
@@ -47,6 +49,9 @@ Before changing a contract, answer these in the task report:
 - IPC/MCP/CLI/UI should delegate to owners.
 - Source-generated schemas and drift tests are preferred over hand-maintained
   duplicate schemas.
+- Transport-local `FREE`/`GATED` labels never grant authority. Effect class,
+  principal/capability, approval, idempotency, and evidence come from the canonical
+  command descriptor.
 - Verifier artifacts belong under `.codex-auto/quality/` and are not committed.
 
 ## Hard Blocks

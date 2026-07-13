@@ -14,6 +14,10 @@ const DOCS = {
   visiblePane: "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
   cockpitUx: "docs/specs/COCKPIT_UX_SPEC.md",
   mcpToolSurface: "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
+  workOsSpec: "docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md",
+  workOsDesign: "docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md",
+  workOsRoadmap: "docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md",
+  controlApiMcp: "docs/specs/AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md",
   planner: "docs/specs/PLANNER_SPEC.md",
   typeBridge: "docs/specs/TYPE_BRIDGE_SPEC.md",
   uiTokenDial: "docs/specs/UI_TOKEN_DIAL_SPEC.md",
@@ -34,6 +38,7 @@ const REQUIRED_TRACE_COMMANDS = [
   "verify:quality-score",
   "verify:goal:safe",
   "verify:requirements-spec-design-traceability",
+  "verify:verifiable-agent-work-os-spec",
 ];
 
 const STALE_README_PHRASES = ["全て draft / docs only", "設計完了・実装未着手", "source code changes は含まない"];
@@ -140,7 +145,12 @@ const docsKeepCurrentClaimPolicy =
 const requiredDocPaths = Object.values(DOCS);
 const missingDocs = requiredDocPaths.filter((path) => !exists(path));
 const staleReadmePhrases = STALE_README_PHRASES.filter((phrase) => docs.specsReadme.includes(phrase));
-const publicTraceText = [normalizedDocs.agents, normalizedDocs.requirements, normalizedDocs.specsReadme, normalizedDocs.publicationReadiness].join("\n");
+const publicTraceText = [
+  normalizedDocs.agents,
+  normalizedDocs.requirements,
+  normalizedDocs.specsReadme,
+  normalizedDocs.publicationReadiness,
+].join("\n");
 const missingTraceCommands = REQUIRED_TRACE_COMMANDS.filter((command) => !publicTraceText.includes(command));
 const packageScriptPresent =
   packageJson.includes('"verify:requirements-spec-design-traceability"') &&
@@ -193,10 +203,42 @@ const checks = [
       "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
       "COCKPIT_UX_SPEC.md",
       "MCP_TOOL_SURFACE_SPEC.md",
+      "AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md",
+      "AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md",
       "TYPE_BRIDGE_SPEC.md",
       "PLANNER_SPEC.md",
     ]),
     "public spec index maps the current requirements/spec/design authority without relying on removed internal audit docs",
+  ),
+  check(
+    "work-os-authority-composition",
+    includesAll(docs.workOsSpec, [
+      "Four-Layer Differentiation Audit",
+      "Aelyris-Owned Higher-Order Concepts",
+      "MissionCompletionPacket",
+      "FR-18 Canonical Control API And MCP Adapter",
+      "Current Aelyris remains alpha and not release-ready",
+    ]) &&
+      includesAll(docs.workOsDesign, [
+        "Canonical Control API And MCP Boundary",
+        "MissionCompletionPacket",
+        "R0-A6 historical phase evidence",
+        "Apex capabilities are post-release product waves",
+      ]) &&
+      includesAll(docs.workOsRoadmap, [
+        "R0-A9 remains Wave 0",
+        "A6.2e1 remains the next runtime implementation slice",
+        "A8 And A9 Remain Unchanged Release Gates",
+      ]) &&
+      includesAll(docs.controlApiMcp, [
+        "Current Audit Findings At HEAD `3db3932`",
+        "Canonical Command Registry",
+        "Command Lifecycle And Atomicity",
+        "MCP-Specific Contract",
+        "Migration And Rollback",
+        "Verification Matrix",
+      ]),
+    "Work OS requirements, detailed design, roadmap, and ultra Control API/MCP authority are linked without replacing R0-A9 or current claims",
   ),
   check(
     "traceability-verifier-coverage",
@@ -206,7 +248,8 @@ const checks = [
   ),
   check(
     "public-claim-policy-blocks-overclaim",
-    docsKeepCurrentClaimPolicy && docs.agentMessage.includes("Current verdict: **BLOCK for strict agmsg superset claims**"),
+    docsKeepCurrentClaimPolicy &&
+      docs.agentMessage.includes("Current verdict: **BLOCK for strict agmsg superset claims**"),
     "public docs keep alpha/not-release-ready and blocked coordination claims explicit without restoring removed competitor-class claims",
   ),
   check(
@@ -273,7 +316,9 @@ const checks = [
     "docs-match-claim-blocks",
     ["tmux", "sharedWorkspace", "nativeTerminal", "release"].every((claim) => currentReadinessBlocks.includes(claim)) &&
       docsKeepCurrentClaimPolicy &&
-      normalizedDocs.agentMessage.includes("strict `agmsg` superset behavior until the gates in this document are green"),
+      normalizedDocs.agentMessage.includes(
+        "strict `agmsg` superset behavior until the gates in this document are green",
+      ),
     "docs keep current claim blocks explicit and distinguish honest substrate work from completed parity",
     { currentReadinessBlocks, nativeTextShapingSubclaimReady },
   ),

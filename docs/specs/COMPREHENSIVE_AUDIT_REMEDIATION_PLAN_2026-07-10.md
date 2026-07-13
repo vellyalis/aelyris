@@ -776,6 +776,34 @@ Confirmed findings:
 The review freezes this corrected dependency-first order. Each numbered slice is a
 focused commit and lowers every touched owner ceiling in the same commit:
 
+### **A6.2v1** Complete - Verifiable Agent Work OS Architecture Review
+
+The owner-requested 2026-07-13 product review compared the current repository and
+official primary sources for Hermes Agent, BridgeSpace, Scape, OpenHands, Claude
+Code, Codex, Warp, tmux, WezTerm, Ghostty, ACP, MCP, and A2A. Three independent
+reviews converged on one correction: pane grids, worktrees, agent status, and shared
+memory are necessary substrate, not a sufficient product category. Aelyris must
+close its existing terminal, TaskGraph, Qralis, ownership, Proofbook, governance,
+review, merge, and Remote Continuity spines under one backend-owned Mission,
+capability, causal-event, and evidence model.
+
+Design authorities frozen by this checkpoint:
+
+- `AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md` owns the product requirements and
+  anti-features;
+- `AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md` owns schemas, states,
+  bounded contexts, failure behavior, A7 Core design, and Apex gates;
+- `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md` owns permanent
+  Now/Next/Unlocks reporting, capability unlocks, and Core-versus-Apex sequencing;
+- `pnpm verify:verifiable-agent-work-os-spec` proves the documentation contract
+  only and emits `.codex-auto/quality/verifiable-agent-work-os-spec.json`.
+
+This is a design-only checkpoint. It does not implement Mission persistence,
+WorkEvent migration, capability leases, completion packets, replay, learning,
+remote control, or extensions; it does not change current alpha/not-release-ready
+claim policy. A6.2e1 remains the next implementation slice. New product runtime
+work must not start until A6.2g and then A6.8 satisfy their dependency gates.
+
 #### A6.2e - Architecture and Behavioral Contract Repair
 
 1. **A6.2e0 exact continuation and worklog contract hardening**: add an explicit
@@ -859,32 +887,180 @@ A6.2 is complete only when fresh evidence proves all of the following together:
 A6.3 remains next and must not start until A6.2g is complete. Only the A6.8 combined
 aggregate may emit A6 `phaseComplete=true` after A6.2-A6.7 and blocking CI all pass.
 
-## A7 - Evidence-Backed Product Completion
+## A7 - Evidence-Backed Core Mission Loop
 
-Objective: complete one useful mission without inferred completion truth.
+Objective: prove one useful end-to-end Verifiable Agent Work OS mission without
+inferred completion truth.
 
-Required product primitive: immutable backend-owned `CompletedWorkPacket` binding:
+Product authorities:
 
-- goal/work unit and actor identities,
-- base/head commit,
-- owned files/symbols,
-- executed gates and evidence digests,
-- reviewer verdict and residual risks,
-- approval capability and approver,
-- merge result or durable blocked handoff.
+- `AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md`,
+- `AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md`,
+- `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md`.
 
-Build order:
+Required product primitives:
 
-1. packet schema/persistence/verifier,
-2. verified Review Queue and merge projection,
-3. First Mission preflight and plan preview,
-4. Proofbook product UI,
-5. daily Fleet Briefing, recipes, and budget/cost controls,
-6. remote read-only continuity,
-7. principal/capability and connector contracts.
+- accepted immutable backend-owned `MissionDefinitionRevision`, derived
+  `MissionExecutionProjection`, and dependency-aware work graph;
+- backend-owned Now/Next/Unlocks projection with exact blocker owner/action;
+- typed causal WorkEvent minimum sufficient to reconstruct the First Mission;
+- principal/capability and agent connector contracts, with scoped capability
+  leases for every effectful surface used by the scenario;
+- one canonical Control API command registry/kernel with generated adapter schemas,
+  authenticated-principal propagation, idempotency/cancellation/backpressure, and
+  all-face authority/result/evidence equivalence;
+- visible real-PTY execution with Mission/runtime/ownership correlation;
+- Proofbook product UI, fleet recipes, daily Fleet Briefing, and measured
+  budget/cost controls preserved from the original A7 scope;
+- scoped read-only Remote Continuity preserved from the original A7 scope;
+- immutable backend-owned `CompletedWorkPacket` binding:
+  - Mission/work unit, contract revision, and actor identities,
+  - adapter/model/skill and environment provenance,
+  - base/head commit and owned files/symbols,
+  - executed gates, evidence/artifact digests, and freshness,
+  - acceptance coverage, Chronicle range/root, computed independent reviewer
+    lineage/verdict, dissent, and non-blocking residual risks,
+  - approval capability and approver,
+  - zero repo/policy/operator/external acceptance blockers,
+  - accepted or exact-OID merged result,
+  - typed, redacted, capability-bound rollback/compensation and replay recipe;
+- separate immutable `BlockedWorkPacket` preserving exact blocker arrays,
+  authority, input, command/result/artifacts, next action, OID, and evidence while
+  granting zero Mission/phase/release/goal completion credit;
+- distinct immutable `MissionCompletionPacket` aggregating the exact required
+  work-unit packets and Mission-level acceptance/gates; one work-unit packet cannot
+  complete Mission.
 
-Do not start marketplace, autonomous main merge, hosted cloud IDE, or broad team RBAC
-before the completion packet and local single-operator trust path are proven.
+A7 is a finite release-blocking vertical. Full replay/time travel, recovery UX,
+complete Qralis messaging, governed learning, Decision Lab, Counterfactual Arena,
+Temporal Project Twin, writable remote control, extensions, marketplace, and A2A
+federation remain separately gated Apex work. They do not silently become R0-A9
+completion criteria.
+
+### A7.0 - Mission Contract And Owner Inventory Gate
+
+- inventory exact TaskGraph, journal/EventBus, governance, ownership, Proofbook,
+  review, merge, and projection owners before schema or migration work;
+- inventory every Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook,
+  review, merge, frontend-audit, and direct-DB face; freeze the canonical Control
+  Command registry/envelopes/errors and current bypass-removal gates;
+- freeze Rust/JSON Schema authority for Mission definition/execution, WorkUnit,
+  progress/ready work, blocker/handoff, evidence/integrity, capability/budget,
+  packets, typed recovery, every referenced type, and transition/negative tests;
+- freeze UUIDv7 identifiers, workspace-scoped sequence, RFC 8785 canonicalization,
+  digest/integrity tiers, unknown-field/version rules, units, and exact owners;
+- freeze a successful First Mission fixture with 3-12 work units, two owned source
+  targets, one visible implementer, independent reviewer, Proofbook run, denial
+  fixture, mid-run restart, exact-OID accepted merge, and scoped remote read;
+- cap the A7 contract at 20 work units, 4 concurrent agents, 8 panes, 256 KiB event
+  payload, 10,000/64 MiB observational backlog, 250 ms projection p95, 1 second
+  freshness, 15 second restart RTO, and RPO=0 for critical mutation/proof facts;
+- prove requirements/spec/design/traceability and keep target runtime claims false.
+
+### A7.1 - Mission Spine And Chronicle Minimum
+
+- evolve the existing TaskGraph owner; do not create a second DAG;
+- persist accepted Mission revision, outcome, proof requirements, capability
+  unlock, and symbol intents;
+- use the existing audit journal as the typed WorkEvent migration origin; do not
+  create a third lifecycle log;
+- reconstruct identical Mission/Now/Next/Unlocks projection after restart and
+  prove sequence, causation, idempotency, redaction, and bounded no-silent-drop
+  behavior for the First Mission path.
+
+### A7.2 - Capability And Agent Fabric Minimum
+
+- implement local human, local agent, and reconciler principals;
+- bind PTY, IPC, MCP, Proofbook, review, and merge actions used by First Mission to
+  short-lived scoped capability leases;
+- route enabled faces through one Control Kernel and prove generated schema/catalog,
+  principal propagation, idempotency, cancellation, backpressure, and event/
+  evidence equivalence without transport-recursive business logic;
+- prove process-tree/generation and monotonic-clock binding, Windows canonical
+  resource containment, network/DNS/redirect policy, budget units, reserve-effect-
+  commit-uncertain, expiry/revocation/one-use, args/OID/lane binding, secret
+  exclusion, and equivalent denial across enabled surfaces;
+- freeze PTY/ACP/SDK/A2A descriptors and conformance fixtures; run the PTY vertical
+  and report unavailable structured capabilities as typed unsupported rather than
+  a false production-adapter claim;
+- agents may request capability but cannot issue or widen it.
+
+### A7.3 - Plan Preview And Visible First Mission
+
+- Mission Rehearsal previews dependencies, critical path, ownership collision,
+  agents/panes/worktrees, capability queue, gates/artifacts, risk, irreversible
+  effects, measured versus estimated budget, and capability unlock;
+- rehearsal uses no effectful port;
+- execute the implementation agent in a visible real PTY with stable Mission,
+  work-unit, pane, runtime, ownership, and capability correlation;
+- unsupported adapter capabilities return typed `unsupported`, never inference.
+
+### A7.4 - Immutable Completion And Blocked Settlement
+
+- Mission settlement consumes immutable Proofbook ledger/evidence refs plus
+  ownership, review, approval, and merge facts; it neither reruns nor mutates a
+  Proofbook run, and Evidence Store remains a projection/index;
+- create/digest immutable `CompletedWorkPacket` only with complete acceptance
+  coverage, Chronicle range/root, exact OIDs/diff ownership, fresh gate/artifact
+  integrity, computed independent reviewer lineage, zero acceptance blockers,
+  capability provenance, accepted/merged outcome, and typed recovery/replay;
+- emit a separate `BlockedWorkPacket` for any remaining acceptance blocker and keep
+  the work unit/Mission/A7 incomplete;
+- aggregate exact required child packets and Mission-level coverage into a distinct
+  `MissionCompletionPacket`; one child packet never completes the aggregate;
+- negative tests reject integrity tamper, stale OID/evidence, missing coverage/
+  artifact, uncovered symbol, same-agent/fork reviewer, capability replay, raw or
+  injected recovery instruction, hidden blocker, and digest mismatch;
+- Proofbook PASS, review approval, merge intent, agent self-report, or durable
+  blocked handoff alone cannot render trusted Done.
+
+### A7.5 - Proofbook Product, Recipes, Fleet Briefing, And Budget/Cost
+
+- render Proofbook canvas, run timeline, and proof inspector from the existing
+  runner/ledger with no frontend runner or second settlement owner;
+- implement versioned fleet recipes and daily since-last-seen Fleet Briefing;
+- expose measured currency/token/time/resource cost with explicit units and label
+  estimates/unknowns honestly;
+- preserve source Proofbooks; learning/distillation may only produce proposals.
+
+### A7.6 - Remote Read-Only Continuity
+
+- implement scoped read-only Mission, Attention, Fleet Briefing, pane, Chronicle,
+  Proofbook, decision, and packet projection;
+- bind read capability to device/session, project/Mission/pane/evidence/event range,
+  byte/rate cap, expiry/revocation, redaction, and inert rendering;
+- prove OSC52/clipboard/link/escape/tool/artifact secret-exfiltration, stale cursor,
+  revoked device, over-scope, and disconnect-buffer negative fixtures;
+- no remote write/steer/approval or remote state owner in A7.
+
+### A7.7 - Mission Cockpit And Attention
+
+- render backend-owned Now/Next/Unlocks in the existing cockpit instead of adding
+  a duplicate workflow owner;
+- render one recommended Next while preserving all backend `readyWork[]` lanes;
+- rank/deduplicate attention by versioned backend policy with owner, exact next
+  action, evidence, freshness, and consequence;
+- never present heuristic token/context/cost/health estimates as measured truth.
+
+### A7.8 - Successful First Mission Combined Acceptance
+
+The fixed useful brief must pass accepted contract and rehearsal, visible
+execution, ownership/capability enforcement, Proofbook product/recipe/cost proof,
+scoped remote read, mid-mission restart/reconstruction, fresh acceptance coverage,
+computed independent review, successful exact-OID accepted merge, immutable
+`CompletedWorkPacket` children, exact `MissionCompletionPacket`, and truthful
+Now/Next/Unlocks throughout.
+
+A separate mandatory negative scenario emits `BlockedWorkPacket`, preserves exact
+continuation, and proves the Mission/A7 aggregate stays incomplete. It is not an
+alternative success path. The combined gate runs in blocking CI and rejects any
+missing/stale child, acceptance blocker, unclassified failure, inferred completion,
+or false phase/release claim. A7 completion alone does not imply A8, A9,
+external/operator, or release completion.
+
+Do not start marketplace, autonomous main merge, hosted cloud IDE, broad team RBAC,
+or effectful Shadow Missions before the Core Mission Loop and local single-operator
+trust path are proven.
 
 ## A8 - Measured Native Terminal Spike
 
@@ -925,6 +1101,33 @@ Required work:
 
 Release remains BLOCK until repo-owned phases A0-A8 are complete and external proof is
 current. External limitations must not be counted as implementation completion.
+
+## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
+
+After release trust is proven, or through a later separately authorized gated
+program, the roadmap continues in this dependency order:
+
+1. Universal Agent Fabric expansion: production ACP and SDK adapters,
+   capability-aware resume/fork/export, and structured event/diff/usage streams.
+2. Mission Time Machine: journal convergence, deterministic replay, recovery
+   branches/checkpoints, compensation, uncertain-effect reconciliation.
+3. Qralis Coordination Fabric: addressed messaging, delivery, role leases,
+   directives, driver trust, bounded context packets.
+4. Verified Skill Foundry: Proofbook fan-out/subProofbook/Evidence Store,
+   scheduling, evidence-governed memory/skills, held-out evaluation and rollback.
+5. Decision Lab and Adversarial Council: bounded independent proposals, fixed
+   rubric, preserved dissent, human gate policy.
+6. Counterfactual Arena: static plan comparison, then isolated same-base Shadow
+   Missions compared by fixed proof and independent review.
+7. Temporal Project Twin: ownership/dependency/proof history, stale-proof and
+   revalidation projection.
+8. Governed Remote Control: extend A7 read-only with scoped steer/approve/stop,
+   writable attach, emergency steal, and runtime domains.
+9. Signed Extension Ecosystem and A2A federation only after supply-chain proof.
+
+Each Apex wave needs its own owner inventory, acceptance, CI, external boundary,
+focused commits, and claim gate. Its absence cannot be hidden as an R0-A9 blocker,
+and its design presence cannot be counted as implemented capability.
 
 ## Required Session Record
 

@@ -17,6 +17,7 @@ Core rule:
 | Area | Responsibility | Canonical location |
 | --- | --- | --- |
 | Product goal / claim policy | current safe claims, release boundaries | `GOAL.md`, `docs/requirements.md`, `docs/PUBLICATION_READINESS.md` |
+| Verifiable Agent Work OS target | Mission, Now/Next/Unlocks, trust/proof/learning composition | `docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_*` |
 | Decision knowledge | placement and tradeoff rules | `AI_GUIDE.md`, `DECISION_FRAMEWORK.md` |
 | Contracts | rigid API/schema/runtime boundaries | `contracts/README.md`, owning specs |
 | Task packets | current volatile work | `tasks/README.md`, root work-order docs |
@@ -34,6 +35,39 @@ Core rule:
 | Shared frontend code | generic hooks, types, UI primitives, helpers | `src/shared/*` |
 | Styling | design tokens and global styling | `src/styles/*`, CSS modules |
 | Verifiers | machine proof and source-contract checks | `scripts/verify-*.mjs` |
+
+## Verifiable Agent Work OS Composition
+
+The target product category is **Verifiable Agent Work OS**. `Mission` is the
+durable top-level work contract; it composes existing owners rather than replacing
+them:
+
+```text
+Mission / WorkGraph
+  -> Runtime Fabric (mux / PTY / agent session)
+  -> Qralis Coordination (intent / message / directive / role lease)
+  -> Control Kernel (canonical command registry / all-face application ports)
+  -> Capability Kernel (principal / scoped lease / approval)
+  -> Chronicle (typed causal journal and projections)
+  -> Proof And Settlement (Proofbook / review / merge / work-unit packets / MissionCompletionPacket)
+  -> Governed Learning (evidence candidates / evaluation / version / rollback)
+```
+
+`MissionProgressProjection` is the backend-owned source for Now, Next, Unlocks,
+attention, blockers, proof freshness, and repository truth. React, MCP, CLI, SSH,
+and remote surfaces are projections/adapters. Full target capability is not a
+current implementation or release-readiness claim.
+
+The active R0-A9 plan implements only a finite A7 Core Mission Loop before A8/A9.
+Replay/time travel, Skill Foundry, Decision Lab, Counterfactual Arena, Project
+Twin, writable Remote Continuity, extension marketplace, and A2A federation remain
+separately gated Apex work.
+
+Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook, review, and merge are
+adapters over the Control Kernel. They may authenticate/map a face but never own
+principal authority, effect policy, domain state, completion, or evidence. Target
+details and current bypass-removal gates are in
+`docs/specs/AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md`.
 
 ## Dependency Direction
 
@@ -91,3 +125,9 @@ Stop if a change requires:
 - remote write access without principal and lease,
 - hidden visible-agent execution through `-p` / `--print`,
 - release-ready claims without current verifier proof.
+- a Mission status, Now/Next/Unlocks value, or completion judgment recomputed in
+  an adapter instead of projected from backend owners,
+- an unverified conversation, model confidence, or agent self-report promoted to
+  verified memory or completion,
+- an extension or remote client becoming a domain state, capability-grant, or
+  merge authority.

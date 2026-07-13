@@ -4,8 +4,8 @@ STATUS: ACTIVE
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6` (`R0-A5 repo-owned work complete`; A2 signed lifecycle and A4
 real-host sleep/power-loss proof remain explicit A9 operator gates).
-ACTIVE SLICE: `A6.2e0`.
-LAST COMPLETED SLICE: `A6.2e0`.
+ACTIVE SLICE: `A6.2e1`.
+LAST COMPLETED SLICE: `A6.2v1`.
 NEXT PHASE: `A7` after A6 modularity ratchet acceptance is complete.
 NEXT IMPLEMENTATION SLICE: `A6.2e1`.
 A6.2c-A6.2d moved right-rail, pane, evidence, and project/tab responsibilities to
@@ -14,10 +14,13 @@ dedicated owners and lowered the current ceilings to `App.tsx=4215` and
 the green ratchet still permits code-motion-only success, App retains a whole-store
 subscription, app evidence hooks reverse-depend on the right-rail model, and most
 new stateful owners have source-string rather than behavioral proof. Execute the
-corrected A6.2e-A6.2g order in the tracked plan. A6.2e0 now requires exact frontier
-identity and the full current-worklog schema; A6.2e1 next owns neutral evidence
-utilities, dependency direction, and extracted-owner ratchets. A6.3 must not start
-early.
+corrected A6.2e-A6.2g order in the tracked plan. A6.2e0 now enforces exact frontier
+identity and the full current-worklog schema. The design-only A6.2v1 checkpoint
+then froze the Verifiable Agent Work OS specification, detailed design, permanent
+Now/Next/Unlocks roadmap, finite A7 Core Mission Loop, and separately gated
+post-A9 Apex direction without changing runtime owners or current claims. A6.2e1
+next owns neutral evidence utilities, dependency direction, and extracted-owner
+ratchets. A6.3 and all A7 runtime work must not start early.
 
 ## Objective
 
@@ -65,7 +68,7 @@ continuation_contract:
 | A4 | session/DB migration, backup, restore, failure durability | A3 complete | upgrade/restart/fault tests PASS |
 | A5 | supervised execution and lock/concurrency boundaries | A4 complete | timeout/cancel/concurrency gates PASS |
 | A6 | owner-based splits and modularity ratchets | A5 complete | ratchet + focused tests PASS |
-| A7 | CompletedWorkPacket and first complete product mission | A6 complete | commit-bound completion scenario PASS |
+| A7 | Mission/capability spine, Proofbook product/recipes/cost, remote read-only, CompletedWorkPacket, and first complete product mission | A6 complete | restart-safe successful commit-bound Core Mission scenario PASS |
 | A8 | measured terminal-only native spike | A7 complete and metrics justify | parity/perf/soak decision artifact |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 

@@ -1,5 +1,14 @@
 # Aelyris MCP Tool Surface Spec (`aelyris.mcp.v1`)
 
+> ⚠️ **Control-authority update (2026-07-13) — read before using this catalog.**
+> This file inventories current and historical MCP-facing tools. The target
+> cross-face identity, capability, command-envelope, versioning, idempotency,
+> cancellation, backpressure, error, and evidence contract is owned by
+> `AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md`. `FREE`/`GATED` below is not an authorization decision:
+> no-human-click is not no-capability. Current HTTP/
+> JSON-RPC source and focused verifiers own implemented transport truth; stdio or
+> other proposed transport text is not an implemented claim.
+
 > ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
 > requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
 > autonomy** model: agents can dispatch, review, and merge through **gated controls**,

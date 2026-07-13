@@ -39,6 +39,7 @@
     "verify:proofbook:runner": "node scripts/verify-proofbook-runner.mjs",
     "verify:proofbook:agent-session": "node scripts/verify-proofbook-agent-session.mjs",
     "verify:differentiation-polish-spec": "node scripts/verify-differentiation-polish-spec.mjs",
+    "verify:verifiable-agent-work-os-spec": "node scripts/verify-verifiable-agent-work-os-spec.mjs",
     "verify:ai-decision-knowledge": "node scripts/verify-ai-decision-knowledge.mjs",
     "verify:audit-remediation:continuation": "node scripts/verify-audit-remediation-continuation.mjs",
     "test:a6:continuation-contract": "node --test scripts/__tests__/audit-remediation-continuation-contract.test.mjs",

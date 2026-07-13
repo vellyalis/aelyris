@@ -155,3 +155,32 @@ Implication: Shortcut help and palette hints must be generated from the shared
 registry, and pane splits are documented as the mux prefix sequence (`Ctrl+B`
 then `%` or `"`). A future user-configurable shortcut system needs a new
 design decision and must not be reintroduced as a second owner.
+
+## ADR-011 Mission Is The Top-Level Work Contract
+
+Decision: Position the target product as a **Verifiable Agent Work OS** and make a
+backend-owned, versioned `Mission` the top-level contract that composes TaskGraph,
+runtime, ownership, capability, Chronicle, Proofbook, review, merge, and governed
+learning. Every Mission exposes canonical Now, Next, and Unlocks projections.
+
+Why:
+
+- terminal panes, agent grids, worktrees, Kanban, and shared memory are becoming
+  common substrate and do not by themselves explain why work is complete;
+- Aelyris already has strong separate runtime, ownership, Proofbook, review, and
+  merge spines, but needs one outcome and causal contract across them;
+- agent self-report and frontend heuristics cannot provide restart-safe,
+  auditable, evidence-backed completion;
+- a Mission gives every action a reason, owner, capability boundary, required
+  proof, exact next step, and user-visible completion outcome.
+
+Implication: Evolve existing owners; do not add a second TaskGraph, lifecycle
+journal, dispatcher, Proofbook runner, or frontend progress owner. A7 proves one
+finite Core Mission Loop, work-unit `CompletedWorkPacket`, and aggregate
+`MissionCompletionPacket`. All transport faces delegate through one canonical
+Control Command registry/kernel; adapter-local `FREE/GATED`, caller actor/reviewer,
+or bearer possession cannot grant authority. Full replay,
+reversible recovery, governed Skill Foundry, Decision Lab, Counterfactual Arena,
+Project Twin, writable remote control, marketplace, and A2A federation remain
+separately gated Apex work. This target category is not a shipped or release-ready
+claim.

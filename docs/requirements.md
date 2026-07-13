@@ -1,8 +1,8 @@
 # Aelyris Requirements Index
 
 Status: active implementation index
-Last updated: 2026-06-27 JST
-Last reviewed: 2026-07-10 JST
+Last updated: 2026-07-13 JST
+Last reviewed: 2026-07-13 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
@@ -20,20 +20,38 @@ authoritative requirement, specification, design, and proof sources.
 The active spec index is `docs/specs/README.md`. Start there for the current read
 order and the authoritative specs. Key still-active specs include:
 
-1. Agent-message superset requirements:
+1. Verifiable Agent Work OS product contract:
+   `docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md`
+
+   Owns the target product requirements for the backend-owned Mission,
+   Now/Next/Unlocks, Universal Agent Fabric, capability kernel, Chronicle,
+   immutable work-unit packets and `MissionCompletionPacket`, reversible autonomy, governed learning,
+   Attention Compiler, and post-release Apex direction. Its detailed design and
+   roadmap are adjacent. These are target authorities, not shipped-capability or
+   release-readiness claims; the active R0-A9 plan still owns execution order.
+
+   Cross-face API/MCP security, identity, versioning, idempotency, cancellation,
+   backpressure, evidence, migration, and adversarial acceptance are owned by
+   `docs/specs/AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md`. The current
+   `MCP_TOOL_SURFACE_SPEC.md` is a subordinate implemented/historical catalog, not
+   permission or product ontology authority.
+
+   Contract gate: `pnpm verify:verifiable-agent-work-os-spec`.
+
+2. Agent-message superset requirements:
    `docs/specs/AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md`
 
    Owns the `agmsg` comparative audit result, local agent message bus
    requirements, delivery policy, role leases, directive protocol, driver trust,
    and the strict-superset claim boundary.
 
-2. Visible agent pane runtime boundary:
+3. Visible agent pane runtime boundary:
    `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
 
    Owns the visible PTY / interactive TUI rule for human-visible agents and the
    pane-tree orchestration design.
 
-3. Supporting specs (planner, MCP tool surface, type bridge, cockpit UX,
+4. Supporting specs (planner, MCP tool surface, type bridge, cockpit UX,
    architecture) are indexed in `docs/specs/README.md`.
 
 ## Current Claim Policy
@@ -51,6 +69,12 @@ The current defensible claim is narrower:
 > worktree, ownership, review, and merge substrate, but larger product claims are
 > still blocked by durability, persistence, native-quality, and current-proof
 > gates.
+
+The product-direction category is **Verifiable Agent Work OS**, with `Mission` as
+the durable top-level work contract. That phrase is a target design category. It
+must not be projected as implemented, shipped, production-ready, or
+release-candidate-ready until the matching A7 runtime gates, A8 decision evidence,
+A9 release/external evidence, and current aggregate claim policy all pass.
 
 ## Current Machine Truth
 
