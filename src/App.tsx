@@ -51,18 +51,14 @@ import { useBootstrapAppConfig } from "./features/app/useBootstrapAppConfig";
 import { useAuthenticatedPromptEvidence } from "./features/app/useAuthenticatedPromptEvidence";
 import { useAiCliLaunchEvidence } from "./features/app/useAiCliLaunchEvidence";
 import { useReleaseGoalEvidence } from "./features/app/useReleaseGoalEvidence";
+import { useProjectTabLifecycle } from "./features/app/useProjectTabLifecycle";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { useOrchestraDispatch } from "./features/orchestrator/useOrchestraDispatch";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { TERMINAL_PREFIX_COMMAND_EVENT } from "./features/terminal/hooks/useCanvasIME";
-import {
-  deletePaneTreeSnapshot,
-  deletePaneTreeSnapshotFromBackend,
-  PaneTreeContainer,
-  paneTreeStorageKey,
-} from "./features/terminal/pane-tree";
+import { PaneTreeContainer, paneTreeStorageKey } from "./features/terminal/pane-tree";
 import { WorkspaceTabs } from "./features/workspace-tabs/WorkspaceTabs";
 import { PRODUCT_NAME } from "./shared/constants/product";
 import {
@@ -421,6 +417,21 @@ export function App() {
     // via getState so the initializer is stable — useTabManager only consults
     // the value when creating the initial tab and via addTab's shell argument.
   } = useTabManager(useAppStore.getState().defaultShell);
+  const {
+    handleCloseFolder,
+    handleCloseTab,
+    handleOpenFolder,
+    handleOpenProject,
+    handleTabSwitch,
+  } = useProjectTabLifecycle({
+    activeTabId,
+    addTabWithCwd,
+    clearFiles,
+    closeTab,
+    setActiveTabId,
+    setRootProjectPath,
+    tabs,
+  });
   const { activePtyId, clearActivePtyId, setTabActivePtyId, setTabPaneRegistry, tabPaneRegistries } = usePaneRegistry(
     activeTabId,
     tabs,
@@ -518,19 +529,6 @@ export function App() {
     selectedOperationalPane,
     selectedOperationalPaneTarget,
   } = useOperationalPaneSelection(visualTerminalPaneTargets);
-
-
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      if (tabs.length > 1 && tabs.some((tab) => tab.id === tabId)) {
-        const storageKey = paneTreeStorageKey(tabId);
-        deletePaneTreeSnapshot(storageKey);
-        void deletePaneTreeSnapshotFromBackend(storageKey);
-      }
-      closeTab(tabId);
-    },
-    [closeTab, tabs],
-  );
 
   const {
     sessions,
@@ -1016,17 +1014,6 @@ export function App() {
     setFileTreeKey((k) => k + 1);
   }, [refreshGitStatus]);
 
-  const confirmDiscardUnsavedFiles = useCallback(async (action: string) => {
-    const count = useAppStore.getState().unsavedFiles.size;
-    if (count === 0) return true;
-    return showConfirm({
-      title: "Unsaved changes",
-      description: `${count} file(s) have unsaved changes. ${action}?`,
-      confirmLabel: "Discard",
-      tone: "danger",
-    });
-  }, []);
-
   // ── Extracted hooks ──
 
   const { createWorktree, removeWorktree } = useWorktreeActions({
@@ -1044,39 +1031,6 @@ export function App() {
   });
 
   // ── Handlers ──
-
-  const handleOpenProject = useCallback(
-    async (path: string) => {
-      if (!(await confirmDiscardUnsavedFiles("Open another project and discard them"))) return;
-      const normalized = path.replace(/\\/g, "/");
-      setRootProjectPath(normalized);
-      addTabWithCwd("powershell", normalized);
-      clearFiles();
-      // Populate the Knowledge Graph (code dependency map) from this project's
-      // source — best-effort, off the UI thread. It persists, so it survives a
-      // restart and simply re-runs on the next open if this attempt fails.
-      void tauriInvoke("populate_knowledge_graph", { rootPath: normalized }).catch(() => {});
-    },
-    [addTabWithCwd, clearFiles, confirmDiscardUnsavedFiles, setRootProjectPath],
-  );
-
-  const handleCloseFolder = useCallback(async () => {
-    if (!(await confirmDiscardUnsavedFiles("Close this project and discard them"))) return;
-    setRootProjectPath(null);
-    clearFiles();
-  }, [clearFiles, confirmDiscardUnsavedFiles, setRootProjectPath]);
-
-  const handleOpenFolder = useCallback(async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true, multiple: false, title: "Open Project Folder" });
-      if (selected) {
-        await handleOpenProject(typeof selected === "string" ? selected : selected[0]);
-      }
-    } catch {
-      /* cancelled or not in Tauri */
-    }
-  }, [handleOpenProject]);
 
   useEffect(() => {
     if (!devVisualQa.enabled) return;
@@ -1102,17 +1056,6 @@ export function App() {
     setRootProjectPath,
     setRightRailMode,
   ]);
-
-  const handleTabSwitch = useCallback(
-    async (tabId: string) => {
-      if (tabId === activeTabId) return true;
-      if (!(await confirmDiscardUnsavedFiles("Switch tabs and discard them"))) return false;
-      setActiveTabId(tabId);
-      clearFiles();
-      return true;
-    },
-    [activeTabId, clearFiles, confirmDiscardUnsavedFiles, setActiveTabId],
-  );
 
   const {
     applyPaneLayoutCommand,
@@ -4143,8 +4086,9 @@ export function App() {
             activeTabId={activeTabId}
             activityTabs={activityTabs}
             onSelectTab={(id) => {
-              if (interactiveSessionId) selectInteractiveSession("");
-              void handleTabSwitch(id);
+              void handleTabSwitch(id).then(
+                (switched) => switched && interactiveSessionId && selectInteractiveSession(""),
+              );
             }}
             onCloseTab={handleCloseTab}
             onNewTab={addTab}

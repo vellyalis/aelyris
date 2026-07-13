@@ -113,6 +113,10 @@ function getAiCliLaunchEvidenceSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useAiCliLaunchEvidence.ts"), "utf8");
 }
 
+function getProjectTabLifecycleSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/useProjectTabLifecycle.ts"), "utf8");
+}
+
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -161,7 +165,7 @@ function templatePlaceholder(name: string): string {
 
 describe("App unsaved editor guards", () => {
   it("does not clear editor state on project/tab changes without an unsaved confirmation", () => {
-    const src = getSrc();
+    const src = getProjectTabLifecycleSource();
 
     expect(src).toMatch(/const confirmDiscardUnsavedFiles\s*=\s*useCallback/);
     expect(src).toMatch(/useAppStore\.getState\(\)\.unsavedFiles\.size/);
@@ -283,6 +287,21 @@ describe("App AI CLI launch evidence ownership", () => {
     expect(owner).toContain("nativeInputHost || ime || processReconnect || muxLiveProcessPreservation");
     expect(owner).toContain('operation: "read_ai_cli_launch_evidence"');
     expect(owner).toContain("const EMPTY_EVIDENCE");
+  });
+});
+
+describe("App project/tab lifecycle ownership", () => {
+  it("keeps unsaved guards, project normalization, knowledge graph adoption, and snapshot cleanup together", () => {
+    const src = getSrc();
+    const owner = getProjectTabLifecycleSource();
+
+    expect(src).toContain("useProjectTabLifecycle({");
+    expect(owner).toContain('path.replace(/\\\\/g, "/")');
+    expect(owner).toContain('tauriInvoke("populate_knowledge_graph"');
+    expect(owner).toContain("tabs.length > 1");
+    expect(owner).toContain("deletePaneTreeSnapshotFromBackend(storageKey)");
+    expect(src).toContain("handleTabSwitch(id).then(");
+    expect(src).toContain('switched && interactiveSessionId && selectInteractiveSession("")');
   });
 });
 
