@@ -4,11 +4,17 @@ STATUS: ACTIVE
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6` (`R0-A5 repo-owned work complete`; A2 signed lifecycle and A4
 real-host sleep/power-loss proof remain explicit A9 operator gates).
+ACTIVE SLICE: `A6.2 review correction`.
 NEXT PHASE: `A7` after A6 modularity ratchet acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A6.2c right-rail persistence and projection split`.
-A6.2b moved shared right-rail types and App bootstrap effects to dedicated owners,
-repaired source-contract tests, and lowered both frontend ceilings again. Continue
-extracting persistence/projection without weakening rendered-trust gates.
+NEXT IMPLEMENTATION SLICE: `A6.2e0 exact continuation and worklog contract hardening`.
+A6.2c-A6.2d moved right-rail, pane, evidence, and project/tab responsibilities to
+dedicated owners and lowered the current ceilings to `App.tsx=4215` and
+`rightRailModel.tsx=688`. The 2026-07-13 review reopened A6.2 acceptance because
+the green ratchet still permits code-motion-only success, App retains a whole-store
+subscription, app evidence hooks reverse-depend on the right-rail model, and most
+new stateful owners have source-string rather than behavioral proof. Execute the
+corrected A6.2e-A6.2g order in the tracked plan; exact continuation hardening comes
+before further code motion, and A6.3 must not start early.
 
 ## Objective
 

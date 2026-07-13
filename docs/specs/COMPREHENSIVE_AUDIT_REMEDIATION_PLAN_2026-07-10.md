@@ -629,7 +629,7 @@ Objective: shrink ownership hotspots and prevent regrowth.
 Primary targets:
 
 - `src/App.tsx`
-- `src/shared/lib/rightRailModel.tsx`
+- `src/features/right-rail/rightRailModel.tsx`
 - `src-tauri/src/api/mcp.rs`
 - `src-tauri/src/ipc/commands.rs`
 - `src-tauri/src/db/queries.rs`
@@ -707,6 +707,157 @@ follow these authoritative owners and pass 33/33.
 Ratchets lowered again: `App.tsx` 5173 -> 5111 and `rightRailModel.tsx` 2037 -> 1917.
 The A6 frontend artifact remains `phaseComplete=false`; A6.2c owns persistence and
 projection extraction.
+
+### A6.2c-A6.2d Landed Progress - Acceptance Reopened by Review
+
+The dependency-first extraction series after A6.2b landed focused owners for
+right-rail feedback, validation, audit, visual-QA, and widget composition, followed
+by app-shell owners for editor mode, pane registry/request/spawn/selection, release
+evidence, authenticated prompt evidence, AI CLI launch evidence, and project/tab
+lifecycle. The current enforced ceilings are:
+
+- `src/App.tsx`: 4215 lines
+- `src/features/right-rail/rightRailModel.tsx`: 688 lines
+
+Fresh `pnpm verify:a6:frontend-ratchet` and
+`pnpm verify:a6:modularity-inventory` evidence passes those ceilings and TypeScript,
+but both artifacts correctly remain `phaseComplete=false`. This landed progress is
+not A6.2 acceptance: the 2026-07-13 cross-cutting review found that the current gate
+mostly proves file size and source markers, not dependency direction, subscription
+stability, or stateful behavior.
+
+### A6.2 Review Checkpoint - Corrected Frontend Contract
+
+Confirmed findings:
+
+1. The tracked plan and root work order stopped at A6.2b/A6.2c while implementation
+   had advanced through A6.2d, so continuation truth did not identify the exact
+   current sub-slice.
+2. `verify-a6-frontend-ratchet.mjs` constrains only `App.tsx` and
+   `rightRailModel.tsx` line counts plus source markers. Moving behavior into an
+   unconstrained owner can therefore pass without reducing ownership risk.
+3. `App.tsx` still calls `useAppStore()` without a selector, subscribing the shell
+   to the whole Zustand store despite the A6 narrow-selector requirement.
+4. App evidence hooks import generic path/JSON utilities from
+   `rightRailModel.tsx`; bootstrap schema also imports its contract types through
+   that runtime model. These are reversed or barrel-mediated dependencies.
+5. Most newly extracted stateful hooks are covered by source-string assertions,
+   not executed transition, cancellation, failure, cleanup, or timer behavior.
+6. `App.tsx=4215` cannot credibly reach the <=800 target through hook motion alone.
+   `useAppMenus.ts` is already about 988 physical lines and demonstrates the need
+   to ratchet extracted owners and split render/command composition by owner.
+7. Closing the active project tab is not governed by the same unsaved-editor
+   transition contract as project open/close and tab switch. Cancellation and
+   editor/session preservation must be proved before that transition is accepted.
+8. Close Folder clears `rootProjectPath`, but the effective `projectPath` still
+   falls back to the active tab cwd. The Welcome surface can therefore appear while
+   project-scoped polling and derived effects remain attached to the old project.
+9. Pane request state is a single replaceable slot per request kind. Concurrent
+   restart/attach requests can orphan completion promises, other loss-intolerant
+   operations can be coalesced, and unmount has no bounded settlement policy.
+10. Evidence polling has no generation ordering; overlapping polls can let an older
+    read overwrite newer state, and release evidence currently commits three files
+    independently instead of as one coherent snapshot.
+11. The right-rail runtime model still wildcard-re-exports several owners and App
+    consumes a broad symbol set through that barrel, so physical extraction has not
+    yet established a narrow public dependency boundary.
+12. `AppSilentBugs.test.ts` is about 2764 lines and increasingly owns raw-source
+    assertions for unrelated domains. It is a test hotspot, not a substitute for
+    executed owner tests.
+13. The frontend artifact still labels successful current evidence as
+    `pass-a6.2a-frontend-owner-extraction`; it does not identify the completed slice
+    or the reviewed contract version.
+14. The A6 frontend and modularity verifiers are not directly required by a blocking
+    CI job, and no aggregate can yet emit truthful A6.2 `phaseComplete=true`.
+15. The continuation verifier proves that some worklog exists and that dirty paths
+    appear in the handoff, but does not enforce the protocol's exact command/result,
+    artifact, commit, blocker split, Git truth, and next-action fields.
+
+The review freezes this corrected dependency-first order. Each numbered slice is a
+focused commit and lowers every touched owner ceiling in the same commit:
+
+#### A6.2e - Architecture and Behavioral Contract Repair
+
+1. **A6.2e0 exact continuation and worklog contract hardening**: add an explicit
+   `ACTIVE SLICE` field and require strict equality of the exact slice across the
+   work order, its tracked-plan anchor, local handoff, current worklog, artifact,
+   and pasteable continuation goal. Enforce the protocol's command/result, artifact,
+   commit, blocker split, Git truth, and next-action fields for the current worklog;
+   coarse normalized substring presence is insufficient.
+2. **A6.2e1 neutral evidence utilities and dependency-boundary ratchet**: move
+   generic project artifact path/JSON parsing to a neutral owner, import bootstrap
+   types from their declaration owner, remove app-to-right-rail-model dependencies
+   that exist only for generic contracts, add executed utility tests, and make the
+   frontend ratchet fail on the forbidden dependency direction. Register ceilings
+   for extracted owners, including `useAppMenus.ts`; code motion may not create a
+   new >800-line hotspot. Generic/app owners may not import the right-rail runtime
+   barrel; right-rail consumers use direct declaration owners or a deliberately
+   typed facade instead of wildcard re-export coupling.
+3. **A6.2e2 narrow store subscription**: replace the whole-store `useAppStore()`
+   subscription with stable narrow selectors or a shallow selector contract, prove
+   that unrelated store mutation does not rerender the shell owner, and add a
+   fail-closed verifier check that rejects selector-less App subscriptions.
+4. **A6.2e3 project/tab transition behavior**: execute open, switch, close-folder,
+   inactive-tab close, and active-tab close behavior in tests. An unsaved cancel
+   preserves the active tab, interactive session, editor files, and pane snapshots;
+   a confirmed active-tab context change clears editor state only after the tab
+   transition succeeds. Close Folder must also detach the effective project path so
+   project-scoped polling/effects cannot continue behind the Welcome surface.
+5. **A6.2e4 stateful-owner behavior**: make each evidence poll one generation;
+   release evidence commits its three-file result atomically, all evidence owners
+   suppress or cancel overlap, ignore stale generations, and prevent later adoption
+   after project change or unmount. Define pane
+   requests as per-kind serialized work: loss-intolerant close/restart/attach/rename/
+   role/layout operations execute FIFO, focus alone may use documented latest-wins,
+   and every accepted request settles exactly once within a bounded lifecycle on
+   success, failure, typed cancellation, tab removal, or unmount. Add concurrent-
+   request, timer, out-of-order completion, project-change, stale-result, partial-
+   evidence, routing, completion, and cleanup tests for the evidence, pane request,
+   spawn, registry, and selection owners. Delayed agent-spawn events must retain the
+   initiating tab owner across a tab switch rather than adopting the tab active at
+   event receipt. Source-string tests may remain as ownership guards but are not
+   behavior acceptance. Give the frontend artifact explicit `completedSlice` and
+   `contractVersion` fields; remove the stale A6.2a status label.
+
+#### A6.2f - Component and Command Composition
+
+1. Split `useAppMenus.ts` into typed command/menu owner groups before it is allowed
+   to become a replacement hotspot; keep the public composition hook below 800 lines.
+2. Extract the right-rail render surface into typed view-model/action contracts,
+   preserving the single runtime owners and avoiding a giant undifferentiated prop
+   bag or duplicate derived state. Separate pure projection contracts from component
+   contracts and replace wildcard runtime-barrel exposure with direct owners or an
+   explicit narrow facade.
+3. Extract workspace/editor/chrome composition and the dialog/overlay host along
+   cohesive render boundaries. Every new owner is registered with an <=800-line
+   ceiling and focused rendered-behavior proof.
+4. Reduce `App.tsx` to a composition shell at or below 800 lines. Every intermediate
+   commit must lower the exact App ceiling; reaching the target by hiding logic in
+   unratcheted files is a failure.
+5. Split `AppSilentBugs.test.ts` by authoritative owner and ratchet the remaining
+   cross-surface source-contract suite below 800 lines; behavioral tests live with
+   the owner contract they execute.
+
+#### A6.2g - Combined Frontend Acceptance
+
+A6.2 is complete only when fresh evidence proves all of the following together:
+
+- `App.tsx <= 800`, `rightRailModel.tsx <= 800`, `useAppMenus.ts <= 800`, and every
+  extracted A6 frontend owner is registered and rejects growth above its current
+  lowered ceiling;
+- no selector-less App `useAppStore()` subscription and no forbidden app-to-right-
+  rail dependency for neutral contracts;
+- executed behavioral suites cover the stateful owner transitions listed in A6.2e;
+- TypeScript no-emit, production build, focused frontend tests, A3 rendered-trust
+  regressions, `verify:a6:frontend-ratchet`, and `verify:a6:modularity-inventory`
+  pass with fresh provenance;
+- a blocking CI job runs both A6 verifiers and the combined frontend acceptance on
+  the required branch/PR lane, and current hosted evidence is green;
+- the frontend artifact reports `sliceComplete=true` and `frontendComplete=true`
+  only after these checks pass, while `phaseComplete=false` remains truthful.
+
+A6.3 remains next and must not start until A6.2g is complete. Only the A6.8 combined
+aggregate may emit A6 `phaseComplete=true` after A6.2-A6.7 and blocking CI all pass.
 
 ## A7 - Evidence-Backed Product Completion
 
