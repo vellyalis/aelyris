@@ -1,6 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import {
+  backtickField,
+  extractYamlBlock,
+  granularSliceId,
+  hasPlanSliceAnchor,
+  phaseForSlice,
+  scalarField,
+  validateCurrentWorklogPath,
+  validateHandoff,
+  validateWorkRecord,
+} from "./audit-remediation-continuation-contract.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "audit-remediation-continuation.json");
@@ -45,15 +56,6 @@ function includesAll(text, values) {
   return values.filter((value) => !haystack.includes(normalize(value)));
 }
 
-function backtickField(text, label) {
-  const match = text.match(new RegExp(`${label}:\\s*\`([^\`]+)\``));
-  return match?.[1]?.trim() ?? null;
-}
-
-function phaseId(value) {
-  return String(value ?? "").match(/\b(?:R\d+|A\d+(?:\.\d+)?)\b/)?.[0] ?? null;
-}
-
 function writeJsonAtomic(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -85,13 +87,17 @@ function statusPaths() {
 
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readText(path)]));
 const head = git(["rev-parse", "--short", "HEAD"]);
+const headSubject = git(["log", "-1", "--pretty=%s"]);
 const branch = git(["branch", "--show-current"]);
-const shortStatus = git(["status", "--short", "--branch"]);
+const shortStatus = git(["status", "--short", "--branch", "--untracked-files=all"]);
 const changedPaths = statusPaths();
-const currentProgramPhase = phaseId(backtickField(source.workOrder, "CURRENT PHASE"));
+const program = backtickField(source.workOrder, "PROGRAM");
+const currentProgramPhase = backtickField(source.workOrder, "CURRENT PHASE");
+const activeSlice = backtickField(source.workOrder, "ACTIVE SLICE");
+const completedSlice = backtickField(source.workOrder, "LAST COMPLETED SLICE");
 const nextImplementationSlice = backtickField(source.workOrder, "NEXT IMPLEMENTATION SLICE");
-const activePhase = phaseId(nextImplementationSlice) ?? currentProgramPhase ?? "unknown";
-const nextPhase = phaseId(backtickField(source.workOrder, "NEXT PHASE")) ?? "unknown";
+const activePhase = currentProgramPhase ?? "unknown";
+const nextPhase = backtickField(source.workOrder, "NEXT PHASE") ?? "unknown";
 
 const requiredFiles = [
   "agents",
@@ -115,6 +121,8 @@ const workOrderMissing = includesAll(source.workOrder, [
   "STATUS: ACTIVE",
   "PROGRAM: audit-remediation",
   "CURRENT PHASE:",
+  "ACTIVE SLICE:",
+  "LAST COMPLETED SLICE:",
   "NEXT IMPLEMENTATION SLICE:",
   paths.plan,
   paths.protocol,
@@ -125,6 +133,51 @@ checks.push(
   check("work-order-contract", workOrderMissing.length === 0, "root work order routes one active program", {
     missing: workOrderMissing,
   }),
+);
+
+const workOrderSliceProblems = [];
+if (program !== "audit-remediation") workOrderSliceProblems.push("program-exact");
+if (!/^A\d+$/.test(activePhase)) workOrderSliceProblems.push("current-phase-exact");
+if (granularSliceId(activeSlice) !== activeSlice) workOrderSliceProblems.push("active-slice-exact-id");
+if (granularSliceId(completedSlice) !== completedSlice) workOrderSliceProblems.push("completed-slice-exact-id");
+if (granularSliceId(nextImplementationSlice) !== nextImplementationSlice) {
+  workOrderSliceProblems.push("next-slice-exact-id");
+}
+if (phaseForSlice(activeSlice) !== activePhase) workOrderSliceProblems.push("active-slice-phase");
+if (phaseForSlice(completedSlice) !== activePhase) workOrderSliceProblems.push("completed-slice-phase");
+if (phaseForSlice(nextImplementationSlice) !== activePhase) workOrderSliceProblems.push("next-slice-phase");
+if (!/^A\d+$/.test(nextPhase)) workOrderSliceProblems.push("next-phase-exact");
+checks.push(
+  check(
+    "work-order-exact-slice",
+    workOrderSliceProblems.length === 0,
+    "work order exposes one exact active continuation frontier",
+    {
+      program,
+      activePhase,
+      activeSlice,
+      completedSlice,
+      nextImplementationSlice,
+      problems: workOrderSliceProblems,
+    },
+  ),
+);
+
+const planSliceProblems = [];
+if (!hasPlanSliceAnchor(source.plan, activeSlice)) planSliceProblems.push(activeSlice ?? "missing-active-slice");
+if (!hasPlanSliceAnchor(source.plan, completedSlice)) {
+  planSliceProblems.push(completedSlice ?? "missing-completed-slice");
+}
+if (!hasPlanSliceAnchor(source.plan, nextImplementationSlice)) {
+  planSliceProblems.push(nextImplementationSlice ?? "missing-next-slice");
+}
+checks.push(
+  check(
+    "tracked-plan-exact-slice-anchors",
+    planSliceProblems.length === 0,
+    "active, completed, and next slices have exact tracked-plan anchors",
+    { missingAnchors: planSliceProblems },
+  ),
 );
 
 const phaseIds = ["R0", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9"];
@@ -215,40 +268,80 @@ const worklogs = existsSync(fullPath(paths.worklogDir))
   : [];
 checks.push(check("worklog-present", worklogs.length > 0, "at least one session worklog exists", { worklogs }));
 
-const handoffMissing = includesAll(source.handoff, [
-  "LOCAL ONLY. DO NOT COMMIT.",
-  "program: audit-remediation",
-  `active_phase: ${activePhase}`,
-  `branch: ${branch}`,
-  `head: ${head}`,
-  "Read Order",
-  "Commands And Results",
-  "Next Exact Action",
-  "Blocker Split",
-  "Pasteable /goal",
-  "worklog:",
-]);
+const handoffBlock = extractYamlBlock(source.handoff, "program");
+const handoffWorklogValue = handoffBlock ? scalarField(handoffBlock, "worklog") : null;
+const currentWorklogPathResult = validateCurrentWorklogPath(handoffWorklogValue, paths.worklogDir);
+const currentWorklogPath = currentWorklogPathResult.path;
+const currentWorklogExists = currentWorklogPathResult.ok && existsSync(fullPath(currentWorklogPath));
+const currentWorklogIgnored = currentWorklogExists && isIgnored(currentWorklogPath);
 checks.push(
   check(
-    "handoff-schema",
-    handoffMissing.length === 0,
-    "canonical local handoff has current identity and required fields",
+    "current-worklog-pointer",
+    currentWorklogPathResult.ok && currentWorklogExists && currentWorklogIgnored,
+    "handoff selects one safe ignored current worklog without mtime inference",
     {
-      missing: handoffMissing,
-      branch,
-      head,
+      path: currentWorklogPath,
+      problems: currentWorklogPathResult.problems,
+      exists: currentWorklogExists,
+      ignored: currentWorklogIgnored,
     },
   ),
 );
+const currentWorklogSource = currentWorklogExists ? readText(currentWorklogPath) : "";
+const expectedCommit = changedPaths.length === 0 ? `${head} ${headSubject}` : null;
+const workRecord = validateWorkRecord({
+  source: currentWorklogSource,
+  expectedProgram: "audit-remediation",
+  expectedPhase: activePhase,
+  expectedActiveSlice: activeSlice,
+  expectedCompletedSlice: completedSlice,
+  expectedNextSlice: nextImplementationSlice,
+  expectedBranch: branch,
+  expectedHead: head,
+  expectedGitStatus: shortStatus,
+  expectedCommit,
+});
+checks.push(
+  check("current-worklog-schema", workRecord.ok, "current worklog satisfies the full exact continuation schema", {
+    path: currentWorklogPath,
+    missing: workRecord.missing,
+    commandCount: workRecord.commandCount,
+    fields: workRecord.fields,
+  }),
+);
 
-const normalizedHandoff = normalize(source.handoff);
-const unrecordedPaths = changedPaths.filter((path) => !normalizedHandoff.includes(normalize(path)));
+const handoff = validateHandoff({
+  source: source.handoff,
+  expectedProgram: "audit-remediation",
+  expectedPhase: activePhase,
+  expectedActiveSlice: activeSlice,
+  expectedCompletedSlice: completedSlice,
+  expectedNextSlice: nextImplementationSlice,
+  expectedBranch: branch,
+  expectedHead: head,
+  expectedGitStatus: shortStatus,
+  expectedWorklog: currentWorklogPath,
+  expectedChangedPaths: changedPaths,
+});
+checks.push(
+  check("handoff-schema", handoff.ok, "canonical local handoff strictly matches the exact continuation frontier", {
+    missing: handoff.missing,
+    branch,
+    head,
+    activeSlice,
+    completedSlice,
+  }),
+);
+
+const handoffTrackedPaths = handoff.fields.tracked_paths ?? [];
+const unrecordedPaths = changedPaths.filter((path) => !handoffTrackedPaths.includes(path));
+const staleRecordedPaths = handoffTrackedPaths.filter((path) => !changedPaths.includes(path));
 checks.push(
   check(
     "dirty-tree-recorded",
-    unrecordedPaths.length === 0,
-    "every current tracked/untracked path is named in the handoff",
-    { changedPaths, unrecordedPaths },
+    unrecordedPaths.length === 0 && staleRecordedPaths.length === 0,
+    "handoff tracked_paths exactly equals the current tracked/untracked path set",
+    { changedPaths, handoffTrackedPaths, unrecordedPaths, staleRecordedPaths },
   ),
 );
 
@@ -261,26 +354,27 @@ checks.push(
   }),
 );
 
-const latestWorklog = worklogs
-  .map((name) => ({ name, mtimeMs: statSync(join(fullPath(paths.worklogDir), name)).mtimeMs }))
-  .sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.name;
 checks.push(
   check(
     "handoff-points-to-worklog",
-    Boolean(latestWorklog && normalizedHandoff.includes(normalize(latestWorklog))),
-    "handoff points to the latest worklog",
-    { latestWorklog },
+    currentWorklogPathResult.ok && handoff.fields.worklog === currentWorklogPath,
+    "handoff points exactly to the validated current worklog",
+    { currentWorklogPath, handoffWorklog: handoff.fields.worklog },
   ),
 );
 
 const failed = checks.filter((entry) => entry.status === "failed");
 const result = {
-  version: 1,
+  version: 2,
+  contractVersion: "a6.2e0-exact-continuation/v1",
   generatedAt: new Date().toISOString(),
   status: failed.length === 0 ? "pass-current-audit-remediation-continuation" : "failed",
   ok: failed.length === 0,
   program: "audit-remediation",
   activePhase,
+  activeSlice,
+  completedSlice,
+  nextImplementationSlice,
   nextPhase,
   branch,
   head,
@@ -288,9 +382,10 @@ const result = {
   checkCount: checks.length,
   failedCount: failed.length,
   checks,
+  worklog: currentWorklogPath,
   nextAction:
     failed.length === 0
-      ? `Continue ${activePhase} from the canonical handoff under the tracked phase contract.`
+      ? `Continue exact slice ${nextImplementationSlice} from the canonical handoff under the tracked phase contract.`
       : "Repair the failed continuation contract checks before session clear.",
 };
 

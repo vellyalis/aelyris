@@ -57,6 +57,9 @@ work_record:
   worktree_at_start: <git status summary>
   worktree_at_close: <git status summary>
   active_phase: <phase id>
+  active_slice: <exact slice id worked in this record>
+  completed_slice: <exact last completed slice id>
+  next_implementation_slice: <exact next slice id>
   objective: <one bounded objective>
   files_read: []
   files_changed: []
@@ -65,6 +68,7 @@ work_record:
       result: PASS | REVIEW | BLOCK | NOT_RUN
       artifact: <path or null>
   decisions: []
+  commit: <short sha and subject, or null for a recorded dirty checkpoint>
   blockers:
     implementation: []
     stale_evidence: []
@@ -77,12 +81,19 @@ work_record:
 Do not record secrets, token values, signing material, `.env` contents, or
 secret-bearing transcripts.
 
+The continuation verifier schema-checks only the current worklog path explicitly
+selected by the canonical handoff. It must reject absolute paths, `..`, nested paths,
+non-Markdown files, missing files, and files outside the declared program worklog
+directory. Historical append-only worklogs are not selected by mtime and are not
+retroactively required to adopt a newer schema.
+
 ## Local Handoff Minimum
 
 The canonical local handoff is concise. It must include:
 
 1. `LOCAL ONLY. DO NOT COMMIT.`
-2. Program, active phase, and work-order status.
+2. Program, active phase, active slice, last completed slice, next implementation
+   slice, and work-order status.
 3. Last verified branch, HEAD, and full `git status --short --branch` result.
 4. Tracked modifications and untracked files that must be preserved.
 5. Exact read order.
@@ -93,6 +104,11 @@ The canonical local handoff is concise. It must include:
 10. Known implementation, stale-evidence, policy, and external blockers separated.
 11. A pasteable `/goal` packet.
 12. The worklog path for the session being closed.
+
+Machine identity fields in the handoff and pasteable `/goal` must match the root
+work order case-sensitively. The handoff also records `tracked_paths` as an exact
+machine-readable array equal to current `git status` paths; narrative path mentions
+do not satisfy dirty-tree preservation.
 
 The handoff must not claim that an old score or artifact is current. It points to
 the commands that regenerate current truth.
