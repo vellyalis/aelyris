@@ -387,6 +387,68 @@ Real OS sleep/resume and abrupt host power-loss remain explicit A9 operator proo
 the named artifact path; they are not counted as A4 repo-owned PASS. A4 repo-owned
 work is complete and A5.1 inventory is next.
 
+### **A4.7** Complete - Authoritative Mutation Fail-Closed Correction (2026-07-16)
+
+A fresh runtime-integrity review invalidated the old aggregate A4 completion claim:
+ContextStore and TaskManager published memory before SQLite commit and converted
+persistence failure into logs. Their production startup path could also attach an
+in-memory fallback after durable DB failure and continue acknowledging non-durable
+changes. A4.7 keeps the existing managers and repositories as the only owners but
+reverses the authority boundary to `stage candidate -> commit SQLite -> publish memory`.
+Context IPC/MCP now return persistence errors, TaskGraph exposes a typed persistence
+error, production managers reject mutation until durability is attached, and the
+fallback DB is not attached to either authoritative owner. Injected missing-table and
+unattached-production tests prove failed set/remove/create/autonomy mutations leave the
+prior memory graph/store and autonomy lease intact. This completes only A4.7; it does
+not restore A4 phase completion or release-score credit. The former injected sleep-gap
+scenario launches the external Codex long-run watchdog rather than Aelyris runtime and
+is now excluded from repo-owned product acceptance instead of being counted as A4 PASS.
+
+### **A4.8** Active - EventBus Durable Delivery And Consumer Truth
+
+Keep the existing EventBus/EventRepo as the only coordination-event owner. Replace the
+process-local loss window with transactionally committed outbox records, durable
+consumer cursor/ACK and idempotency identity. A bounded cache may evict only after
+durability is proven; overflow, query failure, and corrupt rows must emit typed
+gap/degraded evidence and fail no-loss/replay claims instead of returning an empty or
+apparently complete stream. Acceptance must include append failure across process exit,
+restart replay, consumer crash before/after ACK, duplicate delivery, corrupt row, and
+buffer pressure. No `exactly-once` claim is allowed; the supported contract is durable
+at-least-once delivery plus idempotent effects unless a stronger proof is implemented.
+
+### **A4.9** Planned - Durable Execution Attempt And Effect Fence
+
+Implement the already-designed WorkExecutionAttempt/AgentRun generation and
+ExecutionFence inside the existing TaskGraph/agent/session owners. Bind task, agent run,
+process generation, PTY/session, ownership lease, event/outbox, and merge intent before
+external effect. Reserve before effect, commit or reconcile after effect, reject stale
+generation writes, and never create a second DAG or journal. Acceptance injects crash
+at reservation, spawn, first effect, review, merge, and finalization boundaries.
+
+### **A4.10** Planned - All-Authority Startup Reconciliation
+
+Extend the bounded startup barrier to reconcile TaskGraph, active execution attempts,
+PaneFleet/PTY generations, file and symbol ownership, worktrees/merge intents, leases,
+and EventBus outbox/cursors before dispatch admission. Reconciliation must be
+idempotent, classify every orphan or ambiguity, and quarantine instead of guessing.
+
+### **A4.11** Planned - Structured Handoff Acceptance And Successor Quarantine
+
+Replace file-exists/liveness ACK with a structured, digest-bound HandoffAcceptanceRecord
+covering predecessor/successor generations, accepted checkpoint, and baton version.
+Every failure after successor spawn must revoke authority, stop or quarantine the
+successor, and persist a retryable/terminal outcome. Boot must reconcile failed and
+ambiguous handoffs rather than ignoring them.
+
+### **A4.12** Planned - Combined Runtime-Integrity Acceptance Closeout
+
+Run one crash/fault/restart matrix across authoritative mutation, EventBus delivery,
+execution fencing, startup reconciliation, and handoff acceptance. The verifier must
+prove no acknowledged state/effect is silently lost, no stale generation can commit,
+and every uncertainty is blocked or explicitly degraded. Only A4.12 may set
+`phaseComplete=true` and restore A4 quality credit. After it passes, resume the already
+frozen A6 frontier at A6.2e1; A7 remains forbidden until A6 closes.
+
 ## A5 - Execution Supervision and Concurrency
 
 Objective: no unbounded child, global lock, or stale write can stall/corrupt the fleet.

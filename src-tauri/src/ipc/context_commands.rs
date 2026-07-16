@@ -37,12 +37,12 @@ pub fn context_set(
     bus: State<'_, Arc<EventBus>>,
     key: String,
     value: String,
-) -> Option<DecisionChange> {
-    let change = manager.set(key, value);
+) -> Result<Option<DecisionChange>, String> {
+    let change = manager.set(key, value)?;
     if let Some(ref change) = change {
         broadcast(&app, &bus, &manager, change);
     }
-    change
+    Ok(change)
 }
 
 #[tauri::command]
@@ -61,10 +61,10 @@ pub fn context_remove(
     manager: State<'_, Arc<ContextStoreManager>>,
     bus: State<'_, Arc<EventBus>>,
     key: String,
-) -> Option<DecisionChange> {
-    let change = manager.remove(&key);
+) -> Result<Option<DecisionChange>, String> {
+    let change = manager.remove(&key)?;
     if let Some(ref change) = change {
         broadcast(&app, &bus, &manager, change);
     }
-    change
+    Ok(change)
 }

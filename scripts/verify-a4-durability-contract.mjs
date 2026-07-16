@@ -19,6 +19,11 @@ const settings = read("src-tauri/src/config/settings.rs");
 const muxStore = read("src-tauri/src/mux/store.rs");
 const workflow = read("src-tauri/src/workflow/executor.rs");
 const proofbookLedger = read("src-tauri/src/proofbook/ledger.rs");
+const contextManager = read("src-tauri/src/context_store/manager.rs");
+const taskManager = read("src-tauri/src/task/manager.rs");
+const taskGraph = read("src-tauri/src/task/graph.rs");
+const contextCommands = read("src-tauri/src/ipc/context_commands.rs");
+const mcp = read("src-tauri/src/api/mcp.rs");
 const packageJson = JSON.parse(read("package.json"));
 const acceptancePath = join(root, ".codex-auto", "quality", "a4-durability-acceptance.json");
 const acceptance = existsSync(acceptancePath) ? JSON.parse(readFileSync(acceptancePath, "utf8")) : null;
@@ -53,11 +58,8 @@ const checks = {
   terminalStartupTransitions:
     state.includes("failure_is_terminal_and_cannot_be_overwritten_by_late_success") &&
     state.includes("timeout_fails_only_a_pending_state"),
-  boundedStartup:
-    state.includes("STARTUP_RECONCILIATION_TIMEOUT_SECS: u64 = 15") &&
-    lib.includes("fail_if_pending()"),
-  reconciliationOrder:
-    adoption >= 0 && adoption < restore && restore < reconcile && reconcile < ready,
+  boundedStartup: state.includes("STARTUP_RECONCILIATION_TIMEOUT_SECS: u64 = 15") && lib.includes("fail_if_pending()"),
+  reconciliationOrder: adoption >= 0 && adoption < restore && restore < reconcile && reconcile < ready,
   databaseReadinessPrecedesCompletion:
     lib.indexOf(".mark_database_ready()") >= 0 &&
     lib.indexOf(".mark_database_ready()") < adoption &&
@@ -72,8 +74,7 @@ const checks = {
     state.includes("startup_reconciliation_failed") &&
     state.includes("production_pty_owner_rejects_spawn_before_reconciliation"),
   typedStatusIsPublished:
-    terminal.includes("pub fn startup_reconciliation_status") &&
-    lib.includes("ipc::startup_reconciliation_status"),
+    terminal.includes("pub fn startup_reconciliation_status") && lib.includes("ipc::startup_reconciliation_status"),
   approvalCheckpointSchema:
     migrations.includes("ALTER TABLE session_checkpoints ADD COLUMN approval_prompt TEXT") &&
     checkpointRepo.includes("pub approval_prompt: Option<String>") &&
@@ -87,13 +88,38 @@ const checks = {
     interactiveManager.includes("self.persist_snapshot(&info)?") &&
     interactiveManager.includes("self.persist_snapshot(session)?") &&
     interactiveManager.includes("self.persist_snapshot(&candidate)?") &&
-    interactiveManager.includes(
-      "durable_mutations_append_identity_status_lineage_and_approval_checkpoints",
-    ),
+    interactiveManager.includes("durable_mutations_append_identity_status_lineage_and_approval_checkpoints"),
   mutationFailureRollsBack:
     interactiveManager.includes("checkpoint_failure_rolls_back_in_memory_mutation") &&
     interactiveManager.includes("persist interactive session checkpoint") &&
     interactive.includes("close_interactive_pty(&app, &pty_id).await"),
+  authoritativeManagersPersistBeforePublish:
+    contextManager.includes("DecisionRepo::upsert(database, &key, &value)") &&
+    contextManager.indexOf("DecisionRepo::upsert(database, &key, &value)") <
+      contextManager.indexOf("Ok(store.set(key, value))") &&
+    taskManager.includes("self.persist_graph(&staging)?") &&
+    taskManager.indexOf("self.persist_graph(&staging)?") <
+      taskManager.indexOf("Self::publish_mutation(&mut state, staging)") &&
+    taskGraph.includes("Persistence(String)"),
+  authoritativeMutationFailureIsExecuted:
+    contextManager.includes("persistence_failure_does_not_publish_a_set_or_remove") &&
+    contextManager.includes("production_mode_rejects_mutation_until_durability_is_attached") &&
+    taskManager.includes("persistence_failure_does_not_publish_staged_graph_mutation") &&
+    taskManager.includes("autonomy_persistence_failure_keeps_prior_graph_and_releases_lease") &&
+    taskManager.includes("production_mode_rejects_mutation_until_durability_is_attached"),
+  allFacesPropagateContextPersistenceFailure:
+    contextCommands.includes("Result<Option<DecisionChange>, String>") &&
+    contextCommands.includes("manager.set(key, value)?") &&
+    contextCommands.includes("manager.remove(&key)?") &&
+    mcp.includes("store.set(key, value).map_err(ApiError::Internal)?") &&
+    mcp.includes("store.remove(&key).map_err(ApiError::Internal)?"),
+  productionFallbackCannotAcknowledgeAuthoritativeMutation:
+    lib.includes("TaskManager::new_durable()") &&
+    lib.includes("ContextStoreManager::new_durable()") &&
+    !lib
+      .slice(lib.indexOf("if let Ok(mem_db)"), lib.indexOf("// Runtime Hardening P1"))
+      .includes("restore_context_store") &&
+    !lib.slice(lib.indexOf("if let Ok(mem_db)"), lib.indexOf("// Runtime Hardening P1")).includes("restore_task_graph"),
   crashSafeReplacementOwner:
     durableFile.includes("pub fn atomic_write") &&
     durableFile.includes("file.sync_all()") &&
@@ -114,17 +140,16 @@ const checks = {
     durableFile.includes(".pre-migration-v") &&
     durableFile.includes("DEFAULT_DURABILITY_QUOTA_BYTES"),
   fullAcceptanceMatrix:
-    packageJson.scripts?.["verify:a4:durability:acceptance"] ===
-      "node scripts/verify-a4-durability-acceptance.mjs" &&
-    acceptance?.status === "pass-repo-owned-a4-durability" &&
-    acceptance?.repoOwnedComplete === true &&
-    acceptance?.phaseComplete === true &&
-    acceptance?.scenarios?.length === 12 &&
+    packageJson.scripts?.["verify:a4:durability:acceptance"] === "node scripts/verify-a4-durability-acceptance.mjs" &&
+    acceptance?.status === "pass-current-a4-durability-evidence" &&
+    acceptance?.completedThrough === "A4.7" &&
+    acceptance?.repoOwnedComplete === false &&
+    acceptance?.phaseComplete === false &&
+    acceptance?.scenarios?.length === 13 &&
     acceptance.scenarios.every((scenario) => scenario.status === "pass") &&
+    acceptance?.externalProof?.codexWatchdogSleepGapStatus === "excluded-non-product-helper" &&
     acceptanceProvenance.ok,
-  packageEntryPoint:
-    packageJson.scripts?.["verify:a4:durability"] ===
-    "node scripts/verify-a4-durability-contract.mjs",
+  packageEntryPoint: packageJson.scripts?.["verify:a4:durability"] === "node scripts/verify-a4-durability-contract.mjs",
 };
 
 const failures = Object.entries(checks)
@@ -137,11 +162,12 @@ if (failures.length > 0) {
 const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
-  schema: "aelyris.a4-durability-contract/v1",
-  status: "pass-repo-owned-a4-durability",
-  activeSlice: "A4.6",
-  phaseComplete: true,
-  remainingSlices: [],
+  schema: "aelyris.a4-durability-contract/v2",
+  status: "pass-current-a4-durability-contract",
+  activeSlice: "A4.8",
+  completedSlice: "A4.7",
+  phaseComplete: false,
+  remainingSlices: ["A4.8", "A4.9", "A4.10", "A4.11", "A4.12"],
   externalProof: acceptance.externalProof,
   checks,
   generatedAt,
@@ -161,6 +187,11 @@ const report = {
       "src-tauri/src/db/queries.rs",
       "src-tauri/src/persistence/session_checkpoint_repo.rs",
       "src-tauri/src/agent/interactive.rs",
+      "src-tauri/src/context_store/manager.rs",
+      "src-tauri/src/task/manager.rs",
+      "src-tauri/src/task/graph.rs",
+      "src-tauri/src/ipc/context_commands.rs",
+      "src-tauri/src/api/mcp.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "src-tauri/src/durable_file.rs",
       "src-tauri/src/config/settings.rs",

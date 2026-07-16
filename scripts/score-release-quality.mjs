@@ -4381,7 +4381,7 @@ const a4DurabilityAcceptancePass =
   a4DurabilityAcceptance?.repoOwnedComplete === true &&
   a4DurabilityAcceptance?.phaseComplete === true &&
   Array.isArray(a4DurabilityAcceptance?.scenarios) &&
-  a4DurabilityAcceptance.scenarios.length === 12 &&
+  a4DurabilityAcceptance.scenarios.length >= 13 &&
   a4DurabilityAcceptance.scenarios.every((scenario) => scenario?.status === "pass") &&
   a4DurabilityAcceptance?.externalProof?.status === "deferred-to-a9-operator-proof";
 add(
@@ -4395,7 +4395,9 @@ add(
     : "missing, stale, incomplete, or external proof classification is dishonest",
   a4DurabilityAcceptancePass
     ? []
-    : ["A4 durability acceptance must pass all twelve repo-owned scenarios with provenance"],
+    : [
+        "A4 corrective runtime-integrity slices A4.8-A4.12 remain open; current evidence must not be promoted to phase completion",
+      ],
 );
 
 const goalAntiStallSourceMtime = Math.max(

@@ -3877,7 +3877,7 @@ pub(super) async fn tools_call(
             })?;
             let key = arg_string(&args, "key")?;
             let value = arg_string(&args, "value")?;
-            let change = store.set(key, value);
+            let change = store.set(key, value).map_err(ApiError::Internal)?;
             // Broadcast to the fleet stream (BR6) — only on a real change, so the
             // shared world-model update reaches every subscriber once.
             if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
@@ -3906,7 +3906,7 @@ pub(super) async fn tools_call(
                 ApiError::Internal("context store is not attached to this process".to_string())
             })?;
             let key = arg_string(&args, "key")?;
-            let change = store.remove(&key);
+            let change = store.remove(&key).map_err(ApiError::Internal)?;
             if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
                 bus.publish(crate::event_bus::AgentEvent::new(
                     crate::event_bus::AgentEventKind::DecisionChanged,

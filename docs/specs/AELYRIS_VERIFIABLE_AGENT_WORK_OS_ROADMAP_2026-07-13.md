@@ -70,14 +70,16 @@ migration in its own focused slice.
 
 At this roadmap checkpoint:
 
-- R0-A5 repo-owned remediation is recorded complete in the tracked plan;
+- R0-A3 and A5 repo-owned remediation remain recorded complete; A4 was reopened by
+  a fresh runtime-integrity regression review;
 - A2 signed lifecycle and A4 real-host power/sleep proof remain explicit A9
   operator/release gates rather than repo-owned PASS;
-- A6 modularity is active;
+- A4.7 authoritative mutation correction is complete and A4.8-A4.12 are active/planned;
+- A6 modularity is paused at its existing frontier, not superseded;
 - A6.2c-A6.2d extraction is landed but A6.2 acceptance is reopened by review;
 - A6.2e0 exact continuation/worklog hardening is complete;
-- A6.2e1 remains the next runtime implementation slice after this design-only
-  A6.2v1 checkpoint;
+- A4.8 is the next runtime implementation slice; A6.2e1 remains the exact A6 resume
+  slice after A4.12 closes the corrective runtime-integrity sequence;
 - A7, A8, A9, blocking CI, and external/operator release evidence remain open;
 - current public status remains alpha and not release-ready.
 
@@ -89,6 +91,7 @@ random feature accumulation. It does not unlock a shipped capability.
 | Phase / slice | Now: work | Acceptance | What completion unlocks |
 | --- | --- | --- | --- |
 | A6.2v1 | freeze Work OS spec, detailed design, roadmap, authority, and verifier | docs/spec/design/plan/index/claim gate PASS | one coherent product target and finite A7 contract; no runtime claim |
+| A4.7-A4.12 corrective | authoritative commit order, durable event delivery, execution fence, all-owner startup reconciliation, handoff quarantine, crash matrix | fail-closed failure injection plus combined restart proof | truthful durable substrate; resume A6.2e1 without a second graph/journal |
 | A6.2e1-e4 | dependency boundaries, narrow subscriptions, project/tab semantics, concurrent state owners | executed behavior plus fail-closed ratchets | trustworthy frontend owners that can render Mission state without duplicating it |
 | A6.2f-g | split composition/hotspot tests and pass blocking frontend acceptance | App and extracted owners <=800, behavior/CI green | modular cockpit ready to receive Mission projections |
 | A6.3-A6.8 | IPC/MCP/DB/native owner splits, dead-owner proof, aggregate ratchet | owner-specific and combined blocking gates | backend seams stable enough for one Mission vertical |
@@ -110,7 +113,8 @@ Forbidden:
 - journal migration;
 - new UI panels;
 - adapter, capability, replay, memory, or marketplace code;
-- changing A6.2e1 as the next runtime implementation slice;
+- changing A6.2e1 as the eventual A6 resume slice (a later independent regression
+  review may insert a prerequisite corrective phase without rewriting this checkpoint);
 - weakening any claim, threshold, verifier, CI, or external gate.
 
 ## 5. A7 Core Mission Loop — Release-Blocking Vertical

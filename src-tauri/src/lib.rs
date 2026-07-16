@@ -226,8 +226,10 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(SuggestEngine::new())))
         .manage(std::sync::Arc::new(LayerRegistry::new()))
         .manage(std::sync::Arc::new(WatcherPool::new()))
-        .manage(std::sync::Arc::new(task::TaskManager::new()))
-        .manage(std::sync::Arc::new(context_store::ContextStoreManager::new()))
+        .manage(std::sync::Arc::new(task::TaskManager::new_durable()))
+        .manage(std::sync::Arc::new(
+            context_store::ContextStoreManager::new_durable(),
+        ))
         .manage(std::sync::Arc::new(event_bus::EventBus::new()))
         .manage(std::sync::Arc::new(cost::CostManager::new()))
         .manage(failure_policy::FailurePolicy::new())
@@ -445,9 +447,7 @@ pub fn run() {
                              — will NOT survive an app restart this session"
                         );
                         let managed = db::ManagedDb::new(mem_db);
-                        restore_context_store(app.handle(), &managed);
                         restore_intent_bus(app.handle(), &managed);
-                        restore_task_graph(app.handle(), &managed);
                         restore_knowledge_graph(app.handle(), &managed);
                         restore_ownership(app.handle(), &managed);
                         app.handle().manage(managed);

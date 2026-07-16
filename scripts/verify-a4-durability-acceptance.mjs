@@ -18,15 +18,19 @@ const scenarios = [
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "agent::interactive::tests", "--lib"],
   },
   {
+    id: "context-store-authoritative-mutation-rollback",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "context_store::manager::tests", "--lib"],
+  },
+  {
+    id: "task-graph-authoritative-mutation-rollback",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "task::manager::tests", "--lib"],
+  },
+  {
     id: "locked-db-and-multi-connection",
     command: cargo,
-    args: [
-      "test",
-      "--manifest-path",
-      "src-tauri/Cargo.toml",
-      "persistence::session_checkpoint_repo::tests",
-      "--lib",
-    ],
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::session_checkpoint_repo::tests", "--lib"],
   },
   {
     id: "corrupt-db-fail-closed",
@@ -74,11 +78,6 @@ const scenarios = [
     command: process.execPath,
     args: ["scripts/verify-session-resume-idempotent.mjs"],
   },
-  {
-    id: "injectable-sleep-gap",
-    command: process.execPath,
-    args: ["scripts/verify-sleep-resume-db-lock-chaos.mjs"],
-  },
 ];
 
 const results = [];
@@ -108,8 +107,14 @@ for (const scenario of scenarios) {
       command: [scenario.command, ...scenario.args].join(" "),
       durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
-      stdoutTail: String(error?.stdout ?? "").trim().split(/\r?\n/).slice(-12),
-      stderrTail: String(error?.stderr ?? "").trim().split(/\r?\n/).slice(-12),
+      stdoutTail: String(error?.stdout ?? "")
+        .trim()
+        .split(/\r?\n/)
+        .slice(-12),
+      stderrTail: String(error?.stderr ?? "")
+        .trim()
+        .split(/\r?\n/)
+        .slice(-12),
     });
     break;
   }
@@ -117,14 +122,18 @@ for (const scenario of scenarios) {
 
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a4-durability-acceptance/v1",
-  status: failed ? "failed" : "pass-repo-owned-a4-durability",
-  repoOwnedComplete: !failed,
-  phaseComplete: !failed,
+  schema: "aelyris.a4-durability-acceptance/v2",
+  status: failed ? "failed" : "pass-current-a4-durability-evidence",
+  completedThrough: failed ? "A4.6" : "A4.7",
+  repoOwnedComplete: false,
+  phaseComplete: false,
+  remainingSlices: ["A4.8", "A4.9", "A4.10", "A4.11", "A4.12"],
   scenarios: results,
   externalProof: {
     realOsSleepResumeExecuted: false,
     abruptHostPowerLossExecuted: false,
+    codexWatchdogSleepGapExecuted: false,
+    codexWatchdogSleepGapStatus: "excluded-non-product-helper",
     status: "deferred-to-a9-operator-proof",
     requiredArtifact: ".codex-auto/operator-evidence/real-sleep-power-loss-durability.json",
   },
@@ -135,11 +144,16 @@ const report = {
     inputPaths: [
       "scripts/evidence-provenance.mjs",
       "scripts/verify-a4-durability-contract.mjs",
-      "scripts/verify-sleep-resume-db-lock-chaos.mjs",
       "src-tauri/src/db/migrations.rs",
       "src-tauri/src/db/queries.rs",
       "src-tauri/src/persistence/session_checkpoint_repo.rs",
       "src-tauri/src/agent/interactive.rs",
+      "src-tauri/src/context_store/manager.rs",
+      "src-tauri/src/task/manager.rs",
+      "src-tauri/src/task/graph.rs",
+      "src-tauri/src/ipc/context_commands.rs",
+      "src-tauri/src/api/mcp.rs",
+      "src-tauri/src/lib.rs",
       "src-tauri/src/startup_reconciliation.rs",
       "src-tauri/src/durable_file.rs",
       "src-tauri/src/mux/store.rs",

@@ -12,18 +12,29 @@ use crate::persistence::DecisionRepo;
 /// In-memory is the hot read cache; SQLite (via [`DecisionRepo`]) is the source
 /// of truth. A `db` is attached at startup ([`attach_db`]); when absent (tests,
 /// non-persistent mode) the manager behaves exactly as before — purely
-/// in-memory. Write-through happens only on a real change. A persist failure is
-/// logged loudly (never silently swallowed) while the in-memory change — already
-/// authoritative for the running session — stands.
+/// in-memory. With a database attached, each real change is persisted before it
+/// is published to memory. Persistence failure is returned to the caller and
+/// leaves the prior in-memory value intact.
 #[derive(Default)]
 pub struct ContextStoreManager {
     store: Mutex<ContextStore>,
     db: Mutex<Option<Arc<ManagedDb>>>,
+    durability_required: bool,
 }
 
 impl ContextStoreManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Production constructor: mutations must fail closed until a durable
+    /// database has been attached. `new()` remains the explicit ephemeral mode
+    /// used by isolated domain tests.
+    pub fn new_durable() -> Self {
+        Self {
+            durability_required: true,
+            ..Self::default()
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, ContextStore> {
@@ -53,24 +64,45 @@ impl ContextStoreManager {
         Ok(len)
     }
 
-    pub fn set(&self, key: impl Into<String>, value: impl Into<String>) -> Option<DecisionChange> {
-        let change = self.lock().set(key, value)?;
-        if let (Some(db), Some(value)) = (self.db(), change.value.as_deref()) {
-            if let Err(e) = db.with(|d| DecisionRepo::upsert(d, &change.key, value)) {
-                tracing::error!(key = %change.key, error = %e, "context decision persist failed");
-            }
+    pub fn set(
+        &self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<Option<DecisionChange>, String> {
+        let key = key.into();
+        let value = value.into();
+        let mut store = self.lock();
+        let previous = store.get(&key).map(str::to_string);
+        if previous.as_deref() == Some(value.as_str()) {
+            return Ok(None);
         }
-        Some(change)
+        match self.db() {
+            Some(db) => db
+                .with(|database| DecisionRepo::upsert(database, &key, &value))
+                .map_err(|error| format!("Persist context decision '{key}': {error}"))?,
+            None if self.durability_required => {
+                return Err("Context Store durability is unavailable".to_string())
+            }
+            None => {}
+        }
+        Ok(store.set(key, value))
     }
 
-    pub fn remove(&self, key: &str) -> Option<DecisionChange> {
-        let change = self.lock().remove(key)?;
-        if let Some(db) = self.db() {
-            if let Err(e) = db.with(|d| DecisionRepo::delete(d, &change.key)) {
-                tracing::error!(key = %change.key, error = %e, "context decision delete persist failed");
-            }
+    pub fn remove(&self, key: &str) -> Result<Option<DecisionChange>, String> {
+        let mut store = self.lock();
+        if store.get(key).is_none() {
+            return Ok(None);
         }
-        Some(change)
+        match self.db() {
+            Some(db) => db
+                .with(|database| DecisionRepo::delete(database, key))
+                .map_err(|error| format!("Delete context decision '{key}': {error}"))?,
+            None if self.durability_required => {
+                return Err("Context Store durability is unavailable".to_string())
+            }
+            None => {}
+        }
+        Ok(store.remove(key))
     }
 
     pub fn get(&self, key: &str) -> Option<String> {
@@ -89,7 +121,7 @@ mod tests {
     #[test]
     fn set_reports_change_and_get_reads_back() {
         let mgr = ContextStoreManager::new();
-        let change = mgr.set("auth_method", "jwt").unwrap();
+        let change = mgr.set("auth_method", "jwt").unwrap().unwrap();
         assert_eq!(change.value.as_deref(), Some("jwt"));
         assert_eq!(mgr.get("auth_method").as_deref(), Some("jwt"));
     }
@@ -97,15 +129,15 @@ mod tests {
     #[test]
     fn identical_set_is_noop() {
         let mgr = ContextStoreManager::new();
-        mgr.set("database", "postgresql");
-        assert!(mgr.set("database", "postgresql").is_none());
+        mgr.set("database", "postgresql").unwrap();
+        assert!(mgr.set("database", "postgresql").unwrap().is_none());
     }
 
     #[test]
     fn all_snapshots_every_decision() {
         let mgr = ContextStoreManager::new();
-        mgr.set("framework", "nextjs");
-        mgr.set("auth_method", "jwt");
+        mgr.set("framework", "nextjs").unwrap();
+        mgr.set("auth_method", "jwt").unwrap();
         let all = mgr.all();
         assert_eq!(all.get("framework").map(String::as_str), Some("nextjs"));
         assert_eq!(all.get("auth_method").map(String::as_str), Some("jwt"));
@@ -115,9 +147,9 @@ mod tests {
     #[test]
     fn remove_reports_then_noop() {
         let mgr = ContextStoreManager::new();
-        mgr.set("cache", "redis");
-        assert!(mgr.remove("cache").is_some());
-        assert!(mgr.remove("cache").is_none());
+        mgr.set("cache", "redis").unwrap();
+        assert!(mgr.remove("cache").unwrap().is_some());
+        assert!(mgr.remove("cache").unwrap().is_none());
         assert_eq!(mgr.get("cache"), None);
     }
 
@@ -127,9 +159,9 @@ mod tests {
         let db = Arc::new(ManagedDb::new(crate::db::Database::open_memory().unwrap()));
         let first = ContextStoreManager::new();
         assert_eq!(first.attach_db(db.clone()).unwrap(), 0);
-        first.set("auth_method", "jwt");
-        first.set("database", "postgresql");
-        first.set("database", "postgresql"); // no-op, must not double-write
+        first.set("auth_method", "jwt").unwrap();
+        first.set("database", "postgresql").unwrap();
+        first.set("database", "postgresql").unwrap(); // no-op, must not double-write
         drop(first);
 
         // Second session: a brand-new manager attached to the SAME db restores.
@@ -145,12 +177,40 @@ mod tests {
         let db = Arc::new(ManagedDb::new(crate::db::Database::open_memory().unwrap()));
         let first = ContextStoreManager::new();
         first.attach_db(db.clone()).unwrap();
-        first.set("cache", "redis");
-        first.remove("cache");
+        first.set("cache", "redis").unwrap();
+        first.remove("cache").unwrap();
         drop(first);
 
         let second = ContextStoreManager::new();
         assert_eq!(second.attach_db(db).unwrap(), 0);
         assert_eq!(second.get("cache"), None);
+    }
+
+    #[test]
+    fn persistence_failure_does_not_publish_a_set_or_remove() {
+        let db = Arc::new(ManagedDb::new(crate::db::Database::open_memory().unwrap()));
+        let mgr = ContextStoreManager::new();
+        mgr.attach_db(db.clone()).unwrap();
+        mgr.set("stable", "committed").unwrap();
+        db.with(|database| {
+            database
+                .conn()
+                .execute("DROP TABLE context_decisions", [])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+        assert!(mgr.set("new", "uncommitted").is_err());
+        assert_eq!(mgr.get("new"), None);
+        assert!(mgr.remove("stable").is_err());
+        assert_eq!(mgr.get("stable").as_deref(), Some("committed"));
+    }
+
+    #[test]
+    fn production_mode_rejects_mutation_until_durability_is_attached() {
+        let mgr = ContextStoreManager::new_durable();
+        assert!(mgr.set("key", "value").is_err());
+        assert_eq!(mgr.get("key"), None);
     }
 }

@@ -153,6 +153,8 @@ impl Task {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum TaskGraphError {
+    #[error("task graph persistence failed: {0}")]
+    Persistence(String),
     #[error("task graph mutation is temporarily leased by autonomy step {0}; retry")]
     MutationInProgress(u64),
     #[error("stale task graph revision: expected {expected}, current {actual}")]

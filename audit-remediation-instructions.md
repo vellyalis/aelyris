@@ -2,25 +2,22 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A6` (`R0-A5 repo-owned work complete`; A2 signed lifecycle and A4
-real-host sleep/power-loss proof remain explicit A9 operator gates).
-ACTIVE SLICE: `A6.2e1`.
-LAST COMPLETED SLICE: `A6.2v1`.
-NEXT PHASE: `A7` after A6 modularity ratchet acceptance is complete.
-NEXT IMPLEMENTATION SLICE: `A6.2e1`.
-A6.2c-A6.2d moved right-rail, pane, evidence, and project/tab responsibilities to
-dedicated owners and lowered the current ceilings to `App.tsx=4215` and
-`rightRailModel.tsx=688`. The 2026-07-13 review reopened A6.2 acceptance because
-the green ratchet still permits code-motion-only success, App retains a whole-store
-subscription, app evidence hooks reverse-depend on the right-rail model, and most
-new stateful owners have source-string rather than behavioral proof. Execute the
-corrected A6.2e-A6.2g order in the tracked plan. A6.2e0 now enforces exact frontier
-identity and the full current-worklog schema. The design-only A6.2v1 checkpoint
-then froze the Verifiable Agent Work OS specification, detailed design, permanent
-Now/Next/Unlocks roadmap, finite A7 Core Mission Loop, and separately gated
-post-A9 Apex direction without changing runtime owners or current claims. A6.2e1
-next owns neutral evidence utilities, dependency direction, and extracted-owner
-ratchets. A6.3 and all A7 runtime work must not start early.
+CURRENT PHASE: `A4` (reopened by a fresh 2026-07-16 runtime-integrity regression;
+earlier A4.6 PASS is historical evidence, not current phase completion).
+ACTIVE SLICE: `A4.8`.
+LAST COMPLETED SLICE: `A4.7`.
+NEXT PHASE: `A6` after corrective A4.8-A4.12 acceptance; resume at A6.2e1.
+NEXT IMPLEMENTATION SLICE: `A4.8`.
+A4.7 corrected the first false source-of-truth path: ContextStore and TaskManager
+now stage authoritative changes, commit SQLite first, publish memory second, return
+persistence errors through IPC/MCP, and reject production mutations while durability
+is unavailable. Failure-injection tests prove the prior in-memory state remains intact.
+The old A4 verifier covered migration/file/checkpoint scenarios but omitted
+these owners plus EventBus loss, durable execution identity/fencing, all-owner startup
+reconciliation, and successor cleanup; it also counted an external Codex watchdog
+sleep-gap probe as product durability. Therefore A4 stays open through A4.12 and its
+old quality credit is removed. A6.2e1 remains the exact resume slice after this ordered
+runtime-integrity correction; do not mix A6/A7 work into A4.
 
 ## Objective
 
@@ -275,12 +272,22 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - live IME, staged sidecar kill, populated-cockpit review, and final DWM/WebView2 glass
   parity remain external/operator proof debt and do not become repo-owned PASS claims.
 
-## A4 Complete - Repo-Owned Session and Database Durability
+## A4 Reopened - Runtime Integrity Correction
 
-- `verify:a4:durability:acceptance` passes all twelve deterministic restart, upgrade,
-  locked/corrupt DB, injected power-loss, quota, restore, and multi-connection scenarios.
-- `verify:a4:durability` validates the provenance-bound A4 contract and acceptance
-  artifact; final-goal safe and release-score truth consume that evidence.
+- A4.1-A4.6 remain historical implementation/evidence, but their former aggregate
+  `phaseComplete=true` was a semantic false positive exposed by fresh review.
+- A4.7 is complete: ContextStore and TaskManager use persist-before-publish mutation
+  order, production instances reject mutation without durable attachment, IPC/MCP
+  propagate the error, and focused injected-failure tests pass.
+- A4.8 owns EventBus transactional outbox, durable consumer cursor/ACK/idempotence,
+  bounded-buffer gap truth, and corrupt/query-failure fail-closed semantics.
+- A4.9 owns durable WorkExecutionAttempt/AgentRun identity, execution generation
+  fencing, and pre-effect reservation without introducing a second TaskGraph/journal.
+- A4.10 owns all-authority startup reconciliation before dispatch admission.
+- A4.11 owns structured digest-bound handoff acceptance plus successor quarantine/
+  cleanup for every post-spawn failure.
+- A4.12 owns combined crash/fault/restart acceptance and is the only slice allowed to
+  restore `phaseComplete=true` and A4 release-score credit.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

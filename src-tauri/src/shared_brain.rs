@@ -339,7 +339,7 @@ mod tests {
             json!({"sessionId": "agent-a", "summary": "needs review"}),
         ));
         let context = Arc::new(crate::context_store::ContextStoreManager::new());
-        context.set("architecture", "durable shared brain");
+        context.set("architecture", "durable shared brain").unwrap();
 
         let snapshot = snapshot(SharedBrainInputs {
             workspace_id: "repo",

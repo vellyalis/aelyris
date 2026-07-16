@@ -15,11 +15,11 @@ use crate::persistence::TaskRepo;
 /// In-memory is the hot read cache; SQLite (via [`TaskRepo`]) is the source of
 /// truth. The autonomy loop mutates a revisioned clone and applies it through
 /// one CAS boundary (status, crash/rework/timeout counters, branch bindings),
-/// and every accepted mutation persists the WHOLE graph snapshot afterwards —
-/// eliminating the "missed write-through site" bug class. A `db` is attached at startup
+/// and every accepted mutation persists the WHOLE staged graph before publishing
+/// it to memory — eliminating the "missed write-through site" bug class. A `db` is attached at startup
 /// ([`attach_db`]); when absent (tests, non-persistent mode) the manager is
-/// purely in-memory, exactly as before. Persist failures are logged loudly,
-/// never silently swallowed.
+/// purely in-memory, exactly as before. Persist failures are returned and leave
+/// the prior in-memory graph intact.
 #[derive(Default)]
 struct TaskGraphState {
     graph: TaskGraph,
@@ -33,11 +33,22 @@ pub struct TaskManager {
     state: Mutex<TaskGraphState>,
     db: Mutex<Option<Arc<ManagedDb>>>,
     persistence: Mutex<()>,
+    durability_required: bool,
 }
 
 impl TaskManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Production constructor: authoritative mutations fail closed until a
+    /// durable database is attached. `new()` is the explicit ephemeral mode for
+    /// isolated domain tests.
+    pub fn new_durable() -> Self {
+        Self {
+            durability_required: true,
+            ..Self::default()
+        }
     }
 
     /// Poison-tolerant lock: a panicked holder must not wedge the whole task
@@ -67,28 +78,42 @@ impl TaskManager {
         state.revision = state.revision.saturating_add(1);
     }
 
-    /// Persist the newest graph revision without holding the graph lock across
-    /// SQLite I/O. Concurrent mutations are coalesced: after each write, the
-    /// writer snapshots again until the durable image catches current memory.
-    fn persist_latest(&self) {
-        let Some(db) = self.db() else { return };
-        let _writer = self
-            .persistence
+    fn persistence_lock(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.persistence
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        loop {
-            let (graph, revision) = {
-                let state = self.lock();
-                (state.graph.clone(), state.revision)
-            };
-            if let Err(error) = db.with(|database| TaskRepo::save_graph(database, &graph)) {
-                tracing::error!(%revision, %error, "task graph persist failed");
-                return;
-            }
-            if self.lock().revision == revision {
-                return;
-            }
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn persist_graph(&self, graph: &TaskGraph) -> Result<(), TaskGraphError> {
+        match self.db() {
+            Some(db) => db
+                .with(|database| TaskRepo::save_graph(database, graph))
+                .map_err(TaskGraphError::Persistence),
+            None if self.durability_required => Err(TaskGraphError::Persistence(
+                "Task Graph durability is unavailable".to_string(),
+            )),
+            None => Ok(()),
         }
+    }
+
+    /// Stage one mutation on a clone, commit the complete graph snapshot, then
+    /// publish it to the hot cache. Holding the state lock across the database
+    /// commit intentionally serializes authoritative writers: a failed commit
+    /// can never race with or be hidden by a later in-memory revision.
+    fn commit_mutation<R>(
+        &self,
+        mutation: impl FnOnce(&mut TaskGraph) -> Result<(R, bool), TaskGraphError>,
+    ) -> Result<R, TaskGraphError> {
+        let _writer = self.persistence_lock();
+        let mut state = self.lock();
+        Self::require_mutation_available(&state)?;
+        let mut staging = state.graph.clone();
+        let (result, changed) = mutation(&mut staging)?;
+        if changed {
+            self.persist_graph(&staging)?;
+            Self::publish_mutation(&mut state, staging);
+        }
+        Ok(result)
     }
 
     /// Attach the persistence backend and restore any persisted graph into
@@ -117,33 +142,26 @@ impl TaskManager {
         }
         restored.recompute_ready();
         let len = restored.len();
-        {
-            let mut state = self.lock();
-            Self::require_mutation_available(&state).map_err(|error| error.to_string())?;
-            Self::publish_mutation(&mut state, restored);
-        }
+        let _writer = self.persistence_lock();
+        let mut state = self.lock();
+        Self::require_mutation_available(&state).map_err(|error| error.to_string())?;
+        db.with(|database| TaskRepo::save_graph(database, &restored))?;
         *self
             .db
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(db);
-        self.persist_latest();
+        Self::publish_mutation(&mut state, restored);
         Ok(len)
     }
 
     /// Add a task, then re-run the dependency gate. Returns the ids whose
     /// status changed as a result (e.g. a root task that became `Ready`).
     pub fn create(&self, task: Task) -> Result<Vec<String>, TaskGraphError> {
-        let changed = {
-            let mut state = self.lock();
-            Self::require_mutation_available(&state)?;
-            let mut graph = state.graph.clone();
+        self.commit_mutation(|graph| {
             graph.add(task)?;
             let changed = graph.recompute_ready();
-            Self::publish_mutation(&mut state, graph);
-            changed
-        };
-        self.persist_latest();
-        Ok(changed)
+            Ok((changed, true))
+        })
     }
 
     /// Submit a whole LLM-authored build plan ATOMICALLY. The plan is validated
@@ -157,21 +175,14 @@ impl TaskManager {
     /// `Ready`/`Blocked`.
     pub fn submit_plan(&self, tasks: Vec<Task>) -> Result<Vec<String>, Vec<String>> {
         let ordered = validate_plan(tasks)?;
-        let changed = {
-            let mut state = self.lock();
-            Self::require_mutation_available(&state).map_err(|error| vec![error.to_string()])?;
-            let mut staging = state.graph.clone();
+        self.commit_mutation(|staging| {
             for task in ordered {
-                staging
-                    .add(task)
-                    .map_err(|e| vec![format!("plan rejected — {e}")])?;
+                staging.add(task)?;
             }
             let changed = staging.recompute_ready();
-            Self::publish_mutation(&mut state, staging);
-            changed
-        };
-        self.persist_latest();
-        Ok(changed)
+            Ok((changed, true))
+        })
+        .map_err(|error| vec![format!("plan rejected — {error}")])
     }
 
     /// Mid-run RE-PLAN (autonomy gap #3): splice a Planner re-decomposition of a
@@ -188,52 +199,39 @@ impl TaskManager {
         failed_id: &str,
         subtasks: Vec<Task>,
     ) -> Result<super::replan::ReplanOutcome, Vec<String>> {
+        let _writer = self.persistence_lock();
+        let mut state = self.lock();
         let outcome = {
-            let mut state = self.lock();
             Self::require_mutation_available(&state).map_err(|error| vec![error.to_string()])?;
             let mut staging = state.graph.clone();
             let outcome = super::replan::replan_into(&mut staging, failed_id, subtasks)?;
+            self.persist_graph(&staging)
+                .map_err(|error| vec![error.to_string()])?;
             Self::publish_mutation(&mut state, staging);
             outcome
         };
-        self.persist_latest();
         Ok(outcome)
     }
 
     /// Transition a task, then re-run the gate (finishing a dependency can
     /// unblock dependents). Returns ids whose status changed by the gate.
     pub fn transition(&self, id: &str, to: TaskStatus) -> Result<Vec<String>, TaskGraphError> {
-        let changed = {
-            let mut state = self.lock();
-            Self::require_mutation_available(&state)?;
-            let mut graph = state.graph.clone();
+        self.commit_mutation(|graph| {
             graph.transition(id, to)?;
             let changed = graph.recompute_ready();
-            Self::publish_mutation(&mut state, graph);
-            changed
-        };
-        self.persist_latest();
-        Ok(changed)
+            Ok((changed, true))
+        })
     }
 
     /// Re-run the dependency gate explicitly. Returns ids whose status changed.
     /// Persists only when the gate actually changed something — a no-op gate
     /// pass must not issue a full-graph write (and add WAL write contention).
     pub fn recompute_ready(&self) -> Result<Vec<String>, TaskGraphError> {
-        let changed = {
-            let mut state = self.lock();
-            Self::require_mutation_available(&state)?;
-            let mut graph = state.graph.clone();
+        self.commit_mutation(|graph| {
             let changed = graph.recompute_ready();
-            if !changed.is_empty() {
-                Self::publish_mutation(&mut state, graph);
-            }
-            changed
-        };
-        if !changed.is_empty() {
-            self.persist_latest();
-        }
-        Ok(changed)
+            let did_change = !changed.is_empty();
+            Ok((changed, did_change))
+        })
     }
 
     /// A snapshot of every task in insertion order.
@@ -283,6 +281,7 @@ impl TaskManager {
             }
         };
 
+        let _writer = self.persistence_lock();
         {
             let mut state = self.lock();
             if state.active_autonomy_lease != Some(lease) || state.revision != expected_revision {
@@ -295,10 +294,13 @@ impl TaskManager {
                     actual,
                 });
             }
+            if let Err(error) = self.persist_graph(&snapshot) {
+                state.active_autonomy_lease = None;
+                return Err(error);
+            }
             state.active_autonomy_lease = None;
             Self::publish_mutation(&mut state, snapshot);
         }
-        self.persist_latest();
         Ok(result)
     }
 }
@@ -623,5 +625,62 @@ mod tests {
         // Dependent B is re-gated to Pending — its dep A is not Done, so it must NOT
         // be Ready (the loop would otherwise run it ahead of A).
         assert_eq!(mgr.get("b").unwrap().status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn persistence_failure_does_not_publish_staged_graph_mutation() {
+        let db = mem_db();
+        let mgr = TaskManager::new();
+        mgr.attach_db(db.clone()).unwrap();
+        db.with(|database| {
+            database
+                .conn()
+                .execute("DROP TABLE tasks", [])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+        assert!(matches!(
+            mgr.create(Task::new("uncommitted", "Uncommitted")),
+            Err(TaskGraphError::Persistence(_))
+        ));
+        assert!(mgr.get("uncommitted").is_none());
+        assert!(mgr.list().is_empty());
+    }
+
+    #[test]
+    fn production_mode_rejects_mutation_until_durability_is_attached() {
+        let mgr = TaskManager::new_durable();
+        assert!(matches!(
+            mgr.create(Task::new("blocked", "Blocked")),
+            Err(TaskGraphError::Persistence(_))
+        ));
+        assert!(mgr.get("blocked").is_none());
+    }
+
+    #[test]
+    fn autonomy_persistence_failure_keeps_prior_graph_and_releases_lease() {
+        let db = mem_db();
+        let mgr = TaskManager::new();
+        mgr.attach_db(db.clone()).unwrap();
+        mgr.create(Task::new("stable", "Stable")).unwrap();
+        db.with(|database| {
+            database
+                .conn()
+                .execute("DROP TABLE tasks", [])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+        assert!(matches!(
+            mgr.run_autonomy_step(|graph| {
+                graph.transition("stable", TaskStatus::Running).unwrap();
+            }),
+            Err(TaskGraphError::Persistence(_))
+        ));
+        assert_eq!(mgr.get("stable").unwrap().status, TaskStatus::Ready);
+        assert_eq!(mgr.lock().active_autonomy_lease, None);
     }
 }
