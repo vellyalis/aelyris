@@ -44,12 +44,11 @@ Token-spending prompt proof is not part of that command. With an explicit
 provider, `pnpm verify:goal:operator:token-smoke` mints and consumes a one-use
 execution packet before the raw prompt verifier can reach CDP.
 
-Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-reports `23/100` (`76/327`), grade `D`, `releaseCandidateReady=false`.
-The downstream final-goal audit is `blocked` with
-`implementationFixableCount=194`, `policyBlockedCount=12`, and
-`externalBlockedCount=17`; it does not feed points back into the score. The safe
-proof registry target is `28/28`. `authenticated-ai-cli-prompt-smoke` requires
+Current machine truth is generated, not duplicated in stable documentation.
+Regenerate it with `pnpm verify:quality-score` and read
+`.codex-auto/quality/release-quality-score.json`; the downstream final-goal audit
+does not feed points back into the score. A focused proof-registry PASS is not
+release readiness. `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
 `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 `pnpm verify:goal:finalize` excludes git finalization by default;
@@ -111,8 +110,8 @@ verifiers prove the current state.
 ## Historical And Background Documents
 
 Older audit trails, implementation plans, and progress logs may surface in git
-history or work-unit notes. They can contain stale score values such as old `S`,
-`A`, `95/100`, or `96/100` release snapshots. Treat any such material as
+history or work-unit notes. They can contain stale fixed grade/score or
+release-ready snapshots. Treat any such material as
 historical unless it explicitly points back to `requirements.md`,
 `specs/README.md`, or freshly generated local `.codex-auto/quality` artifacts.
 

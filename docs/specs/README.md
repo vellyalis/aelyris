@@ -22,12 +22,12 @@ documented provider env（例: `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini
 短命 one-use packet を発行する。
 provider/model/command/artifact を記録し、secret や token file は永続化しない。
 
-Current machine truth refreshed 2026-07-10 JST by the comprehensive audit safe
-chain: `pnpm verify:quality-score` reports `23/100` (`76/327`), grade `D`,
-`releaseCandidateReady=false`.
-The final-goal audit is `blocked` with `implementationFixableCount=194`,
-`policyBlockedCount=12`, and `externalBlockedCount=17`; this remains an
-alpha/not-release-ready state. The safe proof registry target is `28/28`.
+Current score and blocker counts are intentionally not duplicated in this
+stable index. Regenerate them with `pnpm verify:quality-score` and read
+`.codex-auto/quality/release-quality-score.json` plus the downstream
+`.codex-auto/quality/final-goal-audit.json`. A focused proof-registry PASS is not
+release readiness; this remains an alpha/not-release-ready project until the
+aggregate claim gates pass.
 `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
 `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.

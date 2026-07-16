@@ -352,6 +352,10 @@ const goalDocumentationFreshnessSource = readFileSync(
   join(ROOT, "scripts", "verify-goal-documentation-freshness.mjs"),
   "utf8",
 );
+const goalDocumentationPolicySource = readFileSync(
+  join(ROOT, "scripts", "lib", "goal-documentation-policy.mjs"),
+  "utf8",
+);
 const goalOperatorFinishSource = readFileSync(join(ROOT, "scripts", "verify-goal-operator-finish.mjs"), "utf8");
 const productionBundleBudgetScriptSource = readFileSync(
   join(ROOT, "scripts", "verify-production-bundle-budget.mjs"),
@@ -4795,10 +4799,11 @@ const finalGoalAuditSourcePass =
   finalGoalAuditScriptSource.includes("operationalEvidence") &&
   finalGoalAuditScriptSource.includes("currentStateDocPaths") &&
   finalGoalAuditScriptSource.includes("currentStateDocFreshness") &&
+  finalGoalAuditScriptSource.includes("evaluateGoalDocumentationPolicy") &&
   finalGoalAuditScriptSource.includes("localDate") &&
   finalGoalAuditScriptSource.includes("timeZone") &&
   finalGoalAuditScriptSource.includes("goalDocumentationFreshness") &&
-  finalGoalAuditScriptSource.includes("noStaleReleaseReadyClaim") &&
+  goalDocumentationPolicySource.includes("noStaleReleaseReadyClaim") &&
   finalGoalAuditScriptSource.includes("runtimeHygieneOperationallyClean") &&
   finalGoalAuditScriptSource.includes("previousCrashIncidentCount") &&
   finalGoalAuditScriptSource.includes("previousHelperOutputLeakCount") &&
@@ -4966,7 +4971,7 @@ const finalGoalAuditSourcePass =
   goalDocumentationFreshnessSource.includes("goal-documentation-freshness.json") &&
   goalDocumentationFreshnessSource.includes("CURRENT_STATE_DOCS") &&
   goalDocumentationFreshnessSource.includes("currentLocalDate") &&
-  goalDocumentationFreshnessSource.includes('timeZone: "Asia/Tokyo"') &&
+  goalDocumentationFreshnessSource.includes('LOCAL_TIME_ZONE = "Asia/Tokyo"') &&
   goalDocumentationFreshnessSource.includes("localDate") &&
   goalDocumentationFreshnessSource.includes("checkedDocCount") &&
   goalDocumentationFreshnessSource.includes("requiredDocPaths") &&
@@ -4975,7 +4980,9 @@ const finalGoalAuditSourcePass =
   goalDocumentationFreshnessSource.includes("docs/PUBLICATION_READINESS.md") &&
   goalDocumentationFreshnessSource.includes("scoreIsCurrentShape") &&
   goalDocumentationFreshnessSource.includes("pass-current-goal-docs-contract") &&
-  goalDocumentationFreshnessSource.includes("noStaleReleaseReadyClaim") &&
+  goalDocumentationFreshnessSource.includes("currentStateDocsSourceLinked") &&
+  goalDocumentationPolicySource.includes("noStaleReleaseReadyClaim") &&
+  goalDocumentationPolicySource.includes("noVolatileMachineTruthSnapshot") &&
   goalAntiStallContractSource.includes("goal-anti-stall-contract.json") &&
   goalAntiStallContractSource.includes("pass-current-anti-stall-contract") &&
   goalAntiStallContractSource.includes("nativeAiChaosDefaultWaitMs") &&
@@ -5112,6 +5119,7 @@ const finalGoalAuditFresh =
       mtimeMs(join(ROOT, "scripts", "verify-goal-anti-stall-contract.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-chunked-osc-live-safe.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-goal-documentation-freshness.mjs")),
+      mtimeMs(join(ROOT, "scripts", "lib", "goal-documentation-policy.mjs")),
       mtimeMs(join(ROOT, "scripts", "verify-authenticated-ai-cli-consent-packet.mjs")),
       mtimeMs(join(ROOT, "docs", "TERMINAL_NATIVE_CORE_AND_EDITOR_DESCOPE_PLAN_2026-05-17.md")),
       mtimeMs(join(ROOT, "docs", "NATIVE_RUST_NATIVE_TERMINAL_PLUS_MIGRATION_PLAN.md")),

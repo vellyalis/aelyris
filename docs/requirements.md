@@ -99,12 +99,12 @@ The locally generated `.codex-auto/quality/*.json` artifacts are the current
 machine truth. They override stale prose, older promotion gates, and historical
 green snapshots.
 
-Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-reports `23/100` (`76/327`), grade `D`, `releaseCandidateReady=false`.
-The final-goal audit is downstream and never feeds points back into the score;
-it is `blocked` with `implementationFixableCount=194`,
-`policyBlockedCount=12`, and `externalBlockedCount=17`. The safe proof registry
-target is `28/28`. `authenticated-ai-cli-prompt-smoke` requires
+The current score and blocker counts are intentionally not copied into this
+stable requirements index. Regenerate them with `pnpm verify:quality-score` and
+read `.codex-auto/quality/release-quality-score.json`; the downstream
+`.codex-auto/quality/final-goal-audit.json` never feeds points back into the
+score. A focused proof-registry PASS is not release readiness.
+`authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
 `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 `pnpm verify:goal:finalize` excludes git finalization by default;

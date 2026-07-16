@@ -63,9 +63,10 @@ repo-owned regression.
 2. `hardening-instructions.md`
    - Status: H1-H8 repo-owned completion audit is superseded by the current
      final-goal audit truth.
-   - Current proof shape: the final-goal audit is blocked with
-     `implementationFixableCount=194`, `policyBlockedCount=12`, and
-     `externalBlockedCount=17`; do not reuse older external-only closeout text.
+   - Do not copy current blocker counts into this fallback handoff. Regenerate
+     `pnpm verify:final-goal-audit` and read
+     `.codex-auto/quality/final-goal-audit.json`; do not reuse older
+     external-only closeout text.
    - Remaining blockers must be read from the current final-goal audit before selecting the next workstream.
    - Do not restart H1-H8 unless a verifier regresses from the current contract.
 
@@ -83,23 +84,22 @@ Do not run work orders concurrently. They can touch shared files such as
 This continuation doc is not itself release-readiness proof. Fresh verifier
 artifacts must be regenerated before claiming quality, readiness, or score.
 
-Last confirmed machine truth for the hardening closeout:
+Authoritative machine truth for a resumed session:
 
-- `pnpm verify:quality-score` -> `23/100` (`76/327`), grade `D`,
-  `releaseCandidateReady=false`; final-goal audit is downstream and does not
-  feed points back into the score.
-- `pnpm verify:final-goal-audit` -> `blocked`,
-  `implementationFixableCount=194`, `policyBlockedCount=12`,
-  `externalBlockedCount=17`.
-- Safe proof registry target -> `28/28`; `authenticated-ai-cli-prompt-smoke`
-  requires `authenticated-ai-cli-consent-packet` and
+- Regenerate `pnpm verify:quality-score` and read
+  `.codex-auto/quality/release-quality-score.json`; the final-goal audit is
+  downstream and does not feed points back into the score.
+- Regenerate `pnpm verify:final-goal-audit` and read
+  `.codex-auto/quality/final-goal-audit.json` for the current residual-risk
+  classification.
+- A focused proof-registry PASS is not release readiness.
+  `authenticated-ai-cli-prompt-smoke` requires
+  `authenticated-ai-cli-consent-packet` and
   `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 - `pnpm verify:goal:finalize` excludes git finalization by default;
   `AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is optional, and git is not required for product/safe/finalize evidence.
-- `pnpm verify:goal:safe` -> `blocked`; failed steps include authenticated
-  preflight/consent packet, anti-stall, final-goal audit, documentation
-  freshness before this refresh, real OS sleep/operator handoff, completion
-  matrix, external-gate readiness, and operator finish.
+- Regenerate `pnpm verify:goal:safe` before making a current aggregate claim;
+  historical failed-step lists are not current evidence.
 - `pnpm verify:goal:closeout` -> rerun after the docs/safe refresh before using
   it as a handoff claim.
 - `pnpm verify:goal:docs` -> `pass-current-goal-docs-contract`.

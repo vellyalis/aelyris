@@ -24,12 +24,12 @@ skill, verifier, or review gate should drive a task.
 If any skill, prompt, or older doc conflicts with `AGENTS.md` or
 `docs/requirements.md`, follow the claim policy and update the stale workflow.
 
-Current machine truth refreshed 2026-07-10 JST by the comprehensive audit safe
-chain: `pnpm verify:quality-score` reports `23/100` (`76/327`), grade `D`,
-`releaseCandidateReady=false`.
-The current final-goal audit is `blocked` with `implementationFixableCount=194`,
-`policyBlockedCount=12`, and `externalBlockedCount=17`. The safe proof registry
-target is `28/28`. `authenticated-ai-cli-prompt-smoke` requires
+Current machine truth is generated, not duplicated in this workflow guide.
+Regenerate it with `pnpm verify:quality-score` and read
+`.codex-auto/quality/release-quality-score.json`. Read the downstream final-goal
+audit from `.codex-auto/quality/final-goal-audit.json`; it does not feed points
+back into the score. A focused proof-registry PASS is not release readiness.
+`authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
 `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
 `pnpm verify:goal:finalize` excludes git finalization by default;

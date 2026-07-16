@@ -1261,6 +1261,10 @@ describe("Release evidence gates", () => {
       join(process.cwd(), "scripts/verify-goal-documentation-freshness.mjs"),
       "utf8",
     );
+    const goalDocumentationPolicyScript = readFileSync(
+      join(process.cwd(), "scripts/lib/goal-documentation-policy.mjs"),
+      "utf8",
+    );
 
     expect(src).toContain("deriveRightRailGoalTrack");
     const releaseGoalEvidence = getReleaseGoalEvidenceSource();
@@ -1547,11 +1551,12 @@ describe("Release evidence gates", () => {
     expect(finalGoalAuditScript).toContain('timeZone: "Asia/Tokyo"');
     expect(finalGoalAuditScript).toContain("localDate: currentLocalDate()");
     expect(finalGoalAuditScript).toContain("timeZone: LOCAL_TIME_ZONE");
-    expect(finalGoalAuditScript).toContain("projectedScorePercent");
     expect(finalGoalAuditScript).toContain("goalDocumentationFreshness");
-    expect(finalGoalAuditScript).toContain("noStaleReleaseReadyClaim");
-    expect(finalGoalAuditScript).toContain("consentPacketNamed");
-    expect(finalGoalAuditScript).toContain("consentProviderRequired");
+    expect(finalGoalAuditScript).toContain("evaluateGoalDocumentationPolicy");
+    expect(goalDocumentationPolicyScript).toContain("noStaleReleaseReadyClaim");
+    expect(goalDocumentationPolicyScript).toContain("noVolatileMachineTruthSnapshot");
+    expect(goalDocumentationPolicyScript).toContain("consentPacketNamed");
+    expect(goalDocumentationPolicyScript).toContain("consentProviderRequired");
     expect(finalGoalAuditScript).toContain("releaseScoreSourcePaths");
     expect(finalGoalAuditScript).toContain("scripts/verify-final-goal-audit.mjs");
     expect(finalGoalAuditScript).toContain("scripts/verify-final-goal-safe.mjs");
@@ -1632,9 +1637,9 @@ describe("Release evidence gates", () => {
     expect(score).toContain("timeZone: LOCAL_TIME_ZONE");
     expect(score).toContain("scoreIsCurrentShape");
     expect(score).toContain("goal-documentation-freshness");
-    expect(goalDocumentationFreshnessScript).toContain("consentPacketNamed");
-    expect(goalDocumentationFreshnessScript).toContain("consentProviderRequired");
-    expect(goalDocumentationFreshnessScript).toContain("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
+    expect(goalDocumentationPolicyScript).toContain("consentPacketNamed");
+    expect(goalDocumentationPolicyScript).toContain("consentProviderRequired");
+    expect(goalDocumentationPolicyScript).toContain("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini");
     expect(goalDocumentationFreshnessScript).toContain("requiredDocPaths");
     expect(goalDocumentationFreshnessScript).toContain("checkedDocCount");
     expect(score).toContain("REQUIRED_GOAL_DOCUMENT_PATHS");
@@ -1769,18 +1774,15 @@ describe("Release evidence gates", () => {
     expect(tauriGoalTrackScript).toContain("SOURCE_CONTRACT_PATHS");
     expect(finalGoalSafeVerifier).not.toContain("AELYRIS_AUTH_PROMPT_CONSENT:");
     expect(goalDocumentationFreshnessScript).toContain("CURRENT_STATE_DOCS");
-    expect(goalDocumentationFreshnessScript).toContain("FINAL_GOAL_SAFE_VERIFIER_PATH");
-    expect(goalDocumentationFreshnessScript).toContain("expectedSafeProofArtifactCount");
-    expect(goalDocumentationFreshnessScript).toContain("currentSafeProofArtifactCount");
-    expect(goalDocumentationFreshnessScript).toContain("safeProofArtifactRegistryCurrent");
-    expect(goalDocumentationFreshnessScript).toContain("intentionally does not read final-goal-safe-summary.json");
-    expect(goalDocumentationFreshnessScript).toContain("noStaleSafeProofArtifactClaim");
-    expect(goalDocumentationFreshnessScript).toContain("proofArtifactPassCount");
+    expect(goalDocumentationFreshnessScript).toContain("evaluateGoalDocumentationPolicy");
+    expect(goalDocumentationFreshnessScript).toContain("generatedArtifactIsCurrent");
+    expect(goalDocumentationFreshnessScript).toContain("goalDocumentationPolicySelfTest");
+    expect(goalDocumentationFreshnessScript).toContain("currentStateDocsSourceLinked");
+    expect(goalDocumentationFreshnessScript).toContain('contractVersion: "source-linked-machine-truth/v2"');
     expect(goalDocumentationFreshnessScript).toContain("currentLocalDate");
-    expect(goalDocumentationFreshnessScript).toContain('timeZone: "Asia/Tokyo"');
+    expect(goalDocumentationFreshnessScript).toContain('LOCAL_TIME_ZONE = "Asia/Tokyo"');
     expect(goalDocumentationFreshnessScript).toContain("timeZone: LOCAL_TIME_ZONE");
     expect(goalDocumentationFreshnessScript).toContain("scoreIsCurrentShape");
-    expect(goalDocumentationFreshnessScript).toContain("noStaleReleaseReadyClaim");
     expect(goalDocumentationFreshnessScript).toContain("pass-current-goal-docs-contract");
     expect(finalGoalSafeVerifier).toContain("verify-glass-legibility-contract.mjs");
     expect(finalGoalSafeVerifier).toContain("verify-goal-anti-stall-contract.mjs");

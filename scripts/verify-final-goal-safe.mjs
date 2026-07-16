@@ -1204,24 +1204,28 @@ function goalDocumentationFreshnessVerdict(data) {
     data?.checkedDocCount === requiredDocPaths.length &&
     checks.scoreExists === true &&
     checks.auditExists === true &&
+    checks.scoreArtifactCurrent === true &&
+    checks.auditArtifactCurrent === true &&
     checks.scoreIsCurrentShape === true &&
     checks.auditIsCurrentConsentGate === true &&
-    checks.currentStateDocsFresh === true &&
+    checks.documentationPolicySelfTestPasses === true &&
+    checks.currentStateDocsSourceLinked === true &&
     docs.length >= REQUIRED_GOAL_DOCUMENT_PATHS.length &&
     requiredDocsCovered &&
     docs.every(
       (doc) =>
         doc?.ok === true &&
         doc?.checks?.noStaleLegacyScoreClaim === true &&
-        doc?.checks?.noStaleReleaseReadyClaim === true,
+        doc?.checks?.noStaleReleaseReadyClaim === true &&
+        doc?.checks?.noVolatileMachineTruthSnapshot === true,
     );
   return {
     ok,
     status: ok ? "pass-current-goal-docs-contract" : (data?.status ?? "stale-or-incomplete"),
-    expectation: "current roadmap documents match the active score, final audit state, and explicit consent blocker",
+    expectation: "stable roadmap documents point to current generated truth without copying volatile values",
     reason: ok
-      ? "goal roadmap docs are synchronized with the current score and do not claim stale release readiness"
-      : "goal roadmap docs are stale, incomplete, or contradict the current score/audit contract",
+      ? "goal roadmap docs are source-linked and the authoritative score/audit artifacts are current"
+      : "goal roadmap docs or authoritative score/audit artifacts are stale, incomplete, or contradictory",
   };
 }
 

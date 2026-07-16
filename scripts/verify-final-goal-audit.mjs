@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
 import {
   createEvidenceProvenance,
   validateEvidenceDependencyGraph,
   validateEvidenceProvenance,
 } from "./evidence-provenance.mjs";
+import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
+import { evaluateGoalDocumentationPolicy } from "./lib/goal-documentation-policy.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "final-goal-audit.json");
@@ -301,6 +302,7 @@ const releaseScoreSourcePaths = [
   "scripts/verify-mux-live-restore.mjs",
   "scripts/verify-process-reconnect-command-evidence.mjs",
   "scripts/verify-goal-documentation-freshness.mjs",
+  "scripts/lib/goal-documentation-policy.mjs",
   "scripts/verify-authenticated-ai-cli-consent-packet.mjs",
   "scripts/verify-goal-external-gate-readiness.mjs",
   "scripts/verify-native-boundary-contract.mjs",
@@ -451,53 +453,12 @@ function currentLocalDate() {
 }
 
 function currentStateDocFreshness(path) {
-  const text = readText(path);
-  const scorePercent = `${releaseScore?.score ?? "?"}/100`;
-  const scoreTotal = `${releaseScore?.total ?? "?"}/${releaseScore?.max ?? "?"}`;
-  const finalGoalEvidenceScore = scoreById(releaseScore, "final-goal-evidence-map");
-  const projectedTotal =
-    typeof releaseScore?.total === "number" && typeof finalGoalEvidenceScore?.max === "number"
-      ? releaseScore.total - (finalGoalEvidenceScore?.points ?? 0) + finalGoalEvidenceScore.max
-      : releaseScore?.total;
-  const projectedPercent =
-    typeof projectedTotal === "number" && typeof releaseScore?.max === "number"
-      ? Math.round((projectedTotal / releaseScore.max) * 100)
-      : releaseScore?.score;
-  const projectedScorePercent = `${projectedPercent ?? "?"}/100`;
-  const projectedScoreTotal = `${projectedTotal ?? "?"}/${releaseScore?.max ?? "?"}`;
-  const localDate = currentLocalDate();
-  const checks = {
-    exists: text != null,
-    updatedForCurrentDate: text?.includes(localDate) === true,
-    currentScorePercent: text?.includes(scorePercent) === true || text?.includes(projectedScorePercent) === true,
-    currentScoreTotal: text?.includes(scoreTotal) === true || text?.includes(projectedScoreTotal) === true,
-    currentReleaseCandidateState:
-      text?.includes(`releaseCandidateReady=${releaseScore?.releaseCandidateReady === true}`) === true,
-    consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
-    consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
-    consentProviderRequired: text?.includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
-    noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
-    noStaleReleaseReadyClaim:
-      releaseScore?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
-  };
-  const requiredChecks = [
-    "exists",
-    "updatedForCurrentDate",
-    "currentScorePercent",
-    "currentScoreTotal",
-    "currentReleaseCandidateState",
-    "noStaleLegacyScoreClaim",
-    "noStaleReleaseReadyClaim",
-    ...(detailedCurrentStateDocPaths.has(path)
-      ? ["consentGateNamed", "consentPacketNamed", "consentProviderRequired"]
-      : []),
-  ];
-  return {
+  return evaluateGoalDocumentationPolicy({
     path,
-    checks,
-    requiredChecks,
-    ok: requiredChecks.every((id) => checks[id] === true),
-  };
+    text: readText(path),
+    detailed: detailedCurrentStateDocPaths.has(path),
+    releaseCandidateReady: releaseScore?.releaseCandidateReady === true,
+  });
 }
 
 const currentStateDocs = currentStateDocPaths.map(currentStateDocFreshness);

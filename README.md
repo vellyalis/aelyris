@@ -32,12 +32,12 @@ they are written from scratch in Rust for exactly this job.
 Every row names an architectural property with a runnable check behind it —
 see [Verification](#verification).
 
-Current machine truth, refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-currently reports `23/100` (`76/327`), grade `D`,
-`releaseCandidateReady=false`. The final-goal audit is downstream and does not
-feed points back into the score; it is `blocked` with
-`implementationFixableCount=194`, `policyBlockedCount=12`, and
-`externalBlockedCount=17`. The safe proof registry target is `28/28`.
+Current machine truth is generated, not copied into this stable README. Run
+`pnpm verify:quality-score` and read
+`.codex-auto/quality/release-quality-score.json`; regenerate the aggregate safe
+chain before making a current readiness claim. The final-goal audit is
+downstream and does not feed points back into the score. A focused proof-registry
+PASS is not release readiness.
 `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
 `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.

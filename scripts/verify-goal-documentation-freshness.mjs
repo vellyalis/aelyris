@@ -1,11 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import {
+  evaluateGoalDocumentationPolicy,
+  generatedArtifactIsCurrent,
+  goalDocumentationPolicySelfTest,
+} from "./lib/goal-documentation-policy.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "goal-documentation-freshness.json");
 const SCORE_PATH = ".codex-auto/quality/release-quality-score.json";
 const AUDIT_PATH = ".codex-auto/quality/final-goal-audit.json";
-const FINAL_GOAL_SAFE_VERIFIER_PATH = "scripts/verify-final-goal-safe.mjs";
 const LOCAL_TIME_ZONE = "Asia/Tokyo";
 const CURRENT_STATE_DOCS = [
   "AGENTS.md",
@@ -75,7 +79,7 @@ function collectDocumentationPaths() {
 
 function currentLocalDate() {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
+    timeZone: LOCAL_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -94,121 +98,13 @@ function readText(path) {
   return readFileSync(full, "utf8");
 }
 
-function expectedSafeProofArtifactCount() {
-  const source = readText(FINAL_GOAL_SAFE_VERIFIER_PATH) ?? "";
-  const match = source.match(/const proofArtifacts = \{([\s\S]*?)\n\};/);
-  if (!match) return 0;
-  const artifactKeys = match[1]
-    .split("\n")
-    .map((line) => line.match(/^\s{2}([A-Za-z0-9]+):\s+artifactMeta\(/)?.[1])
-    .filter(Boolean);
-  const optionalMatch = source.match(/const optionalProofArtifactKeys = new Set\(\[([^\]]*)\]\);/);
-  const optionalKeys = new Set(
-    (optionalMatch?.[1] ?? "")
-      .split(",")
-      .map((item) => item.trim().replace(/^["']|["']$/g, ""))
-      .filter(Boolean),
-  );
-  return artifactKeys.filter((key) => !optionalKeys.has(key)).length;
-}
-
-function docResult(path, score, audit, safeProofArtifactRegistryCount, today) {
-  const text = readText(path);
-  const full = join(ROOT, path);
-  const currentScore = `${score?.score}/100`;
-  const currentTotal = `${score?.total}/${score?.max}`;
-  const projectedScore =
-    typeof audit?.score?.projectedAfterEvidenceMap?.percent === "number"
-      ? `${audit.score.projectedAfterEvidenceMap.percent}/100`
-      : "";
-  const projectedTotal =
-    typeof audit?.score?.projectedAfterEvidenceMap?.total === "number" &&
-    typeof audit?.score?.projectedAfterEvidenceMap?.max === "number"
-      ? `${audit.score.projectedAfterEvidenceMap.total}/${audit.score.projectedAfterEvidenceMap.max}`
-      : "";
-  const status = String(audit?.status ?? "");
-  const auditImplementationFixableCount =
-    audit?.residualRiskRegister?.implementationFixableCount ?? audit?.implementationFixableCount;
-  const auditPolicyBlockedCount = audit?.residualRiskRegister?.policyBlockedCount ?? audit?.policyBlockedCount;
-  const auditExternalBlockedCount = audit?.residualRiskRegister?.externalBlockedCount ?? audit?.externalBlockedCount;
-  const proofArtifactCount =
-    safeProofArtifactRegistryCount > 0 ? `${safeProofArtifactRegistryCount}/${safeProofArtifactRegistryCount}` : "";
-  const staleRightRailCurrentClaims = [
-    /The right rail still reads as a dashboard, not an action surface\./,
-    /The rail does not yet prove that Aelyris is better than running tmux plus AI CLIs manually\./,
-    /The right rail still has too many surfaces that require the user to infer purpose from labels/,
-    /Right rail edge: smoke\/action gates pass, but the rail still needs provenance-first actions/,
-  ];
-  const checks = {
-    exists: text != null,
-    updatedForCurrentDate: text?.includes(today) === true,
-    currentScorePercent:
-      text?.includes(currentScore) === true || (projectedScore && text?.includes(projectedScore) === true),
-    currentScoreTotal:
-      text?.includes(currentTotal) === true || (projectedTotal && text?.includes(projectedTotal) === true),
-    currentReleaseCandidateState:
-      text?.includes(`releaseCandidateReady=${score?.releaseCandidateReady === true}`) === true,
-    currentAuditStatus:
-      status.length > 0 &&
-      (text?.includes(status) === true ||
-        (score?.releaseCandidateReady === true && text?.includes("complete") === true)),
-    currentAuditImplementationFixableCount:
-      typeof auditImplementationFixableCount === "number" &&
-      text?.includes(`implementationFixableCount=${auditImplementationFixableCount}`) === true,
-    currentAuditPolicyBlockedCount:
-      typeof auditPolicyBlockedCount === "number" &&
-      text?.includes(`policyBlockedCount=${auditPolicyBlockedCount}`) === true,
-    currentAuditExternalBlockedCount:
-      typeof auditExternalBlockedCount === "number" &&
-      text?.includes(`externalBlockedCount=${auditExternalBlockedCount}`) === true,
-    currentSafeProofArtifactCount: proofArtifactCount.length > 0 && text?.includes(proofArtifactCount) === true,
-    consentGateNamed: text?.includes("authenticated-ai-cli-prompt-smoke") === true,
-    consentPacketNamed: text?.includes("authenticated-ai-cli-consent-packet") === true,
-    consentProviderRequired: text?.includes("AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini") === true,
-    defaultFinalizeNoGit: text?.includes("`pnpm verify:goal:finalize` excludes git finalization by default") === true,
-    optionalGitFinalizeEnvNamed: text?.includes("AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1") === true,
-    gitNotRequiredForProductEvidence: text?.includes("not required for product/safe/finalize evidence") === true,
-    noStaleLegacyScoreClaim: !/100\/116/.test(text ?? ""),
-    noStaleReleaseReadyClaim:
-      score?.releaseCandidateReady === true ? true : !/releaseCandidateReady=true/.test(text ?? ""),
-    noStaleSafeProofArtifactClaim:
-      !/proofArtifactPassCount=11\/11|with `11\/11` proof artifacts|proofArtifactPassCount=24\/24|with `24\/24` proof artifacts|safe proof registry is `24\/24`|safe proof registry is 24\/24|proofArtifactPassCount=26\/26|with `26\/26` proof artifacts|safe proof registry is `26\/26`|safe proof registry is 26\/26/.test(
-        text ?? "",
-      ),
-    noStaleRightRailCurrentClaim: !staleRightRailCurrentClaims.some((pattern) => pattern.test(text ?? "")),
-  };
-  const alwaysRequiredChecks = [
-    "exists",
-    "updatedForCurrentDate",
-    "currentScorePercent",
-    "currentScoreTotal",
-    "currentReleaseCandidateState",
-    "noStaleLegacyScoreClaim",
-    "noStaleReleaseReadyClaim",
-    "noStaleSafeProofArtifactClaim",
-    "noStaleRightRailCurrentClaim",
-  ];
-  const detailedRequiredChecks = [
-    "currentAuditStatus",
-    "currentAuditImplementationFixableCount",
-    "currentAuditPolicyBlockedCount",
-    "currentAuditExternalBlockedCount",
-    "consentGateNamed",
-    "consentPacketNamed",
-    "consentProviderRequired",
-  ];
-  const requiredChecks = [
-    ...alwaysRequiredChecks,
-    ...(DETAILED_CURRENT_STATE_DOCS.has(path) ? detailedRequiredChecks : []),
-  ];
-  return {
+function docResult(path, releaseCandidateReady) {
+  return evaluateGoalDocumentationPolicy({
     path,
-    exists: text != null,
-    mtimeMs: existsSync(full) ? statSync(full).mtimeMs : 0,
-    checks,
-    requiredChecks,
-    ok: requiredChecks.every((id) => checks[id] === true),
-  };
+    text: readText(path),
+    detailed: DETAILED_CURRENT_STATE_DOCS.has(path),
+    releaseCandidateReady,
+  });
 }
 
 function staleDocumentationHits(paths) {
@@ -279,14 +175,16 @@ const auditResidualRiskStateValid =
             (auditResidualRiskRegister?.implementationFixableCount ?? 0) > 0 &&
             audit?.goalComplete === false
           : false;
-const safeProofArtifactRegistryCount = expectedSafeProofArtifactCount();
 const localDate = currentLocalDate();
-const docs = CURRENT_STATE_DOCS.map((path) => docResult(path, score, audit, safeProofArtifactRegistryCount, localDate));
+const docs = CURRENT_STATE_DOCS.map((path) => docResult(path, score?.releaseCandidateReady === true));
 const documentationPaths = collectDocumentationPaths();
 const stalePatternHits = staleDocumentationHits(documentationPaths);
+const policySelfTest = goalDocumentationPolicySelfTest();
 const checks = {
   scoreExists: score != null,
   auditExists: audit != null,
+  scoreArtifactCurrent: generatedArtifactIsCurrent(score, localDate),
+  auditArtifactCurrent: generatedArtifactIsCurrent(audit, localDate),
   scoreIsCurrentShape:
     scoreShapeValid && effectiveScorePercent === score?.score && effectiveScoreTotal === score?.total,
   auditIsCurrentConsentGate:
@@ -297,26 +195,23 @@ const checks = {
       audit?.status === "blocked") &&
     auditResidualCountsMatch &&
     auditResidualRiskStateValid,
-  safeProofArtifactRegistryCurrent: safeProofArtifactRegistryCount >= 15,
-  // This verifier is itself a step inside verify-final-goal-safe.mjs. Reading
-  // the previous final-goal-safe artifact here creates a circular freshness
-  // dependency: one stale safe artifact can make docs fail, which then makes
-  // the next safe run fail again. Keep this gate scoped to docs plus the
-  // authoritative score/audit state, and let verify-final-goal-safe own the
-  // safe artifact invariants.
-  currentStateDocsFresh: docs.every((doc) => doc.ok),
+  documentationPolicySelfTestPasses: policySelfTest.ok,
+  currentStateDocsSourceLinked: docs.every((doc) => doc.ok),
   noKnownStaleDocumentationPatterns: stalePatternHits.length === 0,
 };
 
+const ok = Object.values(checks).every(Boolean);
 const report = {
-  version: 1,
+  version: 2,
+  contractVersion: "source-linked-machine-truth/v2",
   generatedAt: new Date().toISOString(),
   timeZone: LOCAL_TIME_ZONE,
-  ok: Object.values(checks).every(Boolean),
-  status: Object.values(checks).every(Boolean) ? "pass-current-goal-docs-contract" : "failed",
+  ok,
+  status: ok ? "pass-current-goal-docs-contract" : "failed",
   localDate,
   requiredDocPaths: CURRENT_STATE_DOCS,
   checkedDocCount: docs.length,
+  policySelfTest,
   stalePatternScan: {
     checkedPathCount: documentationPaths.length,
     patterns: STALE_DOCUMENTATION_PATTERNS.map((item) => item.id),
@@ -324,6 +219,8 @@ const report = {
   },
   score: score
     ? {
+        generatedAt: score.generatedAt,
+        localDate: score.localDate,
         score: score.score,
         grade: score.grade,
         total: score.total,
@@ -333,6 +230,8 @@ const report = {
     : null,
   audit: audit
     ? {
+        generatedAt: audit.generatedAt,
+        localDate: audit.localDate,
         ok: audit.ok === true,
         status: audit.status,
         implementationFixableCount: audit.residualRiskRegister?.implementationFixableCount ?? null,
@@ -340,10 +239,6 @@ const report = {
         externalBlockedCount: audit.residualRiskRegister?.externalBlockedCount ?? null,
       }
     : null,
-  safe: {
-    expectedProofArtifactCount: safeProofArtifactRegistryCount,
-    note: "verify-goal-documentation-freshness intentionally does not read final-goal-safe-summary.json to avoid a circular safe/docs freshness dependency.",
-  },
   checks,
   docs,
 };

@@ -12,12 +12,13 @@ the current limitations visible. Aelyris is alpha and does not claim production
 readiness; capability claims are gated by verifiers. It should not be published
 as a stable release.
 
-Current machine truth refreshed 2026-07-10 JST: `pnpm verify:quality-score`
-reports `23/100` (`76/327`), grade `D`, `releaseCandidateReady=false`.
-The current final-goal audit is `blocked` with
-`implementationFixableCount=194`, `policyBlockedCount=12`, and
-`externalBlockedCount=17`; `pnpm verify:goal:safe` is also `blocked` in the
-current local run. The safe proof registry target is `28/28`.
+Current machine truth is generated, not copied into this stable publication
+guide. Regenerate it with `pnpm verify:quality-score` and
+`pnpm verify:final-goal-audit`, then read
+`.codex-auto/quality/release-quality-score.json` and
+`.codex-auto/quality/final-goal-audit.json`. Regenerate the aggregate safe chain
+before making a current readiness claim. A focused proof-registry PASS is not
+release readiness.
 `authenticated-ai-cli-prompt-smoke` requires
 `authenticated-ai-cli-consent-packet` and
 `AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
