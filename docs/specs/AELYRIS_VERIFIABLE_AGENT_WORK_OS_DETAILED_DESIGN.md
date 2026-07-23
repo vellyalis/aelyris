@@ -1705,6 +1705,49 @@ completion criteria:
 - local signed extension registry, then post-release marketplace;
 - A2A multi-machine federation.
 
+### 18.1 OpenCode Candidate Adapter Research Contract
+
+`V1-R0` evaluates OpenCode as the first named structured-runtime candidate. It
+does not make OpenCode a product dependency, runtime owner, public capability, or
+R0-A9 completion criterion. Normal execution starts after A9; any earlier work is
+an independently authorized, isolated, non-shipping experiment and cannot change
+the active remediation order or shipping path.
+
+The experiment is implementation-ready only when its packet includes these
+requirements:
+
+| ID | Contract |
+| --- | --- |
+| `OC-R0-01` | Execute one fixed Mission fixture through visible PTY, OpenCode ACP, and OpenCode HTTP/SSE with the same repository, acceptance clauses, provider/model class, and budget class. Missing OpenCode or a transport capability is typed `unsupported`, never silently substituted. |
+| `OC-R0-02` | Pin and record the OpenCode artifact, version, source/provenance, license, auto-update state, OpenAPI/schema digest, and compatible adapter range. Schema drift fails closed before effect. |
+| `OC-R0-03` | Bind the server to loopback, use race-safe port ownership and short-lived credentials, keep secrets out of arguments/logs/artifacts, and prove child-process termination plus port release. |
+| `OC-R0-04` | Inventory every config and credential source, including global, project, custom, inline, managed, environment, `.env`, and provider-auth paths. Prove an isolated effective configuration; `OPENCODE_CONFIG_DIR` by itself is insufficient because sources are merged. |
+| `OC-R0-05` | Map external session, tool, diff, permission, status, usage, and error facts into existing `AgentSession`, WorkExecutionAttempt/generation, WorkEvent/Chronicle, capability, Proofbook, review, and merge owners. No second runtime graph, journal, permission authority, completion truth, or merge owner is allowed. |
+| `OC-R0-06` | Route every effect through the canonical Control Kernel and Aelyris capability lease. An OpenCode allow/deny prompt is adapter evidence and UI, not authority to grant or widen capability. |
+| `OC-R0-07` | Prove abort, disconnect, reconnect, duplicate/out-of-order event, process crash, restart, fork/resume, uncertain effect, and reconciliation behavior. Delivery is at-least-once with idempotent consumers; exactly-once is not claimed. |
+| `OC-R0-08` | Measure capability coverage, structured-event fidelity, deny equivalence, diff/evidence completeness, reconnect loss, operator visibility, latency, cost, and secret leakage against the visible PTY Current Best. |
+| `OC-R0-09` | Preserve Mission/runtime/evidence identity across adapter disable or retirement and prove visible PTY fallback without rewriting accepted history. |
+| `OC-R0-10` | Keep an Aelyris Runtime TUI outside this comparison. It receives a separate product-surface decision only after a structured adapter and daemon-owned projection are proven. |
+
+The decision artifact returns `promote_one`, `hold`, or `reject`:
+
+- `promote_one` names either ACP or HTTP/SSE, demonstrates a material Goal
+  improvement over PTY, and passes every authority, isolation, recovery, and
+  owner invariant;
+- `hold` records the missing capability or negative proof without blocking the
+  existing roadmap;
+- `reject` retires the candidate when it duplicates ownership, leaks
+  config/credentials, cannot reconcile uncertain effects, bypasses the Control
+  Kernel, or provides no meaningful advantage.
+
+The experiment may use the upstream
+[server contract](https://opencode.ai/docs/server/),
+[ACP contract](https://opencode.ai/docs/acp/), and
+[configuration precedence](https://opencode.ai/docs/config/) as discovery
+inputs. Executed evidence from the pinned artifact remains authoritative.
+The V1-R0 packet must trace every `OC-R0-*` requirement to fixed positive and
+negative fixtures and emit a machine-readable decision artifact.
+
 ## 19. Verification Matrix
 
 | Gate | Proves | Required negative evidence |
@@ -1723,6 +1766,7 @@ completion criteria:
 | `verify:mcp-control-adapter` | generated catalog and direct Control Kernel invocation | caller actor/reviewer, tool-success completion, stale schema, recursive MCP business dispatch |
 | `verify:work-os-type-closure` | every referenced persistent/wire type resolves to one versioned owner/schema | undefined placeholder, duplicate Rust/TS schema, adapter-local shape |
 | `verify:borrowed-substrate-ledger` | BS reuse decision, license/SBOM/attribution and no-copy boundary | copied UI/schema, missing license, competitor text as implementation contract |
+| `verify:opencode-adapter-candidate` | fixed-fixture PTY/ACP/HTTP-SSE comparison and `promote_one`/`hold`/`reject` decision | missing binary, schema drift, merged-config or credential leak, permission bypass, duplicate owner, uncertain replay, fallback loss |
 | `verify:mission-rehearsal` | pure preview and measured/estimated split | effectful port, missing irreversible marker, unowned write |
 | `verify:first-mission` | successful bounded end-to-end A7 vertical | restart/RTO/RPO mismatch, self-report completion, missing Proofbook/remote/packet/exact-merge proof, blocked scenario accepted |
 | `verify:work-replay` | deterministic projection replay | external resend, unknown schema, hash mismatch |
@@ -1739,6 +1783,7 @@ proof. All are required before a final release claim when the tracked policy say
 | Stable class | Product contract | Detailed owner | First release-blocking gate | Post-release gate |
 | --- | --- | --- | --- | --- |
 | `BS-*` Borrowed Substrate | spec §2.1 reuse/no-copy record | runtime/control adapter plus existing domain owner | A7.0 owner/license/schema inventory and `verify:borrowed-substrate-ledger` | adapter-specific Apex gate |
+| OpenCode candidate adapter | `BS-11` + `EV-01` | §18.1 plus existing runtime/control/evidence owners | none; V1-R0 cannot receive R0-A9 credit | `verify:opencode-adapter-candidate` |
 | `AO-01` Mission graph | FR-1/FR-2 | §4-§5 | A7.0-A7.1, `verify:mission-contract`, `verify:mission-progress-projection` | V2/V7 projection expansion |
 | `AO-02` Qralis semantic control | FR-1/FR-7 | existing TaskGraph/ownership plus bounded coordination | A7.1-A7.3 First Mission dependency/ownership fixtures | V3/V7 |
 | `AO-03` Proof sovereignty | FR-9 | §9 settlement | A7.4/A7.8 packet gates | V2/V4/V7 |

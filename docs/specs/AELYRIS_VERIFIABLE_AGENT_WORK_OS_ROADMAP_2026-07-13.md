@@ -3,7 +3,7 @@
 Status: tracked product roadmap; active execution remains the R0-A9 remediation
 program
 
-Last reviewed: 2026-07-13 JST
+Last reviewed: 2026-07-23 JST
 
 ## 0. Roadmap Contract
 
@@ -399,7 +399,7 @@ exists, instrumentation is the first slice and no impact claim is promoted.
 
 | Wave | Entry gates | Required measure | Reversibility / data compatibility | Claim boundary |
 | --- | --- | --- | --- | --- |
-| V1 Universal Agent Fabric | A7 adapter/capability contract and current release baseline | conformance parity, unsupported-capability honesty, resume/fork loss rate | PTY fallback; adapter-disable; Mission ids/events remain portable | no provider parity until each adapter gate passes |
+| V1 Universal Agent Fabric | A7 adapter/capability contract + A9 release baseline; accepted V1-R0 decision artifact before a production adapter | conformance parity, unsupported-capability honesty, resume/fork loss rate | PTY fallback; adapter-disable; Mission ids/events remain portable | no provider parity until each adapter gate passes |
 | V2 Mission Time Machine | A7 Chronicle/checkpoint/packet integrity | projection hash equality, replay side-effect count `0`, recovery RTO/RPO | disable effectful recovery; keep inert replay; never rewrite accepted history | no time-travel claim from snapshot restore alone |
 | V3 Qralis Coordination | Mission/Chronicle/capability gates | delivery loss `0` within tier, duplicate idempotency, coordination attention | revoke role leases; fall back to bounded single-lane dispatch | no swarm/autonomy claim from messaging alone |
 | V4 Skill Foundry | Proofbook/packet/evaluation provenance plus V2 durability | held-out delta, unsafe-promotion count `0`, rollback success | deactivate candidate; restore prior signed/digested version; retain lineage | no self-improvement claim from candidate generation |
@@ -413,6 +413,9 @@ exists, instrumentation is the first slice and no impact claim is promoted.
 
 Build:
 
+- run V1-R0 against OpenCode as the first named structured-runtime candidate,
+  compare ACP, HTTP/SSE, and the current visible PTY under one fixed Mission
+  fixture, and select at most one OpenCode production path from evidence;
 - production ACP adapter and conformance suite for supported external agents;
 - SDK adapter for typed embedded runtimes with isolation and event mapping;
 - capability-aware session resume/fork/export and structured tool/diff/usage
@@ -430,6 +433,65 @@ Unlocks:
 
 - Codex, Claude, Hermes, OpenHands-like runtimes, and future agents can join one
   governed Mission without provider-specific core ontology.
+
+#### V1-R0 — OpenCode Candidate Adapter Comparison
+
+Execution position: after A9 establishes the current release baseline and before
+any V1 production adapter. This plan does not alter the active
+`A4.8-A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
+would require a separate authorization under the isolated non-shipping rule above;
+it may not block, satisfy, or receive credit for R0-A9.
+
+Value hypothesis:
+
+- a structured runtime can expose session, tool, diff, permission, usage, and
+  disconnect facts without terminal-text inference;
+- Aelyris can preserve one Mission/runtime/capability/evidence identity while the
+  execution engine is replaced;
+- the defensible edge is proof-carrying runtime portability and fail-closed
+  governance, not bundling OpenCode features or rebranding its TUI.
+
+Comparison contract:
+
+- run the same repository, task, model/provider class, budget class, acceptance
+  clauses, and Aelyris Mission identity through visible PTY, OpenCode ACP, and
+  OpenCode HTTP/SSE;
+- compare capability coverage, event fidelity, permission deny equivalence,
+  diff/evidence completeness, reconnect loss, operator visibility, latency/cost,
+  and secret exposure;
+- pin the OpenCode binary/version, provenance, license, auto-update policy,
+  OpenAPI/schema digest, and adapter compatibility range;
+- prove loopback-only launch, race-safe port ownership, short-lived server
+  credentials, process-tree cleanup, and configuration/provider-auth isolation.
+  `OPENCODE_CONFIG_DIR` alone is not an isolation proof because OpenCode merges
+  configuration sources;
+- map all accepted facts into the existing `AgentSession`,
+  WorkExecutionAttempt/execution-generation, WorkEvent/Chronicle, capability,
+  Proofbook, review, and merge owners. Do not create an OpenCode-owned Mission,
+  TaskGraph, journal, permission authority, completion truth, or merge owner;
+- treat missing OpenCode, unsupported capability, schema drift, ambiguous event
+  replay, and disconnect uncertainty as typed non-success. Preserve the visible
+  PTY fallback and never claim exactly-once delivery.
+
+Decision:
+
+- **promote one path** only when it materially beats visible PTY for structured
+  fidelity or recovery while every authority, secret, and owner invariant passes;
+- **hold** when the benefit is plausible but a required capability or negative
+  fixture is unresolved;
+- **reject/retire** when the adapter bypasses the Control Kernel, leaks config or
+  credentials, cannot reconcile uncertain effects, duplicates an owner, or has no
+  meaningful advantage over PTY;
+- a production OpenCode adapter remains Apex V1 work. An Aelyris Runtime TUI is a
+  separate value hypothesis after the adapter and daemon projection are proven;
+  it is not bundled into V1-R0 or allowed to replace the Tauri cockpit by default.
+
+Primary capability sources for the experiment are the OpenCode
+[server/OpenAPI/SSE contract](https://opencode.ai/docs/server/),
+[ACP subprocess contract](https://opencode.ai/docs/acp/), and
+[configuration precedence contract](https://opencode.ai/docs/config/). Current
+documentation is discovery input, not proof that a pinned local version behaves
+correctly.
 
 ### Apex V2 — Mission Time Machine
 
@@ -601,6 +663,7 @@ Unlocks:
 | pane control baton + semantic command evidence | high | high | runtime/input authority | A7 Core bounded path |
 | capability kernel | low-visible, critical | highest | governance inventory | A7 Core bounded path |
 | Mission Rehearsal | high | high | WorkGraph/proof/capability catalog | A7 Core |
+| OpenCode structured-adapter comparison | high if portability proof wins; low if it is only another provider integration | high only with one governed identity across runtimes | A7 adapter contract + A9 release baseline | Apex V1-R0 |
 | Universal Agent Fabric expansion | very high | high | A7 adapter/capability contract | Apex V1 |
 | Mission Time Machine | very high | high | Chronicle convergence | Apex V2 |
 | Verified Skill Foundry | very high | highest | packets/evals/Proofbook UI | Apex V4 |

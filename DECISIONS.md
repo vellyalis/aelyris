@@ -184,3 +184,31 @@ reversible recovery, governed Skill Foundry, Decision Lab, Counterfactual Arena,
 Project Twin, writable remote control, marketplace, and A2A federation remain
 separately gated Apex work. This target category is not a shipped or release-ready
 claim.
+
+## ADR-012 Structured Runtimes Are Replaceable Adapters
+
+Decision: Evaluate OpenCode as the first named structured-runtime candidate in
+the post-A9 Apex V1 program. Compare OpenCode ACP, OpenCode HTTP/SSE, and the
+current visible PTY under one fixed Aelyris Mission. Promote at most one
+structured path from executed evidence; do not make OpenCode a core owner or
+mandatory dependency by design.
+
+Why:
+
+- structured session, tool, diff, permission, usage, and disconnect events may
+  reduce brittle terminal-text inference;
+- OpenCode exposes both an ACP subprocess and a programmatic server, making it a
+  useful falsifiable candidate rather than a reason to invent a proprietary
+  protocol first;
+- Aelyris becomes differentiated when Mission identity, scoped authority,
+  evidence, restart continuity, review, and exact merge truth survive runtime
+  replacement;
+- merely adding OpenCode features or another TUI is integration breadth, not a
+  strategic moat.
+
+Implication: `V1-R0` is a comparison and safety gate, not production
+implementation. It cannot change the active A4/A6/A7/A8/A9 order, satisfy a
+release criterion, introduce a second session graph/journal/permission or
+completion owner, or weaken visible PTY fallback. A production adapter is
+conditional Apex V1 work. An Aelyris Runtime TUI remains a separate value
+hypothesis after the adapter and daemon-owned projection are proven.

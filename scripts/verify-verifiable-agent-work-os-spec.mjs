@@ -178,6 +178,9 @@ const requiredDesignClauses = [
   "A7.8 Successful First Mission Acceptance",
   "RPO=0",
   "Apex Design Gates",
+  "OpenCode Candidate Adapter Research Contract",
+  "OC-R0-10",
+  "verify:opencode-adapter-candidate",
   "Verification Matrix",
 ];
 
@@ -195,7 +198,7 @@ const requiredRoadmapClauses = [
   "rollback_or_retire",
   "rendered_acceptance",
   "A6.2v1",
-  "A6.2e1 remains the next runtime implementation slice",
+  "A6.2e1 remains the exact A6 resume slice",
   "A7 Core Mission Loop",
   "A7.0 — Mission Contract Gate",
   "A7.5 — Proofbook Product, Recipes, Budget/Cost, And Fleet Briefing",
@@ -203,6 +206,9 @@ const requiredRoadmapClauses = [
   "A7.8 — Successful First Mission Acceptance",
   "A8 And A9 Remain Unchanged Release Gates",
   "Apex V1 — Universal Agent Fabric Expansion",
+  "V1-R0 — OpenCode Candidate Adapter Comparison",
+  "proof-carrying runtime portability",
+  "does not alter the active",
   "Apex V2 — Mission Time Machine",
   "Apex V3 — Qralis Coordination Fabric",
   "Apex V4 — Verified Skill Foundry And Team Memory",
@@ -221,6 +227,8 @@ const requiredIndexClauses = [
   "[AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md)",
   "[AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md](./AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md)",
   "Verifiable Agent Work OS",
+  "V1-R0",
+  "OpenCode",
   "実装済みclaimではない",
 ];
 
@@ -253,17 +261,12 @@ const requiredPlanClauses = [
 ];
 
 const requiredWorkOrderClauses = [
-  "ACTIVE SLICE: `A6.2e1`",
-  "LAST COMPLETED SLICE: `A6.2v1`",
-  "NEXT IMPLEMENTATION SLICE: `A6.2e1`",
-  "design-only A6.2v1 checkpoint",
-  "A6.3 and all A7 runtime work must not start early",
-];
-
-const precommitWorkOrderClauses = [
-  "ACTIVE SLICE: `A6.2v1`",
-  "LAST COMPLETED SLICE: `A6.2e0`",
-  "NEXT IMPLEMENTATION SLICE: `A6.2e1`",
+  "CURRENT PHASE: `A4`",
+  "ACTIVE SLICE: `A4.8`",
+  "LAST COMPLETED SLICE: `A4.7`",
+  "NEXT IMPLEMENTATION SLICE: `A4.8`",
+  "resume at A6.2e1",
+  "do not mix A6/A7 work into A4",
 ];
 
 const requiredArchitectureClauses = [
@@ -315,6 +318,9 @@ const requiredDecisionClauses = [
   "MissionCompletionPacket",
   "Control Command registry/kernel",
   "not a shipped or release-ready claim",
+  "ADR-012 Structured Runtimes Are Replaceable Adapters",
+  "OpenCode ACP, OpenCode HTTP/SSE",
+  "cannot change the active A4/A6/A7/A8/A9 order",
 ];
 
 const missing = {
@@ -545,12 +551,9 @@ const checks = [
   ),
   check(
     "work-order-frontier",
-    missing.workOrder.length === 0 || missingFrom(files.workOrder, precommitWorkOrderClauses).length === 0,
-    "Work order records either the in-review A6.2v1 frontier or the accepted checkpoint and keeps A6.2e1 as the next implementation slice",
-    {
-      missingCommittedClauses: missing.workOrder,
-      missingPrecommitClauses: missingFrom(files.workOrder, precommitWorkOrderClauses),
-    },
+    missing.workOrder.length === 0,
+    "Work order preserves the reopened A4.8 frontier, A4.7 last completion, and A6.2e1 resume boundary",
+    { missingClauses: missing.workOrder },
   ),
   check(
     "package-script-present",
@@ -584,7 +587,7 @@ const checks = [
   check(
     "design-only-slice-has-no-runtime-diff",
     runtimeDirty.length === 0,
-    "A6.2v1 changes no runtime or product test source",
+    "The roadmap/decision contract changes no runtime or product test source",
     { dirtyPaths: dirty, runtimeDirty },
   ),
 ];
@@ -593,20 +596,20 @@ const failed = checks.filter((item) => item.status !== "passed");
 const contractPass = failed.length === 0;
 const committedAtHead = contractPass && sourceDirtyPaths.length === 0;
 const report = {
-  schema: "aelyris.verifiable-agent-work-os-spec/v2",
-  contractVersion: "a6.2v1-verifiable-agent-work-os/v2",
-  version: 2,
+  schema: "aelyris.verifiable-agent-work-os-spec/v3",
+  contractVersion: "verifiable-agent-work-os-roadmap/v3",
+  version: 3,
   ok: contractPass,
   status: !contractPass
     ? "fail-verifiable-agent-work-os-spec"
     : committedAtHead
       ? "pass-verifiable-agent-work-os-spec-committed"
       : "pass-verifiable-agent-work-os-spec-ready-to-commit",
-  phase: "A6",
-  attemptedSlice: "A6.2v1",
-  lastCompletedSlice: committedAtHead ? "A6.2v1" : "A6.2e0",
-  completedSlice: committedAtHead ? "A6.2v1" : null,
-  nextImplementationSlice: "A6.2e1",
+  phase: "A4",
+  attemptedSlice: "Apex V1-R0 documentation contract",
+  lastCompletedSlice: "A4.7",
+  completedSlice: committedAtHead ? "Apex V1-R0 documentation contract" : null,
+  nextImplementationSlice: "A4.8",
   readyToCommit: contractPass && !committedAtHead,
   sliceComplete: committedAtHead,
   phaseComplete: false,
