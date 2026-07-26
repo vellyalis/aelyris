@@ -230,7 +230,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(
             context_store::ContextStoreManager::new_durable(),
         ))
-        .manage(std::sync::Arc::new(event_bus::EventBus::new()))
+        .manage(std::sync::Arc::new(event_bus::EventBus::new_durable()))
         .manage(std::sync::Arc::new(cost::CostManager::new()))
         .manage(failure_policy::FailurePolicy::new())
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
@@ -500,10 +500,11 @@ pub fn run() {
                 Err(e) => log::error!("Task graph persistence unavailable: {}", e),
             }
 
-            // Runtime Hardening P3: back the Event Bus with a durable append-only
-            // log so coordination notifications survive eviction + restart (the
-            // no-loss `since` cursor reads it). Own connection, loud-fail to the
-            // in-memory ring only. No restore: the log is replayed by cursor.
+            // Runtime Hardening P3/A4.8: attach the production Event Bus to its
+            // durable append-only outbox. If this connection cannot open, the
+            // durable-required bus remains unattached and publish/since/poll/ack
+            // fail closed; the bounded in-memory ring is not an authoritative
+            // fallback. No restore is needed because durable reads use cursors.
             match Database::open(&db_path) {
                 Ok(ev_db) => {
                     app.state::<std::sync::Arc<event_bus::EventBus>>()

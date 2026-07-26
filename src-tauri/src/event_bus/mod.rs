@@ -13,6 +13,7 @@ pub use manager::EventBus;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::fmt;
 use std::str::FromStr;
 
 /// Named coordination channels (rendered with a leading `#` in UIs).
@@ -182,6 +183,10 @@ impl FromStr for AgentEventKind {
 /// own shape (a task id, a `DecisionChange`, a session id, ...).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentEvent {
+    /// Stable delivery identity. A consumer uses this key to make its effect
+    /// idempotent when at-least-once delivery repeats after a crash-before-ACK.
+    #[serde(default = "new_event_id", rename = "eventId")]
+    pub event_id: String,
     pub kind: AgentEventKind,
     pub channel: EventChannel,
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
@@ -192,6 +197,7 @@ impl AgentEvent {
     /// Build an event routed to its kind's default channel.
     pub fn new(kind: AgentEventKind, payload: serde_json::Value) -> Self {
         Self {
+            event_id: new_event_id(),
             kind,
             channel: kind.default_channel(),
             payload,
@@ -201,21 +207,134 @@ impl AgentEvent {
     /// Build an event on an explicit channel.
     pub fn on(kind: AgentEventKind, channel: EventChannel, payload: serde_json::Value) -> Self {
         Self {
+            event_id: new_event_id(),
             kind,
             channel,
             payload,
         }
     }
+
+    /// Override the generated identity when a producer is retrying the same
+    /// logical event. Reusing a key with different content is rejected by the
+    /// durable repository.
+    pub fn with_idempotency_key(mut self, event_id: impl Into<String>) -> Self {
+        self.event_id = event_id.into();
+        self
+    }
 }
 
-/// A durably-logged event with its monotonic sequence number (P3). Subscribers
-/// poll `seq > cursor` to receive every event exactly once with no loss — the
-/// guarantee the bounded in-memory ring cannot make.
+fn new_event_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// A durably committed outbox event with its monotonic sequence number.
+/// Delivery is at-least-once: consumers ACK a cumulative cursor only after
+/// applying an idempotent effect keyed by `event.event_id`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeqEvent {
     pub seq: i64,
     #[serde(flatten)]
     pub event: AgentEvent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventBatchStatus {
+    Complete,
+}
+
+/// A successful durable query. Failures and sequence gaps are errors, never an
+/// empty successful batch, so callers cannot mistake degraded truth for "caught up".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventBatch {
+    pub after_seq: i64,
+    pub events: Vec<SeqEvent>,
+    pub status: EventBatchStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum EventBusError {
+    DurabilityUnavailable,
+    InvalidEventIdentity,
+    InvalidConsumerIdentity,
+    AppendFailed {
+        event_id: String,
+        message: String,
+    },
+    QueryFailed {
+        operation: String,
+        message: String,
+    },
+    CorruptRow {
+        seq: i64,
+        field: String,
+        message: String,
+    },
+    StreamInvariant {
+        high_water_seq: i64,
+        max_seq: Option<i64>,
+        row_count: i64,
+        message: String,
+    },
+    CursorOutOfRange {
+        after_seq: i64,
+        high_water_seq: i64,
+    },
+    ConsumerCursorCorrupt {
+        consumer_id: String,
+        ack_seq: i64,
+        ack_event_id: Option<String>,
+        message: String,
+    },
+    Gap {
+        expected_seq: i64,
+        observed_seq: i64,
+    },
+    AckIdentityMismatch {
+        seq: i64,
+        expected_event_id: String,
+        observed_event_id: String,
+    },
+    AckRegression {
+        current_seq: i64,
+        attempted_seq: i64,
+    },
+}
+
+impl fmt::Display for EventBusError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let encoded = serde_json::to_string(self).unwrap_or_else(|_| "event_bus_error".to_string());
+        f.write_str(&encoded)
+    }
+}
+
+impl std::error::Error for EventBusError {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishDurability {
+    Durable,
+    Ephemeral,
+    Duplicate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishReceipt {
+    pub event_id: String,
+    pub seq: Option<i64>,
+    pub durability: PublishDurability,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AckReceipt {
+    pub consumer_id: String,
+    pub ack_seq: i64,
+    pub event_id: String,
+    pub already_acked: bool,
 }
 
 /// Bounded in-memory log of recent events — backs the cockpit event feed and

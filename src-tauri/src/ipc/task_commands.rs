@@ -55,7 +55,7 @@ pub fn task_create(
             AgentEventKind::TaskCreated,
             json!({ "id": id, "title": title }),
         ),
-    );
+    )?;
     Ok(changed)
 }
 
@@ -110,7 +110,7 @@ pub async fn plan_build(
                 AgentEventKind::TaskCreated,
                 json!({ "id": id, "title": title }),
             ),
-        );
+        )?;
     }
     Ok(changed)
 }
@@ -218,7 +218,7 @@ must cover these outputs: {outputs}.\n\
                 AgentEventKind::TaskCreated,
                 json!({ "id": id, "title": title }),
             ),
-        );
+        )?;
     }
 
     Ok(ReplanReport {
@@ -260,7 +260,8 @@ pub fn task_submit_plan(
                 AgentEventKind::TaskCreated,
                 json!({ "id": id, "title": title }),
             ),
-        );
+        )
+        .map_err(|error| vec![error])?;
     }
     Ok(changed)
 }
@@ -283,7 +284,7 @@ pub fn task_transition(
         _ => None,
     };
     if let Some(kind) = lifecycle {
-        publish_and_emit(&app, &bus, AgentEvent::new(kind, json!({ "id": id })));
+        publish_and_emit(&app, &bus, AgentEvent::new(kind, json!({ "id": id })))?;
     }
     Ok(changed)
 }

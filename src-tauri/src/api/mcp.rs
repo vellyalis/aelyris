@@ -68,6 +68,8 @@ fn tool_names() -> Vec<&'static str> {
         "aelyris.event.recent",
         "aelyris.event.by_channel",
         "aelyris.event.since",
+        "aelyris.event.poll",
+        "aelyris.event.ack",
         "aelyris.shared_brain.snapshot",
         "aelyris.ownership.assign",
         "aelyris.ownership.owner_of",
@@ -1186,7 +1188,8 @@ fn push_pending(state: &ApiState, item: McpPendingDecision) -> ApiResult<McpPend
                     "newId": item.id,
                     "cap": MAX_MCP_PENDING,
                 }),
-            ));
+            ))
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
         }
     }
     Ok(item)
@@ -1235,7 +1238,7 @@ static TOOL_SCHEMA_INDEX: LazyLock<HashMap<String, serde_json::Value>> = LazyLoc
 });
 
 fn build_tools_list_value() -> serde_json::Value {
-    serde_json::json!({
+    let mut catalog = serde_json::json!({
         "schema": "aelyris.mcp.server.v1",
         "server": "aelyris",
         "tools": [
@@ -1894,7 +1897,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.event.recent",
-                "description": "Subscribe to the fleet coordination stream (BR5): recent events across all channels, oldest first. The orchestrator reads this to see who is doing what — task_created/completed, decision_changed, review_required, agent_spawned, worktree_created, file_locked/released — without screen-scraping.",
+                "description": "Read the bounded hot projection of already-committed fleet events, oldest first. This is cockpit visibility, not durable replay or ACK; use event.poll for reliable consumption.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
@@ -1916,7 +1919,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.event.since",
-                "description": "No-loss subscribe to the fleet coordination stream (BR5/P3): every event with seq > afterSeq, oldest first, up to limit, each tagged with its monotonic seq. Poll with afterSeq=0, then advance afterSeq to the last seq returned — unlike event.recent (a bounded ring that evicts), this never skips an event and survives restart. Use this for reliable orchestration.",
+                "description": "Diagnostic durable outbox read after a caller-supplied sequence. High-water mismatch, future cursor, query failure, corrupt trailing rows, and sequence gaps return a structured aelyris.event-bus.error/v1 non-success instead of an empty batch. This does not ACK delivery; reliable consumers use event.poll + event.ack.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -2297,7 +2300,41 @@ fn build_tools_list_value() -> serde_json::Value {
                 "inputSchema": { "type": "object", "additionalProperties": false }
             }
         ]
-    })
+    });
+    let tools = catalog
+        .get_mut("tools")
+        .and_then(serde_json::Value::as_array_mut)
+        .expect("MCP catalog tools must be an array");
+    tools.push(serde_json::json!({
+        "name": "aelyris.event.poll",
+        "description": "Poll durable at-least-once deliveries from this consumer's stream-bound committed ACK. Future/corrupt cursor and stream integrity failures use structured aelyris.event-bus.error/v1 non-success. A crash before ACK redelivers the same eventId; apply effects idempotently by eventId, then ACK.",
+        "safety": "FREE",
+        "inputSchema": {
+            "type": "object",
+            "required": ["consumerId"],
+            "properties": {
+                "consumerId": { "type": "string" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 1000 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
+        "name": "aelyris.event.ack",
+        "description": "Durably advance a consumer's cumulative ACK after its idempotent effect succeeds. The seq/eventId pair must identify the exact outbox row; mismatch/regression/corruption uses structured aelyris.event-bus.error/v1 non-success.",
+        "safety": "FREE",
+        "inputSchema": {
+            "type": "object",
+            "required": ["consumerId", "seq", "eventId"],
+            "properties": {
+                "consumerId": { "type": "string" },
+                "seq": { "type": "integer", "minimum": 1 },
+                "eventId": { "type": "string" }
+            },
+            "additionalProperties": false
+        }
+    }));
+    catalog
 }
 
 fn tools_list_value() -> serde_json::Value {
@@ -2671,6 +2708,30 @@ fn assert_schema_subset(schema: &serde_json::Value, field: &str, violations: &mu
             )),
         }
     }
+}
+
+fn event_bus_error_response(
+    tool: &str,
+    error: crate::event_bus::EventBusError,
+) -> Json<serde_json::Value> {
+    let retryable = matches!(
+        error,
+        crate::event_bus::EventBusError::DurabilityUnavailable
+            | crate::event_bus::EventBusError::AppendFailed { .. }
+            | crate::event_bus::EventBusError::QueryFailed { .. }
+    );
+    Json(serde_json::json!({
+        "schema": "aelyris.mcp.server.v1",
+        "tool": tool,
+        "ok": false,
+        "error": {
+            "schema": "aelyris.event-bus.error/v1",
+            "domain": "event_bus",
+            "retryable": retryable,
+            "deliveryContract": "at_least_once",
+            "eventBusError": error,
+        },
+    }))
 }
 
 pub(super) async fn tools_call(
@@ -3246,7 +3307,8 @@ pub(super) async fn tools_call(
                 bus.publish(crate::event_bus::AgentEvent::new(
                     crate::event_bus::AgentEventKind::TaskCreated,
                     serde_json::json!({ "id": id, "title": title }),
-                ));
+                ))
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({ "id": id, "created": true, "changed": changed })
         }
@@ -3284,7 +3346,8 @@ pub(super) async fn tools_call(
                     bus.publish(crate::event_bus::AgentEvent::new(
                         kind,
                         serde_json::json!({ "id": id }),
-                    ));
+                    ))
+                    .map_err(|error| ApiError::Internal(error.to_string()))?;
                 }
             }
             serde_json::json!({ "id": id, "to": to_raw, "changed": changed })
@@ -3401,9 +3464,12 @@ pub(super) async fn tools_call(
             serde_json::json!({ "channel": channel_raw, "events": bus.by_channel(channel) })
         }
         "aelyris.event.since" => {
-            let bus = state.event_bus.as_ref().ok_or_else(|| {
-                ApiError::Internal("event bus is not attached to this process".to_string())
-            })?;
+            let Some(bus) = state.event_bus.as_ref() else {
+                return Ok(event_bus_error_response(
+                    "aelyris.event.since",
+                    crate::event_bus::EventBusError::DurabilityUnavailable,
+                ));
+            };
             // Clamp server-side, independent of inputSchema validation: a stray
             // negative cursor or a huge limit (which would become LIMIT -1 =
             // unbounded) must never reach SQLite.
@@ -3418,10 +3484,76 @@ pub(super) async fn tools_call(
                 .map(|v| v as usize)
                 .unwrap_or(100)
                 .clamp(1, 1000);
-            let events = bus.since(after_seq, limit);
+            let batch = match bus.since(after_seq, limit) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    return Ok(event_bus_error_response("aelyris.event.since", error));
+                }
+            };
             // The cursor to pass as next afterSeq (unchanged when nothing new).
-            let next_seq = events.last().map(|e| e.seq).unwrap_or(after_seq);
-            serde_json::json!({ "events": events, "nextSeq": next_seq })
+            let next_seq = batch
+                .events
+                .last()
+                .map(|event| event.seq)
+                .unwrap_or(after_seq);
+            serde_json::json!({
+                "events": batch.events,
+                "nextSeq": next_seq,
+                "streamStatus": batch.status,
+                "deliveryContract": "diagnostic"
+            })
+        }
+        "aelyris.event.poll" => {
+            let Some(bus) = state.event_bus.as_ref() else {
+                return Ok(event_bus_error_response(
+                    "aelyris.event.poll",
+                    crate::event_bus::EventBusError::DurabilityUnavailable,
+                ));
+            };
+            let consumer_id = arg_string(&args, "consumerId")?;
+            let limit = args
+                .get("limit")
+                .and_then(|value| value.as_u64())
+                .map(|value| value as usize)
+                .unwrap_or(100)
+                .clamp(1, 1000);
+            let batch = match bus.poll_consumer(&consumer_id, limit) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    return Ok(event_bus_error_response("aelyris.event.poll", error));
+                }
+            };
+            serde_json::json!({
+                "consumerId": consumer_id,
+                "events": batch.events,
+                "streamStatus": batch.status,
+                "deliveryContract": "at_least_once",
+                "idempotencyField": "eventId"
+            })
+        }
+        "aelyris.event.ack" => {
+            let Some(bus) = state.event_bus.as_ref() else {
+                return Ok(event_bus_error_response(
+                    "aelyris.event.ack",
+                    crate::event_bus::EventBusError::DurabilityUnavailable,
+                ));
+            };
+            let consumer_id = arg_string(&args, "consumerId")?;
+            let event_id = arg_string(&args, "eventId")?;
+            let seq = args
+                .get("seq")
+                .and_then(|value| value.as_i64())
+                .ok_or_else(|| ApiError::BadRequest("seq must be an integer".to_string()))?;
+            if seq < 1 {
+                return Err(ApiError::BadRequest("seq must be >= 1".to_string()));
+            }
+            let receipt = match bus.ack(&consumer_id, seq, &event_id) {
+                Ok(receipt) => receipt,
+                Err(error) => {
+                    return Ok(event_bus_error_response("aelyris.event.ack", error));
+                }
+            };
+            serde_json::json!({ "ack": receipt })
         }
         "aelyris.shared_brain.snapshot" => {
             let workspace_id =
@@ -3884,7 +4016,8 @@ pub(super) async fn tools_call(
                 bus.publish(crate::event_bus::AgentEvent::new(
                     crate::event_bus::AgentEventKind::DecisionChanged,
                     serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
-                ));
+                ))
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({ "change": change })
         }
@@ -3911,7 +4044,8 @@ pub(super) async fn tools_call(
                 bus.publish(crate::event_bus::AgentEvent::new(
                     crate::event_bus::AgentEventKind::DecisionChanged,
                     serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
-                ));
+                ))
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({ "change": change })
         }
@@ -3937,7 +4071,8 @@ pub(super) async fn tools_call(
                         "file": file,
                         "symbol": symbol,
                     }),
-                ));
+                ))
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({ "sessionId": session_id, "reported": true })
         }
@@ -3960,7 +4095,8 @@ pub(super) async fn tools_call(
                         "summary": summary,
                         "needs": needs,
                     }),
-                ));
+                ))
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({ "sessionId": session_id, "raised": true })
         }
@@ -4034,7 +4170,8 @@ pub(super) async fn tools_call(
                         "directive": directive,
                         "avoid": avoid,
                     }),
-                ));
+                ))
+                .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({
                 "sessionId": session_id,
@@ -4078,10 +4215,12 @@ pub(super) async fn tools_call(
             // Surface the proposal on the fleet stream so peers can react
             // BEFORE the work happens (conflict-avoidance + deliberation).
             if let Some(events) = state.event_bus.as_ref() {
-                events.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::IntentDeclared,
-                    serde_json::to_value(&intent).unwrap_or(serde_json::Value::Null),
-                ));
+                events
+                    .publish(crate::event_bus::AgentEvent::new(
+                        crate::event_bus::AgentEventKind::IntentDeclared,
+                        serde_json::to_value(&intent).unwrap_or(serde_json::Value::Null),
+                    ))
+                    .map_err(|error| ApiError::Internal(error.to_string()))?;
             }
             serde_json::json!({ "intent": intent })
         }
@@ -4322,6 +4461,22 @@ mod tests {
         Arc::new(crate::db::ManagedDb::new(
             crate::db::Database::open_memory().expect("memory db"),
         ))
+    }
+
+    fn event_test_state() -> (
+        ApiState,
+        Arc<crate::db::ManagedDb>,
+        Arc<crate::event_bus::EventBus>,
+    ) {
+        let db = test_db();
+        let bus = Arc::new(crate::event_bus::EventBus::new_durable());
+        bus.attach_db(db.clone());
+        let state = ApiState::new(
+            crate::pty::PtyManager::new(),
+            crate::api::AuthConfig::with_token("t"),
+        )
+        .with_event_bus(bus.clone());
+        (state, db, bus)
     }
 
     /// The MCP surface has three parallel lists that must never drift: the
@@ -4935,6 +5090,348 @@ settlement:
                 "{name} inputSchema uses unsupported features: {violations:?}"
             );
         }
+    }
+
+    #[test]
+    fn event_catalog_schemas_expose_the_durable_consumer_contract() {
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(tools_list());
+        let tools = listed["tools"].as_array().expect("tools is an array");
+        let find = |name: &str| {
+            tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("{name} is catalogued"))
+        };
+        let recent = find("aelyris.event.recent");
+        assert_eq!(recent["inputSchema"]["additionalProperties"], false);
+        assert!(recent["description"]
+            .as_str()
+            .unwrap()
+            .contains("already-committed"));
+
+        let since = find("aelyris.event.since");
+        assert_eq!(since["inputSchema"]["properties"]["limit"]["maximum"], 1000);
+        assert!(since["description"]
+            .as_str()
+            .unwrap()
+            .contains("aelyris.event-bus.error/v1"));
+
+        let poll = find("aelyris.event.poll");
+        assert_eq!(
+            poll["inputSchema"]["required"],
+            serde_json::json!(["consumerId"])
+        );
+        assert!(poll["description"]
+            .as_str()
+            .unwrap()
+            .contains("stream-bound"));
+
+        let ack = find("aelyris.event.ack");
+        assert_eq!(
+            ack["inputSchema"]["required"],
+            serde_json::json!(["consumerId", "seq", "eventId"])
+        );
+        assert_eq!(ack["inputSchema"]["properties"]["seq"]["minimum"], 1);
+    }
+
+    #[test]
+    fn durable_event_consumer_poll_and_ack_use_at_least_once_identity() {
+        use crate::pty::PtyManager;
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let db = test_db();
+        let bus = Arc::new(crate::event_bus::EventBus::new_durable());
+        bus.attach_db(db);
+        let published = bus
+            .publish(crate::event_bus::AgentEvent::new(
+                crate::event_bus::AgentEventKind::TaskCreated,
+                serde_json::json!({"id": "a"}),
+            ))
+            .unwrap();
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_event_bus(bus);
+
+        let Json(first) = rt
+            .block_on(tools_call(
+                State(state.clone()),
+                Json(ToolCallBody {
+                    name: "aelyris.event.poll".to_string(),
+                    arguments: serde_json::json!({"consumerId": "mcp-worker", "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(first["result"]["deliveryContract"], "at_least_once");
+        assert_eq!(first["result"]["events"][0]["eventId"], published.event_id);
+
+        let Json(duplicate) = rt
+            .block_on(tools_call(
+                State(state.clone()),
+                Json(ToolCallBody {
+                    name: "aelyris.event.poll".to_string(),
+                    arguments: serde_json::json!({"consumerId": "mcp-worker", "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(duplicate["result"]["events"], first["result"]["events"]);
+
+        let _ = rt
+            .block_on(tools_call(
+                State(state.clone()),
+                Json(ToolCallBody {
+                    name: "aelyris.event.ack".to_string(),
+                    arguments: serde_json::json!({
+                        "consumerId": "mcp-worker",
+                        "seq": first["result"]["events"][0]["seq"],
+                        "eventId": first["result"]["events"][0]["eventId"],
+                    }),
+                }),
+            ))
+            .unwrap();
+        let Json(after_ack) = rt
+            .block_on(tools_call(
+                State(state),
+                Json(ToolCallBody {
+                    name: "aelyris.event.poll".to_string(),
+                    arguments: serde_json::json!({"consumerId": "mcp-worker", "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(after_ack["result"]["events"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn every_event_bus_error_variant_has_the_stable_structured_mcp_envelope() {
+        use crate::event_bus::EventBusError;
+
+        let variants = vec![
+            EventBusError::DurabilityUnavailable,
+            EventBusError::InvalidEventIdentity,
+            EventBusError::InvalidConsumerIdentity,
+            EventBusError::AppendFailed {
+                event_id: "event".to_string(),
+                message: "append".to_string(),
+            },
+            EventBusError::QueryFailed {
+                operation: "poll".to_string(),
+                message: "query".to_string(),
+            },
+            EventBusError::CorruptRow {
+                seq: 1,
+                field: "payload_json".to_string(),
+                message: "corrupt".to_string(),
+            },
+            EventBusError::StreamInvariant {
+                high_water_seq: 2,
+                max_seq: Some(1),
+                row_count: 1,
+                message: "truncated".to_string(),
+            },
+            EventBusError::CursorOutOfRange {
+                after_seq: 3,
+                high_water_seq: 2,
+            },
+            EventBusError::ConsumerCursorCorrupt {
+                consumer_id: "worker".to_string(),
+                ack_seq: 3,
+                ack_event_id: Some("event".to_string()),
+                message: "future".to_string(),
+            },
+            EventBusError::Gap {
+                expected_seq: 2,
+                observed_seq: 3,
+            },
+            EventBusError::AckIdentityMismatch {
+                seq: 1,
+                expected_event_id: "event".to_string(),
+                observed_event_id: "wrong".to_string(),
+            },
+            EventBusError::AckRegression {
+                current_seq: 2,
+                attempted_seq: 1,
+            },
+        ];
+        for error in variants {
+            let Json(value) = event_bus_error_response("aelyris.event.poll", error);
+            assert_eq!(value["ok"], false);
+            assert_eq!(value["error"]["schema"], "aelyris.event-bus.error/v1");
+            assert_eq!(value["error"]["domain"], "event_bus");
+            assert_eq!(value["error"]["deliveryContract"], "at_least_once");
+            assert!(value["error"]["eventBusError"]["code"].is_string());
+        }
+    }
+
+    #[test]
+    fn event_tools_preserve_corruption_gap_query_and_ack_mismatch_structure() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+
+        let (corrupt_state, corrupt_db, corrupt_bus) = event_test_state();
+        corrupt_bus
+            .publish(crate::event_bus::AgentEvent::new(
+                crate::event_bus::AgentEventKind::TaskCreated,
+                serde_json::json!({"id": "corrupt"}),
+            ))
+            .unwrap();
+        corrupt_db
+            .with(|db| {
+                db.conn()
+                    .execute_batch(
+                        "DROP TRIGGER trg_agent_events_immutable;
+                         UPDATE agent_events SET payload_json = '{' WHERE seq = 1;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let Json(corrupt) = rt
+            .block_on(tools_call(
+                State(corrupt_state),
+                Json(ToolCallBody {
+                    name: "aelyris.event.since".to_string(),
+                    arguments: serde_json::json!({"afterSeq": 1, "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(corrupt["error"]["eventBusError"]["code"], "corrupt_row");
+
+        let (gap_state, gap_db, gap_bus) = event_test_state();
+        for id in ["first", "second"] {
+            gap_bus
+                .publish(
+                    crate::event_bus::AgentEvent::new(
+                        crate::event_bus::AgentEventKind::TaskCreated,
+                        serde_json::json!({"id": id}),
+                    )
+                    .with_idempotency_key(id),
+                )
+                .unwrap();
+        }
+        gap_db
+            .with(|db| {
+                db.conn()
+                    .execute_batch(
+                        "DROP TRIGGER trg_agent_events_no_delete;
+                         DELETE FROM agent_events WHERE seq = 2;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let Json(gap) = rt
+            .block_on(tools_call(
+                State(gap_state),
+                Json(ToolCallBody {
+                    name: "aelyris.event.since".to_string(),
+                    arguments: serde_json::json!({"afterSeq": 1, "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(gap["error"]["eventBusError"]["code"], "gap");
+        assert_eq!(gap["error"]["eventBusError"]["expected_seq"], 2);
+
+        let (query_state, query_db, _) = event_test_state();
+        query_db
+            .with(|db| {
+                db.conn()
+                    .execute("DROP TABLE event_consumer_cursors", [])
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let Json(query) = rt
+            .block_on(tools_call(
+                State(query_state),
+                Json(ToolCallBody {
+                    name: "aelyris.event.poll".to_string(),
+                    arguments: serde_json::json!({"consumerId": "worker", "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(query["error"]["eventBusError"]["code"], "query_failed");
+
+        let (ack_state, _, ack_bus) = event_test_state();
+        ack_bus
+            .publish(
+                crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::TaskCreated,
+                    serde_json::json!({"id": "ack"}),
+                )
+                .with_idempotency_key("correct-event"),
+            )
+            .unwrap();
+        let _ = rt
+            .block_on(tools_call(
+                State(ack_state.clone()),
+                Json(ToolCallBody {
+                    name: "aelyris.event.poll".to_string(),
+                    arguments: serde_json::json!({"consumerId": "worker", "limit": 10}),
+                }),
+            ))
+            .unwrap();
+        let Json(ack) = rt
+            .block_on(tools_call(
+                State(ack_state),
+                Json(ToolCallBody {
+                    name: "aelyris.event.ack".to_string(),
+                    arguments: serde_json::json!({
+                        "consumerId": "worker",
+                        "seq": 1,
+                        "eventId": "wrong-event",
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(
+            ack["error"]["eventBusError"]["code"],
+            "ack_identity_mismatch"
+        );
+    }
+
+    #[test]
+    fn native_mcp_event_error_keeps_matching_text_and_structured_content() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let (state, db, bus) = event_test_state();
+        for id in ["first", "second"] {
+            bus.publish(
+                crate::event_bus::AgentEvent::new(
+                    crate::event_bus::AgentEventKind::TaskCreated,
+                    serde_json::json!({"id": id}),
+                )
+                .with_idempotency_key(id),
+            )
+            .unwrap();
+        }
+        db.with(|db| {
+            db.conn()
+                .execute_batch(
+                    "DROP TRIGGER trg_agent_events_no_delete;
+                     DELETE FROM agent_events WHERE seq = 2;",
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        let response = rt.block_on(mcp_rpc(
+            State(state),
+            Json(JsonRpcReq {
+                id: Some(serde_json::json!(1)),
+                method: "tools/call".to_string(),
+                params: serde_json::json!({
+                    "name": "aelyris.event.since",
+                    "arguments": {"afterSeq": 1, "limit": 10}
+                }),
+            }),
+        ));
+        let bytes = rt
+            .block_on(axum::body::to_bytes(response.into_body(), usize::MAX))
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["result"]["isError"], true);
+        assert_eq!(
+            value["result"]["structuredContent"]["eventBusError"]["code"],
+            "gap"
+        );
+        let text: serde_json::Value =
+            serde_json::from_str(value["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text, value["result"]["structuredContent"]);
     }
 
     #[test]

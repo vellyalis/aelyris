@@ -404,7 +404,7 @@ not restore A4 phase completion or release-score credit. The former injected sle
 scenario launches the external Codex long-run watchdog rather than Aelyris runtime and
 is now excluded from repo-owned product acceptance instead of being counted as A4 PASS.
 
-### **A4.8** Active - EventBus Durable Delivery And Consumer Truth
+### **A4.8** Complete - EventBus Durable Delivery And Consumer Truth
 
 Keep the existing EventBus/EventRepo as the only coordination-event owner. Replace the
 process-local loss window with transactionally committed outbox records, durable
@@ -416,7 +416,19 @@ restart replay, consumer crash before/after ACK, duplicate delivery, corrupt row
 buffer pressure. No `exactly-once` claim is allowed; the supported contract is durable
 at-least-once delivery plus idempotent effects unless a stronger proof is implemented.
 
-### **A4.9** Planned - Durable Execution Attempt And Effect Fence
+Implemented in the existing EventBus/EventRepo boundary: schema v3 upgrades legacy
+rows with stable identities and adds append-only outbox/cursor invariants; production
+publish commits before bounded cache/Tauri emit and returns typed failure otherwise;
+MCP reliable consumers use `event.poll` then cumulative `event.ack`, with duplicate
+delivery carrying the same `eventId`. Query failure, corrupt rows, and sequence gaps
+are typed non-success. The same-owner durable high-water detects deleted latest rows,
+future/corrupt consumer cursors and cursor/event identity mismatches fail closed, and
+lifecycle producers report structured partial-success when state committed but event
+publication failed. MCP preserves the tagged EventBus error in text and structured
+content. The A4 v4 acceptance matrix passes 19/19 through A4.8 while
+`phaseComplete=false`; A4.9-A4.12 remain.
+
+### **A4.9** Active - Durable Execution Attempt And Effect Fence
 
 Implement the already-designed WorkExecutionAttempt/AgentRun generation and
 ExecutionFence inside the existing TaskGraph/agent/session owners. Bind task, agent run,

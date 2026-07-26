@@ -48,6 +48,9 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
   agent_activity: "activity",
   intent_declared: "intent",
   blocker_raised: "blocked",
+  steer_avoid: "steer",
+  session_handoff: "handoff",
+  context_recycled: "recycled",
   escalation_raised: "escalated",
 };
 

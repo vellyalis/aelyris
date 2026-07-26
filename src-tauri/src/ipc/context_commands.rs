@@ -18,14 +18,15 @@ fn broadcast(
     bus: &EventBus,
     manager: &ContextStoreManager,
     change: &DecisionChange,
-) {
+) -> Result<(), String> {
     let payload = serde_json::to_value(change).unwrap_or(json!(null));
     publish_and_emit(
         app,
         bus,
         AgentEvent::new(AgentEventKind::DecisionChanged, payload),
-    );
+    )?;
     let _ = app.emit(CONTEXT_STORE_UPDATED, manager.all());
+    Ok(())
 }
 
 /// Set a shared decision. Broadcasts `DECISION_CHANGED` only on a real change;
@@ -40,7 +41,7 @@ pub fn context_set(
 ) -> Result<Option<DecisionChange>, String> {
     let change = manager.set(key, value)?;
     if let Some(ref change) = change {
-        broadcast(&app, &bus, &manager, change);
+        broadcast(&app, &bus, &manager, change)?;
     }
     Ok(change)
 }
@@ -64,7 +65,7 @@ pub fn context_remove(
 ) -> Result<Option<DecisionChange>, String> {
     let change = manager.remove(&key)?;
     if let Some(ref change) = change {
-        broadcast(&app, &bus, &manager, change);
+        broadcast(&app, &bus, &manager, change)?;
     }
     Ok(change)
 }

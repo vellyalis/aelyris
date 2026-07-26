@@ -2552,6 +2552,10 @@ mod tests {
         );
         drop(db);
 
+        let backup_prefix = format!(
+            "legacy.db.pre-migration-v0-to-v{}-",
+            migrations::CURRENT_SCHEMA_VERSION
+        );
         let backups: Vec<PathBuf> = std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(Result::ok)
@@ -2560,7 +2564,7 @@ mod tests {
                 candidate
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v2-"))
+                    .is_some_and(|name| name.starts_with(&backup_prefix))
             })
             .collect();
         assert_eq!(backups.len(), 1);
@@ -2580,7 +2584,7 @@ mod tests {
                 entry
                     .file_name()
                     .to_str()
-                    .is_some_and(|name| name.starts_with("legacy.db.pre-migration-v0-to-v2-"))
+                    .is_some_and(|name| name.starts_with(&backup_prefix))
             })
             .count();
         assert_eq!(backup_count, 1);

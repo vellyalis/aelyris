@@ -4,14 +4,16 @@ STATUS: ACTIVE
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A4` (reopened by a fresh 2026-07-16 runtime-integrity regression;
 earlier A4.6 PASS is historical evidence, not current phase completion).
-ACTIVE SLICE: `A4.8`.
-LAST COMPLETED SLICE: `A4.7`.
+ACTIVE SLICE: `A4.9`.
+LAST COMPLETED SLICE: `A4.8`.
 NEXT PHASE: `A6` after corrective A4.8-A4.12 acceptance; resume at A6.2e1.
-NEXT IMPLEMENTATION SLICE: `A4.8`.
-A4.7 corrected the first false source-of-truth path: ContextStore and TaskManager
-now stage authoritative changes, commit SQLite first, publish memory second, return
-persistence errors through IPC/MCP, and reject production mutations while durability
-is unavailable. Failure-injection tests prove the prior in-memory state remains intact.
+NEXT IMPLEMENTATION SLICE: `A4.9`.
+A4.8 replaced the EventBus process-local loss window with commit-before-cache outbox
+rows, stable event identity, durable monotonic consumer ACK, at-least-once replay,
+and typed query/corrupt/gap/high-water failure truth. Production publish now rejects
+missing durability or append failure before cache/Tauri emit; latest-row deletion,
+future/corrupt cursor, lifecycle partial-success, structured MCP error, restart,
+duplicate, consumer-crash, corrupt-row, and buffer-pressure acceptance passes.
 The old A4 verifier covered migration/file/checkpoint scenarios but omitted
 these owners plus EventBus loss, durable execution identity/fencing, all-owner startup
 reconciliation, and successor cleanup; it also counted an external Codex watchdog
@@ -279,8 +281,12 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - A4.7 is complete: ContextStore and TaskManager use persist-before-publish mutation
   order, production instances reject mutation without durable attachment, IPC/MCP
   propagate the error, and focused injected-failure tests pass.
-- A4.8 owns EventBus transactional outbox, durable consumer cursor/ACK/idempotence,
-  bounded-buffer gap truth, and corrupt/query-failure fail-closed semantics.
+- A4.8 is complete: EventBus/EventRepo remain the sole owner, commit outbox rows
+  before cache/emit, expose stable idempotency identity and durable consumer ACK,
+  validate the same-owner high-water plus cursor/event binding before empty success,
+  propagate lifecycle producer partial-success, and fail closed on
+  append/query/corrupt/gap truth through a structured MCP envelope. Delivery is
+  at-least-once, never claimed exactly-once.
 - A4.9 owns durable WorkExecutionAttempt/AgentRun identity, execution generation
   fencing, and pre-effect reservation without introducing a second TaskGraph/journal.
 - A4.10 owns all-authority startup reconciliation before dispatch admission.

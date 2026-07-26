@@ -238,6 +238,48 @@ remains the hot owner; SQLite is the restart source of truth.
 
 ---
 
+### 3.7.1 Event Bus domain (A4.8 durable delivery)
+
+The Rust/TypeScript wire authority is
+`src-tauri/src/event_bus/mod.rs` / `src/shared/types/eventBus.ts`. `eventId` is
+the stable idempotency identity. The durable consumer contract is
+**at-least-once plus an idempotent effect**, never exactly-once.
+
+| Tool | I/O (JSON) | Semantics |
+|------|-----------|-----------|
+| `aelyris.event.recent` | **params** `{}` → `{ events: AgentEvent[] }` | Bounded hot projection for cockpit visibility. Every returned row was committed first, but this cache is not a replay/ACK source. |
+| `aelyris.event.by_channel` | **params** `{ channel: EventChannel }` → `{ channel, events: AgentEvent[] }` | Bounded hot projection restricted to one channel. Like `event.recent`, it is not a replay/ACK source. |
+| `aelyris.event.since` | **params** `{ afterSeq?: integer, limit?: 1..1000 }` → `{ events: SeqEvent[], nextSeq, streamStatus: "complete", deliveryContract: "diagnostic" }` | Durable diagnostic read. It does not ACK. High-water, trailing row, gap, corruption, and cursor-range validation runs before an empty/complete result is allowed. |
+| `aelyris.event.poll` | **params** `{ consumerId: string, limit?: 1..1000 }` → `{ consumerId, events: SeqEvent[], streamStatus: "complete", deliveryContract: "at_least_once", idempotencyField: "eventId" }` | Reads after the consumer's durable cumulative ACK without advancing it. Crash-before-ACK redelivers the same `eventId`. |
+| `aelyris.event.ack` | **params** `{ consumerId: string, seq: integer >= 1, eventId: string }` → `{ ack: AckReceipt }` | Advances only to the exact delivered `seq/eventId` pair after the caller's idempotent effect. Cursor regression, future cursor, skipped/corrupt rows, and identity mismatch fail closed. |
+
+The durable `aelyris.event.since`, `aelyris.event.poll`, and
+`aelyris.event.ack` operations use the same tool-level non-success shape on
+bespoke HTTP and native MCP:
+
+```json
+{
+  "schema": "aelyris.mcp.server.v1",
+  "tool": "aelyris.event.since",
+  "ok": false,
+  "error": {
+    "schema": "aelyris.event-bus.error/v1",
+    "domain": "event_bus",
+    "retryable": false,
+    "deliveryContract": "at_least_once",
+    "eventBusError": { "code": "gap", "expected_seq": 2, "observed_seq": 3 }
+  }
+}
+```
+
+Native `tools/call` returns this `error` object unchanged in
+`structuredContent`, serializes the same object into text `content`, and sets
+`isError: true`; it does not collapse EventBus errors into generic internal
+text. Stable error codes are defined by the tagged `EventBusError` union in the
+TS mirror.
+
+---
+
 ### 3.8 Proofbook domain (PB-3/PB-4 runtime slices)
 
 PB-3 connects Proofbooks to the existing MCP face after the local PB-2 runner.

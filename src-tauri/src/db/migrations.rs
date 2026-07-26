@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 2;
+pub const CURRENT_SCHEMA_VERSION: i64 = 3;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -348,10 +348,10 @@ const V1_SCHEMA: &str = "
         );
 
         -- Runtime Hardening P3: durable, append-only coordination event log. The
-        -- in-memory Event Bus ring (cap 256) silently evicts old events, so a
-        -- slow poller or a restart loses notifications. This log keeps every
-        -- event with a monotonic `seq` so subscribers poll `seq > cursor` and
-        -- never miss one (no-loss). See docs/hardening/02_SPEC.md.
+        -- in-memory Event Bus ring (cap 256) is only a bounded projection. This
+        -- table supplies monotonic sequence storage; A4.8 adds identities,
+        -- frontier/cursor integrity checks, and typed failure for gaps or
+        -- corruption. See docs/hardening/02_SPEC.md.
         CREATE TABLE IF NOT EXISTS agent_events (
             seq          INTEGER PRIMARY KEY AUTOINCREMENT,
             kind         TEXT NOT NULL,
@@ -573,6 +573,151 @@ const V2_SCHEMA: &str = "
     ALTER TABLE session_checkpoints ADD COLUMN approval_prompt TEXT;
 ";
 
+const V3_SCHEMA: &str = "
+    -- A4.8: upgrade the existing coordination log in place into the sole
+    -- transactional EventBus outbox. Legacy rows receive deterministic stable
+    -- identities so old databases replay without inventing a second journal.
+    ALTER TABLE agent_events ADD COLUMN event_id TEXT;
+    UPDATE agent_events SET event_id = 'legacy:' || seq WHERE event_id IS NULL;
+    CREATE UNIQUE INDEX idx_agent_events_event_id ON agent_events(event_id);
+
+    -- One metadata row belongs to the same EventRepo owner and records the
+    -- committed stream frontier. It is not a second journal: it contains no
+    -- event payload and advances in the same transaction as each outbox row.
+    -- Keeping the frontier independent from MAX(seq) lets readers detect a
+    -- deliberately/corruptly deleted latest row instead of returning an empty
+    -- apparently-complete page.
+    CREATE TABLE event_stream_state (
+        id                  INTEGER PRIMARY KEY CHECK (id = 1),
+        high_water_seq      INTEGER NOT NULL CHECK (high_water_seq >= 0),
+        high_water_event_id TEXT,
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (
+            (high_water_seq = 0 AND high_water_event_id IS NULL)
+            OR
+            (high_water_seq > 0 AND high_water_event_id IS NOT NULL
+                AND trim(high_water_event_id) <> '')
+        )
+    );
+    INSERT INTO event_stream_state (id, high_water_seq, high_water_event_id)
+    SELECT
+        1,
+        COALESCE(MAX(seq), 0),
+        CASE
+            WHEN MAX(seq) IS NULL THEN NULL
+            ELSE (SELECT event_id FROM agent_events ORDER BY seq DESC LIMIT 1)
+        END
+    FROM agent_events;
+
+    CREATE TRIGGER trg_agent_events_identity_required
+    BEFORE INSERT ON agent_events
+    FOR EACH ROW WHEN NEW.event_id IS NULL OR trim(NEW.event_id) = ''
+    BEGIN
+        SELECT RAISE(ABORT, 'agent_events: event_id is required');
+    END;
+    CREATE TRIGGER trg_agent_events_immutable
+    BEFORE UPDATE ON agent_events
+    FOR EACH ROW
+    BEGIN
+        SELECT RAISE(ABORT, 'agent_events: outbox rows are immutable');
+    END;
+    CREATE TRIGGER trg_agent_events_no_delete
+    BEFORE DELETE ON agent_events
+    FOR EACH ROW
+    BEGIN
+        SELECT RAISE(ABORT, 'agent_events: outbox rows are append-only');
+    END;
+    CREATE TRIGGER trg_agent_events_advance_high_water
+    AFTER INSERT ON agent_events
+    FOR EACH ROW
+    BEGIN
+        SELECT CASE
+            WHEN NEW.seq <> (
+                SELECT high_water_seq + 1 FROM event_stream_state WHERE id = 1
+            )
+            THEN RAISE(ABORT, 'agent_events: non-contiguous stream sequence')
+        END;
+        UPDATE event_stream_state
+        SET high_water_seq = NEW.seq,
+            high_water_event_id = NEW.event_id,
+            updated_at = datetime('now')
+        WHERE id = 1;
+        SELECT CASE
+            WHEN changes() <> 1
+            THEN RAISE(ABORT, 'agent_events: missing stream state')
+        END;
+    END;
+    CREATE TRIGGER trg_event_stream_state_no_delete
+    BEFORE DELETE ON event_stream_state
+    FOR EACH ROW
+    BEGIN
+        SELECT RAISE(ABORT, 'event_stream_state: frontier row is permanent');
+    END;
+    CREATE TRIGGER trg_event_stream_state_monotonic
+    BEFORE UPDATE ON event_stream_state
+    FOR EACH ROW WHEN
+        NEW.id <> OLD.id
+        OR NEW.high_water_seq <> OLD.high_water_seq + 1
+        OR NEW.high_water_event_id IS NULL
+        OR trim(NEW.high_water_event_id) = ''
+    BEGIN
+        SELECT RAISE(ABORT, 'event_stream_state: invalid frontier advance');
+    END;
+
+    -- Durable cumulative consumer ACK. A trigger prevents cursor regression;
+    -- delivery itself remains at-least-once and effects use event_id to dedupe.
+    CREATE TABLE event_consumer_cursors (
+        consumer_id  TEXT PRIMARY KEY NOT NULL,
+        ack_seq      INTEGER NOT NULL DEFAULT 0 CHECK (ack_seq >= 0),
+        ack_event_id TEXT,
+        updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (
+            (ack_seq = 0 AND ack_event_id IS NULL)
+            OR
+            (ack_seq > 0 AND ack_event_id IS NOT NULL AND trim(ack_event_id) <> '')
+        )
+    );
+    CREATE TRIGGER trg_event_consumer_cursor_insert_valid
+    BEFORE INSERT ON event_consumer_cursors
+    FOR EACH ROW WHEN NEW.ack_seq > 0 AND NOT EXISTS (
+        SELECT 1 FROM agent_events
+        WHERE seq = NEW.ack_seq AND event_id = NEW.ack_event_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'event_consumer_cursors: ACK identity is not in the stream');
+    END;
+    CREATE TRIGGER trg_event_consumer_cursor_identity_immutable
+    BEFORE UPDATE ON event_consumer_cursors
+    FOR EACH ROW WHEN NEW.consumer_id IS NOT OLD.consumer_id
+    BEGIN
+        SELECT RAISE(ABORT, 'event_consumer_cursors: consumer_id is immutable');
+    END;
+    CREATE TRIGGER trg_event_consumer_cursor_monotonic
+    BEFORE UPDATE ON event_consumer_cursors
+    FOR EACH ROW WHEN NEW.ack_seq < OLD.ack_seq
+    BEGIN
+        SELECT RAISE(ABORT, 'event_consumer_cursors: ack_seq cannot regress');
+    END;
+    CREATE TRIGGER trg_event_consumer_cursor_binding_valid
+    BEFORE UPDATE ON event_consumer_cursors
+    FOR EACH ROW WHEN
+        (NEW.ack_seq = OLD.ack_seq AND NEW.ack_event_id IS NOT OLD.ack_event_id)
+        OR
+        (NEW.ack_seq > 0 AND NOT EXISTS (
+            SELECT 1 FROM agent_events
+            WHERE seq = NEW.ack_seq AND event_id = NEW.ack_event_id
+        ))
+    BEGIN
+        SELECT RAISE(ABORT, 'event_consumer_cursors: ACK identity is not in the stream');
+    END;
+    CREATE TRIGGER trg_event_consumer_cursor_no_delete
+    BEFORE DELETE ON event_consumer_cursors
+    FOR EACH ROW
+    BEGIN
+        SELECT RAISE(ABORT, 'event_consumer_cursors: durable ACK rows are permanent');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -623,6 +768,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V2_SCHEMA)?;
             conn.pragma_update(None, "user_version", 2)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 3 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V3_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 3)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -767,6 +928,22 @@ mod tests {
             )
             .unwrap();
         assert_eq!(handoff_state, "pending_summary");
+
+        conn.execute(
+            "INSERT INTO agent_events (event_id, kind, channel, payload_json)
+             VALUES ('migration-test-event', 'task_created', 'planning', '{}')",
+            [],
+        )
+        .unwrap();
+        let frontier: (i64, Option<String>) = conn
+            .query_row(
+                "SELECT high_water_seq, high_water_event_id
+                 FROM event_stream_state WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(frontier, (1, Some("migration-test-event".to_string())));
     }
 
     #[test]
@@ -784,7 +961,7 @@ mod tests {
         conn.execute_batch(V1_SCHEMA).unwrap();
         conn.pragma_update(None, "user_version", 1).unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 2);
+        assert_eq!(schema_version(&conn).unwrap(), 3);
         let approval: Option<String> = conn
             .query_row(
                 "SELECT approval_prompt FROM session_checkpoints LIMIT 1",
@@ -795,6 +972,46 @@ mod tests {
             .unwrap()
             .flatten();
         assert_eq!(approval, None);
+    }
+
+    #[test]
+    fn version_two_upgrades_event_outbox_without_losing_legacy_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        conn.execute(
+            "INSERT INTO agent_events (kind, channel, payload_json)
+             VALUES ('task_created', 'planning', '{\"id\":\"legacy\"}')",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 3);
+        let identity: String = conn
+            .query_row(
+                "SELECT event_id FROM agent_events WHERE seq = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(identity, "legacy:1");
+        let frontier: (i64, Option<String>) = conn
+            .query_row(
+                "SELECT high_water_seq, high_water_event_id
+                 FROM event_stream_state WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(frontier, (1, Some("legacy:1".to_string())));
+        assert!(conn
+            .execute("DELETE FROM agent_events WHERE seq = 1", [])
+            .is_err());
+        assert!(conn
+            .execute("DELETE FROM event_stream_state WHERE id = 1", [])
+            .is_err());
     }
 
     #[test]

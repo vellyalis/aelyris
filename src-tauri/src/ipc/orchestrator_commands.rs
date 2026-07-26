@@ -117,7 +117,7 @@ pub fn orchestrator_step(
                     AgentEventKind::AgentSpawned,
                     json!({ "taskId": task_id, "terminalId": terminal_id, "model": model }),
                 ),
-            );
+            )?;
         }
     }
 
@@ -128,7 +128,7 @@ pub fn orchestrator_step(
             &app,
             &bus,
             AgentEvent::new(AgentEventKind::TaskCompleted, json!({ "id": id })),
-        );
+        )?;
     }
     Ok(report)
 }

@@ -783,9 +783,9 @@ pub fn run_step(
             crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
         })
         .map_err(|error| error.to_string())?;
-    apply_file_lanes(ownership, events, &lanes, &report, db);
+    apply_file_lanes(ownership, events, &lanes, &report, db)?;
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
-    publish_escalations(events, &report);
+    publish_escalations(events, &report)?;
     // Durable half of the escalation surface: persist each give-up when a db is
     // attached, so a Failed task survives restart on BOTH faces (P4). The Event
     // Bus publish above keeps live cockpit visibility.
@@ -853,9 +853,9 @@ pub fn run_step_visible(
             crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
         })
         .map_err(|error| error.to_string())?;
-    apply_file_lanes(ownership, events, &lanes, &report, db);
+    apply_file_lanes(ownership, events, &lanes, &report, db)?;
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
-    publish_escalations(events, &report);
+    publish_escalations(events, &report)?;
     // Durable half of the escalation surface: persist each give-up when a db is
     // attached, so a Failed task survives restart on BOTH faces (P4). The Event
     // Bus publish above keeps live cockpit visibility.
@@ -870,17 +870,23 @@ pub fn run_step_visible(
 /// (a retry budget exhausted) is surfaced to the supervisor/reviewer — via the
 /// cockpit event feed AND the MCP `event.recent` the orchestrator polls — rather
 /// than dying silently. Published after the step (no graph lock held).
-fn publish_escalations(events: &EventBus, report: &crate::orchestrator::autonomy::StepReport) {
+fn publish_escalations(
+    events: &EventBus,
+    report: &crate::orchestrator::autonomy::StepReport,
+) -> Result<(), String> {
     for esc in &report.escalations {
-        events.publish(AgentEvent::new(
-            AgentEventKind::EscalationRaised,
-            serde_json::json!({
-                "taskId": esc.task_id,
-                "reason": esc.reason,
-                "action": esc.action,
-            }),
-        ));
+        events
+            .publish(AgentEvent::new(
+                AgentEventKind::EscalationRaised,
+                serde_json::json!({
+                    "taskId": esc.task_id,
+                    "reason": esc.reason,
+                    "action": esc.action,
+                }),
+            ))
+            .map_err(|error| error.to_string())?;
     }
+    Ok(())
 }
 
 /// Reflect this step's dispatch/merge into the shared File Ownership + coordination
@@ -895,13 +901,13 @@ fn apply_file_lanes(
     lanes: &std::collections::HashMap<String, (String, Vec<String>)>,
     report: &crate::orchestrator::autonomy::StepReport,
     db: Option<&crate::db::ManagedDb>,
-) {
+) -> Result<(), String> {
     let mut to_publish = Vec::new();
     let mut durability_failures = Vec::new();
     let now = now_secs();
     {
         let Ok(mut owner) = ownership.lock() else {
-            return;
+            return Ok(());
         };
         for id in &report.dispatched {
             if let Some((agent, paths)) = lanes.get(id) {
@@ -983,18 +989,21 @@ fn apply_file_lanes(
         }
     }
     for event in to_publish {
-        events.publish(event);
+        events.publish(event).map_err(|error| error.to_string())?;
     }
     for failure in durability_failures {
-        events.publish(AgentEvent::new(
-            AgentEventKind::BlockerRaised,
-            serde_json::json!({
-                "sessionId": "autonomy-loop",
-                "summary": failure,
-                "needs": "repair ownership persistence before relying on restart replay",
-            }),
-        ));
+        events
+            .publish(AgentEvent::new(
+                AgentEventKind::BlockerRaised,
+                serde_json::json!({
+                    "sessionId": "autonomy-loop",
+                    "summary": failure,
+                    "needs": "repair ownership persistence before relying on restart replay",
+                }),
+            ))
+            .map_err(|error| error.to_string())?;
     }
+    Ok(())
 }
 
 /// Release a task's SYMBOL claims when it reaches a TERMINAL outcome this step —
@@ -1890,7 +1899,7 @@ mod tests {
             escalations: vec![],
             state: LoopState::Active,
         };
-        apply_file_lanes(&ownership, &bus, &lanes, &report, None);
+        apply_file_lanes(&ownership, &bus, &lanes, &report, None).unwrap();
         assert_eq!(
             ownership.lock().unwrap().owner_of("src/auth/login.ts"),
             Some("agent-a")
@@ -1918,7 +1927,7 @@ mod tests {
             escalations: vec![],
             state: LoopState::Complete,
         };
-        apply_file_lanes(&ownership, &bus, &lanes, &report, None);
+        apply_file_lanes(&ownership, &bus, &lanes, &report, None).unwrap();
         assert_eq!(
             ownership.lock().unwrap().owner_of("src/auth/login.ts"),
             None
@@ -1947,7 +1956,7 @@ mod tests {
             }],
             state: LoopState::Stalled,
         };
-        publish_escalations(&bus, &report);
+        publish_escalations(&bus, &report).unwrap();
         let events = bus.recent();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, AgentEventKind::EscalationRaised);

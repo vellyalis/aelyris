@@ -116,16 +116,24 @@ cargo fmt --check
 | タスクID | 内容 | 状態 |
 |---------|------|------|
 | P3-log | `agent_events` テーブル + `persistence/event_repo.rs`(append/since(seq)/by_channel_since)。seq単調(AUTOINCREMENT) | ✅ |
-| P3-bus | `EventBus` write-through publish + `since` カーソル。リングは表示用ホットキャッシュに降格。db後付けattach | ✅ |
-| P3-mcp | MCP `aelyris.event.since` verb(afterSeq/limit→nextSeq)。購読者は欠番なく全件取得 | ✅ |
+| P3-bus | `EventBus` transactional outbox commit-before-cache + stable `event_id`。リングはcommit済み表示用ホットキャッシュ | ✅ A4.8 |
+| P3-mcp | MCP diagnostic `event.since` + durable consumer `event.poll` / `event.ack`。typed gap/degraded truth | ✅ A4.8 |
 | P3-audit | 敵対レビュー→**H-1/M-1/L-1 全修正** | ✅ |
 
-> **no-loss の意味**: cap256リングは古いイベントをsilent evictし再起動で消える。durable log は全件を単調seqで保持し、`since(cursor)`で欠番なく取得＝再起動・evict耐性。ライブfeedは既存Tauri emit(push)で元々落ちない。
+> **delivery contract**: cap256リングはcommit済み直近表示だけを保持する。consumer は
+> durable ACK 前の crash で同じ `event_id` を再受信し、idempotent effect 後に ACK
+> する。保証は durable at-least-once であり、exactly-once/no-loss の無条件 claim はしない。
 > **P3-audit で潰した3件**:
-> - **H-1(HIGH)**: append失敗時、イベントがring(ライブ)に出るがdurableに入らず`since`がsilent loss(busy以外のディスク満杯/IOで発生)。→ **順序保持・有界(4096)・自己回復するpendingリトライキュー**で修正。失敗→pending退避(ringにも入れライブ維持)、次publishで順序維持ドレイン＝transient障害が自己回復しdurableに必着。DROP TABLE注入テストで縛る。
-> - **M-1(MED)**: 未知kind/channelの1行で`since`全体が空(部分破損で全件巻き添え)。→ 不良行はwarnしてskip、ストリームを止めない。
+> - **H-1(HIGH)**: append失敗をring成功へ昇格していた旧pending方式を廃止。transaction commit前はcache/emit/producer ACKせず、process exit後も未commit eventを存在扱いしない。
+> - **M-1(MED)**: unknown kind/channel/payload、query failure、sequence gap、high-water不一致、future/corrupt consumer cursor は typed non-success。skip/emptyで完全streamを装わない。
 > - **L-1(LOW)**: limit/afterSeqのサーバ側clamp無し→巨大limitで`LIMIT -1`全件返却。→ `clamp(1,1000)`/`max(0)`。
-> **既知特性**: pendingは次publishで再試行。完全idle中の自己回復はしない(bounded保持+loud log、将来は背景flush)。フロントのcockpit feedはlive push継続(since-cursor化は任意の後続)。
+> **現在契約**: process-local pending/retry bufferは存在しない。outbox commit失敗は
+> producerへ非成功として返り、cache/emitされない。`event_stream_state` の durable
+> high-waterがlatest/interior deletionを検出し、consumer cursorはACK済みrowの
+> exact `seq/event_id`へbindingされる。lifecycle stateが既にcommit済みの場合だけは
+> stateを破壊的に巻き戻さず、public Result/boot barrierがpartial-success +
+> reconciliation-requiredを明示する。フロントのcockpit feedはlive push継続
+> (durable consumer化は `event.poll` / `event.ack`)。
 
 ### P2 — 並行耐久性 + 実LLM実走（🟡 自動部分✅ / 手動受入は残）
 

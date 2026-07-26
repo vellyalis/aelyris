@@ -11,9 +11,15 @@ const AGENT_EVENT: &str = "agent-event";
 /// stream so the cockpit feed updates live. Shared by the explicit
 /// `event_publish` command and the subsystem auto-publishers (task/context
 /// commands) so the wire event name lives in exactly one place.
-pub(crate) fn publish_and_emit(app: &AppHandle, bus: &EventBus, event: AgentEvent) {
-    bus.publish(event.clone());
+pub(crate) fn publish_and_emit(
+    app: &AppHandle,
+    bus: &EventBus,
+    event: AgentEvent,
+) -> Result<(), String> {
+    bus.publish(event.clone())
+        .map_err(|error| error.to_string())?;
     let _ = app.emit(AGENT_EVENT, &event);
+    Ok(())
 }
 
 /// Publish a typed event: append it to the bus log and re-emit it over Tauri
@@ -26,13 +32,13 @@ pub fn event_publish(
     kind: AgentEventKind,
     channel: Option<EventChannel>,
     payload: serde_json::Value,
-) -> AgentEvent {
+) -> Result<AgentEvent, String> {
     let event = match channel {
         Some(channel) => AgentEvent::on(kind, channel, payload),
         None => AgentEvent::new(kind, payload),
     };
-    publish_and_emit(&app, &bus, event.clone());
-    event
+    publish_and_emit(&app, &bus, event.clone())?;
+    Ok(event)
 }
 
 /// Recent events, oldest first (cockpit feed hydration).

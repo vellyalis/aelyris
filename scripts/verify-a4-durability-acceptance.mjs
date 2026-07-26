@@ -28,6 +28,37 @@ const scenarios = [
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "task::manager::tests", "--lib"],
   },
   {
+    id: "event-outbox-append-query-gap-and-consumer-ack",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::event_repo::tests", "--lib"],
+  },
+  {
+    id: "event-bus-restart-redelivery-and-buffer-pressure",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "event_bus::manager::tests", "--lib"],
+  },
+  {
+    id: "event-consumer-mcp-adapter",
+    command: cargo,
+    args: [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "api::mcp::tests::durable_event_consumer_poll_and_ack_use_at_least_once_identity",
+      "--lib",
+    ],
+  },
+  {
+    id: "event-mcp-structured-error-and-catalog-contract",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "api::mcp::tests", "--lib"],
+  },
+  {
+    id: "session-lifecycle-event-publish-failure-truth",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "ipc::session_lifecycle_commands::tests", "--lib"],
+  },
+  {
     id: "locked-db-and-multi-connection",
     command: cargo,
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::session_checkpoint_repo::tests", "--lib"],
@@ -42,6 +73,11 @@ const scenarios = [
       "corrupt_database_fails_closed_without_replacing_source_bytes",
       "--lib",
     ],
+  },
+  {
+    id: "event-typescript-wire-mirror",
+    command: process.execPath,
+    args: ["node_modules/typescript/bin/tsc", "--noEmit"],
   },
   {
     id: "power-loss-and-disk-quota",
@@ -122,12 +158,12 @@ for (const scenario of scenarios) {
 
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a4-durability-acceptance/v2",
+  schema: "aelyris.a4-durability-acceptance/v4",
   status: failed ? "failed" : "pass-current-a4-durability-evidence",
-  completedThrough: failed ? "A4.6" : "A4.7",
+  completedThrough: failed ? "A4.7" : "A4.8",
   repoOwnedComplete: false,
   phaseComplete: false,
-  remainingSlices: ["A4.8", "A4.9", "A4.10", "A4.11", "A4.12"],
+  remainingSlices: ["A4.9", "A4.10", "A4.11", "A4.12"],
   scenarios: results,
   externalProof: {
     realOsSleepResumeExecuted: false,
@@ -151,8 +187,21 @@ const report = {
       "src-tauri/src/context_store/manager.rs",
       "src-tauri/src/task/manager.rs",
       "src-tauri/src/task/graph.rs",
+      "src-tauri/src/event_bus/mod.rs",
+      "src-tauri/src/event_bus/manager.rs",
+      "src-tauri/src/persistence/event_repo.rs",
       "src-tauri/src/ipc/context_commands.rs",
+      "src-tauri/src/ipc/event_commands.rs",
+      "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "src-tauri/src/api/mcp.rs",
+      "src/shared/types/eventBus.ts",
+      "src/shared/hooks/useEventBus.ts",
+      "src/__tests__/useEventBus.test.ts",
+      "src/features/orchestrator/OrchestratorPanel.tsx",
+      "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
+      "docs/hardening/00_README.md",
+      "docs/hardening/02_SPEC.md",
+      "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md",
       "src-tauri/src/lib.rs",
       "src-tauri/src/startup_reconciliation.rs",
       "src-tauri/src/durable_file.rs",

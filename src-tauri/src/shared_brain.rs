@@ -333,11 +333,13 @@ mod tests {
         bus.publish(AgentEvent::new(
             AgentEventKind::AgentActivity,
             json!({"sessionId": "agent-a", "action": "editing", "file": "src/auth/login.rs"}),
-        ));
+        ))
+        .unwrap();
         bus.publish(AgentEvent::new(
             AgentEventKind::BlockerRaised,
             json!({"sessionId": "agent-a", "summary": "needs review"}),
-        ));
+        ))
+        .unwrap();
         let context = Arc::new(crate::context_store::ContextStoreManager::new());
         context.set("architecture", "durable shared brain").unwrap();
 

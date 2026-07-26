@@ -310,7 +310,7 @@ pub async fn session_handoff(
             "handoffSeq": handoff_seq,
             "correlationId": &correlation_id,
         }),
-    );
+    )?;
 
     let summary = match run_session_summarize(
         app.clone(),
@@ -323,16 +323,24 @@ pub async fn session_handoff(
     {
         Ok(summary) => summary,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
     let inflight_ref = match preserve_inflight_diff(&predecessor, &summary.summary, &reason) {
         Ok(inflight_ref) => inflight_ref,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
@@ -346,8 +354,12 @@ pub async fn session_handoff(
     ) {
         Ok(checkpoint) => checkpoint,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
     handoff = match set_session_handoff_state(
@@ -360,8 +372,12 @@ pub async fn session_handoff(
     ) {
         Ok(handoff) => handoff,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
@@ -377,8 +393,12 @@ pub async fn session_handoff(
             "inflightRef": &inflight_ref,
         }),
     ) {
-        fail_session_handoff(&app, &predecessor, &handoff, &err);
-        return Err(err);
+        return Err(handoff_error_with_reconciliation(
+            &app,
+            &predecessor,
+            &handoff,
+            &err,
+        ));
     }
     handoff = match set_session_handoff_state(
         &app,
@@ -390,8 +410,12 @@ pub async fn session_handoff(
     ) {
         Ok(handoff) => handoff,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
@@ -424,8 +448,12 @@ pub async fn session_handoff(
     {
         Ok(successor) => successor,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
     let successor_restore_summary_json = serde_json::to_value(&summary.summary)
@@ -440,8 +468,12 @@ pub async fn session_handoff(
     ) {
         Ok(checkpoint) => checkpoint,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
     handoff = match set_session_handoff_state(
@@ -454,16 +486,24 @@ pub async fn session_handoff(
     ) {
         Ok(handoff) => handoff,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
     let timeout =
         std::time::Duration::from_millis(timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000));
     if let Err(err) = wait_for_done_marker(&ack.ack_path, timeout).await {
-        fail_session_handoff(&app, &predecessor, &handoff, &err);
-        return Err(err);
+        return Err(handoff_error_with_reconciliation(
+            &app,
+            &predecessor,
+            &handoff,
+            &err,
+        ));
     }
     let successor_info = match wait_for_successor_liveness(
         &session_mgr,
@@ -474,8 +514,12 @@ pub async fn session_handoff(
     {
         Ok(info) => info,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
     handoff = match set_session_handoff_state(
@@ -488,8 +532,12 @@ pub async fn session_handoff(
     ) {
         Ok(handoff) => handoff,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
@@ -505,16 +553,24 @@ pub async fn session_handoff(
     ) {
         Ok(checkpoint) => checkpoint,
         Err(err) => {
-            fail_session_handoff(&app, &predecessor, &handoff, &err);
-            return Err(err);
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &err,
+            ));
         }
     };
 
     session_mgr.update_status(&predecessor.id, "retiring")?;
     emit_interactive_sessions(&app, &session_mgr);
     if let Err(err) = stop_interactive_agent(app.clone(), predecessor.id.clone()).await {
-        fail_session_handoff(&app, &predecessor, &handoff, &err);
-        return Err(err);
+        return Err(handoff_error_with_reconciliation(
+            &app,
+            &predecessor,
+            &handoff,
+            &err,
+        ));
     }
     handoff = set_session_handoff_state(
         &app,
@@ -560,7 +616,7 @@ pub async fn session_handoff(
             "correlationId": &handoff.correlation_id,
             "worktreeDeleted": false,
         }),
-    );
+    )?;
 
     let audit_trace_events = app
         .try_state::<crate::db::ManagedDb>()
@@ -759,7 +815,7 @@ pub async fn session_reset_context(
             "worktreeDeleted": false,
             "resetContext": true,
         }),
-    );
+    )?;
 
     Ok(SessionResetContextResult {
         reset_context: true,
@@ -846,21 +902,39 @@ pub async fn reconcile_session_handoffs_on_boot(app: &AppHandle) -> Result<usize
     };
     let handoffs = db.with(SessionCheckpointRepo::list_unresolved_handoffs)?;
     let mut reconciled = 0usize;
+    let mut failures = Vec::new();
     for handoff in handoffs {
         match reconcile_one_session_handoff_on_boot(app, &handoff).await {
             Ok(true) => reconciled = reconciled.saturating_add(1),
             Ok(false) => {}
             Err(err) => {
-                log::warn!(
+                tracing::error!(
                     "session_handoff boot reconcile failed for {}#{}: {}",
                     handoff.predecessor_id,
                     handoff.handoff_seq,
                     err
                 );
+                failures.push(serde_json::json!({
+                    "predecessorLogicalSessionId": handoff.predecessor_id,
+                    "handoffSeq": handoff.handoff_seq,
+                    "error": serde_json::from_str::<Value>(&err)
+                        .unwrap_or_else(|_| Value::String(err)),
+                }));
             }
         }
     }
-    Ok(reconciled)
+    if failures.is_empty() {
+        Ok(reconciled)
+    } else {
+        Err(serde_json::json!({
+            "schema": "aelyris.session-lifecycle-boot-reconciliation/v1",
+            "code": "boot_reconciliation_incomplete",
+            "reconciled": reconciled,
+            "failures": failures,
+            "startupMustNotClaimSuccess": true,
+        })
+        .to_string())
+    }
 }
 
 async fn reconcile_one_session_handoff_on_boot(
@@ -886,7 +960,7 @@ async fn reconcile_one_session_handoff_on_boot(
                 &identity,
                 handoff,
                 "boot reconcile failed closed before successor ack; predecessor was not retired",
-            );
+            )?;
             Ok(true)
         }
         SessionHandoffState::SuccessorSpawned | SessionHandoffState::SuccessorAcked => {
@@ -900,7 +974,7 @@ async fn reconcile_one_session_handoff_on_boot(
                     &identity,
                     handoff,
                     "boot reconcile could not resolve handoff worktree for successor ack",
-                );
+                )?;
                 return Ok(true);
             };
             let ack = successor_ack_file(&worktree_path, &handoff.successor_id);
@@ -910,7 +984,7 @@ async fn reconcile_one_session_handoff_on_boot(
                     &identity,
                     handoff,
                     "boot reconcile did not find successor ack; predecessor was not retired",
-                );
+                )?;
                 return Ok(true);
             }
             let Some(successor) = successor else {
@@ -919,7 +993,7 @@ async fn reconcile_one_session_handoff_on_boot(
                     &identity,
                     handoff,
                     "boot reconcile found successor ack but no live successor session",
-                );
+                )?;
                 return Ok(true);
             };
 
@@ -940,7 +1014,7 @@ async fn reconcile_one_session_handoff_on_boot(
                 emit_interactive_sessions(app, &session_mgr);
                 if let Err(err) = stop_interactive_agent(app.clone(), predecessor.id.clone()).await
                 {
-                    fail_session_handoff_with_identity(app, &identity, &current, &err);
+                    fail_session_handoff_with_identity(app, &identity, &current, &err)?;
                     return Ok(true);
                 }
             }
@@ -989,7 +1063,7 @@ async fn reconcile_one_session_handoff_on_boot(
                     "correlationId": &retired.correlation_id,
                     "worktreeDeleted": false,
                 }),
-            );
+            )?;
             Ok(true)
         }
         SessionHandoffState::PredecessorRetired | SessionHandoffState::Failed => Ok(false),
@@ -1373,14 +1447,47 @@ fn publish_session_lifecycle_event(
     app: &AppHandle,
     kind: crate::event_bus::AgentEventKind,
     payload: Value,
-) {
-    if let Some(bus) = app.try_state::<Arc<crate::event_bus::EventBus>>() {
-        super::event_commands::publish_and_emit(
-            app,
-            bus.inner().as_ref(),
-            crate::event_bus::AgentEvent::new(kind, payload),
-        );
-    }
+) -> Result<(), String> {
+    publish_session_lifecycle_event_with(kind, payload, |event| {
+        let bus = app
+            .try_state::<Arc<crate::event_bus::EventBus>>()
+            .ok_or_else(|| {
+                serde_json::json!({
+                    "code": "durability_unavailable",
+                    "message": "session lifecycle EventBus is not attached",
+                })
+                .to_string()
+            })?;
+        super::event_commands::publish_and_emit(app, bus.inner().as_ref(), event)
+    })
+}
+
+fn publish_session_lifecycle_event_with(
+    kind: crate::event_bus::AgentEventKind,
+    payload: Value,
+    publish: impl FnOnce(crate::event_bus::AgentEvent) -> Result<(), String>,
+) -> Result<(), String> {
+    let phase = payload
+        .get("phase")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let event = crate::event_bus::AgentEvent::new(kind, payload);
+    publish(event).map_err(|error| {
+        let event_error = serde_json::from_str::<Value>(&error)
+            .unwrap_or_else(|_| serde_json::json!({ "code": "publish_failed", "message": error }));
+        serde_json::json!({
+            "schema": "aelyris.session-lifecycle-event-failure/v1",
+            "code": "lifecycle_event_publish_failed",
+            "partialSuccess": true,
+            "committedLifecycleStatePreserved": true,
+            "reconciliationRequired": true,
+            "eventKind": kind.as_str(),
+            "eventPhase": phase,
+            "eventError": event_error,
+        })
+        .to_string()
+    })
 }
 
 fn fail_session_handoff(
@@ -1388,13 +1495,13 @@ fn fail_session_handoff(
     info: &InteractiveSessionInfo,
     handoff: &SessionHandoffRecord,
     failure_reason: &str,
-) {
+) -> Result<(), String> {
     fail_session_handoff_with_identity(
         app,
         &SessionLifecycleAuditIdentity::from(info),
         handoff,
         failure_reason,
-    );
+    )
 }
 
 fn fail_session_handoff_with_identity(
@@ -1402,7 +1509,7 @@ fn fail_session_handoff_with_identity(
     identity: &SessionLifecycleAuditIdentity,
     handoff: &SessionHandoffRecord,
     failure_reason: &str,
-) {
+) -> Result<(), String> {
     let failed = set_session_handoff_state(
         app,
         handoff,
@@ -1411,16 +1518,18 @@ fn fail_session_handoff_with_identity(
         handoff.summary_path.as_deref(),
         Some(failure_reason),
     )
-    .unwrap_or_else(|err| {
-        log::warn!(
-            "session_handoff failed-state update failed for {}#{}: {}",
-            handoff.predecessor_id,
-            handoff.handoff_seq,
-            err
-        );
-        handoff.clone()
-    });
-    let _ = append_session_lifecycle_audit_with_identity(
+    .map_err(|error| {
+        serde_json::json!({
+            "schema": "aelyris.session-lifecycle-failure-reconciliation/v1",
+            "code": "failed_state_persistence_failed",
+            "predecessorLogicalSessionId": handoff.predecessor_id,
+            "handoffSeq": handoff.handoff_seq,
+            "originalFailure": failure_reason,
+            "reconciliationError": error,
+        })
+        .to_string()
+    })?;
+    let audit_result = append_session_lifecycle_audit_with_identity(
         app,
         identity,
         &failed,
@@ -1428,7 +1537,7 @@ fn fail_session_handoff_with_identity(
         "failed",
         serde_json::json!({ "failureReason": failure_reason }),
     );
-    publish_session_lifecycle_event(
+    let publish_result = publish_session_lifecycle_event(
         app,
         crate::event_bus::AgentEventKind::SessionHandoff,
         serde_json::json!({
@@ -1440,6 +1549,46 @@ fn fail_session_handoff_with_identity(
             "failureReason": failure_reason,
         }),
     );
+    let failures = [audit_result.err(), publish_result.err()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        let error = serde_json::json!({
+            "schema": "aelyris.session-lifecycle-failure-reconciliation/v1",
+            "code": "failed_state_evidence_incomplete",
+            "predecessorLogicalSessionId": failed.predecessor_id,
+            "handoffSeq": failed.handoff_seq,
+            "originalFailure": failure_reason,
+            "committedLifecycleState": "failed",
+            "evidenceFailures": failures,
+            "reconciliationRequired": true,
+        })
+        .to_string();
+        tracing::error!(%error, "session lifecycle failed-state evidence is incomplete");
+        Err(error)
+    }
+}
+
+fn handoff_error_with_reconciliation(
+    app: &AppHandle,
+    info: &InteractiveSessionInfo,
+    handoff: &SessionHandoffRecord,
+    failure_reason: &str,
+) -> String {
+    match fail_session_handoff(app, info, handoff, failure_reason) {
+        Ok(()) => failure_reason.to_string(),
+        Err(reconciliation_error) => serde_json::json!({
+            "schema": "aelyris.session-lifecycle-operation-failure/v1",
+            "code": "handoff_failed_with_incomplete_failure_evidence",
+            "operationFailure": failure_reason,
+            "failureReconciliation": serde_json::from_str::<Value>(&reconciliation_error)
+                .unwrap_or_else(|_| Value::String(reconciliation_error)),
+        })
+        .to_string(),
+    }
 }
 
 async fn wait_for_successor_liveness(
@@ -1533,5 +1682,57 @@ fn build_summary_validation_context(
         git_status,
         tasks,
         decisions,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_publish_failure_is_structured_partial_success_not_silent_success() {
+        let bus = crate::event_bus::EventBus::new_durable();
+        let error = publish_session_lifecycle_event_with(
+            crate::event_bus::AgentEventKind::SessionHandoff,
+            serde_json::json!({
+                "phase": "committed",
+                "predecessorLogicalSessionId": "a",
+                "successorLogicalSessionId": "b",
+            }),
+            |event| {
+                bus.publish(event)
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            },
+        )
+        .unwrap_err();
+        let value: Value = serde_json::from_str(&error).unwrap();
+        assert_eq!(
+            value["schema"],
+            "aelyris.session-lifecycle-event-failure/v1"
+        );
+        assert_eq!(value["code"], "lifecycle_event_publish_failed");
+        assert_eq!(value["partialSuccess"], true);
+        assert_eq!(value["committedLifecycleStatePreserved"], true);
+        assert_eq!(value["reconciliationRequired"], true);
+        assert_eq!(value["eventKind"], "session_handoff");
+        assert_eq!(value["eventPhase"], "committed");
+        assert_eq!(value["eventError"]["code"], "durability_unavailable");
+    }
+
+    #[test]
+    fn lifecycle_publish_success_does_not_report_partial_failure() {
+        let bus = crate::event_bus::EventBus::new();
+        publish_session_lifecycle_event_with(
+            crate::event_bus::AgentEventKind::ContextRecycled,
+            serde_json::json!({"phase": "reset_context"}),
+            |event| {
+                bus.publish(event)
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            },
+        )
+        .unwrap();
+        assert_eq!(bus.recent().len(), 1);
     }
 }

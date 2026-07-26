@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: tauriMocks.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauriMocks.listen }));
 
 function event(kind: AgentEvent["kind"], channel: AgentEvent["channel"]): AgentEvent {
-  return { kind, channel };
+  return { eventId: `test-${kind}`, kind, channel };
 }
 
 describe("useEventBus", () => {
