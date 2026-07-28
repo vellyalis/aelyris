@@ -384,6 +384,25 @@ Forbidden conversions:
 Distillation output is a patch proposal plus a risk summary. It never mutates
 the source Proofbook without an explicit update action.
 
+Proof preservation is a design hypothesis that PB-6 must falsify, not a claim
+borrowed from an external product. Every proposal binds:
+
+- source run/packet/trace refs and a frozen environment, tool, schema, and policy
+  snapshot;
+- a typed side-effect contract for repository, process, network, credential,
+  approval, human-visible, and external effects;
+- proof-equivalence comparators for outputs, gates, artifacts, evidence,
+  repository diff, ordering, and external receipts;
+- repeated and held-out differential replay, plus visual proof when the converted
+  behavior is user-visible;
+- a capability delta that is reduced or equal, never broadened;
+- canary, monitoring, rollback, and stale invalidation when source proof,
+  environment, tool/schema, policy, or capability assumptions change.
+
+Accept/update remains a separate GATED action. A canary does not authorize
+automatic source mutation, and a Result Capsule or successful trace is not a
+completion primitive and is never a `CompletedWorkPacket`.
+
 ## 11. Roadmap
 
 ### Development Method — Design-First Gates
@@ -1278,8 +1297,15 @@ Files:
 Acceptance:
 
 - Successful exploratory run can produce a proposed Proofbook patch.
-- Patch preserves verifier/gate semantics.
+- Proposal binds source trace, environment snapshot, side-effect contract,
+  proof-equivalence comparators, capability delta, and stale conditions.
+- Repeated and held-out differential replay preserves required output/effect/
+  verifier/gate/evidence semantics; user-visible conversions include visual proof.
 - Distill verifier rejects secret inlining and gate weakening.
+- Distill verifier rejects capability broadening, missing external-effect
+  receipts, comparator gaps, environment/tool/schema drift, and failed canary.
+- Separately approved activation is canaried, monitored, rollbackable, and
+  invalidated when its proof assumptions become stale.
 - `aelyris.proofbook.create/update/distill` exist and are GATED.
 
 ### PB-7 — Evidence Store And Project Data
@@ -1344,7 +1370,7 @@ Use one packet at a time. Do not run phases concurrently.
 ### PB-6 `/goal`
 
 ```text
-/goal C:\Users\owner\Aether_Terminal で Proofbook PB-6 Distill を進める。まず PB-6D detailed design gate として trace input contract, rewrite rules, forbidden weakening checks, proposed diff format, risk summary schema, GATED accept/update boundary, MCP mutation verbs を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md と docs/specs/MCP_TOOL_SURFACE_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-6D が green になるまで distill/API/UI code に入らない。成功run ledgerから deterministic step rewrite proposal を生成するだけで、source Proofbookは自動変更しない。verifier/gate削除、secret inline、visible実装agentの無断headless化を拒否する。提案diffとrisk summaryをUI/APIで表示し、acceptは別GATED updateにする。focused testsと pnpm verify:proofbook:spec を通す。明示stage、one phase = one commit、push/PR/force push禁止。
+/goal C:\Users\owner\Aether_Terminal で Proofbook PB-6 Distill を進める。まず PB-6D detailed design gate として source trace/environment snapshot, typed side-effect contract, proof-equivalence comparators, repeated/held-out differential replay, visual proof, capability reduction/non-broadening, stale invalidation, canary/monitoring/rollback, rewrite rules, proposed diff/risk schema, GATED accept/update boundary, MCP mutation verbs を docs/specs/PROOFBOOK_AUTOMATION_SPEC.md と docs/specs/MCP_TOOL_SURFACE_SPEC.md に明示し、pnpm verify:proofbook:spec を通す。PB-6D が green になるまで distill/API/UI code に入らない。これはAelyrisの設計仮説であり、成功runだけで有効とはみなさない。source Proofbookは自動変更しない。verifier/gate削除、secret inline、capability拡大、external-effect receipt欠落、visible実装agentの無断headless化を拒否する。acceptは別GATED updateにする。focused testsと pnpm verify:proofbook:spec を通す。明示stage、one phase = one commit、push/PR/force push禁止。
 ```
 
 ### PB-7 `/goal`

@@ -227,7 +227,7 @@ const checks = [
       ]) &&
       includesAll(docs.workOsRoadmap, [
         "R0-A9 remains Wave 0",
-        "A4.8 is the next runtime implementation slice",
+        "A4.9 is the next runtime implementation slice",
         "A6.2e1 remains the exact A6 resume",
         "A8 And A9 Remain Unchanged Release Gates",
       ]) &&

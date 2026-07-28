@@ -314,10 +314,26 @@ interface MissionDefinitionRevision {
   riskPolicy: RiskPolicy;
   budgetPolicy: BudgetPolicy;
   runtimePolicy: RuntimePolicy;
+  teamPolicy: TeamExecutionPolicy;
   workGraphDefinitionRevision: number;
   createdBy: string;
   approvedBy?: string;
   createdAt: string;
+}
+
+interface TeamExecutionPolicy {
+  roles: Array<{
+    roleId: string;
+    capabilityProfileIds: string[];
+    budgetProfileId: string;
+    proofProfileId: string;
+    mayImplement: boolean;
+    mayReview: boolean;
+    mayAuthorizeCompletion: boolean;
+  }>;
+  reviewerIndependencePolicyId: string;
+  ownershipPolicyId: string;
+  governancePolicyId: string;
 }
 
 interface MissionExecutionProjection {
@@ -368,6 +384,12 @@ and next work, packet refs, and projection hash live only in
 `MissionExecutionProjection`, derived from TaskGraph/domain state and WorkEvents.
 The aggregate `MissionRecord` is a read model, not a third persistence owner.
 
+`TeamExecutionPolicy` is the minimal Team Constitution semantics compiled into the
+Mission contract. It does not schedule work or create a fixed team size. Role
+leases, assignments, and progress remain projections of existing ownership,
+capability, TaskGraph, and event owners; WorkUnit role bindings do not create a
+`MissionOperation` or `OperationJournal`.
+
 Work-unit packets and Mission settlement are different scopes. A Mission with
 3-12 work units cannot point at one work-unit packet as if it proved the aggregate.
 `missionCompletionPacketId` is populated only after every required work-unit packet
@@ -386,6 +408,7 @@ interface WorkUnitDefinition {
   objective: string;
   dependsOn: string[];
   requiredRole: string;
+  completionAuthorityRoleIds: string[];
   requiredAdapterCapabilities: AdapterCapability[];
   fileIntents: ResourceIntent[];
   symbolIntents: SymbolIntent[];
@@ -923,6 +946,13 @@ idempotency/cancellation policy, and evidence obligations. Tauri IPC, MCP, REST,
 WebSocket, CLI, visible PTY, Proofbook, review, and merge are adapters over the same
 application command path.
 
+Capability-scoped tool discovery is a read projection of that same registry. The
+query binds principal, Mission/work unit, runtime, resource scope, risk class, and
+remaining budget, and returns only compatible descriptors plus typed reasons for
+unsupported or gated entries. Discovery never grants, widens, reserves, or
+consumes a `CapabilityLease`, and no adapter may maintain a broader private tool
+catalog.
+
 The current A7.0 audit must explicitly inventory hardcoded actor/reviewer paths,
 transport recursion, direct state-owner/DB access, WebSocket ticket/baton and
 backpressure gaps, adapter-owned schemas, frontend audit-shaped input, and hidden
@@ -1125,6 +1155,8 @@ interface WorkPacketBase {
   environmentFingerprint?: string;
   baseOid: string;
   headOid: string;
+  contractProofVersion: string;
+  settlementExpectedVersion: string;
   ownedFiles: RepositoryResourceRef[];
   ownedSymbols: SymbolIntent[];
   gateRecords: GateExecutionRecord[];
@@ -1151,6 +1183,8 @@ interface CompletedWorkPacket extends WorkPacketBase {
   outcome: "accepted" | "merged";
   mergeIntentId?: string;
   mergeResult?: "not_required" | "merged_exact_oid";
+  integratedOid: string;
+  fulfilledObligationRefs: VersionedRef[];
   residualRisks: NonBlockingResidualRisk[];
   repoBlockers: [];
   policyBlockers: [];
@@ -1184,6 +1218,10 @@ interface MissionCompletionPacket {
   missionGateRecords: GateExecutionRecord[];
   chronicleRange: ChronicleRangeProof;
   finalHeadOid: string;
+  integratedOid: string;
+  contractProofVersion: string;
+  settlementExpectedVersion: string;
+  fulfilledObligationRefs: VersionedRef[];
   mergeResult: "merged_exact_oid";
   repoBlockers: [];
   policyBlockers: [];
@@ -1222,11 +1260,24 @@ immutable work-unit packets rather than copying or weakening them. Any missing,
 superseded, stale, blocked, wrong-revision, or wrong-OID child keeps Mission
 settlement blocked.
 
+The completion barrier is this packet validation plus compare-and-swap settlement,
+not a `CompletionBarrier` table or owner. `integratedOid` is the exact reviewed
+result incorporated into the settlement target: it equals `headOid` for an
+accepted/no-merge work unit and the exact integration result for
+`merged_exact_oid`. A dirty or ownership-uncovered worktree, unresolved required
+`DecisionCase` or fulfillment obligation, changed OID/Mission/WorkGraph/proof
+version, or non-exact merge invalidates the expected version. The candidate must
+re-freeze and re-prove against the new integrated OID.
+A Qralis Result Capsule is only a coordination projection referencing a
+`CompletedWorkPacket` or `BlockedWorkPacket`.
+
 ### 9.4 Settlement algorithm
 
 1. lock Mission/work unit and read exact accepted contract revision;
-2. freeze base/head and reject moving/stale OIDs;
-3. prove ownership scope covers the candidate diff;
+2. freeze base/head, contract/proof versions, and settlement expected version;
+   reject moving/stale OIDs;
+3. prove the candidate worktree is clean and ownership scope covers the complete
+   diff;
 4. resolve every required gate to fresh evidence or classify a typed blocker; no
    missing item is inferred and no blocker can satisfy acceptance;
 5. classify current repo/policy/operator/external acceptance blockers; if any
@@ -1234,21 +1285,28 @@ settlement blocked.
    the work unit/Mission blocked;
 6. for a completion candidate, compute reviewer independence from lineage/policy
    evidence and require an accepted verdict;
-7. validate approval capability and exact-OID merge outcome when applicable; a
-   failure becomes a typed blocker and `BlockedWorkPacket`;
-8. require zero work-unit acceptance blockers and create/digest
+7. require every completion-blocking `DecisionCase` and fulfillment obligation to
+   resolve through its authoritative event/decision/packet/human-action evidence;
+8. validate approval capability and exact-OID merge outcome when applicable,
+   proving `headOid` was the immutable reviewed merge input and `integratedOid` is
+   the resulting current target OID; a failure becomes a typed blocker and
+   `BlockedWorkPacket`;
+9. compare-and-swap the frozen OID/revision/proof version; on change invalidate
+   the candidate and require re-proof;
+10. require zero work-unit acceptance blockers and create/digest
    `CompletedWorkPacket`;
-9. for Mission settlement, resolve the exact required work-unit packet set, verify
+11. for Mission settlement, resolve the exact required work-unit packet set, verify
    every Mission-level clause/gate and final exact OID, then create/digest
    `MissionCompletionPacket`;
-10. append the chosen settlement event and update projection atomically;
-11. mark a work unit completed only for its valid `CompletedWorkPacket`, and mark
+12. append the chosen settlement event and update projection atomically;
+13. mark a work unit completed only for its valid `CompletedWorkPacket`, and mark
     Mission completed only for its valid `MissionCompletionPacket`; a handoff never
     satisfies Mission, phase, release, or goal completion.
 
-Negative cases include tamper, stale OID, stale evidence, missing artifact, wrong
-reviewer, uncovered symbol, replayed capability, hidden blocker, and packet/diff
-digest mismatch.
+Negative cases include tamper, dirty or unowned worktree, stale/integrated-OID or
+CAS-version drift, stale evidence, unresolved Decision/obligation, missing
+artifact, wrong reviewer, uncovered symbol, replayed capability, hidden blocker,
+and packet/diff digest mismatch.
 
 ## 10. Checkpoints And Reversible Autonomy
 
@@ -1396,6 +1454,10 @@ interface SkillCandidate {
   capabilityManifestDigest: string;
   executionBoundary: "proofbook" | "sandboxed_extension";
   proofbookDefinitionDigest: string;
+  sourceTraceRefs: EvidenceRefV2[];
+  sourceEnvironmentSnapshotRef: EvidenceRefV2;
+  sideEffectContractRef: EvidenceRefV2;
+  proofEquivalenceComparatorRefs: EvidenceRefV2[];
   proposedDiffRef: EvidenceRefV2;
   evalCaseIds: string[];
   compatibilityWindow: string;
@@ -1412,7 +1474,11 @@ interface EvaluationRun {
   baselineVersion: string;
   fixtureDigest: string;
   environmentFingerprint: string;
+  runClass: "source" | "repeated" | "held_out" | "canary";
   results: GateExecutionRecord[];
+  differentialReplayRef: EvidenceRefV2;
+  visualProofRefs: EvidenceRefV2[];
+  capabilityDelta: "reduced" | "equal" | "broadened";
   successDelta: number;
   riskDelta: number;
   attentionDelta: number;
@@ -1428,6 +1494,17 @@ digest pin, independent human/governed approval, versioned activation, and a
 rollback target. A candidate cannot approve itself or use its own training/source
 runs as the only evaluation set. Retrieval is bounded by scope and freshness and
 is passed to agents as quoted data, never higher-priority instructions.
+
+PB-6 proof-preserving distillation remains proposal-only and is an Aelyris design
+hypothesis until executed gates support it. The proposal binds the successful
+source trace, environment/tool/schema snapshot, declared side effects, and
+comparators for required output, evidence, gates, repository diff, and external
+effects. Repeated and held-out differential replay must be equivalent within the
+declared comparator contract; user-visible behavior also requires visual proof.
+Capability delta must be `reduced` or `equal`. A separately approved activation
+uses a bounded canary, monitoring, rollback target, and invalidates on source
+proof, environment, schema/tool, policy, or capability drift. It never
+automatically rewrites the source Proofbook.
 
 ## 13. Project Twin
 
@@ -1566,6 +1643,9 @@ make all Apex features release blockers.
 - freeze machine-readable Rust/JSON Schema authority, UUIDv7/sequence/JCS/digest
   rules, Mission, WorkUnit, progress, blocker, packet, evidence, integrity,
   recovery instruction, adapter, budget, and capability contracts;
+- freeze `TeamExecutionPolicy` within Mission/WorkUnit authority: named roles,
+  capability/budget/proof profiles, completion authority, reviewer independence,
+  and ownership/governance rules; no fixed team size or second operation journal;
 - inventory journal convergence and existing owner seams before migration;
 - inventory every Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook,
   review, merge, frontend-audit, and direct-DB face against the Control API ultra
@@ -1605,6 +1685,8 @@ unsupported in A7 and belong to later gates.
 ### A7.2 Capability And Agent Fabric Minimum
 
 - local human, local agent, and system reconciler principals;
+- capability-scoped tool discovery from the canonical descriptor registry; listing
+  a descriptor grants no authority and unavailable actions remain typed;
 - capability leases for the PTY/IPC/MCP/Proofbook paths used by First Mission;
 - reserve/effect/commit/uncertain, process-tree and monotonic-clock binding,
   canonical Windows resource handles, network/DNS/redirect policy, expiry,
@@ -1633,6 +1715,10 @@ unsupported in A7 and belong to later gates.
   completion credit;
 - aggregate the exact required work-unit packets and Mission-level coverage into a
   distinct `MissionCompletionPacket`; one work-unit packet cannot complete Mission;
+- enforce integrated-OID packet settlement with clean/owned worktree proof,
+  unresolved Decision/obligation rejection, compare-and-swap invalidation on
+  OID/revision/proof-version change, and mandatory re-proof after integration
+  changes; do not add a completion-barrier owner or table;
 - negative tests cover tamper, stale OID, missing/stale evidence, capability replay,
   hidden blocker, same-agent/fork reviewer, packet coverage gaps, raw/injected
   recovery instruction, and wrong reviewer;
@@ -1747,6 +1833,39 @@ The experiment may use the upstream
 inputs. Executed evidence from the pinned artifact remains authoritative.
 The V1-R0 packet must trace every `OC-R0-*` requirement to fixed positive and
 negative fixtures and emit a machine-readable decision artifact.
+
+### 18.2 External Team-Operations Synthesis Contract
+
+External runtime, messaging, agent-team, and automation documents are discovery
+inputs. A pinned implementation and Aelyris-owned gates remain authoritative.
+
+- `V1-R1` follows `V1-R0=promote_one` and maps structured snapshots/events into
+  existing `AgentSession`, WorkEvent, capability, and Mission projections with
+  source-fact explainability, deterministic reconstruction, gap/stale/reconcile
+  states, and adapter-disable fallback.
+- `V1-R2` adopts an external run only through a capability-free quarantine
+  projection bound to source/version/schema, repository/OID, environment, cursor,
+  provenance, and an accepted Mission. Untrusted events cannot mutate owners,
+  issue leases, or receive completion credit.
+- `V1-R3` is a conditional Runtime TUI value hypothesis after `promote_one`,
+  daemon-owned projection proof, and quarantine proof. It is a Control API
+  adapter, not a session/state owner or default Tauri cockpit replacement.
+- `V3a` adds typed Qralis messages, Task Claims, Role Leases, Decision Ledger
+  references, Attention, and Result Capsule projections. A Result Capsule must
+  reference a `CompletedWorkPacket` or `BlockedWorkPacket`.
+- `V3b` adds an Obligation Ledger projection of typed fulfillment obligations,
+  event-driven dispatch, adaptive Mission-bounded governance, Verified Action
+  Surface discovery, and team operations projected from existing owners. A
+  message read/ack never fulfills an obligation.
+- `V4` strengthens PB-6 with the proof-preserving distillation contract in §12;
+  it remains proposal-only until repeated, held-out, canary, rollback, stale-
+  invalidation, capability non-broadening, and visual-proof gates pass.
+
+The synthesis rejects parallel `MissionOperation`/`OperationJournal`,
+`CompletionBarrier`, scheduler, Proofbook, Decision store, generic chat or
+arbitrary-JavaScript authority, fixed 11-agent topology, pre-A9 production
+OpenCode/Runtime TUI, and a new assurance score. Existing V5 typed deliberation
+remains the Decision Lab authority.
 
 ## 19. Verification Matrix
 

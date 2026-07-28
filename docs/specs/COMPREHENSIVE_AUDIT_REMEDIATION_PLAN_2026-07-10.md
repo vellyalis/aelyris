@@ -1021,6 +1021,10 @@ completion criteria.
 - freeze Rust/JSON Schema authority for Mission definition/execution, WorkUnit,
   progress/ready work, blocker/handoff, evidence/integrity, capability/budget,
   packets, typed recovery, every referenced type, and transition/negative tests;
+- freeze the minimal team policy inside `MissionDefinitionRevision` and
+  `WorkUnitDefinition`: named roles, capability/budget/proof profile, completion
+  authority, reviewer-independence rule, and ownership/governance constraints;
+  do not create `MissionOperation`, `OperationJournal`, or a fixed agent topology;
 - freeze UUIDv7 identifiers, workspace-scoped sequence, RFC 8785 canonicalization,
   digest/integrity tiers, unknown-field/version rules, units, and exact owners;
 - freeze a successful First Mission fixture with 3-12 work units, two owned source
@@ -1050,6 +1054,9 @@ completion criteria.
 - route enabled faces through one Control Kernel and prove generated schema/catalog,
   principal propagation, idempotency, cancellation, backpressure, and event/
   evidence equivalence without transport-recursive business logic;
+- expose capability-scoped tool discovery from that same descriptor registry;
+  discovery is filtered by principal/Mission/resource/risk/budget and grants no
+  authority;
 - prove process-tree/generation and monotonic-clock binding, Windows canonical
   resource containment, network/DNS/redirect policy, budget units, reserve-effect-
   commit-uncertain, expiry/revocation/one-use, args/OID/lane binding, secret
@@ -1082,6 +1089,11 @@ completion criteria.
   the work unit/Mission/A7 incomplete;
 - aggregate exact required child packets and Mission-level coverage into a distinct
   `MissionCompletionPacket`; one child packet never completes the aggregate;
+- enforce the completion barrier as packet-settlement checks, not a new owner:
+  reject dirty or unowned worktrees, require the exact reviewed/integrated OID,
+  invalidate compare-and-swap settlement on OID/revision/proof-version change,
+  reject unresolved required decisions or obligations, and re-prove after an
+  integrated-OID change;
 - negative tests reject integrity tamper, stale OID/evidence, missing coverage/
   artifact, uncovered symbol, same-agent/fork reviewer, capability replay, raw or
   injected recovery instruction, hidden blocker, and digest mismatch;
@@ -1181,14 +1193,24 @@ current. External limitations must not be counted as implementation completion.
 After release trust is proven, or through a later separately authorized gated
 program, the roadmap continues in this dependency order:
 
-1. Universal Agent Fabric expansion: production ACP and SDK adapters,
-   capability-aware resume/fork/export, and structured event/diff/usage streams.
+1. Universal Agent Fabric expansion: keep V1-R0 as the OpenCode comparison, then
+   separately gate V1-R1 structured state authority/explainability and V1-R2
+   quarantined external-run adoption. A V1-R3 Runtime TUI is conditional on
+   `promote_one` plus daemon-owned projection proof and cannot replace the Tauri
+   cockpit by default.
 2. Mission Time Machine: journal convergence, deterministic replay, recovery
    branches/checkpoints, compensation, uncertain-effect reconciliation.
-3. Qralis Coordination Fabric: addressed messaging, delivery, role leases,
-   directives, driver trust, bounded context packets.
+3. Qralis Coordination Fabric: V3a adds addressed typed messages, Task Claims, Role
+   Leases, Result Capsule projection, Decision Ledger references, and Attention;
+   V3b adds an Obligation Ledger, event-driven dispatch, adaptive governance,
+   Verified Action Surface, and team operations through existing owners. Result
+   Capsules reference completion/blocked packets and never own completion.
 4. Verified Skill Foundry: Proofbook fan-out/subProofbook/Evidence Store,
-   scheduling, evidence-governed memory/skills, held-out evaluation and rollback.
+   scheduling, evidence-governed memory/skills, and proof-preserving PB-6
+   distillation with source trace/environment snapshot, side-effect contract,
+   proof-equivalence comparators, repeated/held-out differential replay, canary,
+   rollback, stale invalidation, capability reduction/non-broadening, and visual
+   proof. This remains an Aelyris hypothesis until its own gates pass.
 5. Decision Lab and Adversarial Council: bounded independent proposals, fixed
    rubric, preserved dissent, human gate policy.
 6. Counterfactual Arena: static plan comparison, then isolated same-base Shadow
@@ -1202,6 +1224,10 @@ program, the roadmap continues in this dependency order:
 Each Apex wave needs its own owner inventory, acceptance, CI, external boundary,
 focused commits, and claim gate. Its absence cannot be hidden as an R0-A9 blocker,
 and its design presence cannot be counted as implemented capability.
+
+No Apex wave may add a parallel Mission operation journal, completion-barrier
+table, scheduler, Proofbook, Decision store, generic chat/arbitrary-JavaScript
+authority, fixed 11-agent topology, or a new assurance score.
 
 ## Required Session Record
 

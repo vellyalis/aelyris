@@ -10,6 +10,7 @@ const paths = {
   spec: "docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md",
   design: "docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md",
   roadmap: "docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md",
+  proofbook: "docs/specs/PROOFBOOK_AUTOMATION_SPEC.md",
   controlApi: "docs/specs/AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md",
   mcpCatalog: "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
   requirements: "docs/requirements.md",
@@ -123,6 +124,11 @@ const requiredSpecClauses = [
   "license/SBOM/attribution impact",
   "Anti-Features And Stop Conditions",
   "current Aelyris remains alpha and not release-ready",
+  "minimal team policy",
+  "integrated-OID barrier",
+  "capability-filtered projection",
+  "proof-preserving distillation",
+  "Result Capsule",
 ];
 
 const requiredDesignClauses = [
@@ -181,6 +187,16 @@ const requiredDesignClauses = [
   "OpenCode Candidate Adapter Research Contract",
   "OC-R0-10",
   "verify:opencode-adapter-candidate",
+  "TeamExecutionPolicy",
+  "completion barrier is this packet validation plus compare-and-swap settlement",
+  "capability-scoped tool discovery",
+  "External Team-Operations Synthesis Contract",
+  "V1-R1",
+  "V1-R2",
+  "V1-R3",
+  "V3a",
+  "V3b",
+  "Obligation Ledger projection",
   "Verification Matrix",
 ];
 
@@ -205,6 +221,7 @@ const requiredRoadmapClauses = [
   "A7.6 — Remote Read-Only Continuity",
   "A7.8 — Successful First Mission Acceptance",
   "A8 And A9 Remain Unchanged Release Gates",
+  "A4.9 is the next runtime implementation slice",
   "Apex V1 — Universal Agent Fabric Expansion",
   "V1-R0 — OpenCode Candidate Adapter Comparison",
   "proof-carrying runtime portability",
@@ -219,6 +236,13 @@ const requiredRoadmapClauses = [
   "Apex V9 — Signed Extension And Agent Federation",
   "Work Packet Template",
   "not hidden R0-A9 completion criteria",
+  "V1-R1 — Structured State Authority And Explainability",
+  "V1-R2 — Quarantined External-Run Adoption",
+  "V1-R3 — Conditional Aelyris Runtime TUI",
+  "V3a — Typed Message And Team Coordination",
+  "V3b — Obligation-Driven Team Operations",
+  "Obligation Ledger projection",
+  "proof-preserving PB-6 distillation",
 ];
 
 const requiredIndexClauses = [
@@ -258,13 +282,18 @@ const requiredPlanClauses = [
   "Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope",
   "A8",
   "A9",
+  "capability-scoped tool discovery",
+  "completion barrier as packet-settlement checks",
+  "V1-R1 structured state authority/explainability",
+  "V3a adds addressed typed messages",
+  "proof-preserving PB-6",
 ];
 
 const requiredWorkOrderClauses = [
   "CURRENT PHASE: `A4`",
-  "ACTIVE SLICE: `A4.8`",
-  "LAST COMPLETED SLICE: `A4.7`",
-  "NEXT IMPLEMENTATION SLICE: `A4.8`",
+  "ACTIVE SLICE: `A4.9`",
+  "LAST COMPLETED SLICE: `A4.8`",
+  "NEXT IMPLEMENTATION SLICE: `A4.9`",
   "resume at A6.2e1",
   "do not mix A6/A7 work into A4",
 ];
@@ -321,6 +350,20 @@ const requiredDecisionClauses = [
   "ADR-012 Structured Runtimes Are Replaceable Adapters",
   "OpenCode ACP, OpenCode HTTP/SSE",
   "cannot change the active A4/A6/A7/A8/A9 order",
+  "ADR-013 External Team Patterns Extend Existing Owners",
+  "Result Capsule is only a coordination projection",
+  "A4.9-A4.12 are active runtime-integrity work",
+];
+
+const requiredProofbookClauses = [
+  "Proof preservation is a design hypothesis",
+  "typed side-effect contract",
+  "proof-equivalence comparators",
+  "repeated and held-out differential replay",
+  "visual proof",
+  "capability delta that is reduced or equal",
+  "canary, monitoring, rollback, and stale invalidation",
+  "never a `CompletedWorkPacket`",
 ];
 
 const missing = {
@@ -334,6 +377,7 @@ const missing = {
   requirements: missingFrom(files.requirements, requiredRequirementsClauses),
   architecture: missingFrom(files.architecture, requiredArchitectureClauses),
   decisions: missingFrom(files.decisions, requiredDecisionClauses),
+  proofbook: missingFrom(files.proofbook, requiredProofbookClauses),
   plan: missingFrom(files.plan, requiredPlanClauses),
   workOrder: missingFrom(files.workOrder, requiredWorkOrderClauses),
 };
@@ -478,6 +522,38 @@ const checks = [
     { missingClauses: missing.roadmap },
   ),
   check(
+    "external-goal-synthesis-owner-safe",
+    missing.decisions.length === 0 &&
+      missing.design.length === 0 &&
+      missing.roadmap.length === 0 &&
+      missing.plan.length === 0 &&
+      missingFrom(files.design, [
+        "not a `CompletionBarrier` table or owner",
+        "Result Capsule is only a coordination projection",
+        "message read/ack never fulfills an obligation",
+      ]).length === 0 &&
+      missingFrom(files.roadmap, [
+        "does not grant or widen a lease",
+        "cannot mutate Aelyris owners",
+        "cannot replace the Tauri cockpit by default",
+      ]).length === 0,
+    "External team/runtime patterns extend existing Mission, packet, Control, Qralis, and Proofbook owners without changing the A4.9 frontier",
+    {
+      missingDecisionClauses: missing.decisions,
+      missingDesignClauses: missing.design,
+      missingRoadmapClauses: missing.roadmap,
+      missingPlanClauses: missing.plan,
+    },
+  ),
+  check(
+    "proof-preserving-distillation-contract",
+    missing.proofbook.length === 0 &&
+      missingFrom(files.spec, ["Aelyris design hypothesis", "capability assumptions become stale"]).length === 0 &&
+      missingFrom(files.design, ["Repeated and held-out differential replay", "Capability delta"]).length === 0,
+    "PB-6 remains proposal-only and requires proof-equivalence, capability non-broadening, canary, rollback, and stale invalidation",
+    { missingProofbookClauses: missing.proofbook },
+  ),
+  check(
     "spec-indexed",
     missing.index.length === 0,
     "Spec index links all three authorities with a non-shipped claim boundary",
@@ -552,7 +628,7 @@ const checks = [
   check(
     "work-order-frontier",
     missing.workOrder.length === 0,
-    "Work order preserves the reopened A4.8 frontier, A4.7 last completion, and A6.2e1 resume boundary",
+    "Work order preserves the active A4.9 frontier, A4.8 last completion, and A6.2e1 resume boundary",
     { missingClauses: missing.workOrder },
   ),
   check(
@@ -596,9 +672,9 @@ const failed = checks.filter((item) => item.status !== "passed");
 const contractPass = failed.length === 0;
 const committedAtHead = contractPass && sourceDirtyPaths.length === 0;
 const report = {
-  schema: "aelyris.verifiable-agent-work-os-spec/v3",
-  contractVersion: "verifiable-agent-work-os-roadmap/v3",
-  version: 3,
+  schema: "aelyris.verifiable-agent-work-os-spec/v4",
+  contractVersion: "verifiable-agent-work-os-roadmap/v4",
+  version: 4,
   ok: contractPass,
   status: !contractPass
     ? "fail-verifiable-agent-work-os-spec"
@@ -606,10 +682,10 @@ const report = {
       ? "pass-verifiable-agent-work-os-spec-committed"
       : "pass-verifiable-agent-work-os-spec-ready-to-commit",
   phase: "A4",
-  attemptedSlice: "Apex V1-R0 documentation contract",
-  lastCompletedSlice: "A4.7",
-  completedSlice: committedAtHead ? "Apex V1-R0 documentation contract" : null,
-  nextImplementationSlice: "A4.8",
+  attemptedSlice: "external team-pattern plan integration",
+  lastCompletedSlice: "A4.8",
+  completedSlice: committedAtHead ? "external team-pattern plan integration" : null,
+  nextImplementationSlice: "A4.9",
   readyToCommit: contractPass && !committedAtHead,
   sliceComplete: committedAtHead,
   phaseComplete: false,

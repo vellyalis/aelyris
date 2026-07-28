@@ -212,3 +212,39 @@ release criterion, introduce a second session graph/journal/permission or
 completion owner, or weaken visible PTY fallback. A production adapter is
 conditional Apex V1 work. An Aelyris Runtime TUI remains a separate value
 hypothesis after the adapter and daemon-owned projection are proven.
+
+## ADR-013 External Team Patterns Extend Existing Owners
+
+Decision: Treat external agent-team, messaging, runtime-TUI, and automation
+documents as discovery input for the existing Verifiable Agent Work OS contracts.
+Adopt compatible semantics only through the current owners: team policy through
+`MissionDefinitionRevision` and `WorkUnitDefinition`, capability-scoped discovery
+through the Control Kernel, completion through `CompletedWorkPacket` and
+`MissionCompletionPacket`, coordination through Qralis, and distillation through
+Proofbook PB-6.
+
+Why:
+
+- a role constitution, integrated-OID completion barrier, typed coordination, and
+  proof-preserving distillation strengthen the current Goal without changing its
+  owner model;
+- importing a second operation journal, scheduler, completion table, Decision
+  store, or generic message truth would split authority and make restart and
+  completion claims less trustworthy;
+- external product descriptions are useful hypotheses, but their claims do not
+  prove behavior in Aelyris or in a pinned local dependency;
+- A4.9-A4.12 are active runtime-integrity work and must not be displaced by later
+  product design.
+
+Implication: A7.0 freezes a minimal team policy without a fixed agent count; A7.2
+adds capability-scoped tool discovery; A7.4 applies an integrated-OID completion
+barrier inside the existing packet settlement. A Result Capsule is only a
+coordination projection referencing a `CompletedWorkPacket` or
+`BlockedWorkPacket`, never completion authority. Post-A9 V1 may add structured
+state and quarantined external-run adoption, with a Runtime TUI only after
+`promote_one` and daemon-owned projection proof. V3 adds typed team operations and
+obligation-driven dispatch. V4 evaluates proof-preserving PB-6 distillation as an
+Aelyris design hypothesis with differential replay, canary, rollback, stale
+invalidation, and capability non-broadening. No parallel `MissionOperation`,
+`OperationJournal`, `CompletionBarrier`, scheduler, Proofbook, assurance score, or
+Decision owner is authorized.

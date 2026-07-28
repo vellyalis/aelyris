@@ -74,11 +74,12 @@ At this roadmap checkpoint:
   a fresh runtime-integrity regression review;
 - A2 signed lifecycle and A4 real-host power/sleep proof remain explicit A9
   operator/release gates rather than repo-owned PASS;
-- A4.7 authoritative mutation correction is complete and A4.8-A4.12 are active/planned;
+- A4.7 authoritative mutation correction and A4.8 durable EventBus delivery are
+  complete; A4.9-A4.12 remain active/planned;
 - A6 modularity is paused at its existing frontier, not superseded;
 - A6.2c-A6.2d extraction is landed but A6.2 acceptance is reopened by review;
 - A6.2e0 exact continuation/worklog hardening is complete;
-- A4.8 is the next runtime implementation slice; A6.2e1 remains the exact A6 resume
+- A4.9 is the next runtime implementation slice; A6.2e1 remains the exact A6 resume
   slice after A4.12 closes the corrective runtime-integrity sequence;
 - A7, A8, A9, blocking CI, and external/operator release evidence remain open;
 - current public status remains alpha and not release-ready.
@@ -136,6 +137,9 @@ Now:
   blocker/handoff, evidence/integrity, capability, `CompletedWorkPacket`,
   `BlockedWorkPacket`, and `MissionCompletionPacket` v1 contracts plus every
   referenced machine schema;
+- freeze a minimal team policy inside those Mission/WorkUnit owners: named roles,
+  capability/budget/proof profiles, completion authority, reviewer independence,
+  and ownership/governance rules without a fixed agent count;
 - inventory Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook, review,
   merge, frontend-audit, and direct-DB faces; freeze the canonical Control Command
   registry/envelopes/errors and bypass-removal gates from
@@ -192,6 +196,9 @@ Now:
 - route enabled actions through one canonical Control Kernel with generated
   schemas/catalog metadata, principal propagation, idempotency, cancellation,
   backpressure, and event/evidence equivalence; no adapter-local business owner;
+- expose capability-scoped tool discovery from the same registry; descriptor
+  visibility is principal/Mission/resource/risk/budget filtered and does not grant
+  or widen a lease;
 - bind process tree/generation, monotonic clock, canonical Windows resource handle,
   network/DNS/redirect policy, budget units, action/resource/lane, args, base/head
   OID, expiry, one-use reserve/effect/commit/uncertain, and approval;
@@ -251,6 +258,10 @@ Now:
 - aggregate the exact required work-unit packets and Mission-level acceptance into
   a distinct `MissionCompletionPacket`; one work-unit packet cannot complete the
   Mission;
+- apply the integrated-OID completion barrier inside packet settlement: reject
+  dirty or unowned worktrees, stale/superseded packets, unresolved required
+  decisions or obligations, and non-exact integration; any OID, contract, graph,
+  or proof-version change invalidates CAS settlement and requires re-proof;
 - wire review and exact-OID merge projection without automatic main merge.
 
 Acceptance:
@@ -438,7 +449,7 @@ Unlocks:
 
 Execution position: after A9 establishes the current release baseline and before
 any V1 production adapter. This plan does not alter the active
-`A4.8-A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
+  `A4.9-A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
 would require a separate authorization under the isolated non-shipping rule above;
 it may not block, satisfy, or receive credit for R0-A9.
 
@@ -493,6 +504,36 @@ Primary capability sources for the experiment are the OpenCode
 documentation is discovery input, not proof that a pinned local version behaves
 correctly.
 
+#### V1-R1 — Structured State Authority And Explainability
+
+After `V1-R0` returns `promote_one`, map the promoted runtime's snapshot/events
+into existing `AgentSession`, WorkEvent, capability, and Mission projections. The
+adapter must explain which source fact produced each state and must preserve typed
+unsupported, gap, stale, and reconcile states. It may not own a second session
+graph, journal, permission system, Decision store, or completion truth.
+
+Acceptance requires deterministic snapshot-plus-event reconstruction, causation
+links for user-visible state, adapter-disable fallback, and no silent inference
+when source facts are absent or contradictory.
+
+#### V1-R2 — Quarantined External-Run Adoption
+
+An external run may be discovered and inspected before it is trusted. Adoption
+creates an isolated, capability-free quarantine projection, binds source identity,
+version/schema, repository and OID, environment, event cursor, and provenance,
+then reconciles it against an accepted Mission contract. External-run inputs
+cannot mutate Aelyris owners, issue a lease, or receive completion credit until
+explicit adoption and focused negative gates pass.
+
+#### V1-R3 — Conditional Aelyris Runtime TUI
+
+This product-surface hypothesis opens only after `promote_one`, V1-R1
+daemon-owned projection proof, and V1-R2 quarantine proof. The TUI is a projection
+and control adapter over the same Control Kernel; it cannot replace the Tauri
+cockpit by default or become an owner. Schema/snapshot/event/direct-attach ideas
+from external runtime tools remain discovery input until pinned execution proves
+them.
+
 ### Apex V2 — Mission Time Machine
 
 Build:
@@ -515,18 +556,46 @@ Unlocks:
 
 ### Apex V3 — Qralis Coordination Fabric
 
+#### V3a — Typed Message And Team Coordination
+
 Build:
 
 - addressed inbox/history/read state and delivery policies;
-- role leases, directives, driver trust, bounded context packets;
+- typed addressed messages, Task Claims, Role Leases, directives, driver trust,
+  bounded context packets, Decision Ledger references, and Attention projection;
+- Result Capsule coordination projections that reference a
+  `CompletedWorkPacket` or `BlockedWorkPacket` and never own completion;
+- a thin transport may be replaceable, but transport rows and read state are not
+  Mission, TaskGraph, Decision, obligation-fulfillment, or completion truth;
 - event-driven coordination rather than periodic agent polling;
 - causal linking to Mission, ownership, pane, proof, and decisions.
 
-Acceptance:
+#### V3b — Obligation-Driven Team Operations
+
+Build:
+
+- an Obligation Ledger projection of typed fulfillment obligations referencing
+  the owner event, DecisionCase, packet, verifier, or human action that can close
+  them;
+- event-driven dispatch from durable owner events, not periodic agent polling;
+- adaptive governance bounded by Mission risk/budget/reviewer policy;
+- a Verified Action Surface generated from capability-scoped Control descriptors;
+- team-operation projections compiled from existing Mission, ownership, Qralis,
+  Attention, decision, and packet owners.
+
+Reading or acknowledging a message never fulfills an obligation. Generic chat,
+arbitrary JavaScript, a fixed 11-agent team, a parallel scheduler, or a second
+Decision/operation journal is outside the contract.
+
+V3a/V3b acceptance:
 
 - no lost directive under restart within the documented durability tier;
 - duplicate delivery is idempotent;
-- message is never mistaken for completed work or verified memory.
+- task claim, role lease, obligation, result, and attention transitions retain
+  causal owner references and cannot be forged by message payload alone;
+- message is never mistaken for completed work, obligation fulfillment, a
+  decision, or verified memory;
+- role leases can be revoked and dispatch can fall back to a bounded single lane.
 
 Unlocks:
 
@@ -539,15 +608,23 @@ Build:
 - expand the A7 Proofbook product with fan-out/subProofbook and Evidence Store;
 - scheduled/event-triggered and deterministic no-agent jobs;
 - evidence-backed MemoryClaim and SkillCandidate proposal/evaluation/activation;
+- proof-preserving PB-6 distillation proposals binding source trace and
+  environment snapshot, declared side effects, proof-equivalence comparators,
+  repeated and held-out differential replay, and visual proof where behavior is
+  user-visible;
 - prompt-injection/poison/PII/consent/retention/deletion policy;
 - held-out evaluation, capability manifest, sandbox/Proofbook boundary, provenance,
-  signing/digest pin, versioning, expiry, monitoring, and rollback.
+  signing/digest pin, versioning, expiry/stale invalidation, canary, monitoring,
+  rollback, and capability reduction/non-broadening.
 
 Acceptance:
 
 - UI matches runner/ledger truth;
 - raw chat/log/self-report cannot promote;
 - candidate beats or safely equals baseline on frozen evals;
+- distilled proposals preserve required effects and proof across supported
+  environments, broaden no capability, and fail closed on source/tool/schema/
+  environment drift;
 - source Proofbook is never auto-mutated.
 
 Unlocks:

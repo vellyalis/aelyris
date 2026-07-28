@@ -185,6 +185,8 @@ Mission binds:
 - objective, non-goals, repository/workspace, base OID, and desired outcome;
 - versioned acceptance clauses and proof requirements;
 - dependency DAG, active/next slice, owners, agents, panes, and worktrees;
+- a minimal team policy covering named roles, role capabilities and budgets,
+  completion authority, reviewer independence, and ownership/governance rules;
 - risk, cost, time, network, credential, and approval policies;
 - required artifacts, gates, decisions, checkpoints, and residual blockers;
 - a human-readable `capabilityOutcome` describing what completion unlocks.
@@ -358,6 +360,17 @@ blocker arrays, owner, exact next action, required input/command, expected
 artifact, current evidence, and the same OID/provenance context. It is progress
 and continuation evidence, never completion evidence.
 
+Completion settlement also acts as an integrated-OID barrier within these packet
+owners. It rejects a dirty or unowned candidate worktree, a child packet whose
+accepted OID or contract revision no longer matches, unresolved required
+`DecisionCase` or fulfillment obligations, and any merge result that is not the
+exact reviewed OID. OID, Mission revision, WorkGraph revision, or required-proof
+version changes invalidate the compare-and-swap settlement and require fresh
+proof. This is not a separate `CompletionBarrier` owner or table.
+
+A Qralis Result Capsule may summarize coordination state, but it must reference a
+`CompletedWorkPacket` or `BlockedWorkPacket`; it is never a completion primitive.
+
 Proofbook PASS, agent self-report, review approval, merge intent, or a durable
 blocked handoff alone is not completion. `ready_for_review`, `ready_to_merge`,
 `merged`, `blocked`, and `completed` remain distinct states.
@@ -375,6 +388,10 @@ action, merge-ready packet, and recovery decision.
 Each item carries an owner, exact next action, expiration/freshness, evidence ref,
 and consequence of inaction. Mission health is computed from measured backend
 evidence; estimates are labeled and never presented as trust truth.
+
+Post-A9 coordination may compile typed fulfillment obligations into Attention and
+ready work. Reading or acknowledging a message does not fulfill its obligation;
+only the referenced owner event, decision, packet, or human action can do so.
 
 ### FR-11 Reversible Autonomy
 
@@ -427,6 +444,14 @@ redaction, consent, retention, deletion, and provenance. Skill activation cannot
 be self-approved: it requires held-out evaluation, declared capability manifest,
 sandbox/Proofbook execution boundary, license/source provenance, signature or
 digest pinning, and rollback. Existing Proofbooks are never rewritten automatically.
+
+PB-6 proof-preserving distillation is an Aelyris design hypothesis, not a
+competitor-proven capability. A candidate rewrite must bind its source trace and
+environment snapshot, declare side effects, preserve or narrow capabilities, and
+pass proof-equivalence comparators through differential replay over repeated and
+held-out cases. Activation remains separately reviewed, canaried, monitored,
+rollbackable, and invalidated when source proof, environment, tool/schema, or
+capability assumptions become stale.
 
 ### FR-14 Temporal Code Map / Project Twin
 
@@ -494,6 +519,11 @@ One versioned command descriptor registry owns, for every action:
 - idempotency, ordering, deadline, cancellation, and retry/uncertain-effect rules;
 - event/evidence obligations, redaction policy, and supported adapter faces;
 - compatibility version, deprecation window, and migration/rollback behavior.
+
+Tool and action discovery is a capability-filtered projection of this registry.
+Callers see only descriptors permitted for their principal, Mission/work unit,
+runtime, resource, risk, and remaining budget; discovering a descriptor never
+grants, widens, or consumes authority.
 
 Transport adapters construct the same `ControlCommandEnvelope`, call the same
 domain application service, and map the same `ControlCommandResult`. A bearer,
@@ -645,6 +675,12 @@ The following weaken the product and are explicitly out of contract:
 - agent self-report or model confidence as completion truth;
 - fake time travel that erases events or repeats unknown side effects;
 - proofless self-modifying memory, skills, Proofbooks, or policy;
+- a parallel `MissionOperation`/`OperationJournal`, completion barrier/table,
+  scheduler, Proofbook, Decision store, or assurance-score owner;
+- a Result Capsule, message acknowledgement, or generic chat transcript treated
+  as completion, decision, obligation fulfillment, or verified memory;
+- arbitrary JavaScript action execution, a fixed 11-agent topology, or a
+  pre-A9 production OpenCode/Runtime-TUI path;
 - provider-specific SDK concepts in the core ontology;
 - using MCP as event bus, agent protocol, or second runtime;
 - frontend-owned workflow, progress, Proofbook, or completion state;
