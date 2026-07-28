@@ -219,6 +219,16 @@ agent_context:
         verify_before_claim:
           - pnpm verify:quality-score
           - pnpm verify:goal:safe:no-token
+      full_native_rust_migration_cue:
+        applies_when:
+          - full-native Rust migration is explicitly named
+          - NUI-F0 through NUI-F7 or N0 through N4 is named
+          - WebView-free distribution planning is requested
+        read_first:
+          - docs/plans/full-native-rust-migration/INTEGRATION.md
+          - docs/plans/full-native-rust-migration/native-ui-migration-instructions.md
+          - docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md
+          - docs/specs/README.md
       implementation_work_unit:
         read:
           - docs/specs/README.md
@@ -327,9 +337,10 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
    phase A3. Do not execute it as a concurrent work order.
 5. `renderer-instructions.md` - deferred to conditional audit-remediation phase
    A8. Do not reopen from the old generic route.
-
 現行実行順は `refactor (complete) -> hardening (complete) -> audit remediation
-R0..A9`。audit remediation 内の完了済み phase は fresh verifier/review regression
+R0..A9`。full-native Rust migration is the priority-1 queued post-A9 program by
+default; A8.0 is only a decision gate, not activation. audit remediation 内の完了済み
+phase は fresh verifier/review regression
 が出た場合だけ同じ tracked program 内で再開し、exact frontier は root work order と
 canonical local handoff を正とする。
 同時実行は禁止。work order 群は

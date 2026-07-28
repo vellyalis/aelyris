@@ -1,0 +1,3 @@
+# Preserve the imported ZIP provenance tree byte-for-byte across platforms.
+docs/plans/full-native-rust-migration/source/** binary
+docs/plans/full-native-rust-migration/source-manifest.json binary

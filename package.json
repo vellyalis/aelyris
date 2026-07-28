@@ -35,6 +35,7 @@
     "verify:a6:frontend-ratchet": "node scripts/verify-a6-frontend-ratchet.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
+    "verify:native-ui:design-package": "node scripts/verify-native-ui-design-package.mjs",
     "verify:proofbook:spec": "node scripts/verify-proofbook-spec.mjs",
     "verify:proofbook:runner": "node scripts/verify-proofbook-runner.mjs",
     "verify:proofbook:agent-session": "node scripts/verify-proofbook-agent-session.mjs",

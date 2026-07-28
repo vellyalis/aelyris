@@ -248,3 +248,38 @@ Aelyris design hypothesis with differential replay, canary, rollback, stale
 invalidation, and capability non-broadening. No parallel `MissionOperation`,
 `OperationJournal`, `CompletionBarrier`, scheduler, Proofbook, assurance score, or
 Decision owner is authorized.
+
+## ADR-014 Full-Native Rust Product Surface
+
+Status: **proposed / queued**. This entry reserves the canonical decision ID and
+does not yet supersede ADR-001 or `TERMINAL_CORE_DESIGN.md §3`.
+
+Proposal: migrate the primary operator surface from Tauri/React/WebView2 to a
+Rust-native Windows surface through the reversible NUI-F0-F7 plan. Reuse the
+canonical Control/Mission/runtime owners, winit, wgpu, windows-rs, DirectWrite,
+Taffy, and AccessKit; keep Tauri as the rollback/compatibility face until an N4
+aggregate proves a WebView-free distribution.
+
+Why tracked now:
+
+- the repository already has substantial native proof and renderer-neutral
+  terminal/input contracts;
+- the supplied design package defines requirements, architecture, framework,
+  editor, migration, verification, and traceability as one falsifiable program;
+- making it a numbered proposal prevents the high-priority direction from being
+  lost without presenting it as current architecture.
+
+Decision gate: A8.0 evaluates the product Goal, Windows support boundary,
+current hybrid baseline, mature Rust framework alternatives, custom-framework
+ownership cost, rollback, and release timing. Default execution is priority 1
+after A9. A pre-A9 takeover requires explicit owner approval and a versioned
+rebaseline of the active program. A8.0 records one total result here:
+accepted-as-written, accepted-with-amendments, deferred, or rejected. Both
+accepted results enter the same activation branch. NUI-0.1 may only ratify that
+already accepted decision for implementation activation; it is not a second
+architecture decision gate.
+
+Implication: current `audit-remediation/A4.10 -> A4.12 -> A6.2e1` routing,
+measured A8 terminal decision, Tauri/React architecture, and alpha claim remain
+unchanged. The detailed queued draft and source-package integration record live
+under `docs/plans/full-native-rust-migration/`.

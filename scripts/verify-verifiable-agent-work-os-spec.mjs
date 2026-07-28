@@ -220,7 +220,7 @@ const requiredRoadmapClauses = [
   "A7.5 — Proofbook Product, Recipes, Budget/Cost, And Fleet Briefing",
   "A7.6 — Remote Read-Only Continuity",
   "A7.8 — Successful First Mission Acceptance",
-  "A8 And A9 Remain Unchanged Release Gates",
+  "A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate",
   "A4.10 is the next runtime implementation slice",
   "Apex V1 — Universal Agent Fabric Expansion",
   "V1-R0 — OpenCode Candidate Adapter Comparison",

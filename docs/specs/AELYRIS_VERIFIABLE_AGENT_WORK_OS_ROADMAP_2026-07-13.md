@@ -97,6 +97,7 @@ random feature accumulation. It does not unlock a shipped capability.
 | A6.2f-g | split composition/hotspot tests and pass blocking frontend acceptance | App and extracted owners <=800, behavior/CI green | modular cockpit ready to receive Mission projections |
 | A6.3-A6.8 | IPC/MCP/DB/native owner splits, dead-owner proof, aggregate ratchet | owner-specific and combined blocking gates | backend seams stable enough for one Mission vertical |
 | A7.0-A7.8 | Core Mission Loop | restart-safe successful First Mission, Proofbook/recipes/cost, remote read-only, and immutable completion packet | trusted brief-to-proof workflow in one local/remote-observable cockpit |
+| A8.0 | native product-goal/architecture decision | current native coverage v2, same-condition evidence, alternatives, ownership cost, rollback, Windows support, and release timing | keep post-A9 priority-1 default or explicitly authorize a versioned pre-A9 rebaseline |
 | A8 | measured native terminal spike | parity/perf/soak decision evidence | evidence-based renderer direction, including a valid no-promote result |
 | A9 | blocking CI, signed/update/install/relaunch/rollback, real-host and operator proof | current repo+CI+external completion matrix | release claim only if every existing claim-policy gate passes |
 
@@ -370,7 +371,23 @@ Unlocks:
 
 - Aelyris has one proven end-to-end Verifiable Agent Work OS vertical.
 
-## 6. A8 And A9 Remain Unchanged Release Gates
+## 6. A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate
+
+### A8.0 native product-goal and architecture decision
+
+A8.0 evaluates the high-priority queued full-native Rust migration package after
+A7 without changing the current active frontier or A8 evidence contract. It
+compares the current hybrid, a mature Rust UI framework, and the proposed
+Aelyris-specific retained runtime under the same Goal and evidence.
+
+The decision includes current native coverage v2, representative
+input/render/memory/soak, IME, accessibility, recovery, dependency/license and
+maintenance cost, Windows 10/11 support, rollback, and release timing. Historical
+v1 `98%` evidence cannot authorize promotion.
+
+Default sequencing remains A8 -> A9 -> NUI-F0-F7 as the priority-1 next program.
+A pre-A9 takeover requires explicit owner approval and a versioned program
+rebaseline accepting the release delay.
 
 ### A8 measured native terminal decision
 
@@ -393,6 +410,12 @@ A9 still owns:
 No A7 or Apex feature converts an external/operator gate into repo-owned PASS.
 
 ## 7. Apex Roadmap — Post-A9 Product Waves
+
+If A8.0 accepts ADR-014 as written or with amendments, NUI-F0-F7 is the first
+post-A9 portfolio program and these Apex waves begin after NUI closes or is
+retired. If A8.0 defers or rejects ADR-014, Apex V1 begins directly. This
+preserves the internal V1-V9 dependency order while making the native migration
+the explicit priority-1 accepted path.
 
 These waves are tracked destination work, not hidden R0-A9 completion criteria.
 Each wave gets its own spec inventory, focused commits, verifiers, CI, and claim.

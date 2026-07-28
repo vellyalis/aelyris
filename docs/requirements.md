@@ -20,6 +20,20 @@ authoritative requirement, specification, design, and proof sources.
 The active spec index is `docs/specs/README.md`. Start there for the current read
 order and the authoritative specs. Key still-active specs include:
 
+0. High-priority full-native Rust migration proposal:
+   `docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md`
+
+   Owns the queued NUI requirements for the staged N0-N4 move from the current
+   Tauri/React/WebView2 face to a Rust-native Windows operator surface. The
+   master plan, architecture, framework/editor specs, roadmap, verification,
+   traceability, and integration record are indexed in `docs/specs/README.md`.
+   Current execution remains `audit-remediation/A4.10`; the accepted
+   A4.12-to-A6.2e1 frontier and measured A8 terminal gate remain unchanged.
+   A8.0 owns the future product/architecture decision, and NUI-F0-F7 is priority
+   1 after A9 by default. No imported document changes the current product or
+   release claim. Package placement, canonical hashes, routing, and claim guards
+   are checked by `pnpm verify:native-ui:design-package`.
+
 1. Verifiable Agent Work OS product contract:
    `docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md`
 
@@ -75,6 +89,11 @@ the durable top-level work contract. That phrase is a target design category. It
 must not be projected as implemented, shipped, production-ready, or
 release-candidate-ready until the matching A7 runtime gates, A8 decision evidence,
 A9 release/external evidence, and current aggregate claim policy all pass.
+
+The high-priority N4 WebView-free direction is likewise a queued target, not a
+current capability. Only the N1-N4 aggregate gates defined by the native UI
+verification plan can promote native surface claims; source presence, ADR-014,
+NUI-F0, or a focused native proof cannot.
 
 ## Current Machine Truth
 

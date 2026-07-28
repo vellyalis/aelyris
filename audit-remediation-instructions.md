@@ -31,6 +31,23 @@ Completed refactor/hardening orders remain historical preflight only. WU-UQ-1 is
 input to phase A3, not a concurrent active work order. Renderer Stage 2 is deferred to
 conditional phase A8.
 
+The full-native Rust migration package is registered as a high-priority queued
+proposal under `docs/plans/full-native-rust-migration/`. It does not change the
+current execution order or create a concurrent phase:
+
+```text
+A4.10 -> A4.11 -> A4.12
+  -> A6.2e1/A6 -> A7 Core
+  -> A8.0 product-goal/architecture decision
+  -> measured A8 terminal decision -> A9 closeout
+  -> NUI-F0..F7 as the priority-1 post-A9 program
+```
+
+A8.0 may recommend a pre-A9 takeover only through an explicit owner decision and a
+versioned rebaseline that accepts the release delay. Importing the proposal or
+marking it high priority does not authorize that schedule change. The measured A8
+terminal decision, A9 trust owners, and current claim boundary remain unchanged.
+
 ## Mandatory Read Order
 
 1. `AGENTS.md` current status and work rules.
@@ -67,6 +84,7 @@ continuation_contract:
 | A5 | supervised execution and lock/concurrency boundaries | A4 complete | timeout/cancel/concurrency gates PASS |
 | A6 | owner-based splits and modularity ratchets | A5 complete | ratchet + focused tests PASS |
 | A7 | Mission/capability spine, Proofbook product/recipes/cost, remote read-only, CompletedWorkPacket, and first complete product mission | A6 complete | restart-safe successful commit-bound Core Mission scenario PASS |
+| A8.0 | native product-goal/architecture decision; current hybrid vs mature Rust framework vs custom retained runtime | A7 complete | accepted-as-written/accepted-with-amendments/deferred/rejected ADR-014 decision; both accepted results use one activation branch; no capability credit |
 | A8 | measured terminal-only native spike | A7 complete and metrics justify | parity/perf/soak decision artifact |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
@@ -295,6 +313,8 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   cleanup for every post-spawn failure.
 - A4.12 owns combined crash/fault/restart acceptance and is the only slice allowed to
   restore `phaseComplete=true` and A4 release-score credit.
+- After A4.12, resume the frozen A6 frontier at A6.2e1. The queued NUI proposal
+  does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

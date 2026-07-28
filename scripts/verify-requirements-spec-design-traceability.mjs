@@ -7,6 +7,9 @@ const OUT = join(ROOT, ".codex-auto", "quality", "requirements-spec-design-trace
 
 const DOCS = {
   agents: "AGENTS.md",
+  architecture: "ARCHITECTURE.md",
+  decisions: "DECISIONS.md",
+  auditWorkOrder: "audit-remediation-instructions.md",
   publicationReadiness: "docs/PUBLICATION_READINESS.md",
   requirements: "docs/requirements.md",
   specsReadme: "docs/specs/README.md",
@@ -21,6 +24,18 @@ const DOCS = {
   planner: "docs/specs/PLANNER_SPEC.md",
   typeBridge: "docs/specs/TYPE_BRIDGE_SPEC.md",
   uiTokenDial: "docs/specs/UI_TOKEN_DIAL_SPEC.md",
+  nativePackageReadme: "docs/plans/full-native-rust-migration/README.md",
+  nativeIntegration: "docs/plans/full-native-rust-migration/INTEGRATION.md",
+  nativeWorkOrder: "docs/plans/full-native-rust-migration/native-ui-migration-instructions.md",
+  nativeAdrDraft: "docs/plans/full-native-rust-migration/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md",
+  nativeMasterPlan: "docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
+  nativeRequirements: "docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md",
+  nativeArchitecture: "docs/specs/AELYRIS_NATIVE_UI_ARCHITECTURE.md",
+  nativeFramework: "docs/specs/AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md",
+  nativeEditor: "docs/specs/AELYRIS_NATIVE_EDITOR_SPEC.md",
+  nativeRoadmap: "docs/specs/AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md",
+  nativeVerification: "docs/specs/AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md",
+  nativeTraceability: "docs/specs/AELYRIS_NATIVE_UI_TRACEABILITY.md",
 };
 
 const ARTIFACTS = {
@@ -39,6 +54,7 @@ const REQUIRED_TRACE_COMMANDS = [
   "verify:goal:safe",
   "verify:requirements-spec-design-traceability",
   "verify:verifiable-agent-work-os-spec",
+  "verify:native-ui:design-package",
 ];
 
 const STALE_README_PHRASES = ["全て draft / docs only", "設計完了・実装未着手", "source code changes は含まない"];
@@ -182,7 +198,7 @@ const checks = [
   ),
   check(
     "specs-readme-current",
-    includesAll(docs.specsReadme, [
+    includesAll(normalizedDocs.specsReadme, [
       "../requirements.md",
       "AELYRIS_AGENT_MESSAGE_BUS_SUPERSET_SPEC.md",
       "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
@@ -211,6 +227,50 @@ const checks = [
     "public spec index maps the current requirements/spec/design authority without relying on removed internal audit docs",
   ),
   check(
+    "native-ui-package-queued-traceability",
+    includesAll(docs.specsReadme, [
+      "AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
+      "AELYRIS_NATIVE_UI_REQUIREMENTS.md",
+      "A8.0",
+      "priority 1",
+      "verify:native-ui:design-package",
+    ]) &&
+      includesAll(normalizedDocs.requirements, [
+        "AELYRIS_NATIVE_UI_REQUIREMENTS.md",
+        "A8.0",
+        "priority 1 after A9",
+        "NUI-F0-F7",
+      ]) &&
+      includesAll(normalizedDocs.decisions, [
+        "ADR-014 Full-Native Rust Product Surface",
+        "Status: **proposed / queued**",
+        "priority 1 after A9",
+      ]) &&
+      includesAll(normalizedDocs.auditWorkOrder, [
+        "ACTIVE SLICE: `A4.10`",
+        "NEXT PHASE: `A6`",
+        "A8.0",
+        "measured terminal-only native spike",
+      ]) &&
+      includesAll(normalizedDocs.nativeWorkOrder, [
+        "STATUS: QUEUED_HIGH_PRIORITY",
+        "priority 1 after A9",
+        "explicit owner decision",
+      ]) &&
+      includesAll(normalizedDocs.nativeArchitecture, [
+        "target contracts, not implemented owners",
+        "second durable event stream",
+        "existing persistence/migration",
+        "A9's single trust",
+      ]) &&
+      includesAll(normalizedDocs.nativeTraceability, [
+        "Activation blocker",
+        "every concrete `NUI-*` requirement ID",
+        "no wildcard-only coverage",
+      ]),
+    "the full-native Rust package is indexed as a high-priority queued proposal without changing A4.10, A6.2e1, measured A8, or current claims",
+  ),
+  check(
     "work-os-authority-composition",
     includesAll(docs.workOsSpec, [
       "Four-Layer Differentiation Audit",
@@ -229,7 +289,7 @@ const checks = [
         "R0-A9 remains Wave 0",
         "A4.10 is the next runtime implementation slice",
         "A6.2e1 remains the exact A6 resume",
-        "A8 And A9 Remain Unchanged Release Gates",
+        "A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate",
       ]) &&
       includesAll(docs.controlApiMcp, [
         "Current Audit Findings At HEAD `3db3932`",

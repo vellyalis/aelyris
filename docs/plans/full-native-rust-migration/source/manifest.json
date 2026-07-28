@@ -1,0 +1,64 @@
+{
+  "schema": "aelyris.native-ui-design-package.v1",
+  "generatedDate": "2026-07-28",
+  "targetRepository": "vellyalis/aelyris",
+  "status": "proposal",
+  "goal": "N4 WebView-free distribution",
+  "documents": [
+    {
+      "path": "AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
+      "bytes": 20676,
+      "sha256": "bc3d2dcd2096dc8b260bceece57179e766b025ae9f272495e8f501fdcce4127f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4526,
+      "sha256": "c41239661fe124e6337669e2bcedb4e2148d2b4ac2ef8d6dd77e2b48985e4229"
+    },
+    {
+      "path": "docs/adr/ADR-013_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md",
+      "bytes": 4465,
+      "sha256": "9daf0189db0209cd922d98b22eb813d4581590212afeaa2b9f117ddbc4bf8279"
+    },
+    {
+      "path": "docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md",
+      "bytes": 18769,
+      "sha256": "b207defbac67126a9cebc9539296dc9ae38ae8c34de9339130d0f94dea2c1863"
+    },
+    {
+      "path": "docs/specs/AELYRIS_NATIVE_EDITOR_SPEC.md",
+      "bytes": 7030,
+      "sha256": "b74dbe9bd5fb9d5b3e2bb6e758d733046f19f8e7fdcbfa66df04e6ff01c2e4c5"
+    },
+    {
+      "path": "docs/specs/AELYRIS_NATIVE_UI_ARCHITECTURE.md",
+      "bytes": 16669,
+      "sha256": "1a8b33c11461554746b4dfa1914da622bc531292de4bec5550b2c5a855129162"
+    },
+    {
+      "path": "docs/specs/AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md",
+      "bytes": 13272,
+      "sha256": "f055a1c2725f8d3ceb4bdfed83494b0cd44b770271e5f4d1a67662c1de05430e"
+    },
+    {
+      "path": "docs/specs/AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md",
+      "bytes": 10879,
+      "sha256": "bcf2b491dba2082c8378e0ac8d484996f0954fcb8b97e4d57eb9dd04b5737a57"
+    },
+    {
+      "path": "docs/specs/AELYRIS_NATIVE_UI_TRACEABILITY.md",
+      "bytes": 3659,
+      "sha256": "5b5e5a3d29d0436de3ae02733b2d6d707b5f62c09f70d150fb2d73b359e5a20d"
+    },
+    {
+      "path": "docs/specs/AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md",
+      "bytes": 8986,
+      "sha256": "42e5b014d0e343e46b5767084668ca6837fb23501960362125326815b203cf4a"
+    },
+    {
+      "path": "native-ui-migration-instructions.md",
+      "bytes": 6580,
+      "sha256": "00546bfd3bc84ed11dc4dd54f7cd15d2d593ff457286b57c53a515d4e1686945"
+    }
+  ]
+}

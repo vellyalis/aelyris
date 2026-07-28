@@ -18,6 +18,7 @@ Core rule:
 | --- | --- | --- |
 | Product goal / claim policy | current safe claims, release boundaries | `GOAL.md`, `docs/requirements.md`, `docs/PUBLICATION_READINESS.md` |
 | Verifiable Agent Work OS target | Mission, Now/Next/Unlocks, trust/proof/learning composition | `docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_*` |
+| Queued full-native Rust target | proposed N0-N4 surface migration; not current architecture | `DECISIONS.md` ADR-014, `docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md`, `docs/plans/full-native-rust-migration/` |
 | Decision knowledge | placement and tradeoff rules | `AI_GUIDE.md`, `DECISION_FRAMEWORK.md` |
 | Contracts | rigid API/schema/runtime boundaries | `contracts/README.md`, owning specs |
 | Task packets | current volatile work | `tasks/README.md`, root work-order docs |
@@ -62,6 +63,23 @@ The active R0-A9 plan implements only a finite A7 Core Mission Loop before A8/A9
 Replay/time travel, Skill Foundry, Decision Lab, Counterfactual Arena, Project
 Twin, writable Remote Continuity, extension marketplace, and A2A federation remain
 separately gated Apex work.
+
+## Queued Full-Native Rust Target
+
+The imported NUI-F0-F7 package is a high-priority queued architecture proposal,
+not the current placement authority. Current Tauri/React composition remains
+active until ADR-014 is accepted.
+
+The default portfolio order is A8.0 decision, existing measured A8, A9 closeout,
+then NUI-F0-F7 as priority 1. A8.0 compares the current hybrid, a mature Rust UI
+framework, and the proposed Aelyris-specific retained runtime. A pre-A9 takeover
+requires an explicit owner decision and a versioned rebaseline.
+
+If accepted, native and Tauri faces must share the existing runtime, Control,
+Mission, EventBus/DB, persistence, terminal, review, merge, and proof owners.
+`ProjectionHub`, editor recovery, UI snapshots, and native updater/signing are
+target names for adapters over those owners; they are not authorization for a
+second durable stream, recovery journal, or trust path.
 
 Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook, review, and merge are
 adapters over the Control Kernel. They may authenticate/map a face but never own

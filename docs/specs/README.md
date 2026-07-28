@@ -64,6 +64,7 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 | [AELYRIS_DIFFERENTIATION_POLISH_SPEC.md](./AELYRIS_DIFFERENTIATION_POLISH_SPEC.md) | subordinate precursor / visible fleet + Proofbook UX | center terminal pane tree、visible PTY、bounded shared brain、symbol/function ownership、Proofbook product surface の下位契約。top-level Mission/composition/settlement/product direction は Work OS spec が所有し、本書は競合名を product category にしない |
 | [AELYRIS_DIFFERENTIATION_DETAILED_DESIGN.md](./AELYRIS_DIFFERENTIATION_DETAILED_DESIGN.md) | D0-D8 implementation design | Differentiation polish の詳細設計。D0 spec/verifier gate、D1 center-pane fleet、D2 durable runtime、D2R Remote Continuity + SSH Attach、D3 live activity + ownership、D4 bounded shared brain、D5 Proofbook UI、D6 PB-5/PB-6/PB-7、D7 governed merge-ready lane、D8 claim gate を分離し、技術負債を残さない実装順を定義 |
 | [COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md](./COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md) | active R0-A9 remediation program | 2026-07-10 総合監査を authority/evidence、terminal input、Windows trust、UI trust、durability、execution supervision、modularity、CompletedWorkPacket、native spike、release lane の依存順へ変換した tracked 実行正本。root work order は `audit-remediation-instructions.md` |
+| [AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md](./AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md) | **high-priority queued native UI program / NUI-F0-F7 / N0-N4** | ZIP 由来の完全な full-native Rust migration package。要件は [../requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md](../requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md)、設計は `AELYRIS_NATIVE_UI_ARCHITECTURE.md` / `AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md` / `AELYRIS_NATIVE_EDITOR_SPEC.md`、実行順は `AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md`、証拠契約は `AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md` / `AELYRIS_NATIVE_UI_TRACEABILITY.md`。canonical decision owner は `DECISIONS.md` の proposed ADR-014、詳細 draft・source hash・統合判断・queued work order は [../plans/full-native-rust-migration/](../plans/full-native-rust-migration/README.md)。現在の active slice、A4.12→A6.2e1、measured A8 は変更しない。A8.0 が採否/前倒しを判断し、既定は A9 後の priority-1 program。統合 gate は `pnpm verify:native-ui:design-package` |
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md) | product target / A7 Core + post-A9 Apex requirements | **Verifiable Agent Work OS**の要件正本。Aelyris Mission、Now/Next/Unlocks、Universal Agent Fabric、pane control baton、Chronicle、capability kernel、CompletedWorkPacket、可逆性、Attention Compiler、Verified Skill Foundry、Counterfactual Arena、Remote Continuityを一つのclaim-safe契約へ統合。design authorityであり実装済みclaimではない |
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md) | architecture / detailed design | 既存 owner を拡張する bounded context、Mission/WorkEvent/capability/evidence/packet/learning schemas、state machine、atomicity/reconciliation、failure semantics、A7 Core vertical、Apex gatesを定義。OpenCode候補はPTY/ACP/HTTP-SSEを同条件比較する`V1-R0`だけを先に置き、second TaskGraph/journal/runner/dispatcherを禁止 |
 | [AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md](./AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md) | security-critical cross-face detailed design | Tauri IPC/MCP/REST/WS/CLI/PTY/Proofbook/review/merge を一つの Rust-authoritative command registry/kernel に閉じる target contract。principal/capability、schema/version、idempotency/cancellation/backpressure、evidence、migration、bypass inventory、adversarial gates を所有し、実装済みclaimではない |
@@ -93,8 +94,13 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 
 現在の実行入口は repo root の `audit-remediation-instructions.md`。詳細な
 依存順は `COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` の R0-A9 を
-正とする。下の Batch A-F は既存 cockpit program の設計履歴であり、現在の
-next Work Unit routing ではない。
+正とする。full-native Rust migration は high-priority queued program だが、
+現在の A4.10 と並行せず、A4.12→A6.2e1 と measured A8 を変更しない。A7後の
+A8.0 が Goal/architecture/Windows support/前倒しの採否を判断し、既定は A9 後に
+NUI-F0-F7 を priority 1 で開始する。pre-A9 takeover は owner の明示決定と
+versioned rebaseline が必要。
+下の Batch A-F は既存 cockpit program の設計履歴であり、現在の next Work Unit
+routing ではない。
 
 ## 依存関係（既存 cockpit program 要約）
 

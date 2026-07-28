@@ -33,6 +33,16 @@ task_router:
       - DECISION_FRAMEWORK.md
       - ARCHITECTURE.md
       - DECISIONS.md
+  full_native_rust_migration:
+    read:
+      - docs/plans/full-native-rust-migration/INTEGRATION.md
+      - docs/plans/full-native-rust-migration/native-ui-migration-instructions.md
+      - docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md
+      - docs/specs/AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md
+    current_boundary:
+      - queued_high_priority
+      - default_priority_1_after_A9
+      - A8_0_decision_does_not_activate_by_itself
   contract_or_schema:
     read:
       - contracts/README.md
@@ -178,6 +188,7 @@ Use this table before creating or editing files.
 | Product goal, claim policy, current truth | `GOAL.md`, `docs/requirements.md`, `docs/PUBLICATION_READINESS.md`, `README.md` | old progress docs as truth |
 | AI decision rules | `DECISION_FRAMEWORK.md`, `DELEGATION_FRAMEWORK.md`, `AI_GUIDE.md` | chat-only repeated judgment |
 | Architecture placement | `ARCHITECTURE.md`, owning source modules | growing unrelated owner files |
+| Queued full-native Rust migration | `DECISIONS.md` ADR-014, `docs/plans/full-native-rust-migration/`, `docs/specs/AELYRIS_*NATIVE*` | root active work order, second runtime/event/persistence/trust owner |
 | Decision history | `DECISIONS.md` | re-litigating settled choices |
 | Style and naming | `STYLE.md`, local code conventions | new style islands |
 | Spec index / work-unit routing | `docs/specs/README.md` | hidden handoff-only routing |
