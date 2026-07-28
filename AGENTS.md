@@ -8,7 +8,7 @@ Windows向けプロジェクトファーストAI開発ワークスペース。
 Claude Code 固有の補足は `CLAUDE.md` に置きますが、矛盾した場合はこの
 `AGENTS.md` と `docs/requirements.md` の current claim policy を優先します。
 
-Operating-policy version: `2.0.0-aelyris.1` (2026-07-16). This is an
+Operating-policy version: `2.0.0-aelyris.2` (2026-07-28). This is an
 Aelyris-specific adaptation of `AGENTS.gpt56.md`: its Goal/R-PDCA discipline is
 adopted, its fixed verification-volume cap is rejected, and the project claim,
 continuation, and work-order contracts below remain mandatory.
@@ -34,6 +34,21 @@ continuation, and work-order contracts below remain mandatory.
 - mode は作業量や難しさだけでなく、不確実性、失敗影響、可逆性、探索の期待価値で
   選ぶ。Routine に複数仮説や大規模調査を儀式として強制せず、Exploration を
   最初に思いついた局所解だけで閉じない。
+
+### Implementation-First And Anti-Overengineering
+
+- 実装・修正依頼では、Goal gap を直接閉じる product/runtime source の変更を主成果と
+  する。Goal 自体が test、review、document、policy でない限り、test-only、
+  review-only、document-only の作業を実装進捗として数えない。
+- テスト、verifier、review、文書は、実装の反証、回帰防止、claim evidence に必要な
+  最小量に限定する。既存の評価面で主要 claim と risk boundary を判定できるなら、
+  新しい runner、report、fixture、抽象化、独立 review を追加しない。
+- focused gate が変更した挙動と主要リスクを覆い fresh evidence が得られたら止める。
+  source/contract が変わっていない gate の反復や full suite は、回帰兆候、semantic
+  risk、または claim scope が必要とする場合だけ行う。
+- security、data integrity、concurrency、release claim では実装より大きい検証も
+  許容するが、具体的な failure mode と因果的に結びつく範囲に限り、未実装の機能を
+  検証量で補ったことにはしない。
 
 ### Autonomy And Questions
 

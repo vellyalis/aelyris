@@ -285,8 +285,11 @@ When asked to implement a change:
 3. Inspect current file contents. Never infer.
 4. Choose the smallest owner module that can hold the change without creating a
    second source of truth.
-5. Add or update the focused verifier when the change creates a claim.
-6. Run the narrow gate first, then broader gates as risk requires.
+5. Add or update a focused verifier only when the existing verification surface
+   cannot falsify the changed claim or its named risk boundary.
+6. Run the narrowest sufficient gate first and stop when it provides fresh
+   evidence; run broader gates only when semantic risk or a regression signal
+   requires them.
 7. Report what changed, which contract owns it, and which proof passed.
 
 ## 11. When To Stop
