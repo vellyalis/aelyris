@@ -28,6 +28,22 @@ const scenarios = [
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "task::manager::tests", "--lib"],
   },
   {
+    id: "work-execution-attempt-generation-and-load-integrity",
+    command: cargo,
+    args: [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "persistence::work_execution_repo::tests",
+      "--lib",
+    ],
+  },
+  {
+    id: "execution-fence-crash-boundaries-and-stale-token",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "control::loop_ports::tests", "--lib"],
+  },
+  {
     id: "event-outbox-append-query-gap-and-consumer-ack",
     command: cargo,
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::event_repo::tests", "--lib"],
@@ -158,12 +174,12 @@ for (const scenario of scenarios) {
 
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a4-durability-acceptance/v4",
+  schema: "aelyris.a4-durability-acceptance/v5",
   status: failed ? "failed" : "pass-current-a4-durability-evidence",
-  completedThrough: failed ? "A4.7" : "A4.8",
+  completedThrough: failed ? "A4.8" : "A4.9",
   repoOwnedComplete: false,
   phaseComplete: false,
-  remainingSlices: ["A4.9", "A4.10", "A4.11", "A4.12"],
+  remainingSlices: ["A4.10", "A4.11", "A4.12"],
   scenarios: results,
   externalProof: {
     realOsSleepResumeExecuted: false,
@@ -187,6 +203,10 @@ const report = {
       "src-tauri/src/context_store/manager.rs",
       "src-tauri/src/task/manager.rs",
       "src-tauri/src/task/graph.rs",
+      "src-tauri/src/task/execution.rs",
+      "src-tauri/src/persistence/work_execution_repo.rs",
+      "src-tauri/src/control/loop_ports.rs",
+      "src-tauri/src/persistence/ownership_repo.rs",
       "src-tauri/src/event_bus/mod.rs",
       "src-tauri/src/event_bus/manager.rs",
       "src-tauri/src/persistence/event_repo.rs",

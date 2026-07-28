@@ -220,6 +220,7 @@ mod tests {
             tokens_used: 42,
             started_at: 123,
             task_id: None,
+            execution_identity: None,
             current_activity: None,
         });
 

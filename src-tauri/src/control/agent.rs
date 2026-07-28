@@ -1,6 +1,7 @@
 use crate::agent::router::{AgentRouter, RoutingDecision};
 use crate::agent::{AgentManager, AgentSession};
 use crate::control::ControlResult;
+use crate::task::ExecutionIdentity;
 
 #[derive(Debug, Clone)]
 pub struct HeadlessSpawnSpec {
@@ -25,6 +26,23 @@ pub fn list_headless(manager: &AgentManager) -> Vec<AgentSession> {
 
 pub fn start_headless(manager: &AgentManager, spec: HeadlessSpawnSpec) -> ControlResult<String> {
     let id = manager.start_session(
+        &spec.prompt,
+        &spec.cwd,
+        spec.model.as_deref(),
+        spec.allowed_tools,
+        spec.resume_id.as_deref(),
+    )?;
+    drain_session_output(manager, &id);
+    Ok(id)
+}
+
+pub fn start_headless_with_execution(
+    manager: &AgentManager,
+    spec: HeadlessSpawnSpec,
+    identity: ExecutionIdentity,
+) -> ControlResult<String> {
+    let id = manager.start_session_with_execution(
+        Some(identity),
         &spec.prompt,
         &spec.cwd,
         spec.model.as_deref(),

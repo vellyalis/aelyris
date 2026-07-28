@@ -27,6 +27,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::orchestrator::autonomy::Completions;
 use crate::pty::PtyManager;
+use crate::task::{ExecutionIdentity, ExecutionToken};
 
 /// Backward-compatible output-file fallback window for legacy agents that do not
 /// know the explicit done-marker contract yet. Marker files are still the
@@ -101,6 +102,7 @@ struct PaneRun {
     outputs_ready_since: Option<u64>,
     last_output_signature: Option<u64>,
     output_idle_since: Option<u64>,
+    execution_identity: Option<ExecutionIdentity>,
 }
 
 /// Whether every declared output path exists under the worktree. Empty `outputs`
@@ -156,7 +158,7 @@ impl PaneFleet {
             self.pty
                 .spawn_command(program, args, cols, rows, Some(cwd), Some(env))?;
 
-        self.register_spawned_pane(task_id, &terminal_id, cwd, outputs)?;
+        self.register_spawned_pane(task_id, &terminal_id, cwd, outputs, None)?;
         Ok(terminal_id)
     }
 
@@ -185,8 +187,41 @@ impl PaneFleet {
             Some(cwd),
             Some(env),
         )?;
-        self.register_spawned_pane(task_id, terminal_id, cwd, outputs)?;
+        self.register_spawned_pane(task_id, terminal_id, cwd, outputs, None)?;
         Ok(terminal_id.to_string())
+    }
+
+    /// Spawn under a PTY/session identity durably reserved by A4.9 before the
+    /// process effect. The exact token is retained through completion.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_with_execution(
+        &self,
+        identity: ExecutionIdentity,
+        program: &str,
+        args: &[String],
+        cols: u16,
+        rows: u16,
+        cwd: &str,
+        env: HashMap<String, String>,
+        outputs: Vec<String>,
+    ) -> Result<String, String> {
+        let terminal_id = identity
+            .pty_session_id
+            .as_deref()
+            .ok_or_else(|| "visible execution is missing pty_session_id".to_string())?;
+        self.pty.spawn_command_with_id(
+            terminal_id,
+            program,
+            args,
+            cols,
+            rows,
+            Some(cwd),
+            Some(env),
+        )?;
+        let terminal_id = terminal_id.to_string();
+        let task_id = identity.task_id.clone();
+        self.register_spawned_pane(&task_id, &terminal_id, cwd, outputs, Some(identity))?;
+        Ok(terminal_id)
     }
 
     fn register_spawned_pane(
@@ -195,6 +230,7 @@ impl PaneFleet {
         terminal_id: &str,
         cwd: &str,
         outputs: Vec<String>,
+        execution_identity: Option<ExecutionIdentity>,
     ) -> Result<(), String> {
         let exit = Arc::new(Mutex::new(None));
         match self.pty.take_child(terminal_id) {
@@ -252,6 +288,7 @@ impl PaneFleet {
                 outputs_ready_since: None,
                 last_output_signature: None,
                 output_idle_since: None,
+                execution_identity,
             },
         );
         Ok(())
@@ -300,6 +337,7 @@ impl PaneFleet {
                         last_output_signature: run.last_output_signature,
                         output_idle_since: run.output_idle_since,
                     },
+                    execution_identity: run.execution_identity.clone(),
                 })
                 .collect()
         };
@@ -395,6 +433,7 @@ impl PaneFleet {
             let _ = self.pty.remove_exited(&terminal);
         }
 
+        split_execution_completions(&snapshot, &mut completions);
         completions
     }
 }
@@ -412,6 +451,46 @@ struct RunSnapshot {
     outputs: Vec<String>,
     done_marker_path: PathBuf,
     output_fallback: OutputFallbackState,
+    execution_identity: Option<ExecutionIdentity>,
+}
+
+fn split_execution_completions(snapshot: &[RunSnapshot], completions: &mut Completions) {
+    let identities: HashMap<&str, &ExecutionIdentity> = snapshot
+        .iter()
+        .filter_map(|run| {
+            run.execution_identity
+                .as_ref()
+                .map(|identity| (run.task_id.as_str(), identity))
+        })
+        .collect();
+    let split = |legacy: &mut Vec<String>, typed: &mut Vec<ExecutionToken>| {
+        let mut retained = Vec::new();
+        for task_id in std::mem::take(legacy) {
+            if let Some(identity) = identities.get(task_id.as_str()) {
+                typed.push(ExecutionToken {
+                    attempt_id: identity.attempt_id.clone(),
+                    task_id: identity.task_id.clone(),
+                    execution_generation: identity.execution_generation,
+                    agent_run_id: identity.agent_run_id.clone(),
+                    process_generation: identity.process_generation,
+                    session_id: identity.session_id.clone(),
+                    pty_session_id: identity.pty_session_id.clone(),
+                });
+            } else {
+                retained.push(task_id);
+            }
+        }
+        *legacy = retained;
+    };
+    split(
+        &mut completions.succeeded,
+        &mut completions.execution_succeeded,
+    );
+    split(&mut completions.failed, &mut completions.execution_failed);
+    split(
+        &mut completions.timed_out,
+        &mut completions.execution_timed_out,
+    );
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -492,6 +571,7 @@ mod tests {
             outputs: Vec::new(),
             done_marker_path: PathBuf::new(),
             output_fallback: OutputFallbackState::default(),
+            execution_identity: None,
         }
     }
 

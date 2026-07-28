@@ -104,6 +104,9 @@ pub enum AgentEventKind {
     /// the failure policy's recommended action so a Failed task is never left
     /// silently — the auto-escalation that keeps the loop unattended-safe.
     EscalationRaised,
+    /// A4.9 durable WorkExecutionAttempt identity was committed to the outbox
+    /// before the first external effect.
+    ExecutionReserved,
 }
 
 impl AgentEventKind {
@@ -124,6 +127,7 @@ impl AgentEventKind {
             Self::SessionHandoff => "session_handoff",
             Self::ContextRecycled => "context_recycled",
             Self::EscalationRaised => "escalation_raised",
+            Self::ExecutionReserved => "execution_reserved",
         }
     }
 
@@ -147,6 +151,7 @@ impl AgentEventKind {
             | Self::SteerAvoid
             | Self::SessionHandoff
             | Self::ContextRecycled => EventChannel::System,
+            Self::ExecutionReserved => EventChannel::System,
             // Proposals are deliberation — they belong on the planning channel.
             Self::IntentDeclared => EventChannel::Planning,
         }
@@ -174,6 +179,7 @@ impl FromStr for AgentEventKind {
             "session_handoff" => Self::SessionHandoff,
             "context_recycled" => Self::ContextRecycled,
             "escalation_raised" => Self::EscalationRaised,
+            "execution_reserved" => Self::ExecutionReserved,
             other => return Err(format!("unknown event kind: {other}")),
         })
     }
@@ -224,7 +230,7 @@ impl AgentEvent {
 }
 
 fn new_event_id() -> String {
-    uuid::Uuid::new_v4().to_string()
+    uuid::Uuid::now_v7().to_string()
 }
 
 /// A durably committed outbox event with its monotonic sequence number.
@@ -528,6 +534,7 @@ mod tests {
             AgentEventKind::SessionHandoff,
             AgentEventKind::ContextRecycled,
             AgentEventKind::EscalationRaised,
+            AgentEventKind::ExecutionReserved,
         ];
         for kind in all {
             // as_str agrees with serde, and from_str inverts it.

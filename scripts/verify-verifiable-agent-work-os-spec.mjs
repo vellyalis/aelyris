@@ -221,7 +221,7 @@ const requiredRoadmapClauses = [
   "A7.6 — Remote Read-Only Continuity",
   "A7.8 — Successful First Mission Acceptance",
   "A8 And A9 Remain Unchanged Release Gates",
-  "A4.9 is the next runtime implementation slice",
+  "A4.10 is the next runtime implementation slice",
   "Apex V1 — Universal Agent Fabric Expansion",
   "V1-R0 — OpenCode Candidate Adapter Comparison",
   "proof-carrying runtime portability",
@@ -291,9 +291,9 @@ const requiredPlanClauses = [
 
 const requiredWorkOrderClauses = [
   "CURRENT PHASE: `A4`",
-  "ACTIVE SLICE: `A4.9`",
-  "LAST COMPLETED SLICE: `A4.8`",
-  "NEXT IMPLEMENTATION SLICE: `A4.9`",
+  "ACTIVE SLICE: `A4.10`",
+  "LAST COMPLETED SLICE: `A4.9`",
+  "NEXT IMPLEMENTATION SLICE: `A4.10`",
   "resume at A6.2e1",
   "do not mix A6/A7 work into A4",
 ];
@@ -352,7 +352,7 @@ const requiredDecisionClauses = [
   "cannot change the active A4/A6/A7/A8/A9 order",
   "ADR-013 External Team Patterns Extend Existing Owners",
   "Result Capsule is only a coordination projection",
-  "A4.9-A4.12 are active runtime-integrity work",
+  "A4.10-A4.12 are active runtime-integrity work",
 ];
 
 const requiredProofbookClauses = [
@@ -537,7 +537,7 @@ const checks = [
         "cannot mutate Aelyris owners",
         "cannot replace the Tauri cockpit by default",
       ]).length === 0,
-    "External team/runtime patterns extend existing Mission, packet, Control, Qralis, and Proofbook owners without changing the A4.9 frontier",
+    "External team/runtime patterns extend existing Mission, packet, Control, Qralis, and Proofbook owners without changing the A4.10 frontier",
     {
       missingDecisionClauses: missing.decisions,
       missingDesignClauses: missing.design,
@@ -628,7 +628,7 @@ const checks = [
   check(
     "work-order-frontier",
     missing.workOrder.length === 0,
-    "Work order preserves the active A4.9 frontier, A4.8 last completion, and A6.2e1 resume boundary",
+    "Work order preserves the active A4.10 frontier, A4.9 last completion, and A6.2e1 resume boundary",
     { missingClauses: missing.workOrder },
   ),
   check(
@@ -683,9 +683,9 @@ const report = {
       : "pass-verifiable-agent-work-os-spec-ready-to-commit",
   phase: "A4",
   attemptedSlice: "external team-pattern plan integration",
-  lastCompletedSlice: "A4.8",
+  lastCompletedSlice: "A4.9",
   completedSlice: committedAtHead ? "external team-pattern plan integration" : null,
-  nextImplementationSlice: "A4.9",
+  nextImplementationSlice: "A4.10",
   readyToCommit: contractPass && !committedAtHead,
   sliceComplete: committedAtHead,
   phaseComplete: false,

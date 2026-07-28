@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 3;
+pub const CURRENT_SCHEMA_VERSION: i64 = 4;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -718,6 +718,104 @@ const V3_SCHEMA: &str = "
     END;
 ";
 
+const V4_SCHEMA: &str = "
+    -- A4.9: one durable WorkExecutionAttempt row is the execution-generation
+    -- owner for a task. The row is reserved before any external effect and its
+    -- revision is advanced with compare-and-swap updates at each fence.
+    CREATE TABLE work_execution_attempts (
+        attempt_id               TEXT PRIMARY KEY NOT NULL,
+        task_id                  TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
+        execution_generation     INTEGER NOT NULL CHECK (execution_generation > 0),
+        runtime                  TEXT NOT NULL
+                                 CHECK (runtime IN ('headless', 'visible_pty')),
+        agent_run_id             TEXT NOT NULL,
+        process_generation       INTEGER NOT NULL CHECK (process_generation > 0),
+        session_id               TEXT NOT NULL,
+        pty_session_id           TEXT,
+        state                    TEXT NOT NULL CHECK (
+                                     state IN (
+                                         'reserved', 'running', 'review',
+                                         'merge_ready', 'completed', 'failed',
+                                         'needs_reconcile'
+                                     )
+                                 ),
+        fence_effect             TEXT NOT NULL CHECK (
+                                     fence_effect IN (
+                                         'reservation', 'first_effect', 'spawn',
+                                         'review', 'candidate_freeze', 'merge',
+                                         'finalization'
+                                     )
+                                 ),
+        fence_state              TEXT NOT NULL CHECK (
+                                     fence_state IN (
+                                         'reserved', 'effect_started',
+                                         'committed', 'needs_reconcile'
+                                     )
+                                 ),
+        fence_revision           INTEGER NOT NULL DEFAULT 1
+                                 CHECK (fence_revision > 0),
+        ownership_claim_ids_json TEXT NOT NULL DEFAULT '[]',
+        reservation_event_id     TEXT NOT NULL UNIQUE,
+        merge_intent_id          TEXT,
+        last_error               TEXT,
+        created_at               INTEGER NOT NULL,
+        updated_at               INTEGER NOT NULL,
+        UNIQUE (task_id, execution_generation)
+    );
+    CREATE INDEX idx_work_execution_attempts_task_generation
+        ON work_execution_attempts(task_id, execution_generation DESC);
+    CREATE INDEX idx_work_execution_attempts_state
+        ON work_execution_attempts(state);
+
+    -- Identity and pre-effect bindings cannot be rewritten after reservation.
+    CREATE TRIGGER trg_work_execution_attempts_identity_immutable
+    BEFORE UPDATE ON work_execution_attempts
+    FOR EACH ROW WHEN
+           NEW.attempt_id               IS NOT OLD.attempt_id
+        OR NEW.task_id                  IS NOT OLD.task_id
+        OR NEW.execution_generation     IS NOT OLD.execution_generation
+        OR NEW.runtime                  IS NOT OLD.runtime
+        OR NEW.agent_run_id             IS NOT OLD.agent_run_id
+        OR NEW.process_generation       IS NOT OLD.process_generation
+        OR NEW.session_id               IS NOT OLD.session_id
+        OR NEW.pty_session_id           IS NOT OLD.pty_session_id
+        OR NEW.ownership_claim_ids_json IS NOT OLD.ownership_claim_ids_json
+        OR NEW.reservation_event_id     IS NOT OLD.reservation_event_id
+        OR NEW.created_at               IS NOT OLD.created_at
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'work_execution_attempts: execution identity is immutable'
+        );
+    END;
+
+    -- An exact-OID merge intent may be bound after candidate freeze, but it
+    -- cannot be removed or changed once bound to the attempt.
+    CREATE TRIGGER trg_work_execution_attempts_merge_intent_one_way
+    BEFORE UPDATE ON work_execution_attempts
+    FOR EACH ROW WHEN
+        OLD.merge_intent_id IS NOT NULL
+        AND NEW.merge_intent_id IS NOT OLD.merge_intent_id
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'work_execution_attempts: merge intent binding is immutable'
+        );
+    END;
+
+    -- Attempts are permanent audit/fencing records. This also blocks
+    -- INSERT OR REPLACE from bypassing the immutable-identity trigger.
+    CREATE TRIGGER trg_work_execution_attempts_no_delete
+    BEFORE DELETE ON work_execution_attempts
+    FOR EACH ROW
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'work_execution_attempts: rows are permanent (append-only)'
+        );
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -784,6 +882,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V3_SCHEMA)?;
             conn.pragma_update(None, "user_version", 3)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 4 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V4_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 4)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -961,7 +1075,7 @@ mod tests {
         conn.execute_batch(V1_SCHEMA).unwrap();
         conn.pragma_update(None, "user_version", 1).unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 3);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         let approval: Option<String> = conn
             .query_row(
                 "SELECT approval_prompt FROM session_checkpoints LIMIT 1",
@@ -988,7 +1102,7 @@ mod tests {
         .unwrap();
 
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 3);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         let identity: String = conn
             .query_row(
                 "SELECT event_id FROM agent_events WHERE seq = 1",
@@ -1025,5 +1139,49 @@ mod tests {
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
         assert_eq!(timeout_ms, 5000);
+    }
+
+    #[test]
+    fn version_three_adds_append_only_execution_attempts() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        conn.execute("INSERT INTO tasks (id, title) VALUES ('task-a', 'A')", [])
+            .unwrap();
+
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
+        conn.execute(
+            "INSERT INTO work_execution_attempts (
+                 attempt_id, task_id, execution_generation, runtime,
+                 agent_run_id, process_generation, session_id, pty_session_id,
+                 state, fence_effect, fence_state, fence_revision,
+                 ownership_claim_ids_json, reservation_event_id,
+                 created_at, updated_at
+             ) VALUES (
+                 'attempt-a', 'task-a', 1, 'headless',
+                 'run-a', 1, 'session-a', NULL,
+                 'reserved', 'reservation', 'reserved', 1,
+                 '[\"claim-a\"]', 'event-a', 10, 10
+             )",
+            [],
+        )
+        .unwrap();
+
+        assert!(conn
+            .execute(
+                "UPDATE work_execution_attempts SET agent_run_id = 'run-b'
+                 WHERE attempt_id = 'attempt-a'",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "DELETE FROM work_execution_attempts WHERE attempt_id = 'attempt-a'",
+                [],
+            )
+            .is_err());
     }
 }

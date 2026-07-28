@@ -21,6 +21,7 @@ export const AGENT_EVENT_KINDS = [
   "session_handoff",
   "context_recycled",
   "escalation_raised",
+  "execution_reserved",
 ] as const;
 export type AgentEventKind = (typeof AGENT_EVENT_KINDS)[number];
 

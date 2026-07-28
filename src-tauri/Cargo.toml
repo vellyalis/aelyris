@@ -78,7 +78,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "regis
 tracing-log = "0.2"
 
 # UUID for terminal instance IDs
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v7"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-dialog = "2.7.0"
 # Auto-updater (post-0.2.2 Tier 🔴 #3). Endpoint + pubkey live in

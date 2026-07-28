@@ -425,10 +425,10 @@ are typed non-success. The same-owner durable high-water detects deleted latest 
 future/corrupt consumer cursors and cursor/event identity mismatches fail closed, and
 lifecycle producers report structured partial-success when state committed but event
 publication failed. MCP preserves the tagged EventBus error in text and structured
-content. The A4 v4 acceptance matrix passes 19/19 through A4.8 while
-`phaseComplete=false`; A4.9-A4.12 remain.
+content. The historical A4 v4 acceptance matrix passed 19/19 through A4.8 while
+`phaseComplete=false`.
 
-### **A4.9** Active - Durable Execution Attempt And Effect Fence
+### **A4.9** Complete - Durable Execution Attempt And Effect Fence
 
 Implement the already-designed WorkExecutionAttempt/AgentRun generation and
 ExecutionFence inside the existing TaskGraph/agent/session owners. Bind task, agent run,
@@ -437,7 +437,15 @@ external effect. Reserve before effect, commit or reconcile after effect, reject
 generation writes, and never create a second DAG or journal. Acceptance injects crash
 at reservation, spawn, first effect, review, merge, and finalization boundaries.
 
-### **A4.10** Planned - All-Authority Startup Reconciliation
+Implemented by the existing TaskManager plus its SQLite adapter and production
+LoopPorts integration. Canonical UUIDv7 attempt/run/session/PTY/reservation identities
+are generated and validated on reload; full execution tokens fence stale completions.
+The reservation outbox and execution-scoped ownership claims commit before first
+effect, and the seven ordered fences cover reservation, first effect, spawn, review,
+candidate freeze, exact-OID merge, and finalization. Focused repository, TaskManager,
+and LoopPorts tests pass while `phaseComplete=false`; A4.10-A4.12 remain.
+
+### **A4.10** Active - All-Authority Startup Reconciliation
 
 Extend the bounded startup barrier to reconcile TaskGraph, active execution attempts,
 PaneFleet/PTY generations, file and symbol ownership, worktrees/merge intents, leases,

@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 /// or recursive glob (`src/auth/**`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnershipClaim {
+    /// Durable execution-scoped identity. Legacy/ad-hoc claims without one keep
+    /// the deterministic agent+pattern identity for compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_id: Option<String>,
     pub agent_id: String,
@@ -25,6 +29,7 @@ pub struct OwnershipClaim {
 impl OwnershipClaim {
     pub fn new(agent_id: impl Into<String>, pattern: impl Into<String>) -> Self {
         Self {
+            claim_id: None,
             task_id: None,
             agent_id: agent_id.into(),
             pattern: pattern.into(),
@@ -33,7 +38,9 @@ impl OwnershipClaim {
     }
 
     pub fn stable_id(&self) -> String {
-        format!("file:{}:{}", self.agent_id, self.pattern)
+        self.claim_id
+            .clone()
+            .unwrap_or_else(|| format!("file:{}:{}", self.agent_id, self.pattern))
     }
 
     fn is_live(&self, now: u64) -> bool {

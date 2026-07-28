@@ -62,12 +62,73 @@ fn parse_confidence(value: &str) -> Result<Confidence, String> {
 }
 
 impl OwnershipRepo {
+    /// Atomically replace one task's active file claims with identities already
+    /// bound into its durable execution reservation.
+    pub fn replace_file_claims_for_task(
+        db: &Database,
+        task_id: &str,
+        claims: &[OwnershipClaim],
+        now: u64,
+    ) -> Result<(), String> {
+        if claims
+            .iter()
+            .any(|claim| claim.task_id.as_deref() != Some(task_id))
+        {
+            return Err(format!(
+                "all replacement claims must be bound to task {task_id}"
+            ));
+        }
+        let tx = db
+            .conn()
+            .unchecked_transaction()
+            .map_err(|error| format!("begin file claim replacement: {error}"))?;
+        tx.execute(
+            "DELETE FROM file_ownership_claims WHERE task_id = ?1",
+            [task_id],
+        )
+        .map_err(|error| format!("clear prior claims for task {task_id}: {error}"))?;
+        for claim in claims {
+            tx.execute(
+                "INSERT INTO file_ownership_claims (
+                     claim_id, task_id, agent_id, pattern, lease_expires_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(claim_id) DO UPDATE SET
+                    task_id = excluded.task_id,
+                    agent_id = excluded.agent_id,
+                    pattern = excluded.pattern,
+                    lease_expires_at = excluded.lease_expires_at,
+                    updated_at = excluded.updated_at
+                 ON CONFLICT(agent_id, pattern) DO UPDATE SET
+                    claim_id = excluded.claim_id,
+                    task_id = excluded.task_id,
+                    lease_expires_at = excluded.lease_expires_at,
+                    updated_at = excluded.updated_at",
+                params![
+                    claim.stable_id(),
+                    claim.task_id,
+                    claim.agent_id,
+                    claim.pattern,
+                    claim.lease_expires_at.map(u64_to_i64),
+                    u64_to_i64(now),
+                ],
+            )
+            .map_err(|error| {
+                format!(
+                    "replace file ownership claim {} for task {task_id}: {error}",
+                    claim.stable_id()
+                )
+            })?;
+        }
+        tx.commit()
+            .map_err(|error| format!("commit file claim replacement: {error}"))
+    }
+
     pub fn load_file_claims(db: &Database, now: u64) -> Result<Vec<OwnershipClaim>, String> {
         Self::prune_expired(db, now)?;
         let mut stmt = db
             .conn()
             .prepare(
-                "SELECT task_id, agent_id, pattern, lease_expires_at
+                "SELECT claim_id, task_id, agent_id, pattern, lease_expires_at
                  FROM file_ownership_claims
                  ORDER BY updated_at ASC, claim_id ASC",
             )
@@ -75,19 +136,21 @@ impl OwnershipRepo {
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
                 ))
             })
             .map_err(|e| format!("query file ownership claims: {e}"))?;
 
         let mut claims = Vec::new();
         for row in rows {
-            let (task_id, agent_id, pattern, lease_expires_at) =
+            let (claim_id, task_id, agent_id, pattern, lease_expires_at) =
                 row.map_err(|e| format!("read file ownership row: {e}"))?;
             claims.push(OwnershipClaim {
+                claim_id: Some(claim_id),
                 task_id,
                 agent_id,
                 pattern,
@@ -113,6 +176,11 @@ impl OwnershipRepo {
                     task_id = excluded.task_id,
                     agent_id = excluded.agent_id,
                     pattern = excluded.pattern,
+                    lease_expires_at = excluded.lease_expires_at,
+                    updated_at = excluded.updated_at
+                 ON CONFLICT(agent_id, pattern) DO UPDATE SET
+                    claim_id = excluded.claim_id,
+                    task_id = excluded.task_id,
                     lease_expires_at = excluded.lease_expires_at,
                     updated_at = excluded.updated_at",
                 params![

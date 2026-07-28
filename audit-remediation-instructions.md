@@ -4,16 +4,15 @@ STATUS: ACTIVE
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A4` (reopened by a fresh 2026-07-16 runtime-integrity regression;
 earlier A4.6 PASS is historical evidence, not current phase completion).
-ACTIVE SLICE: `A4.9`.
-LAST COMPLETED SLICE: `A4.8`.
+ACTIVE SLICE: `A4.10`.
+LAST COMPLETED SLICE: `A4.9`.
 NEXT PHASE: `A6` after corrective A4.8-A4.12 acceptance; resume at A6.2e1.
-NEXT IMPLEMENTATION SLICE: `A4.9`.
-A4.8 replaced the EventBus process-local loss window with commit-before-cache outbox
-rows, stable event identity, durable monotonic consumer ACK, at-least-once replay,
-and typed query/corrupt/gap/high-water failure truth. Production publish now rejects
-missing durability or append failure before cache/Tauri emit; latest-row deletion,
-future/corrupt cursor, lifecycle partial-success, structured MCP error, restart,
-duplicate, consumer-crash, corrupt-row, and buffer-pressure acceptance passes.
+NEXT IMPLEMENTATION SLICE: `A4.10`.
+A4.9 added one durable WorkExecutionAttempt generation and ExecutionFence inside the
+existing TaskManager/agent/session owners. UUIDv7 attempt/run/session identities,
+ownership and EventBus reservation bindings, full-token stale rejection, exact-OID
+merge intent, and reservation-through-finalization crash boundaries now fail closed
+without a second TaskGraph or journal.
 The old A4 verifier covered migration/file/checkpoint scenarios but omitted
 these owners plus EventBus loss, durable execution identity/fencing, all-owner startup
 reconciliation, and successor cleanup; it also counted an external Codex watchdog
@@ -287,8 +286,10 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   propagate lifecycle producer partial-success, and fail closed on
   append/query/corrupt/gap truth through a structured MCP envelope. Delivery is
   at-least-once, never claimed exactly-once.
-- A4.9 owns durable WorkExecutionAttempt/AgentRun identity, execution generation
-  fencing, and pre-effect reservation without introducing a second TaskGraph/journal.
+- A4.9 is complete: the existing TaskManager owns durable WorkExecutionAttempt/
+  AgentRun generations and all seven effect fences; generated UUIDv7 identities are
+  validated on reload, reservations bind durable EventBus/ownership identities before
+  the first external effect, and stale full-token writes are rejected or quarantined.
 - A4.10 owns all-authority startup reconciliation before dispatch admission.
 - A4.11 owns structured digest-bound handoff acceptance plus successor quarantine/
   cleanup for every post-spawn failure.

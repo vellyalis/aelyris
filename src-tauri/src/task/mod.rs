@@ -8,6 +8,7 @@
 //! (`src/shared/types/kanban.ts`), which is a presentation projection.
 
 pub mod decompose;
+pub mod execution;
 pub mod graph;
 pub mod manager;
 pub mod planner;
@@ -18,6 +19,11 @@ pub mod status;
 pub(crate) mod symbol_enrich;
 
 pub use decompose::decompose_to_plan;
+pub use execution::{
+    ExecutionEffect, ExecutionFence, ExecutionFenceError, ExecutionFenceState, ExecutionIdentity,
+    ExecutionReservation, ExecutionRuntime, ExecutionToken, WorkExecutionAttempt,
+    WorkExecutionState,
+};
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use manager::TaskManager;
 pub use planner::validate_plan;

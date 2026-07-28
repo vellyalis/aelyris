@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
@@ -5,7 +6,12 @@ use super::graph::{Task, TaskGraph, TaskGraphError};
 use super::planner::validate_plan;
 use super::status::TaskStatus;
 use crate::db::ManagedDb;
-use crate::persistence::TaskRepo;
+use crate::persistence::{TaskRepo, WorkExecutionRepo};
+
+use super::execution::{
+    ExecutionEffect, ExecutionFenceError, ExecutionFenceState, ExecutionReservation,
+    ExecutionToken, WorkExecutionAttempt, WorkExecutionState,
+};
 
 /// Thread-safe owner of the Task Graph, managed in Tauri state (mirrors the
 /// `AgentManager` / `InteractiveSessionManager` pattern). Mutating operations
@@ -31,6 +37,7 @@ struct TaskGraphState {
 #[derive(Default)]
 pub struct TaskManager {
     state: Mutex<TaskGraphState>,
+    executions: Mutex<HashMap<String, WorkExecutionAttempt>>,
     db: Mutex<Option<Arc<ManagedDb>>>,
     persistence: Mutex<()>,
     durability_required: bool,
@@ -84,6 +91,12 @@ impl TaskManager {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    fn execution_lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, WorkExecutionAttempt>> {
+        self.executions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn persist_graph(&self, graph: &TaskGraph) -> Result<(), TaskGraphError> {
         match self.db() {
             Some(db) => db
@@ -121,6 +134,9 @@ impl TaskManager {
     /// number of restored tasks.
     pub fn attach_db(&self, db: Arc<ManagedDb>) -> Result<usize, String> {
         let loaded = db.with(TaskRepo::load_graph)?;
+        let loaded_executions = db
+            .try_with(WorkExecutionRepo::load_latest)
+            .map_err(|error: ExecutionFenceError| error.to_string())?;
         // Collapse the volatile in-flight states (Running/Review) before the graph
         // goes live: at crash the worker for such a task is gone (headless agents
         // exited; visible-pane PTYs died with the app), so leaving it Running/Review
@@ -150,8 +166,200 @@ impl TaskManager {
             .db
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(db);
+        *self.execution_lock() = loaded_executions
+            .into_iter()
+            .map(|attempt| (attempt.identity.task_id.clone(), attempt))
+            .collect();
         Self::publish_mutation(&mut state, restored);
         Ok(len)
+    }
+
+    /// Reserve one durable execution generation before any worktree, process,
+    /// PTY, review, or merge effect. SQLite commits first; the map is only the
+    /// hot projection and can never invent an attempt.
+    pub fn reserve_execution(
+        &self,
+        reservation: ExecutionReservation,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let _writer = self.persistence_lock();
+        let db = self.db().ok_or_else(|| {
+            ExecutionFenceError::Persistence("execution durability is unavailable".to_string())
+        })?;
+        let attempt = db.try_with(|database| WorkExecutionRepo::reserve(database, &reservation))?;
+        self.execution_lock()
+            .insert(reservation.task_id, attempt.clone());
+        Ok(attempt)
+    }
+
+    pub fn current_execution(&self, task_id: &str) -> Option<WorkExecutionAttempt> {
+        self.execution_lock().get(task_id).cloned()
+    }
+
+    /// Reject a completion/result unless it names the current durable attempt
+    /// and generation. This is independent of TaskGraph snapshot persistence.
+    pub fn validate_execution_token(
+        &self,
+        token: &ExecutionToken,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let current = self
+            .current_execution(&token.task_id)
+            .ok_or_else(|| ExecutionFenceError::NotFound(token.task_id.clone()))?;
+        if current.identity.attempt_id != token.attempt_id
+            || current.identity.execution_generation != token.execution_generation
+            || current.identity.agent_run_id != token.agent_run_id
+            || current.identity.process_generation != token.process_generation
+            || current.identity.session_id != token.session_id
+            || current.identity.pty_session_id != token.pty_session_id
+        {
+            return Err(ExecutionFenceError::StaleGeneration {
+                task_id: token.task_id.clone(),
+                attempted: token.execution_generation,
+                current: current.identity.execution_generation,
+            });
+        }
+        Ok(current)
+    }
+
+    pub fn commit_execution_reservation(
+        &self,
+        token: &ExecutionToken,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        self.advance_execution(
+            token,
+            WorkExecutionState::Reserved,
+            ExecutionEffect::Reservation,
+            ExecutionFenceState::Committed,
+            None,
+            None,
+            now,
+        )
+    }
+
+    pub fn reserve_execution_effect(
+        &self,
+        token: &ExecutionToken,
+        effect: ExecutionEffect,
+        merge_intent_id: Option<&str>,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let current = self.validate_execution_token(token)?;
+        self.advance_execution(
+            token,
+            current.state,
+            effect,
+            ExecutionFenceState::Reserved,
+            merge_intent_id,
+            None,
+            now,
+        )
+    }
+
+    pub fn start_execution_effect(
+        &self,
+        token: &ExecutionToken,
+        effect: ExecutionEffect,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let current = self.validate_execution_token(token)?;
+        self.advance_execution(
+            token,
+            current.state,
+            effect,
+            ExecutionFenceState::EffectStarted,
+            None,
+            None,
+            now,
+        )
+    }
+
+    pub fn commit_execution_effect(
+        &self,
+        token: &ExecutionToken,
+        effect: ExecutionEffect,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        self.advance_execution(
+            token,
+            committed_work_state(effect),
+            effect,
+            ExecutionFenceState::Committed,
+            None,
+            None,
+            now,
+        )
+    }
+
+    /// Close a fully observed, non-uncertain attempt as failed. The repository
+    /// rejects this if an external effect is still merely `effect_started`.
+    pub fn fail_execution(
+        &self,
+        token: &ExecutionToken,
+        error: &str,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let current = self.validate_execution_token(token)?;
+        self.advance_execution(
+            token,
+            WorkExecutionState::Failed,
+            current.fence.effect,
+            ExecutionFenceState::Committed,
+            None,
+            Some(error),
+            now,
+        )
+    }
+
+    pub fn mark_execution_needs_reconcile(
+        &self,
+        token: &ExecutionToken,
+        error: &str,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let current = self.validate_execution_token(token)?;
+        self.advance_execution(
+            token,
+            WorkExecutionState::NeedsReconcile,
+            current.fence.effect,
+            ExecutionFenceState::NeedsReconcile,
+            None,
+            Some(error),
+            now,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn advance_execution(
+        &self,
+        token: &ExecutionToken,
+        next_work_state: WorkExecutionState,
+        next_effect: ExecutionEffect,
+        next_fence_state: ExecutionFenceState,
+        merge_intent_id: Option<&str>,
+        last_error: Option<&str>,
+        now: u64,
+    ) -> Result<WorkExecutionAttempt, ExecutionFenceError> {
+        let _writer = self.persistence_lock();
+        let current = self.validate_execution_token(token)?;
+        let db = self.db().ok_or_else(|| {
+            ExecutionFenceError::Persistence("execution durability is unavailable".to_string())
+        })?;
+        let advanced = db.try_with(|database| {
+            WorkExecutionRepo::compare_and_swap(
+                database,
+                token,
+                current.fence.revision,
+                next_work_state,
+                next_effect,
+                next_fence_state,
+                merge_intent_id,
+                last_error,
+                now,
+            )
+        })?;
+        self.execution_lock()
+            .insert(token.task_id.clone(), advanced.clone());
+        Ok(advanced)
     }
 
     /// Add a task, then re-run the dependency gate. Returns the ids whose
@@ -302,6 +510,16 @@ impl TaskManager {
             Self::publish_mutation(&mut state, snapshot);
         }
         Ok(result)
+    }
+}
+
+fn committed_work_state(effect: ExecutionEffect) -> WorkExecutionState {
+    match effect {
+        ExecutionEffect::Reservation | ExecutionEffect::FirstEffect => WorkExecutionState::Reserved,
+        ExecutionEffect::Spawn => WorkExecutionState::Running,
+        ExecutionEffect::Review => WorkExecutionState::Review,
+        ExecutionEffect::CandidateFreeze | ExecutionEffect::Merge => WorkExecutionState::MergeReady,
+        ExecutionEffect::Finalization => WorkExecutionState::Completed,
     }
 }
 
@@ -534,6 +752,198 @@ mod tests {
 
     fn mem_db() -> Arc<ManagedDb> {
         Arc::new(ManagedDb::new(crate::db::Database::open_memory().unwrap()))
+    }
+
+    fn durable_execution_manager() -> (TaskManager, Arc<ManagedDb>) {
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.create(Task::new("exec", "Execute")).unwrap();
+        (manager, db)
+    }
+
+    fn reserve_exec(manager: &TaskManager, now: u64) -> WorkExecutionAttempt {
+        manager
+            .reserve_execution(ExecutionReservation {
+                task_id: "exec".to_string(),
+                runtime: crate::task::ExecutionRuntime::Headless,
+                ownership_claim_ids: vec!["claim-exec".to_string()],
+                now,
+            })
+            .unwrap()
+    }
+
+    fn commit_effect(
+        manager: &TaskManager,
+        attempt: &WorkExecutionAttempt,
+        effect: ExecutionEffect,
+        now: &mut u64,
+    ) {
+        *now += 1;
+        manager
+            .reserve_execution_effect(&attempt.token(), effect, None, *now)
+            .unwrap();
+        *now += 1;
+        manager
+            .start_execution_effect(&attempt.token(), effect, *now)
+            .unwrap();
+        *now += 1;
+        manager
+            .commit_execution_effect(&attempt.token(), effect, *now)
+            .unwrap();
+    }
+
+    #[test]
+    fn execution_owner_fences_review_freeze_merge_and_finalization_in_order() {
+        let (manager, _db) = durable_execution_manager();
+        let attempt = reserve_exec(&manager, 10);
+        let mut now = 11;
+        manager
+            .commit_execution_reservation(&attempt.token(), now)
+            .unwrap();
+        for effect in [
+            ExecutionEffect::FirstEffect,
+            ExecutionEffect::Spawn,
+            ExecutionEffect::Review,
+            ExecutionEffect::CandidateFreeze,
+        ] {
+            commit_effect(&manager, &attempt, effect, &mut now);
+        }
+        now += 1;
+        manager
+            .reserve_execution_effect(
+                &attempt.token(),
+                ExecutionEffect::Merge,
+                Some("merge-intent-exec"),
+                now,
+            )
+            .unwrap();
+        now += 1;
+        manager
+            .start_execution_effect(&attempt.token(), ExecutionEffect::Merge, now)
+            .unwrap();
+        now += 1;
+        manager
+            .commit_execution_effect(&attempt.token(), ExecutionEffect::Merge, now)
+            .unwrap();
+        commit_effect(&manager, &attempt, ExecutionEffect::Finalization, &mut now);
+
+        let current = manager.current_execution("exec").unwrap();
+        assert_eq!(current.state, WorkExecutionState::Completed);
+        assert_eq!(current.fence.effect, ExecutionEffect::Finalization);
+        assert_eq!(
+            current.merge_intent_id.as_deref(),
+            Some("merge-intent-exec")
+        );
+    }
+
+    #[test]
+    fn execution_owner_rejects_stale_and_process_generation_mismatches() {
+        let (manager, _db) = durable_execution_manager();
+        let first = reserve_exec(&manager, 10);
+        manager
+            .fail_execution(&first.token(), "known pre-effect failure", 11)
+            .unwrap();
+        let second = reserve_exec(&manager, 12);
+        assert!(matches!(
+            manager.validate_execution_token(&first.token()),
+            Err(ExecutionFenceError::StaleGeneration { .. })
+        ));
+        let mut wrong_process = second.token();
+        wrong_process.process_generation += 1;
+        assert!(matches!(
+            manager.validate_execution_token(&wrong_process),
+            Err(ExecutionFenceError::StaleGeneration { .. })
+        ));
+        assert_eq!(second.identity.execution_generation, 2);
+    }
+
+    #[test]
+    fn crash_boundary_matrix_reloads_each_fence_and_blocks_blind_successor() {
+        for target in [
+            ExecutionEffect::Reservation,
+            ExecutionEffect::FirstEffect,
+            ExecutionEffect::Spawn,
+            ExecutionEffect::Review,
+            ExecutionEffect::CandidateFreeze,
+            ExecutionEffect::Merge,
+            ExecutionEffect::Finalization,
+        ] {
+            let (manager, db) = durable_execution_manager();
+            let attempt = reserve_exec(&manager, 10);
+            let mut now = 10;
+            if target != ExecutionEffect::Reservation {
+                now += 1;
+                manager
+                    .commit_execution_reservation(&attempt.token(), now)
+                    .unwrap();
+                for effect in [
+                    ExecutionEffect::FirstEffect,
+                    ExecutionEffect::Spawn,
+                    ExecutionEffect::Review,
+                    ExecutionEffect::CandidateFreeze,
+                    ExecutionEffect::Merge,
+                    ExecutionEffect::Finalization,
+                ] {
+                    now += 1;
+                    manager
+                        .reserve_execution_effect(
+                            &attempt.token(),
+                            effect,
+                            (effect == ExecutionEffect::Merge).then_some("merge-intent-crash"),
+                            now,
+                        )
+                        .unwrap();
+                    now += 1;
+                    manager
+                        .start_execution_effect(&attempt.token(), effect, now)
+                        .unwrap();
+                    if effect == target {
+                        break;
+                    }
+                    now += 1;
+                    manager
+                        .commit_execution_effect(&attempt.token(), effect, now)
+                        .unwrap();
+                }
+            }
+            drop(manager);
+
+            let restored = TaskManager::new_durable();
+            restored.attach_db(db).unwrap();
+            let persisted = restored.current_execution("exec").unwrap();
+            assert_eq!(persisted.fence.effect, target, "target {target:?}");
+            assert_eq!(
+                persisted.fence.state,
+                if target == ExecutionEffect::Reservation {
+                    ExecutionFenceState::Reserved
+                } else {
+                    ExecutionFenceState::EffectStarted
+                },
+                "target {target:?}"
+            );
+            assert!(
+                matches!(
+                    restored.reserve_execution(ExecutionReservation {
+                        task_id: "exec".to_string(),
+                        runtime: crate::task::ExecutionRuntime::Headless,
+                        ownership_claim_ids: vec!["claim-new".to_string()],
+                        now: now + 1,
+                    }),
+                    Err(ExecutionFenceError::ActiveAttempt { .. })
+                ),
+                "crash at {target:?} must block a blind successor"
+            );
+            if target != ExecutionEffect::Reservation {
+                assert!(
+                    matches!(
+                        restored.start_execution_effect(&persisted.token(), target, now + 1),
+                        Err(ExecutionFenceError::InvalidTransition(_))
+                    ),
+                    "crash at {target:?} must not replay an already-started effect"
+                );
+            }
+        }
     }
 
     #[test]

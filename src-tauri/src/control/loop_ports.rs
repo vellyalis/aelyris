@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::agent::AgentManager;
-use crate::control::agent::{start_headless, HeadlessSpawnSpec};
+use crate::control::agent::{start_headless, start_headless_with_execution, HeadlessSpawnSpec};
 use crate::control::merge::{MergeIntentStatus, MergeQueue, MergeRequest};
 use crate::control::pane_fleet::PaneFleet;
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
@@ -27,6 +27,7 @@ use crate::symbol_ownership::agent_context::{
     active_ownership_context, render_ownership_header, DEFAULT_CONTEXT_CAP,
 };
 use crate::symbol_ownership::{SymbolClaim, SymbolIntent, SymbolOwnership};
+use crate::task::{ExecutionEffect, ExecutionIdentity, ExecutionReservation, ExecutionRuntime};
 
 /// Wall-clock budget for a single dispatched agent before it is treated as hung
 /// and killed (BR9 hang recovery). Deliberately generous so a legitimately long
@@ -43,6 +44,51 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+fn execution_token(identity: &ExecutionIdentity) -> crate::task::ExecutionToken {
+    crate::task::ExecutionToken {
+        attempt_id: identity.attempt_id.clone(),
+        task_id: identity.task_id.clone(),
+        execution_generation: identity.execution_generation,
+        agent_run_id: identity.agent_run_id.clone(),
+        process_generation: identity.process_generation,
+        session_id: identity.session_id.clone(),
+        pty_session_id: identity.pty_session_id.clone(),
+    }
+}
+
+fn failed_execution_gates() -> GateResults {
+    GateResults {
+        tests_pass: false,
+        lint_pass: false,
+        types_pass: false,
+        design_consistent: false,
+        context_aligned: false,
+    }
+}
+
+fn quarantine_fence_error(
+    context: ExecutionFenceContext<'_>,
+    token: &crate::task::ExecutionToken,
+    boundary: &str,
+    error: impl std::fmt::Display,
+) -> String {
+    let message = format!("{boundary}: {error}");
+    if let Err(reconcile_error) =
+        context
+            .tasks
+            .mark_execution_needs_reconcile(token, &message, now_secs())
+    {
+        tracing::error!(
+            task_id = %token.task_id,
+            attempt_id = %token.attempt_id,
+            error = %reconcile_error,
+            boundary,
+            "execution fence failure could not be durably quarantined"
+        );
+    }
+    message
+}
+
 /// Runs the quality gate for a task's branch. Real impl shells out to the
 /// project's test/lint/type-check commands; tests inject scripted results.
 pub trait GateRunner {
@@ -54,6 +100,15 @@ pub trait GateRunner {
 /// is the natural source of both signals; tests record the call.
 pub trait Dispatcher {
     fn dispatch(&self, task_id: &str, branch: Option<&str>) -> Result<(), String>;
+    fn dispatch_execution(
+        &self,
+        task_id: &str,
+        branch: Option<&str>,
+        identity: &ExecutionIdentity,
+    ) -> Result<(), String> {
+        let _ = identity;
+        self.dispatch(task_id, branch)
+    }
     /// Dispatched agents that finished since the last poll, split by exit
     /// outcome (clean exit vs. crash) — the autonomy loop's completion +
     /// recovery sensor. Default none — a dispatcher that does not track
@@ -83,6 +138,16 @@ pub trait TaskInfo {
 pub struct TaskBranchSnapshot {
     branches: std::collections::HashMap<String, (String, String)>,
     owners: std::collections::HashMap<String, String>,
+}
+
+#[derive(Clone, Copy)]
+struct ExecutionFenceContext<'a> {
+    tasks: &'a crate::task::TaskManager,
+    events: &'a EventBus,
+    ownership: &'a Mutex<FileOwnership>,
+    lanes: &'a std::collections::HashMap<String, (String, Vec<String>)>,
+    db: Option<&'a crate::db::ManagedDb>,
+    runtime: ExecutionRuntime,
 }
 
 impl TaskBranchSnapshot {
@@ -117,7 +182,7 @@ impl TaskInfo for TaskBranchSnapshot {
 
 /// Concrete `LoopPorts`: merges through the real git backend + serialized
 /// queue, and delegates gate/dispatch to injected adapters.
-pub struct LoopPortsAdapter<G, D, T> {
+pub struct LoopPortsAdapter<'a, G, D, T> {
     repo_path: String,
     reviewer_id: String,
     queue: MergeQueue,
@@ -130,9 +195,10 @@ pub struct LoopPortsAdapter<G, D, T> {
     /// The live symbol-ownership map, so the dispatch gate can consult what agents
     /// are ACTUALLY editing now (spec §6.5). `None` => declared-intent gate only.
     symbol_ownership: Option<Arc<Mutex<SymbolOwnership>>>,
+    execution: Option<ExecutionFenceContext<'a>>,
 }
 
-impl<G, D, T> LoopPortsAdapter<G, D, T> {
+impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
     pub fn new(
         repo_path: impl Into<String>,
         reviewer_id: impl Into<String>,
@@ -152,6 +218,7 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
             dispatcher,
             task_info,
             symbol_ownership,
+            execution: None,
         }
     }
 
@@ -166,36 +233,385 @@ impl<G, D, T> LoopPortsAdapter<G, D, T> {
         self
     }
 
+    fn with_execution_fence(mut self, execution: ExecutionFenceContext<'a>) -> Self {
+        self.execution = Some(execution);
+        self
+    }
+
     #[cfg(test)]
     fn with_legacy_merge_queue_for_tests(mut self) -> Self {
         self.require_durable_merge = false;
         self
     }
+
+    fn reserve_dispatch(&self, task_id: &str) -> Result<Option<ExecutionIdentity>, String> {
+        let Some(context) = self.execution else {
+            return Ok(None);
+        };
+        let (agent, paths) = context
+            .lanes
+            .get(task_id)
+            .cloned()
+            .unwrap_or_else(|| (task_id.to_string(), Vec::new()));
+        let mut claims = Vec::with_capacity(paths.len());
+        for path in paths {
+            let mut claim = OwnershipClaim::new(agent.clone(), path);
+            claim.claim_id = Some(uuid::Uuid::now_v7().to_string());
+            claim.task_id = Some(task_id.to_string());
+            claims.push(claim);
+        }
+        let attempt = context
+            .tasks
+            .reserve_execution(ExecutionReservation {
+                task_id: task_id.to_string(),
+                runtime: context.runtime,
+                ownership_claim_ids: claims.iter().map(OwnershipClaim::stable_id).collect(),
+                now: now_secs(),
+            })
+            .map_err(|error| error.to_string())?;
+
+        let receipt = context
+            .events
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::ExecutionReserved,
+                    serde_json::json!({
+                        "attemptId": attempt.identity.attempt_id,
+                        "taskId": attempt.identity.task_id,
+                        "executionGeneration": attempt.identity.execution_generation,
+                        "agentRunId": attempt.identity.agent_run_id,
+                        "processGeneration": attempt.identity.process_generation,
+                        "sessionId": attempt.identity.session_id,
+                        "ptySessionId": attempt.identity.pty_session_id,
+                        "ownershipClaimIds": attempt.ownership_claim_ids,
+                    }),
+                )
+                .with_idempotency_key(attempt.reservation_event_id.clone()),
+            )
+            .map_err(|error| {
+                let _ = context.tasks.fail_execution(
+                    &attempt.token(),
+                    "execution reservation outbox append failed before first effect",
+                    now_secs(),
+                );
+                error.to_string()
+            })?;
+        if receipt.seq.is_none() {
+            let _ = context.tasks.fail_execution(
+                &attempt.token(),
+                "execution reservation event was not durably appended",
+                now_secs(),
+            );
+            return Err("execution reservation event must be durable".to_string());
+        }
+
+        let db = context.db.ok_or_else(|| {
+            let _ = context.tasks.fail_execution(
+                &attempt.token(),
+                "ownership durability unavailable before first effect",
+                now_secs(),
+            );
+            "ownership durability unavailable before first effect".to_string()
+        })?;
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::replace_file_claims_for_task(
+                database,
+                task_id,
+                &claims,
+                now_secs(),
+            )
+        })
+        .map_err(|error| {
+            let _ = context.tasks.fail_execution(
+                &attempt.token(),
+                "ownership reservation failed before first effect",
+                now_secs(),
+            );
+            error
+        })?;
+        {
+            let mut ownership = context
+                .ownership
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for claim in claims {
+                ownership.assign_claim(claim);
+            }
+        }
+        context
+            .tasks
+            .commit_execution_reservation(&attempt.token(), now_secs())
+            .map_err(|error| {
+                quarantine_fence_error(
+                    context,
+                    &attempt.token(),
+                    "reservation bindings committed but fence commit failed",
+                    error,
+                )
+            })?;
+        Ok(Some(attempt.identity))
+    }
 }
 
-impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G, D, T> {
+impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'_, G, D, T> {
     fn dispatch(&mut self, task_id: &str) -> Result<(), String> {
         let source = self.task_info.branches(task_id).map(|(source, _)| source);
+        let identity = self.reserve_dispatch(task_id)?;
+        if let (Some(context), Some(identity)) = (self.execution, identity.as_ref()) {
+            let token = execution_token(identity);
+            context
+                .tasks
+                .reserve_execution_effect(&token, ExecutionEffect::FirstEffect, None, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(
+                        context,
+                        &token,
+                        "first-effect reservation failed",
+                        error,
+                    )
+                })?;
+            context
+                .tasks
+                .start_execution_effect(&token, ExecutionEffect::FirstEffect, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(context, &token, "first-effect start failed", error)
+                })?;
+        }
         // Loop-owned worktree: create the task's isolated worktree (idempotent —
         // a re-dispatch after rework reuses it) before spawning, so the worker has
         // a real cwd without the conductor pre-creating it.
         if let Some(branch) = source.as_deref() {
-            crate::control::worktree::ensure_for_branch(&self.repo_path, branch)?;
+            if let Err(error) = crate::control::worktree::ensure_for_branch(&self.repo_path, branch)
+            {
+                if let (Some(context), Some(identity)) = (self.execution, identity.as_ref()) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &execution_token(identity),
+                        &format!("worktree first effect failed or is uncertain: {error}"),
+                        now_secs(),
+                    );
+                }
+                return Err(error);
+            }
+        }
+        if let (Some(context), Some(identity)) = (self.execution, identity.as_ref()) {
+            let token = execution_token(identity);
+            context
+                .tasks
+                .commit_execution_effect(&token, ExecutionEffect::FirstEffect, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(
+                        context,
+                        &token,
+                        "first effect completed but commit failed",
+                        error,
+                    )
+                })?;
+            context
+                .tasks
+                .reserve_execution_effect(&token, ExecutionEffect::Spawn, None, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(context, &token, "spawn reservation failed", error)
+                })?;
+            context
+                .tasks
+                .start_execution_effect(&token, ExecutionEffect::Spawn, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(context, &token, "spawn start failed", error)
+                })?;
+            if let Err(error) =
+                self.dispatcher
+                    .dispatch_execution(task_id, source.as_deref(), identity)
+            {
+                let _ = context.tasks.mark_execution_needs_reconcile(
+                    &token,
+                    &format!("spawn failed or child ownership is uncertain: {error}"),
+                    now_secs(),
+                );
+                return Err(error);
+            }
+            context
+                .tasks
+                .commit_execution_effect(&token, ExecutionEffect::Spawn, now_secs())
+                .map_err(|error| {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("spawn succeeded but commit failed: {error}"),
+                        now_secs(),
+                    );
+                    error.to_string()
+                })?;
+            return Ok(());
         }
         self.dispatcher.dispatch(task_id, source.as_deref())
     }
 
     fn poll_completions(&mut self) -> Completions {
-        self.dispatcher.poll_completions()
+        let mut completions = self.dispatcher.poll_completions();
+        let Some(context) = self.execution else {
+            return completions;
+        };
+        // A fenced production port accepts only full durable execution tokens.
+        // Task-id-only completions remain a compatibility surface for pure
+        // adapters/tests and can never mutate the production TaskGraph.
+        completions.succeeded.clear();
+        completions.failed.clear();
+        completions.timed_out.clear();
+        completions.execution_succeeded.retain(|token| {
+            if context.tasks.validate_execution_token(token).is_err() {
+                return false;
+            }
+            match context.tasks.reserve_execution_effect(
+                token,
+                ExecutionEffect::Review,
+                None,
+                now_secs(),
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        token,
+                        &format!(
+                            "clean completion observed but review reservation failed: {error}"
+                        ),
+                        now_secs(),
+                    );
+                    false
+                }
+            }
+        });
+        completions.execution_failed.retain(|token| {
+            if context.tasks.validate_execution_token(token).is_err() {
+                return false;
+            }
+            match context.tasks.fail_execution(
+                token,
+                "agent process exited unsuccessfully",
+                now_secs(),
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    let reconcile = context.tasks.mark_execution_needs_reconcile(
+                        token,
+                        &format!(
+                            "failed process completion observed but attempt close failed: {error}"
+                        ),
+                        now_secs(),
+                    );
+                    if let Err(reconcile_error) = reconcile {
+                        tracing::error!(
+                            task_id = %token.task_id,
+                            attempt_id = %token.attempt_id,
+                            error = %reconcile_error,
+                            "failed completion could not be durably quarantined"
+                        );
+                    }
+                    false
+                }
+            }
+        });
+        completions.execution_timed_out.retain(|token| {
+            if context.tasks.validate_execution_token(token).is_err() {
+                return false;
+            }
+            match context.tasks.fail_execution(
+                token,
+                "agent process exceeded its time budget",
+                now_secs(),
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    let reconcile = context.tasks.mark_execution_needs_reconcile(
+                        token,
+                        &format!("timeout observed but attempt close failed: {error}"),
+                        now_secs(),
+                    );
+                    if let Err(reconcile_error) = reconcile {
+                        tracing::error!(
+                            task_id = %token.task_id,
+                            attempt_id = %token.attempt_id,
+                            error = %reconcile_error,
+                            "timeout completion could not be durably quarantined"
+                        );
+                    }
+                    false
+                }
+            }
+        });
+        completions
     }
 
     fn gate(&mut self, task_id: &str) -> GateResults {
+        let mut execution_token_for_review = None;
+        if let Some(context) = self.execution {
+            let Some(current) = context.tasks.current_execution(task_id) else {
+                return failed_execution_gates();
+            };
+            let token = current.token();
+            if current.fence.effect == ExecutionEffect::Spawn
+                && current.fence.state == crate::task::ExecutionFenceState::Committed
+            {
+                if let Err(error) = context.tasks.reserve_execution_effect(
+                    &token,
+                    ExecutionEffect::Review,
+                    None,
+                    now_secs(),
+                ) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("review reservation failed: {error}"),
+                        now_secs(),
+                    );
+                    return failed_execution_gates();
+                }
+            }
+            if let Err(error) =
+                context
+                    .tasks
+                    .start_execution_effect(&token, ExecutionEffect::Review, now_secs())
+            {
+                let _ = context.tasks.mark_execution_needs_reconcile(
+                    &token,
+                    &format!("review start fence failed: {error}"),
+                    now_secs(),
+                );
+                return failed_execution_gates();
+            }
+            execution_token_for_review = Some(token);
+        }
         let branch = self
             .task_info
             .branches(task_id)
             .map(|(source, _)| source)
             .unwrap_or_default();
         let results = self.gate_runner.run(task_id, &branch);
+        if let (Some(context), Some(token)) = (self.execution, execution_token_for_review.as_ref())
+        {
+            if let Err(error) =
+                context
+                    .tasks
+                    .commit_execution_effect(token, ExecutionEffect::Review, now_secs())
+            {
+                let _ = context.tasks.mark_execution_needs_reconcile(
+                    token,
+                    &format!("review effect completed but commit failed: {error}"),
+                    now_secs(),
+                );
+                return failed_execution_gates();
+            }
+            if !results.all_green() {
+                if let Err(error) = context.tasks.fail_execution(
+                    token,
+                    "review rejected the execution attempt",
+                    now_secs(),
+                ) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        token,
+                        &format!("red review committed but attempt close failed: {error}"),
+                        now_secs(),
+                    );
+                }
+            }
+        }
         self.gate_results.insert(task_id.to_string(), results);
         results
     }
@@ -214,6 +630,277 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<G
             .branches(task_id)
             .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
         let worktree = crate::control::worktree::predict_path(&self.repo_path, &source);
+        if let Some(context) = self.execution {
+            let current = context
+                .tasks
+                .current_execution(task_id)
+                .ok_or_else(|| format!("task {task_id} has no execution attempt at merge"))?;
+            let token = current.token();
+            let store = self.merge_store.clone().ok_or_else(|| {
+                let _ = context.tasks.fail_execution(
+                    &token,
+                    "durable merge store unavailable before candidate freeze",
+                    now_secs(),
+                );
+                "durable merge store is required for fenced merge".to_string()
+            })?;
+
+            context
+                .tasks
+                .reserve_execution_effect(
+                    &token,
+                    ExecutionEffect::CandidateFreeze,
+                    None,
+                    now_secs(),
+                )
+                .map_err(|error| {
+                    quarantine_fence_error(
+                        context,
+                        &token,
+                        "candidate-freeze reservation failed",
+                        error,
+                    )
+                })?;
+            context
+                .tasks
+                .start_execution_effect(&token, ExecutionEffect::CandidateFreeze, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(context, &token, "candidate-freeze start failed", error)
+                })?;
+            if worktree.is_dir() {
+                if let Err(error) = crate::control::worktree::commit_for_branch(
+                    &self.repo_path,
+                    &source,
+                    &format!("aelyris: {task_id}"),
+                ) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("candidate freeze failed or commit outcome is uncertain: {error}"),
+                        now_secs(),
+                    );
+                    return Err(format!("commit worktree for {source} failed: {error}"));
+                }
+            }
+            context
+                .tasks
+                .commit_execution_effect(&token, ExecutionEffect::CandidateFreeze, now_secs())
+                .map_err(|error| {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("candidate freeze succeeded but commit failed: {error}"),
+                        now_secs(),
+                    );
+                    error.to_string()
+                })?;
+
+            let intent = match crate::control::merge::request_durable_intent(
+                &store,
+                &self.repo_path,
+                task_id,
+                Some(task_id),
+                &source,
+                &target,
+                now_secs() as i64,
+            ) {
+                Ok(intent) => intent,
+                Err(error) => {
+                    let _ = context.tasks.fail_execution(
+                        &token,
+                        &format!("exact-OID merge intent reservation failed: {error}"),
+                        now_secs(),
+                    );
+                    return Err(error);
+                }
+            };
+            context
+                .tasks
+                .reserve_execution_effect(
+                    &token,
+                    ExecutionEffect::Merge,
+                    Some(&intent.intent_id),
+                    now_secs(),
+                )
+                .map_err(|error| {
+                    quarantine_fence_error(
+                        context,
+                        &token,
+                        "exact-OID merge fence reservation failed",
+                        error,
+                    )
+                })?;
+            context
+                .tasks
+                .start_execution_effect(&token, ExecutionEffect::Merge, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(context, &token, "merge start failed", error)
+                })?;
+            let gates_digest = self
+                .gate_results
+                .get(task_id)
+                .and_then(|gates| serde_json::to_string(gates).ok());
+            let merge_execution = match crate::control::merge::approve_durable_intent(
+                &store,
+                &intent.intent_id,
+                &self.reviewer_id,
+                gates_digest.as_deref(),
+                now_secs() as i64,
+            ) {
+                Ok(execution) => execution,
+                Err(error) => {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("merge effect failed or target outcome is uncertain: {error}"),
+                        now_secs(),
+                    );
+                    return Err(error.to_string());
+                }
+            };
+            match merge_execution.outcome {
+                Some(MergeOutcome::Conflict { paths }) => {
+                    context
+                        .tasks
+                        .commit_execution_effect(&token, ExecutionEffect::Merge, now_secs())
+                        .map_err(|error| {
+                            quarantine_fence_error(
+                                context,
+                                &token,
+                                "known merge conflict outcome commit failed",
+                                error,
+                            )
+                        })?;
+                    context
+                        .tasks
+                        .fail_execution(
+                            &token,
+                            "merge completed with a known conflict and no target update",
+                            now_secs(),
+                        )
+                        .map_err(|error| {
+                            quarantine_fence_error(
+                                context,
+                                &token,
+                                "known merge conflict could not close the attempt",
+                                error,
+                            )
+                        })?;
+                    return Err(format!("merge conflict: {}", paths.join(", ")));
+                }
+                Some(_) => {
+                    context
+                        .tasks
+                        .commit_execution_effect(&token, ExecutionEffect::Merge, now_secs())
+                        .map_err(|error| {
+                            let _ = context.tasks.mark_execution_needs_reconcile(
+                                &token,
+                                &format!("merge succeeded but fence commit failed: {error}"),
+                                now_secs(),
+                            );
+                            error.to_string()
+                        })?;
+                }
+                None => {
+                    let message = format!(
+                        "durable merge intent {} finished without an outcome (status {})",
+                        merge_execution.intent_id, merge_execution.status
+                    );
+                    let _ =
+                        context
+                            .tasks
+                            .mark_execution_needs_reconcile(&token, &message, now_secs());
+                    return Err(message);
+                }
+            }
+
+            context
+                .tasks
+                .reserve_execution_effect(&token, ExecutionEffect::Finalization, None, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(
+                        context,
+                        &token,
+                        "finalization reservation failed",
+                        error,
+                    )
+                })?;
+            context
+                .tasks
+                .start_execution_effect(&token, ExecutionEffect::Finalization, now_secs())
+                .map_err(|error| {
+                    quarantine_fence_error(context, &token, "finalization start failed", error)
+                })?;
+            if worktree.is_dir() {
+                if let Err(error) =
+                    crate::control::worktree::remove_for_branch(&self.repo_path, &source, true)
+                {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("merge succeeded but finalization is uncertain: {error}"),
+                        now_secs(),
+                    );
+                    return Err(format!(
+                        "post-merge worktree finalization for {source} failed: {error}"
+                    ));
+                }
+            }
+            let (agent, paths) = context
+                .lanes
+                .get(task_id)
+                .cloned()
+                .unwrap_or_else(|| (task_id.to_string(), Vec::new()));
+            if let Some(db) = context.db {
+                if let Err(error) = db.with(|database| {
+                    crate::persistence::OwnershipRepo::delete_file_claims_for_task(
+                        database, task_id,
+                    )
+                    .map(|_| ())
+                }) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("worktree finalized but ownership release is uncertain: {error}"),
+                        now_secs(),
+                    );
+                    return Err(error);
+                }
+            }
+            context
+                .ownership
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .release_for_task(task_id);
+            if !paths.is_empty() {
+                if let Err(error) = context.events.publish(AgentEvent::new(
+                    AgentEventKind::FileReleased,
+                    serde_json::json!({
+                        "task": task_id,
+                        "agent": agent,
+                        "paths": paths,
+                        "attemptId": token.attempt_id,
+                        "executionGeneration": token.execution_generation,
+                    }),
+                )) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!(
+                            "ownership released but FileReleased outbox append failed: {error}"
+                        ),
+                        now_secs(),
+                    );
+                    return Err(error.to_string());
+                }
+            }
+            context
+                .tasks
+                .commit_execution_effect(&token, ExecutionEffect::Finalization, now_secs())
+                .map_err(|error| {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("finalization succeeded but fence commit failed: {error}"),
+                        now_secs(),
+                    );
+                    error.to_string()
+                })?;
+            return Ok(());
+        }
         if let Some(store) = self.merge_store.clone() {
             // Durable merge intents bind exact source/target OIDs. The loop first
             // commits the worker's isolated worktree so the stored source OID is
@@ -387,6 +1074,21 @@ impl Dispatcher for AgentDispatcher<'_> {
         Ok(())
     }
 
+    fn dispatch_execution(
+        &self,
+        task_id: &str,
+        _branch: Option<&str>,
+        identity: &ExecutionIdentity,
+    ) -> Result<(), String> {
+        let spec = self
+            .specs
+            .get(task_id)
+            .cloned()
+            .ok_or_else(|| format!("no spawn spec for task {task_id}"))?;
+        start_headless_with_execution(self.manager, spec, identity.clone())?;
+        Ok(())
+    }
+
     fn poll_completions(&self) -> Completions {
         let outcome = self.manager.reap();
         // Kill + surface any worker hung past the wall-clock budget. A hang never
@@ -395,11 +1097,14 @@ impl Dispatcher for AgentDispatcher<'_> {
         // bounded timeout budget.
         let timed_out = self
             .manager
-            .reap_timed_out(AGENT_HANG_TIMEOUT_SECS, now_secs());
+            .reap_timed_out_with_execution(AGENT_HANG_TIMEOUT_SECS, now_secs());
         Completions {
             succeeded: outcome.succeeded,
             failed: outcome.failed,
-            timed_out,
+            timed_out: timed_out.timed_out,
+            execution_succeeded: outcome.execution_succeeded,
+            execution_failed: outcome.execution_failed,
+            execution_timed_out: timed_out.execution_timed_out,
         }
     }
 }
@@ -635,6 +1340,38 @@ impl Dispatcher for PaneDispatcher<'_> {
         Ok(())
     }
 
+    fn dispatch_execution(
+        &self,
+        task_id: &str,
+        _branch: Option<&str>,
+        identity: &ExecutionIdentity,
+    ) -> Result<(), String> {
+        let spec = self
+            .specs
+            .get(task_id)
+            .cloned()
+            .ok_or_else(|| format!("no pane spawn spec for task {task_id}"))?;
+        let model = spec.model.as_deref().unwrap_or("sonnet");
+        let terminal_id = identity
+            .pty_session_id
+            .as_deref()
+            .ok_or_else(|| "visible execution missing reserved PTY id".to_string())?;
+        let prompt = spec.prompt_for_terminal(terminal_id);
+        let (program, args, env) =
+            crate::agent::interactive::agent_shell_command_spec(model, &prompt, true)?;
+        self.fleet.spawn_with_execution(
+            identity.clone(),
+            &program,
+            &args,
+            spec.cols,
+            spec.rows,
+            &spec.cwd,
+            env,
+            spec.outputs.clone(),
+        )?;
+        Ok(())
+    }
+
     fn poll_completions(&self) -> Completions {
         // Same wall-clock hang budget as the headless dispatcher; a pane that
         // never exits is killed and its task recovered on the timeout budget.
@@ -779,7 +1516,15 @@ pub fn run_step(
                 info,
                 symbol_ownership.clone(),
             )
-            .with_durable_merge_store(merge_store.clone());
+            .with_durable_merge_store(merge_store.clone())
+            .with_execution_fence(ExecutionFenceContext {
+                tasks,
+                events,
+                ownership,
+                lanes: &lanes,
+                db,
+                runtime: ExecutionRuntime::Headless,
+            });
             crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
         })
         .map_err(|error| error.to_string())?;
@@ -849,7 +1594,15 @@ pub fn run_step_visible(
                 info,
                 symbol_ownership.clone(),
             )
-            .with_durable_merge_store(merge_store.clone());
+            .with_durable_merge_store(merge_store.clone())
+            .with_execution_fence(ExecutionFenceContext {
+                tasks,
+                events,
+                ownership,
+                lanes: &lanes,
+                db,
+                runtime: ExecutionRuntime::VisiblePty,
+            });
             crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
         })
         .map_err(|error| error.to_string())?;
@@ -915,6 +1668,11 @@ fn apply_file_lanes(
                     continue;
                 }
                 for path in paths {
+                    if owner.claims().iter().any(|claim| {
+                        claim.task_id.as_deref() == Some(id.as_str()) && claim.pattern == *path
+                    }) {
+                        continue;
+                    }
                     let mut claim = OwnershipClaim::new(agent.clone(), path.clone());
                     claim.task_id = Some(id.clone());
                     if let Some(db) = db {
@@ -944,6 +1702,13 @@ fn apply_file_lanes(
         for id in &report.merged {
             if let Some((agent, paths)) = lanes.get(id) {
                 if paths.is_empty() {
+                    continue;
+                }
+                let had_claim = owner.claims().iter().any(|claim| {
+                    claim.task_id.as_deref() == Some(id.as_str())
+                        || (claim.agent_id == *agent && paths.contains(&claim.pattern))
+                });
+                if !had_claim {
                     continue;
                 }
                 if let Some(db) = db {
@@ -1081,6 +1846,20 @@ mod tests {
         }
     }
 
+    struct CompletionDispatcher {
+        completions: RefCell<Option<Completions>>,
+    }
+
+    impl Dispatcher for CompletionDispatcher {
+        fn dispatch(&self, _task_id: &str, _branch: Option<&str>) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn poll_completions(&self) -> Completions {
+            self.completions.borrow_mut().take().unwrap_or_default()
+        }
+    }
+
     struct MapInfo {
         branches: HashMap<String, (String, String)>,
         implementer: String,
@@ -1161,7 +1940,7 @@ mod tests {
     fn adapter_for(
         repo: &Repository,
         gate: GateResults,
-    ) -> LoopPortsAdapter<FakeGate, RecordingDispatcher, MapInfo> {
+    ) -> LoopPortsAdapter<'_, FakeGate, RecordingDispatcher, MapInfo> {
         let mut branches = HashMap::new();
         branches.insert("t".to_string(), ("feature".to_string(), "main".to_string()));
         LoopPortsAdapter::new(
@@ -1176,6 +1955,151 @@ mod tests {
             None,
         )
         .with_legacy_merge_queue_for_tests()
+    }
+
+    #[test]
+    fn execution_reservation_commits_outbox_and_claim_ids_before_first_effect() {
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = crate::task::TaskManager::new_durable();
+        tasks.attach_db(db.clone()).unwrap();
+        let mut task = Task::new("exec", "Execute");
+        task.owner = Some("worker".to_string());
+        task.outputs = vec!["src/execution.rs".to_string()];
+        tasks.create(task).unwrap();
+        let events = EventBus::new_durable();
+        events.attach_db(db.clone());
+        let ownership = Mutex::new(FileOwnership::new());
+        let lanes = capture_lanes(&tasks);
+        let ports = LoopPortsAdapter::new(
+            "unused-before-first-effect",
+            "reviewer",
+            FakeGate(GREEN),
+            RecordingDispatcher::default(),
+            MapInfo {
+                branches: HashMap::new(),
+                implementer: "worker".to_string(),
+            },
+            None,
+        )
+        .with_execution_fence(ExecutionFenceContext {
+            tasks: &tasks,
+            events: &events,
+            ownership: &ownership,
+            lanes: &lanes,
+            db: Some(db.as_ref()),
+            runtime: ExecutionRuntime::Headless,
+        });
+
+        let identity = ports.reserve_dispatch("exec").unwrap().unwrap();
+        assert!(ports.dispatcher.calls.borrow().is_empty());
+        let attempt = tasks.current_execution("exec").unwrap();
+        assert_eq!(attempt.identity, identity);
+        assert_eq!(
+            attempt.fence.state,
+            crate::task::ExecutionFenceState::Committed
+        );
+        assert_eq!(attempt.fence.effect, ExecutionEffect::Reservation);
+        assert_eq!(
+            uuid::Uuid::parse_str(&attempt.identity.attempt_id)
+                .unwrap()
+                .get_version_num(),
+            7
+        );
+        let batch = events.since(0, 10).unwrap();
+        let reservation_event = batch
+            .events
+            .iter()
+            .find(|event| event.event.event_id == attempt.reservation_event_id)
+            .expect("reservation event must be in the durable outbox");
+        assert_eq!(
+            reservation_event.event.kind,
+            AgentEventKind::ExecutionReserved
+        );
+        let claims = ownership.lock().unwrap().snapshot();
+        assert_eq!(claims.len(), 1);
+        assert_eq!(
+            claims[0].claim_id.as_ref(),
+            attempt.ownership_claim_ids.first()
+        );
+    }
+
+    #[test]
+    fn stale_full_token_completion_is_quarantined_before_pure_loop_projection() {
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = crate::task::TaskManager::new_durable();
+        tasks.attach_db(db.clone()).unwrap();
+        tasks.create(Task::new("exec", "Execute")).unwrap();
+        let first = tasks
+            .reserve_execution(ExecutionReservation {
+                task_id: "exec".to_string(),
+                runtime: ExecutionRuntime::Headless,
+                ownership_claim_ids: Vec::new(),
+                now: 10,
+            })
+            .unwrap();
+        tasks
+            .fail_execution(&first.token(), "known pre-effect failure", 11)
+            .unwrap();
+        let second = tasks
+            .reserve_execution(ExecutionReservation {
+                task_id: "exec".to_string(),
+                runtime: ExecutionRuntime::Headless,
+                ownership_claim_ids: Vec::new(),
+                now: 12,
+            })
+            .unwrap();
+        tasks
+            .commit_execution_reservation(&second.token(), 13)
+            .unwrap();
+        for (effect, start, commit) in [
+            (ExecutionEffect::FirstEffect, 14, 15),
+            (ExecutionEffect::Spawn, 16, 17),
+        ] {
+            tasks
+                .reserve_execution_effect(&second.token(), effect, None, start)
+                .unwrap();
+            tasks
+                .start_execution_effect(&second.token(), effect, start)
+                .unwrap();
+            tasks
+                .commit_execution_effect(&second.token(), effect, commit)
+                .unwrap();
+        }
+        let events = EventBus::new_durable();
+        events.attach_db(db.clone());
+        let ownership = Mutex::new(FileOwnership::new());
+        let lanes = capture_lanes(&tasks);
+        let mut ports = LoopPortsAdapter::new(
+            "unused",
+            "reviewer",
+            FakeGate(GREEN),
+            CompletionDispatcher {
+                completions: RefCell::new(Some(Completions {
+                    execution_succeeded: vec![first.token()],
+                    ..Completions::default()
+                })),
+            },
+            MapInfo {
+                branches: HashMap::new(),
+                implementer: "worker".to_string(),
+            },
+            None,
+        )
+        .with_execution_fence(ExecutionFenceContext {
+            tasks: &tasks,
+            events: &events,
+            ownership: &ownership,
+            lanes: &lanes,
+            db: Some(db.as_ref()),
+            runtime: ExecutionRuntime::Headless,
+        });
+
+        let completions = ports.poll_completions();
+        assert!(completions.execution_succeeded.is_empty());
+        let current = tasks.current_execution("exec").unwrap();
+        assert_eq!(current.identity.attempt_id, second.identity.attempt_id);
+        assert_eq!(current.state, crate::task::WorkExecutionState::Running);
+        assert_eq!(current.fence.effect, ExecutionEffect::Spawn);
     }
 
     #[test]

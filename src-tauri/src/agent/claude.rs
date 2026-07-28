@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use super::platform_cli_program;
+use crate::task::{ExecutionIdentity, ExecutionToken};
 
 /// What an agent is doing right now, for real-time fleet awareness (BR5): which
 /// file/symbol it is touching and the action. Peers read this (via
@@ -37,6 +38,10 @@ pub struct AgentSessionInfo {
     /// back to the task it should move into review (BR9).
     #[serde(default)]
     pub task_id: Option<String>,
+    /// A4.9 durable execution identity. Runtime completions echo this exact
+    /// token so a late process from an older generation is rejected.
+    #[serde(default)]
+    pub execution_identity: Option<ExecutionIdentity>,
     /// What this agent is doing right now (real-time fleet awareness, BR5).
     #[serde(default)]
     pub current_activity: Option<AgentActivity>,
@@ -55,6 +60,14 @@ struct AgentProcess {
 pub struct ReapOutcome {
     pub succeeded: Vec<String>,
     pub failed: Vec<String>,
+    pub execution_succeeded: Vec<ExecutionToken>,
+    pub execution_failed: Vec<ExecutionToken>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TimeoutOutcome {
+    pub timed_out: Vec<String>,
+    pub execution_timed_out: Vec<ExecutionToken>,
 }
 
 #[derive(Clone)]
@@ -78,7 +91,25 @@ impl AgentManager {
         allowed_tools: Option<Vec<String>>,
         resume_id: Option<&str>,
     ) -> Result<String, String> {
-        let id = Uuid::new_v4().to_string();
+        self.start_session_with_execution(None, prompt, cwd, model, allowed_tools, resume_id)
+    }
+
+    /// Start a headless process under identities that were durably reserved
+    /// before `Command::spawn`. The session id is therefore not allocated after
+    /// the external effect.
+    pub fn start_session_with_execution(
+        &self,
+        execution_identity: Option<ExecutionIdentity>,
+        prompt: &str,
+        cwd: &str,
+        model: Option<&str>,
+        allowed_tools: Option<Vec<String>>,
+        resume_id: Option<&str>,
+    ) -> Result<String, String> {
+        let id = execution_identity
+            .as_ref()
+            .map(|identity| identity.session_id.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let model_str = model.unwrap_or("sonnet");
 
         // Route to different CLI based on model provider
@@ -144,7 +175,10 @@ impl AgentManager {
             cost: 0.0,
             tokens_used: 0,
             started_at: now_secs(),
-            task_id: None,
+            task_id: execution_identity
+                .as_ref()
+                .map(|identity| identity.task_id.clone()),
+            execution_identity,
             current_activity: None,
         };
 
@@ -257,7 +291,29 @@ impl AgentManager {
             if let Ok(Some(exit)) = proc.child.try_wait() {
                 let succeeded = exit.success();
                 proc.info.status = if succeeded { "done" } else { "failed" }.to_string();
-                if let Some(task_id) = &proc.info.task_id {
+                if let Some(identity) = &proc.info.execution_identity {
+                    if succeeded {
+                        outcome.execution_succeeded.push(ExecutionToken {
+                            attempt_id: identity.attempt_id.clone(),
+                            task_id: identity.task_id.clone(),
+                            execution_generation: identity.execution_generation,
+                            agent_run_id: identity.agent_run_id.clone(),
+                            process_generation: identity.process_generation,
+                            session_id: identity.session_id.clone(),
+                            pty_session_id: identity.pty_session_id.clone(),
+                        });
+                    } else {
+                        outcome.execution_failed.push(ExecutionToken {
+                            attempt_id: identity.attempt_id.clone(),
+                            task_id: identity.task_id.clone(),
+                            execution_generation: identity.execution_generation,
+                            agent_run_id: identity.agent_run_id.clone(),
+                            process_generation: identity.process_generation,
+                            session_id: identity.session_id.clone(),
+                            pty_session_id: identity.pty_session_id.clone(),
+                        });
+                    }
+                } else if let Some(task_id) = &proc.info.task_id {
                     if succeeded {
                         outcome.succeeded.push(task_id.clone());
                     } else {
@@ -277,9 +333,23 @@ impl AgentManager {
     /// `failed` so it is reported at most once and is visible in the fleet. `now`
     /// is the current Unix epoch (seconds), injected so the boundary is testable.
     pub fn reap_timed_out(&self, timeout_secs: u64, now: u64) -> Vec<String> {
-        let mut timed_out = Vec::new();
+        let outcome = self.reap_timed_out_with_execution(timeout_secs, now);
+        outcome
+            .timed_out
+            .into_iter()
+            .chain(
+                outcome
+                    .execution_timed_out
+                    .into_iter()
+                    .map(|token| token.task_id),
+            )
+            .collect()
+    }
+
+    pub fn reap_timed_out_with_execution(&self, timeout_secs: u64, now: u64) -> TimeoutOutcome {
+        let mut outcome = TimeoutOutcome::default();
         let Ok(mut sessions) = self.sessions.lock() else {
-            return timed_out;
+            return outcome;
         };
         for proc in sessions.values_mut() {
             // Already finished/reaped (or previously timed out) -> leave it.
@@ -315,9 +385,21 @@ impl AgentManager {
             }
             let _ = proc.child.wait();
             proc.info.status = "failed".to_string();
-            timed_out.push(task_id);
+            if let Some(identity) = &proc.info.execution_identity {
+                outcome.execution_timed_out.push(ExecutionToken {
+                    attempt_id: identity.attempt_id.clone(),
+                    task_id: identity.task_id.clone(),
+                    execution_generation: identity.execution_generation,
+                    agent_run_id: identity.agent_run_id.clone(),
+                    process_generation: identity.process_generation,
+                    session_id: identity.session_id.clone(),
+                    pty_session_id: identity.pty_session_id.clone(),
+                });
+            } else {
+                outcome.timed_out.push(task_id);
+            }
         }
-        timed_out
+        outcome
     }
 
     /// Reap a naturally exited child while keeping its session metadata visible.
@@ -482,6 +564,7 @@ mod reap_tests {
             tokens_used: 0,
             started_at: 0,
             task_id: None,
+            execution_identity: None,
             current_activity: None,
         };
         mgr.sessions
@@ -513,6 +596,7 @@ mod reap_tests {
             tokens_used: 0,
             started_at: 0,
             task_id: Some(task_id.to_string()),
+            execution_identity: None,
             current_activity: None,
         };
         mgr.sessions

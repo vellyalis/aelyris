@@ -17,7 +17,7 @@ use crate::cost::{CostCaps, CostUsage};
 use crate::failure_policy::{FailureEvent, FailurePolicy, RecoveryAction};
 use crate::review::{review, GateResults, ReviewVerdict};
 use crate::symbol_ownership::{tasks_collide, SymbolIntent};
-use crate::task::{TaskGraph, TaskStatus};
+use crate::task::{ExecutionToken, TaskGraph, TaskStatus};
 
 /// Maximum times a task's worker may CRASH before it is left `Failed` (BR9
 /// recovery). With `2`, a crashed task is reassigned once; a second crash fails
@@ -61,6 +61,11 @@ pub struct Completions {
     /// worker never exits, so it is surfaced here by the adapter (which owns the
     /// session clock + the kill) rather than by the exit-based `failed` split.
     pub timed_out: Vec<String>,
+    /// Production runtime completions carry the exact durable attempt and
+    /// generation. Legacy task-only vectors above remain for pure/test ports.
+    pub execution_succeeded: Vec<ExecutionToken>,
+    pub execution_failed: Vec<ExecutionToken>,
+    pub execution_timed_out: Vec<ExecutionToken>,
 }
 
 /// Runtime side effects the loop drives. Real impl: LLM-spawned agents, PTY
@@ -243,10 +248,20 @@ pub fn step(
     //    routes the task back for reassignment (bounded retries, then `Failed`)
     //    so a dead worker is re-dispatched rather than its task lost.
     let completions = ports.poll_completions();
-    for id in completions.succeeded {
+    for id in completions.succeeded.into_iter().chain(
+        completions
+            .execution_succeeded
+            .into_iter()
+            .map(|token| token.task_id),
+    ) {
         let _ = graph.transition(&id, TaskStatus::Review);
     }
-    for id in completions.failed {
+    for id in completions.failed.into_iter().chain(
+        completions
+            .execution_failed
+            .into_iter()
+            .map(|token| token.task_id),
+    ) {
         // Only recover a task genuinely in flight (its agent owned a Running task).
         if graph.get(&id).map(|task| task.status) != Some(TaskStatus::Running) {
             continue;
@@ -255,7 +270,12 @@ pub fn step(
             recovered.push(id);
         }
     }
-    for id in completions.timed_out {
+    for id in completions.timed_out.into_iter().chain(
+        completions
+            .execution_timed_out
+            .into_iter()
+            .map(|token| token.task_id),
+    ) {
         // A worker that hung past the wall-clock budget was killed by the adapter
         // (a hang never exits, so it never appears in `failed`). Recover its task
         // on the independent timeout budget — re-dispatched with the current ADR,
@@ -276,8 +296,18 @@ pub fn step(
         .map(|task| task.id.clone())
         .collect();
     for id in in_review {
+        let reviewer_id = ports.reviewer_id();
+        let implementer_id = ports.implementer_id(&id);
+        if reviewer_id == implementer_id {
+            // Separation of duties is identity-only and must be checked before
+            // the review port runs. Otherwise a self-review tick would consume
+            // the one-shot Review fence and the next distinct reviewer would
+            // either rerun the external gate or quarantine the attempt.
+            rejected.push(id);
+            continue;
+        }
         let gates = ports.gate(&id);
-        match review(&gates, &ports.reviewer_id(), &ports.implementer_id(&id)) {
+        match review(&gates, &reviewer_id, &implementer_id) {
             ReviewVerdict::Merge => {
                 if ports.merge(&id).is_ok() {
                     let _ = graph.transition(&id, TaskStatus::Done);
@@ -460,6 +490,7 @@ mod tests {
         reviewer: String,
         implementer: String,
         gates: HashMap<String, GateResults>,
+        gate_calls: Vec<String>,
         merge_ok: bool,
         dispatched: Vec<String>,
         merged: Vec<String>,
@@ -481,6 +512,7 @@ mod tests {
                 reviewer: "reviewer".to_string(),
                 implementer: "impl".to_string(),
                 gates: HashMap::new(),
+                gate_calls: Vec::new(),
                 merge_ok: true,
                 dispatched: Vec::new(),
                 merged: Vec::new(),
@@ -513,9 +545,11 @@ mod tests {
                 succeeded: std::mem::take(&mut self.pending_finish),
                 failed: std::mem::take(&mut self.pending_fail),
                 timed_out: std::mem::take(&mut self.pending_timeout),
+                ..Completions::default()
             }
         }
         fn gate(&mut self, task_id: &str) -> GateResults {
+            self.gate_calls.push(task_id.to_string());
             *self.gates.get(task_id).unwrap_or(&GREEN)
         }
         fn reviewer_id(&self) -> String {
@@ -914,6 +948,16 @@ mod tests {
         assert_eq!(report.rejected, ["a"]);
         // Work isn't reworked; it stays awaiting a distinct reviewer.
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Review);
+        assert!(
+            ports.gate_calls.is_empty(),
+            "self-review must not run the gate"
+        );
+
+        ports.reviewer = "distinct-reviewer".to_string();
+        let second = step(&mut g, &caps(4), &CostUsage::default(), &mut ports);
+        assert_eq!(ports.gate_calls, ["a"]);
+        assert_eq!(second.merged, ["a"]);
+        assert_eq!(g.get("a").unwrap().status, TaskStatus::Done);
     }
 
     #[test]

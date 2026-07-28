@@ -40,6 +40,21 @@ impl ManagedDb {
             .map_err(|_| "Database lock poisoned".to_string())?;
         f(&db)
     }
+
+    /// Typed variant for domain repositories whose fail-closed error carries
+    /// semantic state (for example stale execution generation vs. persistence
+    /// failure) that must not be flattened into an unstructured string.
+    pub(crate) fn try_with<F, T, E>(&self, f: F) -> Result<T, E>
+    where
+        F: FnOnce(&Database) -> Result<T, E>,
+        E: From<String>,
+    {
+        let db = self
+            .inner
+            .lock()
+            .map_err(|_| E::from("Database lock poisoned".to_string()))?;
+        f(&db)
+    }
 }
 
 /// Returns the path to the Aelyris database file (~/.aelyris/aelyris.db)

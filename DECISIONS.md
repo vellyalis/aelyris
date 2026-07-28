@@ -233,7 +233,7 @@ Why:
   completion claims less trustworthy;
 - external product descriptions are useful hypotheses, but their claims do not
   prove behavior in Aelyris or in a pinned local dependency;
-- A4.9-A4.12 are active runtime-integrity work and must not be displaced by later
+- A4.10-A4.12 are active runtime-integrity work and must not be displaced by later
   product design.
 
 Implication: A7.0 freezes a minimal team policy without a fixed agent count; A7.2

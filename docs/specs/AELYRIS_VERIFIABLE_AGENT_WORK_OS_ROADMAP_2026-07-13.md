@@ -75,11 +75,11 @@ At this roadmap checkpoint:
 - A2 signed lifecycle and A4 real-host power/sleep proof remain explicit A9
   operator/release gates rather than repo-owned PASS;
 - A4.7 authoritative mutation correction and A4.8 durable EventBus delivery are
-  complete; A4.9-A4.12 remain active/planned;
+  complete through A4.9; A4.10-A4.12 remain active/planned;
 - A6 modularity is paused at its existing frontier, not superseded;
 - A6.2c-A6.2d extraction is landed but A6.2 acceptance is reopened by review;
 - A6.2e0 exact continuation/worklog hardening is complete;
-- A4.9 is the next runtime implementation slice; A6.2e1 remains the exact A6 resume
+- A4.10 is the next runtime implementation slice; A6.2e1 remains the exact A6 resume
   slice after A4.12 closes the corrective runtime-integrity sequence;
 - A7, A8, A9, blocking CI, and external/operator release evidence remain open;
 - current public status remains alpha and not release-ready.
@@ -449,7 +449,7 @@ Unlocks:
 
 Execution position: after A9 establishes the current release baseline and before
 any V1 production adapter. This plan does not alter the active
-  `A4.9-A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
+  `A4.10-A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
 would require a separate authorization under the isolated non-shipping rule above;
 it may not block, satisfy, or receive credit for R0-A9.
 

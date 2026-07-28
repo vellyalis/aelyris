@@ -204,6 +204,10 @@ const proofbookLedger = read("src-tauri/src/proofbook/ledger.rs");
 const contextManager = read("src-tauri/src/context_store/manager.rs");
 const taskManager = read("src-tauri/src/task/manager.rs");
 const taskGraph = read("src-tauri/src/task/graph.rs");
+const executionTypes = read("src-tauri/src/task/execution.rs");
+const workExecutionRepo = read("src-tauri/src/persistence/work_execution_repo.rs");
+const loopPorts = read("src-tauri/src/control/loop_ports.rs");
+const ownershipRepo = read("src-tauri/src/persistence/ownership_repo.rs");
 const eventBus = read("src-tauri/src/event_bus/manager.rs");
 const eventTypes = read("src-tauri/src/event_bus/mod.rs");
 const eventRepo = read("src-tauri/src/persistence/event_repo.rs");
@@ -317,7 +321,7 @@ const eventErrorSampleEnd = eventSpec.indexOf("```", eventErrorSampleStart);
 const documentedEventErrorSample = JSON.parse(eventSpec.slice(eventErrorSampleStart, eventErrorSampleEnd));
 
 const v3Start = migrations.indexOf('const V3_SCHEMA: &str = "');
-const v3End = migrations.indexOf('";\n\npub fn schema_version', v3Start);
+const v3End = migrations.indexOf('";\n\nconst V4_SCHEMA', v3Start);
 const v3Schema = migrations.slice(v3Start, v3End);
 const actualV3EventTriggers = [...v3Schema.matchAll(/CREATE TRIGGER (trg_[a-z0-9_]+)/g)].map((match) => match[1]);
 const hardeningV3Start = hardeningSpec.indexOf("-- A4.8 migration v3");
@@ -332,10 +336,11 @@ const ready = lib.indexOf("state.complete(adopted, restored, reconciled)");
 
 const checks = {
   numberedSchemaVersion:
-    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 3") &&
+    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 4") &&
     migrations.includes('pragma_update(None, "user_version", 1)') &&
     migrations.includes('pragma_update(None, "user_version", 2)') &&
     migrations.includes('pragma_update(None, "user_version", 3)') &&
+    migrations.includes('pragma_update(None, "user_version", 4)') &&
     migrations.includes('execute_batch("BEGIN IMMEDIATE")') &&
     migrations.includes('execute_batch("ROLLBACK")'),
   newerSchemaFailsClosed:
@@ -402,6 +407,24 @@ const checks = {
     taskManager.includes("persistence_failure_does_not_publish_staged_graph_mutation") &&
     taskManager.includes("autonomy_persistence_failure_keeps_prior_graph_and_releases_lease") &&
     taskManager.includes("production_mode_rejects_mutation_until_durability_is_attached"),
+  executionAttemptGenerationAndFence:
+    migrations.includes("CREATE TABLE work_execution_attempts (") &&
+    migrations.includes("trg_work_execution_attempts_identity_immutable") &&
+    migrations.includes("trg_work_execution_attempts_merge_intent_one_way") &&
+    migrations.includes("trg_work_execution_attempts_no_delete") &&
+    executionTypes.includes("pub struct ExecutionIdentity") &&
+    executionTypes.includes("pub struct ExecutionToken") &&
+    executionTypes.includes("pub enum ExecutionEffect") &&
+    workExecutionRepo.includes("Uuid::now_v7()") &&
+    workExecutionRepo.includes("load_rejects_non_v7_or_noncanonical_generated_execution_identities") &&
+    workExecutionRepo.includes("visible_execution_load_requires_canonical_uuid_v7_pty_identity") &&
+    taskManager.includes("pub fn reserve_execution(") &&
+    taskManager.includes("crash_boundary_matrix_reloads_each_fence_and_blocks_blind_successor") &&
+    loopPorts.includes("execution_reservation_commits_outbox_and_claim_ids_before_first_effect") &&
+    loopPorts.includes("stale_full_token_completion_is_quarantined_before_pure_loop_projection") &&
+    loopPorts.includes("request_durable_intent(") &&
+    loopPorts.includes("ExecutionEffect::Finalization") &&
+    ownershipRepo.includes("replace_file_claims_for_task"),
   allFacesPropagateContextPersistenceFailure:
     contextCommands.includes("Result<Option<DecisionChange>, String>") &&
     contextCommands.includes("manager.set(key, value)?") &&
@@ -544,7 +567,8 @@ const checks = {
     coreWireShapesExact &&
     exactSet(tsEventTools, expectedEventTools) &&
     exactSet(tsStructuredErrorTools, expectedStructuredErrorTools) &&
-    remediationPlan.includes("### **A4.9** Active - Durable Execution Attempt And Effect Fence"),
+    remediationPlan.includes("### **A4.9** Complete - Durable Execution Attempt And Effect Fence") &&
+    remediationPlan.includes("### **A4.10** Active - All-Authority Startup Reconciliation"),
   crashSafeReplacementOwner:
     durableFile.includes("pub fn atomic_write") &&
     durableFile.includes("file.sync_all()") &&
@@ -567,13 +591,15 @@ const checks = {
   fullAcceptanceMatrix:
     packageJson.scripts?.["verify:a4:durability:acceptance"] === "node scripts/verify-a4-durability-acceptance.mjs" &&
     acceptance?.status === "pass-current-a4-durability-evidence" &&
-    acceptance?.schema === "aelyris.a4-durability-acceptance/v4" &&
-    acceptance?.completedThrough === "A4.8" &&
+    acceptance?.schema === "aelyris.a4-durability-acceptance/v5" &&
+    acceptance?.completedThrough === "A4.9" &&
     acceptance?.repoOwnedComplete === false &&
     acceptance?.phaseComplete === false &&
-    acceptance?.scenarios?.length === 19 &&
+    acceptance?.scenarios?.length === 21 &&
     acceptance.scenarios.every((scenario) => scenario.status === "pass") &&
     [
+      "work-execution-attempt-generation-and-load-integrity",
+      "execution-fence-crash-boundaries-and-stale-token",
       "event-outbox-append-query-gap-and-consumer-ack",
       "event-mcp-structured-error-and-catalog-contract",
       "session-lifecycle-event-publish-failure-truth",
@@ -594,12 +620,12 @@ if (failures.length > 0) {
 const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
-  schema: "aelyris.a4-durability-contract/v4",
+  schema: "aelyris.a4-durability-contract/v5",
   status: "pass-current-a4-durability-contract",
-  activeSlice: "A4.9",
-  completedSlice: "A4.8",
+  activeSlice: "A4.10",
+  completedSlice: "A4.9",
   phaseComplete: false,
-  remainingSlices: ["A4.9", "A4.10", "A4.11", "A4.12"],
+  remainingSlices: ["A4.10", "A4.11", "A4.12"],
   externalProof: acceptance.externalProof,
   checks,
   generatedAt,
@@ -622,6 +648,10 @@ const report = {
       "src-tauri/src/context_store/manager.rs",
       "src-tauri/src/task/manager.rs",
       "src-tauri/src/task/graph.rs",
+      "src-tauri/src/task/execution.rs",
+      "src-tauri/src/persistence/work_execution_repo.rs",
+      "src-tauri/src/control/loop_ports.rs",
+      "src-tauri/src/persistence/ownership_repo.rs",
       "src-tauri/src/event_bus/mod.rs",
       "src-tauri/src/event_bus/manager.rs",
       "src-tauri/src/persistence/event_repo.rs",

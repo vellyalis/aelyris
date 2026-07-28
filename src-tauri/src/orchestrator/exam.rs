@@ -112,6 +112,7 @@ impl LoopPorts for ScriptedFleet {
             succeeded: std::mem::take(&mut self.pending_finish),
             failed: std::mem::take(&mut self.pending_fail),
             timed_out: Vec::new(),
+            ..Completions::default()
         }
     }
 

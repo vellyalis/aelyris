@@ -52,6 +52,7 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
   session_handoff: "handoff",
   context_recycled: "recycled",
   escalation_raised: "escalated",
+  execution_reserved: "execution reserved",
 };
 
 /** Best-effort subject id from an event payload (`{ id }`), for the feed. */
