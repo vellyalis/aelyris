@@ -195,6 +195,15 @@ impl TaskManager {
         self.execution_lock().get(task_id).cloned()
     }
 
+    /// Stable startup snapshot of the latest durable execution generation for
+    /// every task. The map remains the hot projection; each row was validated by
+    /// `WorkExecutionRepo::load_latest` before it entered memory.
+    pub fn execution_snapshot(&self) -> Vec<WorkExecutionAttempt> {
+        let mut attempts: Vec<_> = self.execution_lock().values().cloned().collect();
+        attempts.sort_by(|left, right| left.identity.task_id.cmp(&right.identity.task_id));
+        attempts
+    }
+
     /// Reject a completion/result unless it names the current durable attempt
     /// and generation. This is independent of TaskGraph snapshot persistence.
     pub fn validate_execution_token(
@@ -445,6 +454,24 @@ impl TaskManager {
     /// A snapshot of every task in insertion order.
     pub fn list(&self) -> Vec<Task> {
         self.lock().graph.list().into_iter().cloned().collect()
+    }
+
+    /// Persist the fail-closed TaskGraph projection for attempts whose external
+    /// effects cannot be proven safe after restart. This is one atomic graph
+    /// mutation regardless of how many task ids the startup audit quarantines.
+    pub fn quarantine_tasks_for_startup(
+        &self,
+        task_ids: &[String],
+    ) -> Result<usize, TaskGraphError> {
+        self.commit_mutation(|graph| {
+            let mut changed_count = 0usize;
+            for task_id in task_ids {
+                if graph.quarantine_for_startup(task_id)? {
+                    changed_count = changed_count.saturating_add(1);
+                }
+            }
+            Ok((changed_count, changed_count > 0))
+        })
     }
 
     pub fn get(&self, id: &str) -> Option<Task> {
@@ -766,6 +793,7 @@ mod tests {
         manager
             .reserve_execution(ExecutionReservation {
                 task_id: "exec".to_string(),
+                repo_path: "C:/repo".to_string(),
                 runtime: crate::task::ExecutionRuntime::Headless,
                 ownership_claim_ids: vec!["claim-exec".to_string()],
                 now,
@@ -926,6 +954,7 @@ mod tests {
                 matches!(
                     restored.reserve_execution(ExecutionReservation {
                         task_id: "exec".to_string(),
+                        repo_path: "C:/repo".to_string(),
                         runtime: crate::task::ExecutionRuntime::Headless,
                         ownership_claim_ids: vec!["claim-new".to_string()],
                         now: now + 1,

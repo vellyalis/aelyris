@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 4;
+pub const CURRENT_SCHEMA_VERSION: i64 = 5;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -816,6 +816,35 @@ const V4_SCHEMA: &str = "
     END;
 ";
 
+const V5_SCHEMA: &str = "
+    -- A4.10: persist the immutable repository root in the existing execution
+    -- generation owner so startup can reconcile its worktree namespace.
+    -- Legacy rows receive an empty value and are quarantined rather than
+    -- heuristically rebound to a repository.
+    ALTER TABLE work_execution_attempts
+        ADD COLUMN repo_path TEXT NOT NULL DEFAULT '';
+
+    CREATE TRIGGER trg_work_execution_attempts_repo_path_required
+    BEFORE INSERT ON work_execution_attempts
+    FOR EACH ROW WHEN trim(NEW.repo_path) = ''
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'work_execution_attempts: repo_path is required'
+        );
+    END;
+
+    CREATE TRIGGER trg_work_execution_attempts_repo_path_immutable
+    BEFORE UPDATE ON work_execution_attempts
+    FOR EACH ROW WHEN NEW.repo_path IS NOT OLD.repo_path
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'work_execution_attempts: repo_path is immutable'
+        );
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -898,6 +927,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V4_SCHEMA)?;
             conn.pragma_update(None, "user_version", 4)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 5 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V5_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 5)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -1155,13 +1200,13 @@ mod tests {
         assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         conn.execute(
             "INSERT INTO work_execution_attempts (
-                 attempt_id, task_id, execution_generation, runtime,
+                 attempt_id, task_id, repo_path, execution_generation, runtime,
                  agent_run_id, process_generation, session_id, pty_session_id,
                  state, fence_effect, fence_state, fence_revision,
                  ownership_claim_ids_json, reservation_event_id,
                  created_at, updated_at
              ) VALUES (
-                 'attempt-a', 'task-a', 1, 'headless',
+                 'attempt-a', 'task-a', 'C:/repo', 1, 'headless',
                  'run-a', 1, 'session-a', NULL,
                  'reserved', 'reservation', 'reserved', 1,
                  '[\"claim-a\"]', 'event-a', 10, 10
@@ -1180,6 +1225,69 @@ mod tests {
         assert!(conn
             .execute(
                 "DELETE FROM work_execution_attempts WHERE attempt_id = 'attempt-a'",
+                [],
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn version_four_adds_immutable_repo_identity_without_guessing_legacy_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.execute_batch(V4_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 4).unwrap();
+        conn.execute("INSERT INTO tasks (id, title) VALUES ('task-a', 'A')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO work_execution_attempts (
+                 attempt_id, task_id, execution_generation, runtime,
+                 agent_run_id, process_generation, session_id, pty_session_id,
+                 state, fence_effect, fence_state, fence_revision,
+                 ownership_claim_ids_json, reservation_event_id,
+                 created_at, updated_at
+             ) VALUES (
+                 'attempt-a', 'task-a', 1, 'headless',
+                 'run-a', 1, 'session-a', NULL,
+                 'reserved', 'reservation', 'reserved', 1,
+                 '[]', 'event-a', 10, 10
+             )",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
+        let legacy_repo: String = conn
+            .query_row(
+                "SELECT repo_path FROM work_execution_attempts WHERE attempt_id = 'attempt-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(legacy_repo.is_empty());
+        assert!(conn
+            .execute(
+                "UPDATE work_execution_attempts SET repo_path = 'C:/guessed'
+                 WHERE attempt_id = 'attempt-a'",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO work_execution_attempts (
+                     attempt_id, task_id, execution_generation, runtime,
+                     agent_run_id, process_generation, session_id,
+                     state, fence_effect, fence_state, fence_revision,
+                     ownership_claim_ids_json, reservation_event_id,
+                     created_at, updated_at
+                 ) VALUES (
+                     'attempt-b', 'task-a', 2, 'headless',
+                     'run-b', 2, 'session-b',
+                     'reserved', 'reservation', 'reserved', 1,
+                     '[]', 'event-b', 11, 11
+                 )",
                 [],
             )
             .is_err());

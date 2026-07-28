@@ -17,6 +17,12 @@ use crate::event_bus::{
 
 pub struct EventRepo;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventStartupAudit {
+    pub high_water_seq: i64,
+    pub consumer_count: usize,
+}
+
 #[derive(Debug, Clone)]
 struct StreamState {
     high_water_seq: i64,
@@ -24,6 +30,111 @@ struct StreamState {
 }
 
 impl EventRepo {
+    /// Validate the complete durable stream and every registered consumer cursor
+    /// before startup dispatch is admitted. A cursor that has not been polled
+    /// since corruption must still fail the global reconciliation barrier.
+    pub fn inspect_startup(db: &Database) -> Result<EventStartupAudit, EventBusError> {
+        let stream = Self::inspect_stream(db, "startup_reconciliation")?;
+        {
+            let mut statement = db
+                .conn()
+                .prepare(
+                    "SELECT seq, event_id, kind, channel, payload_json
+                     FROM agent_events
+                     ORDER BY seq ASC",
+                )
+                .map_err(|error| EventBusError::QueryFailed {
+                    operation: "startup_reconciliation:prepare_complete_stream".to_string(),
+                    message: error.to_string(),
+                })?;
+            let rows =
+                statement
+                    .query_map([], map_row)
+                    .map_err(|error| EventBusError::QueryFailed {
+                        operation: "startup_reconciliation:query_complete_stream".to_string(),
+                        message: error.to_string(),
+                    })?;
+            let mut expected_seq = 1i64;
+            for row in rows {
+                let raw = row.map_err(|error| EventBusError::QueryFailed {
+                    operation: "startup_reconciliation:read_complete_stream".to_string(),
+                    message: error.to_string(),
+                })?;
+                let event = rows_to_events(vec![raw])?
+                    .pop()
+                    .expect("one startup event row was supplied");
+                if event.seq != expected_seq {
+                    return Err(EventBusError::Gap {
+                        expected_seq,
+                        observed_seq: event.seq,
+                    });
+                }
+                expected_seq = expected_seq.saturating_add(1);
+            }
+        }
+        let mut statement = db
+            .conn()
+            .prepare(
+                "SELECT consumer_id, ack_seq, ack_event_id
+                 FROM event_consumer_cursors
+                 ORDER BY consumer_id",
+            )
+            .map_err(|error| EventBusError::QueryFailed {
+                operation: "startup_reconciliation:prepare_consumer_cursors".to_string(),
+                message: error.to_string(),
+            })?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .map_err(|error| EventBusError::QueryFailed {
+                operation: "startup_reconciliation:query_consumer_cursors".to_string(),
+                message: error.to_string(),
+            })?;
+        let mut consumer_count = 0usize;
+        for row in rows {
+            let (consumer_id, ack_seq, ack_event_id) =
+                row.map_err(|error| EventBusError::QueryFailed {
+                    operation: "startup_reconciliation:read_consumer_cursor".to_string(),
+                    message: error.to_string(),
+                })?;
+            Self::validate_consumer_cursor(
+                db,
+                &consumer_id,
+                ack_seq,
+                ack_event_id.as_deref(),
+                &stream,
+            )?;
+            consumer_count = consumer_count.saturating_add(1);
+        }
+        Ok(EventStartupAudit {
+            high_water_seq: stream.high_water_seq,
+            consumer_count,
+        })
+    }
+
+    pub fn by_event_id(db: &Database, event_id: &str) -> Result<Option<SeqEvent>, EventBusError> {
+        let raw = db
+            .conn()
+            .query_row(
+                "SELECT seq, event_id, kind, channel, payload_json
+                 FROM agent_events WHERE event_id = ?1",
+                [event_id],
+                map_row,
+            )
+            .optional()
+            .map_err(|error| EventBusError::QueryFailed {
+                operation: "startup_reconciliation:read_event_identity".to_string(),
+                message: error.to_string(),
+            })?;
+        raw.map(|row| rows_to_events(vec![row]).map(|mut events| events.remove(0)))
+            .transpose()
+    }
+
     /// Commit one outbox row. Replaying the same identity and content is
     /// idempotent; identity reuse with different content fails closed.
     pub fn append(db: &Database, event: &AgentEvent) -> Result<(i64, bool), EventBusError> {
@@ -702,6 +813,10 @@ mod tests {
             Err(EventBusError::CorruptRow { seq: 2, .. })
         ));
         assert!(matches!(
+            EventRepo::inspect_startup(&db),
+            Err(EventBusError::CorruptRow { seq: 2, .. })
+        ));
+        assert!(matches!(
             EventRepo::ack(&db, "worker-a", 3, "valid-3"),
             Err(EventBusError::CorruptRow { seq: 2, .. })
         ));
@@ -780,6 +895,36 @@ mod tests {
             EventRepo::poll_consumer(&db, "identity-mismatch", 10),
             Err(EventBusError::ConsumerCursorCorrupt { ack_seq: 1, .. })
         ));
+        assert!(matches!(
+            EventRepo::inspect_startup(&db),
+            Err(EventBusError::ConsumerCursorCorrupt {
+                consumer_id,
+                ..
+            }) if consumer_id == "future"
+        ));
+    }
+
+    #[test]
+    fn startup_inspection_validates_every_registered_cursor() {
+        let db = Database::open_memory().unwrap();
+        let event =
+            ev(AgentEventKind::TaskCreated, json!({"id": "a"})).with_idempotency_key("event-1");
+        EventRepo::append(&db, &event).unwrap();
+        EventRepo::poll_consumer(&db, "worker-a", 10).unwrap();
+        EventRepo::ack(&db, "worker-a", 1, "event-1").unwrap();
+        EventRepo::poll_consumer(&db, "worker-b", 10).unwrap();
+
+        let audit = EventRepo::inspect_startup(&db).unwrap();
+        assert_eq!(audit.high_water_seq, 1);
+        assert_eq!(audit.consumer_count, 2);
+        assert_eq!(
+            EventRepo::by_event_id(&db, "event-1")
+                .unwrap()
+                .unwrap()
+                .event,
+            event
+        );
+        assert!(EventRepo::by_event_id(&db, "missing").unwrap().is_none());
     }
 
     #[test]

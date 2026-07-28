@@ -176,6 +176,11 @@ pub struct ApiState {
     /// orchestrator AI driving the MCP face operates on exactly the graph the
     /// cockpit shows — one source of truth across both faces (BR4/BR9).
     pub task_manager: Option<Arc<crate::task::TaskManager>>,
+    /// Global startup admission barrier. Orchestrator dispatch must not run
+    /// until all durable authorities have either reconciled or been explicitly
+    /// quarantined.
+    pub startup_reconciliation:
+        Option<Arc<crate::startup_reconciliation::StartupReconciliationState>>,
     /// Shared fleet Event Bus (same instance as the Tauri-managed one) so the
     /// orchestrator AI can subscribe to the live coordination stream over MCP
     /// (BR5) — the events the cockpit and the loop publish.
@@ -262,6 +267,7 @@ impl ApiState {
             ghost_layers: None,
             cost_manager: None,
             task_manager: None,
+            startup_reconciliation: None,
             event_bus: None,
             file_ownership: None,
             symbol_ownership: None,
@@ -356,6 +362,14 @@ impl ApiState {
 
     pub fn with_task_manager(mut self, task_manager: Arc<crate::task::TaskManager>) -> Self {
         self.task_manager = Some(task_manager);
+        self
+    }
+
+    pub fn with_startup_reconciliation(
+        mut self,
+        state: Arc<crate::startup_reconciliation::StartupReconciliationState>,
+    ) -> Self {
+        self.startup_reconciliation = Some(state);
         self
     }
 

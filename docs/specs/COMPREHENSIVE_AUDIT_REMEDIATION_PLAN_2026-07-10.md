@@ -446,14 +446,27 @@ effect, and the seven ordered fences cover reservation, first effect, spawn, rev
 candidate freeze, exact-OID merge, and finalization. Focused repository, TaskManager,
 and LoopPorts tests pass while `phaseComplete=false`; A4.10-A4.12 remain.
 
-### **A4.10** Active - All-Authority Startup Reconciliation
+### **A4.10** Complete - All-Authority Startup Reconciliation
 
 Extend the bounded startup barrier to reconcile TaskGraph, active execution attempts,
 PaneFleet/PTY generations, file and symbol ownership, worktrees/merge intents, leases,
 and EventBus outbox/cursors before dispatch admission. Reconciliation must be
 idempotent, classify every orphan or ambiguity, and quarantine instead of guessing.
 
-### **A4.11** Planned - Structured Handoff Acceptance And Successor Quarantine
+Implemented inside the existing `StartupReconciliationState`, TaskManager, execution
+repository, PaneFleet/PTY registries, ownership repository, merge-intent store, and
+EventRepo owners. Seven structured authority reports now gate both terminal spawn and
+headless/visible orchestrator dispatch. A fully observed generation with no in-flight
+effect closes as failed and releases stale leases; any started effect, missing
+cross-link, stale runtime projection, or ownership/worktree ambiguity becomes
+`NeedsReconcile` and blocks its TaskGraph node without deleting collision evidence.
+WorkExecutionAttempt schema v5 adds immutable `repo_path`; legacy empty identities are
+quarantined rather than backfilled. Full outbox rows and every registered consumer
+cursor are validated at boot. Focused startup, migration, EventRepo, TaskManager,
+WorkExecutionRepo, and LoopPorts tests pass while `phaseComplete=false`; A4.11-A4.12
+remain.
+
+### **A4.11** Active - Structured Handoff Acceptance And Successor Quarantine
 
 Replace file-exists/liveness ACK with a structured, digest-bound HandoffAcceptanceRecord
 covering predecessor/successor generations, accepted checkpoint, and baton version.

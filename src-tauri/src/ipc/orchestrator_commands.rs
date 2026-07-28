@@ -15,6 +15,7 @@ use crate::orchestrator::autonomy::StepReport;
 use crate::orchestrator::{plan, DispatchPlan};
 use crate::pty::PtyManager;
 use crate::review::GateResults;
+use crate::startup_reconciliation::StartupReconciliationState;
 use crate::symbol_ownership::SymbolOwnership;
 use crate::task::TaskManager;
 use crate::term::NativeTerminalRegistry;
@@ -52,6 +53,7 @@ pub fn orchestrator_plan(
 pub fn orchestrator_step(
     app: AppHandle,
     tasks: State<'_, Arc<TaskManager>>,
+    startup: State<'_, Arc<StartupReconciliationState>>,
     cost: State<'_, Arc<CostManager>>,
     fleet: State<'_, PaneFleet>,
     bus: State<'_, Arc<EventBus>>,
@@ -65,6 +67,7 @@ pub fn orchestrator_step(
     gates: HashMap<String, GateResults>,
 ) -> Result<StepReport, String> {
     let report = run_step_visible(
+        &startup,
         &tasks,
         &cost,
         &fleet,

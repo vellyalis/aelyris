@@ -30,18 +30,17 @@ const scenarios = [
   {
     id: "work-execution-attempt-generation-and-load-integrity",
     command: cargo,
-    args: [
-      "test",
-      "--manifest-path",
-      "src-tauri/Cargo.toml",
-      "persistence::work_execution_repo::tests",
-      "--lib",
-    ],
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::work_execution_repo::tests", "--lib"],
   },
   {
     id: "execution-fence-crash-boundaries-and-stale-token",
     command: cargo,
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "control::loop_ports::tests", "--lib"],
+  },
+  {
+    id: "all-authority-startup-reconciliation-and-dispatch-admission",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "startup_reconciliation", "--lib"],
   },
   {
     id: "event-outbox-append-query-gap-and-consumer-ack",
@@ -174,12 +173,12 @@ for (const scenario of scenarios) {
 
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a4-durability-acceptance/v5",
+  schema: "aelyris.a4-durability-acceptance/v6",
   status: failed ? "failed" : "pass-current-a4-durability-evidence",
-  completedThrough: failed ? "A4.8" : "A4.9",
+  completedThrough: failed ? "A4.9" : "A4.10",
   repoOwnedComplete: false,
   phaseComplete: false,
-  remainingSlices: ["A4.10", "A4.11", "A4.12"],
+  remainingSlices: ["A4.11", "A4.12"],
   scenarios: results,
   externalProof: {
     realOsSleepResumeExecuted: false,
@@ -206,6 +205,7 @@ const report = {
       "src-tauri/src/task/execution.rs",
       "src-tauri/src/persistence/work_execution_repo.rs",
       "src-tauri/src/control/loop_ports.rs",
+      "src-tauri/src/control/pane_fleet.rs",
       "src-tauri/src/persistence/ownership_repo.rs",
       "src-tauri/src/event_bus/mod.rs",
       "src-tauri/src/event_bus/manager.rs",
@@ -214,6 +214,8 @@ const report = {
       "src-tauri/src/ipc/event_commands.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "src-tauri/src/api/mcp.rs",
+      "src-tauri/src/api/mod.rs",
+      "src-tauri/src/ipc/orchestrator_commands.rs",
       "src/shared/types/eventBus.ts",
       "src/shared/hooks/useEventBus.ts",
       "src/__tests__/useEventBus.test.ts",

@@ -3385,6 +3385,11 @@ pub(super) async fn tools_call(
             serde_json::json!({ "health": health })
         }
         "aelyris.orchestrator.step" => {
+            let startup = state.startup_reconciliation.as_ref().ok_or_else(|| {
+                ApiError::Internal(
+                    "startup reconciliation barrier is not attached to this process".to_string(),
+                )
+            })?;
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
@@ -3426,6 +3431,7 @@ pub(super) async fn tools_call(
                     None => None,
                 };
             let report = crate::control::loop_ports::run_step(
+                startup,
                 tasks,
                 cost,
                 agents,

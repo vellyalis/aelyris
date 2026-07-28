@@ -312,18 +312,21 @@ pub fn run() {
             // Ready — the loop re-dispatches them without ever running a dependent
             // ahead of unfinished work — then attach for save-on-write. Same
             // hydrate-before-attach invariant as the store.
-            fn restore_task_graph(app: &tauri::AppHandle, db: &db::ManagedDb) {
+            fn restore_task_graph(
+                app: &tauri::AppHandle,
+                db: &db::ManagedDb,
+            ) -> Result<usize, String> {
                 let tasks = app
                     .state::<std::sync::Arc<task::TaskManager>>()
                     .inner()
                     .clone();
                 // P1 design: attach_db wires the DB and restores the persisted graph
                 // in one step (no separate hydrate).
-                match tasks.attach_db(std::sync::Arc::new(db.clone())) {
-                    Ok(n) if n > 0 => log::info!("task graph: restored {n} task(s) from disk"),
-                    Ok(_) => {}
-                    Err(err) => log::warn!("task graph: restore from disk failed: {err}"),
+                let restored = tasks.attach_db(std::sync::Arc::new(db.clone()))?;
+                if restored > 0 {
+                    log::info!("task graph: restored {restored} task(s) from disk");
                 }
+                Ok(restored)
             }
 
             // Restore the Knowledge Graph (code dependency map) so the populated
@@ -361,48 +364,37 @@ pub fn run() {
             // Shared-brain G3: restore active file/symbol ownership. Context
             // decisions and events already survive restart; this closes the
             // remaining "who owns what" restart hole without a raw brain snapshot.
-            fn restore_ownership(app: &tauri::AppHandle, db: &db::ManagedDb) {
+            fn restore_ownership(
+                app: &tauri::AppHandle,
+                db: &db::ManagedDb,
+            ) -> Result<(), String> {
                 let now = now_secs();
-                match db.with(|d| persistence::OwnershipRepo::load_file_claims(d, now)) {
-                    Ok(claims) => {
-                        let count = claims.len();
-                        if let Ok(owner) = app
-                            .state::<std::sync::Arc<std::sync::Mutex<file_ownership::FileOwnership>>>(
-                            )
-                            .inner()
-                            .lock()
-                        {
-                            let mut owner = owner;
-                            owner.hydrate(claims);
-                            if count > 0 {
-                                log::info!("file ownership: restored {count} claim(s) from disk");
-                            }
-                        } else {
-                            log::warn!("file ownership: restore skipped; lock poisoned");
-                        }
-                    }
-                    Err(err) => log::warn!("file ownership: restore from disk failed: {err}"),
+                let claims =
+                    db.with(|d| persistence::OwnershipRepo::load_file_claims(d, now))?;
+                let count = claims.len();
+                let mut owner = app
+                    .state::<std::sync::Arc<std::sync::Mutex<file_ownership::FileOwnership>>>()
+                    .inner()
+                    .lock()
+                    .map_err(|_| "file ownership restore lock poisoned".to_string())?;
+                owner.hydrate(claims);
+                if count > 0 {
+                    log::info!("file ownership: restored {count} claim(s) from disk");
                 }
-                match db.with(|d| persistence::OwnershipRepo::load_symbol_claims(d, now)) {
-                    Ok(claims) => {
-                        let count = claims.len();
-                        if let Ok(owner) = app
-                            .state::<std::sync::Arc<std::sync::Mutex<symbol_ownership::SymbolOwnership>>>(
-                            )
-                            .inner()
-                            .lock()
-                        {
-                            let mut owner = owner;
-                            owner.hydrate(claims, now);
-                            if count > 0 {
-                                log::info!("symbol ownership: restored {count} claim(s) from disk");
-                            }
-                        } else {
-                            log::warn!("symbol ownership: restore skipped; lock poisoned");
-                        }
-                    }
-                    Err(err) => log::warn!("symbol ownership: restore from disk failed: {err}"),
+                drop(owner);
+                let claims =
+                    db.with(|d| persistence::OwnershipRepo::load_symbol_claims(d, now))?;
+                let count = claims.len();
+                let mut owner = app
+                    .state::<std::sync::Arc<std::sync::Mutex<symbol_ownership::SymbolOwnership>>>()
+                    .inner()
+                    .lock()
+                    .map_err(|_| "symbol ownership restore lock poisoned".to_string())?;
+                owner.hydrate(claims, now);
+                if count > 0 {
+                    log::info!("symbol ownership: restored {count} claim(s) from disk");
                 }
+                Ok(())
             }
 
             let db_path = db::db_path();
@@ -421,9 +413,23 @@ pub fn run() {
                     }
                     restore_context_store(app.handle(), &managed);
                     restore_intent_bus(app.handle(), &managed);
-                    restore_task_graph(app.handle(), &managed);
+                    if let Err(error) = restore_task_graph(app.handle(), &managed) {
+                        log::error!("task graph: restore from disk failed: {error}");
+                        let _ = app
+                            .state::<std::sync::Arc<
+                                startup_reconciliation::StartupReconciliationState,
+                            >>()
+                            .fail("task_graph", error);
+                    }
                     restore_knowledge_graph(app.handle(), &managed);
-                    restore_ownership(app.handle(), &managed);
+                    if let Err(error) = restore_ownership(app.handle(), &managed) {
+                        log::error!("ownership restore from disk failed: {error}");
+                        let _ = app
+                            .state::<std::sync::Arc<
+                                startup_reconciliation::StartupReconciliationState,
+                            >>()
+                            .fail("ownership", error);
+                    }
                     app.handle().manage(managed);
                     if let Err(error) = app
                         .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
@@ -449,7 +455,9 @@ pub fn run() {
                         let managed = db::ManagedDb::new(mem_db);
                         restore_intent_bus(app.handle(), &managed);
                         restore_knowledge_graph(app.handle(), &managed);
-                        restore_ownership(app.handle(), &managed);
+                        if let Err(error) = restore_ownership(app.handle(), &managed) {
+                            log::error!("fallback ownership restore failed: {error}");
+                        }
                         app.handle().manage(managed);
                     }
                 }
@@ -485,21 +493,6 @@ pub fn run() {
                 Err(e) => log::error!("Intent Bus persistence unavailable: {}", e),
             }
 
-            // Runtime Hardening P1: make the Task Graph durable the same way.
-            // The autonomy loop's live fleet state (statuses, crash/rework/
-            // timeout counters, branch bindings) was in-memory only; this
-            // restores it across restart. Own connection, loud-fail to in-memory.
-            match Database::open(&db_path) {
-                Ok(t_db) => {
-                    let tm = app.state::<std::sync::Arc<task::TaskManager>>();
-                    match tm.attach_db(std::sync::Arc::new(db::ManagedDb::new(t_db))) {
-                        Ok(n) => log::info!("Task graph restored {} task(s)", n),
-                        Err(e) => log::error!("Task graph restore failed: {}", e),
-                    }
-                }
-                Err(e) => log::error!("Task graph persistence unavailable: {}", e),
-            }
-
             // Runtime Hardening P3/A4.8: attach the production Event Bus to its
             // durable append-only outbox. If this connection cannot open, the
             // durable-required bus remains unattached and publish/since/poll/ack
@@ -511,8 +504,40 @@ pub fn run() {
                         .attach_db(std::sync::Arc::new(db::ManagedDb::new(ev_db)));
                     log::info!("Event Bus durable log attached");
                 }
-                Err(e) => log::error!("Event Bus persistence unavailable: {}", e),
+                Err(e) => {
+                    log::error!("Event Bus persistence unavailable: {}", e);
+                    let _ = app
+                        .state::<std::sync::Arc<
+                            startup_reconciliation::StartupReconciliationState,
+                        >>()
+                        .fail("event_bus", e);
+                }
             }
+
+            // A4.10: construct the durable merge owner before sidecar adoption
+            // starts. The terminal adoption task performs the one global
+            // authority reconciliation pass and must never race a missing merge
+            // store into a false startup-ready result.
+            let merge_store = match Database::open(&db_path) {
+                Ok(db) => {
+                    let store = std::sync::Arc::new(
+                        merge_intent::store::MergeIntentStore::new(std::sync::Arc::new(
+                            db::ManagedDb::new(db),
+                        )),
+                    );
+                    Some(store)
+                }
+                Err(error) => {
+                    log::error!("merge intent durability unavailable: {error}");
+                    let _ = app
+                        .state::<std::sync::Arc<
+                            startup_reconciliation::StartupReconciliationState,
+                        >>()
+                        .fail("merge_intent_db", error);
+                    None
+                }
+            };
+            app.manage(merge_store.clone());
 
             let sidecar_state = app.state::<pty_sidecar::PtySidecarState>().inner().clone();
             let sidecar_fallback_pty: PtyManager = app.state::<PtyManager>().inner().clone();
@@ -572,24 +597,101 @@ pub fn run() {
                                     ipc::restore_interactive_sessions(&app_handle, client).await?;
                                 let reconciled =
                                     ipc::reconcile_session_handoffs_on_boot(&app_handle).await?;
+                                let startup_state = app_handle.state::<std::sync::Arc<
+                                    startup_reconciliation::StartupReconciliationState,
+                                >>();
+                                if startup_state.snapshot()?.phase
+                                    != startup_reconciliation::StartupReconciliationPhase::Pending
+                                {
+                                    return Err(
+                                        "startup reconciliation was already failed or completed"
+                                            .to_string(),
+                                    );
+                                }
+                                let merge_store = app_handle
+                                    .state::<Option<
+                                        std::sync::Arc<
+                                            merge_intent::store::MergeIntentStore,
+                                        >,
+                                    >>()
+                                    .inner()
+                                    .clone()
+                                    .ok_or_else(|| {
+                                        "merge intent durability unavailable during startup reconciliation"
+                                            .to_string()
+                                    })?;
+                                let mut wired_terminal_ids: std::collections::HashSet<String> =
+                                    app_handle
+                                        .state::<ipc::OutputBufferRegistry>()
+                                        .ids()
+                                        .into_iter()
+                                        .collect();
+                                wired_terminal_ids.extend(
+                                    app_handle
+                                        .state::<PtyManager>()
+                                        .list()
+                                        .into_iter(),
+                                );
+                                let runtime =
+                                    startup_reconciliation::StartupRuntimeSnapshot {
+                                        headless_execution_identities: app_handle
+                                            .state::<AgentManager>()
+                                            .list_sessions()
+                                            .into_iter()
+                                            .filter_map(|session| session.execution_identity)
+                                            .collect(),
+                                        pane_execution_identities: app_handle
+                                            .state::<control::pane_fleet::PaneFleet>()
+                                            .execution_snapshot(),
+                                        wired_terminal_ids,
+                                        terminal_generations: app_handle
+                                            .state::<ipc::TerminalGenerationRegistry>()
+                                            .snapshot(),
+                                    };
+                                let managed_db = app_handle.state::<db::ManagedDb>();
+                                let tasks = app_handle
+                                    .state::<std::sync::Arc<task::TaskManager>>();
+                                let authority_reports =
+                                    startup_reconciliation::reconcile_runtime_authorities(
+                                        &tasks,
+                                        &managed_db,
+                                        &merge_store,
+                                        &runtime,
+                                        now_secs(),
+                                    )?;
+                                // The reconciler may close fully observed failed
+                                // generations and release their stale claims.
+                                // Rehydrate the existing in-memory projections
+                                // from the same durable owner before dispatch.
+                                restore_ownership(&app_handle, &managed_db)?;
                                 Ok::<(usize, usize, usize), String>((
                                     adopted,
                                     restored,
                                     reconciled,
                                 ))
+                                .map(|counts| (counts, authority_reports))
                             }
                             .await;
                             let state = app_handle.state::<std::sync::Arc<
                                 startup_reconciliation::StartupReconciliationState,
                             >>();
                             match result {
-                                Ok((adopted, restored, reconciled)) => {
+                                Ok(((adopted, restored, reconciled), authority_reports)) => {
+                                    for report in authority_reports {
+                                        if let Err(error) = state.record_authority(report) {
+                                            log::error!(
+                                                "Startup authority reconciliation report failed: {error}"
+                                            );
+                                            let _ = state.fail("authority_report", error);
+                                            return;
+                                        }
+                                    }
                                     match state.complete(adopted, restored, reconciled) {
                                         Ok(true) => log::info!(
                                             "Durable startup reconciliation ready: adopted={adopted} restored={restored} reconciled={reconciled}"
                                         ),
                                         Ok(false) => log::warn!(
-                                            "Durable startup reconciliation completed after terminal state"
+                                            "Durable startup reconciliation result was already terminal"
                                         ),
                                         Err(error) => log::error!(
                                             "Durable startup reconciliation completion failed: {error}"
@@ -975,28 +1077,6 @@ pub fn run() {
             );
             app.manage(terminal_input_authority.clone());
 
-            // G2: one durable merge-intent store for both local Tauri IPC and the
-            // API/MCP face. Without it, autonomy-loop merges must fail closed
-            // instead of falling back to a restart-losing RAM queue.
-            let now_secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let merge_store = Database::open(&db_path).ok().map(|db| {
-                let store = std::sync::Arc::new(merge_intent::store::MergeIntentStore::new(
-                    std::sync::Arc::new(db::ManagedDb::new(db)),
-                ));
-                match store.reconcile_dangling_on_boot(now_secs) {
-                    Ok(n) if n > 0 => {
-                        log::info!("merge intents: reconciled {n} dangling merge(s) after restart")
-                    }
-                    Ok(_) => {}
-                    Err(e) => log::warn!("merge intent boot reconcile failed: {e}"),
-                }
-                store
-            });
-            app.manage(merge_store.clone());
-
             let sidecar_enabled = app
                 .try_state::<pty_sidecar::PtySidecarState>()
                 .and_then(|state| state.client())
@@ -1060,6 +1140,13 @@ pub fn run() {
                     .with_ghost_layers(ghost_layers)
                     .with_cost_manager(cost_manager)
                     .with_task_manager(task_manager)
+                    .with_startup_reconciliation(
+                        app.state::<std::sync::Arc<
+                            startup_reconciliation::StartupReconciliationState,
+                        >>()
+                        .inner()
+                        .clone(),
+                    )
                     .with_event_bus(event_bus)
                     .with_file_ownership(file_ownership)
                     .with_symbol_ownership(symbol_ownership)

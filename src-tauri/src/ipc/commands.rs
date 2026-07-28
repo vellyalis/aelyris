@@ -447,6 +447,16 @@ impl OutputBufferRegistry {
             .unwrap_or(false)
     }
 
+    pub fn ids(&self) -> Vec<String> {
+        let mut ids = self
+            .buffers
+            .lock()
+            .map(|buffers| buffers.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        ids.sort();
+        ids
+    }
+
     pub fn feed(&self, id: &str, data: &str) {
         if let Ok(mut buffers) = self.buffers.lock() {
             if let Some(buf) = buffers.get_mut(id) {
@@ -521,6 +531,13 @@ impl TerminalGenerationRegistry {
             .lock()
             .ok()
             .and_then(|generations| generations.get(id).copied())
+    }
+
+    pub fn snapshot(&self) -> HashMap<String, u64> {
+        self.generations
+            .lock()
+            .map(|generations| generations.clone())
+            .unwrap_or_default()
     }
 
     pub fn is_current_generation(&self, id: &str, generation: u64) -> bool {

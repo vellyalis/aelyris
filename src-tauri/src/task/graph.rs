@@ -287,6 +287,24 @@ impl TaskGraph {
         Ok(())
     }
 
+    /// Startup-only fail-closed projection for a task whose durable execution
+    /// cannot be proven safe to resume. This is deliberately not a normal
+    /// lifecycle transition: a restored `Review` task may need quarantine even
+    /// though interactive runtime transitions do not expose `Review -> Blocked`.
+    /// Terminal tasks remain immutable and are reported to the reconciler as a
+    /// cross-owner mismatch instead of being rewritten.
+    pub(crate) fn quarantine_for_startup(&mut self, id: &str) -> Result<bool, TaskGraphError> {
+        let task = self
+            .tasks
+            .get_mut(id)
+            .ok_or_else(|| TaskGraphError::NotFound(id.to_string()))?;
+        if task.status.is_terminal() || task.status == TaskStatus::Blocked {
+            return Ok(false);
+        }
+        task.status = TaskStatus::Blocked;
+        Ok(true)
+    }
+
     /// Re-evaluate the dependency gate for every not-yet-started task and apply
     /// the implied status. For each `Pending`/`Blocked` task:
     /// - all dependencies `Done`        -> `Ready`

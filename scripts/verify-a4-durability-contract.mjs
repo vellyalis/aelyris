@@ -207,6 +207,7 @@ const taskGraph = read("src-tauri/src/task/graph.rs");
 const executionTypes = read("src-tauri/src/task/execution.rs");
 const workExecutionRepo = read("src-tauri/src/persistence/work_execution_repo.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
+const paneFleet = read("src-tauri/src/control/pane_fleet.rs");
 const ownershipRepo = read("src-tauri/src/persistence/ownership_repo.rs");
 const eventBus = read("src-tauri/src/event_bus/manager.rs");
 const eventTypes = read("src-tauri/src/event_bus/mod.rs");
@@ -214,6 +215,8 @@ const eventRepo = read("src-tauri/src/persistence/event_repo.rs");
 const eventCommands = read("src-tauri/src/ipc/event_commands.rs");
 const contextCommands = read("src-tauri/src/ipc/context_commands.rs");
 const mcp = read("src-tauri/src/api/mcp.rs");
+const apiState = read("src-tauri/src/api/mod.rs");
+const orchestratorCommands = read("src-tauri/src/ipc/orchestrator_commands.rs");
 const eventTypesTs = read("src/shared/types/eventBus.ts");
 const mcpSpec = read("docs/specs/MCP_TOOL_SURFACE_SPEC.md");
 const hardeningReadme = read("docs/hardening/00_README.md");
@@ -336,11 +339,12 @@ const ready = lib.indexOf("state.complete(adopted, restored, reconciled)");
 
 const checks = {
   numberedSchemaVersion:
-    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 4") &&
+    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 5") &&
     migrations.includes('pragma_update(None, "user_version", 1)') &&
     migrations.includes('pragma_update(None, "user_version", 2)') &&
     migrations.includes('pragma_update(None, "user_version", 3)') &&
     migrations.includes('pragma_update(None, "user_version", 4)') &&
+    migrations.includes('pragma_update(None, "user_version", 5)') &&
     migrations.includes('execute_batch("BEGIN IMMEDIATE")') &&
     migrations.includes('execute_batch("ROLLBACK")'),
   newerSchemaFailsClosed:
@@ -425,6 +429,39 @@ const checks = {
     loopPorts.includes("request_durable_intent(") &&
     loopPorts.includes("ExecutionEffect::Finalization") &&
     ownershipRepo.includes("replace_file_claims_for_task"),
+  allAuthorityStartupReconciliation:
+    [
+      "task_graph",
+      "execution_attempts",
+      "pane_pty_generations",
+      "ownership",
+      "worktrees_merge_intents",
+      "leases",
+      "event_bus",
+    ].every((authority) => state.includes(`"${authority}"`)) &&
+    state.includes("pub struct StartupAuthorityReport") &&
+    state.includes("pub struct StartupRuntimeSnapshot") &&
+    state.includes("pub fn reconcile_runtime_authorities(") &&
+    state.includes("mark_execution_needs_reconcile") &&
+    state.includes("quarantine_tasks_for_startup") &&
+    state.includes("startup_reconciliation_safely_closes_a_pre_effect_generation") &&
+    state.includes("started_effect_is_quarantined_and_taskgraph_is_blocked_idempotently") &&
+    taskManager.includes("pub fn execution_snapshot") &&
+    taskManager.includes("pub fn quarantine_tasks_for_startup") &&
+    paneFleet.includes("pub fn execution_snapshot") &&
+    migrations.includes("const V5_SCHEMA") &&
+    migrations.includes("ADD COLUMN repo_path TEXT NOT NULL DEFAULT ''") &&
+    migrations.includes("trg_work_execution_attempts_repo_path_immutable") &&
+    executionTypes.includes("pub repo_path: String") &&
+    eventRepo.includes("pub fn inspect_startup") &&
+    eventRepo.includes("startup_inspection_validates_every_registered_cursor") &&
+    loopPorts.match(/startup\.require_dispatch_admitted\(\)\?/g)?.length === 2 &&
+    orchestratorCommands.includes("State<'_, Arc<StartupReconciliationState>>") &&
+    apiState.includes("startup_reconciliation:") &&
+    mcp.includes("startup reconciliation barrier is not attached to this process") &&
+    lib.includes("reconcile_runtime_authorities(") &&
+    lib.includes("state.record_authority(report)") &&
+    lib.indexOf("reconcile_runtime_authorities(") < lib.indexOf("state.complete(adopted, restored, reconciled)"),
   allFacesPropagateContextPersistenceFailure:
     contextCommands.includes("Result<Option<DecisionChange>, String>") &&
     contextCommands.includes("manager.set(key, value)?") &&
@@ -568,7 +605,8 @@ const checks = {
     exactSet(tsEventTools, expectedEventTools) &&
     exactSet(tsStructuredErrorTools, expectedStructuredErrorTools) &&
     remediationPlan.includes("### **A4.9** Complete - Durable Execution Attempt And Effect Fence") &&
-    remediationPlan.includes("### **A4.10** Active - All-Authority Startup Reconciliation"),
+    remediationPlan.includes("### **A4.10** Complete - All-Authority Startup Reconciliation") &&
+    remediationPlan.includes("### **A4.11** Active - Structured Handoff Acceptance And Successor Quarantine"),
   crashSafeReplacementOwner:
     durableFile.includes("pub fn atomic_write") &&
     durableFile.includes("file.sync_all()") &&
@@ -591,15 +629,16 @@ const checks = {
   fullAcceptanceMatrix:
     packageJson.scripts?.["verify:a4:durability:acceptance"] === "node scripts/verify-a4-durability-acceptance.mjs" &&
     acceptance?.status === "pass-current-a4-durability-evidence" &&
-    acceptance?.schema === "aelyris.a4-durability-acceptance/v5" &&
-    acceptance?.completedThrough === "A4.9" &&
+    acceptance?.schema === "aelyris.a4-durability-acceptance/v6" &&
+    acceptance?.completedThrough === "A4.10" &&
     acceptance?.repoOwnedComplete === false &&
     acceptance?.phaseComplete === false &&
-    acceptance?.scenarios?.length === 21 &&
+    acceptance?.scenarios?.length === 22 &&
     acceptance.scenarios.every((scenario) => scenario.status === "pass") &&
     [
       "work-execution-attempt-generation-and-load-integrity",
       "execution-fence-crash-boundaries-and-stale-token",
+      "all-authority-startup-reconciliation-and-dispatch-admission",
       "event-outbox-append-query-gap-and-consumer-ack",
       "event-mcp-structured-error-and-catalog-contract",
       "session-lifecycle-event-publish-failure-truth",
@@ -620,12 +659,12 @@ if (failures.length > 0) {
 const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
-  schema: "aelyris.a4-durability-contract/v5",
+  schema: "aelyris.a4-durability-contract/v6",
   status: "pass-current-a4-durability-contract",
-  activeSlice: "A4.10",
-  completedSlice: "A4.9",
+  activeSlice: "A4.11",
+  completedSlice: "A4.10",
   phaseComplete: false,
-  remainingSlices: ["A4.10", "A4.11", "A4.12"],
+  remainingSlices: ["A4.11", "A4.12"],
   externalProof: acceptance.externalProof,
   checks,
   generatedAt,
@@ -651,6 +690,7 @@ const report = {
       "src-tauri/src/task/execution.rs",
       "src-tauri/src/persistence/work_execution_repo.rs",
       "src-tauri/src/control/loop_ports.rs",
+      "src-tauri/src/control/pane_fleet.rs",
       "src-tauri/src/persistence/ownership_repo.rs",
       "src-tauri/src/event_bus/mod.rs",
       "src-tauri/src/event_bus/manager.rs",
@@ -658,6 +698,8 @@ const report = {
       "src-tauri/src/ipc/event_commands.rs",
       "src-tauri/src/ipc/context_commands.rs",
       "src-tauri/src/api/mcp.rs",
+      "src-tauri/src/api/mod.rs",
+      "src-tauri/src/ipc/orchestrator_commands.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "src/shared/types/eventBus.ts",
       "docs/specs/MCP_TOOL_SURFACE_SPEC.md",

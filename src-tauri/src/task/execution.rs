@@ -178,6 +178,10 @@ pub struct ExecutionFence {
 pub struct WorkExecutionAttempt {
     #[serde(flatten)]
     pub identity: ExecutionIdentity,
+    /// Repository root supplied to the dispatch boundary. It is immutable for
+    /// the generation so startup can inspect the exact worktree namespace
+    /// instead of guessing a root from a branch name.
+    pub repo_path: String,
     pub runtime: ExecutionRuntime,
     pub state: WorkExecutionState,
     pub fence: ExecutionFence,
@@ -218,6 +222,7 @@ pub struct ExecutionToken {
 #[derive(Debug, Clone)]
 pub struct ExecutionReservation {
     pub task_id: String,
+    pub repo_path: String,
     pub runtime: ExecutionRuntime,
     pub ownership_claim_ids: Vec<String>,
     pub now: u64,

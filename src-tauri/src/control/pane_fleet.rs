@@ -304,6 +304,21 @@ impl PaneFleet {
             .map(|run| run.terminal_id.clone())
     }
 
+    /// Snapshot the durable execution identities currently owned by live pane
+    /// runs. Startup reconciliation compares these bindings with the persisted
+    /// attempt generation; it never infers ownership from a terminal id alone.
+    pub fn execution_snapshot(&self) -> Vec<ExecutionIdentity> {
+        let mut identities: Vec<_> = self
+            .runs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .values()
+            .filter_map(|run| run.execution_identity.clone())
+            .collect();
+        identities.sort_by(|left, right| left.attempt_id.cmp(&right.attempt_id));
+        identities
+    }
+
     /// Completion sensor (BR9): which dispatched panes finished since the last
     /// poll, split by exit outcome, plus panes hung past `timeout_secs` of
     /// wall-clock (killed here). Finished panes are reaped from `PtyManager` and

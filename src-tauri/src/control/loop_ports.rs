@@ -264,6 +264,7 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
             .tasks
             .reserve_execution(ExecutionReservation {
                 task_id: task_id.to_string(),
+                repo_path: self.repo_path.clone(),
                 runtime: context.runtime,
                 ownership_claim_ids: claims.iter().map(OwnershipClaim::stable_id).collect(),
                 now: now_secs(),
@@ -278,6 +279,7 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
                     serde_json::json!({
                         "attemptId": attempt.identity.attempt_id,
                         "taskId": attempt.identity.task_id,
+                        "repoPath": attempt.repo_path,
                         "executionGeneration": attempt.identity.execution_generation,
                         "agentRunId": attempt.identity.agent_run_id,
                         "processGeneration": attempt.identity.process_generation,
@@ -1459,6 +1461,7 @@ fn capture_lanes(
 
 #[allow(clippy::too_many_arguments)]
 pub fn run_step(
+    startup: &crate::startup_reconciliation::StartupReconciliationState,
     tasks: &crate::task::TaskManager,
     cost: &crate::cost::CostManager,
     agents: &AgentManager,
@@ -1474,6 +1477,8 @@ pub fn run_step(
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
 ) -> Result<crate::orchestrator::autonomy::StepReport, String> {
+    startup.require_dispatch_admitted()?;
+    let repo_path = canonical_dispatch_repo_path(&repo_path)?;
     let caps = cost.caps();
     // The shared ADR, injected into every agent dispatched this step.
     let adr_header = build_adr_header(&context.all());
@@ -1550,6 +1555,7 @@ pub fn run_step(
 /// working in its own terminal; the MCP face keeps the headless `run_step`.
 #[allow(clippy::too_many_arguments)]
 pub fn run_step_visible(
+    startup: &crate::startup_reconciliation::StartupReconciliationState,
     tasks: &crate::task::TaskManager,
     cost: &crate::cost::CostManager,
     fleet: &PaneFleet,
@@ -1565,6 +1571,8 @@ pub fn run_step_visible(
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
 ) -> Result<crate::orchestrator::autonomy::StepReport, String> {
+    startup.require_dispatch_admitted()?;
+    let repo_path = canonical_dispatch_repo_path(&repo_path)?;
     let caps = cost.caps();
     let adr_header = build_adr_header(&context.all());
     let guidelines_header = build_guidelines_header(&repo_path);
@@ -1616,6 +1624,19 @@ pub fn run_step_visible(
         crate::supervisor::escalation_sink::persist_escalations(db, &report);
     }
     Ok(report)
+}
+
+fn canonical_dispatch_repo_path(repo_path: &str) -> Result<String, String> {
+    let canonical = std::fs::canonicalize(repo_path)
+        .map_err(|_| "repo path must exist and be accessible".to_string())?;
+    if !canonical.is_dir() {
+        return Err("repo path must be a directory".to_string());
+    }
+    let path = canonical.to_string_lossy();
+    Ok(path
+        .strip_prefix(r"\\?\")
+        .unwrap_or(path.as_ref())
+        .to_string())
 }
 
 /// Push each give-up escalation from the step onto the coordination stream as an
@@ -2032,6 +2053,7 @@ mod tests {
         let first = tasks
             .reserve_execution(ExecutionReservation {
                 task_id: "exec".to_string(),
+                repo_path: "C:/repo".to_string(),
                 runtime: ExecutionRuntime::Headless,
                 ownership_claim_ids: Vec::new(),
                 now: 10,
@@ -2043,6 +2065,7 @@ mod tests {
         let second = tasks
             .reserve_execution(ExecutionReservation {
                 task_id: "exec".to_string(),
+                repo_path: "C:/repo".to_string(),
                 runtime: ExecutionRuntime::Headless,
                 ownership_claim_ids: Vec::new(),
                 now: 12,

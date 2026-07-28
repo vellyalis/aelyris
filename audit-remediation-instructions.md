@@ -4,15 +4,17 @@ STATUS: ACTIVE
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A4` (reopened by a fresh 2026-07-16 runtime-integrity regression;
 earlier A4.6 PASS is historical evidence, not current phase completion).
-ACTIVE SLICE: `A4.10`.
-LAST COMPLETED SLICE: `A4.9`.
+ACTIVE SLICE: `A4.11`.
+LAST COMPLETED SLICE: `A4.10`.
 NEXT PHASE: `A6` after corrective A4.8-A4.12 acceptance; resume at A6.2e1.
-NEXT IMPLEMENTATION SLICE: `A4.10`.
-A4.9 added one durable WorkExecutionAttempt generation and ExecutionFence inside the
-existing TaskManager/agent/session owners. UUIDv7 attempt/run/session identities,
-ownership and EventBus reservation bindings, full-token stale rejection, exact-OID
-merge intent, and reservation-through-finalization crash boundaries now fail closed
-without a second TaskGraph or journal.
+NEXT IMPLEMENTATION SLICE: `A4.11`.
+A4.10 extends the existing bounded startup owner across TaskGraph, execution attempts,
+PaneFleet/PTY generations, ownership, worktrees/merge intents, leases, and the complete
+EventBus stream/cursor set. Dispatch and spawn remain closed until all seven authorities
+are reconciled; effects with a fully observed non-live outcome close safely, while
+started, orphaned, or contradictory generations become `NeedsReconcile` and their
+TaskGraph nodes remain blocked. WorkExecutionAttempt now retains immutable repo identity
+inside the same owner so restart worktree inspection does not guess.
 The old A4 verifier covered migration/file/checkpoint scenarios but omitted
 these owners plus EventBus loss, durable execution identity/fencing, all-owner startup
 reconciliation, and successor cleanup; it also counted an external Codex watchdog
@@ -308,7 +310,11 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   AgentRun generations and all seven effect fences; generated UUIDv7 identities are
   validated on reload, reservations bind durable EventBus/ownership identities before
   the first external effect, and stale full-token writes are rejected or quarantined.
-- A4.10 owns all-authority startup reconciliation before dispatch admission.
+- A4.10 is complete: the single bounded startup barrier reconciles all seven runtime
+  authorities before terminal spawn or either orchestrator dispatch face is admitted.
+  Ambiguous effects remain visible and quarantined, old execution rows without immutable
+  repo identity are not guessed, and EventBus startup inspection validates every outbox
+  row and registered cursor.
 - A4.11 owns structured digest-bound handoff acceptance plus successor quarantine/
   cleanup for every post-spawn failure.
 - A4.12 owns combined crash/fault/restart acceptance and is the only slice allowed to

@@ -20,6 +20,7 @@ use crate::task::{
 struct RawAttempt {
     attempt_id: String,
     task_id: String,
+    repo_path: String,
     execution_generation: i64,
     runtime: String,
     agent_run_id: String,
@@ -43,22 +44,23 @@ impl RawAttempt {
         Ok(Self {
             attempt_id: row.get(0)?,
             task_id: row.get(1)?,
-            execution_generation: row.get(2)?,
-            runtime: row.get(3)?,
-            agent_run_id: row.get(4)?,
-            process_generation: row.get(5)?,
-            session_id: row.get(6)?,
-            pty_session_id: row.get(7)?,
-            state: row.get(8)?,
-            fence_effect: row.get(9)?,
-            fence_state: row.get(10)?,
-            fence_revision: row.get(11)?,
-            ownership_claim_ids_json: row.get(12)?,
-            reservation_event_id: row.get(13)?,
-            merge_intent_id: row.get(14)?,
-            last_error: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+            repo_path: row.get(2)?,
+            execution_generation: row.get(3)?,
+            runtime: row.get(4)?,
+            agent_run_id: row.get(5)?,
+            process_generation: row.get(6)?,
+            session_id: row.get(7)?,
+            pty_session_id: row.get(8)?,
+            state: row.get(9)?,
+            fence_effect: row.get(10)?,
+            fence_state: row.get(11)?,
+            fence_revision: row.get(12)?,
+            ownership_claim_ids_json: row.get(13)?,
+            reservation_event_id: row.get(14)?,
+            merge_intent_id: row.get(15)?,
+            last_error: row.get(16)?,
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
         })
     }
 
@@ -116,6 +118,7 @@ impl RawAttempt {
                 session_id: self.session_id,
                 pty_session_id: self.pty_session_id,
             },
+            repo_path: self.repo_path,
             runtime,
             state: WorkExecutionState::from_str(&self.state)
                 .map_err(ExecutionFenceError::Persistence)?,
@@ -143,7 +146,7 @@ impl RawAttempt {
 }
 
 const SELECT_COLUMNS: &str = "
-    attempt_id, task_id, execution_generation, runtime,
+    attempt_id, task_id, repo_path, execution_generation, runtime,
     agent_run_id, process_generation, session_id, pty_session_id,
     state, fence_effect, fence_state, fence_revision,
     ownership_claim_ids_json, reservation_event_id, merge_intent_id,
@@ -163,6 +166,11 @@ impl WorkExecutionRepo {
         if reservation.task_id.trim().is_empty() {
             return Err(ExecutionFenceError::InvalidTransition(
                 "task_id is required".to_string(),
+            ));
+        }
+        if reservation.repo_path.trim().is_empty() {
+            return Err(ExecutionFenceError::InvalidTransition(
+                "repo_path is required".to_string(),
             ));
         }
         if reservation
@@ -236,19 +244,20 @@ impl WorkExecutionRepo {
 
             tx.execute(
                 "INSERT INTO work_execution_attempts (
-                     attempt_id, task_id, execution_generation, runtime,
+                     attempt_id, task_id, repo_path, execution_generation, runtime,
                      agent_run_id, process_generation, session_id, pty_session_id,
                      state, fence_effect, fence_state, fence_revision,
                      ownership_claim_ids_json, reservation_event_id,
                      created_at, updated_at
                  ) VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
                      'reserved', 'reservation', 'reserved', 1,
-                     ?9, ?10, ?11, ?11
+                     ?10, ?11, ?12, ?12
                  )",
                 params![
                     attempt_id,
                     reservation.task_id,
+                    reservation.repo_path,
                     generation,
                     reservation.runtime.as_str(),
                     agent_run_id,
@@ -680,6 +689,7 @@ mod tests {
     fn reservation(now: u64) -> ExecutionReservation {
         ExecutionReservation {
             task_id: "task-a".to_string(),
+            repo_path: "C:/repo".to_string(),
             runtime: ExecutionRuntime::Headless,
             ownership_claim_ids: vec!["claim-a".to_string()],
             now,
@@ -709,6 +719,7 @@ mod tests {
         assert!(!attempt.identity.agent_run_id.is_empty());
         assert!(!attempt.identity.session_id.is_empty());
         assert_eq!(attempt.identity.pty_session_id, None);
+        assert_eq!(attempt.repo_path, "C:/repo");
         assert_eq!(attempt.ownership_claim_ids, ["claim-a"]);
         assert_eq!(attempt.state, WorkExecutionState::Reserved);
         assert_eq!(attempt.fence.effect, ExecutionEffect::Reservation);
