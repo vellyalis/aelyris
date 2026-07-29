@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PaneSwitcherEntry } from "./pane-tree";
 
@@ -26,14 +26,16 @@ function paneRegistryEqual(a: PaneSwitcherEntry[], b: PaneSwitcherEntry[]): bool
 export function usePaneRegistry(activeTabId: string, tabs: Array<{ id: string }>) {
   const [tabActivePtyIds, setTabActivePtyIds] = useState<Record<string, string | null>>({});
   const [tabPaneRegistries, setTabPaneRegistries] = useState<Record<string, PaneSwitcherEntry[]>>({});
+  const liveTabIdsRef = useRef(new Set(tabs.map((tab) => tab.id)));
+  liveTabIdsRef.current = new Set(tabs.map((tab) => tab.id));
 
   const setTabActivePtyId = useCallback((tabId: string, ptyId: string | null) => {
-    setTabActivePtyIds((previous) =>
-      previous[tabId] === ptyId ? previous : { ...previous, [tabId]: ptyId },
-    );
+    if (!liveTabIdsRef.current.has(tabId)) return;
+    setTabActivePtyIds((previous) => (previous[tabId] === ptyId ? previous : { ...previous, [tabId]: ptyId }));
   }, []);
 
   const setTabPaneRegistry = useCallback((tabId: string, panes: PaneSwitcherEntry[]) => {
+    if (!liveTabIdsRef.current.has(tabId)) return;
     setTabPaneRegistries((previous) =>
       paneRegistryEqual(previous[tabId] ?? [], panes) ? previous : { ...previous, [tabId]: panes },
     );

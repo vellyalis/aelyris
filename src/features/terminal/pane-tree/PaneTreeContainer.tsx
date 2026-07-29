@@ -19,24 +19,26 @@ import {
 } from "./persistence";
 import {
   lifecycleFromPtyStreamState,
+  type PaneHealthState,
+  type PaneLifecycleState,
+  type PaneNode,
+  type PaneSessionIntent,
   type PtyStreamStateEvent,
-  PaneHealthState,
-  PaneLifecycleState,
-  PaneNode,
-  PaneSessionIntent,
-  SplitDirection,
-  VisibleAgentPaneBinding,
+  type SplitDirection,
+  type VisibleAgentPaneBinding,
 } from "./types";
 import { usePaneTree } from "./usePaneTree";
 
 export interface PaneFocusRequest {
   paneId: string;
   sequence: number;
+  onComplete?: (error: string | null) => void;
 }
 
 export interface PaneCloseRequest {
   paneId: string;
   sequence: number;
+  onComplete?: (error: string | null) => void;
 }
 
 export interface PaneRestartRequest {
@@ -56,11 +58,13 @@ export interface PaneRenameRequest {
   paneId: string;
   title: string | null;
   sequence: number;
+  onComplete?: (error: string | null) => void;
 }
 
 export interface PaneRoleCycleRequest {
   paneId: string;
   sequence: number;
+  onComplete?: (error: string | null) => void;
 }
 
 export type PaneLayoutCommand =
@@ -78,6 +82,7 @@ export type PaneLayoutCommand =
 export interface PaneLayoutRequest {
   command: PaneLayoutCommand;
   sequence: number;
+  onComplete?: (error: string | null) => void;
 }
 
 /**
@@ -146,6 +151,14 @@ interface PendingBackendPaneTreeSnapshot {
   projectPath: string;
 }
 
+type CompletablePaneRequestKind = "attach" | "close" | "layout" | "rename" | "role";
+
+interface PendingPaneRequestSettlement {
+  sequence: number;
+  complete: (error: string | null) => void;
+  isPending: () => boolean;
+}
+
 interface BackendPaneInfo {
   terminal_id: string;
   short_id?: number;
@@ -157,6 +170,10 @@ interface BackendPaneInfo {
 
 /** Most recent finished agent panes kept on screen; older ones auto-close. */
 const MAX_DONE_AGENT_PANES = 6;
+
+function paneRequestError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function agentBindingsToMeta(bindings: ReadonlyMap<string, VisibleAgentPaneBinding>) {
   const meta = new Map<string, { model: string; status: "running" | "done" | "error" }>();
@@ -650,6 +667,45 @@ export function PaneTreeContainer({
   const handledRoleCycleSequenceRef = useRef<number | null>(null);
   const handledLayoutSequenceRef = useRef<number | null>(null);
   const handledAgentSpawnSequenceRef = useRef<number | null>(null);
+  const pendingPaneRequestSettlementsRef = useRef(new Map<CompletablePaneRequestKind, PendingPaneRequestSettlement>());
+  const treeRef = useRef(tree);
+  const terminalIdsRef = useRef(terminalIds);
+  treeRef.current = tree;
+  terminalIdsRef.current = terminalIds;
+  const beginPaneRequestSettlement = useCallback(
+    (
+      kind: CompletablePaneRequestKind,
+      sequence: number,
+      onComplete?: (error: string | null) => void,
+    ): PendingPaneRequestSettlement => {
+      pendingPaneRequestSettlementsRef.current.get(kind)?.complete("Pane request was replaced before completion.");
+
+      let pending = true;
+      const settlement: PendingPaneRequestSettlement = {
+        sequence,
+        complete: (error) => {
+          if (!pending) return;
+          pending = false;
+          if (pendingPaneRequestSettlementsRef.current.get(kind) === settlement) {
+            pendingPaneRequestSettlementsRef.current.delete(kind);
+          }
+          onComplete?.(error);
+        },
+        isPending: () => pending,
+      };
+      pendingPaneRequestSettlementsRef.current.set(kind, settlement);
+      return settlement;
+    },
+    [],
+  );
+  useEffect(
+    () => () => {
+      for (const settlement of [...pendingPaneRequestSettlementsRef.current.values()]) {
+        settlement.complete("Pane request cancelled because the pane tree was unmounted.");
+      }
+    },
+    [],
+  );
   // PaneIds (== terminalIds) of loop-dispatched agent panes. Tracked so backend
   // reconciliation does not mistake them for dead (they are in-process terminals,
   // not in the sidecar's pane list) and so we can close them when they exit.
@@ -828,9 +884,31 @@ export function PaneTreeContainer({
   );
 
   const closeViaMux = useCallback(
-    (paneId: string) => {
+    async (paneId: string): Promise<string | null> => {
       const terminalId = terminalIds.get(paneId);
       const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
+      const closeLocalBinding = async (): Promise<string | null> => {
+        if (!terminalId || !isTauriRuntime()) {
+          close(paneId, { closeBackend: false });
+          return null;
+        }
+        try {
+          await invoke("close_terminal", { id: terminalId });
+          close(paneId, { closeBackend: false });
+          return null;
+        } catch (err) {
+          reportInvokeFailure({
+            source: "pane-tree",
+            operation: "close_terminal",
+            err,
+            severity: "error",
+            userVisible: true,
+          });
+          close(paneId, { closeBackend: false });
+          return paneRequestError(err);
+        }
+      };
+
       if (!terminalId || !workspaceId) {
         reportFallback({
           source: "pane-mux",
@@ -839,8 +917,7 @@ export function PaneTreeContainer({
           message: "mux close unavailable; closing local pane binding only",
           userVisible: true,
         });
-        close(paneId);
-        return;
+        return closeLocalBinding();
       }
 
       const invokeMuxClose = (candidateWorkspaceId: string) =>
@@ -850,46 +927,45 @@ export function PaneTreeContainer({
         close(paneId, { closeBackend: false });
       };
 
-      invokeMuxClose(workspaceId)
-        .then(() => {
-          detachMuxPane(workspaceId);
-        })
-        .catch((err) => {
-          const retryWorkspaceId =
-            firstLiveTerminalId && firstLiveTerminalId !== workspaceId ? firstLiveTerminalId : null;
-          if (retryWorkspaceId) {
-            console.warn("mux pane close failed; retrying with live workspace", {
-              workspaceId,
-              retryWorkspaceId,
-              err,
-            });
-            invokeMuxClose(retryWorkspaceId)
-              .then(() => {
-                detachMuxPane(retryWorkspaceId);
-              })
-              .catch((retryErr) => {
-                reportInvokeFailure({
-                  source: "pane-mux",
-                  operation: "mux_close_pane",
-                  err: retryErr,
-                  severity: "error",
-                  userVisible: true,
-                });
-                console.warn("mux pane close failed after live workspace retry", retryErr);
-                close(paneId);
-              });
-            return;
-          }
-          reportInvokeFailure({
-            source: "pane-mux",
-            operation: "mux_close_pane",
+      try {
+        await invokeMuxClose(workspaceId);
+        detachMuxPane(workspaceId);
+        return null;
+      } catch (err) {
+        const retryWorkspaceId =
+          firstLiveTerminalId && firstLiveTerminalId !== workspaceId ? firstLiveTerminalId : null;
+        if (retryWorkspaceId) {
+          console.warn("mux pane close failed; retrying with live workspace", {
+            workspaceId,
+            retryWorkspaceId,
             err,
-            severity: "error",
-            userVisible: true,
           });
-          console.warn("mux pane close failed", err);
-          close(paneId);
+          try {
+            await invokeMuxClose(retryWorkspaceId);
+            detachMuxPane(retryWorkspaceId);
+            return null;
+          } catch (retryErr) {
+            reportInvokeFailure({
+              source: "pane-mux",
+              operation: "mux_close_pane",
+              err: retryErr,
+              severity: "error",
+              userVisible: true,
+            });
+            console.warn("mux pane close failed after live workspace retry", retryErr);
+            return closeLocalBinding();
+          }
+        }
+        reportInvokeFailure({
+          source: "pane-mux",
+          operation: "mux_close_pane",
+          err,
+          severity: "error",
+          userVisible: true,
         });
+        console.warn("mux pane close failed", err);
+        return closeLocalBinding();
+      }
     },
     [close, firstLiveTerminalId, terminalIds],
   );
@@ -930,18 +1006,21 @@ export function PaneTreeContainer({
   );
 
   const applyLayoutViaMux = useCallback(
-    (command: PaneLayoutCommand) => {
+    async (command: PaneLayoutCommand): Promise<string | null> => {
       const workspaceId = workspaceTerminalIdRef.current ?? firstLiveTerminalId;
       if (command === "sync-panes-on" || command === "sync-panes-off") {
-        if (!workspaceId) return;
+        if (!workspaceId) return "Layout workspace is unavailable.";
         const enabled = command === "sync-panes-on";
         const sequence = syncModeSequenceRef.current + 1;
         syncModeSequenceRef.current = sequence;
         setSynchronizedPanes(enabled);
-        invoke("mux_set_panes_synchronized", {
-          workspaceId,
-          enabled,
-        }).catch((err) => {
+        try {
+          await invoke("mux_set_panes_synchronized", {
+            workspaceId,
+            enabled,
+          });
+          return null;
+        } catch (err) {
           if (syncModeSequenceRef.current === sequence) setSynchronizedPanes(!enabled);
           reportInvokeFailure({
             source: "pane-mux",
@@ -951,8 +1030,8 @@ export function PaneTreeContainer({
             userVisible: true,
           });
           console.warn("mux synchronized panes failed", err);
-        });
-        return;
+          return paneRequestError(err);
+        }
       }
 
       if (!workspaceId || terminalIds.size === 0) {
@@ -964,15 +1043,15 @@ export function PaneTreeContainer({
           userVisible: true,
         });
         applyLocalLayoutCommand(command);
-        return;
+        return null;
       }
 
       if (command === "move-next" || command === "move-previous") {
-        if (!activePaneId) return;
+        if (!activePaneId) return "Layout target pane is unavailable.";
         const leaves = collectLeaves(tree);
-        if (leaves.length <= 1) return;
+        if (leaves.length <= 1) return null;
         const currentIndex = leaves.findIndex((leaf) => leaf.id === activePaneId);
-        if (currentIndex < 0) return;
+        if (currentIndex < 0) return "Layout target pane was removed.";
         const delta = command === "move-next" ? 1 : -1;
         const targetPaneId = leaves[(currentIndex + delta + leaves.length) % leaves.length]?.id;
         const firstPaneId = terminalIds.get(activePaneId);
@@ -986,35 +1065,40 @@ export function PaneTreeContainer({
             userVisible: true,
           });
           console.warn("mux swap skipped because pane PTY binding is missing", { activePaneId, targetPaneId });
-          return;
+          return "Layout pane binding is unavailable.";
         }
-        invoke("mux_swap_panes", { workspaceId, firstPaneId, secondPaneId })
-          .then(() => applyLocalLayoutCommand(command))
-          .catch((err) => {
-            reportInvokeFailure({
-              source: "pane-mux",
-              operation: "mux_swap_panes",
-              err,
-              severity: "error",
-              userVisible: true,
-            });
-            console.warn("mux swap failed", err);
-          });
-        return;
-      }
-
-      invoke("mux_apply_layout", { workspaceId, command })
-        .then(() => applyLocalLayoutCommand(command))
-        .catch((err) => {
+        try {
+          await invoke("mux_swap_panes", { workspaceId, firstPaneId, secondPaneId });
+          applyLocalLayoutCommand(command);
+          return null;
+        } catch (err) {
           reportInvokeFailure({
             source: "pane-mux",
-            operation: "mux_apply_layout",
+            operation: "mux_swap_panes",
             err,
             severity: "error",
             userVisible: true,
           });
-          console.warn("mux layout failed", err);
+          console.warn("mux swap failed", err);
+          return paneRequestError(err);
+        }
+      }
+
+      try {
+        await invoke("mux_apply_layout", { workspaceId, command });
+        applyLocalLayoutCommand(command);
+        return null;
+      } catch (err) {
+        reportInvokeFailure({
+          source: "pane-mux",
+          operation: "mux_apply_layout",
+          err,
+          severity: "error",
+          userVisible: true,
         });
+        console.warn("mux layout failed", err);
+        return paneRequestError(err);
+      }
     },
     [activePaneId, applyLocalLayoutCommand, firstLiveTerminalId, terminalIds, tree],
   );
@@ -1055,17 +1139,27 @@ export function PaneTreeContainer({
     if (!focusPaneRequest) return;
     if (handledFocusSequenceRef.current === focusPaneRequest.sequence) return;
     handledFocusSequenceRef.current = focusPaneRequest.sequence;
-    if (!findLeaf(tree, focusPaneRequest.paneId)) return;
+    if (!findLeaf(tree, focusPaneRequest.paneId)) {
+      focusPaneRequest.onComplete?.("Focus target was removed.");
+      return;
+    }
     setActivePaneId(focusPaneRequest.paneId);
+    focusPaneRequest.onComplete?.(null);
   }, [focusPaneRequest, setActivePaneId, tree]);
 
   useEffect(() => {
     if (!closePaneRequest) return;
     if (handledCloseSequenceRef.current === closePaneRequest.sequence) return;
     handledCloseSequenceRef.current = closePaneRequest.sequence;
-    if (!findLeaf(tree, closePaneRequest.paneId)) return;
-    closeViaMux(closePaneRequest.paneId);
-  }, [closePaneRequest, closeViaMux, tree]);
+    const settlement = beginPaneRequestSettlement("close", closePaneRequest.sequence, closePaneRequest.onComplete);
+    if (!findLeaf(tree, closePaneRequest.paneId)) {
+      settlement.complete("Close target was removed.");
+      return;
+    }
+    void closeViaMux(closePaneRequest.paneId)
+      .then(settlement.complete)
+      .catch((error) => settlement.complete(paneRequestError(error)));
+  }, [beginPaneRequestSettlement, closePaneRequest, closeViaMux, tree]);
 
   useEffect(() => {
     if (!restartPaneRequest) return;
@@ -1079,25 +1173,33 @@ export function PaneTreeContainer({
     if (!attachPaneRequest) return;
     if (handledAttachSequenceRef.current === attachPaneRequest.sequence) return;
     handledAttachSequenceRef.current = attachPaneRequest.sequence;
+    const settlement = beginPaneRequestSettlement("attach", attachPaneRequest.sequence, attachPaneRequest.onComplete);
 
     const leaf = findLeaf(tree, attachPaneRequest.paneId);
     if (!leaf) {
-      attachPaneRequest.onComplete?.("Attach target was removed.");
+      settlement.complete("Attach target was removed.");
       return;
     }
     if (terminalIds.has(attachPaneRequest.paneId)) {
-      attachPaneRequest.onComplete?.("Attach target already has a terminal.");
+      settlement.complete("Attach target already has a terminal.");
       return;
     }
 
-    let cancelled = false;
     Promise.resolve({ invoke })
       .then(({ invoke }) => invoke<unknown>("list_terminals"))
       .then((payload) => {
-        if (cancelled) return;
+        if (!settlement.isPending()) return;
+        if (!findLeaf(treeRef.current, attachPaneRequest.paneId)) {
+          settlement.complete("Attach target was removed.");
+          return;
+        }
+        if (terminalIdsRef.current.has(attachPaneRequest.paneId)) {
+          settlement.complete("Attach target already has a terminal.");
+          return;
+        }
         const activeTerminalIds = new Set(parseTerminalIds(payload));
         if (!activeTerminalIds.has(attachPaneRequest.terminalId)) {
-          attachPaneRequest.onComplete?.("Attach source is no longer active.");
+          settlement.complete("Attach source is no longer active.");
           return;
         }
         registerTerminal(attachPaneRequest.paneId, attachPaneRequest.terminalId);
@@ -1108,39 +1210,60 @@ export function PaneTreeContainer({
           return next;
         });
         setOrphanedBackendPanes((prev) => prev.filter((pane) => pane.terminalId !== attachPaneRequest.terminalId));
-        attachPaneRequest.onComplete?.(null);
+        settlement.complete(null);
       })
       .catch((err) => {
-        if (!cancelled) attachPaneRequest.onComplete?.(err instanceof Error ? err.message : String(err));
+        settlement.complete(paneRequestError(err));
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [attachPaneRequest, registerTerminal, setActivePaneId, terminalIds, tree]);
+  }, [attachPaneRequest, beginPaneRequestSettlement, registerTerminal, setActivePaneId, terminalIds, tree]);
 
   useEffect(() => {
     if (!renamePaneRequest) return;
     if (handledRenameSequenceRef.current === renamePaneRequest.sequence) return;
     handledRenameSequenceRef.current = renamePaneRequest.sequence;
-    if (!findLeaf(tree, renamePaneRequest.paneId)) return;
-    renamePane(renamePaneRequest.paneId, renamePaneRequest.title);
-  }, [renamePane, renamePaneRequest, tree]);
+    const settlement = beginPaneRequestSettlement("rename", renamePaneRequest.sequence, renamePaneRequest.onComplete);
+    if (!findLeaf(tree, renamePaneRequest.paneId)) {
+      settlement.complete("Rename target was removed.");
+      return;
+    }
+    try {
+      renamePane(renamePaneRequest.paneId, renamePaneRequest.title);
+      settlement.complete(null);
+    } catch (error) {
+      settlement.complete(paneRequestError(error));
+    }
+  }, [beginPaneRequestSettlement, renamePane, renamePaneRequest, tree]);
 
   useEffect(() => {
     if (!cyclePaneRoleRequest) return;
     if (handledRoleCycleSequenceRef.current === cyclePaneRoleRequest.sequence) return;
     handledRoleCycleSequenceRef.current = cyclePaneRoleRequest.sequence;
-    if (!findLeaf(tree, cyclePaneRoleRequest.paneId)) return;
-    cyclePaneRole(cyclePaneRoleRequest.paneId);
-  }, [cyclePaneRole, cyclePaneRoleRequest, tree]);
+    const settlement = beginPaneRequestSettlement(
+      "role",
+      cyclePaneRoleRequest.sequence,
+      cyclePaneRoleRequest.onComplete,
+    );
+    if (!findLeaf(tree, cyclePaneRoleRequest.paneId)) {
+      settlement.complete("Role target was removed.");
+      return;
+    }
+    try {
+      cyclePaneRole(cyclePaneRoleRequest.paneId);
+      settlement.complete(null);
+    } catch (error) {
+      settlement.complete(paneRequestError(error));
+    }
+  }, [beginPaneRequestSettlement, cyclePaneRole, cyclePaneRoleRequest, tree]);
 
   useEffect(() => {
     if (!layoutRequest) return;
     if (handledLayoutSequenceRef.current === layoutRequest.sequence) return;
     handledLayoutSequenceRef.current = layoutRequest.sequence;
-    applyLayoutViaMux(layoutRequest.command);
-  }, [applyLayoutViaMux, layoutRequest]);
+    const settlement = beginPaneRequestSettlement("layout", layoutRequest.sequence, layoutRequest.onComplete);
+    void applyLayoutViaMux(layoutRequest.command)
+      .then(settlement.complete)
+      .catch((error) => settlement.complete(paneRequestError(error)));
+  }, [applyLayoutViaMux, beginPaneRequestSettlement, layoutRequest]);
 
   // Mount loop-dispatched agents' PTYs as real split panes: split the active
   // pane and BIND each existing agent terminal (no new shell), so the operator

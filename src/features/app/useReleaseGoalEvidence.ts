@@ -20,58 +20,108 @@ import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
+interface ReleaseGoalEvidenceState {
+  releaseQualityGoalInputs: ReleaseQualityGoalInputs | null;
+  finalGoalResidualRisk: FinalGoalResidualRisk | null;
+  finalGoalRequirementProofs: FinalGoalRequirementProof[];
+  finalGoalSafeGate: FinalGoalSafeGate | null;
+}
+
+const EMPTY_EVIDENCE: ReleaseGoalEvidenceState = {
+  releaseQualityGoalInputs: deriveReleaseQualityGoalInputs(null),
+  finalGoalResidualRisk: deriveFinalGoalResidualRisk(null),
+  finalGoalRequirementProofs: deriveFinalGoalRequirementProofs(null),
+  finalGoalSafeGate: deriveFinalGoalSafeGate(null),
+};
+
 export function useReleaseGoalEvidence(projectPath: string) {
-  const [releaseQualityGoalInputs, setReleaseQualityGoalInputs] = useState<ReleaseQualityGoalInputs | null>(null);
-  const [finalGoalResidualRisk, setFinalGoalResidualRisk] = useState<FinalGoalResidualRisk | null>(null);
-  const [finalGoalRequirementProofs, setFinalGoalRequirementProofs] = useState<FinalGoalRequirementProof[]>([]);
-  const [finalGoalSafeGate, setFinalGoalSafeGate] = useState<FinalGoalSafeGate | null>(null);
+  const [evidence, setEvidence] = useState<ReleaseGoalEvidenceState>(EMPTY_EVIDENCE);
 
   useEffect(() => {
     let active = true;
+    let generation = 0;
+    let inFlight = false;
     if (!projectPath || !isTauriRuntime()) {
-      setReleaseQualityGoalInputs(null);
-      setFinalGoalResidualRisk(null);
-      setFinalGoalRequirementProofs([]);
-      setFinalGoalSafeGate(null);
+      setEvidence(EMPTY_EVIDENCE);
       return () => {
         active = false;
+        generation += 1;
       };
     }
 
-    const read = (path: string) => Promise.resolve({ invoke: tauriInvoke }).then(({ invoke }) =>
-      invoke<string>("read_file", { path }),
-    );
+    const read = (path: string) =>
+      Promise.resolve({ invoke: tauriInvoke }).then(({ invoke }) => invoke<string>("read_file", { path }));
     const refresh = () => {
-      void read(resolveProjectFilePath(projectPath, ".codex-auto/quality/release-quality-score.json"))
-        .then((text) => {
-          if (active) setReleaseQualityGoalInputs(deriveReleaseQualityGoalInputs(parseReleaseQualityReport(text)));
+      if (!active || inFlight) return;
+      inFlight = true;
+      const pollGeneration = ++generation;
+      void Promise.allSettled([
+        read(resolveProjectFilePath(projectPath, ".codex-auto/quality/release-quality-score.json")),
+        read(resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-audit.json")),
+        read(resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-safe-summary.json")),
+      ])
+        .then(([releaseResult, finalAuditResult, safeGateResult]) => {
+          if (!active || pollGeneration !== generation) return;
+          if (
+            releaseResult.status !== "fulfilled" ||
+            finalAuditResult.status !== "fulfilled" ||
+            safeGateResult.status !== "fulfilled"
+          ) {
+            if (releaseResult.status === "rejected") {
+              reportInvokeFailure({
+                source: "app",
+                operation: "read_release_quality_score",
+                err: releaseResult.reason,
+                severity: "warning",
+              });
+            }
+            if (finalAuditResult.status === "rejected") {
+              reportInvokeFailure({
+                source: "app",
+                operation: "read_final_goal_audit",
+                err: finalAuditResult.reason,
+                severity: "warning",
+              });
+            }
+            if (safeGateResult.status === "rejected") {
+              reportInvokeFailure({
+                source: "app",
+                operation: "read_final_goal_safe_gate",
+                err: safeGateResult.reason,
+                severity: "warning",
+              });
+            }
+            setEvidence(EMPTY_EVIDENCE);
+            return;
+          }
+
+          const releaseReport = parseReleaseQualityReport(releaseResult.value);
+          const finalAuditReport = parseFinalGoalAuditReport(finalAuditResult.value);
+          const safeGateReport = parseFinalGoalSafeSummaryReport(safeGateResult.value);
+          if (!releaseReport || !finalAuditReport || !safeGateReport) {
+            setEvidence(EMPTY_EVIDENCE);
+            return;
+          }
+
+          setEvidence({
+            releaseQualityGoalInputs: deriveReleaseQualityGoalInputs(releaseReport),
+            finalGoalResidualRisk: deriveFinalGoalResidualRisk(finalAuditReport),
+            finalGoalRequirementProofs: deriveFinalGoalRequirementProofs(finalAuditReport),
+            finalGoalSafeGate: deriveFinalGoalSafeGate(safeGateReport),
+          });
         })
         .catch((err) => {
-          if (!active) return;
-          setReleaseQualityGoalInputs(deriveReleaseQualityGoalInputs(null));
-          reportInvokeFailure({ source: "app", operation: "read_release_quality_score", err, severity: "warning" });
-        });
-      void read(resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-audit.json"))
-        .then((text) => {
-          if (!active) return;
-          const report = parseFinalGoalAuditReport(text);
-          setFinalGoalResidualRisk(deriveFinalGoalResidualRisk(report));
-          setFinalGoalRequirementProofs(deriveFinalGoalRequirementProofs(report));
+          if (!active || pollGeneration !== generation) return;
+          setEvidence(EMPTY_EVIDENCE);
+          reportInvokeFailure({
+            source: "app",
+            operation: "read_release_goal_evidence",
+            err,
+            severity: "warning",
+          });
         })
-        .catch((err) => {
-          if (!active) return;
-          setFinalGoalResidualRisk(deriveFinalGoalResidualRisk(null));
-          setFinalGoalRequirementProofs(deriveFinalGoalRequirementProofs(null));
-          reportInvokeFailure({ source: "app", operation: "read_final_goal_audit", err, severity: "warning" });
-        });
-      void read(resolveProjectFilePath(projectPath, ".codex-auto/quality/final-goal-safe-summary.json"))
-        .then((text) => {
-          if (active) setFinalGoalSafeGate(deriveFinalGoalSafeGate(parseFinalGoalSafeSummaryReport(text)));
-        })
-        .catch((err) => {
-          if (!active) return;
-          setFinalGoalSafeGate(deriveFinalGoalSafeGate(null));
-          reportInvokeFailure({ source: "app", operation: "read_final_goal_safe_gate", err, severity: "warning" });
+        .finally(() => {
+          if (pollGeneration === generation) inFlight = false;
         });
     };
 
@@ -79,9 +129,10 @@ export function useReleaseGoalEvidence(projectPath: string) {
     const interval = window.setInterval(refresh, REFRESH_INTERVAL_MS);
     return () => {
       active = false;
+      generation += 1;
       window.clearInterval(interval);
     };
   }, [projectPath]);
 
-  return { finalGoalRequirementProofs, finalGoalResidualRisk, finalGoalSafeGate, releaseQualityGoalInputs };
+  return evidence;
 }

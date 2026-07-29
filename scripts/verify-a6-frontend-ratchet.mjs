@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -33,6 +33,14 @@ try {
           "src/__tests__/useAppShellStore.test.tsx",
           "src/__tests__/useProjectTabLifecycle.test.tsx",
           "src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx",
+          "src/__tests__/useReleaseGoalEvidence.test.tsx",
+          "src/__tests__/useAuthenticatedPromptEvidence.test.tsx",
+          "src/__tests__/useAiCliLaunchEvidence.test.tsx",
+          "src/__tests__/usePaneRequestController.test.tsx",
+          "src/__tests__/usePaneAgentSpawns.test.tsx",
+          "src/__tests__/usePaneRegistry.test.tsx",
+          "src/__tests__/useOperationalPaneSelection.test.tsx",
+          "src/__tests__/PaneTreeContainerActiveTerminal.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -67,6 +75,58 @@ try {
         "useKeyboardShortcuts terminal focus routes Ctrl+Tab and Ctrl+Shift+Tab through the guarded project-tab switch callback",
       ],
     },
+    {
+      id: "evidence-generation-behavior",
+      tests: [
+        "useReleaseGoalEvidence adopts all three files as one snapshot and fails closed on a partial generation",
+        "useReleaseGoalEvidence suppresses overlap and rejects the old project generation after a project change",
+        "useAuthenticatedPromptEvidence suppresses overlap and rejects completion from an old project or unmounted owner",
+        "useAiCliLaunchEvidence suppresses overlap and rejects completion from an old project or unmounted owner",
+        "useAiCliLaunchEvidence retains the existing partial preflight contract within one completed generation",
+      ],
+    },
+    {
+      id: "pane-request-lifecycle-behavior",
+      tests: [
+        "usePaneRequestController continues dispatching after the StrictMode effect rehearsal",
+        "usePaneRequestController serializes concurrent restart requests FIFO and settles each callback exactly once",
+        "usePaneRequestController advances after failure and preserves acceptance order across asynchronous tab routing",
+        "usePaneRequestController waits for real completion before publishing the next synchronous loss-intolerant request",
+        "usePaneRequestController rejects timed-out accepted work with a typed cancellation",
+        "usePaneRequestController holds the FIFO lane until timed-out backend work actually completes",
+        "usePaneRequestController settles later accepted work while a hung backend lane remains quarantined",
+        "usePaneRequestController settles accepted work when its tab is removed",
+        "usePaneRequestController settles accepted work on unmount and ignores a later consumer completion",
+        "usePaneRequestController keeps focus latest-wins when tab transitions complete out of order",
+        "usePaneRequestController settles pending focus on timeout, tab removal, and unmount",
+        "usePaneRequestController reports focus failure only after the pane consumer rejects the target",
+      ],
+    },
+    {
+      id: "pane-state-owner-behavior",
+      tests: [
+        "usePaneAgentSpawns retains the explicit initiating tab when an agent-spawn event arrives after a tab switch",
+        "usePaneAgentSpawns fails closed when an autonomous spawn event has no initiating tab owner",
+        "usePaneAgentSpawns routes a delayed autonomous event through one unambiguous repo owner",
+        "usePaneAgentSpawns retains unconsumed batches for two initiating tabs without cross-tab overwrite",
+        "usePaneRegistry removes active-PTY and registry state together when a tab is removed",
+        "useOperationalPaneSelection clears a selected pane after registry cleanup removes its owner",
+        "useOperationalPaneSelection refreshes the selected terminal identity without changing pane ownership",
+        "useOperationalPaneSelection does not resurrect a removed pane from a late selection callback",
+        "useOperationalPaneSelection clears pane and audit selections when the project owner changes",
+        "useOperationalPaneSelection rejects retained selection callbacks from a previous project owner",
+      ],
+    },
+    {
+      id: "pane-tree-settlement-behavior",
+      tests: [
+        "PaneTreeContainer onActiveTerminalChange settles a close request only after the mux close finishes",
+        "PaneTreeContainer onActiveTerminalChange settles focus requests only after resolving the target pane",
+        "PaneTreeContainer onActiveTerminalChange settles missing and unmounted close requests exactly once",
+        "PaneTreeContainer onActiveTerminalChange settles layout requests after backend success and failure",
+        "PaneTreeContainer onActiveTerminalChange settles rename and role requests on success and missing targets",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -88,6 +148,10 @@ try {
     { id: "app-shell-store-subscription-behavior", status: "fail", error: detail },
     { id: "project-tab-lifecycle-behavior", status: "fail", error: detail },
     { id: "project-tab-shortcut-routing-behavior", status: "fail", error: detail },
+    { id: "evidence-generation-behavior", status: "fail", error: detail },
+    { id: "pane-request-lifecycle-behavior", status: "fail", error: detail },
+    { id: "pane-state-owner-behavior", status: "fail", error: detail },
+    { id: "pane-tree-settlement-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -105,12 +169,22 @@ const paths = {
   guardrailSelection: "src/features/right-rail/useRightRailGuardrailSelection.ts",
   editorOpenMode: "src/features/editor/useEditorOpenMode.ts",
   paneRegistry: "src/features/terminal/usePaneRegistry.ts",
+  paneRegistryTest: "src/__tests__/usePaneRegistry.test.tsx",
   paneAgentSpawns: "src/features/terminal/usePaneAgentSpawns.ts",
+  paneAgentSpawnsTest: "src/__tests__/usePaneAgentSpawns.test.tsx",
   paneRequestController: "src/features/terminal/usePaneRequestController.ts",
+  paneRequestControllerTest: "src/__tests__/usePaneRequestController.test.tsx",
   operationalPaneSelection: "src/features/terminal/useOperationalPaneSelection.ts",
+  operationalPaneSelectionTest: "src/__tests__/useOperationalPaneSelection.test.tsx",
+  paneTreeContainer: "src/features/terminal/pane-tree/PaneTreeContainer.tsx",
+  paneTreeContainerTest: "src/__tests__/PaneTreeContainerActiveTerminal.test.tsx",
   releaseGoalEvidence: "src/features/app/useReleaseGoalEvidence.ts",
+  releaseGoalEvidenceTest: "src/__tests__/useReleaseGoalEvidence.test.tsx",
   authenticatedPromptEvidence: "src/features/app/useAuthenticatedPromptEvidence.ts",
+  authenticatedPromptEvidenceTest: "src/__tests__/useAuthenticatedPromptEvidence.test.tsx",
   aiCliLaunchEvidence: "src/features/app/useAiCliLaunchEvidence.ts",
+  aiCliLaunchEvidenceTest: "src/__tests__/useAiCliLaunchEvidence.test.tsx",
+  orchestratorCommands: "src-tauri/src/ipc/orchestrator_commands.rs",
   projectTabLifecycle: "src/features/app/useProjectTabLifecycle.ts",
   appMenus: "src/features/app/useAppMenus.ts",
   decisionInbox: "src/features/decision-inbox/useDecisionInbox.ts",
@@ -128,12 +202,17 @@ const paths = {
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
 for (const [id, ceiling] of Object.entries({
   projectArtifacts: 17,
-  releaseGoalEvidence: 88,
-  authenticatedPromptEvidence: 66,
-  aiCliLaunchEvidence: 68,
+  releaseGoalEvidence: 139,
+  authenticatedPromptEvidence: 78,
+  aiCliLaunchEvidence: 78,
+  paneRegistry: 78,
+  paneAgentSpawns: 130,
+  paneRequestController: 375,
+  operationalPaneSelection: 123,
+  paneTreeContainer: 1691,
   bootstrapHook: 53,
   config: 34,
-  appMenus: 989,
+  appMenus: 994,
   appShellStore: 60,
   keyboardShortcuts: 261,
   decisionInbox: 134,
@@ -173,7 +252,7 @@ const genericOwnersImportingRightRailModel = [
   "orchestraDispatch",
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
-  ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 4215, { lines: source.app.split(/\r?\n/).length, ceiling: 4215 }],
+  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 4239, { lines: source.app.split(/\r?\n/).length, ceiling: 4239 }],
   [
     "app-shell-store-subscription-narrow",
     source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
@@ -230,9 +309,31 @@ for (const [id, ok, evidence] of [
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
   ["pane-registry-owned", source.app.includes("usePaneRegistry(") && source.paneRegistry.includes("export function usePaneRegistry") && source.paneRegistry.includes("paneRegistryEqual") && source.paneRegistry.includes("clearActivePtyId"), {}],
-  ["pane-agent-spawns-owned", source.app.includes("usePaneAgentSpawns(activeTabId)") && source.paneAgentSpawns.includes("export function usePaneAgentSpawns") && source.paneAgentSpawns.includes("sequenceRef.current += 1") && source.paneAgentSpawns.includes("mounted.terminalId === agent.terminalId"), {}],
-  ["pane-request-controller-owned", source.app.includes("usePaneRequestController({") && source.paneRequestController.includes("export function usePaneRequestController") && source.paneRequestController.includes("Restart target tab is unavailable.") && source.paneRequestController.includes("onComplete: (error)"), {}],
-  ["operational-pane-selection-owned", source.app.includes("useOperationalPaneSelection(visualTerminalPaneTargets)") && source.operationalPaneSelection.includes("export function useOperationalPaneSelection") && source.operationalPaneSelection.includes("reconcileOperationalPaneSelection(selected, panes)") && source.operationalPaneSelection.includes("setSelectedAuditTraceFilter(correlationId)"), {}],
+  ["pane-agent-spawns-owned",
+    source.app.includes("usePaneAgentSpawns(paneAgentSpawnOwners)") &&
+      source.app.includes("spawnAgentPaneRequest={paneAgentSpawnsByTab[tab.id] ?? null}") &&
+      source.paneAgentSpawns.includes("export function usePaneAgentSpawns") &&
+      source.paneAgentSpawns.includes("resolveEventOwnerTabId") &&
+      source.paneAgentSpawns.includes("paneAgentSpawnsByTab") &&
+      source.paneAgentSpawnsTest.includes("without cross-tab overwrite") &&
+      source.orchestratorCommands.includes('"repoPath": &event_repo_path'),
+    {}],
+  ["pane-request-controller-owned",
+    source.app.includes("usePaneRequestController({") &&
+      source.app.includes("liveTabIds,") &&
+      source.paneRequestController.includes("export function usePaneRequestController") &&
+      source.paneRequestController.includes("useSerializedPaneRequest") &&
+      source.paneRequestController.includes("PaneRequestCancelledError") &&
+      source.paneRequestController.includes("onComplete") &&
+      source.paneRequestControllerTest.includes("settles each callback exactly once"),
+    {}],
+  ["operational-pane-selection-owned",
+    source.app.includes("useOperationalPaneSelection(visualTerminalPaneTargets, projectPath)") &&
+      source.operationalPaneSelection.includes("export function useOperationalPaneSelection") &&
+      source.operationalPaneSelection.includes("reconcileOperationalPaneSelection(selected, panes)") &&
+      source.operationalPaneSelection.includes("currentOwnerKeyRef.current === ownerKey") &&
+      source.operationalPaneSelectionTest.includes("rejects retained selection callbacks from a previous project owner"),
+    {}],
   ["release-goal-evidence-owned", source.app.includes("useReleaseGoalEvidence(projectPath)") && source.releaseGoalEvidence.includes("export function useReleaseGoalEvidence") && source.releaseGoalEvidence.includes("final-goal-safe-summary.json") && source.releaseGoalEvidence.includes("deriveFinalGoalRequirementProofs(null)"), {}],
   ["authenticated-prompt-evidence-owned", source.app.includes("useAuthenticatedPromptEvidence(projectPath)") && source.authenticatedPromptEvidence.includes("export function useAuthenticatedPromptEvidence") && source.authenticatedPromptEvidence.includes("Promise.allSettled") && source.authenticatedPromptEvidence.includes("deriveAuthenticatedPromptConsentPacket(null)"), {}],
   ["ai-cli-launch-evidence-owned", source.app.includes("useAiCliLaunchEvidence(projectPath)") && source.aiCliLaunchEvidence.includes("export function useAiCliLaunchEvidence") && source.aiCliLaunchEvidence.includes("Promise.allSettled") && source.aiCliLaunchEvidence.includes("read_ai_cli_launch_evidence"), {}],
@@ -259,7 +360,27 @@ for (const [id, ok, evidence] of [
   failed ||= !ok;
 }
 const generatedAt = new Date().toISOString();
-const report = { schema: "aelyris.a6-frontend-ratchet/v1", status: failed ? "failed" : "pass-a6.2a-frontend-owner-extraction", sliceComplete: !failed, phaseComplete: false, scenarios, generatedAt, provenance: createEvidenceProvenance({ root, verifierPath: "scripts/verify-a6-frontend-ratchet.mjs", inputPaths: ["scripts/evidence-provenance.mjs", ...Object.values(paths), "scripts/verify-a6-modularity-inventory.mjs", "package.json"], generatedAt }) };
+const report = {
+  schema: "aelyris.a6-frontend-ratchet/v1",
+  contractVersion: "a6.2e4-stateful-owner-behavior/v1",
+  status: failed ? "failed" : "pass-a6.2e4-stateful-owner-behavior",
+  completedSlice: failed ? null : "A6.2e4",
+  sliceComplete: !failed,
+  phaseComplete: false,
+  scenarios,
+  generatedAt,
+  provenance: createEvidenceProvenance({
+    root,
+    verifierPath: "scripts/verify-a6-frontend-ratchet.mjs",
+    inputPaths: [
+      "scripts/evidence-provenance.mjs",
+      ...Object.values(paths),
+      "scripts/verify-a6-modularity-inventory.mjs",
+      "package.json",
+    ],
+    generatedAt,
+  }),
+};
 mkdirSync(dirname(artifact), { recursive: true });
 writeFileSync(artifact, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({ artifact, ...report }, null, 2));

@@ -14,10 +14,13 @@ export function useAiCliLaunchEvidence(projectPath: string) {
 
   useEffect(() => {
     let active = true;
+    let generation = 0;
+    let inFlight = false;
     if (!projectPath || !isTauriRuntime()) {
       setLaunchEvidence(EMPTY_EVIDENCE);
       return () => {
         active = false;
+        generation += 1;
       };
     }
     const paths = [
@@ -29,11 +32,14 @@ export function useAiCliLaunchEvidence(projectPath: string) {
       ".codex-auto/production-smoke/interactive-ai-cli-boundary.json",
     ].map((path) => resolveProjectFilePath(projectPath, path));
     const refresh = () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      const pollGeneration = ++generation;
       void Promise.resolve({ invoke: tauriInvoke })
         .then(({ invoke }) => Promise.allSettled(paths.map((path) => invoke<string>("read_file", { path }))))
         .then(([probe, nativeInput, imeResult, reconnect, mux, boundary]) => {
-          if (!active) return;
-          const parsed = <T,>(result: PromiseSettledResult<string>) =>
+          if (!active || pollGeneration !== generation) return;
+          const parsed = <T>(result: PromiseSettledResult<string>) =>
             result.status === "fulfilled" ? parseJsonArtifact<T>(result.value) : null;
           const evidence = parsed<AiCliProbeEvidence>(probe);
           const nativeInputHost = parsed<NonNullable<AiCliLaunchPreflightEvidence["nativeInputHost"]>>(nativeInput);
@@ -50,15 +56,19 @@ export function useAiCliLaunchEvidence(projectPath: string) {
           setLaunchEvidence({ evidence, preflight });
         })
         .catch((err) => {
-          if (!active) return;
+          if (!active || pollGeneration !== generation) return;
           setLaunchEvidence(EMPTY_EVIDENCE);
           reportInvokeFailure({ source: "app", operation: "read_ai_cli_launch_evidence", err, severity: "warning" });
+        })
+        .finally(() => {
+          if (pollGeneration === generation) inFlight = false;
         });
     };
     refresh();
     const interval = window.setInterval(refresh, 60_000);
     return () => {
       active = false;
+      generation += 1;
       window.clearInterval(interval);
     };
   }, [projectPath]);

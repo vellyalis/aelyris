@@ -44,13 +44,14 @@ import {
   enableImeDiagnostics,
   imeDiagnosticsEnabled,
 } from "../terminal/hooks/useCanvasIME";
+import type { PaneFocusOutcome } from "../terminal/usePaneRequestController";
 
 interface UseAppMenusOptions {
   addTab: (shell: ShellType) => void;
   closeTab: (id: string) => void;
   switchTab?: (id: string) => undefined | boolean | Promise<undefined | boolean>;
   tabs?: Array<{ id: string; label: string; shell: ShellType; cwd?: string; worktreeBranch?: string }>;
-  switchPane?: (tabId: string, paneId: string) => void | Promise<void>;
+  switchPane?: (tabId: string, paneId: string) => undefined | Promise<undefined | PaneFocusOutcome>;
   openPaneSwitcher?: () => void;
   focusNextPane?: () => void | Promise<void>;
   focusPreviousPane?: () => void | Promise<void>;
@@ -342,7 +343,11 @@ export function useAppMenus(opts: UseAppMenusOptions) {
         return;
       }
 
-      await switchPane(result.pane.tabId, result.pane.paneId);
+      const outcome = await switchPane(result.pane.tabId, result.pane.paneId);
+      if (outcome && outcome.status !== "focused") {
+        toast.error("Switch terminal pane", outcome.error.message);
+        return;
+      }
       toast.success("Terminal pane active", formatOperationalPaneChoice(result.pane));
     };
   }, [openPaneSwitcher, panes, switchPane]);

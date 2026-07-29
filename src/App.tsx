@@ -415,6 +415,16 @@ export function App() {
     // via getState so the initializer is stable — useTabManager only consults
     // the value when creating the initial tab and via addTab's shell argument.
   } = useTabManager(useAppStore.getState().defaultShell);
+  const projectPath = resolveEffectiveProjectPath(rootProjectPath, activeTab.cwd);
+  const liveTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+  const paneAgentSpawnOwners = useMemo(
+    () =>
+      tabs.map((tab) => ({
+        tabId: tab.id,
+        projectPath: tab.cwd ?? rootProjectPath ?? undefined,
+      })),
+    [rootProjectPath, tabs],
+  );
   const { activePtyId, clearActivePtyId, setTabActivePtyId, setTabPaneRegistry, tabPaneRegistries } = usePaneRegistry(
     activeTabId,
     tabs,
@@ -425,7 +435,7 @@ export function App() {
   // hand the set to the active tab's PaneTreeContainer, which splits the active
   // pane and binds each agent's PTY (1 pane = 1 agent), so the operator watches
   // them work in genuine terminal panes.
-  const { mountAgentPtyInPane, paneAgentSpawns } = usePaneAgentSpawns(activeTabId);
+  const { mountAgentPtyInPane, paneAgentSpawnsByTab } = usePaneAgentSpawns(paneAgentSpawnOwners);
 
   const activeTerminalTarget = useMemo<ActiveTerminalTarget>(
     () => ({
@@ -511,7 +521,7 @@ export function App() {
     selectedAuditTraceFilter,
     selectedOperationalPane,
     selectedOperationalPaneTarget,
-  } = useOperationalPaneSelection(visualTerminalPaneTargets);
+  } = useOperationalPaneSelection(visualTerminalPaneTargets, projectPath);
 
   const {
     sessions,
@@ -549,7 +559,6 @@ export function App() {
     tabs,
   });
 
-  const projectPath = resolveEffectiveProjectPath(rootProjectPath, activeTab.cwd);
   const rightRailAiCliLaunchEvidence = useAiCliLaunchEvidence(projectPath);
   const authenticatedPromptConsentPacket = useAuthenticatedPromptEvidence(projectPath);
   const { finalGoalRequirementProofs, finalGoalResidualRisk, finalGoalSafeGate, releaseQualityGoalInputs } =
@@ -602,6 +611,8 @@ export function App() {
       showRightRailRouteConfirmation,
       setRightRailFocusWidget,
       setRightRailMode,
+      setSelectedAuditEventId,
+      setSelectedAuditTraceFilter,
     ],
   );
   const handleOpenRightRailOutcomeSource = useCallback(
@@ -647,7 +658,14 @@ export function App() {
       setRightRailMode("observe");
       setRightRailFocusWidget("audit-timeline");
     },
-    [scopedOperationalAuditEvents, showRightRailRouteConfirmation, setRightRailMode, setRightRailFocusWidget],
+    [
+      scopedOperationalAuditEvents,
+      showRightRailRouteConfirmation,
+      setRightRailFocusWidget,
+      setRightRailMode,
+      setSelectedAuditEventId,
+      setSelectedAuditTraceFilter,
+    ],
   );
   const handleOpenRightRailEdgeScoreItem = useCallback(
     (item: RightRailEdgeScoreItem) => {
@@ -1074,13 +1092,19 @@ export function App() {
     paneRenameRequest,
     paneRestartRequest,
     paneRoleCycleRequest,
-  } = usePaneRequestController({ activeTabId, handleTabSwitch, interactiveSessionId, selectInteractiveSession });
+  } = usePaneRequestController({
+    activeTabId,
+    handleTabSwitch,
+    interactiveSessionId,
+    liveTabIds,
+    selectInteractiveSession,
+  });
 
   const handleFocusOperationalPane = useCallback(
     async (tabId: string, paneId: string) => {
       const target = visualTerminalPaneTargets.find((pane) => pane.tabId === tabId && pane.paneId === paneId);
-      if (target) selectOperationalPane(target);
-      await handlePaneSwitch(tabId, paneId);
+      const outcome = await handlePaneSwitch(tabId, paneId);
+      if (outcome.status === "focused" && target) selectOperationalPane(target);
     },
     [handlePaneSwitch, selectOperationalPane, visualTerminalPaneTargets],
   );
@@ -1091,8 +1115,9 @@ export function App() {
       if (!terminalId) return;
       const target = visualTerminalPaneTargets.find((pane) => pane.terminalId === terminalId);
       if (target) {
+        const outcome = await handlePaneSwitch(target.tabId, target.paneId);
+        if (outcome.status !== "focused") return;
         selectOperationalPane(target);
-        await handlePaneSwitch(target.tabId, target.paneId);
       }
       const sequence = command.endSequence ?? command.outputSequence ?? command.commandSequence ?? null;
       const historySize = command.endHistorySize ?? command.outputHistorySize ?? command.commandHistorySize ?? null;
@@ -1132,7 +1157,8 @@ export function App() {
       const nextIndex = (baseIndex + delta + visualTerminalPaneTargets.length) % visualTerminalPaneTargets.length;
       const target = visualTerminalPaneTargets[nextIndex];
       if (!target) return;
-      await handlePaneSwitch(target.tabId, target.paneId);
+      const outcome = await handlePaneSwitch(target.tabId, target.paneId);
+      if (outcome.status !== "focused") return;
       selectOperationalPane(target);
     },
     [activeTabId, handlePaneSwitch, selectOperationalPane, visualActivePtyId, visualTerminalPaneTargets],
@@ -1753,7 +1779,7 @@ export function App() {
         renamePaneRequest={paneRenameRequest?.tabId === tab.id ? paneRenameRequest : null}
         cyclePaneRoleRequest={paneRoleCycleRequest?.tabId === tab.id ? paneRoleCycleRequest : null}
         layoutRequest={paneLayoutRequest?.tabId === tab.id ? paneLayoutRequest : null}
-        spawnAgentPaneRequest={paneAgentSpawns?.tabId === tab.id ? paneAgentSpawns : null}
+        spawnAgentPaneRequest={paneAgentSpawnsByTab[tab.id] ?? null}
       />
     </div>
   ));

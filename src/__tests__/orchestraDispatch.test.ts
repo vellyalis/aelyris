@@ -105,8 +105,10 @@ describe("App orchestra → central pane wiring", () => {
   });
 
   it("routes the autonomous loop path through the same unified mount (WU-VP-2)", () => {
-    expect(src).toContain("usePaneAgentSpawns(activeTabId)");
-    expect(paneSpawnHookSrc).toContain("mountAgentPtyInPane(agent)");
+    expect(src).toContain("usePaneAgentSpawns(paneAgentSpawnOwners)");
+    expect(src).toContain("spawnAgentPaneRequest={paneAgentSpawnsByTab[tab.id] ?? null}");
+    expect(paneSpawnHookSrc).toContain("mountAgentPtyInPane(agent, ownerTabId)");
+    expect(paneSpawnHookSrc).toContain("resolveEventOwnerTabId");
     expect(paneSpawnHookSrc).toContain('tauriListen<AgentSpawnedEvent>("agent-event"');
     // The old divergent inline spawn-merge must be gone from the listener.
     expect(paneSpawnHookSrc).not.toContain("agents: [...agents, agent],");

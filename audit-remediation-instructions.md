@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.2e4`.
-LAST COMPLETED SLICE: `A6.2e3`.
+ACTIVE SLICE: `A6.2f`.
+LAST COMPLETED SLICE: `A6.2e4`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.2e4`.
+NEXT IMPLEMENTATION SLICE: `A6.2f`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -18,9 +18,11 @@ an executable dependency-direction ratchet. A6.2e2 replaced App's whole-store
 subscription with a shallow selector contract and fail-closed rerender proof. A6.2e3
 now routes project/tab context changes through one lifecycle owner, executes cancel and
 accepted-transition behavior, detaches Close Folder from the effective project path,
-and routes keyboard tab switching through the same contract. A6.2e4 is the exact
-implementation frontier; do not reopen A4 without a fresh regression or mix A7/native
-work into A6.
+and routes keyboard tab switching through the same contract. A6.2e4 closes
+generation-bound evidence polling, serialized pane request ownership, consumer-
+acknowledged focus, initiating-tab agent spawn routing, owner-key-bound operational
+selection, and explicit frontend artifact metadata. A6.2f is the exact implementation
+frontier; do not reopen A4 without a fresh regression or mix A7/native work into A6.
 
 ## Objective
 
@@ -42,7 +44,7 @@ volatile value.
 
 ```text
 A4.12 complete
-  -> A6.2e1-A6.2e3 complete -> A6.2e4/A6 stateful-owner behavior
+  -> A6.2e1-A6.2e4 complete -> A6.2f/A6 component and command composition
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -63,7 +65,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. Resume **A6.2e4**, then finish A6 by dependency direction, state ownership,
+2. Resume **A6.2f**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
@@ -382,8 +384,14 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   session, and pane snapshots, accepted active-context changes clear editor and
   interactive state after transition success, Close Folder detaches the effective
   project path, and keyboard tab switching uses the same lifecycle contract.
-- Resume A6 at A6.2e4 stateful-owner behavior. The queued NUI proposal does not alter
-  that frontier.
+- A6.2e4 is complete: project evidence commits one generation atomically and rejects
+  overlap and stale adoption; pane mutation requests serialize per kind while focus
+  uses typed latest-wins settlement acknowledged by its consumer; agent spawn and
+  operational selection callbacks remain bound to their initiating tab/project owner.
+  The frontend ratchet records explicit A6.2e4 contract metadata and executes the
+  required concurrency, cancellation, routing, and cleanup behavior.
+- Resume A6 at A6.2f component and command composition. The queued NUI proposal does
+  not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

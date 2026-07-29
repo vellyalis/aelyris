@@ -16,10 +16,13 @@ export function useAuthenticatedPromptEvidence(projectPath: string) {
 
   useEffect(() => {
     let active = true;
+    let generation = 0;
+    let inFlight = false;
     if (!projectPath || !isTauriRuntime()) {
       setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
       return () => {
         active = false;
+        generation += 1;
       };
     }
     const consentPath = resolveProjectFilePath(
@@ -31,6 +34,9 @@ export function useAuthenticatedPromptEvidence(projectPath: string) {
       ".codex-auto/production-smoke/authenticated-ai-cli-preflight-matrix.json",
     );
     const refresh = () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      const pollGeneration = ++generation;
       void Promise.resolve({ invoke: tauriInvoke })
         .then(({ invoke }) =>
           Promise.allSettled([
@@ -39,7 +45,7 @@ export function useAuthenticatedPromptEvidence(projectPath: string) {
           ]),
         )
         .then(([consentResult, matrixResult]) => {
-          if (!active) return;
+          if (!active || pollGeneration !== generation) return;
           setAuthenticatedPromptConsentPacket(
             deriveAuthenticatedPromptConsentPacket(
               parseAuthenticatedPromptConsentReport(consentResult.status === "fulfilled" ? consentResult.value : ""),
@@ -50,13 +56,19 @@ export function useAuthenticatedPromptEvidence(projectPath: string) {
           );
         })
         .catch(() => {
-          if (active) setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
+          if (active && pollGeneration === generation) {
+            setAuthenticatedPromptConsentPacket(deriveAuthenticatedPromptConsentPacket(null));
+          }
+        })
+        .finally(() => {
+          if (pollGeneration === generation) inFlight = false;
         });
     };
     refresh();
     const interval = window.setInterval(refresh, 60_000);
     return () => {
       active = false;
+      generation += 1;
       window.clearInterval(interval);
     };
   }, [projectPath]);

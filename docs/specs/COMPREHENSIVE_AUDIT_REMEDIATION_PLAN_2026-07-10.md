@@ -47,7 +47,7 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6.2e1-A6.2e3 are complete; A6 resumes at A6.2e4 and is accepted by ownership,
+3. A6.2e1-A6.2e4 are complete; A6 resumes at A6.2f and is accepted by ownership,
    dependency direction, behavior, and concurrency evidence. Line counts are
    non-growth diagnostics, not universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
@@ -980,7 +980,7 @@ Design authorities frozen by this checkpoint:
 This is a design-only checkpoint. It does not implement Mission persistence,
 WorkEvent migration, capability leases, completion packets, replay, learning,
 remote control, or extensions; it does not change current alpha/not-release-ready
-claim policy. A6.2e4 remains the next implementation slice. New product runtime
+claim policy. A6.2f remains the next implementation slice. New product runtime
 work must not start until A6.2g and then A6.8 satisfy their dependency gates.
 
 #### A6.2e - Architecture and Behavioral Contract Repair
@@ -1030,23 +1030,25 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    mutating the active tab directly. The frontend ratchet executes the lifecycle and
    shortcut assertions through structured Vitest JSON and keeps
    `phaseComplete=false`.
-5. **A6.2e4 Active - stateful-owner behavior**: make each evidence poll one generation;
-   release evidence commits its three-file result atomically, all evidence owners
-   suppress or cancel overlap, ignore stale generations, and prevent later adoption
-   after project change or unmount. Define pane
-   requests as per-kind serialized work: loss-intolerant close/restart/attach/rename/
-   role/layout operations execute FIFO, focus alone may use documented latest-wins,
-   and every accepted request settles exactly once within a bounded lifecycle on
-   success, failure, typed cancellation, tab removal, or unmount. Add concurrent-
+5. **A6.2e4 Complete - stateful-owner behavior**: each evidence poll now owns one
+   generation; release evidence commits its three-file result atomically, and all
+   evidence owners suppress overlap, ignore stale generations, and prevent later
+   adoption after project change or unmount. Loss-intolerant pane requests execute
+   FIFO per operation kind, while focus uses typed latest-wins settlement and resolves
+   success only after the PaneTree consumer acknowledges it. A dispatched request
+   that times out settles its caller but quarantines its non-cancellable backend lane
+   until the real completion arrives, so later accepted requests cannot overlap the
+   unresolved mutation and instead settle through typed timeout if necessary.
+   Delayed agent-spawn events retain their initiating tab owner, and operational pane
+   selection rejects callbacks from an obsolete project owner. Executed concurrent-
    request, timer, out-of-order completion, project-change, stale-result, partial-
-   evidence, routing, completion, and cleanup tests for the evidence, pane request,
-   spawn, registry, and selection owners. Delayed agent-spawn events must retain the
-   initiating tab owner across a tab switch rather than adopting the tab active at
-   event receipt. Source-string tests may remain as ownership guards but are not
-   behavior acceptance. Give the frontend artifact explicit `completedSlice` and
-   `contractVersion` fields; remove the stale A6.2a status label.
+   evidence, routing, completion, and cleanup tests cover the evidence, pane request,
+   spawn, registry, and selection owners. The frontend artifact now records
+   `completedSlice=A6.2e4`,
+   `contractVersion=a6.2e4-stateful-owner-behavior/v1`, and
+   `phaseComplete=false`.
 
-#### A6.2f - Component and Command Composition
+#### A6.2f Active - Component and Command Composition
 
 1. Split `useAppMenus.ts` only along proven typed command/menu ownership boundaries;
    keep one narrow public composition hook and verify that behavior and dependency

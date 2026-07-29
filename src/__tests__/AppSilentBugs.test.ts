@@ -214,11 +214,13 @@ describe("App pane agent spawn ownership", () => {
     const src = getSrc();
     const owner = getPaneAgentSpawnsSource();
 
-    expect(src).toContain("usePaneAgentSpawns(activeTabId)");
+    expect(src).toContain("usePaneAgentSpawns(paneAgentSpawnOwners)");
     expect(owner).toContain('tauriListen<AgentSpawnedEvent>("agent-event"');
     expect(owner).toContain("sequenceRef.current += 1");
     expect(owner).toContain("mounted.terminalId === agent.terminalId");
     expect(owner).toContain('event.payload?.kind !== "agent_spawned"');
+    expect(owner).toContain("resolveEventOwnerTabId");
+    expect(owner).toContain("paneAgentSpawnsByTab");
   });
 });
 
@@ -229,10 +231,10 @@ describe("App pane request controller ownership", () => {
 
     expect(src).toContain("usePaneRequestController({");
     expect(owner).toContain("const [paneFocusRequest");
-    expect(owner).toContain("const [paneLayoutRequest");
-    expect(owner).toContain("Restart target tab is unavailable.");
-    expect(owner).toContain("Attach target tab is unavailable.");
-    expect(owner).toContain("onComplete: (error)");
+    expect(owner).toContain("useSerializedPaneRequest");
+    expect(owner).toContain("PaneRequestCancelledError");
+    expect(owner).toContain("liveTabIds");
+    expect(owner).toContain("onComplete");
     expect(owner).toContain("selectInteractiveSession(\"\")");
   });
 });
@@ -242,11 +244,12 @@ describe("App operational pane selection ownership", () => {
     const src = getSrc();
     const owner = getOperationalPaneSelectionSource();
 
-    expect(src).toContain("useOperationalPaneSelection(visualTerminalPaneTargets)");
+    expect(src).toContain("useOperationalPaneSelection(visualTerminalPaneTargets, projectPath)");
     expect(owner).toContain("reconcileOperationalPaneSelection(selected, panes)");
     expect(owner).toContain("clearEndedOperationalTerminal(selected, terminalId)");
     expect(owner).toContain("setSelectedAuditTraceFilter(correlationId)");
     expect(owner).toContain("setSelectedAuditEventId(incident.eventId)");
+    expect(owner).toContain("currentOwnerKeyRef.current === ownerKey");
   });
 });
 

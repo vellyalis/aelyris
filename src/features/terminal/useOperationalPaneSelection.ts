@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   clearEndedOperationalTerminal,
@@ -8,10 +8,15 @@ import {
 import type { AuditEventRecord } from "../../shared/types/audit";
 import type { TerminalPaneTarget } from "../../shared/types/terminalPane";
 
-export function useOperationalPaneSelection(panes: TerminalPaneTarget[]) {
-  const [selectedAuditEventId, setSelectedAuditEventId] = useState<number | null>(null);
-  const [selectedAuditTraceFilter, setSelectedAuditTraceFilter] = useState<string | null>(null);
+export function useOperationalPaneSelection(panes: TerminalPaneTarget[], ownerKey?: string) {
+  const [selectedAuditEventId, setSelectedAuditEventIdState] = useState<number | null>(null);
+  const [selectedAuditTraceFilter, setSelectedAuditTraceFilterState] = useState<string | null>(null);
   const [selectedOperationalPane, setSelectedOperationalPane] = useState<OperationalPaneSelection | null>(null);
+  const currentOwnerKeyRef = useRef(ownerKey);
+  const previousOwnerKeyRef = useRef(ownerKey);
+  const panesRef = useRef(panes);
+  currentOwnerKeyRef.current = ownerKey;
+  panesRef.current = panes;
 
   const selectedOperationalPaneTarget = useMemo(
     () =>
@@ -23,11 +28,32 @@ export function useOperationalPaneSelection(panes: TerminalPaneTarget[]) {
     [panes, selectedOperationalPane],
   );
 
-  const selectOperationalPane = useCallback((pane?: TerminalPaneTarget) => {
-    setSelectedOperationalPane(
-      pane ? { tabId: pane.tabId, paneId: pane.paneId, terminalId: pane.terminalId } : null,
-    );
-  }, []);
+  const selectOperationalPane = useCallback(
+    (pane?: TerminalPaneTarget) => {
+      if (currentOwnerKeyRef.current !== ownerKey) return;
+      const livePane = pane
+        ? panesRef.current.find((candidate) => candidate.tabId === pane.tabId && candidate.paneId === pane.paneId)
+        : undefined;
+      setSelectedOperationalPane(
+        livePane ? { tabId: livePane.tabId, paneId: livePane.paneId, terminalId: livePane.terminalId } : null,
+      );
+    },
+    [ownerKey],
+  );
+
+  const setSelectedAuditEventId = useCallback(
+    (eventId: number | null) => {
+      if (currentOwnerKeyRef.current === ownerKey) setSelectedAuditEventIdState(eventId);
+    },
+    [ownerKey],
+  );
+
+  const setSelectedAuditTraceFilter = useCallback(
+    (traceId: string | null) => {
+      if (currentOwnerKeyRef.current === ownerKey) setSelectedAuditTraceFilterState(traceId);
+    },
+    [ownerKey],
+  );
 
   const clearEndedOperationalPane = useCallback((terminalId: string) => {
     setSelectedOperationalPane((selected) => clearEndedOperationalTerminal(selected, terminalId));
@@ -37,33 +63,51 @@ export function useOperationalPaneSelection(panes: TerminalPaneTarget[]) {
     setSelectedOperationalPane((selected) => reconcileOperationalPaneSelection(selected, panes));
   }, [panes]);
 
+  useEffect(() => {
+    if (previousOwnerKeyRef.current === ownerKey) return;
+    previousOwnerKeyRef.current = ownerKey;
+    setSelectedAuditEventIdState(null);
+    setSelectedAuditTraceFilterState(null);
+    setSelectedOperationalPane(null);
+  }, [ownerKey]);
+
+  const clearOperationalPaneSelection = useCallback(() => {
+    setSelectedAuditEventIdState(null);
+    setSelectedAuditTraceFilterState(null);
+    setSelectedOperationalPane(null);
+  }, []);
+
   const handleSelectAuditEvent = useCallback(
     (entry: AuditEventRecord, pane?: TerminalPaneTarget) => {
+      if (currentOwnerKeyRef.current !== ownerKey) return;
       setSelectedAuditEventId(entry.id);
       selectOperationalPane(pane);
     },
-    [selectOperationalPane],
+    [ownerKey, selectOperationalPane, setSelectedAuditEventId],
   );
 
   const handleSelectReliabilityIncident = useCallback(
     (incident: { eventId: number; pane?: TerminalPaneTarget }) => {
+      if (currentOwnerKeyRef.current !== ownerKey) return;
       setSelectedAuditEventId(incident.eventId);
       selectOperationalPane(incident.pane);
     },
-    [selectOperationalPane],
+    [ownerKey, selectOperationalPane, setSelectedAuditEventId],
   );
 
   const handleTraceReliabilityIncident = useCallback(
     (correlationId: string, incident: { eventId: number; pane?: TerminalPaneTarget }) => {
+      if (currentOwnerKeyRef.current !== ownerKey) return;
       setSelectedAuditTraceFilter(correlationId);
       setSelectedAuditEventId(incident.eventId);
       selectOperationalPane(incident.pane);
     },
-    [selectOperationalPane],
+    [ownerKey, selectOperationalPane, setSelectedAuditEventId, setSelectedAuditTraceFilter],
   );
 
   return {
     clearEndedOperationalPane,
+    clearOperationalPaneSelection,
     handleSelectAuditEvent,
     handleSelectReliabilityIncident,
     handleTraceReliabilityIncident,

@@ -66,6 +66,7 @@ pub fn orchestrator_step(
     reviewer_id: String,
     gates: HashMap<String, GateResults>,
 ) -> Result<StepReport, String> {
+    let event_repo_path = repo_path.clone();
     let report = run_step_visible(
         &startup,
         &tasks,
@@ -118,7 +119,12 @@ pub fn orchestrator_step(
                 &bus,
                 AgentEvent::new(
                     AgentEventKind::AgentSpawned,
-                    json!({ "taskId": task_id, "terminalId": terminal_id, "model": model }),
+                    json!({
+                        "taskId": task_id,
+                        "terminalId": terminal_id,
+                        "model": model,
+                        "repoPath": &event_repo_path,
+                    }),
                 ),
             )?;
         }

@@ -11,6 +11,16 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, reject, resolve };
+}
+
 // PaneTreeRenderer mounts NativeTerminalArea / IMEInputBar / ResizeObserver
 // and is far too heavy for a callback regression test. Replace it with a
 // passthrough that captures the latest props so the test can call
@@ -349,7 +359,9 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       if (command === "mux_split_pane") return Promise.reject(new Error("mux unavailable"));
       return Promise.resolve(undefined);
     });
-    render(<PaneTreeContainer shell="powershell" cwd="C:/fallback-root" layoutStorageKey="aelyris:paneTree:tab-test" />);
+    render(
+      <PaneTreeContainer shell="powershell" cwd="C:/fallback-root" layoutStorageKey="aelyris:paneTree:tab-test" />,
+    );
     let c = captured as unknown as CapturedProps;
     await waitFor(() => {
       c = captured as unknown as CapturedProps;
@@ -407,8 +419,9 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
     expect(onChange).toHaveBeenLastCalledWith("pty-A");
   });
 
-  it("focuses an existing pane from a global switch request without changing the tree", async () => {
+  it("settles focus requests only after resolving the target pane", async () => {
     const onChange = vi.fn();
+    const focusComplete = vi.fn();
     const { rerender } = render(<PaneTreeContainer shell="powershell" onActiveTerminalChange={onChange} />);
     let c = captured as unknown as CapturedProps;
     const firstId = firstLeafId(c.tree);
@@ -427,7 +440,7 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       <PaneTreeContainer
         shell="powershell"
         onActiveTerminalChange={onChange}
-        focusPaneRequest={{ paneId: otherId, sequence: 1 }}
+        focusPaneRequest={{ paneId: otherId, sequence: 1, onComplete: focusComplete }}
       />,
     );
 
@@ -436,7 +449,19 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       expect(c.activePaneId).toBe(otherId);
       expect(leafIds(c.tree)).toEqual(originalOrder);
       expect(onChange).toHaveBeenLastCalledWith("pty-B");
+      expect(focusComplete).toHaveBeenCalledWith(null);
     });
+    expect(focusComplete).toHaveBeenCalledTimes(1);
+
+    const missingFocusComplete = vi.fn();
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        onActiveTerminalChange={onChange}
+        focusPaneRequest={{ paneId: "pane-missing", sequence: 2, onComplete: missingFocusComplete }}
+      />,
+    );
+    await waitFor(() => expect(missingFocusComplete).toHaveBeenCalledWith("Focus target was removed."));
   });
 
   it("closes an existing pane from a global close request", async () => {
@@ -462,6 +487,86 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       expect(c.terminalIds.has(otherId)).toBe(false);
     });
     expect(invokeMock).toHaveBeenCalledWith("mux_close_pane", { workspaceId: "pty-A", paneId: "pty-B" });
+  });
+
+  it("settles a close request only after the mux close finishes", async () => {
+    const muxClose = deferred<void>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_terminals") return Promise.resolve([]);
+      if (command === "mux_split_pane") return Promise.resolve(`pty-mux-${++muxSplitCounter}`);
+      if (command === "mux_close_pane") return muxClose.promise;
+      return Promise.resolve(undefined);
+    });
+    const onComplete = vi.fn();
+    const { rerender } = render(<PaneTreeContainer shell="powershell" />);
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+
+    rerender(<PaneTreeContainer shell="powershell" closePaneRequest={{ paneId: otherId, sequence: 11, onComplete }} />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("mux_close_pane", { workspaceId: "pty-A", paneId: "pty-B" }),
+    );
+    expect(onComplete).not.toHaveBeenCalled();
+
+    await act(async () => {
+      muxClose.resolve();
+      await muxClose.promise;
+    });
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(null));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles missing and unmounted close requests exactly once", async () => {
+    const missingComplete = vi.fn();
+    const { rerender, unmount } = render(<PaneTreeContainer shell="powershell" />);
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        closePaneRequest={{ paneId: "pane-missing", sequence: 12, onComplete: missingComplete }}
+      />,
+    );
+    await waitFor(() => expect(missingComplete).toHaveBeenCalledWith("Close target was removed."));
+
+    const muxClose = deferred<void>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "mux_split_pane") return Promise.resolve(`pty-mux-${++muxSplitCounter}`);
+      if (command === "mux_close_pane") return muxClose.promise;
+      return Promise.resolve(undefined);
+    });
+    let c = captured as unknown as CapturedProps;
+    const firstId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(firstId, "pty-A");
+    });
+    c = await splitAndFlush(c, firstId, "right");
+    const otherId = differentLeafId(leafIds(c.tree), firstId);
+    act(() => {
+      c.onTerminalReady(otherId, "pty-B");
+    });
+    const pendingComplete = vi.fn();
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        closePaneRequest={{ paneId: otherId, sequence: 13, onComplete: pendingComplete }}
+      />,
+    );
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("mux_close_pane", expect.anything()));
+
+    unmount();
+    expect(pendingComplete).toHaveBeenCalledWith("Pane request cancelled because the pane tree was unmounted.");
+    muxClose.resolve();
+    await muxClose.promise;
+    expect(pendingComplete).toHaveBeenCalledTimes(1);
   });
 
   it("keeps pane closing usable when the Rust mux close path rejects", async () => {
@@ -629,6 +734,56 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
       workspaceId: "pty-A",
       command: "tiled",
     });
+  });
+
+  it("settles layout requests after backend success and failure", async () => {
+    const firstLayout = deferred<void>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "mux_apply_layout") return firstLayout.promise;
+      return Promise.resolve(undefined);
+    });
+    const firstComplete = vi.fn();
+    const { rerender } = render(<PaneTreeContainer shell="powershell" />);
+    const c = captured as unknown as CapturedProps;
+    const paneId = firstLeafId(c.tree);
+    act(() => {
+      c.onTerminalReady(paneId, "pty-layout");
+    });
+
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        layoutRequest={{ command: "tiled", sequence: 21, onComplete: firstComplete }}
+      />,
+    );
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("mux_apply_layout", {
+        workspaceId: "pty-layout",
+        command: "tiled",
+      }),
+    );
+    expect(firstComplete).not.toHaveBeenCalled();
+
+    await act(async () => {
+      firstLayout.resolve();
+      await firstLayout.promise;
+    });
+    await waitFor(() => expect(firstComplete).toHaveBeenCalledWith(null));
+
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "mux_apply_layout") return Promise.reject(new Error("layout rejected"));
+      return Promise.resolve(undefined);
+    });
+    const failedComplete = vi.fn();
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        layoutRequest={{ command: "even-horizontal", sequence: 22, onComplete: failedComplete }}
+      />,
+    );
+
+    await waitFor(() => expect(failedComplete).toHaveBeenCalledWith("layout rejected"));
+    expect(failedComplete).toHaveBeenCalledTimes(1);
   });
 
   it("routes synchronized panes mode through the Rust mux tab state", async () => {
@@ -1009,6 +1164,54 @@ describe("PaneTreeContainer onActiveTerminalChange", () => {
 
     c = captured as unknown as CapturedProps;
     expect(findLeaf(c.tree, paneId)?.role).toBe("work");
+  });
+
+  it("settles rename and role requests on success and missing targets", async () => {
+    const renameComplete = vi.fn();
+    const roleComplete = vi.fn();
+    const { rerender } = render(<PaneTreeContainer shell="powershell" />);
+    const paneId = firstLeafId((captured as unknown as CapturedProps).tree);
+
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        renamePaneRequest={{ paneId, title: "builder", sequence: 31, onComplete: renameComplete }}
+        cyclePaneRoleRequest={{ paneId, sequence: 32, onComplete: roleComplete }}
+      />,
+    );
+
+    await waitFor(() => {
+      const c = captured as unknown as CapturedProps;
+      expect(findLeaf(c.tree, paneId)).toMatchObject({ title: "builder", role: "work" });
+      expect(renameComplete).toHaveBeenCalledWith(null);
+      expect(roleComplete).toHaveBeenCalledWith(null);
+    });
+    expect(renameComplete).toHaveBeenCalledTimes(1);
+    expect(roleComplete).toHaveBeenCalledTimes(1);
+
+    const missingRenameComplete = vi.fn();
+    const missingRoleComplete = vi.fn();
+    rerender(
+      <PaneTreeContainer
+        shell="powershell"
+        renamePaneRequest={{
+          paneId: "pane-missing",
+          title: "missing",
+          sequence: 33,
+          onComplete: missingRenameComplete,
+        }}
+        cyclePaneRoleRequest={{
+          paneId: "pane-missing",
+          sequence: 34,
+          onComplete: missingRoleComplete,
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(missingRenameComplete).toHaveBeenCalledWith("Rename target was removed.");
+      expect(missingRoleComplete).toHaveBeenCalledWith("Role target was removed.");
+    });
   });
 
   it("hydrates from the backend layout mirror when local cache is missing", async () => {

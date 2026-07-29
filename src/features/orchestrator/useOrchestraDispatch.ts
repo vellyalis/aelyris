@@ -17,7 +17,7 @@ export type OrchestraRolePaneMap = Map<string, { terminalId: string; tabId: stri
 
 type MountAgentPtyInPane = (
   agents: PaneAgentSpawnRequest["agents"][number] | PaneAgentSpawnRequest["agents"][number][],
-  tabId?: string,
+  tabId: string,
 ) => void;
 
 interface UseOrchestraDispatchOptions {
