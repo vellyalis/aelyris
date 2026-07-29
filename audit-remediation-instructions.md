@@ -3,17 +3,19 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.2e1`.
-LAST COMPLETED SLICE: `A4.12`.
+ACTIVE SLICE: `A6.2e2`.
+LAST COMPLETED SLICE: `A6.2e1`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.2e1`.
+NEXT IMPLEMENTATION SLICE: `A6.2e2`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
 and Proofbook starts remain default-closed until the shared decision is ready. The v8
 acceptance owner combines authoritative mutation, EventBus delivery, execution fencing,
 startup reconciliation, handoff acceptance, and admission surfaces in one executed
-matrix. A6.2e1 is now the exact implementation frontier; do not reopen A4 without a
+matrix. A6.2e1 moved generic project-artifact utilities to a neutral owner, removed
+generic/app dependencies on the right-rail runtime barrel, and added an executable
+dependency-direction ratchet. A6.2e2 is now the exact implementation frontier; do not reopen A4 without a
 fresh regression or mix A7/native work into A6.
 
 ## Objective
@@ -36,7 +38,7 @@ volatile value.
 
 ```text
 A4.12 complete
-  -> A6.2e1/A6 owner and behavior boundaries
+  -> A6.2e1 complete -> A6.2e2/A6 owner and behavior boundaries
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -57,7 +59,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. Resume **A6.2e1**, then finish A6 by dependency direction, state ownership,
+2. Resume **A6.2e2**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
@@ -362,8 +364,13 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - The admission sync claim is current protocol v4 host-sidecar pairs only. A live
   protocol-v3 sidecar must be restarted; that compatibility residual is nonblocking
   and does not authorize a migration service inside A4.
-- After A4.12, resume the frozen A6 frontier at A6.2e1. The queued NUI proposal
-  does not alter that frontier.
+- A6.2e1 is complete: generic artifact path/JSON parsing lives in
+  `src/shared/lib/projectArtifacts.ts`; bootstrap and cross-feature consumers import
+  their declaration owners directly; utility tests and the frontend ratchet prove
+  the forbidden dependency direction and diagnostic non-growth ceilings. The
+  right-rail model is 670 lines versus its 688-line ceiling.
+- Resume A6 at A6.2e2 narrow store subscription. The queued NUI proposal does not
+  alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

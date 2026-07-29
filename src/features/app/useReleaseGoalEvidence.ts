@@ -1,8 +1,8 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
-import { resolveProjectFilePath } from "../right-rail/rightRailModel";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { resolveProjectFilePath } from "../../shared/lib/projectArtifacts";
 import {
   deriveFinalGoalRequirementProofs,
   deriveFinalGoalResidualRisk,

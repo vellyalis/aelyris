@@ -4,7 +4,7 @@ import type { BootstrapAppConfig } from "../right-rail/bootstrapAppConfig";
 import {
   hydrateRightRailGuardrailSelectionFromConfig,
   hydrateRightRailWidgetOpenFromConfig,
-} from "../right-rail/rightRailModel";
+} from "../right-rail/rightRailWidgetFrame";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import {

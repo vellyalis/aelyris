@@ -1,7 +1,7 @@
 import type { WallpaperSettings } from "../../shared/store/appStore";
 import type { AccentOverrides } from "../../shared/themes/catppuccin";
 import type { MoodMaterialOverrides, MoodPresetId } from "../../shared/themes/moods";
-import type { RightRailGuardrailSelection, RightRailWidgetId } from "./rightRailModel";
+import type { RightRailGuardrailSelection, RightRailWidgetId } from "./rightRailTypes";
 
 export type BootstrapAppConfig = {
   appearance: {

@@ -10,7 +10,7 @@ import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { toast } from "../../shared/store/toastStore";
 import type { AuditEventRecord } from "../../shared/types/audit";
-import type { RightRailRouteConfirmation } from "../right-rail/rightRailModel";
+import type { RightRailRouteConfirmation } from "../right-rail/rightRailTypes";
 
 type ShowRightRailRouteConfirmation = (confirmation: Omit<RightRailRouteConfirmation, "createdAt">) => void;
 

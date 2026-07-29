@@ -20,7 +20,6 @@ import type { AgentSession } from "../../shared/types/agent";
 import type { AuditJournalEventRecord } from "../../shared/types/audit";
 import { SHELL_LABELS, type ShellType } from "../../shared/types/terminalPane";
 
-export type { BootstrapAppConfig } from "./bootstrapAppConfig";
 import type {
   RightRailActionResult, RightRailActionResultTone,
   RightRailDestinationPrompt, RightRailEdgeFeedbackAxisSummary,
@@ -296,23 +295,6 @@ export function sessionTabMatches(session: AgentSession, tabCwd?: string): boole
     .map((path) => normalizeProjectPath(path))
     .filter((path): path is string => path != null);
   return candidates.some((candidate) => sameOrNestedPath(candidate, normalizedTabCwd));
-}
-
-export function resolveProjectFilePath(projectPath: string, path: string): string {
-  const trimmed = path.trim();
-  if (/^[a-z]:[\\/]/i.test(trimmed) || /^\\\\/.test(trimmed) || trimmed.startsWith("/")) return trimmed;
-  const root = projectPath.replace(/[\\/]+$/, "");
-  return `${root}\\${trimmed.replace(/^[/\\]+/, "").replace(/\//g, "\\")}`;
-}
-
-export function parseJsonArtifact<T>(text: string): T | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  try {
-    return JSON.parse(trimmed) as T;
-  } catch {
-    return null;
-  }
 }
 
 export function isRightRailQaFixtureRisk(value: string): boolean {

@@ -3,12 +3,9 @@ import { useEffect, useState } from "react";
 
 import type { AiCliLaunchPreflightEvidence, AiCliProbeEvidence } from "../../shared/lib/aiCliLaunchPlanner";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { parseJsonArtifact, resolveProjectFilePath } from "../../shared/lib/projectArtifacts";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
-import {
-  parseJsonArtifact,
-  resolveProjectFilePath,
-  type RightRailAiCliLaunchEvidenceState,
-} from "../right-rail/rightRailModel";
+import type { RightRailAiCliLaunchEvidenceState } from "../right-rail/rightRailTypes";
 
 const EMPTY_EVIDENCE: RightRailAiCliLaunchEvidenceState = { evidence: null, preflight: null };
 

@@ -7,8 +7,8 @@ import {
   parseAuthenticatedPromptConsentReport,
   parseAuthenticatedPromptPreflightMatrixReport,
 } from "../../shared/lib/authenticatedPromptConsent";
+import { resolveProjectFilePath } from "../../shared/lib/projectArtifacts";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
-import { resolveProjectFilePath } from "../right-rail/rightRailModel";
 
 export function useAuthenticatedPromptEvidence(projectPath: string) {
   const [authenticatedPromptConsentPacket, setAuthenticatedPromptConsentPacket] =

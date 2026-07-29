@@ -47,7 +47,7 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6 resumes at A6.2e1 and is accepted by ownership, dependency direction,
+3. A6.2e1 is complete; A6 resumes at A6.2e2 and is accepted by ownership, dependency direction,
    behavior, and concurrency evidence. Line counts are non-growth diagnostics, not
    universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
@@ -533,7 +533,7 @@ delivery, execution fencing, startup reconciliation, handoff acceptance, and tho
 admission surfaces. The verifier must prove no acknowledged state/effect is silently
 lost, no stale generation can commit, and every uncertainty is blocked or explicitly
 degraded. Only A4.12 may set `phaseComplete=true` and restore A4 quality credit.
-After it passes, resume the already frozen A6 frontier at A6.2e1; A7 remains
+After it passes, resume the already frozen A6 frontier; A7 remains
 forbidden until A6 closes.
 
 Implemented without a new manager, journal, runner, or state owner. The existing
@@ -554,7 +554,7 @@ authoritative mutation, EventBus delivery, execution fencing, startup reconcilia
 handoff acceptance, and admission surfaces. All six dimensions pass; acknowledged
 state/effects are not silently lost, stale generations cannot commit, and uncertainty
 is blocked or explicitly degraded. `phaseComplete=true`; the implementation frontier
-resumes at A6.2e1. Real OS sleep/resume and abrupt host power-loss remain A9 operator
+resumes at the active A6 slice owned by the root work order. Real OS sleep/resume and abrupt host power-loss remain A9 operator
 proof and are not claimed by this deterministic matrix.
 
 The cross-process claim is narrowed to current protocol v4 host-sidecar pairs. A
@@ -980,7 +980,7 @@ Design authorities frozen by this checkpoint:
 This is a design-only checkpoint. It does not implement Mission persistence,
 WorkEvent migration, capability leases, completion packets, replay, learning,
 remote control, or extensions; it does not change current alpha/not-release-ready
-claim policy. A6.2e1 remains the next implementation slice. New product runtime
+claim policy. A6.2e2 remains the next implementation slice. New product runtime
 work must not start until A6.2g and then A6.8 satisfy their dependency gates.
 
 #### A6.2e - Architecture and Behavioral Contract Repair
@@ -991,7 +991,16 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    and pasteable continuation goal. Enforce the protocol's command/result, artifact,
    commit, blocker split, Git truth, and next-action fields for the current worklog;
    coarse normalized substring presence is insufficient.
-2. **A6.2e1 neutral evidence utilities and dependency-boundary ratchet**: move
+2. **A6.2e1 Complete - neutral evidence utilities and dependency-boundary ratchet**:
+   generic project-artifact path/JSON parsing now lives in the neutral
+   `src/shared/lib/projectArtifacts.ts` owner. Bootstrap and cross-feature consumers
+   import their declaration owners directly; focused utility tests and a mutation-
+   proven frontend ratchet reject generic/app imports from the right-rail runtime
+   barrel. Diagnostic non-growth ceilings cover every touched extracted owner,
+   including `useAppMenus.ts`; `rightRailModel.tsx` is 670 lines against its
+   688-line ceiling. This closes A6.2e1 only; `phaseComplete` remains false.
+
+   Original contract: move
    generic project artifact path/JSON parsing to a neutral owner, import bootstrap
    types from their declaration owner, remove app-to-right-rail-model dependencies
    that exist only for generic contracts, add executed utility tests, and make the
@@ -1001,7 +1010,7 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    Generic/app owners may not import the right-rail runtime barrel; right-rail
    consumers use direct declaration owners or a deliberately typed facade instead
    of wildcard re-export coupling.
-3. **A6.2e2 narrow store subscription**: replace the whole-store `useAppStore()`
+3. **A6.2e2 Active - narrow store subscription**: replace the whole-store `useAppStore()`
    subscription with stable narrow selectors or a shallow selector contract, prove
    that unrelated store mutation does not rerender the shell owner, and add a
    fail-closed verifier check that rejects selector-less App subscriptions.

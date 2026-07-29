@@ -10,7 +10,7 @@ import { buildOrchestraPrompts, type OwnershipPromptSection } from "../../shared
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { toast } from "../../shared/store/toastStore";
 import { showOrchestra } from "../../shared/ui/OrchestraDialog";
-import type { RightRailWidgetId } from "../right-rail/rightRailModel";
+import type { RightRailWidgetId } from "../right-rail/rightRailTypes";
 import type { PaneAgentSpawnRequest } from "../terminal/pane-tree/PaneTreeContainer";
 
 export type OrchestraRolePaneMap = Map<string, { terminalId: string; tabId: string }>;

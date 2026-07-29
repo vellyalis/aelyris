@@ -72,6 +72,7 @@ import {
   nativeCommandBlockRecordsToCommandBlocks,
 } from "./shared/lib/commandHistoryGraph";
 import { buildContextPack } from "./shared/lib/contextPack";
+import { resolveProjectFilePath } from "./shared/lib/projectArtifacts";
 import { TERMINAL_COMMAND_EVIDENCE_EVENT } from "./shared/lib/terminalEvidence";
 import { filterWorkspaceScopedEvents } from "./shared/lib/workspaceProfile";
 import {
@@ -136,7 +137,6 @@ import {
   type RightRailGuardrailSelection,
   RightRailWidgetFrame,
   readDevVisualQaState,
-  resolveProjectFilePath,
   rightRailModeForOutcomeWidget,
   saveRightRailEdgeFeedbackHistory,
   sessionTabMatches,

@@ -16,13 +16,99 @@ try {
   failed = true;
   scenarios.push({ id: "typescript-contract", status: "fail", error: error instanceof Error ? error.message : String(error) });
 }
-const paths = { app: "src/App.tsx", model: "src/features/right-rail/rightRailModel.tsx", audit: "src/features/right-rail/rightRailAudit.ts", visualQa: "src/features/right-rail/rightRailVisualQa.ts", widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx", actionFeedback: "src/features/right-rail/useRightRailActionFeedback.ts", guardrailSelection: "src/features/right-rail/useRightRailGuardrailSelection.ts", editorOpenMode: "src/features/editor/useEditorOpenMode.ts", paneRegistry: "src/features/terminal/usePaneRegistry.ts", paneAgentSpawns: "src/features/terminal/usePaneAgentSpawns.ts", paneRequestController: "src/features/terminal/usePaneRequestController.ts", operationalPaneSelection: "src/features/terminal/useOperationalPaneSelection.ts", releaseGoalEvidence: "src/features/app/useReleaseGoalEvidence.ts", authenticatedPromptEvidence: "src/features/app/useAuthenticatedPromptEvidence.ts", aiCliLaunchEvidence: "src/features/app/useAiCliLaunchEvidence.ts", projectTabLifecycle: "src/features/app/useProjectTabLifecycle.ts", lazy: "src/features/app/lazyPanels.tsx", config: "src/features/right-rail/bootstrapAppConfig.ts", bootstrapHook: "src/features/app/useBootstrapAppConfig.ts", types: "src/features/right-rail/rightRailTypes.ts", feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts", feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts", feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts" };
+const paths = {
+  app: "src/App.tsx",
+  model: "src/features/right-rail/rightRailModel.tsx",
+  audit: "src/features/right-rail/rightRailAudit.ts",
+  visualQa: "src/features/right-rail/rightRailVisualQa.ts",
+  widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx",
+  actionFeedback: "src/features/right-rail/useRightRailActionFeedback.ts",
+  guardrailSelection: "src/features/right-rail/useRightRailGuardrailSelection.ts",
+  editorOpenMode: "src/features/editor/useEditorOpenMode.ts",
+  paneRegistry: "src/features/terminal/usePaneRegistry.ts",
+  paneAgentSpawns: "src/features/terminal/usePaneAgentSpawns.ts",
+  paneRequestController: "src/features/terminal/usePaneRequestController.ts",
+  operationalPaneSelection: "src/features/terminal/useOperationalPaneSelection.ts",
+  releaseGoalEvidence: "src/features/app/useReleaseGoalEvidence.ts",
+  authenticatedPromptEvidence: "src/features/app/useAuthenticatedPromptEvidence.ts",
+  aiCliLaunchEvidence: "src/features/app/useAiCliLaunchEvidence.ts",
+  projectTabLifecycle: "src/features/app/useProjectTabLifecycle.ts",
+  appMenus: "src/features/app/useAppMenus.ts",
+  decisionInbox: "src/features/decision-inbox/useDecisionInbox.ts",
+  orchestraDispatch: "src/features/orchestrator/useOrchestraDispatch.ts",
+  lazy: "src/features/app/lazyPanels.tsx",
+  config: "src/features/right-rail/bootstrapAppConfig.ts",
+  bootstrapHook: "src/features/app/useBootstrapAppConfig.ts",
+  types: "src/features/right-rail/rightRailTypes.ts",
+  projectArtifacts: "src/shared/lib/projectArtifacts.ts",
+  projectArtifactsTest: "src/__tests__/projectArtifacts.test.ts",
+  feedbackHook: "src/features/right-rail/useRightRailFeedbackPersistence.ts",
+  feedbackContract: "src/features/right-rail/rightRailFeedbackContract.ts",
+  feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts",
+};
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
+for (const [id, ceiling] of Object.entries({
+  projectArtifacts: 17,
+  releaseGoalEvidence: 88,
+  authenticatedPromptEvidence: 66,
+  aiCliLaunchEvidence: 68,
+  bootstrapHook: 53,
+  config: 34,
+  appMenus: 989,
+  decisionInbox: 134,
+  orchestraDispatch: 169,
+})) {
+  const lines = source[id].split(/\r?\n/).length;
+  const ok = lines <= ceiling;
+  scenarios.push({ id: `${id}-non-growth`, status: ok ? "pass" : "fail", lines, ceiling });
+  failed ||= !ok;
+}
+const appRightRailModelImport =
+  source.app.match(/import\s*\{([^}]*)\}\s*from\s*["']\.\/features\/right-rail\/rightRailModel["'];/)?.[1] ?? "";
+const genericOwnersImportingRightRailModel = [
+  "releaseGoalEvidence",
+  "authenticatedPromptEvidence",
+  "aiCliLaunchEvidence",
+  "bootstrapHook",
+  "config",
+  "decisionInbox",
+  "orchestraDispatch",
+].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
   ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 4215, { lines: source.app.split(/\r?\n/).length, ceiling: 4215 }],
   ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 688, { lines: source.model.split(/\r?\n/).length, ceiling: 688 }],
+  ["neutral-project-artifact-utilities-owned",
+    source.projectArtifacts.includes("export function resolveProjectFilePath") &&
+      source.projectArtifacts.includes("export function parseJsonArtifact") &&
+      source.projectArtifactsTest.includes("preserves absolute Windows, UNC, and POSIX paths") &&
+      source.projectArtifactsTest.includes("returns null for whitespace and invalid JSON"),
+    {}],
+  ["right-rail-model-does-not-own-generic-artifacts",
+    !source.model.includes("function resolveProjectFilePath") &&
+      !source.model.includes("function parseJsonArtifact") &&
+      !source.model.includes("projectArtifacts"),
+    {}],
+  ["generic-app-artifacts-use-neutral-owner",
+    source.app.includes('from "./shared/lib/projectArtifacts"') &&
+      !appRightRailModelImport.includes("resolveProjectFilePath") &&
+      !appRightRailModelImport.includes("parseJsonArtifact") &&
+      source.releaseGoalEvidence.includes('from "../../shared/lib/projectArtifacts"') &&
+      source.authenticatedPromptEvidence.includes('from "../../shared/lib/projectArtifacts"') &&
+      source.aiCliLaunchEvidence.includes('from "../../shared/lib/projectArtifacts"') &&
+      genericOwnersImportingRightRailModel.length === 0,
+    { genericOwnersImportingRightRailModel }],
+  ["bootstrap-contracts-use-declaration-owners",
+    source.config.includes('from "./rightRailTypes"') &&
+      source.bootstrapHook.includes('from "../right-rail/rightRailWidgetFrame"') &&
+      source.aiCliLaunchEvidence.includes('from "../right-rail/rightRailTypes"') &&
+      !source.model.includes("BootstrapAppConfig"),
+    {}],
   ["lazy-registry-owned", source.app.includes('from "./features/app/lazyPanels"') && source.lazy.includes("export const AgentInspector = lazy"), {}],
-  ["bootstrap-schema-owned", source.model.includes('from "./bootstrapAppConfig"') && source.config.includes("export type BootstrapAppConfig"), {}],
+  ["bootstrap-schema-owned",
+    source.bootstrapHook.includes('from "../right-rail/bootstrapAppConfig"') &&
+      source.config.includes("export type BootstrapAppConfig") &&
+      !source.model.includes("BootstrapAppConfig"),
+    {}],
   ["bootstrap-effects-owned", source.app.includes("useBootstrapAppConfig()") && source.bootstrapHook.includes('invoke<BootstrapAppConfig>("load_app_config")'), {}],
   ["right-rail-types-owned", source.model.includes('from "./rightRailTypes"') && source.types.includes("export interface RightRailEdgeScore"), {}],
   ["feedback-lifecycle-owned", source.app.includes("useRightRailFeedbackPersistence(") && source.feedbackHook.includes("skipSaveKeyRef"), {}],
