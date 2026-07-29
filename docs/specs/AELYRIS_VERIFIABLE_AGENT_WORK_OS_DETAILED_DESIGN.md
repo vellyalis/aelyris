@@ -2,9 +2,9 @@
 
 Status: approved target design; not an implementation or release claim
 
-Version: 1.0
+Version: 1.1
 
-Last reviewed: 2026-07-13 JST
+Last reviewed: 2026-07-29 JST
 
 ## 0. Purpose And Source Order
 
@@ -24,9 +24,10 @@ Read in this order:
    Proofbooks, ownership, merge intent, and Remote Continuity.
 
 If a conflict exists, preserve current claim policy and active remediation order,
-then update this design. A7 implements only the finite Core Mission Loop. Apex
-features remain post-A9 unless the tracked plan explicitly promotes a bounded
-slice without weakening release completion.
+then update this design. A7 implements only the finite canonical Core Mission
+journey frozen by the 2026-07-29 scope lock. Deferred product requirements and
+Apex features remain outside A7 Core unless the tracked plan explicitly promotes a
+bounded slice without weakening release completion.
 
 ## 1. Architecture Invariants
 
@@ -1635,81 +1636,67 @@ signature verification, and uninstall/revocation receipts before loading code.
 
 ## 17. Release-Blocking A7 Vertical Design
 
-A7 is intentionally finite. It proves one useful Core Mission Loop and does not
-make all Apex features release blockers.
+A7 is intentionally finite. It proves exactly one canonical journey:
 
-### A7.0 Mission Contract Gate
+```text
+request -> versioned plan preview -> visible implementation -> fresh tests
+        -> independent review -> exact-OID accept/merge -> immutable settlement
+```
 
-- freeze machine-readable Rust/JSON Schema authority, UUIDv7/sequence/JCS/digest
-  rules, Mission, WorkUnit, progress, blocker, packet, evidence, integrity,
-  recovery instruction, adapter, budget, and capability contracts;
-- freeze `TeamExecutionPolicy` within Mission/WorkUnit authority: named roles,
-  capability/budget/proof profiles, completion authority, reviewer independence,
-  and ownership/governance rules; no fixed team size or second operation journal;
-- inventory journal convergence and existing owner seams before migration;
-- inventory every Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook,
-  review, merge, frontend-audit, and direct-DB face against the Control API ultra
-  design; freeze canonical descriptors/envelopes/errors and bypass-removal gates;
-- keep all target runtime claims false;
-- freeze the First Mission fixture and finite performance/durability envelope:
-  - one local repository fixture with 3-12 work units, at least two owned source
-    files/symbols, one visible implementation agent, one independent reviewer,
-    one Proofbook run, one negative capability denial, one mid-mission restart,
-    one exact-OID accepted merge, and one scoped read-only remote observation;
-  - maximum 20 work units, 4 concurrent agents, and 8 panes in the A7 contract;
-  - WorkEvent payload <=256 KiB after redaction and observational backlog <=10,000
-    events or 64 MiB, whichever comes first;
-  - local persisted-event-to-projection p95 <=250 ms and freshness <=1 second;
-  - restart reconstruction RTO <=15 seconds and RPO=0 for accepted Mission,
-    mutation intent/reservation, capability consumption, gate, review, merge, and
-    packet facts;
-  - mutation leases expire within 15 minutes and one-use reservations within 60
-    seconds unless an explicitly stricter risk policy applies;
-  - packet/acceptance evidence is retained while referenced; raw observational
-    streams use an explicit privacy/retention policy and a gap marker, never silent
-    deletion.
+It reuses the target contracts in this document only where that journey exercises
+them. It does not require every destination surface to be implemented first.
+A4.12 remains the owner of `RPO=0` for acknowledged critical state/effect facts;
+A7 consumes that durability boundary and does not create another replay or journal
+system.
 
-The enabled A7 effect surfaces are Tauri UI/IPC, visible PTY adapter, MCP,
-Proofbook, review, and merge. The read-only Remote Continuity fixture uses the
-scoped remote projection transport. REST/WS/SSH write, SDK/A2A, extension, and
-scheduler mutation are not silently disabled to pass; they are explicitly
-unsupported in A7 and belong to later gates.
+### A7.0 Core Mission Scope Lock And Owner Inventory
 
-### A7.1 Mission Spine And Chronicle Minimum
+- freeze one local request fixture, its accepted plan, declared tests, independent
+  reviewer, and exact-OID acceptance/merge outcome;
+- inventory only the existing TaskGraph, runtime/PTY, ownership, event/evidence,
+  test, review, merge, and packet-settlement owners used by the fixture;
+- freeze the minimum Mission/work-unit, evidence, review, OID, completion,
+  blocked-settlement, identity, and versioning schemas used by that journey;
+- inventory enabled actions on the journey path. Route them through existing
+  authority seams or declare them unsupported; do not migrate every IPC/MCP/REST/
+  WS/CLI/Proofbook/remote face as a precondition;
+- forbid a second Mission DAG, operation journal, runner, dispatcher, completion
+  barrier/table, or frontend state owner;
+- keep all target runtime claims false and record the deferred product set.
 
-- persist accepted Mission/WorkGraph revision and durable symbol intents;
-- produce typed causal events for the First Mission lifecycle;
-- reconstruct the same Now/Next/Unlocks projection after restart;
-- converge only the event paths required for this vertical, with no third log.
+### A7.1 Request Contract And Versioned Plan Preview
 
-### A7.2 Capability And Agent Fabric Minimum
+- accept one request into the existing TaskGraph-backed Mission owner;
+- produce a versioned plan preview covering owned targets, expected tests,
+  independent review, merge policy, and explicit risk before any effect;
+- persist only the minimum causal facts required for explanation and resumption;
+- reject or cancel before plan acceptance without creating a worktree, PTY, lease,
+  or other external effect.
 
-- local human, local agent, and system reconciler principals;
-- capability-scoped tool discovery from the canonical descriptor registry; listing
-  a descriptor grants no authority and unavailable actions remain typed;
-- capability leases for the PTY/IPC/MCP/Proofbook paths used by First Mission;
-- reserve/effect/commit/uncertain, process-tree and monotonic-clock binding,
-  canonical Windows resource handles, network/DNS/redirect policy, expiry,
-  one-use, OID/args/lane binding, and deny equivalence;
-- Universal Agent Fabric descriptors and conformance fixtures for PTY, ACP, SDK,
-  and A2A; A7 binds the visible PTY adapter to the First Mission and proves typed
-  `unsupported` for unavailable structured capabilities rather than claiming a
-  production ACP/SDK/A2A adapter;
-- broader production adapters, remote write principals, and extensions remain
-  later gated work.
+### A7.2 Visible Implementation And Fresh Tests
 
-### A7.3 Plan Preview And Visible First Mission
+- run one real implementation agent in a visible PTY and isolated worktree with
+  stable Mission/work-unit/runtime/ownership correlation;
+- bind enabled actions to the accepted plan, actor, generation, owned targets, and
+  current OID through existing authority and execution-fence owners;
+- run the declared tests after implementation and persist exact command, result,
+  evidence digest, and tested OID;
+- unused adapters and destination surfaces remain disabled or typed unsupported.
 
-- rehearsal shows task dependencies, ownership, worktrees, gates, risks, measured
-  versus estimated budget, irreversible effects, and capability unlock;
-- one real agent runs in a visible PTY with stable Mission/runtime correlation;
-- work proceeds through existing TaskGraph, ownership, Proofbook, review, merge.
+### A7.3 Independent Review And Exact-OID Acceptance
+
+- compute reviewer independence and bind review to the exact tested OID and
+  acceptance clauses;
+- rejection returns exact findings and next action without completion credit;
+- acceptance/merge uses the existing exact-OID merge-intent owner and fails on
+  dirty/unowned worktrees, stale evidence, changed OID, or changed contract;
+- do not introduce automatic main merge.
 
 ### A7.4 Completion Settlement
 
-- immutable `CompletedWorkPacket` with exact commit, acceptance coverage,
-  Chronicle range/root, diff ownership, gates/evidence integrity, computed
-  reviewer independence, zero acceptance blockers, and accepted/merged outcome;
+- immutable `CompletedWorkPacket` with accepted Mission revision, exact tested and
+  reviewed OID, diff ownership, fresh test evidence, computed reviewer independence,
+  accept/merge receipt, and zero acceptance blockers;
 - separate `BlockedWorkPacket` with exact repo/policy/operator/external blockers,
   authority, inputs, command/result/artifacts, and next action; it grants zero
   completion credit;
@@ -1725,50 +1712,20 @@ unsupported in A7 and belong to later gates.
 - only a valid `CompletedWorkPacket` may render trusted work-unit Done, and only a
   valid `MissionCompletionPacket` may render trusted Mission Done.
 
-### A7.5 Proofbook Product, Recipes, And Budget/Cost
+### A7.5 Canonical Core Mission Combined Acceptance
 
-- Proofbook canvas, run timeline, and proof inspector render the existing runner/
-  ledger truth without a frontend runner or Evidence Store owner;
-- preserve the pre-existing A7 requirement for useful fleet recipes and daily
-  Fleet Briefing, with versioned inputs/preconditions and no automatic source
-  Proofbook mutation;
-- budget/cost control reports measured currency/token/time/resource data with
-  explicit units and separately labeled estimates;
-- Mission settlement consumes immutable Proofbook refs and does not alter run
-  settlement.
-
-### A7.6 Remote Read-Only Continuity
-
-- implement the existing read-only Remote Continuity requirement for Now/Next/
-  Unlocks, Attention, Fleet Briefing, pane preview, Chronicle, decision, Proofbook,
-  and packet projections;
-- read leases bind device/session, project/Mission/pane/evidence scope, event range,
-  byte/rate cap, expiry, and revocation;
-- redact and inert-render terminal/OSC52/clipboard/link/tool/artifact content;
-- no steer, approve, stop, writable SSH/WS, or remote state ownership in A7.
-
-### A7.7 Mission Cockpit And Attention
-
-- backend-owned Now/Next/Unlocks and typed attention render in existing cockpit;
-- Fleet Briefing explains since-last-seen change, active work, exact next action,
-  blocker owner, proof freshness, and unlocked capability;
-- recommended Next remains one item while `readyWork[]` preserves other parallel
-  lanes;
-- no frontend heuristic or duplicate owner.
-
-### A7.8 Successful First Mission Acceptance
-
-- one useful brief runs from accepted contract through visible execution,
-  Proofbook product surface, recipes/budget evidence, scoped remote read,
-  restart/reconstruction, fresh proof, computed independent review, exact-OID
-  accepted merge, immutable `CompletedWorkPacket` children, and the exact
-  `MissionCompletionPacket` aggregate;
-- no inferred completion truth;
+- one useful request passes versioned plan preview, visible implementation, fresh
+  tests, independent exact-OID review, exact-OID accept/merge, immutable
+  `CompletedWorkPacket`, and exact `MissionCompletionPacket` in order;
+- no inferred completion truth, hidden acceptance blocker, or unclassified failure;
 - aggregate reports A7 complete only after every required child gate and blocking
   CI evidence is current;
 - a separate required negative scenario emits `BlockedWorkPacket`, proves exact
-  handoff continuity, and proves the Mission/A7 aggregate remains incomplete. It
-  cannot substitute for the successful First Mission.
+  continuation, and keeps the Mission/A7 aggregate incomplete;
+- Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
+  Continuity, all-face Control Kernel migration beyond the enabled journey,
+  structured provider expansion, and learning layers receive no A7 completion
+  credit and remain deferred product work.
 
 ## 18. Apex Design Gates
 
@@ -1782,12 +1739,13 @@ completion criteria:
 - full Chronicle projection replay and historical scrub;
 - recovery branch/checkpoint/compensation UI;
 - complete Qralis addressed message and role-lease fabric;
-- Proofbook fan-out/subProofbook/Evidence Store beyond the A7 product surface;
+- Proofbook product UI, recipes, Fleet Briefing/budget-cost integration, fan-out,
+  subProofbook, and Evidence Store productization;
 - Verified Skill Foundry and Team Memory promotion;
 - Decision Lab and Adversarial Council;
 - static Counterfactual rehearsal, then executed Shadow Missions;
 - Temporal Code Map revalidation automation;
-- governed Remote Continuity input and writable attach after A7 read-only proof;
+- scoped Remote Continuity read-only, then governed input and writable attach;
 - local signed extension registry, then post-release marketplace;
 - A2A multi-machine federation.
 
@@ -1887,7 +1845,7 @@ remains the Decision Lab authority.
 | `verify:borrowed-substrate-ledger` | BS reuse decision, license/SBOM/attribution and no-copy boundary | copied UI/schema, missing license, competitor text as implementation contract |
 | `verify:opencode-adapter-candidate` | fixed-fixture PTY/ACP/HTTP-SSE comparison and `promote_one`/`hold`/`reject` decision | missing binary, schema drift, merged-config or credential leak, permission bypass, duplicate owner, uncertain replay, fallback loss |
 | `verify:mission-rehearsal` | pure preview and measured/estimated split | effectful port, missing irreversible marker, unowned write |
-| `verify:first-mission` | successful bounded end-to-end A7 vertical | restart/RTO/RPO mismatch, self-report completion, missing Proofbook/remote/packet/exact-merge proof, blocked scenario accepted |
+| `verify:first-mission` | successful bounded end-to-end A7 vertical | changed OID, stale test/review, self-report completion, missing packet/exact-merge proof, blocked scenario accepted |
 | `verify:work-replay` | deterministic projection replay | external resend, unknown schema, hash mismatch |
 | `verify:memory-promotion` | evidence-governed learning | raw-chat promotion, missing eval, secret leak, no rollback |
 | `verify:extension-trust` | signed capability-bounded extension | bad digest/signature, private DB mutation, grant/merge bypass |
@@ -1905,14 +1863,14 @@ proof. All are required before a final release claim when the tracked policy say
 | OpenCode candidate adapter | `BS-11` + `EV-01` | §18.1 plus existing runtime/control/evidence owners | none; V1-R0 cannot receive R0-A9 credit | `verify:opencode-adapter-candidate` |
 | `AO-01` Mission graph | FR-1/FR-2 | §4-§5 | A7.0-A7.1, `verify:mission-contract`, `verify:mission-progress-projection` | V2/V7 projection expansion |
 | `AO-02` Qralis semantic control | FR-1/FR-7 | existing TaskGraph/ownership plus bounded coordination | A7.1-A7.3 First Mission dependency/ownership fixtures | V3/V7 |
-| `AO-03` Proof sovereignty | FR-9 | §9 settlement | A7.4/A7.8 packet gates | V2/V4/V7 |
-| `AO-04` Proof-carrying continuity | FR-6/FR-11 | §8/§10 plus session owner | A7 restart RTO/RPO and blocked handoff | V1/V2 |
-| `AO-05` Capability execution | FR-8/FR-18 | §7 and Control API ultra design | A7.2 control/capability equivalence | V1/V8/V9 |
-| `AO-06` Governed learning | FR-13/FR-15 | §12 | candidate-only boundary in A7 | V4 |
-| `SX-01` Flight Recorder | FR-6 | Chronicle/packet projection | bounded A7 Chronicle Trail | V2 full replay/recovery |
-| `SX-02` Conflict Radar | FR-7 | Mission rehearsal/ownership | A7.3 fixed-fixture preview | V3/V7 semantic/temporal radar |
-| `SX-03` Proof-Carrying Handoff | FR-11 | checkpoint/reconciliation | A7 restart and exact blocked handoff | V1/V2 provider hot-swap |
-| `SX-04` Confidence Topology | FR-2/FR-10 | progress/attention projection | A7.7 acceptance-clause terrain | V7 project-wide invalidation |
+| `AO-03` Proof sovereignty | FR-9 | §9 settlement | A7.4/A7.5 packet gates | V2/V4/V7 |
+| `AO-04` Proof-carrying continuity | FR-6/FR-11 | §8/§10 plus session owner | A4.11-A4.12 handoff/restart plus A7.4 blocked settlement | V1/V2 |
+| `AO-05` Capability execution | FR-8/FR-18 | §7 and Control API ultra design | A7.2 enabled-path authority | V1/V8/V9 |
+| `AO-06` Governed learning | FR-13/FR-15 | §12 | no A7 Core completion credit | V4 |
+| `SX-01` Flight Recorder | FR-6 | Chronicle/packet projection | A7.4 minimum packet evidence links | V2 full replay/recovery |
+| `SX-02` Conflict Radar | FR-7 | Mission rehearsal/ownership | A7.1 owned-target/risk preview | V3/V7 semantic/temporal radar |
+| `SX-03` Proof-Carrying Handoff | FR-11 | checkpoint/reconciliation | A4.11-A4.12 plus A7.4 exact blocked settlement | V1/V2 provider hot-swap |
+| `SX-04` Confidence Topology | FR-2/FR-10 | progress/attention projection | no A7 Core completion credit | V7 project-wide invalidation |
 | `SX-05` Trust Unlocks | FR-1/FR-9/FR-13 | Mission settlement projection | A7 valid packet unlock only | V4 evaluated skill activation |
 | `EV-01..EV-04` Evolution waves | spec §2.4 | roadmap §7/§9.4 | no R0-A9 completion credit | declared Apex entry/measure/reversibility/claim gates |
 

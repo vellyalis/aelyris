@@ -1,8 +1,8 @@
 # Aelyris Requirements Index
 
 Status: active implementation index
-Last updated: 2026-07-13 JST
-Last reviewed: 2026-07-13 JST
+Last updated: 2026-07-29 JST
+Last reviewed: 2026-07-29 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
@@ -27,8 +27,10 @@ order and the authoritative specs. Key still-active specs include:
    Tauri/React/WebView2 face to a Rust-native Windows operator surface. The
    master plan, architecture, framework/editor specs, roadmap, verification,
    traceability, and integration record are indexed in `docs/specs/README.md`.
-   Current execution remains `audit-remediation/A4.10`; the accepted
-   A4.12-to-A6.2e1 frontier and measured A8 terminal gate remain unchanged.
+   Exact current execution is intentionally not duplicated here; read
+   `audit-remediation-instructions.md` and its canonical local handoff. The
+   durable A4.12-to-A6.2e1 frontier and measured A8 terminal gate remain
+   unchanged.
    A8.0 owns the future product/architecture decision, and NUI-F0-F7 is priority
    1 after A9 by default. No imported document changes the current product or
    release claim. Package placement, canonical hashes, routing, and claim guards
@@ -43,6 +45,10 @@ order and the authoritative specs. Key still-active specs include:
    Attention Compiler, and post-release Apex direction. Its detailed design and
    roadmap are adjacent. These are target authorities, not shipped-capability or
    release-readiness claims; the active R0-A9 plan still owns execution order.
+   Its A7 Core first proves the canonical request -> plan preview -> visible
+   implementation -> fresh tests -> independent review -> exact-OID settlement ->
+   immutable packet journey. Deferred product requirements remain in the full Goal
+   without becoming prerequisites of that first vertical.
 
    Cross-face API/MCP security, identity, versioning, idempotency, cancellation,
    backpressure, evidence, migration, and adversarial acceptance are owned by

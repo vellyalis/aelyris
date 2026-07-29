@@ -5,9 +5,10 @@ Repository status: **proposal / queued / not activated**
 Target: `vellyalis/aelyris`
 Purpose: Tauri + React + WebView2 を段階的に互換レイヤーへ降格し、Aelyris の主要製品面を Rust ネイティブ UI へ移行する。
 
-Repository integration: **high-priority queued program**。The active
-`audit-remediation` phase remains `A4.10`; this package does not authorize a
-concurrent implementation lane or a native/full-release claim. The ZIP source
+Repository integration: **high-priority queued program**。The exact active
+`audit-remediation` slice is read from root `audit-remediation-instructions.md`;
+this stable package does not duplicate it and does not authorize a concurrent
+implementation lane or a native/full-release claim. The ZIP source
 tree is preserved byte-for-byte under [`source/`](./source/), with the original
 manifest mirrored as [`source-manifest.json`](./source-manifest.json).
 The adapted canonical package is recorded in

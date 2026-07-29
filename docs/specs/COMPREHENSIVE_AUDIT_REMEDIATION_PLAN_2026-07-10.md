@@ -37,6 +37,41 @@ Reach a state where:
 7. Follow `docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md` at every session close.
 8. Tauri/full-native decisions are measurement-gated, not preference-gated.
 
+## Execution Sequence And Complexity Budget
+
+Owner decision, 2026-07-29. The exact active slice remains volatile state owned by
+`audit-remediation-instructions.md` and the canonical local handoff. This plan owns
+the durable dependency order:
+
+1. A4.11 closes structured handoff acceptance inside existing owners.
+2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
+   runtime-integrity matrix. No new A4 slice is added for already-known acceptance
+   gaps.
+3. A6 resumes at A6.2e1 and is accepted by ownership, dependency direction,
+   behavior, and concurrency evidence. Line counts are non-growth diagnostics, not
+   universal architectural targets.
+4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
+   A7 path is request -> versioned plan preview -> visible implementation -> fresh
+   tests -> independent review -> exact-OID accept/merge -> immutable completion
+   packet.
+5. A8.0 remains the sole product/architecture activation decision for additional
+   native/full-native work. A6.6 may isolate the existing proof binary but may not
+   expand its product scope.
+
+Complexity stop rules:
+
+- extend the existing TaskGraph, EventBus/journal, execution, handoff, Proofbook,
+  review, and merge owners; do not add parallel owners,
+- do not split files or move logic solely to satisfy a numeric line target,
+- replace brittle source-shape checks with executed behavior proof as their owner is
+  touched; do not open a standalone verifier-cleanup program,
+- add a verifier only when an existing gate cannot decide a unique material failure
+  mode,
+- keep Proofbook productization, Fleet Briefing, recipes, broad budget/cost UX,
+  Remote Continuity, universal all-face Control Kernel migration beyond the enabled
+  Core Mission path, and learning layers in the full product Goal but outside A7
+  Core acceptance.
+
 ## Dependency Graph
 
 ```text
@@ -48,7 +83,7 @@ R0 continuation contract
   -> A4 session and database durability
   -> A5 execution supervision and concurrency
   -> A6 modularity ratchet
-  -> A7 evidence-backed product completion
+  -> A7 one canonical evidence-backed Core Mission
   -> A8.0 native product-goal/architecture decision
   -> A8 measured native terminal spike
   -> A9 release lane and external proof closeout
@@ -466,7 +501,7 @@ cursor are validated at boot. Focused startup, migration, EventRepo, TaskManager
 WorkExecutionRepo, and LoopPorts tests pass while `phaseComplete=false`; A4.11-A4.12
 remain.
 
-### **A4.11** Active - Structured Handoff Acceptance And Successor Quarantine
+### **A4.11** - Structured Handoff Acceptance And Successor Quarantine
 
 Replace file-exists/liveness ACK with a structured, digest-bound HandoffAcceptanceRecord
 covering predecessor/successor generations, accepted checkpoint, and baton version.
@@ -474,14 +509,26 @@ Every failure after successor spawn must revoke authority, stop or quarantine th
 successor, and persist a retryable/terminal outcome. Boot must reconcile failed and
 ambiguous handoffs rather than ignoring them.
 
-### **A4.12** Planned - Combined Runtime-Integrity Acceptance Closeout
+### **A4.12** Planned - Admission Coverage And Combined Runtime-Integrity Closeout
 
-Run one crash/fault/restart matrix across authoritative mutation, EventBus delivery,
-execution fencing, startup reconciliation, and handoff acceptance. The verifier must
-prove no acknowledged state/effect is silently lost, no stale generation can commit,
-and every uncertainty is blocked or explicitly degraded. Only A4.12 may set
-`phaseComplete=true` and restore A4 quality credit. After it passes, resume the already
-frozen A6 frontier at A6.2e1; A7 remains forbidden until A6 closes.
+First close the admission gaps already found by the A4 review without creating a new
+manager, journal, or A4.13:
+
+- sidecar session creation is default-closed across the process boundary until the
+  shared startup decision is ready; direct sidecar REST session/command paths prove
+  pending and failed denial,
+- effectful Workflow and Proofbook starts pass the same startup-admission contract or
+  remain explicitly disabled/unsupported,
+- any runtime surface not protected by the implemented gate is removed from the A4
+  guarantee instead of being covered by prose or source-string inference.
+
+Then run one crash/fault/restart matrix across authoritative mutation, EventBus
+delivery, execution fencing, startup reconciliation, handoff acceptance, and those
+admission surfaces. The verifier must prove no acknowledged state/effect is silently
+lost, no stale generation can commit, and every uncertainty is blocked or explicitly
+degraded. Only A4.12 may set `phaseComplete=true` and restore A4 quality credit.
+After it passes, resume the already frozen A6 frontier at A6.2e1; A7 remains
+forbidden until A6 closes.
 
 ## A5 - Execution Supervision and Concurrency
 
@@ -720,7 +767,8 @@ contract is frozen.
 
 ## A6 - Modularity Ratchet
 
-Objective: shrink ownership hotspots and prevent regrowth.
+Objective: make ownership, dependency direction, state transitions, and concurrency
+boundaries explicit, then prevent unjustified regrowth.
 
 Primary targets:
 
@@ -737,8 +785,8 @@ Required work:
 - narrow Zustand selectors and stabilize subscriptions,
 - typed IPC facade and event registry,
 - classify every unreferenced IPC handler before deletion,
-- convert advisory file-size boundaries to ratchets that reject growth and lower the
-  baseline after each phase,
+- retain file-size baselines as diagnostic non-growth ratchets while accepting work
+  on owner and behavior evidence rather than an arbitrary universal line target,
 - remove dead duplicate managers and unowned infrastructure.
 
 ### A6.1 Complete - Ownership Hotspot and Ratchet Inventory
@@ -747,7 +795,9 @@ The authoritative right-rail model path is
 `src/features/right-rail/rightRailModel.tsx`; the older `src/shared/lib` path is stale.
 `pnpm verify:a6:modularity-inventory` freezes current line-count ceilings for all six
 owners and fails on growth. These ceilings are debt baselines, not desired targets;
-every implementation slice must lower its owned ceiling in the same commit.
+each implementation slice must explain its owner delta and may lower the baseline
+after a supported extraction. A line delta alone cannot complete or fail a slice
+whose dependency and behavior contract is correct.
 
 Frozen owner order:
 
@@ -767,7 +817,7 @@ Acceptance evidence:
 
 - `pnpm verify:a6:modularity-inventory`
 - `.codex-auto/quality/a6-modularity-inventory.json`
-- six owner baselines reject growth
+- six owner baselines surface unjustified growth
 - dependency-first A6.2-A6.8 contract is frozen
 - artifact reports `sliceComplete=true`, `phaseComplete=false`
 
@@ -839,9 +889,10 @@ Confirmed findings:
    that runtime model. These are reversed or barrel-mediated dependencies.
 5. Most newly extracted stateful hooks are covered by source-string assertions,
    not executed transition, cancellation, failure, cleanup, or timer behavior.
-6. `App.tsx=4215` cannot credibly reach the <=800 target through hook motion alone.
-   `useAppMenus.ts` is already about 988 physical lines and demonstrates the need
-   to ratchet extracted owners and split render/command composition by owner.
+6. The former blanket `<=800` target encourages hook motion and replacement
+   hotspots without proving a better boundary. `useAppMenus.ts` is already about
+   988 physical lines; its risk must be decided by command ownership, dependency
+   direction, executed behavior, and change coupling rather than line count alone.
 7. Closing the active project tab is not governed by the same unsaved-editor
    transition contract as project open/close and tab switch. Cancellation and
    editor/session preservation must be proved before that transition is accepted.
@@ -870,7 +921,8 @@ Confirmed findings:
     artifact, commit, blocker split, Git truth, and next-action fields.
 
 The review freezes this corrected dependency-first order. Each numbered slice is a
-focused commit and lowers every touched owner ceiling in the same commit:
+focused commit and records the touched owner baseline without treating a forced line
+decrease as the Goal:
 
 ### **A6.2v1** Complete - Verifiable Agent Work OS Architecture Review
 
@@ -912,11 +964,12 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    generic project artifact path/JSON parsing to a neutral owner, import bootstrap
    types from their declaration owner, remove app-to-right-rail-model dependencies
    that exist only for generic contracts, add executed utility tests, and make the
-   frontend ratchet fail on the forbidden dependency direction. Register ceilings
-   for extracted owners, including `useAppMenus.ts`; code motion may not create a
-   new >800-line hotspot. Generic/app owners may not import the right-rail runtime
-   barrel; right-rail consumers use direct declaration owners or a deliberately
-   typed facade instead of wildcard re-export coupling.
+   frontend ratchet fail on the forbidden dependency direction. Register diagnostic
+   non-growth ceilings for touched extracted owners, including `useAppMenus.ts`;
+   code motion may not create a broader or less cohesive replacement owner.
+   Generic/app owners may not import the right-rail runtime barrel; right-rail
+   consumers use direct declaration owners or a deliberately typed facade instead
+   of wildcard re-export coupling.
 3. **A6.2e2 narrow store subscription**: replace the whole-store `useAppStore()`
    subscription with stable narrow selectors or a shallow selector contract, prove
    that unrelated store mutation does not rerender the shell owner, and add a
@@ -945,30 +998,34 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
 
 #### A6.2f - Component and Command Composition
 
-1. Split `useAppMenus.ts` into typed command/menu owner groups before it is allowed
-   to become a replacement hotspot; keep the public composition hook below 800 lines.
+1. Split `useAppMenus.ts` only along proven typed command/menu ownership boundaries;
+   keep one narrow public composition hook and verify that behavior and dependency
+   direction improve. Do not split solely to cross a line-count threshold.
 2. Extract the right-rail render surface into typed view-model/action contracts,
    preserving the single runtime owners and avoiding a giant undifferentiated prop
    bag or duplicate derived state. Separate pure projection contracts from component
    contracts and replace wildcard runtime-barrel exposure with direct owners or an
    explicit narrow facade.
-3. Extract workspace/editor/chrome composition and the dialog/overlay host along
-   cohesive render boundaries. Every new owner is registered with an <=800-line
-   ceiling and focused rendered-behavior proof.
-4. Reduce `App.tsx` to a composition shell at or below 800 lines. Every intermediate
-   commit must lower the exact App ceiling; reaching the target by hiding logic in
-   unratcheted files is a failure.
-5. Split `AppSilentBugs.test.ts` by authoritative owner and ratchet the remaining
-   cross-surface source-contract suite below 800 lines; behavioral tests live with
-   the owner contract they execute.
+3. Extract workspace/editor/chrome composition and the dialog/overlay host only
+   along cohesive render boundaries. Every new owner receives a diagnostic
+   non-growth baseline and focused rendered-behavior proof.
+4. Make `App.tsx` a composition shell by responsibility: it may compose owners and
+   route typed intents, but may not own cross-domain business state or rederive
+   backend truth. Each extraction must reduce a named ownership or behavior risk;
+   reaching a numeric target by hiding logic in unratcheted files is a failure.
+5. Split `AppSilentBugs.test.ts` by authoritative owner as those owners are touched.
+   Source-contract checks may remain as wiring guards, but executed behavioral tests
+   live with and decide the owner contract. No blanket file-length target is an
+   acceptance criterion.
 
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:
 
-- `App.tsx <= 800`, `rightRailModel.tsx <= 800`, `useAppMenus.ts <= 800`, and every
-  extracted A6 frontend owner is registered and rejects growth above its current
-  lowered ceiling;
+- `App.tsx` is a composition owner rather than a cross-domain behavior owner;
+  `rightRailModel.tsx`, `useAppMenus.ts`, and every touched extracted owner have
+  explicit responsibility and diagnostic non-growth baselines, with any growth
+  justified by a cohesive owner contract rather than hidden code motion;
 - no selector-less App `useAppStore()` subscription and no forbidden app-to-right-
   rail dependency for neutral contracts;
 - executed behavioral suites cover the stateful owner transitions listed in A6.2e;
@@ -986,7 +1043,8 @@ aggregate may emit A6 `phaseComplete=true` after A6.2-A6.7 and blocking CI all p
 ## A7 - Evidence-Backed Core Mission Loop
 
 Objective: prove one useful end-to-end Verifiable Agent Work OS mission without
-inferred completion truth.
+inferred completion truth or bundling every destination feature into the first
+release-blocking vertical.
 
 Product authorities:
 
@@ -994,177 +1052,113 @@ Product authorities:
 - `AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md`,
 - `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md`.
 
-Required product primitives:
+Canonical acceptance journey:
 
-- accepted immutable backend-owned `MissionDefinitionRevision`, derived
-  `MissionExecutionProjection`, and dependency-aware work graph;
-- backend-owned Now/Next/Unlocks projection with exact blocker owner/action;
-- typed causal WorkEvent minimum sufficient to reconstruct the First Mission;
-- principal/capability and agent connector contracts, with scoped capability
-  leases for every effectful surface used by the scenario;
-- one canonical Control API command registry/kernel with generated adapter schemas,
-  authenticated-principal propagation, idempotency/cancellation/backpressure, and
-  all-face authority/result/evidence equivalence;
-- visible real-PTY execution with Mission/runtime/ownership correlation;
-- Proofbook product UI, fleet recipes, daily Fleet Briefing, and measured
-  budget/cost controls preserved from the original A7 scope;
-- scoped read-only Remote Continuity preserved from the original A7 scope;
-- immutable backend-owned `CompletedWorkPacket` binding:
-  - Mission/work unit, contract revision, and actor identities,
-  - adapter/model/skill and environment provenance,
-  - base/head commit and owned files/symbols,
-  - executed gates, evidence/artifact digests, and freshness,
-  - acceptance coverage, Chronicle range/root, computed independent reviewer
-    lineage/verdict, dissent, and non-blocking residual risks,
-  - approval capability and approver,
-  - zero repo/policy/operator/external acceptance blockers,
-  - accepted or exact-OID merged result,
-  - typed, redacted, capability-bound rollback/compensation and replay recipe;
-- separate immutable `BlockedWorkPacket` preserving exact blocker arrays,
-  authority, input, command/result/artifacts, next action, OID, and evidence while
-  granting zero Mission/phase/release/goal completion credit;
-- distinct immutable `MissionCompletionPacket` aggregating the exact required
-  work-unit packets and Mission-level acceptance/gates; one work-unit packet cannot
-  complete Mission.
+```text
+request
+  -> versioned plan preview
+  -> visible implementation agent
+  -> fresh tests
+  -> independent review
+  -> exact-OID accept/merge
+  -> immutable completion packet
+```
 
-A7 is a finite release-blocking vertical. Full replay/time travel, recovery UX,
-complete Qralis messaging, governed learning, Decision Lab, Counterfactual Arena,
-Temporal Project Twin, writable remote control, extensions, marketplace, and A2A
-federation remain separately gated Apex work. They do not silently become R0-A9
-completion criteria.
+Required product primitives are only those exercised by that journey:
 
-### A7.0 - Mission Contract And Owner Inventory Gate
+- one accepted backend-owned Mission/work-unit definition and projection using the
+  existing TaskGraph owner,
+- the minimum causal event/evidence references needed to explain and settle that
+  Mission without a new journal,
+- scoped authority for the enabled Mission actions; unused faces are explicitly
+  disabled or typed unsupported rather than migrated pre-emptively,
+- visible real-PTY execution with Mission/runtime/ownership correlation,
+- fresh executed tests and independent reviewer lineage,
+- exact-OID acceptance/merge through the existing review and merge owners,
+- immutable `CompletedWorkPacket`, `BlockedWorkPacket`, and
+  `MissionCompletionPacket` settlement with zero hidden acceptance blockers.
 
-- inventory exact TaskGraph, journal/EventBus, governance, ownership, Proofbook,
-  review, merge, and projection owners before schema or migration work;
-- inventory every Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook,
-  review, merge, frontend-audit, and direct-DB face; freeze the canonical Control
-  Command registry/envelopes/errors and current bypass-removal gates;
-- freeze Rust/JSON Schema authority for Mission definition/execution, WorkUnit,
-  progress/ready work, blocker/handoff, evidence/integrity, capability/budget,
-  packets, typed recovery, every referenced type, and transition/negative tests;
-- freeze the minimal team policy inside `MissionDefinitionRevision` and
-  `WorkUnitDefinition`: named roles, capability/budget/proof profile, completion
-  authority, reviewer-independence rule, and ownership/governance constraints;
-  do not create `MissionOperation`, `OperationJournal`, or a fixed agent topology;
-- freeze UUIDv7 identifiers, workspace-scoped sequence, RFC 8785 canonicalization,
-  digest/integrity tiers, unknown-field/version rules, units, and exact owners;
-- freeze a successful First Mission fixture with 3-12 work units, two owned source
-  targets, one visible implementer, independent reviewer, Proofbook run, denial
-  fixture, mid-run restart, exact-OID accepted merge, and scoped remote read;
-- cap the A7 contract at 20 work units, 4 concurrent agents, 8 panes, 256 KiB event
-  payload, 10,000/64 MiB observational backlog, 250 ms projection p95, 1 second
-  freshness, 15 second restart RTO, and RPO=0 for critical mutation/proof facts;
-- prove requirements/spec/design/traceability and keep target runtime claims false.
+The full product Goal is preserved. Proofbook product UI and recipes, Fleet
+Briefing, broad budget/cost UX, Remote Continuity, universal all-face Control
+Kernel migration beyond the enabled Mission path, provider-fabric expansion, and
+learning layers are deferred from A7 Core and remain explicitly tracked destination
+work. Existing Proofbook evidence may be referenced when already available, but A7
+does not create a second runner or require Proofbook productization.
 
-### A7.1 - Mission Spine And Chronicle Minimum
+### A7.0 - Core Mission Scope Lock And Owner Inventory
 
-- evolve the existing TaskGraph owner; do not create a second DAG;
-- persist accepted Mission revision, outcome, proof requirements, capability
-  unlock, and symbol intents;
-- use the existing audit journal as the typed WorkEvent migration origin; do not
-  create a third lifecycle log;
-- reconstruct identical Mission/Now/Next/Unlocks projection after restart and
-  prove sequence, causation, idempotency, redaction, and bounded no-silent-drop
-  behavior for the First Mission path.
+- freeze one fixed request fixture and the seven-step canonical acceptance journey;
+- inventory only the TaskGraph, runtime/PTY, ownership, event/evidence, test,
+  review, merge, and settlement owners exercised by that fixture;
+- identify the enabled IPC/MCP/PTY actions used by the journey and either route
+  those actions through existing authoritative seams or mark them unsupported;
+  do not inventory-and-migrate every possible product face as an A7 prerequisite;
+- freeze the minimum Mission/work-unit, evidence, review, exact-OID, completion,
+  blocked-settlement, and versioning contracts needed by the fixture;
+- prove that no second DAG, journal, runner, dispatcher, completion table, or
+  frontend state owner is introduced;
+- record the deferred destination set explicitly and keep every target runtime claim
+  false until its own future gate passes.
 
-### A7.2 - Capability And Agent Fabric Minimum
+### A7.1 - Request Contract And Versioned Plan Preview
 
-- implement local human, local agent, and reconciler principals;
-- bind PTY, IPC, MCP, Proofbook, review, and merge actions used by First Mission to
-  short-lived scoped capability leases;
-- route enabled faces through one Control Kernel and prove generated schema/catalog,
-  principal propagation, idempotency, cancellation, backpressure, and event/
-  evidence equivalence without transport-recursive business logic;
-- expose capability-scoped tool discovery from that same descriptor registry;
-  discovery is filtered by principal/Mission/resource/risk/budget and grants no
-  authority;
-- prove process-tree/generation and monotonic-clock binding, Windows canonical
-  resource containment, network/DNS/redirect policy, budget units, reserve-effect-
-  commit-uncertain, expiry/revocation/one-use, args/OID/lane binding, secret
-  exclusion, and equivalent denial across enabled surfaces;
-- freeze PTY/ACP/SDK/A2A descriptors and conformance fixtures; run the PTY vertical
-  and report unavailable structured capabilities as typed unsupported rather than
-  a false production-adapter claim;
-- agents may request capability but cannot issue or widen it.
+- accept one request into the existing TaskGraph-backed Mission owner;
+- produce a versioned, non-effectful plan preview with work unit, owned targets,
+  expected tests, review requirement, merge policy, and explicit risks;
+- rejection or cancellation before acceptance creates no worktree, PTY, capability,
+  or external effect;
+- persist only the minimum causal facts required to resume and explain this journey.
 
-### A7.3 - Plan Preview And Visible First Mission
+### A7.2 - Visible Implementation And Fresh Tests
 
-- Mission Rehearsal previews dependencies, critical path, ownership collision,
-  agents/panes/worktrees, capability queue, gates/artifacts, risk, irreversible
-  effects, measured versus estimated budget, and capability unlock;
-- rehearsal uses no effectful port;
-- execute the implementation agent in a visible real PTY with stable Mission,
-  work-unit, pane, runtime, ownership, and capability correlation;
-- unsupported adapter capabilities return typed `unsupported`, never inference.
+- launch one real implementation agent in a visible PTY and isolated worktree using
+  existing runtime, ownership, startup-admission, and execution-fence owners;
+- bind the enabled actions to the Mission/work unit, actor, generation, owned
+  targets, and accepted plan; agents cannot widen their authority;
+- run the declared tests after implementation and record exact command, result,
+  artifact/evidence digest, and tested OID;
+- unavailable unused adapters or product faces return typed `unsupported` or remain
+  disabled; their migration is not A7 Core work.
+
+### A7.3 - Independent Review And Exact-OID Acceptance
+
+- the reviewer is independent from the implementation agent and evaluates the exact
+  tested OID plus declared acceptance coverage;
+- review rejection returns the work unit to a non-complete state with exact findings
+  and next action;
+- acceptance or merge uses the existing exact-OID merge-intent owner; a moved OID,
+  dirty/unowned worktree, stale test result, or stale review invalidates settlement;
+- no automatic main merge is introduced.
 
 ### A7.4 - Immutable Completion And Blocked Settlement
 
-- Mission settlement consumes immutable Proofbook ledger/evidence refs plus
-  ownership, review, approval, and merge facts; it neither reruns nor mutates a
-  Proofbook run, and Evidence Store remains a projection/index;
-- create/digest immutable `CompletedWorkPacket` only with complete acceptance
-  coverage, Chronicle range/root, exact OIDs/diff ownership, fresh gate/artifact
-  integrity, computed independent reviewer lineage, zero acceptance blockers,
-  capability provenance, accepted/merged outcome, and typed recovery/replay;
-- emit a separate `BlockedWorkPacket` for any remaining acceptance blocker and keep
-  the work unit/Mission/A7 incomplete;
-- aggregate exact required child packets and Mission-level coverage into a distinct
-  `MissionCompletionPacket`; one child packet never completes the aggregate;
-- enforce the completion barrier as packet-settlement checks, not a new owner:
-  reject dirty or unowned worktrees, require the exact reviewed/integrated OID,
-  invalidate compare-and-swap settlement on OID/revision/proof-version change,
-  reject unresolved required decisions or obligations, and re-prove after an
-  integrated-OID change;
-- negative tests reject integrity tamper, stale OID/evidence, missing coverage/
-  artifact, uncovered symbol, same-agent/fork reviewer, capability replay, raw or
-  injected recovery instruction, hidden blocker, and digest mismatch;
-- Proofbook PASS, review approval, merge intent, agent self-report, or durable
-  blocked handoff alone cannot render trusted Done.
+- create an immutable `CompletedWorkPacket` only from the accepted Mission revision,
+  tested and reviewed exact OID, owned diff, fresh test evidence, independent
+  reviewer lineage, merge/accept receipt, and zero acceptance blockers;
+- emit a separate `BlockedWorkPacket` for any repo, policy, operator, or external
+  acceptance blocker and keep the work unit, Mission, and A7 incomplete;
+- aggregate exact required work-unit packets and Mission-level coverage into a
+  distinct `MissionCompletionPacket`; one child packet never completes the Mission;
+- enforce packet settlement inside existing owners, not through a new completion
+  table or service;
+- negative tests reject tamper, stale or changed OID, missing/stale evidence,
+  same-agent reviewer, hidden blocker, dirty/unowned worktree, and digest mismatch;
+- test PASS, review approval, merge intent, agent self-report, or durable blocked
+  handoff alone cannot render trusted Done.
 
-### A7.5 - Proofbook Product, Recipes, Fleet Briefing, And Budget/Cost
+### A7.5 - Canonical Core Mission Combined Acceptance
 
-- render Proofbook canvas, run timeline, and proof inspector from the existing
-  runner/ledger with no frontend runner or second settlement owner;
-- implement versioned fleet recipes and daily since-last-seen Fleet Briefing;
-- expose measured currency/token/time/resource cost with explicit units and label
-  estimates/unknowns honestly;
-- preserve source Proofbooks; learning/distillation may only produce proposals.
-
-### A7.6 - Remote Read-Only Continuity
-
-- implement scoped read-only Mission, Attention, Fleet Briefing, pane, Chronicle,
-  Proofbook, decision, and packet projection;
-- bind read capability to device/session, project/Mission/pane/evidence/event range,
-  byte/rate cap, expiry/revocation, redaction, and inert rendering;
-- prove OSC52/clipboard/link/escape/tool/artifact secret-exfiltration, stale cursor,
-  revoked device, over-scope, and disconnect-buffer negative fixtures;
-- no remote write/steer/approval or remote state owner in A7.
-
-### A7.7 - Mission Cockpit And Attention
-
-- render backend-owned Now/Next/Unlocks in the existing cockpit instead of adding
-  a duplicate workflow owner;
-- render one recommended Next while preserving all backend `readyWork[]` lanes;
-- rank/deduplicate attention by versioned backend policy with owner, exact next
-  action, evidence, freshness, and consequence;
-- never present heuristic token/context/cost/health estimates as measured truth.
-
-### A7.8 - Successful First Mission Combined Acceptance
-
-The fixed useful brief must pass accepted contract and rehearsal, visible
-execution, ownership/capability enforcement, Proofbook product/recipe/cost proof,
-scoped remote read, mid-mission restart/reconstruction, fresh acceptance coverage,
-computed independent review, successful exact-OID accepted merge, immutable
-`CompletedWorkPacket` children, exact `MissionCompletionPacket`, and truthful
-Now/Next/Unlocks throughout.
+The fixed request must pass, in order: accepted versioned plan preview, visible
+implementation, fresh tests, independent exact-OID review, successful exact-OID
+accept/merge, immutable `CompletedWorkPacket`, and exact
+`MissionCompletionPacket`.
 
 A separate mandatory negative scenario emits `BlockedWorkPacket`, preserves exact
 continuation, and proves the Mission/A7 aggregate stays incomplete. It is not an
 alternative success path. The combined gate runs in blocking CI and rejects any
-missing/stale child, acceptance blocker, unclassified failure, inferred completion,
-or false phase/release claim. A7 completion alone does not imply A8, A9,
-external/operator, or release completion.
+missing/stale evidence, acceptance blocker, unclassified failure, inferred
+completion, or false phase/release claim. A7 completion alone does not imply A8,
+A9, external/operator, deferred product features, or release completion.
 
 Do not start marketplace, autonomous main merge, hosted cloud IDE, broad team RBAC,
 or effectful Shadow Missions before the Core Mission Loop and local single-operator
@@ -1252,8 +1246,9 @@ dependency order below:
    V3b adds an Obligation Ledger, event-driven dispatch, adaptive governance,
    Verified Action Surface, and team operations through existing owners. Result
    Capsules reference completion/blocked packets and never own completion.
-4. Verified Skill Foundry: Proofbook fan-out/subProofbook/Evidence Store,
-   scheduling, evidence-governed memory/skills, and proof-preserving PB-6
+4. Verified Skill Foundry: Proofbook product UI/recipes/Fleet Briefing/budget
+   integration, fan-out/subProofbook/Evidence Store, scheduling,
+   evidence-governed memory/skills, and proof-preserving PB-6
    distillation with source trace/environment snapshot, side-effect contract,
    proof-equivalence comparators, repeated/held-out differential replay, canary,
    rollback, stale invalidation, capability reduction/non-broadening, and visual
@@ -1264,8 +1259,8 @@ dependency order below:
    Missions compared by fixed proof and independent review.
 7. Temporal Project Twin: ownership/dependency/proof history, stale-proof and
    revalidation projection.
-8. Governed Remote Control: extend A7 read-only with scoped steer/approve/stop,
-   writable attach, emergency steal, and runtime domains.
+8. Governed Remote Control: establish scoped read-only continuity, then add
+   steer/approve/stop, writable attach, emergency steal, and runtime domains.
 9. Signed Extension Ecosystem and A2A federation only after supply-chain proof.
 
 Each Apex wave needs its own owner inventory, acceptance, CI, external boundary,

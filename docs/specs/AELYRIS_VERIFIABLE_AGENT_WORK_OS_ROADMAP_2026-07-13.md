@@ -3,7 +3,7 @@
 Status: tracked product roadmap; active execution remains the R0-A9 remediation
 program
 
-Last reviewed: 2026-07-23 JST
+Last reviewed: 2026-07-29 JST
 
 ## 0. Roadmap Contract
 
@@ -68,21 +68,21 @@ migration in its own focused slice.
 
 ## 3. Current Position
 
-At this roadmap checkpoint:
+This stable roadmap does not copy the exact current phase or slice. Read
+`audit-remediation-instructions.md` and the canonical local handoff for that
+volatile frontier. The durable position is:
 
-- R0-A3 and A5 repo-owned remediation remain recorded complete; A4 was reopened by
-  a fresh runtime-integrity regression review;
-- A2 signed lifecycle and A4 real-host power/sleep proof remain explicit A9
-  operator/release gates rather than repo-owned PASS;
-- A4.7 authoritative mutation correction and A4.8 durable EventBus delivery are
-  complete through A4.9; A4.10-A4.12 remain active/planned;
-- A6 modularity is paused at its existing frontier, not superseded;
-- A6.2c-A6.2d extraction is landed but A6.2 acceptance is reopened by review;
-- A6.2e0 exact continuation/worklog hardening is complete;
-- A4.10 is the next runtime implementation slice; A6.2e1 remains the exact A6 resume
-  slice after A4.12 closes the corrective runtime-integrity sequence;
-- A7, A8, A9, blocking CI, and external/operator release evidence remain open;
+- finish the corrective A4 sequence through A4.12, then resume the frozen A6
+  frontier at A6.2e1;
+- finish A6 by owner, dependency, behavior, and concurrency evidence rather than a
+  universal line-count target;
+- enter A7 through a scope lock and prove one canonical Core Mission;
+- keep A8.0, measured A8, A9, blocking CI, and external/operator release evidence
+  open until their own gates pass;
 - current public status remains alpha and not release-ready.
+
+The durable A6 resume slice is `A6.2e1`; the root work order owns when that
+frontier becomes active.
 
 The current design checkpoint unlocks a frozen product direction and prevents
 random feature accumulation. It does not unlock a shipped capability.
@@ -94,9 +94,9 @@ random feature accumulation. It does not unlock a shipped capability.
 | A6.2v1 | freeze Work OS spec, detailed design, roadmap, authority, and verifier | docs/spec/design/plan/index/claim gate PASS | one coherent product target and finite A7 contract; no runtime claim |
 | A4.7-A4.12 corrective | authoritative commit order, durable event delivery, execution fence, all-owner startup reconciliation, handoff quarantine, crash matrix | fail-closed failure injection plus combined restart proof | truthful durable substrate; resume A6.2e1 without a second graph/journal |
 | A6.2e1-e4 | dependency boundaries, narrow subscriptions, project/tab semantics, concurrent state owners | executed behavior plus fail-closed ratchets | trustworthy frontend owners that can render Mission state without duplicating it |
-| A6.2f-g | split composition/hotspot tests and pass blocking frontend acceptance | App and extracted owners <=800, behavior/CI green | modular cockpit ready to receive Mission projections |
+| A6.2f-g | split only proven ownership boundaries and pass blocking frontend acceptance | dependency direction, owner behavior, concurrency, diagnostic non-growth ratchets, and CI green | modular cockpit ready to receive Mission projections |
 | A6.3-A6.8 | IPC/MCP/DB/native owner splits, dead-owner proof, aggregate ratchet | owner-specific and combined blocking gates | backend seams stable enough for one Mission vertical |
-| A7.0-A7.8 | Core Mission Loop | restart-safe successful First Mission, Proofbook/recipes/cost, remote read-only, and immutable completion packet | trusted brief-to-proof workflow in one local/remote-observable cockpit |
+| A7.0-A7.5 | canonical Core Mission Loop | request, versioned plan preview, visible implementation, fresh tests, independent review, exact-OID settlement, and immutable completion packets | one trusted brief-to-proof workflow without destination-feature bundling |
 | A8.0 | native product-goal/architecture decision | current native coverage v2, same-condition evidence, alternatives, ownership cost, rollback, Windows support, and release timing | keep post-A9 priority-1 default or explicitly authorize a versioned pre-A9 rebaseline |
 | A8 | measured native terminal spike | parity/perf/soak decision evidence | evidence-based renderer direction, including a valid no-promote result |
 | A9 | blocking CI, signed/update/install/relaunch/rollback, real-host and operator proof | current repo+CI+external completion matrix | release claim only if every existing claim-policy gate passes |
@@ -127,130 +127,115 @@ A7 remains finite. Its product wedge is:
 > authority, survives restart, proves its result, receives independent review,
 > and settles an immutable completion packet with zero inferred completion truth.
 
-### A7.0 — Mission Contract Gate
+The canonical release-blocking journey is:
+
+```text
+request -> versioned plan preview -> visible implementation -> fresh tests
+        -> independent review -> exact-OID accept/merge -> immutable settlement
+```
+
+Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
+Continuity, universal all-face Control Kernel migration beyond the enabled Mission
+path, provider-fabric expansion, and learning layers remain destination work and
+receive no A7 Core completion credit.
+
+### A7.0 — Core Mission Scope Lock And Owner Inventory
 
 Now:
 
-- inventory exact TaskGraph, audit journal/EventBus, governance, ownership,
-  Proofbook, review, merge, and projection owners;
-- freeze the immutable `MissionDefinitionRevision`, derived
-  `MissionExecutionProjection`, `WorkUnitDefinition`, progress/ready-work,
-  blocker/handoff, evidence/integrity, capability, `CompletedWorkPacket`,
-  `BlockedWorkPacket`, and `MissionCompletionPacket` v1 contracts plus every
-  referenced machine schema;
-- freeze a minimal team policy inside those Mission/WorkUnit owners: named roles,
-  capability/budget/proof profiles, completion authority, reviewer independence,
-  and ownership/governance rules without a fixed agent count;
-- inventory Tauri IPC, MCP, REST, WebSocket, CLI, visible PTY, Proofbook, review,
-  merge, frontend-audit, and direct-DB faces; freeze the canonical Control Command
-  registry/envelopes/errors and bypass-removal gates from
-  `AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md`;
-- freeze canonical UUIDv7, journal sequence scope, RFC 8785 serialization,
-  digest/integrity tiers, unknown-field/version policy, units, and owner mapping;
-- add requirement/spec/design/traceability and fail-closed schema verifier.
+- freeze one request fixture and the seven-step canonical journey;
+- inventory only the TaskGraph, runtime/PTY, ownership, event/evidence, test,
+  review, merge, and packet-settlement owners exercised by it;
+- freeze the minimum Mission/work-unit, evidence, review, OID, completion,
+  blocked-settlement, identity, and versioning contracts;
+- inventory the enabled IPC/MCP/PTY actions on that journey and route them through
+  existing authority seams or declare them unsupported;
+- record deferred destination work explicitly and keep every runtime claim false.
 
 Acceptance:
 
-- no duplicate owner or migration before inventory;
-- exact state transitions, OID binding, freshness, blocker split, and negative
-  fixtures are frozen;
-- the fixed First Mission has 3-12 work units, one visible implementer, independent
-  reviewer, Proofbook run, denial fixture, restart, exact-OID accepted merge, and
-  scoped read-only remote observation; A7 caps 20 work units, 4 agents, 8 panes,
-  256 KiB event payloads, 10,000/64 MiB observational backlog, 250 ms projection
-  p95, 1 second freshness, 15 second restart RTO, and RPO=0 for critical facts;
+- no duplicate DAG, journal, runner, dispatcher, completion table, or frontend state
+  owner;
+- exact journey state transitions, tested/reviewed OID binding, blocker split, and
+  negative fixtures are frozen;
 - all target runtime claims remain false.
 
 Unlocks:
 
 - implementation can proceed without inventing contracts inside UI/IPC code.
 
-### A7.1 — Mission Spine And Chronicle Minimum
+### A7.1 — Request Contract And Versioned Plan Preview
 
 Now:
 
-- evolve the existing TaskGraph owner to persist accepted Mission revision,
-  desired outcome, proof requirements, capability unlock, and symbol intents;
-- define the minimal typed `WorkEventEnvelope` used by First Mission;
-- converge required audit/EventBus paths without creating a third journal;
-- project Now/Next/Unlocks from backend owners and reconstruct after restart.
+- accept one request into the existing TaskGraph-backed Mission owner;
+- preview a versioned plan with owned targets, expected tests, independent review,
+  merge policy, and risk before any effect;
+- persist only the causal facts required to explain and resume this journey.
 
 Acceptance:
 
-- restart yields the same Mission/work state and projection hash;
-- event sequence, causation, redaction, idempotency, and no-silent-drop fixtures
-  pass for the bounded First Mission path;
-- frontend contains no duplicate Mission status logic.
+- cancellation or rejection before plan acceptance creates no worktree, PTY,
+  capability, or external effect;
+- the accepted plan revision and next exact action restore from existing durable
+  owners;
+- frontend contains no duplicate Mission or plan state owner.
 
 Unlocks:
 
-- a durable Mission can explain current work, next exact action, and intended
-  capability before and after process restart.
+- a request becomes an inspectable, resumable plan instead of an opaque launch.
 
-### A7.2 — Capability And Agent Fabric Minimum
+### A7.2 — Visible Implementation And Fresh Tests
 
 Now:
 
-- implement human operator, local agent, and system reconciler principals;
-- issue short-lived capability leases for the PTY, IPC, MCP, Proofbook, review,
-  and merge paths used by First Mission;
-- route enabled actions through one canonical Control Kernel with generated
-  schemas/catalog metadata, principal propagation, idempotency, cancellation,
-  backpressure, and event/evidence equivalence; no adapter-local business owner;
-- expose capability-scoped tool discovery from the same registry; descriptor
-  visibility is principal/Mission/resource/risk/budget filtered and does not grant
-  or widen a lease;
-- bind process tree/generation, monotonic clock, canonical Windows resource handle,
-  network/DNS/redirect policy, budget units, action/resource/lane, args, base/head
-  OID, expiry, one-use reserve/effect/commit/uncertain, and approval;
-- prove equivalent allow/deny behavior across enabled surfaces.
-- freeze PTY/ACP/SDK/A2A capability descriptors and conformance fixtures; A7 runs
-  the visible PTY path and reports unavailable structured capabilities as typed
-  unsupported rather than claiming production ACP/SDK/A2A adapters.
+- run one implementation agent in a visible PTY and isolated worktree;
+- bind enabled actions to the accepted Mission/work unit, actor, process generation,
+  owned targets, and current OID using existing admission, authority, ownership, and
+  execution-fence seams;
+- execute the declared tests after implementation and record exact command, result,
+  evidence digest, and tested OID;
+- leave unused adapters and destination faces disabled or typed unsupported.
 
 Acceptance:
 
-- replayed/concurrently reserved, expired, widened, stale-OID, wrong-lane,
-  wrong-args, PID-reused, junction/UNC/ADS-escaped, DNS-rebound/redirected, or
-  clock-rolled-back capability is denied before effect;
+- stale generation, widened ownership, wrong target, or changed plan/OID is denied
+  before effect or settlement;
 - secret values never enter Mission/event/packet evidence;
-- agents cannot issue or widen their own lease.
+- agents cannot issue or widen their own authority;
+- the test record is bound to the exact implementation OID.
 
 Unlocks:
 
-- the visible PTY agent is governed by one enforceable trust boundary, and future
-  ACP/SDK/A2A adapters have a fixed conformance boundary instead of a bypass.
+- one visible implementation produces fresh, OID-bound test evidence.
 
-### A7.3 — Plan Preview And Visible First Mission
+### A7.3 — Independent Review And Exact-OID Acceptance
 
 Now:
 
-- render Mission Rehearsal with dependencies, critical path, symbol collisions,
-  agents/panes/worktrees, capability queue, proof, risk, irreversible effects,
-  and measured-versus-estimated budget;
-- run one real implementation through a visible PTY and existing ownership,
-  TaskGraph, Proofbook, review, and merge spines;
-- expose pane control baton and semantic command evidence for that path.
+- compute reviewer independence and review the exact tested OID against declared
+  acceptance;
+- preserve rejection findings and exact next action without completion credit;
+- accept or merge only through the existing exact-OID merge-intent owner.
 
 Acceptance:
 
-- rehearsal invokes no effectful port;
-- every write is correlated to Mission/work unit/principal/capability/ownership;
-- unsupported adapter capability fails explicitly;
-- hidden/headless mode is not used for the visible implementation agent.
+- same-agent/fork reviewer, stale test evidence, dirty/unowned worktree, changed OID,
+  or changed acceptance contract fails;
+- no automatic main merge is introduced.
 
 Unlocks:
 
-- a user can preview and then watch a governed plan execute rather than trust an
-  opaque background agent.
+- tested work receives independent, exact-revision acceptance rather than a model
+  self-report.
 
 ### A7.4 — Completion Settlement
 
 Now:
 
 - collect exact commit/OID, acceptance-clause coverage, Chronicle range/root,
-  owned diff, executed gates, artifact integrity, computed reviewer lineage/
-  independence, capability provenance, residual risk, and typed recovery/replay;
+  owned diff, fresh test evidence, computed reviewer lineage/independence,
+  accept/merge receipt, and residual risk;
 - create immutable `CompletedWorkPacket` only with accepted independent review,
   current complete coverage, and zero acceptance blockers;
 - create a separate `BlockedWorkPacket` for repo/policy/operator/external blockers,
@@ -278,94 +263,22 @@ Unlocks:
 
 - completion becomes portable, inspectable evidence instead of a status label.
 
-### A7.5 — Proofbook Product, Recipes, Budget/Cost, And Fleet Briefing
+### A7.5 — Canonical Core Mission Combined Acceptance
 
 Now:
 
-- ship the pre-existing A7 Proofbook canvas, run timeline, and proof inspector as
-  projections of the current runner/ledger;
-- provide versioned fleet recipes and daily since-last-seen Fleet Briefing;
-- show measured currency/token/time/resource cost with explicit units and label
-  estimates separately;
-- keep Evidence Store a projection and forbid frontend run/settlement ownership.
+- run the fixed request through plan preview, visible implementation, fresh tests,
+  independent review, exact-OID accept/merge, and immutable settlement in order;
+- run a separate blocked scenario that preserves exact continuation and grants no
+  completion credit.
 
 Acceptance:
 
-- UI/ledger consistency, no duplicate runner, no source-Proofbook auto-mutation,
-  recipe precondition/version, and cost-unit/unknown-value fixtures pass.
-
-Unlocks:
-
-- users can inspect proof, repeat governed fleet patterns, and understand accepted
-  work cost without trusting invented metrics.
-
-### A7.6 — Remote Read-Only Continuity
-
-Now:
-
-- ship the pre-existing A7 read-only remote requirement for Mission progress,
-  Attention, Fleet Briefing, pane preview, Chronicle, Proofbook, decisions, and
-  packet review;
-- bind device/session and project/Mission/pane/evidence/event-range read scopes,
-  byte/rate caps, expiry, revocation, redaction, and inert rendering.
-
-Acceptance:
-
-- OSC52/clipboard/link/escape/tool/artifact secret exfiltration, stale cursor,
-  revoked device, over-scope, and disconnect buffering negative fixtures pass;
-- no remote steer/approval/write or remote-owned workspace state.
-
-Unlocks:
-
-- users can safely inspect current work and proof away from the workstation.
-
-### A7.7 — Mission Cockpit And Attention
-
-Now:
-
-- render backend-owned Now/Next/Unlocks in the existing cockpit header;
-- rank/deduplicate attention items with owner, next action, evidence, freshness,
-  and consequence;
-- generate since-last-seen Fleet Briefing from causal events and packets;
-- show measured cost/time separately from estimates.
-- render one backend `recommendedNext` while retaining all backend `readyWork[]`
-  lanes for parallel visibility.
-
-Acceptance:
-
-- project change, restart, stale event, or out-of-order result cannot publish a
-  mixed generation;
-- each warning maps to an exact owner and action;
-- a frontend timer, token heuristic, or agent string cannot create a trust claim.
-
-Unlocks:
-
-- the user can leave, return, and understand progress or intervene in minutes.
-
-### A7.8 — Successful First Mission Acceptance
-
-Scenario:
-
-1. submit one useful brief;
-2. accept versioned plan/rehearsal;
-3. execute in a visible PTY with ownership and capability leases;
-4. restart midway and reconstruct exact projection;
-5. run fresh gates and independent review;
-6. inspect Proofbook/recipe/cost and the scoped read-only remote projection;
-7. merge the exact accepted OID successfully;
-8. verify immutable `CompletedWorkPacket` children, acceptance coverage, integrity
-   tier, reviewer lineage, and Chronicle root;
-9. verify the exact `MissionCompletionPacket` aggregate;
-10. render truthful Now/Next/Unlocks throughout.
-
-Acceptance:
-
-- all A7.0-A7.7 child gates and blocking CI are current and green;
-- no inferred completion truth, no acceptance blocker, and no unclassified failure;
-- a separate negative scenario produces `BlockedWorkPacket`, preserves exact
-  continuation, and proves Mission/A7 remain incomplete; it cannot replace the
-  successful First Mission;
-- A7 aggregate alone does not claim release-ready.
+- every required child gate and blocking CI result is current;
+- no inferred completion truth, stale evidence, hidden blocker, or unclassified
+  failure;
+- A7 remains incomplete when the blocked scenario is the only completed scenario;
+- deferred product features receive no A7 completion credit.
 
 Unlocks:
 
@@ -436,11 +349,11 @@ exists, instrumentation is the first slice and no impact claim is promoted.
 | V1 Universal Agent Fabric | A7 adapter/capability contract + A9 release baseline; accepted V1-R0 decision artifact before a production adapter | conformance parity, unsupported-capability honesty, resume/fork loss rate | PTY fallback; adapter-disable; Mission ids/events remain portable | no provider parity until each adapter gate passes |
 | V2 Mission Time Machine | A7 Chronicle/checkpoint/packet integrity | projection hash equality, replay side-effect count `0`, recovery RTO/RPO | disable effectful recovery; keep inert replay; never rewrite accepted history | no time-travel claim from snapshot restore alone |
 | V3 Qralis Coordination | Mission/Chronicle/capability gates | delivery loss `0` within tier, duplicate idempotency, coordination attention | revoke role leases; fall back to bounded single-lane dispatch | no swarm/autonomy claim from messaging alone |
-| V4 Skill Foundry | Proofbook/packet/evaluation provenance plus V2 durability | held-out delta, unsafe-promotion count `0`, rollback success | deactivate candidate; restore prior signed/digested version; retain lineage | no self-improvement claim from candidate generation |
+| V4 Skill Foundry | existing Proofbook runner/ledger plus packet/evaluation provenance and V2 durability | held-out delta, unsafe-promotion count `0`, rollback success | deactivate candidate; restore prior signed/digested version; retain lineage | no self-improvement claim from candidate generation |
 | V5 Decision Lab | V3 coordination plus cost and human-gate policy | decision quality rubric, dissent retention, bounded cost/latency | disable council policy; retain ordinary Mission decision path and record | no consensus-as-truth claim |
 | V6 Counterfactual Arena | V2 replay, V5 decision contract, isolated capability boundary | isolation escapes `0`, comparable-proof coverage, budget guardrail | kill Shadow runtime, revoke leases, preserve immutable comparison evidence | no winner claim from model vote |
 | V7 Temporal Project Twin | Chronicle, ownership, and proof lineage | stale-proof recall/precision, false-conflict rate, rebuild determinism | rebuild projection from owners; never mutate source ownership/proof | no canonical-state claim for the projection |
-| V8 Governed Remote Control | A7 remote read-only plus capability/recovery proof | parity, stale-fingerprint denial, disconnect recovery, secret leak `0` | revoke all remote-write leases; local emergency steal; read-only fallback | no remote-write claim while read-only is the proven tier |
+| V8 Governed Remote Control | A7 Mission/packet projection plus capability/recovery proof; establish scoped read-only before any write | parity, stale-fingerprint denial, disconnect recovery, secret leak `0` | revoke all remote-write leases; local emergency steal; read-only fallback | no remote-write claim before its read-only tier passes |
 | V9 Extension/Federation | A9 signing/provenance/revocation plus V1 conformance | signature/revocation coverage, sandbox escape `0`, uninstall integrity | quarantine/uninstall/revoke; preserve core data and adapter compatibility | no marketplace/A2A trust claim from discovery alone |
 
 ### Apex V1 — Universal Agent Fabric Expansion
@@ -472,7 +385,7 @@ Unlocks:
 
 Execution position: after A9 establishes the current release baseline and before
 any V1 production adapter. This plan does not alter the active
-  `A4.10-A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
+`A4 through A4.12 -> A6.2e1-A6.8 -> A7 -> A8 -> A9` order. A pre-release experiment
 would require a separate authorization under the isolated non-shipping rule above;
 it may not block, satisfy, or receive credit for R0-A9.
 
@@ -628,7 +541,8 @@ Unlocks:
 
 Build:
 
-- expand the A7 Proofbook product with fan-out/subProofbook and Evidence Store;
+- productize the existing Proofbook runner/ledger with UI, recipes,
+  Fleet Briefing/budget integration, fan-out/subProofbook, and Evidence Store;
 - scheduled/event-triggered and deterministic no-agent jobs;
 - evidence-backed MemoryClaim and SkillCandidate proposal/evaluation/activation;
 - proof-preserving PB-6 distillation proposals binding source trace and
@@ -717,14 +631,15 @@ Unlocks:
 
 Build:
 
-- extend the A7 read-only companion with scoped steer/approve/deny/stop;
+- establish the scoped read-only companion first, then add
+  steer/approve/deny/stop;
 - writable attach with pane baton, process/domain identity, capability expiry,
   stale-fingerprint checks, disconnect recovery, and local emergency steal;
 - RuntimeDomain parity for SSH/devbox/container targets.
 
 Acceptance:
 
-- A7 read-only proof remains green; writable projection parity, fingerprint checks,
+- the V8 read-only proof is green before writable projection parity, fingerprint checks,
   secret scan, lease expiry/revocation, disconnect/stale-state and emergency-steal
   proof pass;
 - remote client owns no workspace state.
@@ -766,11 +681,11 @@ Unlocks:
 | OpenCode structured-adapter comparison | high if portability proof wins; low if it is only another provider integration | high only with one governed identity across runtimes | A7 adapter contract + A9 release baseline | Apex V1-R0 |
 | Universal Agent Fabric expansion | very high | high | A7 adapter/capability contract | Apex V1 |
 | Mission Time Machine | very high | high | Chronicle convergence | Apex V2 |
-| Verified Skill Foundry | very high | highest | packets/evals/Proofbook UI | Apex V4 |
+| Verified Skill Foundry | very high | highest | packets/evals/existing Proofbook ledger | Apex V4 |
 | Decision Lab | high | medium-high | Qralis/cost/evidence | Apex V5 |
 | Counterfactual Arena | very high | high | replay/isolation/packets | Apex V6 |
 | Temporal Project Twin | high | highest | ownership/proof lineage | Apex V7 |
-| Governed Remote Control | high | medium-high | A7 read-only/capability/parity | Apex V8 |
+| Governed Remote Control | high | medium-high | A7 Mission/packet projection plus capability/parity | Apex V8 |
 | Marketplace/A2A federation | high | medium, risky early | release supply-chain proof | Apex V9 |
 
 ## 9. Four-Layer Differentiation And Evolution Audit

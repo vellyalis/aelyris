@@ -39,9 +39,22 @@ function missingFrom(text, required) {
   return required.filter((clause) => !normalized.includes(normalize(clause)));
 }
 
+function backtickField(text, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.match(new RegExp(`^${escaped}:\\s*\\x60([^\\x60]+)\\x60`, "m"))?.[1] ?? null;
+}
+
 function check(id, passed, detail, evidence = {}) {
   return { id, status: passed ? "passed" : "failed", detail, evidence };
 }
+
+const currentFrontier = {
+  phase: backtickField(files.workOrder, "CURRENT PHASE"),
+  activeSlice: backtickField(files.workOrder, "ACTIVE SLICE"),
+  lastCompletedSlice: backtickField(files.workOrder, "LAST COMPLETED SLICE"),
+  nextPhase: backtickField(files.workOrder, "NEXT PHASE"),
+  nextImplementationSlice: backtickField(files.workOrder, "NEXT IMPLEMENTATION SLICE"),
+};
 
 function headingIds(text, pattern) {
   return [...text.matchAll(pattern)].map((match) => match[1]);
@@ -178,10 +191,8 @@ const requiredDesignClauses = [
   "Storage, Atomicity, And Reconciliation",
   "Failure Semantics",
   "Release-Blocking A7 Vertical Design",
-  "A7.0 Mission Contract Gate",
-  "A7.5 Proofbook Product, Recipes, And Budget/Cost",
-  "A7.6 Remote Read-Only Continuity",
-  "A7.8 Successful First Mission Acceptance",
+  "A7.0 Core Mission Scope Lock And Owner Inventory",
+  "A7.5 Canonical Core Mission Combined Acceptance",
   "RPO=0",
   "Apex Design Gates",
   "OpenCode Candidate Adapter Research Contract",
@@ -214,14 +225,12 @@ const requiredRoadmapClauses = [
   "rollback_or_retire",
   "rendered_acceptance",
   "A6.2v1",
-  "A6.2e1 remains the exact A6 resume slice",
+  "changing A6.2e1 as the eventual A6 resume slice",
   "A7 Core Mission Loop",
-  "A7.0 — Mission Contract Gate",
-  "A7.5 — Proofbook Product, Recipes, Budget/Cost, And Fleet Briefing",
-  "A7.6 — Remote Read-Only Continuity",
-  "A7.8 — Successful First Mission Acceptance",
+  "A7.0 — Core Mission Scope Lock And Owner Inventory",
+  "A7.5 — Canonical Core Mission Combined Acceptance",
   "A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate",
-  "A4.10 is the next runtime implementation slice",
+  "This stable roadmap does not copy the exact current phase or slice",
   "Apex V1 — Universal Agent Fabric Expansion",
   "V1-R0 — OpenCode Candidate Adapter Comparison",
   "proof-carrying runtime portability",
@@ -273,17 +282,15 @@ const requiredPlanClauses = [
   "Verifiable Agent Work OS Architecture Review",
   "A6.2e1 remains the next implementation slice",
   "A7 - Evidence-Backed Core Mission Loop",
-  "A7.0 - Mission Contract And Owner Inventory Gate",
-  "A7.5 - Proofbook Product, Recipes, Fleet Briefing, And Budget/Cost",
-  "A7.6 - Remote Read-Only Continuity",
-  "A7.8 - Successful First Mission Combined Acceptance",
-  "Control API command registry/kernel",
+  "A7.0 - Core Mission Scope Lock And Owner Inventory",
+  "A7.5 - Canonical Core Mission Combined Acceptance",
+  "universal all-face Control Kernel migration beyond the enabled Mission path",
   "MissionCompletionPacket",
   "Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope",
   "A8",
   "A9",
-  "capability-scoped tool discovery",
-  "completion barrier as packet-settlement checks",
+  "enabled IPC/MCP/PTY actions used by the journey",
+  "enforce packet settlement inside existing owners",
   "V1-R1 structured state authority/explainability",
   "V3a adds addressed typed messages",
   "proof-preserving PB-6",
@@ -291,11 +298,12 @@ const requiredPlanClauses = [
 
 const requiredWorkOrderClauses = [
   "CURRENT PHASE: `A4`",
-  "ACTIVE SLICE: `A4.10`",
-  "LAST COMPLETED SLICE: `A4.9`",
-  "NEXT IMPLEMENTATION SLICE: `A4.10`",
+  "ACTIVE SLICE:",
+  "LAST COMPLETED SLICE:",
+  "NEXT IMPLEMENTATION SLICE:",
   "resume at A6.2e1",
   "do not mix A6/A7 work into A4",
+  "Execution Order And Complexity Stop Rules",
 ];
 
 const requiredArchitectureClauses = [
@@ -352,7 +360,7 @@ const requiredDecisionClauses = [
   "cannot change the active A4/A6/A7/A8/A9 order",
   "ADR-013 External Team Patterns Extend Existing Owners",
   "Result Capsule is only a coordination projection",
-  "A4.10-A4.12 are active runtime-integrity work",
+  "the active A4 runtime-integrity sequence through A4.12",
 ];
 
 const requiredProofbookClauses = [
@@ -419,7 +427,7 @@ for (const [key, text] of Object.entries({
   }
 }
 
-const expectedA7Ids = ["0", "1", "2", "3", "4", "5", "6", "7", "8"];
+const expectedA7Ids = ["0", "1", "2", "3", "4", "5"];
 const a7Headings = {
   design: headingIds(files.design, /^### A7\.(\d+)\b/gm),
   roadmap: headingIds(files.roadmap, /^### A7\.(\d+)\b/gm),
@@ -457,21 +465,31 @@ const requiredR0A9CompletionClauses = [
   "upgrade/restart/fault tests PASS",
   "timeout/cancel/concurrency gates PASS",
   "ratchet + focused tests PASS",
-  "restart-safe successful commit-bound Core Mission scenario PASS",
+  "successful commit-bound Core Mission scenario plus blocked-settlement negative scenario PASS",
   "parity/perf/soak decision artifact",
   "enforced release lane + operator proof",
 ];
 const missingR0A9CompletionScope = missingFrom(files.workOrder, requiredR0A9CompletionClauses);
 
-const originalA7ScopeClauses = [
-  "Proofbook product UI",
-  "fleet recipes",
-  "daily Fleet Briefing",
-  "budget/cost controls",
-  "read-only Remote Continuity",
-  "principal/capability and agent connector contracts",
+const canonicalA7ScopeClauses = [
+  "request",
+  "versioned plan preview",
+  "visible implementation",
+  "fresh tests",
+  "independent review",
+  "exact-OID accept/merge",
+  "immutable completion packet",
 ];
-const missingOriginalA7Scope = missingFrom(files.plan, originalA7ScopeClauses);
+const deferredA7ScopeClauses = [
+  "Proofbook product UI/recipes",
+  "Fleet Briefing",
+  "broad budget/cost UX",
+  "Remote Continuity",
+  "universal all-face Control Kernel migration beyond the enabled Mission path",
+  "learning layers",
+];
+const missingCanonicalA7Scope = missingFrom(files.plan, canonicalA7ScopeClauses);
+const missingDeferredA7Scope = missingFrom(files.plan, deferredA7ScopeClauses);
 
 const dirty = dirtyPaths();
 const sourcePaths = Object.values(paths);
@@ -532,12 +550,9 @@ const checks = [
         "Result Capsule is only a coordination projection",
         "message read/ack never fulfills an obligation",
       ]).length === 0 &&
-      missingFrom(files.roadmap, [
-        "does not grant or widen a lease",
-        "cannot mutate Aelyris owners",
-        "cannot replace the Tauri cockpit by default",
-      ]).length === 0,
-    "External team/runtime patterns extend existing Mission, packet, Control, Qralis, and Proofbook owners without changing the A4.10 frontier",
+      missingFrom(files.roadmap, ["cannot mutate Aelyris owners", "issue a lease", "cannot replace the Tauri"])
+        .length === 0,
+    "External team/runtime patterns extend existing Mission, packet, Control, Qralis, and Proofbook owners without changing the active audit-remediation frontier",
     {
       missingDecisionClauses: missing.decisions,
       missingDesignClauses: missing.design,
@@ -582,7 +597,7 @@ const checks = [
   check(
     "tracked-plan-integration",
     missing.plan.length === 0,
-    "Tracked plan contains A6.2v1, scope-preserving finite A7.0-A7.8 Core, and separately gated post-A9 Apex",
+    "Tracked plan contains A6.2v1, the finite canonical A7.0-A7.5 Core, and separately gated deferred/Apex work",
     { missingClauses: missing.plan },
   ),
   check(
@@ -610,14 +625,17 @@ const checks = [
   check(
     "a7-structure-exact",
     Object.values(a7Headings).every((ids) => exactSequence(ids, expectedA7Ids)),
-    "Design, roadmap, and tracked plan each define A7.0-A7.8 exactly once and in order",
+    "Design, roadmap, and tracked plan each define the canonical A7.0-A7.5 sequence exactly once and in order",
     { expectedA7Ids, a7Headings },
   ),
   check(
-    "a7-original-scope-preserved",
-    missingOriginalA7Scope.length === 0,
-    "A7 retains Proofbook UI, recipes/Fleet Briefing/budget-cost, remote read-only, and principal/capability connector scope",
-    { missingClauses: missingOriginalA7Scope },
+    "a7-core-scope-and-deferral",
+    missingCanonicalA7Scope.length === 0 && missingDeferredA7Scope.length === 0,
+    "A7 Core contains one canonical request-to-settlement journey while deferred product requirements remain explicit",
+    {
+      missingCanonicalClauses: missingCanonicalA7Scope,
+      missingDeferredClauses: missingDeferredA7Scope,
+    },
   ),
   check(
     "apex-structure-exact",
@@ -627,9 +645,11 @@ const checks = [
   ),
   check(
     "work-order-frontier",
-    missing.workOrder.length === 0,
-    "Work order preserves the active A4.10 frontier, A4.9 last completion, and A6.2e1 resume boundary",
-    { missingClauses: missing.workOrder },
+    missing.workOrder.length === 0 &&
+      Object.values(currentFrontier).every(Boolean) &&
+      currentFrontier.activeSlice === currentFrontier.nextImplementationSlice,
+    "Work order exposes one parseable active frontier and preserves the A6.2e1 resume boundary",
+    { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(
     "package-script-present",
@@ -672,20 +692,20 @@ const failed = checks.filter((item) => item.status !== "passed");
 const contractPass = failed.length === 0;
 const committedAtHead = contractPass && sourceDirtyPaths.length === 0;
 const report = {
-  schema: "aelyris.verifiable-agent-work-os-spec/v4",
-  contractVersion: "verifiable-agent-work-os-roadmap/v4",
-  version: 4,
+  schema: "aelyris.verifiable-agent-work-os-spec/v5",
+  contractVersion: "verifiable-agent-work-os-roadmap/v5",
+  version: 5,
   ok: contractPass,
   status: !contractPass
     ? "fail-verifiable-agent-work-os-spec"
     : committedAtHead
       ? "pass-verifiable-agent-work-os-spec-committed"
       : "pass-verifiable-agent-work-os-spec-ready-to-commit",
-  phase: "A4",
-  attemptedSlice: "external team-pattern plan integration",
-  lastCompletedSlice: "A4.9",
-  completedSlice: committedAtHead ? "external team-pattern plan integration" : null,
-  nextImplementationSlice: "A4.10",
+  phase: currentFrontier.phase,
+  attemptedSlice: "execution-order simplification contract",
+  lastCompletedSlice: currentFrontier.lastCompletedSlice,
+  completedSlice: committedAtHead ? "execution-order simplification contract" : null,
+  nextImplementationSlice: currentFrontier.nextImplementationSlice,
   readyToCommit: contractPass && !committedAtHead,
   sliceComplete: committedAtHead,
   phaseComplete: false,

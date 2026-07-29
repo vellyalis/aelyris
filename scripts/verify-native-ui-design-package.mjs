@@ -90,6 +90,11 @@ function normalizeText(text) {
   return text.replace(/\s+/g, " ");
 }
 
+function backtickField(text, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.match(new RegExp(`^${escaped}:\\s*\\x60([^\\x60]+)\\x60`, "m"))?.[1] ?? null;
+}
+
 function check(id, passed, detail, evidence = {}) {
   return {
     id,
@@ -218,6 +223,15 @@ const linkFailures = [...CANONICAL_DOCUMENTS, ...ROUTING_DOCUMENTS].flatMap(
 );
 
 const workOrder = texts["audit-remediation-instructions.md"];
+const currentExecution = {
+  program: backtickField(workOrder, "PROGRAM"),
+  phase: backtickField(workOrder, "CURRENT PHASE"),
+  activeSlice: backtickField(workOrder, "ACTIVE SLICE"),
+  lastCompletedSlice: backtickField(workOrder, "LAST COMPLETED SLICE"),
+  nextImplementationSlice: backtickField(workOrder, "NEXT IMPLEMENTATION SLICE"),
+  resumePhase: backtickField(workOrder, "NEXT PHASE"),
+  resumeSlice: workOrder.match(/\bresume at (A\d+(?:\.\d+\w*)?)\b/)?.[1] ?? null,
+};
 const trackedPlan =
   texts["docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md"];
 const workOsRoadmap =
@@ -278,26 +292,32 @@ const checks = [
     includesAll(queuedWorkOrder, [
       "STATUS: QUEUED_HIGH_PRIORITY",
       "priority 1 after A9",
-      "CURRENT EXECUTION OWNER: `audit-remediation` / `A4.10`",
+      "CURRENT EXECUTION OWNER: root `audit-remediation-instructions.md`",
+      "read its exact",
       "explicit owner decision",
       "A6.6 already owns",
     ]) &&
       !exists("native-ui-migration-instructions.md") &&
       includesAll(workOrder, [
         "CURRENT PHASE: `A4`",
-        "ACTIVE SLICE: `A4.10`",
+        "ACTIVE SLICE:",
+        "NEXT IMPLEMENTATION SLICE:",
         "NEXT PHASE: `A6`",
         "resume at A6.2e1",
         "A8.0",
         "measured terminal-only native spike",
       ]) &&
+      Object.values(currentExecution).every(Boolean) &&
+      currentExecution.activeSlice === currentExecution.nextImplementationSlice &&
+      canonicalManifest?.currentExecutionOwner === "audit-remediation-instructions.md" &&
       includesAll(trackedPlan, [
         "After it passes, resume the already",
         "frozen A6 frontier at A6.2e1",
         "A8.0 - Native Product Goal And Architecture Decision Gate",
         "## A8 - Measured Native Terminal Spike",
       ]),
-    "the imported package is priority-1 queued after A9 and does not rewrite A4.10, A6.2e1, or measured A8",
+    "the imported package is priority-1 queued after A9, reads the active frontier from its owner, and does not rewrite A6.2e1 or measured A8",
+    { currentExecution },
   ),
   check(
     "unique-proposed-adr-owner",
@@ -436,13 +456,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   sourceCutoffMs: Math.max(...[...SUPPORTING_PATHS, ...rawSourcePaths].map(mtime)),
   sourcePaths: [...SUPPORTING_PATHS, ...rawSourcePaths],
-  currentExecution: {
-    program: "audit-remediation",
-    phase: "A4",
-    slice: "A4.10",
-    nextPhase: "A6",
-    nextSlice: "A6.2e1",
-  },
+  currentExecution,
   queuedProgram: {
     program: "native-ui-migration",
     priority: "priority-1-post-A9",

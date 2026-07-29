@@ -35,11 +35,16 @@ conditional phase A8.
 
 The full-native Rust migration package is registered as a high-priority queued
 proposal under `docs/plans/full-native-rust-migration/`. It does not change the
-current execution order or create a concurrent phase:
+current execution order or create a concurrent phase. The exact current slice is
+owned only by this root work order and the canonical local handoff; stable
+requirements/spec/native-package documents point here instead of copying that
+volatile value.
 
 ```text
-A4.10 -> A4.11 -> A4.12
-  -> A6.2e1/A6 -> A7 Core
+A4.11
+  -> A4.12 admission coverage + combined runtime-integrity closeout
+  -> A6.2e1/A6 owner and behavior boundaries
+  -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
@@ -49,6 +54,42 @@ A8.0 may recommend a pre-A9 takeover only through an explicit owner decision and
 versioned rebaseline that accepts the release delay. Importing the proposal or
 marking it high priority does not authorize that schedule change. The measured A8
 terminal decision, A9 trust owners, and current claim boundary remain unchanged.
+
+## Execution Order And Complexity Stop Rules
+
+Owner decision, 2026-07-29. This is a portfolio-order clarification, not an
+implementation phase and not a reduction of the product Goal.
+
+1. Finish **A4.11 only** inside the existing checkpoint/handoff/session owners.
+   Do not add a second handoff journal, manager, or state machine.
+2. Rebaseline and execute **A4.12** as the single remaining A4 closeout. It owns
+   cross-process default-closed startup admission for sidecar session creation,
+   pending/failed direct sidecar REST tests, startup admission for effectful
+   Workflow and Proofbook execution, claim narrowing for any surface not actually
+   covered, and the combined crash/fault/restart matrix. Do not create A4.13 merely
+   to hold these already-discovered A4 acceptance gaps.
+3. Resume **A6.2e1**, then finish A6 by dependency direction, state ownership,
+   executed behavior, and concurrency safety. File length remains a diagnostic
+   non-growth ratchet, not a universal `<=800` completion requirement. Do not move
+   logic solely to satisfy a line count.
+4. Enter **A7.0** as a scope-lock gate before A7 runtime work. A7 Core proves only:
+   request -> versioned plan preview -> visible implementation agent -> fresh tests
+   -> independent review -> exact-OID accept/merge -> immutable completion packet.
+   Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
+   Continuity, universal all-face Control Kernel migration beyond the enabled
+   Mission path, and learning layers remain in the full Goal but are deferred from
+   the release-blocking A7 Core.
+5. At **A6.6**, isolate `aelyris_native` behind an optional Cargo feature or
+   equivalent proof-only package boundary without expanding native functionality.
+   A8.0 remains the only activation decision for further native/full-native work.
+6. Do not start a verifier-cleanup program. When a touched owner relies on a brittle
+   source-string check, replace or supplement that check with the smallest executed
+   behavior proof needed for the changed risk. Add a new verifier only for a unique
+   failure mode that no existing gate can decide.
+
+The tracked plan owns the detailed scope and acceptance language for these steps.
+The product spec/design/roadmap retain deferred destination requirements without
+making them prerequisites of the canonical A7 Core Mission.
 
 ## Mandatory Read Order
 
@@ -85,7 +126,7 @@ continuation_contract:
 | A4 | session/DB migration, backup, restore, failure durability | A3 complete | upgrade/restart/fault tests PASS |
 | A5 | supervised execution and lock/concurrency boundaries | A4 complete | timeout/cancel/concurrency gates PASS |
 | A6 | owner-based splits and modularity ratchets | A5 complete | ratchet + focused tests PASS |
-| A7 | Mission/capability spine, Proofbook product/recipes/cost, remote read-only, CompletedWorkPacket, and first complete product mission | A6 complete | restart-safe successful commit-bound Core Mission scenario PASS |
+| A7 | one canonical Mission path from request and plan preview through visible execution, fresh tests, independent review, exact-OID settlement, and immutable completion packets | A6 complete and A7.0 scope lock accepted | successful commit-bound Core Mission scenario plus blocked-settlement negative scenario PASS |
 | A8.0 | native product-goal/architecture decision; current hybrid vs mature Rust framework vs custom retained runtime | A7 complete | accepted-as-written/accepted-with-amendments/deferred/rejected ADR-014 decision; both accepted results use one activation branch; no capability credit |
 | A8 | measured terminal-only native spike | A7 complete and metrics justify | parity/perf/soak decision artifact |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
@@ -317,8 +358,9 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   row and registered cursor.
 - A4.11 owns structured digest-bound handoff acceptance plus successor quarantine/
   cleanup for every post-spawn failure.
-- A4.12 owns combined crash/fault/restart acceptance and is the only slice allowed to
-  restore `phaseComplete=true` and A4 release-score credit.
+- A4.12 owns the remaining admission coverage plus combined crash/fault/restart
+  acceptance. It is the only slice allowed to restore `phaseComplete=true` and A4
+  release-score credit.
 - After A4.12, resume the frozen A6 frontier at A6.2e1. The queued NUI proposal
   does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the

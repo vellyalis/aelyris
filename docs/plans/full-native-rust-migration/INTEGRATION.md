@@ -2,7 +2,8 @@
 
 Status: integrated as a high-priority queued proposal.
 Integrated: 2026-07-28 JST.
-Active implementation remains: `audit-remediation/A4.10`.
+Active implementation remains the exact slice declared by root
+`audit-remediation-instructions.md`.
 
 ## Source integrity
 
@@ -44,7 +45,7 @@ The package is not a parallel active work order and is not merged into A4
 implementation. It enters the portfolio in this dependency order:
 
 ```text
-A4.10 -> A4.11 -> A4.12
+active audit-remediation A4 slice -> A4.12 closeout
   -> A6.2e1/A6 -> A7 Core
   -> A8.0 product-goal/architecture decision
   -> existing measured A8 terminal decision
@@ -97,7 +98,8 @@ conditions. Tauri remains the rollback face until N4.
 This planning slice is accepted only when:
 
 - every canonical document exists and is indexed;
-- `audit-remediation/A4.10` remains the only active implementation slice;
+- root `audit-remediation-instructions.md` remains the only active implementation
+  frontier owner;
 - ADR numbering is unambiguous;
 - the active work order remains unchanged and all roadmaps agree on the queued
   insertion order;

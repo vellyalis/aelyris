@@ -10,7 +10,7 @@ claims are gated by verifiers. 現行 machine truth は `docs/requirements.md` �
 verifier commands がローカル生成する `.codex-auto/quality/*` が優先し、古い進捗
 メモの過去スコアは現在の release readiness を上書きしない。
 
-初版: 2026-06-13。Last reviewed: 2026-07-13 JST。現在は公開読者と実装者向けの spec index として維持する。
+初版: 2026-06-13。Last reviewed: 2026-07-29 JST。現在は公開読者と実装者向けの spec index として維持する。
 
 リリース判断の前に `pnpm verify:quality-score` と `pnpm verify:goal:safe:no-token` を
 ローカルで再生成して現在値を確認する。認証付き prompt gate は
@@ -64,11 +64,11 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 | [AELYRIS_DIFFERENTIATION_POLISH_SPEC.md](./AELYRIS_DIFFERENTIATION_POLISH_SPEC.md) | subordinate precursor / visible fleet + Proofbook UX | center terminal pane tree、visible PTY、bounded shared brain、symbol/function ownership、Proofbook product surface の下位契約。top-level Mission/composition/settlement/product direction は Work OS spec が所有し、本書は競合名を product category にしない |
 | [AELYRIS_DIFFERENTIATION_DETAILED_DESIGN.md](./AELYRIS_DIFFERENTIATION_DETAILED_DESIGN.md) | D0-D8 implementation design | Differentiation polish の詳細設計。D0 spec/verifier gate、D1 center-pane fleet、D2 durable runtime、D2R Remote Continuity + SSH Attach、D3 live activity + ownership、D4 bounded shared brain、D5 Proofbook UI、D6 PB-5/PB-6/PB-7、D7 governed merge-ready lane、D8 claim gate を分離し、技術負債を残さない実装順を定義 |
 | [COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md](./COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md) | active R0-A9 remediation program | 2026-07-10 総合監査を authority/evidence、terminal input、Windows trust、UI trust、durability、execution supervision、modularity、CompletedWorkPacket、native spike、release lane の依存順へ変換した tracked 実行正本。root work order は `audit-remediation-instructions.md` |
-| [AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md](./AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md) | **high-priority queued native UI program / NUI-F0-F7 / N0-N4** | ZIP 由来の完全な full-native Rust migration package。要件は [../requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md](../requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md)、設計は `AELYRIS_NATIVE_UI_ARCHITECTURE.md` / `AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md` / `AELYRIS_NATIVE_EDITOR_SPEC.md`、実行順は `AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md`、証拠契約は `AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md` / `AELYRIS_NATIVE_UI_TRACEABILITY.md`。canonical decision owner は `DECISIONS.md` の proposed ADR-014、詳細 draft・source hash・統合判断・queued work order は [../plans/full-native-rust-migration/](../plans/full-native-rust-migration/README.md)。現在の active slice、A4.12→A6.2e1、measured A8 は変更しない。A8.0 が採否/前倒しを判断し、既定は A9 後の priority-1 program。統合 gate は `pnpm verify:native-ui:design-package` |
+| [AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md](./AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md) | **high-priority queued native UI program / NUI-F0-F7 / N0-N4** | ZIP 由来の完全な full-native Rust migration package。要件は [../requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md](../requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md)、設計は `AELYRIS_NATIVE_UI_ARCHITECTURE.md` / `AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md` / `AELYRIS_NATIVE_EDITOR_SPEC.md`、実行順は `AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md`、証拠契約は `AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md` / `AELYRIS_NATIVE_UI_TRACEABILITY.md`。canonical decision owner は `DECISIONS.md` の proposed ADR-014、詳細 draft・source hash・統合判断・queued work order は [../plans/full-native-rust-migration/](../plans/full-native-rust-migration/README.md)。exact current slice は root `audit-remediation-instructions.md` が所有し、この package は A4.12→A6.2e1 と measured A8 を変更しない。A8.0 が採否/前倒しを判断し、既定は A9 後の priority-1 program。統合 gate は `pnpm verify:native-ui:design-package` |
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md) | product target / A7 Core + post-A9 Apex requirements | **Verifiable Agent Work OS**の要件正本。Aelyris Mission、Now/Next/Unlocks、Universal Agent Fabric、pane control baton、Chronicle、capability kernel、CompletedWorkPacket、可逆性、Attention Compiler、Verified Skill Foundry、Counterfactual Arena、Remote Continuityを一つのclaim-safe契約へ統合。design authorityであり実装済みclaimではない |
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md) | architecture / detailed design | 既存 owner を拡張する bounded context、Mission/WorkEvent/capability/evidence/packet/learning schemas、state machine、atomicity/reconciliation、failure semantics、A7 Core vertical、Apex gatesを定義。OpenCode候補はPTY/ACP/HTTP-SSEを同条件比較する`V1-R0`だけを先に置き、second TaskGraph/journal/runner/dispatcherを禁止 |
 | [AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md](./AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md) | security-critical cross-face detailed design | Tauri IPC/MCP/REST/WS/CLI/PTY/Proofbook/review/merge を一つの Rust-authoritative command registry/kernel に閉じる target contract。principal/capability、schema/version、idempotency/cancellation/backpressure、evidence、migration、bypass inventory、adversarial gates を所有し、実装済みclaimではない |
-| [AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md) | tracked product roadmap | 常時 Now/Next/Unlocks、A6.2v1設計checkpoint、既存A7 scopeを保持した有限なA7 Core Mission Loop、A8/A9 release gates、post-A9 Apex V1-V9を分離。Apex V1-R0ではOpenCodeを最初のstructured-runtime候補としてPTY/ACP/HTTP-SSEで比較し、合格した1経路だけを昇格 |
+| [AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md) | tracked product roadmap | 常時 Now/Next/Unlocks、A6.2v1設計checkpoint、request→plan preview→visible implementation→fresh tests→independent review→exact-OID settlement→immutable packet に限定した有限なA7 Core Mission、A8/A9 release gates、deferred product work、post-A9 Apex V1-V9を分離。Apex V1-R0ではOpenCodeを最初のstructured-runtime候補としてPTY/ACP/HTTP-SSEで比較し、合格した1経路だけを昇格 |
 | [../WORK_RECORD_AND_CONTINUATION_PROTOCOL.md](../WORK_RECORD_AND_CONTINUATION_PROTOCOL.md) | cross-cutting workflow contract | tracked plan + ignored per-session worklog + canonical local-only handoff の三層で、session close と `続き` の再開手順、必須記録、clear-safe 条件を固定 |
 | [AELYRIS_REMOTE_CONTINUITY_SPEC.md](./AELYRIS_REMOTE_CONTINUITY_SPEC.md) | D2R / remote continuity requirements | 外出先からの tab/pane state sync、read-only remote fleet monitor、fingerprint-checked remote approval、SSH attach、attach lease、scoped principal、not release-ready claim boundary を定義する仕様書 |
 | [AELYRIS_REMOTE_CONTINUITY_DESIGN.md](./AELYRIS_REMOTE_CONTINUITY_DESIGN.md) | D2R / remote architecture design | daemon-owned state projection、remote event stream、private-network web monitor、SSH/TUI attach、attach leases、principal/scope model の設計。SSH は state owner ではなく transport として扱う |
@@ -92,10 +92,11 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 
 ## Active Remediation Program
 
-現在の実行入口は repo root の `audit-remediation-instructions.md`。詳細な
-依存順は `COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` の R0-A9 を
-正とする。full-native Rust migration は high-priority queued program だが、
-現在の A4.10 と並行せず、A4.12→A6.2e1 と measured A8 を変更しない。A7後の
+現在の実行入口と exact current slice は repo root の
+`audit-remediation-instructions.md` だけが所有する。詳細な依存順は
+`COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` の R0-A9 を正とする。
+full-native Rust migration は high-priority queued program だが、active phase と
+並行せず、A4.12→A6.2e1 と measured A8 を変更しない。A7後の
 A8.0 が Goal/architecture/Windows support/前倒しの採否を判断し、既定は A9 後に
 NUI-F0-F7 を priority 1 で開始する。pre-A9 takeover は owner の明示決定と
 versioned rebaseline が必要。

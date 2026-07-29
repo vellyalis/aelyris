@@ -233,13 +233,13 @@ Why:
   completion claims less trustworthy;
 - external product descriptions are useful hypotheses, but their claims do not
   prove behavior in Aelyris or in a pinned local dependency;
-- A4.10-A4.12 are active runtime-integrity work and must not be displaced by later
-  product design.
+- the active A4 runtime-integrity sequence through A4.12 must not be displaced by
+  later product design; the exact current slice is owned by the root work order.
 
-Implication: A7.0 freezes a minimal team policy without a fixed agent count; A7.2
-adds capability-scoped tool discovery; A7.4 applies an integrated-OID completion
-barrier inside the existing packet settlement. A Result Capsule is only a
-coordination projection referencing a `CompletedWorkPacket` or
+Implication: A7.0 locks one canonical Core Mission; A7.1-A7.3 cover plan preview,
+visible implementation, fresh tests, independent review, and exact-OID acceptance;
+A7.4 applies the completion barrier inside existing packet settlement. A Result
+Capsule is only a coordination projection referencing a `CompletedWorkPacket` or
 `BlockedWorkPacket`, never completion authority. Post-A9 V1 may add structured
 state and quarantined external-run adoption, with a Runtime TUI only after
 `promote_one` and daemon-owned projection proof. V3 adds typed team operations and
@@ -279,7 +279,8 @@ accepted results enter the same activation branch. NUI-0.1 may only ratify that
 already accepted decision for implementation activation; it is not a second
 architecture decision gate.
 
-Implication: current `audit-remediation/A4.10 -> A4.12 -> A6.2e1` routing,
-measured A8 terminal decision, Tauri/React architecture, and alpha claim remain
-unchanged. The detailed queued draft and source-package integration record live
-under `docs/plans/full-native-rust-migration/`.
+Implication: the active audit-remediation slice declared by the root work order
+continues through A4.12 and then resumes A6.2e1; measured A8 terminal decision,
+Tauri/React architecture, and alpha claim remain unchanged. The detailed queued
+draft and source-package integration record live under
+`docs/plans/full-native-rust-migration/`.

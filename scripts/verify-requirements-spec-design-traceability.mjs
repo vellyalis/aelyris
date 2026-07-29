@@ -247,10 +247,12 @@ const checks = [
         "priority 1 after A9",
       ]) &&
       includesAll(normalizedDocs.auditWorkOrder, [
-        "ACTIVE SLICE: `A4.10`",
+        "ACTIVE SLICE:",
+        "NEXT IMPLEMENTATION SLICE:",
         "NEXT PHASE: `A6`",
         "A8.0",
         "measured terminal-only native spike",
+        "exact current slice is owned only by this root work order",
       ]) &&
       includesAll(normalizedDocs.nativeWorkOrder, [
         "STATUS: QUEUED_HIGH_PRIORITY",
@@ -268,7 +270,7 @@ const checks = [
         "every concrete `NUI-*` requirement ID",
         "no wildcard-only coverage",
       ]),
-    "the full-native Rust package is indexed as a high-priority queued proposal without changing A4.10, A6.2e1, measured A8, or current claims",
+    "the full-native Rust package is indexed as a high-priority queued proposal without duplicating the active slice or changing A6.2e1, measured A8, or current claims",
   ),
   check(
     "work-os-authority-composition",
@@ -287,8 +289,9 @@ const checks = [
       ]) &&
       includesAll(docs.workOsRoadmap, [
         "R0-A9 remains Wave 0",
-        "A4.10 is the next runtime implementation slice",
-        "A6.2e1 remains the exact A6 resume",
+        "This stable roadmap does not copy the exact current phase or slice",
+        "The durable A6 resume slice is `A6.2e1`",
+        "Canonical Core Mission Combined Acceptance",
         "A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate",
       ]) &&
       includesAll(docs.controlApiMcp, [

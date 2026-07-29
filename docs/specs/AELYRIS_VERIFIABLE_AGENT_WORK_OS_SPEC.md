@@ -3,9 +3,9 @@
 Status: approved design authority; implementation remains gated by the active R0-A9
 remediation program
 
-Version: 1.0
+Version: 1.1
 
-Last reviewed: 2026-07-13 JST
+Last reviewed: 2026-07-29 JST
 
 ## 0. Authority And Claim Boundary
 
@@ -29,6 +29,11 @@ Current Aelyris remains alpha and not release-ready. A passing documentation
 verifier proves only that this contract is complete and internally indexed. It
 does not prove any target runtime capability, A7 completion, A8 native quality,
 A9 release proof, or `releaseCandidateReady=true`.
+
+The full requirements below remain the product Goal. The active remediation plan
+owns portfolio timing. Its 2026-07-29 A7 Core scope lock proves one canonical
+request-to-completion journey first; requirements deferred from that first vertical
+are not deleted, implemented, or release-blocking merely because they remain here.
 
 ## 1. Product Thesis
 
@@ -596,18 +601,19 @@ state change.
 
 ### 5.2 UI Polish Acceptance
 
-A7 bounds these surfaces to the First Mission and proves:
+The full UI contract remains target scope. A7 Core proves only the existing
+surfaces required by the canonical Mission journey:
 
-- one glance identifies Now, Next, one blocker owner/action, and proof freshness;
-- keyboard-only traversal reaches Mission Strip, active pane/baton, Confidence
-  Topology, Chronicle evidence, and packet sheet without a focus trap;
-- 320 px right-rail and the existing 584/960 px shell fixtures preserve terminal
-  priority, legibility, and action reachability;
-- stale/out-of-order generations cannot mix Mission, pane, evidence, or packet UI;
-- blocked, uncertain, stale, inferred, accepted, and merged states are visually
-  and semantically distinct;
-- rendered Playwright, accessibility, reduced-motion, and high-contrast fixtures
-  pass, while final live DWM/WebView2/IME proof remains in the existing host gates.
+- the versioned plan preview is inspectable before any effect,
+- one visible implementation pane stays correlated to Mission, work unit,
+  worktree, ownership, and tested OID,
+- fresh test and independent review outcomes are distinguishable from inference,
+- accepted completion and blocked settlement render from their packet types,
+- keyboard and rendered-trust regressions for those touched surfaces stay green.
+
+Mission Strip expansion, Confidence Topology, Chronicle navigation, Fleet Briefing,
+broad budget/cost UX, and Remote Continuity UI remain product requirements but are
+not prerequisites of the first A7 Core acceptance.
 
 Full historical scrub/recovery, cross-Mission semantic radar, provider hot-swap,
 temporal topology, Arena comparison, and governed remote control stay in their
@@ -654,8 +660,8 @@ A7 machine acceptance fixes these values at zero:
 - `keyboardUnreachableMissionActions`;
 - `colorOnlyTrustStates`;
 - restart projection-hash mismatch;
-- cross-face authority/result/evidence mismatch;
-- adapter call with caller-supplied identity accepted as authority.
+- enabled Mission-path authority/result/evidence mismatch;
+- enabled adapter call with caller-supplied identity accepted as authority.
 
 Human measures require a versioned baseline artifact, target, and guardrail before
 claiming improvement: time after return to identify Now/Next/blocker owner, time to
@@ -700,10 +706,15 @@ This specification is accepted as a design contract when:
 
 - spec, detailed design, roadmap, requirements index, tracked remediation plan,
   and spec index are linked and verifier-checked;
-- A7 has a finite release-blocking Mission Loop distinct from post-A9 Apex work;
-- A7 preserves the pre-existing Proofbook product UI, fleet recipes/Fleet
-  Briefing/budget-cost, principal/capability connector, and read-only Remote
-  Continuity requirements rather than moving them out of R0-A9;
+- A7 has one finite release-blocking Mission Loop distinct from deferred product
+  work and post-A9 Apex work;
+- A7 Core is limited to request, versioned plan preview, visible implementation,
+  fresh tests, independent review, exact-OID accept/merge, and immutable completion
+  settlement;
+- Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
+  Continuity, universal all-face Control API migration beyond the enabled Mission
+  path, and learning layers remain explicit product requirements without becoming
+  A7 Core prerequisites;
 - current runtime substrate and target capability are never conflated;
 - owner, state, failure, replay, authority, evidence, and negative-test contracts
   are detailed for every release-blocking component;

@@ -8,11 +8,13 @@ Rule: phase PASS is not program completion.
 
 ## 0. Portfolio insertion
 
-`audit-remediation/A4.10` remains the only active implementation slice.
+Root `audit-remediation-instructions.md` remains the only active implementation
+frontier owner; this stable roadmap does not duplicate its exact slice.
 
 Execution order:
 
-1. finish A4.10-A4.12 and resume the already frozen A6.2e1 frontier;
+1. finish the active A4 sequence through A4.12 and resume the already frozen
+   A6.2e1 frontier;
 2. finish A6 owner extraction/modularity, including its existing
    `aelyris_native.rs` decomposition owner, plus A7 Core Mission/Control
    ownership;

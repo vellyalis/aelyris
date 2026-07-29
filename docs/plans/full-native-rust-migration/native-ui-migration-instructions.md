@@ -4,8 +4,8 @@ STATUS: QUEUED_HIGH_PRIORITY
 PROGRAM: `native-ui-migration`
 PORTFOLIO PRIORITY: priority 1 after A9 by default. A pre-A9 takeover requires
 an explicit owner decision at A8.0 and a rebaselined tracked program.
-CURRENT EXECUTION OWNER: `audit-remediation` / `A4.10`; no native migration
-implementation is active.
+CURRENT EXECUTION OWNER: root `audit-remediation-instructions.md`; read its exact
+active slice at execution time. No native migration implementation is active.
 
 Mode: Critical + Exploration
 Goal: migrate Aelyris from Tauri/React/WebView2 primary UI to a full-native Rust Windows product surface without creating a second runtime/control truth and without losing a usable rollback path.
@@ -21,9 +21,9 @@ contract and must not displace the active audit-remediation slice.
 The package is integrated in this default dependency order:
 
 ```text
-audit-remediation A4.10 -> A4.11 -> A4.12
+active audit-remediation A4 slice -> A4.12 closeout
   -> A6.2e1 and the remaining A6 owner/modularity work
-  -> A7 Core Mission/Control vertical
+  -> A7 canonical Core Mission vertical
   -> A8.0 native product-goal/architecture decision
   -> existing measured A8 terminal decision
   -> A9 release and external-proof closeout
@@ -32,9 +32,10 @@ audit-remediation A4.10 -> A4.11 -> A4.12
 
 Rules:
 
-- A4.10 remains the only active implementation slice now.
-- A4.12 resumes directly at the frozen A6.2e1 frontier. This imported plan does
-  not change that accepted dependency.
+- the root audit-remediation work order remains the only active implementation
+  frontier owner now.
+- After A4.12 completes, execution resumes directly at the frozen A6.2e1
+  frontier. This imported plan does not change that accepted dependency.
 - A6.6 already owns decomposition of `aelyris_native.rs`; NUI-F0 must consume
   that result instead of creating a competing decomposition owner.
 - A8.0 evaluates the product Goal, ADR-014, current baseline, total ownership

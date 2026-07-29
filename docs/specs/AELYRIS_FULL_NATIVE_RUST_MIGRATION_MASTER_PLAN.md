@@ -10,14 +10,14 @@ Final claim level: N4 WebView-free distribution
 ## 0. Repository integration decision
 
 This package is adopted as the high-priority native UI migration contract, but
-it does not create a concurrent work order. Current execution remains
-`audit-remediation/A4.10`.
+it does not create a concurrent work order. Current execution remains the exact
+slice declared by root `audit-remediation-instructions.md`.
 
 Dependency order:
 
 ```text
-A4.10-A4.12 runtime integrity
-  -> A6 owner splits + A7 Core Mission/Control contract
+active A4 runtime-integrity slice -> A4.12 closeout
+  -> A6 owner boundaries + A7 canonical Core Mission
   -> A8.0 product-goal/architecture decision
   -> existing measured A8 terminal decision
   -> A9 release and operator-proof closeout
