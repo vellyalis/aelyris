@@ -5,12 +5,17 @@ use tauri::{AppHandle, Manager};
 
 use crate::agent::context_lifecycle::unix_now_secs;
 use crate::agent::session_lifecycle::{
-    build_successor_seed_prompt, build_summary_prompt, canonical_summary_files_for_checkpoint,
-    next_summary_seq, parse_redacted_summary, read_redacted_summary, successor_ack_file,
-    summary_files, wait_for_done_marker, SessionSummaryDoc, SummaryValidationContext,
+    build_handoff_acceptance_record, build_successor_seed_prompt, build_summary_prompt,
+    canonical_summary_files_for_checkpoint, checkpoint_record_digest, next_summary_seq,
+    parse_redacted_summary, read_handoff_acceptance, read_redacted_summary, successor_ack_file,
+    summary_files, wait_for_done_marker, AcceptedCheckpointRef, HandoffAcceptanceRecord,
+    HandoffGenerationIdentity, SessionSummaryDoc, SummaryValidationContext,
     SummaryValidationReport,
 };
 use crate::agent::{AgentCli, InteractiveSessionInfo, InteractiveSessionManager};
+use crate::persistence::session_checkpoint_repo::{
+    HandoffCleanupStatus, HandoffOutcome, SessionHandoffDurabilityRecord,
+};
 use crate::persistence::{
     SessionCheckpointRecord, SessionCheckpointRepo, SessionHandoffRecord, SessionHandoffState,
 };
@@ -212,6 +217,7 @@ pub struct SessionHandoffResult {
     pub inflight_ref: Option<String>,
     pub retired_predecessor: bool,
     pub audit_trace_events: usize,
+    pub acceptance: HandoffAcceptanceRecord,
     pub handoff: SessionHandoffRecord,
 }
 
@@ -362,6 +368,17 @@ pub async fn session_handoff(
             ));
         }
     };
+    let accepted_checkpoint_digest = match checkpoint_record_digest(&checkpoint.checkpoint) {
+        Ok(digest) => digest,
+        Err(error) => {
+            return Err(handoff_error_with_reconciliation(
+                &app,
+                &predecessor,
+                &handoff,
+                &error,
+            ))
+        }
+    };
     handoff = match set_session_handoff_state(
         &app,
         &handoff,
@@ -420,20 +437,30 @@ pub async fn session_handoff(
     };
 
     let ack = successor_ack_file(&worktree_path, &successor_logical_session_id);
-    std::fs::create_dir_all(&ack.handoff_dir)
-        .map_err(|err| format!("create successor ack directory failed: {err}"))?;
-    let seed_prompt = build_successor_seed_prompt(
-        &predecessor.logical_session_id,
-        &successor_logical_session_id,
-        std::path::Path::new(&summary.summary_path),
-        &ack.ack_path,
-        &reason,
-    );
+    if let Err(error) = std::fs::create_dir_all(&ack.handoff_dir) {
+        return Err(handoff_error_with_reconciliation(
+            &app,
+            &predecessor,
+            &handoff,
+            &format!("create successor ack directory failed: {error}"),
+        ));
+    }
+    if ack.ack_path.exists() {
+        return Err(handoff_error_with_reconciliation(
+            &app,
+            &predecessor,
+            &handoff,
+            &format!(
+                "successor acceptance path already exists before spawn: {}",
+                ack.ack_path.display()
+            ),
+        ));
+    }
     let successor = match spawn_interactive_agent_internal(
         app.clone(),
         worktree_path.clone(),
         Some(predecessor.model.clone()),
-        Some(seed_prompt),
+        None,
         None,
         cols.unwrap_or(120),
         rows.unwrap_or(30),
@@ -456,167 +483,181 @@ pub async fn session_handoff(
             ));
         }
     };
-    let successor_restore_summary_json = serde_json::to_value(&summary.summary)
-        .map_err(|err| format!("serialize successor restore checkpoint summary failed: {err}"))?;
-    let _successor_restore_checkpoint = match session_checkpoint(
-        app.clone(),
-        successor.session_id.clone(),
-        Some(successor_restore_summary_json),
-        None,
-        inflight_ref.clone(),
-        Some(predecessor.logical_session_id.clone()),
-    ) {
-        Ok(checkpoint) => checkpoint,
-        Err(err) => {
-            return Err(handoff_error_with_reconciliation(
-                &app,
-                &predecessor,
-                &handoff,
-                &err,
-            ));
-        }
-    };
-    handoff = match set_session_handoff_state(
-        &app,
-        &handoff,
-        SessionHandoffState::SuccessorSpawned,
-        Some(checkpoint.checkpoint_seq),
-        Some(&summary.summary_path),
-        None,
-    ) {
-        Ok(handoff) => handoff,
-        Err(err) => {
-            return Err(handoff_error_with_reconciliation(
-                &app,
-                &predecessor,
-                &handoff,
-                &err,
-            ));
-        }
-    };
+    let post_spawn: Result<
+        (
+            SessionHandoffRecord,
+            HandoffAcceptanceRecord,
+            SessionCheckpointRecord,
+        ),
+        String,
+    > = async {
+        let successor_info = find_interactive_session(&session_mgr, &successor.session_id)?;
+        let successor_spawn_checkpoint =
+            latest_session_checkpoint(&app, &successor_logical_session_id)?.ok_or_else(|| {
+                "successor spawn returned without a durable generation checkpoint".to_string()
+            })?;
+        validate_generation_identity(
+            &successor_info,
+            &successor_spawn_checkpoint,
+            &successor_logical_session_id,
+            &successor.pty_id,
+        )?;
+        let bound = db.with(|database| {
+            SessionCheckpointRepo::bind_handoff_generations(
+                database,
+                &handoff.predecessor_id,
+                handoff.handoff_seq,
+                &predecessor.pty_id,
+                checkpoint.checkpoint_seq,
+                &successor.pty_id,
+                successor_spawn_checkpoint.checkpoint_seq,
+                handoff.handoff_seq,
+                unix_now_secs(),
+            )
+        })?;
+        handoff = bound.handoff;
 
-    let timeout =
-        std::time::Duration::from_millis(timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000));
-    if let Err(err) = wait_for_done_marker(&ack.ack_path, timeout).await {
-        return Err(handoff_error_with_reconciliation(
+        let acceptance = build_handoff_acceptance_record(
+            HandoffGenerationIdentity {
+                logical_session_id: predecessor.logical_session_id.clone(),
+                pty_id: predecessor.pty_id.clone(),
+                checkpoint_seq: checkpoint.checkpoint_seq,
+            },
+            HandoffGenerationIdentity {
+                logical_session_id: successor_logical_session_id.clone(),
+                pty_id: successor.pty_id.clone(),
+                checkpoint_seq: successor_spawn_checkpoint.checkpoint_seq,
+            },
+            AcceptedCheckpointRef {
+                logical_session_id: predecessor.logical_session_id.clone(),
+                checkpoint_seq: checkpoint.checkpoint_seq,
+                summary_path: summary.summary_path.clone(),
+                checkpoint_digest: accepted_checkpoint_digest.clone(),
+            },
+            handoff.handoff_seq,
+        )?;
+        let seed_prompt = build_successor_seed_prompt(
+            &predecessor.logical_session_id,
+            &successor_logical_session_id,
+            std::path::Path::new(&summary.summary_path),
+            &ack.ack_path,
+            &reason,
+            &acceptance,
+        );
+        write_interactive_input(
+            &app,
+            &successor_info,
+            format!("{seed_prompt}\r\n").as_bytes(),
+        )
+        .await?;
+
+        let timeout =
+            std::time::Duration::from_millis(timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000));
+        wait_for_done_marker(&ack.ack_path, timeout).await?;
+        let acknowledged = read_handoff_acceptance(&ack.ack_path, &acceptance)?;
+        let successor_live = wait_for_successor_liveness(
+            &session_mgr,
+            &successor.session_id,
+            std::time::Duration::from_millis(1_500),
+        )
+        .await?;
+        validate_generation_identity(
+            &successor_live,
+            &successor_spawn_checkpoint,
+            &successor_logical_session_id,
+            &successor.pty_id,
+        )?;
+        let accepted = db.with(|database| {
+            SessionCheckpointRepo::record_handoff_acceptance(
+                database,
+                &handoff.predecessor_id,
+                handoff.handoff_seq,
+                &acknowledged,
+                unix_now_secs(),
+            )
+        })?;
+        handoff = accepted.handoff;
+
+        let successor_checkpoint = db.with(|database| {
+            SessionCheckpointRepo::ensure_successor_continuation_checkpoint(
+                database,
+                &successor_spawn_checkpoint,
+                &checkpoint.checkpoint,
+                &predecessor.logical_session_id,
+                unix_now_secs(),
+            )
+        })?;
+        let _ = persist_agent_identity_context(&app, &successor_live, &successor_checkpoint);
+
+        session_mgr.update_status(&predecessor.id, "retiring")?;
+        emit_interactive_sessions(&app, &session_mgr);
+        stop_interactive_agent(app.clone(), predecessor.id.clone()).await?;
+        handoff = set_session_handoff_state(
+            &app,
+            &handoff,
+            SessionHandoffState::PredecessorRetired,
+            Some(checkpoint.checkpoint_seq),
+            Some(&summary.summary_path),
+            None,
+        )?;
+        append_session_lifecycle_audit(
             &app,
             &predecessor,
             &handoff,
-            &err,
-        ));
-    }
-    let successor_info = match wait_for_successor_liveness(
-        &session_mgr,
-        &successor.session_id,
-        std::time::Duration::from_millis(1_500),
-    )
-    .await
-    {
-        Ok(info) => info,
-        Err(err) => {
-            return Err(handoff_error_with_reconciliation(
-                &app,
-                &predecessor,
-                &handoff,
-                &err,
-            ));
-        }
-    };
-    handoff = match set_session_handoff_state(
-        &app,
-        &handoff,
-        SessionHandoffState::SuccessorAcked,
-        Some(checkpoint.checkpoint_seq),
-        Some(&summary.summary_path),
-        None,
-    ) {
-        Ok(handoff) => handoff,
-        Err(err) => {
-            return Err(handoff_error_with_reconciliation(
-                &app,
-                &predecessor,
-                &handoff,
-                &err,
-            ));
-        }
-    };
-
-    let successor_summary_json = serde_json::to_value(&summary.summary)
-        .map_err(|err| format!("serialize successor checkpoint summary failed: {err}"))?;
-    let successor_checkpoint = match session_checkpoint(
-        app.clone(),
-        successor_info.id.clone(),
-        Some(successor_summary_json),
-        None,
-        inflight_ref.clone(),
-        Some(predecessor.logical_session_id.clone()),
-    ) {
-        Ok(checkpoint) => checkpoint,
-        Err(err) => {
-            return Err(handoff_error_with_reconciliation(
-                &app,
-                &predecessor,
-                &handoff,
-                &err,
-            ));
-        }
-    };
-
-    session_mgr.update_status(&predecessor.id, "retiring")?;
-    emit_interactive_sessions(&app, &session_mgr);
-    if let Err(err) = stop_interactive_agent(app.clone(), predecessor.id.clone()).await {
-        return Err(handoff_error_with_reconciliation(
+            "session_handoff",
+            "committed",
+            serde_json::json!({
+                "checkpointSeq": checkpoint.checkpoint_seq,
+                "successorGenerationCheckpointSeq": successor_spawn_checkpoint.checkpoint_seq,
+                "successorCheckpointSeq": successor_checkpoint.checkpoint_seq,
+                "acceptanceDigest": &acknowledged.digest,
+                "ackPath": ack.ack_path.display().to_string(),
+                "retiredPredecessor": true,
+            }),
+        )?;
+        append_session_lifecycle_audit(
             &app,
             &predecessor,
             &handoff,
-            &err,
-        ));
+            "context_recycled",
+            "committed",
+            serde_json::json!({
+                "predecessorSessionId": &predecessor.id,
+                "successorSessionId": &successor.session_id,
+                "worktreeDeleted": false,
+            }),
+        )?;
+        publish_session_lifecycle_event(
+            &app,
+            crate::event_bus::AgentEventKind::ContextRecycled,
+            serde_json::json!({
+                "phase": "committed",
+                "predecessorLogicalSessionId": &handoff.predecessor_id,
+                "successorLogicalSessionId": &handoff.successor_id,
+                "handoffSeq": handoff.handoff_seq,
+                "correlationId": &handoff.correlation_id,
+                "acceptanceDigest": &acknowledged.digest,
+                "worktreeDeleted": false,
+            }),
+        )?;
+        Ok((handoff.clone(), acknowledged, successor_checkpoint))
     }
-    handoff = set_session_handoff_state(
-        &app,
-        &handoff,
-        SessionHandoffState::PredecessorRetired,
-        Some(checkpoint.checkpoint_seq),
-        Some(&summary.summary_path),
-        None,
-    )?;
-    append_session_lifecycle_audit(
-        &app,
-        &predecessor,
-        &handoff,
-        "session_handoff",
-        "committed",
-        serde_json::json!({
-            "checkpointSeq": checkpoint.checkpoint_seq,
-            "successorCheckpointSeq": successor_checkpoint.checkpoint_seq,
-            "ackPath": ack.ack_path.display().to_string(),
-            "retiredPredecessor": true,
-        }),
-    )?;
-    append_session_lifecycle_audit(
-        &app,
-        &predecessor,
-        &handoff,
-        "context_recycled",
-        "committed",
-        serde_json::json!({
-            "predecessorSessionId": &predecessor.id,
-            "successorSessionId": &successor.session_id,
-            "worktreeDeleted": false,
-        }),
-    )?;
-    publish_session_lifecycle_event(
-        &app,
-        crate::event_bus::AgentEventKind::ContextRecycled,
-        serde_json::json!({
-            "phase": "committed",
-            "predecessorLogicalSessionId": &handoff.predecessor_id,
-            "successorLogicalSessionId": &handoff.successor_id,
-            "handoffSeq": handoff.handoff_seq,
-            "correlationId": &handoff.correlation_id,
-            "worktreeDeleted": false,
-        }),
-    )?;
+    .await;
+    let (handoff, acceptance, successor_checkpoint) = match post_spawn {
+        Ok(result) => result,
+        Err(error) => {
+            return Err(handoff_post_spawn_error_with_cleanup(
+                &app,
+                &predecessor,
+                &handoff,
+                &successor.session_id,
+                &successor_logical_session_id,
+                &successor.pty_id,
+                &error,
+            )
+            .await)
+        }
+    };
 
     let audit_trace_events = app
         .try_state::<crate::db::ManagedDb>()
@@ -641,6 +682,7 @@ pub async fn session_handoff(
         inflight_ref,
         retired_predecessor: true,
         audit_trace_events,
+        acceptance,
         handoff,
     })
 }
@@ -656,19 +698,21 @@ pub async fn session_resume(
         let db = app
             .try_state::<crate::db::ManagedDb>()
             .ok_or_else(|| "session_resume requires database state".to_string())?;
-        db.with(SessionCheckpointRepo::list_unresolved_handoffs)?
+        db.with(SessionCheckpointRepo::list_handoffs_requiring_reconciliation)?
     };
     let requested = logical_session_id
         .as_deref()
         .map(crate::agent::session_lifecycle::sanitize_handoff_id);
     let _ack_recheck_timeout_ms = timeout_ms.unwrap_or(60_000).clamp(1_000, 600_000);
 
-    let relevant: Vec<SessionHandoffRecord> = unresolved
+    let relevant: Vec<SessionHandoffDurabilityRecord> = unresolved
         .iter()
         .filter(|handoff| {
             requested
                 .as_deref()
-                .map(|id| handoff.predecessor_id == id || handoff.successor_id == id)
+                .map(|id| {
+                    handoff.handoff.predecessor_id == id || handoff.handoff.successor_id == id
+                })
                 .unwrap_or(true)
         })
         .cloned()
@@ -713,10 +757,7 @@ pub async fn session_resume(
     let mut reconciled = 0usize;
     let mut ack_reconfirmed = false;
     for handoff in &relevant {
-        if matches!(
-            handoff.state,
-            SessionHandoffState::SuccessorSpawned | SessionHandoffState::SuccessorAcked
-        ) {
+        if handoff.acceptance.is_some() && handoff.outcome == HandoffOutcome::Accepted {
             ack_reconfirmed = true;
         }
         if reconcile_one_session_handoff_on_boot(&app, handoff).await? {
@@ -727,12 +768,14 @@ pub async fn session_resume(
     let unresolved_after = app
         .try_state::<crate::db::ManagedDb>()
         .ok_or_else(|| "session_resume requires database state".to_string())?
-        .with(SessionCheckpointRepo::list_unresolved_handoffs)?
+        .with(SessionCheckpointRepo::list_handoffs_requiring_reconciliation)?
         .into_iter()
         .filter(|handoff| {
             requested
                 .as_deref()
-                .map(|id| handoff.predecessor_id == id || handoff.successor_id == id)
+                .map(|id| {
+                    handoff.handoff.predecessor_id == id || handoff.handoff.successor_id == id
+                })
                 .unwrap_or(true)
         })
         .count();
@@ -740,7 +783,7 @@ pub async fn session_resume(
     let mut adopted_logical_session_id = None;
     for handoff in &relevant {
         if let Some(successor) =
-            find_interactive_session_optional(&session_mgr, &handoff.successor_id)?
+            find_interactive_session_optional(&session_mgr, &handoff.handoff.successor_id)?
         {
             adopted_logical_session_id = Some(successor.logical_session_id);
             break;
@@ -900,7 +943,7 @@ pub async fn reconcile_session_handoffs_on_boot(app: &AppHandle) -> Result<usize
     let Some(db) = app.try_state::<crate::db::ManagedDb>() else {
         return Ok(0);
     };
-    let handoffs = db.with(SessionCheckpointRepo::list_unresolved_handoffs)?;
+    let handoffs = db.with(SessionCheckpointRepo::list_handoffs_requiring_reconciliation)?;
     let mut reconciled = 0usize;
     let mut failures = Vec::new();
     for handoff in handoffs {
@@ -910,13 +953,13 @@ pub async fn reconcile_session_handoffs_on_boot(app: &AppHandle) -> Result<usize
             Err(err) => {
                 tracing::error!(
                     "session_handoff boot reconcile failed for {}#{}: {}",
-                    handoff.predecessor_id,
-                    handoff.handoff_seq,
+                    handoff.handoff.predecessor_id,
+                    handoff.handoff.handoff_seq,
                     err
                 );
                 failures.push(serde_json::json!({
-                    "predecessorLogicalSessionId": handoff.predecessor_id,
-                    "handoffSeq": handoff.handoff_seq,
+                    "predecessorLogicalSessionId": handoff.handoff.predecessor_id,
+                    "handoffSeq": handoff.handoff.handoff_seq,
                     "error": serde_json::from_str::<Value>(&err)
                         .unwrap_or_else(|_| Value::String(err)),
                 }));
@@ -939,9 +982,10 @@ pub async fn reconcile_session_handoffs_on_boot(app: &AppHandle) -> Result<usize
 
 async fn reconcile_one_session_handoff_on_boot(
     app: &AppHandle,
-    handoff: &SessionHandoffRecord,
+    record: &SessionHandoffDurabilityRecord,
 ) -> Result<bool, String> {
     let session_mgr = app.state::<InteractiveSessionManager>();
+    let handoff = &record.handoff;
     let predecessor = find_interactive_session_optional(&session_mgr, &handoff.predecessor_id)?;
     let successor = find_interactive_session_optional(&session_mgr, &handoff.successor_id)?;
     let predecessor_checkpoint = latest_session_checkpoint(app, &handoff.predecessor_id)?;
@@ -951,80 +995,121 @@ async fn reconcile_one_session_handoff_on_boot(
         &handoff.predecessor_id,
     );
 
-    match handoff.state {
-        SessionHandoffState::PendingSummary
-        | SessionHandoffState::Checkpointed
-        | SessionHandoffState::SuccessorSpawning => {
-            fail_session_handoff_with_identity(
-                app,
-                &identity,
-                handoff,
-                "boot reconcile failed closed before successor ack; predecessor was not retired",
-            )?;
+    match structured_handoff_boot_policy(record) {
+        StructuredHandoffBootPolicy::FailedCleanup => {
+            reconcile_failed_handoff_cleanup_on_boot(app, record).await?;
             Ok(true)
         }
-        SessionHandoffState::SuccessorSpawned | SessionHandoffState::SuccessorAcked => {
-            let Some(worktree_path) = handoff_worktree_path(
-                predecessor.as_ref(),
-                predecessor_checkpoint.as_ref(),
-                successor.as_ref(),
-            ) else {
-                fail_session_handoff_with_identity(
+        StructuredHandoffBootPolicy::AmbiguousLegacy => {
+            fail_and_cleanup_handoff_on_boot(
+                app,
+                record,
+                HandoffOutcome::TerminalFailure,
+                "legacy handoff has no structured acceptance record",
+                successor.is_some(),
+            )
+            .await?;
+            Ok(true)
+        }
+        StructuredHandoffBootPolicy::BeforeAcceptance => {
+            fail_and_cleanup_handoff_on_boot(
+                app,
+                record,
+                if successor.is_some() {
+                    HandoffOutcome::TerminalFailure
+                } else {
+                    HandoffOutcome::RetryableFailure
+                },
+                "boot reconcile failed closed before structured successor acceptance",
+                successor.is_some(),
+            )
+            .await?;
+            Ok(true)
+        }
+        StructuredHandoffBootPolicy::Accepted => {
+            let acceptance = record
+                .acceptance
+                .as_ref()
+                .ok_or_else(|| "accepted handoff is missing acceptance record".to_string())?;
+            let accepted_checkpoint = app
+                .try_state::<crate::db::ManagedDb>()
+                .ok_or_else(|| "session_handoff requires database state".to_string())?
+                .with(|database| {
+                    SessionCheckpointRepo::get_checkpoint(
+                        database,
+                        &acceptance.accepted_checkpoint.logical_session_id,
+                        acceptance.accepted_checkpoint.checkpoint_seq,
+                    )
+                })?
+                .ok_or_else(|| "accepted handoff checkpoint is missing on boot".to_string())?;
+            let accepted_digest = checkpoint_record_digest(&accepted_checkpoint)?;
+            let successor_checkpoint = record
+                .successor_checkpoint_seq
+                .map(|seq| {
+                    app.try_state::<crate::db::ManagedDb>()
+                        .ok_or_else(|| "session_handoff requires database state".to_string())?
+                        .with(|database| {
+                            SessionCheckpointRepo::get_checkpoint(
+                                database,
+                                &handoff.successor_id,
+                                seq,
+                            )
+                        })
+                })
+                .transpose()?
+                .flatten();
+            let exact_successor = successor
+                .as_ref()
+                .zip(successor_checkpoint.as_ref())
+                .map(|(info, checkpoint)| {
+                    validate_generation_identity(
+                        info,
+                        checkpoint,
+                        &acceptance.successor_generation.logical_session_id,
+                        &acceptance.successor_generation.pty_id,
+                    )
+                })
+                .transpose();
+            if accepted_digest != acceptance.accepted_checkpoint.checkpoint_digest
+                || !matches!(exact_successor, Ok(Some(())))
+            {
+                fail_and_cleanup_handoff_on_boot(
                     app,
-                    &identity,
-                    handoff,
-                    "boot reconcile could not resolve handoff worktree for successor ack",
-                )?;
-                return Ok(true);
-            };
-            let ack = successor_ack_file(&worktree_path, &handoff.successor_id);
-            if !ack.ack_path.exists() {
-                fail_session_handoff_with_identity(
-                    app,
-                    &identity,
-                    handoff,
-                    "boot reconcile did not find successor ack; predecessor was not retired",
-                )?;
+                    record,
+                    HandoffOutcome::TerminalFailure,
+                    "accepted handoff generation or checkpoint digest mismatched on boot",
+                    successor.is_some(),
+                )
+                .await?;
                 return Ok(true);
             }
-            let Some(successor) = successor else {
-                fail_session_handoff_with_identity(
-                    app,
-                    &identity,
-                    handoff,
-                    "boot reconcile found successor ack but no live successor session",
-                )?;
-                return Ok(true);
-            };
-
-            let mut current = handoff.clone();
-            if current.state != SessionHandoffState::SuccessorAcked {
-                current = set_session_handoff_state(
-                    app,
-                    &current,
-                    SessionHandoffState::SuccessorAcked,
-                    current.checkpoint_seq,
-                    current.summary_path.as_deref(),
-                    None,
-                )?;
-            }
+            let successor_generation_checkpoint = successor_checkpoint
+                .as_ref()
+                .ok_or_else(|| "accepted successor generation checkpoint is missing".to_string())?;
+            let successor_continuation_checkpoint = app
+                .try_state::<crate::db::ManagedDb>()
+                .ok_or_else(|| "session_handoff requires database state".to_string())?
+                .with(|database| {
+                    SessionCheckpointRepo::ensure_successor_continuation_checkpoint(
+                        database,
+                        successor_generation_checkpoint,
+                        &accepted_checkpoint,
+                        &handoff.predecessor_id,
+                        unix_now_secs(),
+                    )
+                })?;
 
             if let Some(predecessor) = predecessor {
                 session_mgr.update_status(&predecessor.id, "retiring")?;
                 emit_interactive_sessions(app, &session_mgr);
-                if let Err(err) = stop_interactive_agent(app.clone(), predecessor.id.clone()).await
-                {
-                    fail_session_handoff_with_identity(app, &identity, &current, &err)?;
-                    return Ok(true);
-                }
+                stop_interactive_agent(app.clone(), predecessor.id.clone()).await?;
             }
-
             let retired = set_session_handoff_state(
                 app,
-                &current,
+                handoff,
                 SessionHandoffState::PredecessorRetired,
-                current.checkpoint_seq,
-                current.summary_path.as_deref(),
+                handoff.checkpoint_seq,
+                handoff.summary_path.as_deref(),
                 None,
             )?;
             append_session_lifecycle_audit_with_identity(
@@ -1035,39 +1120,208 @@ async fn reconcile_one_session_handoff_on_boot(
                 "committed",
                 serde_json::json!({
                     "bootReconcile": true,
-                    "successorSessionId": &successor.id,
-                    "ackPath": ack.ack_path.display().to_string(),
+                    "successorSessionId": successor.as_ref().map(|info| &info.id),
+                    "successorCheckpointSeq": successor_continuation_checkpoint.checkpoint_seq,
+                    "acceptanceDigest": &acceptance.digest,
                     "retiredPredecessor": true,
-                }),
-            )?;
-            append_session_lifecycle_audit_with_identity(
-                app,
-                &identity,
-                &retired,
-                "context_recycled",
-                "committed",
-                serde_json::json!({
-                    "bootReconcile": true,
-                    "successorSessionId": &successor.id,
-                    "worktreeDeleted": false,
-                }),
-            )?;
-            publish_session_lifecycle_event(
-                app,
-                crate::event_bus::AgentEventKind::ContextRecycled,
-                serde_json::json!({
-                    "phase": "boot_reconciled",
-                    "predecessorLogicalSessionId": &retired.predecessor_id,
-                    "successorLogicalSessionId": &retired.successor_id,
-                    "handoffSeq": retired.handoff_seq,
-                    "correlationId": &retired.correlation_id,
-                    "worktreeDeleted": false,
                 }),
             )?;
             Ok(true)
         }
-        SessionHandoffState::PredecessorRetired | SessionHandoffState::Failed => Ok(false),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructuredHandoffBootPolicy {
+    FailedCleanup,
+    AmbiguousLegacy,
+    BeforeAcceptance,
+    Accepted,
+}
+
+fn structured_handoff_boot_policy(
+    record: &SessionHandoffDurabilityRecord,
+) -> StructuredHandoffBootPolicy {
+    if matches!(
+        record.outcome,
+        HandoffOutcome::RetryableFailure | HandoffOutcome::TerminalFailure
+    ) {
+        StructuredHandoffBootPolicy::FailedCleanup
+    } else if record.acceptance.is_none()
+        && matches!(
+            record.handoff.state,
+            SessionHandoffState::SuccessorAcked | SessionHandoffState::PredecessorRetired
+        )
+    {
+        StructuredHandoffBootPolicy::AmbiguousLegacy
+    } else if record.outcome == HandoffOutcome::Accepted
+        && record.acceptance.is_some()
+        && record.handoff.state == SessionHandoffState::SuccessorAcked
+    {
+        StructuredHandoffBootPolicy::Accepted
+    } else {
+        StructuredHandoffBootPolicy::BeforeAcceptance
+    }
+}
+
+async fn fail_and_cleanup_handoff_on_boot(
+    app: &AppHandle,
+    record: &SessionHandoffDurabilityRecord,
+    outcome: HandoffOutcome,
+    reason: &str,
+    successor_observed: bool,
+) -> Result<(), String> {
+    let db = app
+        .try_state::<crate::db::ManagedDb>()
+        .ok_or_else(|| "session_handoff requires database state".to_string())?;
+    let cleanup = if successor_observed || record.successor_pty_id.is_some() {
+        HandoffCleanupStatus::Pending
+    } else {
+        HandoffCleanupStatus::NotRequired
+    };
+    let failed = db.with(|database| {
+        SessionCheckpointRepo::record_handoff_failure(
+            database,
+            &record.handoff.predecessor_id,
+            record.handoff.handoff_seq,
+            outcome,
+            cleanup,
+            reason,
+            unix_now_secs(),
+        )
+    })?;
+    if cleanup == HandoffCleanupStatus::Pending {
+        reconcile_failed_handoff_cleanup_on_boot(app, &failed).await?;
+    }
+    Ok(())
+}
+
+async fn reconcile_failed_handoff_cleanup_on_boot(
+    app: &AppHandle,
+    record: &SessionHandoffDurabilityRecord,
+) -> Result<(), String> {
+    if !matches!(
+        record.cleanup_status,
+        HandoffCleanupStatus::Pending | HandoffCleanupStatus::Quarantined
+    ) {
+        return Ok(());
+    }
+    let db = app
+        .try_state::<crate::db::ManagedDb>()
+        .ok_or_else(|| "session_handoff requires database state".to_string())?;
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let live = find_interactive_session_optional(&session_mgr, &record.handoff.successor_id)?;
+    let cleanup_pty = record
+        .successor_pty_id
+        .clone()
+        .or_else(|| live.as_ref().map(|info| info.pty_id.clone()));
+
+    let exact_live = live.as_ref().filter(|info| {
+        info.logical_session_id == record.handoff.successor_id
+            && record
+                .successor_pty_id
+                .as_deref()
+                .map(|pty| pty == info.pty_id)
+                .unwrap_or(false)
+    });
+    let mut authority_quarantine_error = None;
+    if record.cleanup_status == HandoffCleanupStatus::Quarantined {
+        if let Some(live) = exact_live {
+            session_mgr.quarantine_generation(&live.id, &live.pty_id)?;
+            emit_interactive_sessions(app, &session_mgr);
+        }
+        if let Some(pty_id) = cleanup_pty.as_deref() {
+            authority_quarantine_error = super::commands::project_handoff_generation_quarantine(
+                app,
+                pty_id,
+                &record.handoff.successor_id,
+            )
+            .await
+            .err();
+        }
+    }
+    let normal_stop_error = if record.cleanup_status == HandoffCleanupStatus::Pending {
+        if let Some(info) = exact_live {
+            stop_interactive_agent(app.clone(), info.id.clone())
+                .await
+                .err()
+        } else {
+            Some("no exact live successor generation for normal stop".to_string())
+        }
+    } else {
+        Some("persisted quarantine requires raw close without status transition".to_string())
+    };
+    let raw_close_error = if normal_stop_error.is_some() {
+        if let Some(pty_id) = cleanup_pty.as_ref() {
+            super::commands::close_terminal(app.clone(), pty_id.clone())
+                .await
+                .err()
+        } else if live.is_none() {
+            None
+        } else {
+            Some("ambiguous successor has no durably bound pty id".to_string())
+        }
+    } else {
+        None
+    };
+
+    if normal_stop_error.is_none() || raw_close_error.is_none() {
+        if let Some(info) = live.as_ref() {
+            if session_mgr
+                .get(&info.id)?
+                .is_some_and(|current| current.status == "quarantined")
+            {
+                let _ = session_mgr.unregister(&info.id)?;
+                emit_interactive_sessions(app, &session_mgr);
+            }
+        }
+        db.with(|database| {
+            SessionCheckpointRepo::set_handoff_cleanup_status(
+                database,
+                &record.handoff.predecessor_id,
+                record.handoff.handoff_seq,
+                HandoffCleanupStatus::Stopped,
+                false,
+                unix_now_secs(),
+            )
+        })?;
+        return Ok(());
+    }
+
+    if let Some(info) = exact_live {
+        session_mgr.quarantine_generation(&info.id, &info.pty_id)?;
+        emit_interactive_sessions(app, &session_mgr);
+    }
+    if let Some(pty_id) = cleanup_pty.as_deref() {
+        authority_quarantine_error = super::commands::project_handoff_generation_quarantine(
+            app,
+            pty_id,
+            &record.handoff.successor_id,
+        )
+        .await
+        .err();
+    }
+    db.with(|database| {
+        SessionCheckpointRepo::set_handoff_cleanup_status(
+            database,
+            &record.handoff.predecessor_id,
+            record.handoff.handoff_seq,
+            HandoffCleanupStatus::Quarantined,
+            true,
+            unix_now_secs(),
+        )
+    })?;
+    Err(serde_json::json!({
+        "schema": "aelyris.session-lifecycle-boot-reconciliation/v2",
+        "code": "successor_cleanup_quarantined",
+        "predecessorLogicalSessionId": &record.handoff.predecessor_id,
+        "handoffSeq": record.handoff.handoff_seq,
+        "normalStopFailure": normal_stop_error,
+        "rawCloseFailure": raw_close_error,
+        "authorityQuarantineFailure": authority_quarantine_error,
+        "startupMustNotClaimSuccess": true,
+    })
+    .to_string())
 }
 
 struct CheckpointSummaryInput {
@@ -1285,34 +1539,6 @@ fn lifecycle_identity_from_sources(
     }
 }
 
-fn handoff_worktree_path(
-    predecessor: Option<&InteractiveSessionInfo>,
-    predecessor_checkpoint: Option<&SessionCheckpointRecord>,
-    successor: Option<&InteractiveSessionInfo>,
-) -> Option<String> {
-    predecessor
-        .and_then(|info| {
-            info.worktree_path
-                .clone()
-                .or_else(|| Some(info.cwd.clone()))
-        })
-        .or_else(|| {
-            predecessor_checkpoint.and_then(|checkpoint| {
-                checkpoint
-                    .worktree_path
-                    .clone()
-                    .or_else(|| Some(checkpoint.cwd.clone()))
-            })
-        })
-        .or_else(|| {
-            successor.and_then(|info| {
-                info.worktree_path
-                    .clone()
-                    .or_else(|| Some(info.cwd.clone()))
-            })
-        })
-}
-
 fn preserve_inflight_diff(
     info: &InteractiveSessionInfo,
     summary: &SessionSummaryDoc,
@@ -1510,25 +1736,33 @@ fn fail_session_handoff_with_identity(
     handoff: &SessionHandoffRecord,
     failure_reason: &str,
 ) -> Result<(), String> {
-    let failed = set_session_handoff_state(
-        app,
-        handoff,
-        SessionHandoffState::Failed,
-        handoff.checkpoint_seq,
-        handoff.summary_path.as_deref(),
-        Some(failure_reason),
-    )
-    .map_err(|error| {
-        serde_json::json!({
-            "schema": "aelyris.session-lifecycle-failure-reconciliation/v1",
-            "code": "failed_state_persistence_failed",
-            "predecessorLogicalSessionId": handoff.predecessor_id,
-            "handoffSeq": handoff.handoff_seq,
-            "originalFailure": failure_reason,
-            "reconciliationError": error,
+    let db = app
+        .try_state::<crate::db::ManagedDb>()
+        .ok_or_else(|| "session_handoff requires database state".to_string())?;
+    let failed = db
+        .with(|database| {
+            SessionCheckpointRepo::record_handoff_failure(
+                database,
+                &handoff.predecessor_id,
+                handoff.handoff_seq,
+                HandoffOutcome::RetryableFailure,
+                HandoffCleanupStatus::NotRequired,
+                failure_reason,
+                unix_now_secs(),
+            )
         })
-        .to_string()
-    })?;
+        .map_err(|error| {
+            serde_json::json!({
+                "schema": "aelyris.session-lifecycle-failure-reconciliation/v1",
+                "code": "failed_state_persistence_failed",
+                "predecessorLogicalSessionId": handoff.predecessor_id,
+                "handoffSeq": handoff.handoff_seq,
+                "originalFailure": failure_reason,
+                "reconciliationError": error,
+            })
+            .to_string()
+        })?
+        .handoff;
     let audit_result = append_session_lifecycle_audit_with_identity(
         app,
         identity,
@@ -1570,6 +1804,198 @@ fn fail_session_handoff_with_identity(
         tracing::error!(%error, "session lifecycle failed-state evidence is incomplete");
         Err(error)
     }
+}
+
+async fn handoff_post_spawn_error_with_cleanup(
+    app: &AppHandle,
+    predecessor: &InteractiveSessionInfo,
+    handoff: &SessionHandoffRecord,
+    successor_session_id: &str,
+    successor_logical_session_id: &str,
+    successor_pty_id: &str,
+    failure_reason: &str,
+) -> String {
+    let db = app.try_state::<crate::db::ManagedDb>();
+    let durable_failure_attempt = db
+        .as_ref()
+        .ok_or_else(|| "session handoff database state unavailable".to_string())
+        .and_then(|db| {
+            db.with(|database| {
+                SessionCheckpointRepo::record_handoff_failure(
+                    database,
+                    &handoff.predecessor_id,
+                    handoff.handoff_seq,
+                    HandoffOutcome::RetryableFailure,
+                    HandoffCleanupStatus::Pending,
+                    failure_reason,
+                    unix_now_secs(),
+                )
+            })
+        });
+    let (durable_failure, revocation_failure) = match durable_failure_attempt {
+        Ok(record) => (Ok(record), None),
+        Err(record_error) => {
+            let existing_failure = db
+                .as_ref()
+                .ok_or_else(|| "session handoff database state unavailable".to_string())
+                .and_then(|db| {
+                    db.with(|database| {
+                        SessionCheckpointRepo::get_handoff_durability(
+                            database,
+                            &handoff.predecessor_id,
+                            handoff.handoff_seq,
+                        )
+                    })
+                })
+                .and_then(|record| {
+                    record.ok_or_else(|| {
+                        format!(
+                            "session handoff not found after failure record conflict: {}#{}",
+                            handoff.predecessor_id, handoff.handoff_seq
+                        )
+                    })
+                })
+                .and_then(|record| {
+                    if record.handoff.state == SessionHandoffState::Failed {
+                        Ok(record)
+                    } else {
+                        Err(format!(
+                            "session handoff failure record conflict left state {} for {}#{}",
+                            record.handoff.state.as_str(),
+                            handoff.predecessor_id,
+                            handoff.handoff_seq
+                        ))
+                    }
+                });
+            match existing_failure {
+                Ok(record) => (Ok(record), None),
+                Err(load_error) => {
+                    let error = format!("{record_error}; reload failed handoff: {load_error}");
+                    (Err(error.clone()), Some(error))
+                }
+            }
+        }
+    };
+
+    let session_mgr = app.state::<InteractiveSessionManager>();
+    let exact_live = session_mgr
+        .get(successor_session_id)
+        .ok()
+        .flatten()
+        .filter(|info| {
+            info.logical_session_id == successor_logical_session_id
+                && info.pty_id == successor_pty_id
+        });
+    let normal_stop_error = if exact_live.is_some() {
+        stop_interactive_agent(app.clone(), successor_session_id.to_string())
+            .await
+            .err()
+    } else {
+        Some("successor runtime generation did not exactly match the spawned identity".to_string())
+    };
+    let raw_close_error = if normal_stop_error.is_some() {
+        super::commands::close_terminal(app.clone(), successor_pty_id.to_string())
+            .await
+            .err()
+    } else {
+        None
+    };
+
+    if normal_stop_error.is_none() || raw_close_error.is_none() {
+        let cleanup = match (&db, &durable_failure) {
+            (Some(db), Ok(failed)) => db.with(|database| {
+                SessionCheckpointRepo::set_handoff_cleanup_status(
+                    database,
+                    &failed.handoff.predecessor_id,
+                    failed.handoff.handoff_seq,
+                    HandoffCleanupStatus::Stopped,
+                    false,
+                    unix_now_secs(),
+                )
+            }),
+            _ => Err(revocation_failure
+                .clone()
+                .unwrap_or_else(|| "durable failure record unavailable".to_string())),
+        };
+        return if revocation_failure.is_none() && cleanup.is_ok() {
+            failure_reason.to_string()
+        } else {
+            serde_json::json!({
+                "schema": "aelyris.session-lifecycle-operation-failure/v2",
+                "code": "successor_stopped_but_cleanup_persistence_failed",
+                "operationFailure": failure_reason,
+                "revocationFailure": revocation_failure,
+                "cleanupFailure": cleanup.err(),
+                "successorPtyId": successor_pty_id,
+                "startupMustNotClaimSuccess": true,
+            })
+            .to_string()
+        };
+    }
+
+    let live_quarantine_projection = session_mgr
+        .quarantine_generation(successor_session_id, successor_pty_id)
+        .map_err(|error| error.to_string());
+    let authority_quarantine_projection = super::commands::project_handoff_generation_quarantine(
+        app,
+        successor_pty_id,
+        successor_session_id,
+    )
+    .await;
+    let durable_quarantine = match (&db, &durable_failure) {
+        (Some(db), Ok(failed)) => db.with(|database| {
+            SessionCheckpointRepo::set_handoff_cleanup_status(
+                database,
+                &failed.handoff.predecessor_id,
+                failed.handoff.handoff_seq,
+                HandoffCleanupStatus::Quarantined,
+                true,
+                unix_now_secs(),
+            )
+        }),
+        _ => Err(revocation_failure
+            .clone()
+            .unwrap_or_else(|| "durable failure record unavailable".to_string())),
+    };
+    let failed_core = durable_quarantine
+        .as_ref()
+        .map(|record| record.handoff.clone())
+        .or_else(|_| {
+            durable_failure
+                .as_ref()
+                .map(|record| record.handoff.clone())
+        })
+        .unwrap_or_else(|_| handoff.clone());
+    let _ = append_session_lifecycle_audit(
+        app,
+        predecessor,
+        &failed_core,
+        "session_handoff",
+        "failed",
+        serde_json::json!({
+            "failureReason": failure_reason,
+            "normalStopError": normal_stop_error,
+            "rawCloseError": raw_close_error,
+            "liveQuarantineProjection": &live_quarantine_projection,
+            "authorityQuarantineProjection": &authority_quarantine_projection,
+            "durableQuarantine": durable_quarantine.as_ref().map(|_| true),
+            "revocationFailure": &revocation_failure,
+        }),
+    );
+    serde_json::json!({
+        "schema": "aelyris.session-lifecycle-operation-failure/v2",
+        "code": "successor_quarantined_after_cleanup_failure",
+        "operationFailure": failure_reason,
+        "normalStopFailure": normal_stop_error,
+        "rawCloseFailure": raw_close_error,
+        "liveQuarantineProjection": live_quarantine_projection,
+        "authorityQuarantineProjection": authority_quarantine_projection,
+        "revocationFailure": revocation_failure,
+        "durableQuarantineFailure": durable_quarantine.err(),
+        "successorPtyId": successor_pty_id,
+        "reconciliationRequired": true,
+    })
+    .to_string()
 }
 
 fn handoff_error_with_reconciliation(
@@ -1617,6 +2043,30 @@ async fn wait_for_successor_liveness(
     Err(format!(
         "successor session did not remain live after ack: {session_id}"
     ))
+}
+
+fn validate_generation_identity(
+    info: &InteractiveSessionInfo,
+    checkpoint: &SessionCheckpointRecord,
+    expected_logical_session_id: &str,
+    expected_pty_id: &str,
+) -> Result<(), String> {
+    if info.logical_session_id == expected_logical_session_id
+        && info.pty_id == expected_pty_id
+        && checkpoint.logical_session_id == expected_logical_session_id
+        && checkpoint.pty_id == expected_pty_id
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "session generation mismatch: expected logical/pty {expected_logical_session_id}/{expected_pty_id}, live {}/{}, checkpoint {}/{}#{}",
+            info.logical_session_id,
+            info.pty_id,
+            checkpoint.logical_session_id,
+            checkpoint.pty_id,
+            checkpoint.checkpoint_seq
+        ))
+    }
 }
 
 fn find_interactive_session(
@@ -1688,6 +2138,88 @@ fn build_summary_validation_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn structured_handoff_boot_record(
+        state: SessionHandoffState,
+        outcome: HandoffOutcome,
+        cleanup_status: HandoffCleanupStatus,
+        acceptance: Option<HandoffAcceptanceRecord>,
+    ) -> SessionHandoffDurabilityRecord {
+        SessionHandoffDurabilityRecord {
+            handoff: SessionHandoffRecord {
+                predecessor_id: "predecessor".to_string(),
+                successor_id: "successor".to_string(),
+                handoff_seq: 1,
+                state,
+                correlation_id: "corr".to_string(),
+                checkpoint_seq: Some(1),
+                summary_path: Some("summary.json".to_string()),
+                failure_reason: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+            predecessor_pty_id: Some("pty-predecessor".to_string()),
+            successor_pty_id: Some("pty-successor".to_string()),
+            successor_checkpoint_seq: Some(1),
+            baton_version: 1,
+            acceptance,
+            acceptance_digest: None,
+            outcome,
+            cleanup_status,
+        }
+    }
+
+    #[test]
+    fn structured_handoff_boot_policy_keeps_legacy_and_quarantine_reconcilable() {
+        let legacy = structured_handoff_boot_record(
+            SessionHandoffState::PredecessorRetired,
+            HandoffOutcome::Pending,
+            HandoffCleanupStatus::NotRequired,
+            None,
+        );
+        assert_eq!(
+            structured_handoff_boot_policy(&legacy),
+            StructuredHandoffBootPolicy::AmbiguousLegacy
+        );
+
+        let quarantined = structured_handoff_boot_record(
+            SessionHandoffState::Failed,
+            HandoffOutcome::TerminalFailure,
+            HandoffCleanupStatus::Quarantined,
+            None,
+        );
+        assert!(quarantined.requires_reconciliation());
+        assert_eq!(
+            structured_handoff_boot_policy(&quarantined),
+            StructuredHandoffBootPolicy::FailedCleanup
+        );
+    }
+
+    #[test]
+    fn structured_handoff_migrated_legacy_failure_reconciles_once_without_acceptance() {
+        let mut legacy_failed = structured_handoff_boot_record(
+            SessionHandoffState::Failed,
+            HandoffOutcome::TerminalFailure,
+            HandoffCleanupStatus::Pending,
+            None,
+        );
+        legacy_failed.predecessor_pty_id = None;
+        legacy_failed.successor_pty_id = None;
+        legacy_failed.successor_checkpoint_seq = None;
+        legacy_failed.baton_version = 0;
+        legacy_failed.handoff.failure_reason = Some("legacy cleanup interrupted".to_string());
+
+        assert!(legacy_failed.acceptance.is_none());
+        assert!(legacy_failed.requires_reconciliation());
+        assert_eq!(
+            structured_handoff_boot_policy(&legacy_failed),
+            StructuredHandoffBootPolicy::FailedCleanup
+        );
+
+        legacy_failed.cleanup_status = HandoffCleanupStatus::Stopped;
+        assert!(!legacy_failed.requires_reconciliation());
+        assert!(legacy_failed.acceptance.is_none());
+    }
 
     #[test]
     fn lifecycle_publish_failure_is_structured_partial_success_not_silent_success() {

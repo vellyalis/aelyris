@@ -196,6 +196,7 @@ const queries = read("src-tauri/src/db/queries.rs");
 const checkpointRepo = read("src-tauri/src/persistence/session_checkpoint_repo.rs");
 const interactiveManager = read("src-tauri/src/agent/interactive.rs");
 const lifecycle = read("src-tauri/src/ipc/session_lifecycle_commands.rs");
+const sessionLifecycle = read("src-tauri/src/agent/session_lifecycle.rs");
 const durableFile = read("src-tauri/src/durable_file.rs");
 const settings = read("src-tauri/src/config/settings.rs");
 const muxStore = read("src-tauri/src/mux/store.rs");
@@ -216,18 +217,22 @@ const eventCommands = read("src-tauri/src/ipc/event_commands.rs");
 const contextCommands = read("src-tauri/src/ipc/context_commands.rs");
 const mcp = read("src-tauri/src/api/mcp.rs");
 const apiState = read("src-tauri/src/api/mod.rs");
+const terminalAuthority = read("src-tauri/src/command_risk/authority.rs");
 const orchestratorCommands = read("src-tauri/src/ipc/orchestrator_commands.rs");
 const eventTypesTs = read("src/shared/types/eventBus.ts");
 const mcpSpec = read("docs/specs/MCP_TOOL_SURFACE_SPEC.md");
 const hardeningReadme = read("docs/hardening/00_README.md");
 const hardeningSpec = read("docs/hardening/02_SPEC.md");
 const remediationPlan = read("docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md");
+const workOrder = read("audit-remediation-instructions.md");
 const packageJson = JSON.parse(read("package.json"));
 const acceptancePath = join(root, ".codex-auto", "quality", "a4-durability-acceptance.json");
 const acceptance = existsSync(acceptancePath) ? JSON.parse(readFileSync(acceptancePath, "utf8")) : null;
 const acceptanceProvenance = acceptance
   ? validateEvidenceProvenance({ root, artifact: acceptance })
   : { ok: false, errors: ["missing-acceptance-artifact"] };
+const activeSlice = workOrder.match(/^ACTIVE SLICE:\s+`([^`]+)`\.$/m)?.[1] ?? null;
+const completedSlice = workOrder.match(/^LAST COMPLETED SLICE:\s+`([^`]+)`\.$/m)?.[1] ?? null;
 
 const expectedEventTools = [
   "aelyris.event.recent",
@@ -339,12 +344,13 @@ const ready = lib.indexOf("state.complete(adopted, restored, reconciled)");
 
 const checks = {
   numberedSchemaVersion:
-    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 5") &&
+    migrations.includes("CURRENT_SCHEMA_VERSION: i64 = 6") &&
     migrations.includes('pragma_update(None, "user_version", 1)') &&
     migrations.includes('pragma_update(None, "user_version", 2)') &&
     migrations.includes('pragma_update(None, "user_version", 3)') &&
     migrations.includes('pragma_update(None, "user_version", 4)') &&
     migrations.includes('pragma_update(None, "user_version", 5)') &&
+    migrations.includes('pragma_update(None, "user_version", 6)') &&
     migrations.includes('execute_batch("BEGIN IMMEDIATE")') &&
     migrations.includes('execute_batch("ROLLBACK")'),
   newerSchemaFailsClosed:
@@ -606,7 +612,43 @@ const checks = {
     exactSet(tsStructuredErrorTools, expectedStructuredErrorTools) &&
     remediationPlan.includes("### **A4.9** Complete - Durable Execution Attempt And Effect Fence") &&
     remediationPlan.includes("### **A4.10** Complete - All-Authority Startup Reconciliation") &&
-    remediationPlan.includes("### **A4.11** Active - Structured Handoff Acceptance And Successor Quarantine"),
+    remediationPlan.includes(
+      "### **A4.11** Complete - Structured Handoff Acceptance And Successor Quarantine",
+    ) &&
+    activeSlice === acceptance?.remainingSlices?.[0] &&
+    completedSlice === acceptance?.completedThrough,
+  structuredHandoffAcceptanceAndQuarantine:
+    migrations.includes("pub const CURRENT_SCHEMA_VERSION: i64 = 6") &&
+    migrations.includes("const V6_SCHEMA") &&
+    migrations.includes("trg_session_handoffs_structured_record_valid") &&
+    migrations.includes("trg_session_handoffs_failed_never_reopens") &&
+    sessionLifecycle.includes("pub struct HandoffAcceptanceRecord") &&
+    sessionLifecycle.includes("pub struct HandoffGenerationIdentity") &&
+    sessionLifecycle.includes("pub struct AcceptedCheckpointRef") &&
+    sessionLifecycle.includes("checkpoint_digest") &&
+    sessionLifecycle.includes("deny_unknown_fields") &&
+    checkpointRepo.includes("pub enum HandoffOutcome") &&
+    checkpointRepo.includes("pub enum HandoffCleanupStatus") &&
+    checkpointRepo.includes("pub struct SessionHandoffDurabilityRecord") &&
+    checkpointRepo.includes("pub fn bind_handoff_generations") &&
+    checkpointRepo.includes("pub fn record_handoff_acceptance") &&
+    checkpointRepo.includes("pub fn record_handoff_failure") &&
+    checkpointRepo.includes("pub fn ensure_successor_continuation_checkpoint") &&
+    checkpointRepo.includes("pub fn list_handoffs_requiring_reconciliation") &&
+    lifecycle.includes("checkpoint_record_digest(&checkpoint.checkpoint)") &&
+    lifecycle.includes("handoff_post_spawn_error_with_cleanup") &&
+    lifecycle.includes("reconcile_failed_handoff_cleanup_on_boot") &&
+    interactiveManager.includes("pub fn quarantine_generation") &&
+    terminalAuthority.includes("quarantined_targets") &&
+    terminalAuthority.includes("handoff_generation_quarantined") &&
+    terminalAuthority.includes(
+      "structured_handoff_shared_authority_fences_quarantined_target_before_any_write",
+    ) &&
+    apiState.includes("structured_handoff_external_rest_write_is_denied_by_shared_quarantine_authority") &&
+    !terminal.includes("first_quarantined_write_target") &&
+    remediationPlan.includes(
+      "### **A4.11** Complete - Structured Handoff Acceptance And Successor Quarantine",
+    ),
   crashSafeReplacementOwner:
     durableFile.includes("pub fn atomic_write") &&
     durableFile.includes("file.sync_all()") &&
@@ -629,16 +671,18 @@ const checks = {
   fullAcceptanceMatrix:
     packageJson.scripts?.["verify:a4:durability:acceptance"] === "node scripts/verify-a4-durability-acceptance.mjs" &&
     acceptance?.status === "pass-current-a4-durability-evidence" &&
-    acceptance?.schema === "aelyris.a4-durability-acceptance/v6" &&
-    acceptance?.completedThrough === "A4.10" &&
+    acceptance?.schema === "aelyris.a4-durability-acceptance/v7" &&
+    acceptance?.completedThrough === "A4.11" &&
     acceptance?.repoOwnedComplete === false &&
     acceptance?.phaseComplete === false &&
-    acceptance?.scenarios?.length === 22 &&
+    exactSet(acceptance?.remainingSlices ?? [], ["A4.12"]) &&
+    acceptance?.scenarios?.length === 23 &&
     acceptance.scenarios.every((scenario) => scenario.status === "pass") &&
     [
       "work-execution-attempt-generation-and-load-integrity",
       "execution-fence-crash-boundaries-and-stale-token",
       "all-authority-startup-reconciliation-and-dispatch-admission",
+      "structured-handoff-acceptance-and-successor-quarantine",
       "event-outbox-append-query-gap-and-consumer-ack",
       "event-mcp-structured-error-and-catalog-contract",
       "session-lifecycle-event-publish-failure-truth",
@@ -659,12 +703,12 @@ if (failures.length > 0) {
 const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
-  schema: "aelyris.a4-durability-contract/v6",
+  schema: "aelyris.a4-durability-contract/v7",
   status: "pass-current-a4-durability-contract",
-  activeSlice: "A4.11",
-  completedSlice: "A4.10",
+  activeSlice,
+  completedSlice,
   phaseComplete: false,
-  remainingSlices: ["A4.11", "A4.12"],
+  remainingSlices: acceptance.remainingSlices,
   externalProof: acceptance.externalProof,
   checks,
   generatedAt,
@@ -684,6 +728,7 @@ const report = {
       "src-tauri/src/db/queries.rs",
       "src-tauri/src/persistence/session_checkpoint_repo.rs",
       "src-tauri/src/agent/interactive.rs",
+      "src-tauri/src/agent/session_lifecycle.rs",
       "src-tauri/src/context_store/manager.rs",
       "src-tauri/src/task/manager.rs",
       "src-tauri/src/task/graph.rs",
@@ -699,12 +744,14 @@ const report = {
       "src-tauri/src/ipc/context_commands.rs",
       "src-tauri/src/api/mcp.rs",
       "src-tauri/src/api/mod.rs",
+      "src-tauri/src/command_risk/authority.rs",
       "src-tauri/src/ipc/orchestrator_commands.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "src/shared/types/eventBus.ts",
       "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
       "docs/hardening/00_README.md",
       "docs/hardening/02_SPEC.md",
+      "audit-remediation-instructions.md",
       "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md",
       "src-tauri/src/durable_file.rs",
       "src-tauri/src/config/settings.rs",

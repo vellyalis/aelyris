@@ -74,6 +74,12 @@ const scenarios = [
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "ipc::session_lifecycle_commands::tests", "--lib"],
   },
   {
+    id: "structured-handoff-acceptance-and-successor-quarantine",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "structured_handoff_", "--lib"],
+    minimumPassed: 16,
+  },
+  {
     id: "locked-db-and-multi-connection",
     command: cargo,
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::session_checkpoint_repo::tests", "--lib"],
@@ -143,6 +149,17 @@ for (const scenario of scenarios) {
       timeout: 240_000,
       env: { ...process.env, NO_COLOR: "1" },
     });
+    if (scenario.minimumPassed !== undefined) {
+      const passed = [...stdout.matchAll(/test result: ok\.\s+(\d+) passed/g)].reduce(
+        (maximum, match) => Math.max(maximum, Number.parseInt(match[1], 10)),
+        0,
+      );
+      if (passed < scenario.minimumPassed) {
+        throw new Error(
+          `${scenario.id} executed ${passed} matching tests; expected at least ${scenario.minimumPassed}`,
+        );
+      }
+    }
     results.push({
       id: scenario.id,
       status: "pass",
@@ -173,12 +190,12 @@ for (const scenario of scenarios) {
 
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a4-durability-acceptance/v6",
+  schema: "aelyris.a4-durability-acceptance/v7",
   status: failed ? "failed" : "pass-current-a4-durability-evidence",
-  completedThrough: failed ? "A4.9" : "A4.10",
+  completedThrough: failed ? "A4.10" : "A4.11",
   repoOwnedComplete: false,
   phaseComplete: false,
-  remainingSlices: ["A4.11", "A4.12"],
+  remainingSlices: failed ? ["A4.11", "A4.12"] : ["A4.12"],
   scenarios: results,
   externalProof: {
     realOsSleepResumeExecuted: false,
@@ -213,6 +230,7 @@ const report = {
       "src-tauri/src/ipc/context_commands.rs",
       "src-tauri/src/ipc/event_commands.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
+      "src-tauri/src/command_risk/authority.rs",
       "src-tauri/src/api/mcp.rs",
       "src-tauri/src/api/mod.rs",
       "src-tauri/src/ipc/orchestrator_commands.rs",

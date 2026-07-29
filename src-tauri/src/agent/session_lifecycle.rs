@@ -2,6 +2,7 @@ use regex::Regex;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -11,7 +12,9 @@ use crate::git::{ChangedFile, GitStatusInfo};
 use crate::task::graph::Task;
 
 pub const SUMMARY_SCHEMA: &str = "aelyris.session.v1";
+pub const HANDOFF_ACCEPTANCE_SCHEMA: &str = "aelyris.handoff-acceptance.v1";
 const MAX_SUMMARY_BYTES: u64 = 256 * 1024;
+const MAX_HANDOFF_ACCEPTANCE_BYTES: u64 = 16 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +107,44 @@ pub struct SessionSummaryFiles {
 pub struct SessionAckFile {
     pub handoff_dir: PathBuf,
     pub ack_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HandoffGenerationIdentity {
+    pub logical_session_id: String,
+    pub pty_id: String,
+    pub checkpoint_seq: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptedCheckpointRef {
+    pub logical_session_id: String,
+    pub checkpoint_seq: u64,
+    pub summary_path: String,
+    pub checkpoint_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HandoffAcceptanceRecord {
+    pub schema: String,
+    pub predecessor_generation: HandoffGenerationIdentity,
+    pub successor_generation: HandoffGenerationIdentity,
+    pub accepted_checkpoint: AcceptedCheckpointRef,
+    pub baton_version: u64,
+    pub digest: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HandoffAcceptanceDigestInput<'a> {
+    schema: &'a str,
+    predecessor_generation: &'a HandoffGenerationIdentity,
+    successor_generation: &'a HandoffGenerationIdentity,
+    accepted_checkpoint: &'a AcceptedCheckpointRef,
+    baton_version: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -325,7 +366,10 @@ pub fn build_successor_seed_prompt(
     summary_path: &Path,
     ack_path: &Path,
     reason: &str,
+    expected_acceptance: &HandoffAcceptanceRecord,
 ) -> String {
+    let acceptance_json =
+        serde_json::to_string_pretty(expected_acceptance).expect("acceptance record serializes");
     format!(
         r#"Aelyris session_handoff continuation.
 Reason: {reason}
@@ -335,8 +379,11 @@ Successor logical session: {successor}
 First, read this checkpoint summary file:
 {summary_path}
 
-After you have read it and loaded the continuing task context, write this ack file:
+After you have read it and loaded the continuing task context, write this exact JSON object
+with no extra fields to the ack file below:
 {ack_path}
+
+{acceptance_json}
 
 Do not delete or move the predecessor worktree. Continue from the summary's nextAction and preserve any inFlightDiff ref named there.
 "#,
@@ -344,8 +391,131 @@ Do not delete or move the predecessor worktree. Continue from the summary's next
         predecessor = predecessor_logical_session_id,
         successor = successor_logical_session_id,
         summary_path = summary_path.display(),
-        ack_path = ack_path.display()
+        ack_path = ack_path.display(),
+        acceptance_json = acceptance_json,
     )
+}
+
+pub fn checkpoint_record_digest<T: Serialize>(checkpoint: &T) -> Result<String, String> {
+    let bytes = serde_json::to_vec(checkpoint)
+        .map_err(|error| format!("serialize checkpoint digest input: {error}"))?;
+    Ok(format!("sha256:{:x}", Sha256::digest(&bytes)))
+}
+
+pub fn build_handoff_acceptance_record(
+    predecessor_generation: HandoffGenerationIdentity,
+    successor_generation: HandoffGenerationIdentity,
+    accepted_checkpoint: AcceptedCheckpointRef,
+    baton_version: u64,
+) -> Result<HandoffAcceptanceRecord, String> {
+    if baton_version == 0 {
+        return Err("handoff acceptance batonVersion must be greater than zero".to_string());
+    }
+    let mut record = HandoffAcceptanceRecord {
+        schema: HANDOFF_ACCEPTANCE_SCHEMA.to_string(),
+        predecessor_generation,
+        successor_generation,
+        accepted_checkpoint,
+        baton_version,
+        digest: String::new(),
+    };
+    record.digest = handoff_acceptance_digest(&record)?;
+    Ok(record)
+}
+
+pub fn handoff_acceptance_digest(record: &HandoffAcceptanceRecord) -> Result<String, String> {
+    let input = HandoffAcceptanceDigestInput {
+        schema: &record.schema,
+        predecessor_generation: &record.predecessor_generation,
+        successor_generation: &record.successor_generation,
+        accepted_checkpoint: &record.accepted_checkpoint,
+        baton_version: record.baton_version,
+    };
+    let bytes = serde_json::to_vec(&input)
+        .map_err(|error| format!("serialize handoff acceptance digest input: {error}"))?;
+    Ok(format!("sha256:{:x}", Sha256::digest(&bytes)))
+}
+
+pub fn validate_handoff_acceptance_record(record: &HandoffAcceptanceRecord) -> Result<(), String> {
+    require_eq(
+        record.schema.trim(),
+        HANDOFF_ACCEPTANCE_SCHEMA,
+        "handoff acceptance schema",
+    )?;
+    require_nonempty(
+        &record.predecessor_generation.logical_session_id,
+        "predecessorGeneration.logicalSessionId",
+    )?;
+    require_nonempty(
+        &record.predecessor_generation.pty_id,
+        "predecessorGeneration.ptyId",
+    )?;
+    require_nonempty(
+        &record.successor_generation.logical_session_id,
+        "successorGeneration.logicalSessionId",
+    )?;
+    require_nonempty(
+        &record.successor_generation.pty_id,
+        "successorGeneration.ptyId",
+    )?;
+    require_nonempty(
+        &record.accepted_checkpoint.logical_session_id,
+        "acceptedCheckpoint.logicalSessionId",
+    )?;
+    require_nonempty(
+        &record.accepted_checkpoint.summary_path,
+        "acceptedCheckpoint.summaryPath",
+    )?;
+    if !record
+        .accepted_checkpoint
+        .checkpoint_digest
+        .starts_with("sha256:")
+        || record.accepted_checkpoint.checkpoint_digest.len() != "sha256:".len() + 64
+    {
+        return Err("acceptedCheckpoint.checkpointDigest must be a sha256 digest".to_string());
+    }
+    if record.baton_version == 0 {
+        return Err("handoff acceptance batonVersion must be greater than zero".to_string());
+    }
+    let expected = handoff_acceptance_digest(record)?;
+    if record.digest != expected {
+        return Err(format!(
+            "handoff acceptance digest mismatch: {} != {}",
+            record.digest, expected
+        ));
+    }
+    Ok(())
+}
+
+pub fn read_handoff_acceptance(
+    path: &Path,
+    expected: &HandoffAcceptanceRecord,
+) -> Result<HandoffAcceptanceRecord, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("handoff acceptance file missing or unreadable: {error}"))?;
+    if metadata.len() > MAX_HANDOFF_ACCEPTANCE_BYTES {
+        return Err(format!(
+            "handoff acceptance file is too large: {} bytes > {}",
+            metadata.len(),
+            MAX_HANDOFF_ACCEPTANCE_BYTES
+        ));
+    }
+    let bytes =
+        fs::read(path).map_err(|error| format!("read handoff acceptance failed: {error}"))?;
+    if bytes.len() as u64 > MAX_HANDOFF_ACCEPTANCE_BYTES {
+        return Err(format!(
+            "handoff acceptance file is too large: {} bytes > {}",
+            bytes.len(),
+            MAX_HANDOFF_ACCEPTANCE_BYTES
+        ));
+    }
+    let record: HandoffAcceptanceRecord = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("handoff acceptance schema invalid: {error}"))?;
+    validate_handoff_acceptance_record(&record)?;
+    if &record != expected {
+        return Err("handoff acceptance values do not exactly match the expected generation, checkpoint, and baton".to_string());
+    }
+    Ok(record)
 }
 
 pub fn read_redacted_summary(
@@ -726,6 +896,29 @@ mod tests {
         }
     }
 
+    fn structured_acceptance() -> HandoffAcceptanceRecord {
+        build_handoff_acceptance_record(
+            HandoffGenerationIdentity {
+                logical_session_id: "agent-1".to_string(),
+                pty_id: "pty-1".to_string(),
+                checkpoint_seq: 4,
+            },
+            HandoffGenerationIdentity {
+                logical_session_id: "agent-2".to_string(),
+                pty_id: "pty-2".to_string(),
+                checkpoint_seq: 1,
+            },
+            AcceptedCheckpointRef {
+                logical_session_id: "agent-1".to_string(),
+                checkpoint_seq: 4,
+                summary_path: "C:/repo/.aelyris/handoff/agent-1.1.json".to_string(),
+                checkpoint_digest: format!("sha256:{}", "a".repeat(64)),
+            },
+            1,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn parses_redacts_and_validates_summary_against_external_state() {
         let raw = valid_summary_json().replace(
@@ -865,16 +1058,67 @@ mod tests {
 
     #[test]
     fn successor_seed_prompt_names_summary_and_ack_files() {
+        let acceptance = structured_acceptance();
         let prompt = build_successor_seed_prompt(
             "agent-1",
             "agent-2",
             &PathBuf::from("C:/repo/.aelyris/handoff/agent-1.1.json"),
             &PathBuf::from("C:/repo/.aelyris/handoff/agent-2.ack"),
             "context_pressure",
+            &acceptance,
         );
         assert!(prompt.contains("session_handoff"));
         assert!(prompt.contains("agent-1.1.json"));
         assert!(prompt.contains("agent-2.ack"));
+        assert!(prompt.contains(&acceptance.digest));
         assert!(!prompt.contains("capture_pane"));
+    }
+
+    #[test]
+    fn structured_handoff_ack_rejects_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("acceptance.json");
+        let expected = structured_acceptance();
+        let mut value = serde_json::to_value(&expected).unwrap();
+        value["unexpected"] = serde_json::json!(true);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let error = read_handoff_acceptance(&path, &expected).unwrap_err();
+        assert!(error.contains("unknown field"), "{error}");
+    }
+
+    #[test]
+    fn structured_handoff_ack_rejects_digest_tamper_and_exact_value_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("acceptance.json");
+        let expected = structured_acceptance();
+        let mut tampered = expected.clone();
+        tampered.successor_generation.pty_id = "pty-other".to_string();
+        fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
+        let error = read_handoff_acceptance(&path, &expected).unwrap_err();
+        assert!(error.contains("digest mismatch"), "{error}");
+
+        tampered = build_handoff_acceptance_record(
+            tampered.predecessor_generation,
+            tampered.successor_generation,
+            tampered.accepted_checkpoint,
+            tampered.baton_version,
+        )
+        .unwrap();
+        fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
+        let error = read_handoff_acceptance(&path, &expected).unwrap_err();
+        assert!(error.contains("do not exactly match"), "{error}");
+    }
+
+    #[test]
+    fn structured_handoff_ack_rejects_oversize_input_before_parse() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("acceptance.json");
+        fs::write(
+            &path,
+            vec![b' '; (MAX_HANDOFF_ACCEPTANCE_BYTES as usize) + 1],
+        )
+        .unwrap();
+        let error = read_handoff_acceptance(&path, &structured_acceptance()).unwrap_err();
+        assert!(error.contains("too large"), "{error}");
     }
 }

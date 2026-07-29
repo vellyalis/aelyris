@@ -126,18 +126,18 @@ feat/approval-inbox には触れない。spec の穴は修正提案付きで報�
 - Out-of-scope: handoff 配信（RT-1d）。
 
 ### RT-1d handoff トランザクション（no-loss）＋統治
-- Goal: intent→checkpoint→audit→後継 spawn(seed)→後継 ack ファイル＋liveness→旧退役 を fail-closed/冪等。
+- Goal: intent→checkpoint digest→audit→後継 spawn→generation/baton bind→structured acceptance＋liveness→旧退役 を fail-closed/冪等。
 - Owner files: `interactive_commands.rs`（spawn/stop の合成）、`control/loop_ports.rs`（`build_adr_header` 範の seed）、`event_bus/mod.rs`（variant）、`audit.rs`（journal）、`supervisor/escalation_sink.rs`（durable 半分の範）、`merge_intent/store.rs`（intent/CAS/reconcile 範）。
 - Edit points（親spec §7 の順序を厳守）:
   1. **耐久 intent 行**を先に（`session_handoffs`：predecessor_id＋**事前採番 successor logical_session_id**＋handoff_seq＋state=pending_summary、UNIQUE で double-spawn 防止）。
   2. `session_summarize`（§RT-1b）＋**inFlightDiff 非空なら退役前に `commit_worktree`/`git stash create` で durable ref 化**し checkpoint 記録。state→checkpointed。
   3. `session_checkpoint`（耐久化 commit 待ち）。
   4. **退役前に handoff audit を journal append**（§9、`session_handoff committing`）。state→successor_spawning。
-  5. 後継 `spawn_interactive_agent` を**要約ファイル参照シード**（「checkpoint の要約ファイルを最初に読め。読了後 `…/<successor>.ack` を Write せよ」）。state→successor_spawned。
-  6. **後継 ack ファイル**観測（EventBus::since ではない＝CLI publish 不可）**＋後継が running/idle に達し debounce 窓生存**を確認（ack=読込, liveness は別）。state→successor_acked。
-  7. **確認後にのみ** predecessor を **`stop_interactive_agent`（kill のみ・worktree 非削除）**で退役。lineage を checkpoint 確定。`session_handoff committed` audit。state→predecessor_retired。
-  8. 失敗時: 後継未確認なら退役しない。`session_handoff failed` audit。
-- crash 冪等: idempotency-key=`predecessor_id:handoff_seq`。**boot `reconcile_dangling`** が `session_handoffs` を走査し live PTY/worktree を実検査して一意収束（restore-pending は使わない＝lineage/retire intent を運べない）。
+  5. 後継を seed なしで spawn し、実 PTY と初回 checkpoint を intent 行へ expected-state CAS で束縛する。`baton_version=handoff_seq` として state→successor_spawned。その後、要約参照と期待する `HandoffAcceptanceRecord` を送る。
+  6. ack path の JSON は schema、両 generation、accepted checkpoint の canonical digest、baton、record digest を完全照合する。**structured acceptance＋running/idle debounce 生存**の両方が通った場合だけ outcome=accepted / state→successor_acked。
+  7. **確認後にのみ** exact successor PTY の lineage checkpoint を idempotent に確定し、その後 predecessor を **`stop_interactive_agent`（kill のみ・worktree 非削除）**で退役する。`session_handoff committed` audit。state→predecessor_retired。
+  8. successor spawn 後の全失敗は failed outcome を先に耐久化し、exact successor を stop→raw close の順で止める。両方失敗時は sticky quarantine を IPC / REST / WS / MCP / internal sidecar 共通の `TerminalInputAuthority` へ投影し、全 terminal write face を一度だけ fence して terminal_failure/quarantined を保存する。
+- crash 冪等: idempotency-key=`predecessor_id:handoff_seq`＋expected-state CAS。boot は非終端、failed cleanup、legacy acceptance 欠落、accepted digest/generation mismatch を再調停し、acceptance 後クラッシュでは exact successor lineage checkpoint を一度だけ補ってから predecessor を退役する。v5 legacy `failed` は acceptance を捏造せず terminal failure cleanup として収束させる。
 - Contract: 後継未確認で旧退役なし。lineage=`predecessor_session_id`。1 handoff=1 correlation_id。
 - Reuse: `escalation_sink`（durable 半分）、`AuditJournalAppend`（session_id/correlation_id/payload_json 既存）、`emit_agent_fleet`。
 - Verifier: **`scripts/verify-session-handoff-no-loss.mjs`（必須）**。assert: context 無損失（checkpoint 耐久＋後継 ack＋旧解放＋inFlightDiff 復元）AND **audit 無損失**（journal に `session_handoff`＋correlation_id、`get_audit_trace` 返る）AND crash 注入で「両退役なし/二重 spawn なし/worktree 非削除」。
@@ -164,9 +164,9 @@ feat/approval-inbox には触れない。spec の穴は修正提案付きで報�
 ## 3. 共有契約（フェーズ横断）
 
 - **verb**: `session_checkpoint`/`session_summarize`/`session_handoff`/`session_resume`/`session_reset_context`（IPC＋MCP）。
-- **handoff ファイル規約**: 要約 `<worktree>/.aelyris/handoff/<logical_session_id>.<seq>.json`＋完了印 `.done`。後継 ack `<worktree>/.aelyris/handoff/<successor_id>.ack`。`.gitignore` に `.aelyris/` を追加。
+- **handoff ファイル規約**: 要約 `<worktree>/.aelyris/handoff/<logical_session_id>.<seq>.json`＋完了印 `.done`。後継 acceptance `<worktree>/.aelyris/handoff/<successor_id>.ack` は `aelyris.handoff-acceptance.v1` JSON で、空ファイル ACK は無効。`.gitignore` に `.aelyris/` を追加。
 - **SummaryDoc**(`aelyris.session.v1`): goal, currentTask{id,status,subtasks}, decisions[key], openQuestions[], files[], symbols[], inFlightDiff{present,disposition,ref}, nextAction, risks[]。**Rust 境界で redact 後のみ**耐久化。
-- **state 機械**(`session_handoffs.state`): pending_summary→checkpointed→successor_spawning→successor_spawned→successor_acked→predecessor_retired／failed。
+- **state 機械**(`session_handoffs.state`): pending_summary→checkpointed→successor_spawning→successor_spawned→successor_acked→predecessor_retired／failed。v6 durability 列の `outcome` と `cleanup_status` は failed row を再Openせず、accepted checkpoint/generation/baton と cleanup 終端を保持する。
 - **イベント/監査**: EventBus `SessionHandoff`/`ContextRecycled`（mod.rs round-trip テスト）。Audit Journal kind `session_handoff`/`context_recycled`（**journal 経路のみ・退役前 append・compaction 除外**）。lineage SoR=`session_checkpoints.predecessor_session_id`、correlation_id=1 handoff。
 - **計測**: `ContextRemaining{pct, confidence(exact|parsed|estimated|unknown)}`。
 

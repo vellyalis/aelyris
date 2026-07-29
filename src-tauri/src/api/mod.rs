@@ -1692,6 +1692,10 @@ pub(crate) fn execute_terminal_write(
             let sessions = manager.list().map_err(ApiError::Internal)?;
             for target in &target_ids {
                 if let Some(session) = sessions.iter().find(|session| session.pty_id == *target) {
+                    if session.status == "quarantined" {
+                        authority.quarantine_target(target.clone());
+                        continue;
+                    }
                     if session.status == "waiting_approval" {
                         if let Some(prompt) = session.approval_prompt.as_deref() {
                             authority.set_interactive_approval(
@@ -2536,6 +2540,11 @@ async fn internal_interactive_approval_state(
         ));
     };
     match body.prompt_key.filter(|key| !key.is_empty()) {
+        Some(prompt_key)
+            if prompt_key == crate::command_risk::authority::HANDOFF_QUARANTINE_PROMPT_KEY =>
+        {
+            authority.quarantine_target(body.terminal_id)
+        }
         Some(prompt_key) => {
             authority.set_interactive_approval(body.terminal_id, body.session_id, prompt_key)
         }
@@ -3391,6 +3400,43 @@ mod tests {
                 assert!(denial.command_hash.is_some());
             }
             other => panic!("expected command-risk denial, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn structured_handoff_external_rest_write_is_denied_by_shared_quarantine_authority() {
+        let gate = Arc::new(crate::command_risk::gate::CommandRiskGate::new(Some(
+            Arc::new(crate::db::ManagedDb::new(
+                crate::db::Database::open_memory().unwrap(),
+            )),
+        )));
+        let authority = Arc::new(crate::command_risk::authority::TerminalInputAuthority::new(
+            gate,
+        ));
+        authority.quarantine_target("term-1");
+        let state = ApiState::new(PtyManager::new(), AuthConfig::disabled())
+            .with_terminal_input_authority(authority);
+        let error = execute_terminal_write(
+            &state,
+            crate::command_risk::authority::WriteActor {
+                principal: "operator".to_string(),
+                kind: crate::command_risk::authority::WriteActorKind::Programmatic,
+            },
+            "rest-session-input",
+            "term-1",
+            "term-1",
+            vec!["term-1".to_string()],
+            None,
+            b"git status",
+            crate::command_risk::authority::WritePayloadMode::HoldUntilApproved,
+        )
+        .unwrap_err();
+        match error {
+            ApiError::TerminalWriteRejected(code, nack) => {
+                assert_eq!(code, "handoff_generation_quarantined");
+                assert_eq!(nack.failed_targets, vec!["term-1"]);
+            }
+            other => panic!("expected quarantine terminal-write denial, got {other:?}"),
         }
     }
 

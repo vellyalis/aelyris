@@ -498,16 +498,22 @@ cross-link, stale runtime projection, or ownership/worktree ambiguity becomes
 WorkExecutionAttempt schema v5 adds immutable `repo_path`; legacy empty identities are
 quarantined rather than backfilled. Full outbox rows and every registered consumer
 cursor are validated at boot. Focused startup, migration, EventRepo, TaskManager,
-WorkExecutionRepo, and LoopPorts tests pass while `phaseComplete=false`; A4.11-A4.12
-remain.
+WorkExecutionRepo, and LoopPorts tests pass while `phaseComplete=false`; A4.12 remains.
 
-### **A4.11** - Structured Handoff Acceptance And Successor Quarantine
+### **A4.11** Complete - Structured Handoff Acceptance And Successor Quarantine
 
-Replace file-exists/liveness ACK with a structured, digest-bound HandoffAcceptanceRecord
-covering predecessor/successor generations, accepted checkpoint, and baton version.
-Every failure after successor spawn must revoke authority, stop or quarantine the
-successor, and persist a retryable/terminal outcome. Boot must reconcile failed and
-ambiguous handoffs rather than ignoring them.
+File-exists/liveness ACK is replaced by `aelyris.handoff-acceptance.v1`.
+`session_handoffs` schema v6 binds predecessor/successor logical-session, PTY, and
+checkpoint generations, the canonical persisted checkpoint digest, and
+`baton_version=handoff_seq` before acceptance. State advancement and acceptance use
+exact replay/CAS; v5 legacy rows remain unproven and are reconciled rather than
+backfilled. Every observed post-spawn failure enters a typed retryable/terminal outcome
+and cleanup state, stops the exact successor or applies a sticky synchronized-write
+quarantine, and never reopens the failed row. Boot revalidates accepted checkpoint and
+generation truth and reconciles failed, quarantined, and ambiguous handoffs.
+Focused structured-handoff tests pass 13/13, directly affected Rust modules pass, and
+the full Rust library suite passes 1292/1292. RT-1d and RT-1e source-contract gates pass.
+`phaseComplete=false`; only A4.12 may restore A4 completion credit.
 
 ### **A4.12** Planned - Admission Coverage And Combined Runtime-Integrity Closeout
 

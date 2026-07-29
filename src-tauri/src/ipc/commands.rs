@@ -2413,6 +2413,31 @@ pub(crate) async fn sync_terminal_interactive_approval_authority(
     Ok(())
 }
 
+pub(crate) async fn project_handoff_generation_quarantine(
+    app: &AppHandle,
+    terminal_id: &str,
+    session_id: &str,
+) -> Result<(), String> {
+    let authority = app
+        .try_state::<Arc<crate::command_risk::authority::TerminalInputAuthority>>()
+        .ok_or_else(|| "terminal input authority unavailable for quarantine".to_string())?;
+    authority.quarantine_target(terminal_id.to_string());
+
+    if let Some(sidecar) = app
+        .try_state::<crate::pty_sidecar::PtySidecarState>()
+        .and_then(|state| state.client())
+    {
+        sidecar
+            .sync_interactive_approval_state(
+                terminal_id,
+                session_id,
+                Some(crate::command_risk::authority::HANDOFF_QUARANTINE_PROMPT_KEY),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
 /// The effective fan-out target set for a write to `terminal_id`: the synchronized-input
 /// pane group it belongs to (sorted/deduped), or just itself. Shared by `terminal_write_async`
 /// (which writes them) and the P0-4 gate (which binds the approval scope to the SAME set), so

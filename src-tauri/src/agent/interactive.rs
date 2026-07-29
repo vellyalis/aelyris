@@ -422,6 +422,11 @@ impl InteractiveSessionManager {
         let current = sessions
             .get(id)
             .ok_or_else(|| format!("Interactive session not found for status update: {id}"))?;
+        if current.status == "quarantined" && status != "quarantined" {
+            return Err(format!(
+                "interactive session generation is quarantined and cannot resume: {id}"
+            ));
+        }
         let mut candidate = current.clone();
         let session = &mut candidate;
         let previous_status = session.status.clone();
@@ -464,6 +469,26 @@ impl InteractiveSessionManager {
         self.persist_snapshot(session)?;
         sessions.insert(id.to_string(), candidate);
         Ok(())
+    }
+
+    /// Project a durably failed handoff generation into the live write fence.
+    /// The caller must persist the failed/quarantined handoff first. This
+    /// deliberately avoids `persist_snapshot`: `session_handoffs` is the sole
+    /// durable revocation owner and boot re-projects it before admission.
+    pub fn quarantine_generation(&self, id: &str, expected_pty_id: &str) -> Result<bool, String> {
+        let mut sessions = self.lock_sessions()?;
+        let Some(session) = sessions.get_mut(id) else {
+            return Ok(false);
+        };
+        if session.pty_id != expected_pty_id {
+            return Err(format!(
+                "interactive session generation mismatch while quarantining {id}: {} != {}",
+                session.pty_id, expected_pty_id
+            ));
+        }
+        session.status = "quarantined".to_string();
+        session.approval_prompt = None;
+        Ok(true)
     }
 
     pub fn set_approval_prompt(&self, id: &str, prompt: Option<String>) -> Result<bool, String> {
@@ -665,7 +690,10 @@ mod tests {
         assert_eq!(latest.checkpoint_seq, 3);
         assert_eq!(latest.status, "waiting_approval");
         assert_eq!(latest.approval_prompt.as_deref(), Some("Approve command?"));
-        assert_eq!(latest.predecessor_session_id.as_deref(), Some("predecessor"));
+        assert_eq!(
+            latest.predecessor_session_id.as_deref(),
+            Some("predecessor")
+        );
     }
 
     #[test]
@@ -709,14 +737,15 @@ mod tests {
         }
 
         let reopened = crate::db::Database::open(&path).unwrap();
-        let restored = crate::persistence::SessionCheckpointRepo::load_latest(
-            &reopened,
-            "restart-s1",
-        )
-        .unwrap()
-        .unwrap();
+        let restored =
+            crate::persistence::SessionCheckpointRepo::load_latest(&reopened, "restart-s1")
+                .unwrap()
+                .unwrap();
         assert_eq!(restored.status, "waiting_approval");
-        assert_eq!(restored.approval_prompt.as_deref(), Some("Approve restart?"));
+        assert_eq!(
+            restored.approval_prompt.as_deref(),
+            Some("Approve restart?")
+        );
         assert_eq!(restored.cli, "codex");
         assert_eq!(restored.checkpoint_seq, 3);
     }
@@ -817,6 +846,40 @@ mod tests {
         // inbox can no longer present a resolved gate as approvable.
         mgr.update_status("s1", "coding").unwrap();
         assert_eq!(mgr.get("s1").unwrap().unwrap().approval_prompt, None);
+    }
+
+    #[test]
+    fn structured_handoff_quarantine_status_is_sticky_until_unregister() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("quarantined-successor", AgentCli::Codex))
+            .unwrap();
+        mgr.update_status("quarantined-successor", "quarantined")
+            .unwrap();
+        let error = mgr
+            .update_status("quarantined-successor", "running")
+            .unwrap_err();
+        assert!(error.contains("quarantined and cannot resume"), "{error}");
+        assert_eq!(
+            mgr.get("quarantined-successor").unwrap().unwrap().status,
+            "quarantined"
+        );
+        assert!(mgr.unregister("quarantined-successor").unwrap().is_some());
+    }
+
+    #[test]
+    fn structured_handoff_quarantine_generation_exact_matches_without_new_checkpoint() {
+        let mgr = InteractiveSessionManager::new();
+        mgr.register(make_session("successor", AgentCli::Codex))
+            .unwrap();
+        let error = mgr
+            .quarantine_generation("successor", "wrong-pty")
+            .unwrap_err();
+        assert!(error.contains("generation mismatch"), "{error}");
+        assert_eq!(mgr.get("successor").unwrap().unwrap().status, "idle");
+        assert!(mgr
+            .quarantine_generation("successor", "pty-successor")
+            .unwrap());
+        assert_eq!(mgr.get("successor").unwrap().unwrap().status, "quarantined");
     }
 
     #[test]

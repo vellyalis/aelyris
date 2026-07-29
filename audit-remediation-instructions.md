@@ -4,21 +4,21 @@ STATUS: ACTIVE
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A4` (reopened by a fresh 2026-07-16 runtime-integrity regression;
 earlier A4.6 PASS is historical evidence, not current phase completion).
-ACTIVE SLICE: `A4.11`.
-LAST COMPLETED SLICE: `A4.10`.
+ACTIVE SLICE: `A4.12`.
+LAST COMPLETED SLICE: `A4.11`.
 NEXT PHASE: `A6` after corrective A4.8-A4.12 acceptance; resume at A6.2e1.
-NEXT IMPLEMENTATION SLICE: `A4.11`.
-A4.10 extends the existing bounded startup owner across TaskGraph, execution attempts,
-PaneFleet/PTY generations, ownership, worktrees/merge intents, leases, and the complete
-EventBus stream/cursor set. Dispatch and spawn remain closed until all seven authorities
-are reconciled; effects with a fully observed non-live outcome close safely, while
-started, orphaned, or contradictory generations become `NeedsReconcile` and their
-TaskGraph nodes remain blocked. WorkExecutionAttempt now retains immutable repo identity
-inside the same owner so restart worktree inspection does not guess.
+NEXT IMPLEMENTATION SLICE: `A4.12`.
+A4.11 replaces file-exists/liveness ACK with a structured digest-bound acceptance record
+inside the existing checkpoint/handoff/session owners. Predecessor and successor
+generations, the persisted checkpoint digest, and baton version are CAS-bound before
+acceptance. Every observed post-spawn failure records a typed outcome, stops the exact
+successor or applies a sticky write-fenced quarantine, and boot revalidates accepted,
+failed, quarantined, and ambiguous legacy handoffs instead of guessing.
 The old A4 verifier covered migration/file/checkpoint scenarios but omitted
 these owners plus EventBus loss, durable execution identity/fencing, all-owner startup
-reconciliation, and successor cleanup; it also counted an external Codex watchdog
-sleep-gap probe as product durability. Therefore A4 stays open through A4.12 and its
+reconciliation, successor cleanup, and cross-process admission; it also counted an
+external Codex watchdog sleep-gap probe as product durability. Therefore A4 stays open
+through A4.12 and its
 old quality credit is removed. A6.2e1 remains the exact resume slice after this ordered
 runtime-integrity correction; do not mix A6/A7 work into A4.
 
@@ -41,8 +41,7 @@ requirements/spec/native-package documents point here instead of copying that
 volatile value.
 
 ```text
-A4.11
-  -> A4.12 admission coverage + combined runtime-integrity closeout
+A4.12 admission coverage + combined runtime-integrity closeout
   -> A6.2e1/A6 owner and behavior boundaries
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
@@ -60,29 +59,27 @@ terminal decision, A9 trust owners, and current claim boundary remain unchanged.
 Owner decision, 2026-07-29. This is a portfolio-order clarification, not an
 implementation phase and not a reduction of the product Goal.
 
-1. Finish **A4.11 only** inside the existing checkpoint/handoff/session owners.
-   Do not add a second handoff journal, manager, or state machine.
-2. Rebaseline and execute **A4.12** as the single remaining A4 closeout. It owns
+1. Execute **A4.12 only** as the single remaining A4 closeout. It owns
    cross-process default-closed startup admission for sidecar session creation,
    pending/failed direct sidecar REST tests, startup admission for effectful
    Workflow and Proofbook execution, claim narrowing for any surface not actually
    covered, and the combined crash/fault/restart matrix. Do not create A4.13 merely
    to hold these already-discovered A4 acceptance gaps.
-3. Resume **A6.2e1**, then finish A6 by dependency direction, state ownership,
+2. Resume **A6.2e1**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-4. Enter **A7.0** as a scope-lock gate before A7 runtime work. A7 Core proves only:
+3. Enter **A7.0** as a scope-lock gate before A7 runtime work. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
    Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
    Continuity, universal all-face Control Kernel migration beyond the enabled
    Mission path, and learning layers remain in the full Goal but are deferred from
    the release-blocking A7 Core.
-5. At **A6.6**, isolate `aelyris_native` behind an optional Cargo feature or
+4. At **A6.6**, isolate `aelyris_native` behind an optional Cargo feature or
    equivalent proof-only package boundary without expanding native functionality.
    A8.0 remains the only activation decision for further native/full-native work.
-6. Do not start a verifier-cleanup program. When a touched owner relies on a brittle
+5. Do not start a verifier-cleanup program. When a touched owner relies on a brittle
    source-string check, replace or supplement that check with the smallest executed
    behavior proof needed for the changed risk. Add a new verifier only for a unique
    failure mode that no existing gate can decide.
@@ -356,8 +353,11 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   Ambiguous effects remain visible and quarantined, old execution rows without immutable
   repo identity are not guessed, and EventBus startup inspection validates every outbox
   row and registered cursor.
-- A4.11 owns structured digest-bound handoff acceptance plus successor quarantine/
-  cleanup for every post-spawn failure.
+- A4.11 is complete: schema v6 extends the existing `session_handoffs` owner with
+  immutable generation/checkpoint/baton acceptance and typed cleanup outcomes.
+  Successor authority is stopped or sticky-quarantined behind the shared terminal
+  write gate, failed/ambiguous rows reconcile at boot, and legacy rows are not
+  promoted to accepted by migration.
 - A4.12 owns the remaining admission coverage plus combined crash/fault/restart
   acceptance. It is the only slice allowed to restore `phaseComplete=true` and A4
   release-score credit.

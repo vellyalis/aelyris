@@ -5,7 +5,7 @@
 //! an ACK only after the raw PTY writer has accepted every effective target; accepting a
 //! request into a caller-side queue is deliberately not represented as success.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use super::approval::command_hash;
 use super::gate::{CommandRiskGate, GateContext, GateMode};
 use super::CommandRiskOptions;
+
+pub const HANDOFF_QUARANTINE_PROMPT_KEY: &str = "aelyris:handoff-generation-quarantined";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -140,6 +142,7 @@ struct InteractiveApprovalState {
 pub struct TerminalInputAuthority {
     gate: Arc<CommandRiskGate>,
     interactive_approvals: Mutex<HashMap<String, InteractiveApprovalState>>,
+    quarantined_targets: Mutex<HashSet<String>>,
 }
 
 impl TerminalInputAuthority {
@@ -147,6 +150,7 @@ impl TerminalInputAuthority {
         Self {
             gate,
             interactive_approvals: Mutex::new(HashMap::new()),
+            quarantined_targets: Mutex::new(HashSet::new()),
         }
     }
 
@@ -178,6 +182,16 @@ impl TerminalInputAuthority {
             .remove(terminal_id);
     }
 
+    /// Read-only write-fence projection from the durable handoff owner. There
+    /// is deliberately no public "resume" operation: a quarantined generation
+    /// remains fenced for the lifetime of this authority.
+    pub fn quarantine_target(&self, terminal_id: impl Into<String>) {
+        self.quarantined_targets
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(terminal_id.into());
+    }
+
     pub fn execute(
         &self,
         envelope: &TerminalWriteEnvelope,
@@ -185,6 +199,25 @@ impl TerminalInputAuthority {
         mut write_raw: impl FnMut(&str, &[u8]) -> Result<(), String>,
     ) -> Result<TerminalWriteAck, TerminalWriteNack> {
         let targets = normalize_and_validate_envelope(envelope, payload)?;
+        let quarantined = {
+            let quarantined_targets = self
+                .quarantined_targets
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            targets
+                .iter()
+                .filter(|target| quarantined_targets.contains(*target))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        if !quarantined.is_empty() {
+            return Err(nack(
+                envelope,
+                "handoff_generation_quarantined",
+                "terminal write denied for quarantined handoff generation",
+                quarantined,
+            ));
+        }
         let claimed_interactive = self.claim_interactive_approval(envelope, &targets)?;
 
         let result = (|| {
@@ -488,6 +521,29 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(nack.code, "blocked_waiting_approval");
+        assert!(!wrote);
+    }
+
+    #[test]
+    fn structured_handoff_shared_authority_fences_quarantined_target_before_any_write() {
+        let authority = authority();
+        authority.quarantine_target("term-2");
+        let payload = b"git status";
+        let env = envelope(
+            WriteActorKind::Human,
+            "tauri-terminal-input",
+            &["term-1", "term-2"],
+            payload,
+        );
+        let mut wrote = false;
+        let nack = authority
+            .execute(&env, payload, |_target, _bytes| {
+                wrote = true;
+                Ok(())
+            })
+            .unwrap_err();
+        assert_eq!(nack.code, "handoff_generation_quarantined");
+        assert_eq!(nack.failed_targets, vec!["term-2"]);
         assert!(!wrote);
     }
 

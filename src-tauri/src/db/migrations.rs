@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 5;
+pub const CURRENT_SCHEMA_VERSION: i64 = 6;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -845,6 +845,97 @@ const V5_SCHEMA: &str = "
     END;
 ";
 
+const V6_SCHEMA: &str = "
+    -- A4.11: extend the existing handoff owner in place. Legacy rows remain
+    -- outcome=pending with no acceptance record, so an old file ACK can never
+    -- be promoted into structured acceptance during migration.
+    ALTER TABLE session_handoffs ADD COLUMN predecessor_pty_id TEXT;
+    ALTER TABLE session_handoffs ADD COLUMN successor_pty_id TEXT;
+    ALTER TABLE session_handoffs ADD COLUMN successor_checkpoint_seq INTEGER;
+    ALTER TABLE session_handoffs
+        ADD COLUMN baton_version INTEGER NOT NULL DEFAULT 0 CHECK (baton_version >= 0);
+    ALTER TABLE session_handoffs ADD COLUMN acceptance_json TEXT;
+    ALTER TABLE session_handoffs ADD COLUMN acceptance_digest TEXT;
+    ALTER TABLE session_handoffs
+        ADD COLUMN outcome TEXT NOT NULL DEFAULT 'pending' CHECK (
+            outcome IN ('pending', 'accepted', 'retryable_failure', 'terminal_failure')
+        );
+    ALTER TABLE session_handoffs
+        ADD COLUMN cleanup_status TEXT NOT NULL DEFAULT 'not_required' CHECK (
+            cleanup_status IN ('not_required', 'pending', 'stopped', 'quarantined')
+        );
+
+    DROP TRIGGER trg_session_handoffs_immutable;
+    CREATE TRIGGER trg_session_handoffs_immutable
+    BEFORE UPDATE ON session_handoffs
+    FOR EACH ROW WHEN
+           NEW.predecessor_id IS NOT OLD.predecessor_id
+        OR NEW.successor_id   IS NOT OLD.successor_id
+        OR NEW.handoff_seq    IS NOT OLD.handoff_seq
+        OR NEW.correlation_id IS NOT OLD.correlation_id
+        OR NEW.created_at     IS NOT OLD.created_at
+        OR (OLD.checkpoint_seq IS NOT NULL
+            AND NEW.checkpoint_seq IS NOT OLD.checkpoint_seq)
+        OR (OLD.summary_path IS NOT NULL
+            AND NEW.summary_path IS NOT OLD.summary_path)
+        OR (OLD.predecessor_pty_id IS NOT NULL
+            AND NEW.predecessor_pty_id IS NOT OLD.predecessor_pty_id)
+        OR (OLD.successor_pty_id IS NOT NULL
+            AND NEW.successor_pty_id IS NOT OLD.successor_pty_id)
+        OR (OLD.successor_checkpoint_seq IS NOT NULL
+            AND NEW.successor_checkpoint_seq IS NOT OLD.successor_checkpoint_seq)
+        OR (OLD.baton_version <> 0 AND NEW.baton_version IS NOT OLD.baton_version)
+        OR (OLD.acceptance_json IS NOT NULL
+            AND NEW.acceptance_json IS NOT OLD.acceptance_json)
+        OR (OLD.acceptance_digest IS NOT NULL
+            AND NEW.acceptance_digest IS NOT OLD.acceptance_digest)
+    BEGIN
+        SELECT RAISE(ABORT, 'session_handoffs: handoff-defining columns are immutable');
+    END;
+
+    CREATE TRIGGER trg_session_handoffs_structured_record_valid
+    BEFORE UPDATE ON session_handoffs
+    FOR EACH ROW WHEN
+           (NEW.acceptance_json IS NULL) <> (NEW.acceptance_digest IS NULL)
+        OR (NEW.outcome = 'accepted' AND (
+               NEW.acceptance_json IS NULL
+            OR NEW.predecessor_pty_id IS NULL
+            OR NEW.successor_pty_id IS NULL
+            OR NEW.checkpoint_seq IS NULL
+            OR NEW.successor_checkpoint_seq IS NULL
+            OR NEW.baton_version = 0
+        ))
+        OR (NEW.outcome IN ('retryable_failure', 'terminal_failure')
+            AND NEW.state <> 'failed')
+    BEGIN
+        SELECT RAISE(ABORT, 'session_handoffs: invalid structured outcome');
+    END;
+
+    CREATE TRIGGER trg_session_handoffs_failed_never_reopens
+    BEFORE UPDATE ON session_handoffs
+    FOR EACH ROW WHEN
+           (OLD.state = 'failed' AND NEW.state <> 'failed')
+        OR (OLD.outcome = 'terminal_failure'
+            AND NEW.outcome <> 'terminal_failure')
+        OR (OLD.cleanup_status = 'stopped'
+            AND NEW.cleanup_status <> 'stopped')
+    BEGIN
+        SELECT RAISE(ABORT, 'session_handoffs: terminal outcome cannot reopen');
+    END;
+
+    -- V5 encoded failure only in the legacy state/failure_reason columns.
+    -- Preserve that failure as terminal typed durability and make cleanup a
+    -- boot-reconcilable obligation; never infer structured acceptance.
+    UPDATE session_handoffs
+       SET outcome = 'terminal_failure',
+           cleanup_status = 'pending',
+           failure_reason = COALESCE(
+               NULLIF(failure_reason, ''),
+               'legacy failed handoff requires cleanup reconciliation'
+           )
+     WHERE state = 'failed';
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -943,6 +1034,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V5_SCHEMA)?;
             conn.pragma_update(None, "user_version", 5)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 6 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V6_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 6)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -1291,5 +1398,128 @@ mod tests {
                 [],
             )
             .is_err());
+    }
+
+    #[test]
+    fn structured_handoff_v5_to_v6_keeps_legacy_acceptance_unproven() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.execute_batch(V4_SCHEMA).unwrap();
+        conn.execute_batch(V5_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 5).unwrap();
+        conn.execute(
+            "INSERT INTO session_handoffs (
+                 predecessor_id, successor_id, handoff_seq, state, correlation_id,
+                 checkpoint_seq, summary_path, created_at, updated_at
+             ) VALUES (
+                 'legacy-a', 'legacy-b', 1, 'predecessor_retired', 'legacy-corr',
+                 7, 'C:/repo/.aelyris/handoff/legacy-a.1.json', 10, 11
+             )",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let migrated: (
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+            i64,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+        ) = conn
+            .query_row(
+                "SELECT predecessor_pty_id, successor_pty_id,
+                        successor_checkpoint_seq, baton_version,
+                        acceptance_json, acceptance_digest, outcome, cleanup_status
+                 FROM session_handoffs
+                 WHERE predecessor_id = 'legacy-a' AND handoff_seq = 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 6);
+        assert_eq!(
+            migrated,
+            (
+                None,
+                None,
+                None,
+                0,
+                None,
+                None,
+                "pending".to_string(),
+                "not_required".to_string(),
+            )
+        );
+    }
+
+    #[test]
+    fn structured_handoff_v5_failed_row_migrates_to_typed_cleanup_without_acceptance() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.execute_batch(V4_SCHEMA).unwrap();
+        conn.execute_batch(V5_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 5).unwrap();
+        conn.execute(
+            "INSERT INTO session_handoffs (
+                 predecessor_id, successor_id, handoff_seq, state, correlation_id,
+                 failure_reason, created_at, updated_at
+             ) VALUES (
+                 'legacy-failed-a', 'legacy-failed-b', 1, 'failed', 'legacy-failed-corr',
+                 'legacy cleanup interrupted', 10, 11
+             )",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let migrated: (String, String, Option<String>, Option<String>, String) = conn
+            .query_row(
+                "SELECT outcome, cleanup_status, acceptance_json,
+                        acceptance_digest, failure_reason
+                   FROM session_handoffs
+                  WHERE predecessor_id = 'legacy-failed-a' AND handoff_seq = 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            migrated,
+            (
+                "terminal_failure".to_string(),
+                "pending".to_string(),
+                None,
+                None,
+                "legacy cleanup interrupted".to_string(),
+            )
+        );
     }
 }

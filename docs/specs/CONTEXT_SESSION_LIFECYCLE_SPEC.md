@@ -178,13 +178,13 @@ JSON 妥当だけでは不十分。**外部と突合**: `inFlightDiff` を `git 
 2. `session_summarize`（§6）→ SummaryRef・完全性検証。**`inFlightDiff` 非空なら退役前に保全**：`commit_worktree` か `git stash create` で durable ref 化し checkpoint に記録（後継が決定的に復元）。state→`checkpointed`。
 3. `session_checkpoint`（§4.1）耐久化（commit 完了待ち）。
 4. **handoff intent の audit を退役前に発行**（§9、`session_handoff committing` を journal append）。state→`successor_spawning`。
-5. 後継 `spawn_interactive_agent` を**要約ファイル参照付きでシード**（seed は `build_adr_header`（`src-tauri/src/control/loop_ports.rs` の decision ヘッダ注入）を範に「§checkpoint の要約ファイルを最初に読め。読了後 `…/<successor>.ack` を Write せよ」）。state→`successor_spawned`。
-6. **後継 ack ファイル**出現を観測（EventBus::since ではない＝CLI は publish 不可, rev2）。**＋後継が running/idle に達し debounce 窓だけ生存**を確認（ack は読込を示すが liveness を示さない, rev2）。state→`successor_acked`。
-7. **確認後にのみ** predecessor を `stop_interactive_agent`（kill のみ・worktree 非削除）で退役。state→`predecessor_retired`。lineage（`predecessor_session_id`）を checkpoint に確定。`session_handoff committed` audit。
-8. 失敗時: 後継未確認なら退役しない（両生存の方が安全）。`session_handoff failed` audit。
+5. 後継を seed なしで `spawn_interactive_agent` し、実 PTY と初回 checkpoint を確定する。既存 intent へ predecessor/successor の `(logical_session_id, pty_id, checkpoint_seq)` と `baton_version=handoff_seq` を CAS で束縛して state→`successor_spawned`。その後、要約参照と期待する `HandoffAcceptanceRecord` を seed prompt で送る。
+6. 後継は `aelyris.handoff-acceptance.v1` の JSON を ack path へ書く。Runtime は unknown field を拒否し、predecessor/successor generation、永続化済み predecessor checkpoint の SHA-256 digest、baton version、record digest が期待値と完全一致することを検証する。ファイル存在または liveness だけでは受理しない。structured acceptance と **後継が running/idle に達し debounce 窓だけ生存**することの両方を確認し、一回の CAS 更新で outcome=`accepted` / state→`successor_acked` を確定する。
+7. **確認後にのみ** successor の exact PTY に対する lineage checkpoint（`predecessor_session_id`）を idempotent に確定し、その後 predecessor を `stop_interactive_agent`（kill のみ・worktree 非削除）で退役する。boot replay も acceptance 後クラッシュ時に同じ checkpoint を一度だけ補ってから state→`predecessor_retired` とする。`session_handoff committed` audit。
+8. successor spawn 後の失敗は、まず同じ intent 行を outcome=`retryable_failure` / cleanup=`pending` / state=`failed` にして後継 authority を耐久 revoke する。exact generation を停止し、通常停止が失敗したら raw PTY close、両方失敗したら live generation を sticky `quarantined` に投影し、IPC / REST / WS / MCP / internal sidecar が共有する単一 `TerminalInputAuthority` で全 terminal write face を拒否する。outcome=`terminal_failure` / cleanup=`quarantined` を保存し、停止済みなら cleanup=`stopped`。失敗行は成功経路へ戻さない。
 
 crash 冪等（rev2 で merge_intent 方式に統一）:
-- 各 state 遷移は idempotency-key（`predecessor_id:handoff_seq`）で再実行安全。**restore-pending 規律は lineage/retire intent を運べない**ため使わない（finding 訂正）。代わりに **boot 時 `reconcile_dangling`**（merge_intent の boot reconcile 同型）が `session_handoffs` を走査し、live PTY/worktree を実検査して一意収束（successor_spawned で crash→resume は ack を**再確認**してから退役。両 spawn/両退役を出さない）。
+- 各 state 遷移は idempotency-key（`predecessor_id:handoff_seq`）と expected-state CAS で再実行安全。**restore-pending 規律は lineage/retire intent を運べない**ため使わない（finding 訂正）。代わりに boot は非終端行、failed cleanup、legacy の structured acceptance 欠落、accepted checkpoint/generation mismatch を走査する。accepted record と live generation を再検証できた場合だけ退役し、曖昧なら後継を停止または quarantine して startup success を fail-closed にする。
 - ⚠ `ManagedDb::with`（`db/mod.rs:33`）は mutex で SQL tx でない → 原子性は intent 行＋CAS 層で担保（単一 DB tx に頼らない）。
 
 ---
@@ -193,7 +193,7 @@ crash 冪等（rev2 で merge_intent 方式に統一）:
 
 ### 8.1 新表
 - `session_checkpoints`（repo パターン `persistence/mod.rs`）: `logical_session_id`,`checkpoint_seq`,`pty_id`,`cli`,`model`,`cwd`,`worktree_*`,`status`,`cost`,`tokens_used`,`context_pct`,`summary_json`(redacted),`inflight_ref`,`predecessor_session_id`(lineage SoR),`created_at`。UNIQUE(`logical_session_id`,`checkpoint_seq`)。
-- `session_handoffs`（§7 state 機械）: `predecessor_id`,`successor_id`,`handoff_seq`,`state`(pending_summary|checkpointed|successor_spawning|successor_spawned|successor_acked|predecessor_retired|failed),`correlation_id`,`updated_at`。UNIQUE(`predecessor_id`,`handoff_seq`)。crash 復旧の権威マーカー。
+- `session_handoffs`（§7 state 機械）: 基本 identity/state に加え、`predecessor_pty_id`,`successor_pty_id`,`successor_checkpoint_seq`,`baton_version`,`acceptance_json`,`acceptance_digest`,`outcome`(pending|accepted|retryable_failure|terminal_failure),`cleanup_status`(not_required|pending|stopped|quarantined) を保持する。UNIQUE(`predecessor_id`,`handoff_seq`)。v5→v6 migration は legacy ACK を acceptance に推測変換せず、legacy `failed` は acceptance null の `terminal_failure` / cleanup pending として一方向に正規化し、accepted/failed/identity 列を immutable または単方向遷移にする。
 - idempotency UNIQUE＋append-only/immutability トリガは `merge_intents`（`src-tauri/src/db/migrations.rs`）を範に。
 - per-session context proxy/handoffReady は **既存 `agent_identity_records.context_usage_json`（`db/queries.rs`）を live runtime telemetry で書く**（現状は静的 proof のみ `bin/aelyris_native.rs`）。新 checkpoint 表と二重管理しない（rev2）。
 
@@ -229,9 +229,9 @@ handoff/recycle は重大な context 破棄＝**統治される行為**。
 ## 11. 検証（no-loss handoff verifier ゲート, rev2 で audit no-loss 追加）
 
 docs/README.md 方針で**必須**。`ProcessGateRunner`（`src-tauri/src/control/gate_runner.rs`）を範に `scripts/verify-session-handoff-no-loss.mjs` を作り `verify:goal:safe` 配線。assert:
-- **context 無損失**: checkpoint 行が耐久化 AND 後継が要約ファイルを ack（消費）AND 旧ペイン解放 AND `inFlightDiff` が後継 worktree に復元。
+- **context 無損失**: checkpoint 行が耐久化 AND 後継が checkpoint digest・両 generation・baton を含む structured acceptance を返す AND 旧ペイン解放 AND `inFlightDiff` が後継 worktree に復元。
 - **audit 無損失（rev2 追加）**: handoff 後 `audit_event_journal` に `session_handoff`（hash 連鎖・append-only）が lineage `correlation_id` 付きで存在 AND `get_audit_trace(correlation_id)` が返る。これが無いとガバナンス穴が緑で出荷される。
-- **crash 安全**: 各 state で crash 注入 → resume が「両退役なし／二重 spawn なし／worktree 非削除」で一意収束。
+- **crash 安全**: 各 state と post-spawn failure で crash/失敗注入 → resume が「両退役なし／二重 spawn なし／failed row 再Openなし／未停止 successor は write-fenced quarantine／worktree 非削除」で一意収束。
 - 範テスト: Task restore の `restore_tests`/`graph_survives_a_simulated_restart_via_db`/`restore_regates_a_dependent_and_never_dispatches_it_before_its_dependency`。
 - `reset_context`（§4.5）も対象に含める。RT-1e は sibling verifier `scripts/verify-session-resume-idempotent.mjs` で `session_resume` の冪等収束・ack 再確認・identity mismatch fail-closed と、`session_reset_context` が bare spawn/stop ではなく no-loss handoff 規律を再利用することを assert する。
 - ★実機: §5.3 の spike（provider 別 telemetry・残量行・メニュー構造）を実 Claude/Codex/Gemini fixture matrix で確定。

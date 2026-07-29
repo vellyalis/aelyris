@@ -59,10 +59,12 @@ const checks = [
   ),
   check(
     "resume-uses-durable-handoff-state",
-    resumeBlock.includes("list_unresolved_handoffs") &&
+    resumeBlock.includes("list_handoffs_requiring_reconciliation") &&
       resumeBlock.includes("reconcile_one_session_handoff_on_boot") &&
-      resumeBlock.includes("predecessor_id == id || handoff.successor_id == id") &&
-      repo.includes("pub fn list_unresolved_handoffs"),
+      resumeBlock.includes(
+        "handoff.handoff.predecessor_id == id || handoff.handoff.successor_id == id",
+      ) &&
+      repo.includes("pub fn list_handoffs_requiring_reconciliation"),
     "session_resume reads durable session_handoffs rows, scopes by predecessor/successor logical id, and reuses the single boot reconcile owner",
   ),
   check(
@@ -83,13 +85,15 @@ const checks = [
     "session_resume reports before/after unresolved counts and can be called repeatedly without creating a new owner path",
   ),
   check(
-    "past-ack-is-reconfirmed",
-    reconcileBlock.includes("successor_ack_file") &&
-      reconcileBlock.includes("!ack.ack_path.exists()") &&
-      reconcileBlock.includes("found successor ack but no live successor session") &&
+    "past-acceptance-is-reconfirmed",
+    reconcileBlock.includes("record.acceptance") &&
+      reconcileBlock.includes("checkpoint_record_digest") &&
+      reconcileBlock.includes("acceptance.accepted_checkpoint.checkpoint_digest") &&
+      reconcileBlock.includes("validate_generation_identity") &&
+      reconcileBlock.includes("structured_handoff_boot_policy") &&
       reconcileBlock.includes("stop_interactive_agent") &&
       resumeBlock.includes("ack_reconfirmed"),
-    "resume does not trust a stale durable state alone; it rechecks ack presence and live successor before retiring a predecessor",
+    "resume does not trust stale acceptance state alone; it revalidates the checkpoint digest and exact live successor generation before retiring a predecessor",
   ),
   check(
     "reset-context-delegates-to-handoff",
@@ -111,12 +115,15 @@ const checks = [
     "reset_context emits durable journal governance and visible context_recycled state while preserving the worktree",
   ),
   check(
-    "ack-file-contract-reused",
+    "structured-acceptance-contract-reused",
     lifecycle.includes("successor_ack_file") &&
       lifecycle.includes("build_successor_seed_prompt") &&
-      reconcileBlock.includes("successor_ack_file") &&
+      lifecycle.includes("pub struct HandoffAcceptanceRecord") &&
+      lifecycle.includes("read_handoff_acceptance") &&
+      reconcileBlock.includes("record.acceptance") &&
+      reconcileBlock.includes("checkpoint_record_digest") &&
       !reconcileBlock.includes("EventBus::since"),
-    "RT-1e continues using .aelyris/handoff ack files rather than EventBus polling or PTY scraping",
+    "RT-1e reuses persisted structured handoff acceptance and checkpoint/generation validation rather than trusting file existence, EventBus polling, or PTY scraping",
   ),
   check(
     "safe-gate-wiring",
