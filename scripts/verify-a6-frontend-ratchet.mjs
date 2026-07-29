@@ -24,13 +24,15 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
           "vitest",
           "run",
           "src/__tests__/useAppShellStore.test.tsx",
+          "src/__tests__/useProjectTabLifecycle.test.tsx",
+          "src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -43,33 +45,58 @@ try {
     timeout: 180_000,
   });
   const testReport = JSON.parse(output);
-  const expectedTest = testReport.testResults
-    ?.flatMap((result) => result.assertionResults ?? [])
-    .find(
-      (assertion) =>
-        assertion.fullName ===
-        "useAppShellStore does not rerender the shell owner for an unrelated store mutation",
+  const assertions = testReport.testResults?.flatMap((result) => result.assertionResults ?? []) ?? [];
+  const behaviorRequirements = [
+    {
+      id: "app-shell-store-subscription-behavior",
+      tests: ["useAppShellStore does not rerender the shell owner for an unrelated store mutation"],
+    },
+    {
+      id: "project-tab-lifecycle-behavior",
+      tests: [
+        "useProjectTabLifecycle opens a project only after confirmation and clears active context after the tab transition",
+        "useProjectTabLifecycle switches tabs only after confirmation and preserves every active-context owner on cancel",
+        "useProjectTabLifecycle closes the folder only after confirmation and detaches the effective project path",
+        "useProjectTabLifecycle closes an inactive tab without discarding active editor or interactive context",
+        "useProjectTabLifecycle closes the active tab only after confirmation and commits cleanup after the tab transition",
+      ],
+    },
+    {
+      id: "project-tab-shortcut-routing-behavior",
+      tests: [
+        "useKeyboardShortcuts terminal focus routes Ctrl+Tab and Ctrl+Shift+Tab through the guarded project-tab switch callback",
+      ],
+    },
+  ];
+  for (const requirement of behaviorRequirements) {
+    const missingOrFailing = requirement.tests.filter(
+      (fullName) => assertions.find((assertion) => assertion.fullName === fullName)?.status !== "passed",
     );
-  if (!testReport.success || expectedTest?.status !== "passed") {
-    throw new Error("The required App shell subscription behavior test did not execute and pass.");
+    const passed = testReport.success && missingOrFailing.length === 0;
+    scenarios.push({
+      id: requirement.id,
+      status: passed ? "pass" : "fail",
+      tests: requirement.tests,
+      ...(passed ? {} : { missingOrFailing }),
+    });
+    failed ||= !passed;
   }
-  scenarios.push({
-    id: "app-shell-store-subscription-behavior",
-    status: "pass",
-    test: expectedTest.fullName,
-  });
 } catch (error) {
   failed = true;
-  scenarios.push({
-    id: "app-shell-store-subscription-behavior",
-    status: "fail",
-    error: error instanceof Error ? error.message : String(error),
-  });
+  const detail = error instanceof Error ? error.message : String(error);
+  scenarios.push(
+    { id: "app-shell-store-subscription-behavior", status: "fail", error: detail },
+    { id: "project-tab-lifecycle-behavior", status: "fail", error: detail },
+    { id: "project-tab-shortcut-routing-behavior", status: "fail", error: detail },
+  );
 }
 const paths = {
   app: "src/App.tsx",
   appShellStore: "src/features/app/useAppShellStore.ts",
   appShellStoreTest: "src/__tests__/useAppShellStore.test.tsx",
+  projectTabLifecycleTest: "src/__tests__/useProjectTabLifecycle.test.tsx",
+  keyboardShortcuts: "src/shared/hooks/useKeyboardShortcuts.ts",
+  keyboardShortcutsTest: "src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx",
   model: "src/features/right-rail/rightRailModel.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
@@ -108,6 +135,7 @@ for (const [id, ceiling] of Object.entries({
   config: 34,
   appMenus: 989,
   appShellStore: 60,
+  keyboardShortcuts: 261,
   decisionInbox: 134,
   orchestraDispatch: 169,
 })) {
@@ -208,7 +236,24 @@ for (const [id, ok, evidence] of [
   ["release-goal-evidence-owned", source.app.includes("useReleaseGoalEvidence(projectPath)") && source.releaseGoalEvidence.includes("export function useReleaseGoalEvidence") && source.releaseGoalEvidence.includes("final-goal-safe-summary.json") && source.releaseGoalEvidence.includes("deriveFinalGoalRequirementProofs(null)"), {}],
   ["authenticated-prompt-evidence-owned", source.app.includes("useAuthenticatedPromptEvidence(projectPath)") && source.authenticatedPromptEvidence.includes("export function useAuthenticatedPromptEvidence") && source.authenticatedPromptEvidence.includes("Promise.allSettled") && source.authenticatedPromptEvidence.includes("deriveAuthenticatedPromptConsentPacket(null)"), {}],
   ["ai-cli-launch-evidence-owned", source.app.includes("useAiCliLaunchEvidence(projectPath)") && source.aiCliLaunchEvidence.includes("export function useAiCliLaunchEvidence") && source.aiCliLaunchEvidence.includes("Promise.allSettled") && source.aiCliLaunchEvidence.includes("read_ai_cli_launch_evidence"), {}],
-  ["project-tab-lifecycle-owned", source.app.includes("useProjectTabLifecycle({") && source.projectTabLifecycle.includes("export function useProjectTabLifecycle") && source.projectTabLifecycle.includes("confirmDiscardUnsavedFiles") && source.projectTabLifecycle.includes("deletePaneTreeSnapshotFromBackend(storageKey)"), {}],
+  ["project-tab-lifecycle-owned",
+    source.app.includes("useProjectTabLifecycle({") &&
+      source.app.includes("resolveEffectiveProjectPath(rootProjectPath, activeTab.cwd)") &&
+      source.projectTabLifecycle.includes("export function useProjectTabLifecycle") &&
+      source.projectTabLifecycle.includes("confirmDiscardUnsavedFiles") &&
+      source.projectTabLifecycle.includes('confirmDiscardUnsavedFiles("Close this tab and discard them")') &&
+      source.projectTabLifecycle.includes("deletePaneTreeSnapshotFromBackend(storageKey)") &&
+      source.projectTabLifecycleTest.includes("preserves every active-context owner on cancel") &&
+      source.projectTabLifecycleTest.includes("detaches the effective project path"),
+    {}],
+  ["project-tab-shortcut-routing-owned",
+    source.app.includes("switchTab: handleTabSwitch") &&
+      source.keyboardShortcuts.includes("void switchTab(tabs[next].id)") &&
+      !source.keyboardShortcuts.includes("setActiveTabId") &&
+      source.keyboardShortcutsTest.includes(
+        "routes Ctrl+Tab and Ctrl+Shift+Tab through the guarded project-tab switch callback",
+      ),
+    {}],
 ]) {
   scenarios.push({ id, status: ok ? "pass" : "fail", ...evidence });
   failed ||= !ok;

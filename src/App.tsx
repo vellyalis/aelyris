@@ -52,7 +52,7 @@ import { useBootstrapAppConfig } from "./features/app/useBootstrapAppConfig";
 import { useAuthenticatedPromptEvidence } from "./features/app/useAuthenticatedPromptEvidence";
 import { useAiCliLaunchEvidence } from "./features/app/useAiCliLaunchEvidence";
 import { useReleaseGoalEvidence } from "./features/app/useReleaseGoalEvidence";
-import { useProjectTabLifecycle } from "./features/app/useProjectTabLifecycle";
+import { resolveEffectiveProjectPath, useProjectTabLifecycle } from "./features/app/useProjectTabLifecycle";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
@@ -415,21 +415,6 @@ export function App() {
     // via getState so the initializer is stable — useTabManager only consults
     // the value when creating the initial tab and via addTab's shell argument.
   } = useTabManager(useAppStore.getState().defaultShell);
-  const {
-    handleCloseFolder,
-    handleCloseTab,
-    handleOpenFolder,
-    handleOpenProject,
-    handleTabSwitch,
-  } = useProjectTabLifecycle({
-    activeTabId,
-    addTabWithCwd,
-    clearFiles,
-    closeTab,
-    setActiveTabId,
-    setRootProjectPath,
-    tabs,
-  });
   const { activePtyId, clearActivePtyId, setTabActivePtyId, setTabPaneRegistry, tabPaneRegistries } = usePaneRegistry(
     activeTabId,
     tabs,
@@ -545,7 +530,26 @@ export function App() {
     endSessionAndRemoveWorktree,
   } = useAgentFleet();
 
-  const projectPath = activeTab.cwd ?? rootProjectPath ?? "";
+  const {
+    handleCloseFolder,
+    handleCloseTab,
+    handleOpenFolder,
+    handleOpenProject,
+    handleTabSwitch,
+  } = useProjectTabLifecycle({
+    activeTabId,
+    addTabWithCwd,
+    clearFiles,
+    closeTab,
+    onActiveContextChanged: () => {
+      if (interactiveSessionId) selectInteractiveSession("");
+    },
+    setActiveTabId,
+    setRootProjectPath,
+    tabs,
+  });
+
+  const projectPath = resolveEffectiveProjectPath(rootProjectPath, activeTab.cwd);
   const rightRailAiCliLaunchEvidence = useAiCliLaunchEvidence(projectPath);
   const authenticatedPromptConsentPacket = useAuthenticatedPromptEvidence(projectPath);
   const { finalGoalRequirementProofs, finalGoalResidualRisk, finalGoalSafeGate, releaseQualityGoalInputs } =
@@ -1438,7 +1442,7 @@ export function App() {
     addTab,
     closeTab: handleCloseTab,
     activeTabId,
-    setActiveTabId,
+    switchTab: handleTabSwitch,
     activeFile,
     sessions,
     activeSessionId,
@@ -4083,11 +4087,7 @@ export function App() {
             tabs={tabs}
             activeTabId={activeTabId}
             activityTabs={activityTabs}
-            onSelectTab={(id) => {
-              void handleTabSwitch(id).then(
-                (switched) => switched && interactiveSessionId && selectInteractiveSession(""),
-              );
-            }}
+            onSelectTab={(id) => void handleTabSwitch(id)}
             onCloseTab={handleCloseTab}
             onNewTab={addTab}
             onReorderTab={reorderTab}

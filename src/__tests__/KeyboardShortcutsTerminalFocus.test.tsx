@@ -12,7 +12,7 @@ function baseOptions() {
     addTab: vi.fn(),
     closeTab: vi.fn(),
     activeTabId: "tab-1",
-    setActiveTabId: vi.fn(),
+    switchTab: vi.fn(),
     activeFile: null,
     sessions: [],
     activeSessionId: null,
@@ -40,6 +40,36 @@ function listenForFallbackTelemetry() {
 }
 
 describe("useKeyboardShortcuts terminal focus", () => {
+  it("routes Ctrl+Tab and Ctrl+Shift+Tab through the guarded project-tab switch callback", () => {
+    const switchTab = vi.fn(() => Promise.resolve(false));
+    const options = {
+      ...baseOptions(),
+      tabs: [{ id: "tab-1" }, { id: "tab-2" }, { id: "tab-3" }],
+      switchTab,
+    };
+    const { unmount } = renderHook(() => useKeyboardShortcuts(options));
+
+    try {
+      const next = new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true, bubbles: true, cancelable: true });
+      window.dispatchEvent(next);
+      const previous = new KeyboardEvent("keydown", {
+        key: "Tab",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      window.dispatchEvent(previous);
+
+      expect(next.defaultPrevented).toBe(true);
+      expect(previous.defaultPrevented).toBe(true);
+      expect(switchTab).toHaveBeenNthCalledWith(1, "tab-2");
+      expect(switchTab).toHaveBeenNthCalledWith(2, "tab-3");
+    } finally {
+      unmount();
+    }
+  });
+
   it("treats the native terminal input surface as editable so app shortcuts cannot steal terminal input", () => {
     const native = document.createElement("div");
     native.setAttribute("role", "textbox");

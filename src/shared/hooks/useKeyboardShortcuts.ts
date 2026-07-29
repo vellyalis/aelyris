@@ -15,7 +15,7 @@ interface UseKeyboardShortcutsOptions {
   addTab: (shell: ShellType) => void;
   closeTab: (id: string) => void;
   activeTabId: string;
-  setActiveTabId: (id: string) => void;
+  switchTab: (id: string) => Promise<boolean>;
   activeFile: string | null;
   sessions: { id: string }[];
   activeSessionId: string | null;
@@ -47,7 +47,7 @@ export function useKeyboardShortcuts({
   addTab,
   closeTab,
   activeTabId,
-  setActiveTabId,
+  switchTab,
   activeFile,
   sessions,
   activeSessionId,
@@ -219,7 +219,7 @@ export function useKeyboardShortcuts({
         if (tabs.length > 1) {
           const idx = tabs.findIndex((t) => t.id === activeTabId);
           const next = e.shiftKey ? (idx - 1 + tabs.length) % tabs.length : (idx + 1) % tabs.length;
-          setActiveTabId(tabs[next].id);
+          void switchTab(tabs[next].id);
         }
       } else if (matchesShortcut(e, SHORTCUTS.sessionJump)) {
         e.preventDefault();
@@ -235,7 +235,7 @@ export function useKeyboardShortcuts({
     addTab,
     closeTab,
     activeTabId,
-    setActiveTabId,
+    switchTab,
     activeFile,
     sessions,
     activeSessionId,

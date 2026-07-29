@@ -294,14 +294,20 @@ describe("App project/tab lifecycle ownership", () => {
   it("keeps unsaved guards, project normalization, knowledge graph adoption, and snapshot cleanup together", () => {
     const src = getSrc();
     const owner = getProjectTabLifecycleSource();
+    const shortcuts = getKeyboardShortcutsSource();
 
     expect(src).toContain("useProjectTabLifecycle({");
     expect(owner).toContain('path.replace(/\\\\/g, "/")');
     expect(owner).toContain('tauriInvoke("populate_knowledge_graph"');
-    expect(owner).toContain("tabs.length > 1");
+    expect(owner).toContain("tabs.length <= 1");
     expect(owner).toContain("deletePaneTreeSnapshotFromBackend(storageKey)");
-    expect(src).toContain("handleTabSwitch(id).then(");
-    expect(src).toContain('switched && interactiveSessionId && selectInteractiveSession("")');
+    expect(src).toContain("onSelectTab={(id) => void handleTabSwitch(id)}");
+    expect(src).toContain("resolveEffectiveProjectPath(rootProjectPath, activeTab.cwd)");
+    expect(src).toContain("onActiveContextChanged: () => {");
+    expect(src).toContain('if (interactiveSessionId) selectInteractiveSession("")');
+    expect(src).toContain("switchTab: handleTabSwitch");
+    expect(shortcuts).toContain("void switchTab(tabs[next].id)");
+    expect(shortcuts).not.toContain("setActiveTabId");
   });
 });
 

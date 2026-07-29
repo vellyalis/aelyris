@@ -47,7 +47,7 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6.2e1-A6.2e2 are complete; A6 resumes at A6.2e3 and is accepted by ownership,
+3. A6.2e1-A6.2e3 are complete; A6 resumes at A6.2e4 and is accepted by ownership,
    dependency direction, behavior, and concurrency evidence. Line counts are
    non-growth diagnostics, not universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
@@ -980,7 +980,7 @@ Design authorities frozen by this checkpoint:
 This is a design-only checkpoint. It does not implement Mission persistence,
 WorkEvent migration, capability leases, completion packets, replay, learning,
 remote control, or extensions; it does not change current alpha/not-release-ready
-claim policy. A6.2e3 remains the next implementation slice. New product runtime
+claim policy. A6.2e4 remains the next implementation slice. New product runtime
 work must not start until A6.2g and then A6.8 satisfy their dependency gates.
 
 #### A6.2e - Architecture and Behavioral Contract Repair
@@ -1019,13 +1019,18 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    and rejects selector-less App calls through direct or aliased `useAppStore`
    imports. No second store owner, dependency, service, or broader facade was added;
    `phaseComplete` remains false.
-4. **A6.2e3 Active - project/tab transition behavior**: execute open, switch, close-folder,
-   inactive-tab close, and active-tab close behavior in tests. An unsaved cancel
+4. **A6.2e3 Complete - project/tab transition behavior**: open, switch, close-folder,
+   inactive-tab close, and active-tab close now route through
+   `useProjectTabLifecycle` and have executed behavior proof. An unsaved cancel
    preserves the active tab, interactive session, editor files, and pane snapshots;
-   a confirmed active-tab context change clears editor state only after the tab
-   transition succeeds. Close Folder must also detach the effective project path so
-   project-scoped polling/effects cannot continue behind the Welcome surface.
-5. **A6.2e4 stateful-owner behavior**: make each evidence poll one generation;
+   a confirmed active-tab context change clears editor and interactive state only
+   after the tab transition succeeds. Close Folder detaches the effective project
+   path so project-scoped polling/effects cannot continue behind the Welcome surface,
+   and Ctrl+Tab/Ctrl+Shift+Tab route through the same lifecycle contract rather than
+   mutating the active tab directly. The frontend ratchet executes the lifecycle and
+   shortcut assertions through structured Vitest JSON and keeps
+   `phaseComplete=false`.
+5. **A6.2e4 Active - stateful-owner behavior**: make each evidence poll one generation;
    release evidence commits its three-file result atomically, all evidence owners
    suppress or cancel overlap, ignore stale generations, and prevent later adoption
    after project change or unmount. Define pane
