@@ -47,6 +47,7 @@ import {
   WorkstationPulse,
 } from "./features/app/lazyPanels";
 import { useAppMenus } from "./features/app/useAppMenus";
+import { useAppShellStore } from "./features/app/useAppShellStore";
 import { useBootstrapAppConfig } from "./features/app/useBootstrapAppConfig";
 import { useAuthenticatedPromptEvidence } from "./features/app/useAuthenticatedPromptEvidence";
 import { useAiCliLaunchEvidence } from "./features/app/useAiCliLaunchEvidence";
@@ -180,10 +181,7 @@ import { deriveRightRailGoalTrack } from "./shared/lib/rightRailGoalTrack";
 import { deriveRightRailWorkforceSummary, type WorkforceGuardrailProfile } from "./shared/lib/rightRailWorkforce";
 import { classifyCommand, formatCommandRiskSummary } from "./shared/lib/shellSafety";
 import { isTauriRuntime } from "./shared/lib/tauriRuntime";
-import {
-  DEFAULT_RIGHT_PANEL_WIDTH,
-  useAppStore,
-} from "./shared/store/appStore";
+import { DEFAULT_RIGHT_PANEL_WIDTH, useAppStore } from "./shared/store/appStore";
 import { toast } from "./shared/store/toastStore";
 import type { SearchHit } from "./shared/types/history";
 import type { ShellType, TerminalPaneTarget } from "./shared/types/terminalPane";
@@ -258,7 +256,7 @@ export function App() {
     contextWarnPct,
     resolveWorkspaceProfile,
     setWorkspaceThreadRunState,
-  } = useAppStore();
+  } = useAppShellStore();
   const themeOverridesForActive = useAppStore((s) => s.themeOverrides[themeId]);
   const materialOverridesForMood = useAppStore((s) => s.moodMaterialOverrides[moodPresetId]);
   const wallpaperForMood = useAppStore((s) => s.wallpaperSettingsByMood[moodPresetId]);

@@ -16,8 +16,60 @@ try {
   failed = true;
   scenarios.push({ id: "typescript-contract", status: "fail", error: error instanceof Error ? error.message : String(error) });
 }
+try {
+  const program = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "pnpm";
+  const args =
+    process.platform === "win32"
+      ? [
+          "/d",
+          "/s",
+          "/c",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx --configLoader native --reporter=json",
+        ]
+      : [
+          "exec",
+          "vitest",
+          "run",
+          "src/__tests__/useAppShellStore.test.tsx",
+          "--configLoader",
+          "native",
+          "--reporter=json",
+        ];
+  const output = execFileSync(program, args, {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    timeout: 180_000,
+  });
+  const testReport = JSON.parse(output);
+  const expectedTest = testReport.testResults
+    ?.flatMap((result) => result.assertionResults ?? [])
+    .find(
+      (assertion) =>
+        assertion.fullName ===
+        "useAppShellStore does not rerender the shell owner for an unrelated store mutation",
+    );
+  if (!testReport.success || expectedTest?.status !== "passed") {
+    throw new Error("The required App shell subscription behavior test did not execute and pass.");
+  }
+  scenarios.push({
+    id: "app-shell-store-subscription-behavior",
+    status: "pass",
+    test: expectedTest.fullName,
+  });
+} catch (error) {
+  failed = true;
+  scenarios.push({
+    id: "app-shell-store-subscription-behavior",
+    status: "fail",
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
 const paths = {
   app: "src/App.tsx",
+  appShellStore: "src/features/app/useAppShellStore.ts",
+  appShellStoreTest: "src/__tests__/useAppShellStore.test.tsx",
   model: "src/features/right-rail/rightRailModel.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
@@ -55,6 +107,7 @@ for (const [id, ceiling] of Object.entries({
   bootstrapHook: 53,
   config: 34,
   appMenus: 989,
+  appShellStore: 60,
   decisionInbox: 134,
   orchestraDispatch: 169,
 })) {
@@ -65,6 +118,23 @@ for (const [id, ceiling] of Object.entries({
 }
 const appRightRailModelImport =
   source.app.match(/import\s*\{([^}]*)\}\s*from\s*["']\.\/features\/right-rail\/rightRailModel["'];/)?.[1] ?? "";
+const uncommentedAppSource = source.app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+const appStoreImport =
+  uncommentedAppSource.match(
+    /import\s*\{(?<bindings>[^}]*)\}\s*from\s*["']\.\/shared\/store\/appStore["'];/,
+  )?.groups?.bindings ?? "";
+const useAppStoreLocalNames = appStoreImport
+  .split(",")
+  .map((binding) => binding.trim().match(/^useAppStore(?:\s+as\s+(?<alias>[A-Za-z_$][\w$]*))?$/))
+  .filter(Boolean)
+  .map((binding) => binding.groups?.alias ?? "useAppStore");
+const selectorlessAppSubscription =
+  useAppStoreLocalNames.length === 0 ||
+  useAppStoreLocalNames.some((localName) =>
+    new RegExp(`\\b${localName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\(\\s*\\)`).test(
+      uncommentedAppSource,
+    ),
+  );
 const genericOwnersImportingRightRailModel = [
   "releaseGoalEvidence",
   "authenticatedPromptEvidence",
@@ -76,6 +146,17 @@ const genericOwnersImportingRightRailModel = [
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
   ["app-baseline-lowered", source.app.split(/\r?\n/).length <= 4215, { lines: source.app.split(/\r?\n/).length, ceiling: 4215 }],
+  [
+    "app-shell-store-subscription-narrow",
+    source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
+      source.app.includes("} = useAppShellStore();") &&
+      !selectorlessAppSubscription &&
+      source.appShellStore.includes('import { useShallow } from "zustand/react/shallow"') &&
+      source.appShellStore.includes("useAppStore(") &&
+      source.appShellStore.includes("useShallow((state) => ({") &&
+      source.appShellStoreTest.includes("does not rerender the shell owner for an unrelated store mutation"),
+    {},
+  ],
   ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 688, { lines: source.model.split(/\r?\n/).length, ceiling: 688 }],
   ["neutral-project-artifact-utilities-owned",
     source.projectArtifacts.includes("export function resolveProjectFilePath") &&

@@ -47,9 +47,9 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6.2e1 is complete; A6 resumes at A6.2e2 and is accepted by ownership, dependency direction,
-   behavior, and concurrency evidence. Line counts are non-growth diagnostics, not
-   universal architectural targets.
+3. A6.2e1-A6.2e2 are complete; A6 resumes at A6.2e3 and is accepted by ownership,
+   dependency direction, behavior, and concurrency evidence. Line counts are
+   non-growth diagnostics, not universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
    A7 path is request -> versioned plan preview -> visible implementation -> fresh
    tests -> independent review -> exact-OID accept/merge -> immutable completion
@@ -980,7 +980,7 @@ Design authorities frozen by this checkpoint:
 This is a design-only checkpoint. It does not implement Mission persistence,
 WorkEvent migration, capability leases, completion packets, replay, learning,
 remote control, or extensions; it does not change current alpha/not-release-ready
-claim policy. A6.2e2 remains the next implementation slice. New product runtime
+claim policy. A6.2e3 remains the next implementation slice. New product runtime
 work must not start until A6.2g and then A6.8 satisfy their dependency gates.
 
 #### A6.2e - Architecture and Behavioral Contract Repair
@@ -1010,11 +1010,16 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    Generic/app owners may not import the right-rail runtime barrel; right-rail
    consumers use direct declaration owners or a deliberately typed facade instead
    of wildcard re-export coupling.
-3. **A6.2e2 Active - narrow store subscription**: replace the whole-store `useAppStore()`
-   subscription with stable narrow selectors or a shallow selector contract, prove
-   that unrelated store mutation does not rerender the shell owner, and add a
-   fail-closed verifier check that rejects selector-less App subscriptions.
-4. **A6.2e3 project/tab transition behavior**: execute open, switch, close-folder,
+3. **A6.2e2 Complete - narrow store subscription**: App now subscribes to its 50
+   shell-owned fields through `useAppShellStore` and Zustand's shallow selector
+   contract instead of a selector-less whole-store subscription. The focused render
+   test proves that an unrelated `selectedModel` mutation does not rerender the hook
+   owner while a selected mutation does. The frontend ratchet executes that exact
+   assertion through structured Vitest JSON, rejects skipped/non-passing evidence,
+   and rejects selector-less App calls through direct or aliased `useAppStore`
+   imports. No second store owner, dependency, service, or broader facade was added;
+   `phaseComplete` remains false.
+4. **A6.2e3 Active - project/tab transition behavior**: execute open, switch, close-folder,
    inactive-tab close, and active-tab close behavior in tests. An unsaved cancel
    preserves the active tab, interactive session, editor files, and pane snapshots;
    a confirmed active-tab context change clears editor state only after the tab
