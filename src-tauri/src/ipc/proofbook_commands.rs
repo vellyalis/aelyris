@@ -42,6 +42,11 @@ pub fn start_proofbook_run(
     proofbook_path: String,
     inputs: Option<serde_json::Value>,
 ) -> Result<ProofbookRunLedger, ProofbookError> {
+    require_proofbook_effect_admitted(
+        app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+            .inner(),
+        "Proofbook start",
+    )?;
     let runner = app.state::<proofbook::ProofbookRunner>();
     let executor = IpcProofbookAgentExecutor { app: app.clone() };
     let ledger = runner.start_run_with_agent_executor(
@@ -66,6 +71,15 @@ pub fn start_proofbook_run(
     );
     emit_proofbook_update(&app, &ledger);
     Ok(ledger)
+}
+
+fn require_proofbook_effect_admitted(
+    startup: &crate::startup_reconciliation::StartupReconciliationState,
+    surface: &str,
+) -> Result<(), ProofbookError> {
+    startup
+        .require_effect_admitted(surface)
+        .map_err(|error| ProofbookError::runtime_not_available(&error))
 }
 
 #[tauri::command]
@@ -121,6 +135,11 @@ pub fn resolve_proofbook_manual_gate(
     actor: Option<String>,
     comment: Option<String>,
 ) -> Result<ProofbookRunLedger, ProofbookError> {
+    require_proofbook_effect_admitted(
+        app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+            .inner(),
+        "Proofbook manual-gate continuation",
+    )?;
     let ledger = app
         .state::<proofbook::ProofbookRunner>()
         .resolve_manual_gate(
@@ -160,6 +179,11 @@ pub fn settle_proofbook_agent_session(
     step_id: String,
     proof: proofbook::ProofbookAgentSessionCompletionProof,
 ) -> Result<ProofbookRunLedger, ProofbookError> {
+    require_proofbook_effect_admitted(
+        app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+            .inner(),
+        "Proofbook agent-session continuation",
+    )?;
     let ledger = app
         .state::<proofbook::ProofbookRunner>()
         .settle_agent_session(&project_path, &run_id, &step_id, proof)?;
@@ -356,5 +380,37 @@ settlement:
             serde_json::to_value(&error).unwrap()["code"],
             "runtime_not_available"
         );
+    }
+
+    #[test]
+    fn a4_12_proofbook_effectful_adapters_fail_closed_for_pending_and_failed_startup() {
+        let pending = crate::startup_reconciliation::StartupReconciliationState::new();
+        for surface in [
+            "Proofbook start",
+            "Proofbook manual-gate continuation",
+            "Proofbook agent-session continuation",
+        ] {
+            let pending_error = require_proofbook_effect_admitted(&pending, surface).unwrap_err();
+            assert_eq!(pending_error.code, ProofbookErrorCode::RuntimeNotAvailable);
+            assert!(pending_error
+                .message
+                .contains("startup_reconciliation_pending"));
+            assert!(pending_error.message.contains(surface));
+        }
+
+        let failed = crate::startup_reconciliation::StartupReconciliationState::new();
+        failed.fail("fault", "injected failure").unwrap();
+        for surface in [
+            "Proofbook start",
+            "Proofbook manual-gate continuation",
+            "Proofbook agent-session continuation",
+        ] {
+            let failed_error = require_proofbook_effect_admitted(&failed, surface).unwrap_err();
+            assert_eq!(failed_error.code, ProofbookErrorCode::RuntimeNotAvailable);
+            assert!(failed_error
+                .message
+                .contains("startup_reconciliation_failed"));
+            assert!(failed_error.message.contains(surface));
+        }
     }
 }

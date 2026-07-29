@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::db::ManagedDb;
 use crate::event_bus::AgentEventKind;
@@ -125,6 +125,16 @@ impl Default for StartupReconciliationReport {
 #[derive(Debug, Default)]
 pub struct StartupReconciliationState {
     report: Mutex<StartupReconciliationReport>,
+    /// Serializes an admitted effect from its final readiness check through the
+    /// actual process creation boundary against a new remote Begin transition.
+    /// This closes the Ready-check/Begin/spawn race without adding another
+    /// readiness owner.
+    admission_transition: Mutex<()>,
+    /// When this state mirrors the host decision inside the long-lived PTY
+    /// sidecar, only the host connection that opened the current epoch may
+    /// publish the terminal decision. This is part of the existing admission
+    /// owner, not a second readiness state.
+    remote_admission_epoch: Mutex<Option<String>>,
 }
 
 impl StartupReconciliationState {
@@ -137,6 +147,51 @@ impl StartupReconciliationState {
             .lock()
             .map(|report| report.clone())
             .map_err(|_| "startup reconciliation state lock poisoned".to_string())
+    }
+
+    pub fn begin_remote_admission(&self, epoch: &str) -> Result<(), String> {
+        validate_admission_epoch(epoch)?;
+        let _transition = self
+            .admission_transition
+            .lock()
+            .map_err(|_| "startup admission transition lock poisoned".to_string())?;
+        let mut current_epoch = self
+            .remote_admission_epoch
+            .lock()
+            .map_err(|_| "startup reconciliation epoch lock poisoned".to_string())?;
+        let mut report = self
+            .report
+            .lock()
+            .map_err(|_| "startup reconciliation state lock poisoned".to_string())?;
+        *current_epoch = Some(epoch.to_string());
+        *report = StartupReconciliationReport::default();
+        Ok(())
+    }
+
+    pub fn apply_remote_admission(
+        &self,
+        epoch: &str,
+        decision: StartupReconciliationReport,
+    ) -> Result<(), String> {
+        validate_admission_epoch(epoch)?;
+        validate_remote_decision(&decision)?;
+        let _transition = self
+            .admission_transition
+            .lock()
+            .map_err(|_| "startup admission transition lock poisoned".to_string())?;
+        let current_epoch = self
+            .remote_admission_epoch
+            .lock()
+            .map_err(|_| "startup reconciliation epoch lock poisoned".to_string())?;
+        if current_epoch.as_deref() != Some(epoch) {
+            return Err("stale startup admission epoch".to_string());
+        }
+        let mut report = self
+            .report
+            .lock()
+            .map_err(|_| "startup reconciliation state lock poisoned".to_string())?;
+        *report = decision;
+        Ok(())
     }
 
     pub fn mark_database_ready(&self) -> Result<(), String> {
@@ -212,15 +267,37 @@ impl StartupReconciliationState {
         if report.phase != StartupReconciliationPhase::Pending {
             return Ok(false);
         }
-        if !report.database_ready {
-            return Err("startup reconciliation cannot complete before database readiness".into());
+        apply_completion(
+            &mut report,
+            adopted_terminals,
+            restored_sessions,
+            reconciled_handoffs,
+        )?;
+        Ok(report.phase == StartupReconciliationPhase::Ready)
+    }
+
+    pub fn preview_complete(
+        &self,
+        adopted_terminals: usize,
+        restored_sessions: usize,
+        reconciled_handoffs: usize,
+    ) -> Result<StartupReconciliationReport, String> {
+        let mut report = self.snapshot()?;
+        if report.phase != StartupReconciliationPhase::Pending {
+            return Err("startup reconciliation decision is already terminal".to_string());
         }
-        report.sidecar_connected = true;
-        report.terminal_reconciliation_complete = true;
-        report.adopted_terminals = adopted_terminals;
-        report.restored_sessions = restored_sessions;
-        report.reconciled_handoffs = reconciled_handoffs;
-        Ok(Self::try_mark_ready(&mut report))
+        apply_completion(
+            &mut report,
+            adopted_terminals,
+            restored_sessions,
+            reconciled_handoffs,
+        )?;
+        if report.phase != StartupReconciliationPhase::Ready {
+            return Err(
+                "startup reconciliation cannot complete before every authority reports".into(),
+            );
+        }
+        Ok(report)
     }
 
     pub fn fail(&self, stage: &str, reason: impl Into<String>) -> Result<bool, String> {
@@ -249,30 +326,39 @@ impl StartupReconciliationState {
     }
 
     pub fn require_spawn_admitted(&self) -> Result<(), String> {
+        self.require_effect_admitted("terminal spawn")
+    }
+
+    pub fn acquire_spawn_admission(&self) -> Result<MutexGuard<'_, ()>, String> {
+        let guard = self
+            .admission_transition
+            .lock()
+            .map_err(|_| "startup admission transition lock poisoned".to_string())?;
+        self.require_spawn_admitted()?;
+        Ok(guard)
+    }
+
+    pub fn require_dispatch_admitted(&self) -> Result<(), String> {
+        self.require_effect_admitted("orchestrator dispatch")
+    }
+
+    pub fn require_effect_admitted(&self, surface: &str) -> Result<(), String> {
         let report = self.snapshot()?;
         match report.phase {
             StartupReconciliationPhase::Ready => Ok(()),
             StartupReconciliationPhase::Pending => Err(serde_json::json!({
                 "code": "startup_reconciliation_pending",
-                "message": "terminal spawn is blocked until durable startup reconciliation completes",
+                "message": format!("{surface} is blocked until durable startup reconciliation completes"),
                 "report": report,
             })
             .to_string()),
             StartupReconciliationPhase::Failed => Err(serde_json::json!({
                 "code": "startup_reconciliation_failed",
-                "message": "terminal spawn is blocked because durable startup reconciliation failed",
+                "message": format!("{surface} is blocked because durable startup reconciliation failed"),
                 "report": report,
             })
             .to_string()),
         }
-    }
-
-    pub fn require_dispatch_admitted(&self) -> Result<(), String> {
-        self.require_spawn_admitted().map_err(|error| {
-            error
-                .replace("terminal spawn", "orchestrator dispatch")
-                .replace("terminal state", "startup state")
-        })
     }
 
     fn try_mark_ready(report: &mut StartupReconciliationReport) -> bool {
@@ -291,6 +377,84 @@ impl StartupReconciliationState {
         report.phase = StartupReconciliationPhase::Ready;
         report.completed_at_ms = Some(unix_now_ms());
         true
+    }
+}
+
+fn apply_completion(
+    report: &mut StartupReconciliationReport,
+    adopted_terminals: usize,
+    restored_sessions: usize,
+    reconciled_handoffs: usize,
+) -> Result<(), String> {
+    if !report.database_ready {
+        return Err("startup reconciliation cannot complete before database readiness".into());
+    }
+    report.sidecar_connected = true;
+    report.terminal_reconciliation_complete = true;
+    report.adopted_terminals = adopted_terminals;
+    report.restored_sessions = restored_sessions;
+    report.reconciled_handoffs = reconciled_handoffs;
+    StartupReconciliationState::try_mark_ready(report);
+    Ok(())
+}
+
+fn validate_admission_epoch(epoch: &str) -> Result<(), String> {
+    let parsed = uuid::Uuid::parse_str(epoch)
+        .map_err(|_| "startup admission epoch must be a UUID".to_string())?;
+    if parsed.to_string() != epoch {
+        return Err("startup admission epoch must use canonical lowercase UUID form".to_string());
+    }
+    Ok(())
+}
+
+fn validate_remote_decision(decision: &StartupReconciliationReport) -> Result<(), String> {
+    if decision.quarantined_total
+        != decision
+            .authorities
+            .iter()
+            .map(|authority| authority.quarantined)
+            .sum::<usize>()
+    {
+        return Err("remote startup decision has an invalid quarantine total".to_string());
+    }
+    match decision.phase {
+        StartupReconciliationPhase::Pending => {
+            Err("remote startup decision must be terminal".to_string())
+        }
+        StartupReconciliationPhase::Ready => {
+            let names = decision
+                .authorities
+                .iter()
+                .map(|authority| authority.authority.as_str())
+                .collect::<HashSet<_>>();
+            if !decision.database_ready
+                || !decision.sidecar_connected
+                || !decision.terminal_reconciliation_complete
+                || decision.completed_at_ms.is_none()
+                || decision.failure_stage.is_some()
+                || decision.failure_reason.is_some()
+                || decision.authorities.len() != REQUIRED_STARTUP_AUTHORITIES.len()
+                || !REQUIRED_STARTUP_AUTHORITIES
+                    .iter()
+                    .all(|required| names.contains(required))
+                || decision
+                    .authorities
+                    .iter()
+                    .any(|authority| authority.quarantined != authority.details.len())
+            {
+                return Err("remote startup ready decision is incomplete".to_string());
+            }
+            Ok(())
+        }
+        StartupReconciliationPhase::Failed => {
+            if decision.completed_at_ms.is_none()
+                || decision.failure_stage.as_deref().is_none_or(str::is_empty)
+                || decision.failure_reason.as_deref().is_none_or(str::is_empty)
+            {
+                return Err("remote startup failed decision is incomplete".to_string());
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1019,6 +1183,119 @@ mod tests {
     }
 
     #[test]
+    fn a4_12_remote_admission_rejects_stale_ready_and_keeps_latest_epoch_pending() {
+        let host = StartupReconciliationState::new();
+        host.mark_database_ready().unwrap();
+        record_required_authorities(&host);
+        let ready = host.preview_complete(2, 1, 1).unwrap();
+
+        let mirror = StartupReconciliationState::new();
+        let stale_epoch = uuid::Uuid::new_v4().to_string();
+        let current_epoch = uuid::Uuid::new_v4().to_string();
+        mirror.begin_remote_admission(&stale_epoch).unwrap();
+        mirror.begin_remote_admission(&current_epoch).unwrap();
+        assert!(mirror
+            .apply_remote_admission(&stale_epoch, ready.clone())
+            .unwrap_err()
+            .contains("stale startup admission epoch"));
+        assert!(mirror
+            .require_effect_admitted("sidecar REST session creation")
+            .unwrap_err()
+            .contains("startup_reconciliation_pending"));
+
+        mirror
+            .apply_remote_admission(&current_epoch, ready)
+            .unwrap();
+        mirror
+            .require_effect_admitted("sidecar REST session creation")
+            .unwrap();
+    }
+
+    #[test]
+    fn a4_12_ready_preview_does_not_expose_local_ready_before_remote_sync() {
+        let state = StartupReconciliationState::new();
+        state.mark_database_ready().unwrap();
+        record_required_authorities(&state);
+
+        let preview = state.preview_complete(2, 1, 1).unwrap();
+        assert_eq!(preview.phase, StartupReconciliationPhase::Ready);
+        assert_eq!(
+            state.snapshot().unwrap().phase,
+            StartupReconciliationPhase::Pending
+        );
+        assert!(state.require_spawn_admitted().is_err());
+
+        assert!(state.complete(2, 1, 1).unwrap());
+        state.require_spawn_admitted().unwrap();
+    }
+
+    #[test]
+    fn a4_12_effectful_surfaces_share_pending_failed_and_ready_admission() {
+        let state = StartupReconciliationState::new();
+        for surface in ["Workflow start", "Proofbook start", "REST session creation"] {
+            let pending = state.require_effect_admitted(surface).unwrap_err();
+            assert!(pending.contains("startup_reconciliation_pending"));
+            assert!(pending.contains(surface));
+        }
+
+        state.fail("fault", "injected failure").unwrap();
+        for surface in ["Workflow start", "Proofbook start", "REST session creation"] {
+            let failed = state.require_effect_admitted(surface).unwrap_err();
+            assert!(failed.contains("startup_reconciliation_failed"));
+            assert!(failed.contains(surface));
+        }
+    }
+
+    #[test]
+    fn a4_12_begin_waits_for_admitted_spawn_guard_before_returning_to_pending() {
+        use std::sync::{mpsc, Arc};
+        use std::time::Duration;
+
+        let host = StartupReconciliationState::new();
+        host.mark_database_ready().unwrap();
+        record_required_authorities(&host);
+        let ready = host.preview_complete(0, 0, 0).unwrap();
+
+        let state = Arc::new(StartupReconciliationState::new());
+        let ready_epoch = uuid::Uuid::new_v4().to_string();
+        state.begin_remote_admission(&ready_epoch).unwrap();
+        state.apply_remote_admission(&ready_epoch, ready).unwrap();
+
+        let (spawn_locked_tx, spawn_locked_rx) = mpsc::channel();
+        let (release_spawn_tx, release_spawn_rx) = mpsc::channel();
+        let spawn_state = state.clone();
+        let spawn = std::thread::spawn(move || {
+            let _guard = spawn_state.acquire_spawn_admission().unwrap();
+            spawn_locked_tx.send(()).unwrap();
+            release_spawn_rx.recv().unwrap();
+        });
+        spawn_locked_rx.recv().unwrap();
+
+        let (begin_done_tx, begin_done_rx) = mpsc::channel();
+        let begin_state = state.clone();
+        let next_epoch = uuid::Uuid::new_v4().to_string();
+        let begin = std::thread::spawn(move || {
+            begin_state.begin_remote_admission(&next_epoch).unwrap();
+            begin_done_tx.send(()).unwrap();
+        });
+
+        assert!(
+            begin_done_rx
+                .recv_timeout(Duration::from_millis(100))
+                .is_err(),
+            "Begin crossed an admitted spawn guard before process creation completed"
+        );
+        release_spawn_tx.send(()).unwrap();
+        spawn.join().unwrap();
+        begin_done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        begin.join().unwrap();
+        assert!(state
+            .require_spawn_admitted()
+            .unwrap_err()
+            .contains("startup_reconciliation_pending"));
+    }
+
+    #[test]
     fn timeout_fails_only_a_pending_state() {
         let state = StartupReconciliationState::new();
         assert!(state.fail_if_pending().unwrap());
@@ -1177,7 +1454,7 @@ mod tests {
     }
 
     #[test]
-    fn production_pty_owner_rejects_spawn_before_reconciliation() {
+    fn a4_12_production_pty_owner_rejects_spawn_before_reconciliation() {
         let state = std::sync::Arc::new(StartupReconciliationState::new());
         let pty = crate::pty::PtyManager::new().with_startup_reconciliation(state.clone());
         let pending = pty

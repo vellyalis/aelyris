@@ -13,7 +13,11 @@ fn parse_port() -> u16 {
 async fn main() {
     let _log_ring = logging::init();
     let port = parse_port();
-    let pty = PtyManager::new().with_env_scrollback_store();
+    let startup_reconciliation =
+        std::sync::Arc::new(aelyris_lib::startup_reconciliation::StartupReconciliationState::new());
+    let pty = PtyManager::new()
+        .with_startup_reconciliation(startup_reconciliation.clone())
+        .with_env_scrollback_store();
     // P0-4: the sidecar daemon serves the SAME REST/WS/MCP surface as the in-app API, so it
     // MUST carry the command-risk gate too (boundary #1) — otherwise command-carrying writes
     // through the shipped daemon would bypass both the `deny` block and `review` approval. Its
@@ -26,6 +30,7 @@ async fn main() {
     ));
     let state = api::ApiState::new(pty, api::AuthConfig::from_env())
         .with_process_kind(api::PROCESS_KIND_SIDE_CAR)
+        .with_startup_reconciliation(startup_reconciliation)
         .with_command_risk_gate(Some(command_risk_gate))
         .with_env_mux_store();
 

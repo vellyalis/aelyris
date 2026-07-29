@@ -2,25 +2,19 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A4` (reopened by a fresh 2026-07-16 runtime-integrity regression;
-earlier A4.6 PASS is historical evidence, not current phase completion).
-ACTIVE SLICE: `A4.12`.
-LAST COMPLETED SLICE: `A4.11`.
-NEXT PHASE: `A6` after corrective A4.8-A4.12 acceptance; resume at A6.2e1.
-NEXT IMPLEMENTATION SLICE: `A4.12`.
-A4.11 replaces file-exists/liveness ACK with a structured digest-bound acceptance record
-inside the existing checkpoint/handoff/session owners. Predecessor and successor
-generations, the persisted checkpoint digest, and baton version are CAS-bound before
-acceptance. Every observed post-spawn failure records a typed outcome, stops the exact
-successor or applies a sticky write-fenced quarantine, and boot revalidates accepted,
-failed, quarantined, and ambiguous legacy handoffs instead of guessing.
-The old A4 verifier covered migration/file/checkpoint scenarios but omitted
-these owners plus EventBus loss, durable execution identity/fencing, all-owner startup
-reconciliation, successor cleanup, and cross-process admission; it also counted an
-external Codex watchdog sleep-gap probe as product durability. Therefore A4 stays open
-through A4.12 and its
-old quality credit is removed. A6.2e1 remains the exact resume slice after this ordered
-runtime-integrity correction; do not mix A6/A7 work into A4.
+CURRENT PHASE: `A6`.
+ACTIVE SLICE: `A6.2e1`.
+LAST COMPLETED SLICE: `A4.12`.
+NEXT PHASE: `A7` after A6 owner/behavior acceptance.
+NEXT IMPLEMENTATION SLICE: `A6.2e1`.
+A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
+`StartupReconciliationState` is mirrored across the sidecar process boundary with an
+authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
+and Proofbook starts remain default-closed until the shared decision is ready. The v8
+acceptance owner combines authoritative mutation, EventBus delivery, execution fencing,
+startup reconciliation, handoff acceptance, and admission surfaces in one executed
+matrix. A6.2e1 is now the exact implementation frontier; do not reopen A4 without a
+fresh regression or mix A7/native work into A6.
 
 ## Objective
 
@@ -41,7 +35,7 @@ requirements/spec/native-package documents point here instead of copying that
 volatile value.
 
 ```text
-A4.12 admission coverage + combined runtime-integrity closeout
+A4.12 complete
   -> A6.2e1/A6 owner and behavior boundaries
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
@@ -59,12 +53,10 @@ terminal decision, A9 trust owners, and current claim boundary remain unchanged.
 Owner decision, 2026-07-29. This is a portfolio-order clarification, not an
 implementation phase and not a reduction of the product Goal.
 
-1. Execute **A4.12 only** as the single remaining A4 closeout. It owns
-   cross-process default-closed startup admission for sidecar session creation,
-   pending/failed direct sidecar REST tests, startup admission for effectful
-   Workflow and Proofbook execution, claim narrowing for any surface not actually
-   covered, and the combined crash/fault/restart matrix. Do not create A4.13 merely
-   to hold these already-discovered A4 acceptance gaps.
+1. **A4.12 is complete.** Cross-process sidecar session creation plus effectful
+   Workflow and Proofbook starts share the existing startup admission owner, and the
+   v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
+   without a fresh regression.
 2. Resume **A6.2e1**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
@@ -331,7 +323,7 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - live IME, staged sidecar kill, populated-cockpit review, and final DWM/WebView2 glass
   parity remain external/operator proof debt and do not become repo-owned PASS claims.
 
-## A4 Reopened - Runtime Integrity Correction
+## A4 Complete - Runtime Integrity Correction
 
 - A4.1-A4.6 remain historical implementation/evidence, but their former aggregate
   `phaseComplete=true` was a semantic false positive exposed by fresh review.
@@ -358,9 +350,18 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   Successor authority is stopped or sticky-quarantined behind the shared terminal
   write gate, failed/ambiguous rows reconcile at boot, and legacy rows are not
   promoted to accepted by migration.
-- A4.12 owns the remaining admission coverage plus combined crash/fault/restart
-  acceptance. It is the only slice allowed to restore `phaseComplete=true` and A4
-  release-score credit.
+- A4.12 is complete: the existing startup state is mirrored into the long-lived
+  sidecar through a private epoch-bound admission sync; stale Ready cannot overwrite a
+  newer Pending epoch, local Ready is not exposed before the remote mirror succeeds,
+  the sidecar's lowest PTY spawn boundary serializes actual process creation against a
+  new Begin transition, and direct REST plus mux-backed creation cannot bypass the
+  same Pending/Failed state. Effectful Workflow starts and every Proofbook adapter
+  that can resume execution use the same contract. A4 acceptance v8 now requires
+  25/25, including a separate real-process HTTP scenario, before its six-domain
+  combined runtime-integrity matrix may report `phaseComplete=true`.
+- The admission sync claim is current protocol v4 host-sidecar pairs only. A live
+  protocol-v3 sidecar must be restarted; that compatibility residual is nonblocking
+  and does not authorize a migration service inside A4.
 - After A4.12, resume the frozen A6 frontier at A6.2e1. The queued NUI proposal
   does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the

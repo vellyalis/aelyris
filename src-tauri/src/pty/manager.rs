@@ -259,9 +259,14 @@ impl PtyManager {
         cwd: Option<&str>,
         extra_env: Option<std::collections::HashMap<String, String>>,
     ) -> Result<(), String> {
-        if let Some(state) = &self.startup_reconciliation {
-            state.require_spawn_admitted()?;
-        }
+        // Hold the existing startup owner across the real OS process creation.
+        // A remote Begin must wait here, so no spawn can pass a Ready check and
+        // then race into existence after the sidecar has returned to Pending.
+        let _admission_guard = self
+            .startup_reconciliation
+            .as_ref()
+            .map(|state| state.acquire_spawn_admission())
+            .transpose()?;
         // Reserve the id under the short map lock, then perform every blocking OS
         // operation outside it. A concurrent same-id spawn observes Initializing
         // and fails without creating a second child.

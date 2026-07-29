@@ -76,7 +76,7 @@ use self::session_common::{normalize_api_cwd, parse_shell};
 pub const DEFAULT_PORT: u16 = 9333;
 pub const PROCESS_KIND_EMBEDDED: &str = "embedded-api";
 pub const PROCESS_KIND_SIDE_CAR: &str = "pty-sidecar";
-pub const DAEMON_PROTOCOL_VERSION: u32 = 3;
+pub const DAEMON_PROTOCOL_VERSION: u32 = 4;
 pub const MUX_SNAPSHOT_DIR_ENV: &str = "AELYRIS_MUX_SNAPSHOT_DIR";
 
 /// Per-frame write deadline for the WS send half.
@@ -1281,6 +1281,14 @@ impl AuthConfig {
     }
 
     fn verify_input_authority(&self, supplied: Option<&str>) -> bool {
+        if let (Some(public), Some(private)) = (&self.token, &self.input_authority_token) {
+            if ct_eq(public.as_bytes(), private.as_bytes()) {
+                log::error!(
+                    "api: refusing input authority because public and private capabilities are equal"
+                );
+                return false;
+            }
+        }
         match (&self.input_authority_token, supplied) {
             (Some(expected), Some(actual)) => ct_eq(expected.as_bytes(), actual.as_bytes()),
             (None, None) if self.token.is_none() => true,
@@ -1553,6 +1561,9 @@ pub enum ApiError {
     #[error("rate limit exceeded")]
     RateLimited,
 
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 
@@ -1604,6 +1615,9 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
+            ApiError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "startup_not_admitted")
+            }
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
             ApiError::CommandRiskBlocked(_) => unreachable!("handled above"),
             ApiError::TerminalWriteRejected(_, _) => unreachable!("handled above"),
@@ -1791,6 +1805,10 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/internal/interactive-approval-state",
             post(internal_interactive_approval_state),
+        )
+        .route(
+            "/internal/startup-admission",
+            post(internal_startup_admission),
         )
         .route(
             "/sessions/{id}/input-approval",
@@ -2031,6 +2049,18 @@ struct InternalInteractiveApprovalStateBody {
     prompt_key: Option<String>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum InternalStartupAdmissionBody {
+    Begin {
+        epoch: String,
+    },
+    Publish {
+        epoch: String,
+        report: crate::startup_reconciliation::StartupReconciliationReport,
+    },
+}
+
 fn input_authority_header_name() -> HeaderName {
     HeaderName::from_static("x-aelyris-input-authority")
 }
@@ -2113,6 +2143,7 @@ async fn create_session(
     State(state): State<ApiState>,
     Json(body): Json<CreateSessionBody>,
 ) -> ApiResult<Json<CreateSessionResponse>> {
+    require_session_creation_admitted(&state, "REST session creation")?;
     let shell = parse_shell(&body.shell)?;
     if body.cols == 0 || body.rows == 0 {
         return Err(ApiError::BadRequest("cols and rows must be > 0".into()));
@@ -2152,6 +2183,7 @@ async fn create_command_session(
     State(state): State<ApiState>,
     Json(body): Json<CreateCommandSessionBody>,
 ) -> ApiResult<Json<CreateSessionResponse>> {
+    require_session_creation_admitted(&state, "REST command session creation")?;
     validate_command_session_body(&body)?;
     let _create_guard = state.create_lock.lock().await;
     if state.pty.list_info().len() >= state.max_sessions {
@@ -2187,6 +2219,15 @@ async fn create_command_session(
         return Err(err);
     }
     Ok(Json(CreateSessionResponse { id }))
+}
+
+fn require_session_creation_admitted(state: &ApiState, surface: &str) -> ApiResult<()> {
+    match state.startup_reconciliation.as_ref() {
+        Some(startup) => startup
+            .require_effect_admitted(surface)
+            .map_err(ApiError::ServiceUnavailable),
+        None => Ok(()),
+    }
 }
 
 fn validate_command_session_body(body: &CreateCommandSessionBody) -> Result<(), ApiError> {
@@ -2549,6 +2590,33 @@ async fn internal_interactive_approval_state(
             authority.set_interactive_approval(body.terminal_id, body.session_id, prompt_key)
         }
         None => authority.clear_interactive_approval(&body.terminal_id),
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn internal_startup_admission(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(body): Json<InternalStartupAdmissionBody>,
+) -> ApiResult<StatusCode> {
+    let supplied = headers
+        .get(input_authority_header_name())
+        .and_then(|value| value.to_str().ok());
+    if !state.auth.verify_input_authority(supplied) {
+        return Err(ApiError::Forbidden(
+            "input authority capability is required".to_string(),
+        ));
+    }
+    let startup = state.startup_reconciliation.as_ref().ok_or_else(|| {
+        ApiError::Internal("startup reconciliation barrier unavailable".to_string())
+    })?;
+    match body {
+        InternalStartupAdmissionBody::Begin { epoch } => startup
+            .begin_remote_admission(&epoch)
+            .map_err(ApiError::Conflict)?,
+        InternalStartupAdmissionBody::Publish { epoch, report } => startup
+            .apply_remote_admission(&epoch, report)
+            .map_err(ApiError::Conflict)?,
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -3156,6 +3224,94 @@ mod tests {
         assert!(!cfg.verify_input_authority(Some("public-bearer")));
         assert!(!cfg.verify_input_authority(None));
         assert!(cfg.verify_input_authority(Some("human-capability")));
+    }
+
+    #[test]
+    fn a4_12_equal_public_and_private_capabilities_fail_closed() {
+        let cfg = AuthConfig::with_token("collapsed-capability")
+            .with_input_authority_token("collapsed-capability");
+        assert!(cfg.verify(Some("Bearer collapsed-capability")));
+        assert!(!cfg.verify_input_authority(Some("collapsed-capability")));
+    }
+
+    #[tokio::test]
+    async fn a4_12_sidecar_rest_session_and_command_creation_deny_pending_and_failed_startup() {
+        for failed in [false, true] {
+            let startup =
+                Arc::new(crate::startup_reconciliation::StartupReconciliationState::new());
+            if failed {
+                startup.fail("fault", "injected failure").unwrap();
+            }
+            let state = ApiState::new(PtyManager::new(), AuthConfig::disabled())
+                .with_process_kind(PROCESS_KIND_SIDE_CAR)
+                .with_startup_reconciliation(startup);
+
+            let session_error = match create_session(
+                State(state.clone()),
+                Json(CreateSessionBody {
+                    shell: "powershell".to_string(),
+                    cols: 80,
+                    rows: 24,
+                    cwd: None,
+                    id: None,
+                }),
+            )
+            .await
+            {
+                Err(error) => error,
+                Ok(_) => panic!("pending or failed startup admitted REST session creation"),
+            };
+            assert_eq!(
+                session_error.into_response().status(),
+                StatusCode::SERVICE_UNAVAILABLE
+            );
+
+            let command_error = match create_command_session(
+                State(state.clone()),
+                Json(CreateCommandSessionBody {
+                    program: "cmd.exe".to_string(),
+                    args: Vec::new(),
+                    cols: 80,
+                    rows: 24,
+                    cwd: None,
+                    env: None,
+                }),
+            )
+            .await
+            {
+                Err(error) => error,
+                Ok(_) => {
+                    panic!("pending or failed startup admitted REST command session creation")
+                }
+            };
+            assert_eq!(
+                command_error.into_response().status(),
+                StatusCode::SERVICE_UNAVAILABLE
+            );
+            assert!(state.pty.list().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn a4_12_public_bearer_cannot_change_sidecar_startup_admission() {
+        let state = ApiState::new(
+            PtyManager::new(),
+            AuthConfig::with_token("public-bearer").with_input_authority_token("private-authority"),
+        )
+        .with_process_kind(PROCESS_KIND_SIDE_CAR)
+        .with_startup_reconciliation(Arc::new(
+            crate::startup_reconciliation::StartupReconciliationState::new(),
+        ));
+        let error = internal_startup_admission(
+            State(state),
+            HeaderMap::new(),
+            Json(InternalStartupAdmissionBody::Begin {
+                epoch: uuid::Uuid::new_v4().to_string(),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, ApiError::Forbidden(_)));
     }
 
     #[test]

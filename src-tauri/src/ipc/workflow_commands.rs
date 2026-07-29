@@ -20,6 +20,10 @@ pub fn start_workflow(
     workflow_path: String,
     task_title: String,
 ) -> Result<crate::workflow::WorkflowStatus, String> {
+    require_workflow_start_admitted(
+        app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+            .inner(),
+    )?;
     let workflow = crate::workflow::parse_workflow(&workflow_path)?;
     let workflow_name = workflow.name.clone();
     let phase_count = workflow.phases.len();
@@ -49,6 +53,12 @@ pub fn start_workflow(
         }),
     );
     executor.status(&id)
+}
+
+fn require_workflow_start_admitted(
+    startup: &crate::startup_reconciliation::StartupReconciliationState,
+) -> Result<(), String> {
+    startup.require_effect_admitted("Workflow start")
 }
 
 /// Get the current phase config for a workflow (so frontend can start the agent)
@@ -419,4 +429,24 @@ pub fn workflow_remove(app: AppHandle, workflow_id: String) {
         "Workflow removed",
         serde_json::json!({}),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_workflow_start_admitted;
+    use crate::startup_reconciliation::StartupReconciliationState;
+
+    #[test]
+    fn a4_12_workflow_start_fails_closed_for_pending_and_failed_startup() {
+        let pending = StartupReconciliationState::new();
+        assert!(require_workflow_start_admitted(&pending)
+            .unwrap_err()
+            .contains("startup_reconciliation_pending"));
+
+        let failed = StartupReconciliationState::new();
+        failed.fail("fault", "injected failure").unwrap();
+        assert!(require_workflow_start_admitted(&failed)
+            .unwrap_err()
+            .contains("startup_reconciliation_failed"));
+    }
 }

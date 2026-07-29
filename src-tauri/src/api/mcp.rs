@@ -601,6 +601,15 @@ fn proofbook_error_to_api(error: crate::proofbook::ProofbookError) -> ApiError {
     ApiError::BadRequest(error.to_string())
 }
 
+fn require_mcp_proofbook_effect_admitted(state: &ApiState, surface: &str) -> ApiResult<()> {
+    if let Some(startup) = state.startup_reconciliation.as_ref() {
+        startup
+            .require_effect_admitted(surface)
+            .map_err(ApiError::ServiceUnavailable)?;
+    }
+    Ok(())
+}
+
 fn mcp_proofbook_list(
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
@@ -646,6 +655,7 @@ fn mcp_proofbook_run(
     state: &ApiState,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
+    require_mcp_proofbook_effect_admitted(state, "Proofbook MCP start")?;
     let runner = mcp_proofbook_runner(state)?;
     let project_path = arg_string(args, "projectPath")?;
     let proofbook_path = arg_string(args, "proofbookPath")?;
@@ -685,6 +695,7 @@ fn mcp_proofbook_settle_agent_session(
     state: &ApiState,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
+    require_mcp_proofbook_effect_admitted(state, "Proofbook MCP agent-session continuation")?;
     let runner = mcp_proofbook_runner(state)?;
     let project_path = arg_string(args, "projectPath")?;
     let run_id = arg_string(args, "runId")?;
@@ -719,6 +730,7 @@ fn mcp_proofbook_decide_gate(
     args: &serde_json::Map<String, serde_json::Value>,
     decision: &str,
 ) -> ApiResult<serde_json::Value> {
+    require_mcp_proofbook_effect_admitted(state, "Proofbook MCP gate continuation")?;
     let runner = mcp_proofbook_runner(state)?;
     let project_path = arg_string(args, "projectPath")?;
     let run_id = arg_string(args, "runId")?;
@@ -4885,6 +4897,126 @@ mod tests {
         };
         let result = rt.block_on(tools_call(State(state), Json(body)));
         assert!(matches!(result, Err(ApiError::Forbidden(_))));
+    }
+
+    #[test]
+    fn a4_12_proofbook_mcp_status_dispatch_remains_available_while_startup_is_blocked() {
+        let project = tempfile::tempdir().expect("tempdir");
+        let proofbook = write_test_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: a4-status-observation
+steps:
+  - id: hold
+    type: manualGate
+    prompt: Observe this waiting run
+    options: [approve, reject]
+settlement:
+  requiredSteps: [hold]
+"#,
+        );
+        let runner = crate::proofbook::ProofbookRunner::new();
+        let ledger = runner
+            .start_run(
+                &project.path().to_string_lossy(),
+                &proofbook,
+                serde_json::json!({}),
+            )
+            .expect("create observable waiting run");
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+
+        let pending = Arc::new(crate::startup_reconciliation::StartupReconciliationState::new());
+        let failed = Arc::new(crate::startup_reconciliation::StartupReconciliationState::new());
+        failed.fail("fault", "injected failure").unwrap();
+        for startup in [pending, failed] {
+            let state = ApiState::new(
+                crate::pty::PtyManager::new(),
+                crate::api::AuthConfig::with_token("t"),
+            )
+            .with_proofbook_runner(runner.clone())
+            .with_startup_reconciliation(startup);
+            let body = ToolCallBody {
+                name: "aelyris.proofbook.status".to_string(),
+                arguments: serde_json::json!({
+                    "projectPath": project.path().to_string_lossy(),
+                    "runId": ledger.run_id,
+                }),
+            };
+            let Json(value) = rt
+                .block_on(tools_call(State(state), Json(body)))
+                .expect("read-only status remains available");
+            assert_eq!(value["result"]["runId"], ledger.run_id);
+        }
+    }
+
+    #[test]
+    fn a4_12_proofbook_mcp_effectful_tools_call_adapters_deny_pending_and_failed_startup() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let pending = Arc::new(crate::startup_reconciliation::StartupReconciliationState::new());
+        let failed = Arc::new(crate::startup_reconciliation::StartupReconciliationState::new());
+        failed.fail("fault", "injected failure").unwrap();
+
+        for (startup, phase_code) in [
+            (pending, "startup_reconciliation_pending"),
+            (failed, "startup_reconciliation_failed"),
+        ] {
+            let state = ApiState::new(
+                crate::pty::PtyManager::new(),
+                crate::api::AuthConfig::with_token("t"),
+            )
+            .with_proofbook_runner(crate::proofbook::ProofbookRunner::new())
+            .with_startup_reconciliation(startup);
+            for (tool, surface, arguments) in [
+                (
+                    "aelyris.proofbook.settle_agent_session",
+                    "Proofbook MCP agent-session continuation",
+                    serde_json::json!({
+                        "projectPath": "C:/a4-admission-fixture",
+                        "runId": "run-fixture",
+                        "stepId": "step-fixture",
+                        "proof": { "status": "blocked" },
+                    }),
+                ),
+                (
+                    "aelyris.proofbook.approve_gate",
+                    "Proofbook MCP gate continuation",
+                    serde_json::json!({
+                        "projectPath": "C:/a4-admission-fixture",
+                        "runId": "run-fixture",
+                        "gateId": "gate-fixture",
+                        "gateHash": "sha256:fixture",
+                    }),
+                ),
+                (
+                    "aelyris.proofbook.reject_gate",
+                    "Proofbook MCP gate continuation",
+                    serde_json::json!({
+                        "projectPath": "C:/a4-admission-fixture",
+                        "runId": "run-fixture",
+                        "gateId": "gate-fixture",
+                        "gateHash": "sha256:fixture",
+                    }),
+                ),
+            ] {
+                let result = rt.block_on(tools_call(
+                    State(state.clone()),
+                    Json(ToolCallBody {
+                        name: tool.to_string(),
+                        arguments,
+                    }),
+                ));
+                match result {
+                    Err(ApiError::ServiceUnavailable(message)) => {
+                        assert!(message.contains(phase_code), "{tool}: {message}");
+                        assert!(message.contains(surface), "{tool}: {message}");
+                    }
+                    other => panic!(
+                        "{tool} did not fail closed for {phase_code} at its actual adapter: {other:?}"
+                    ),
+                }
+            }
+        }
     }
 
     #[test]

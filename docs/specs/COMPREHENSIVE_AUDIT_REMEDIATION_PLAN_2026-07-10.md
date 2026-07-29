@@ -515,7 +515,7 @@ Focused structured-handoff tests pass 13/13, directly affected Rust modules pass
 the full Rust library suite passes 1292/1292. RT-1d and RT-1e source-contract gates pass.
 `phaseComplete=false`; only A4.12 may restore A4 completion credit.
 
-### **A4.12** Planned - Admission Coverage And Combined Runtime-Integrity Closeout
+### **A4.12** Complete - Admission Coverage And Combined Runtime-Integrity Closeout
 
 First close the admission gaps already found by the A4 review without creating a new
 manager, journal, or A4.13:
@@ -535,6 +535,31 @@ lost, no stale generation can commit, and every uncertainty is blocked or explic
 degraded. Only A4.12 may set `phaseComplete=true` and restore A4 quality credit.
 After it passes, resume the already frozen A6 frontier at A6.2e1; A7 remains
 forbidden until A6 closes.
+
+Implemented without a new manager, journal, runner, or state owner. The existing
+`StartupReconciliationState` now mirrors the host decision into the long-lived PTY
+sidecar through the private input-authority capability and a canonical UUID epoch.
+Connecting hosts first reset the daemon mirror to Pending; only the current epoch may
+publish Ready/Failed. The sidecar attaches that same state to both `ApiState` and the
+lowest `PtyManager` spawn boundary; an admitted guard remains held through actual
+process creation while Begin waits on the same owner lock. Direct REST and mux-backed
+creation therefore deny Pending/Failed without a handler-only bypass. Tauri Workflow
+starts and every Tauri/MCP Proofbook continuation adapter that may drive the run use
+the same effect admission contract. Local Ready is previewed but not committed until
+the remote Ready mirror succeeds. Equal public/private capabilities fail closed.
+
+The v8 acceptance runner executes 25 scenarios, including a separate real
+`aelyris-pty-server` process driven over loopback HTTP, and records one combined matrix over
+authoritative mutation, EventBus delivery, execution fencing, startup reconciliation,
+handoff acceptance, and admission surfaces. All six dimensions pass; acknowledged
+state/effects are not silently lost, stale generations cannot commit, and uncertainty
+is blocked or explicitly degraded. `phaseComplete=true`; the implementation frontier
+resumes at A6.2e1. Real OS sleep/resume and abrupt host power-loss remain A9 operator
+proof and are not claimed by this deterministic matrix.
+
+The cross-process claim is narrowed to current protocol v4 host-sidecar pairs. A
+live protocol-v3 daemon must be restarted; this nonblocking compatibility residual
+does not create an A4 migration-service requirement.
 
 ## A5 - Execution Supervision and Concurrency
 

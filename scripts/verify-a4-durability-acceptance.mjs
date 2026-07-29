@@ -43,6 +43,30 @@ const scenarios = [
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "startup_reconciliation", "--lib"],
   },
   {
+    id: "a4-12-cross-process-and-effectful-start-admission",
+    command: cargo,
+    args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "a4_12_", "--lib"],
+    minimumPassed: 12,
+    requiredOutputMarkers: [
+      "a4_12_proofbook_mcp_status_dispatch_remains_available_while_startup_is_blocked",
+      "a4_12_proofbook_mcp_effectful_tools_call_adapters_deny_pending_and_failed_startup",
+    ],
+  },
+  {
+    id: "a4-12-live-sidecar-process-http-admission",
+    command: cargo,
+    args: [
+      "test",
+      "--manifest-path",
+      "src-tauri/pty-server/Cargo.toml",
+      "--test",
+      "startup_admission_http",
+      "--",
+      "--test-threads=1",
+    ],
+    minimumPassed: 1,
+  },
+  {
     id: "event-outbox-append-query-gap-and-consumer-ack",
     command: cargo,
     args: ["test", "--manifest-path", "src-tauri/Cargo.toml", "persistence::event_repo::tests", "--lib"],
@@ -160,6 +184,11 @@ for (const scenario of scenarios) {
         );
       }
     }
+    for (const marker of scenario.requiredOutputMarkers ?? []) {
+      if (!stdout.includes(marker)) {
+        throw new Error(`${scenario.id} did not execute required adapter proof ${marker}`);
+      }
+    }
     results.push({
       id: scenario.id,
       status: "pass",
@@ -188,15 +217,99 @@ for (const scenario of scenarios) {
   }
 }
 
+const passedScenarioIds = new Set(
+  results.filter((scenario) => scenario.status === "pass").map((scenario) => scenario.id),
+);
+const combinedDimensions = [
+  {
+    id: "authoritative_mutation",
+    scenarioIds: [
+      "context-store-authoritative-mutation-rollback",
+      "task-graph-authoritative-mutation-rollback",
+    ],
+  },
+  {
+    id: "event_bus_delivery",
+    scenarioIds: [
+      "event-outbox-append-query-gap-and-consumer-ack",
+      "event-bus-restart-redelivery-and-buffer-pressure",
+      "event-consumer-mcp-adapter",
+      "event-mcp-structured-error-and-catalog-contract",
+    ],
+  },
+  {
+    id: "execution_fencing",
+    scenarioIds: [
+      "work-execution-attempt-generation-and-load-integrity",
+      "execution-fence-crash-boundaries-and-stale-token",
+    ],
+  },
+  {
+    id: "startup_reconciliation",
+    scenarioIds: [
+      "all-authority-startup-reconciliation-and-dispatch-admission",
+      "a4-12-cross-process-and-effectful-start-admission",
+      "a4-12-live-sidecar-process-http-admission",
+    ],
+  },
+  {
+    id: "handoff_acceptance",
+    scenarioIds: ["structured-handoff-acceptance-and-successor-quarantine"],
+  },
+  {
+    id: "admission_surfaces",
+    scenarioIds: [
+      "a4-12-cross-process-and-effectful-start-admission",
+      "a4-12-live-sidecar-process-http-admission",
+    ],
+  },
+].map((dimension) => ({
+  ...dimension,
+  status: dimension.scenarioIds.every((id) => passedScenarioIds.has(id)) ? "pass" : "fail",
+}));
+const combinedMatrixPassed =
+  !failed && combinedDimensions.every((dimension) => dimension.status === "pass");
+const expandedAdmissionUnitProofPassed = passedScenarioIds.has(
+  "a4-12-cross-process-and-effectful-start-admission",
+);
+const proofbookEffectAdapterProofPassed =
+  expandedAdmissionUnitProofPassed &&
+  scenarios
+    .find((scenario) => scenario.id === "a4-12-cross-process-and-effectful-start-admission")
+    ?.requiredOutputMarkers?.includes(
+      "a4_12_proofbook_mcp_status_dispatch_remains_available_while_startup_is_blocked",
+    ) &&
+  scenarios
+    .find((scenario) => scenario.id === "a4-12-cross-process-and-effectful-start-admission")
+    ?.requiredOutputMarkers?.includes(
+      "a4_12_proofbook_mcp_effectful_tools_call_adapters_deny_pending_and_failed_startup",
+    );
+const liveSidecarHttpProofPassed = passedScenarioIds.has(
+  "a4-12-live-sidecar-process-http-admission",
+);
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a4-durability-acceptance/v7",
+  schema: "aelyris.a4-durability-acceptance/v8",
   status: failed ? "failed" : "pass-current-a4-durability-evidence",
-  completedThrough: failed ? "A4.10" : "A4.11",
-  repoOwnedComplete: false,
-  phaseComplete: false,
-  remainingSlices: failed ? ["A4.11", "A4.12"] : ["A4.12"],
+  completedThrough: combinedMatrixPassed ? "A4.12" : "A4.11",
+  repoOwnedComplete: combinedMatrixPassed,
+  phaseComplete: combinedMatrixPassed,
+  remainingSlices: combinedMatrixPassed ? [] : ["A4.12"],
   scenarios: results,
+  combinedRuntimeIntegrityMatrix: {
+    schema: "aelyris.a4-runtime-integrity-matrix/v1",
+    status: combinedMatrixPassed ? "pass" : "fail",
+    dimensions: combinedDimensions,
+    guarantees: {
+      noAcknowledgedStateOrEffectSilentlyLost: combinedMatrixPassed,
+      noStaleGenerationCanCommit: combinedMatrixPassed,
+      uncertaintyIsBlockedOrExplicitlyDegraded:
+        combinedMatrixPassed && expandedAdmissionUnitProofPassed && liveSidecarHttpProofPassed,
+      beginAndProcessSpawnAreSerialized: expandedAdmissionUnitProofPassed,
+      allProofbookEffectContinuationsAreAdmissionGated: proofbookEffectAdapterProofPassed,
+      liveSidecarHttpAdmissionIsFailClosed: liveSidecarHttpProofPassed,
+    },
+  },
   externalProof: {
     realOsSleepResumeExecuted: false,
     abruptHostPowerLossExecuted: false,
@@ -204,6 +317,12 @@ const report = {
     codexWatchdogSleepGapStatus: "excluded-non-product-helper",
     status: "deferred-to-a9-operator-proof",
     requiredArtifact: ".codex-auto/operator-evidence/real-sleep-power-loss-durability.json",
+    protocolCompatibilityResidual: {
+      currentProtocolVersion: 4,
+      legacyLiveSidecarVersion: 3,
+      status: "nonblocking-restart-required",
+      claim: "current v4 host-sidecar pairs only",
+    },
   },
   generatedAt,
   provenance: createEvidenceProvenance({
@@ -244,6 +363,10 @@ const report = {
       "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md",
       "src-tauri/src/lib.rs",
       "src-tauri/src/startup_reconciliation.rs",
+      "src-tauri/src/pty_sidecar.rs",
+      "src-tauri/pty-server/src/main.rs",
+      "src-tauri/src/ipc/workflow_commands.rs",
+      "src-tauri/src/ipc/proofbook_commands.rs",
       "src-tauri/src/durable_file.rs",
       "src-tauri/src/mux/store.rs",
       "src-tauri/src/workflow/executor.rs",

@@ -36,6 +36,7 @@ pub struct PtySidecarClient {
     base_url: String,
     token: String,
     input_authority_token: String,
+    startup_admission_epoch: String,
     http: reqwest::Client,
     streams: Arc<Mutex<HashMap<String, SidecarStream>>>,
     stream_connect_lock: Arc<AsyncMutex<()>>,
@@ -222,11 +223,67 @@ impl PtySidecarClient {
             base_url: format!("http://127.0.0.1:{SIDE_CAR_PORT}"),
             token,
             input_authority_token,
+            startup_admission_epoch: uuid::Uuid::new_v4().to_string(),
             http,
             streams: Arc::new(Mutex::new(HashMap::new())),
             stream_connect_lock: Arc::new(AsyncMutex::new(())),
             on_stream_state: None,
         }
+    }
+
+    async fn begin_startup_admission(&self) -> Result<(), String> {
+        let response = self
+            .http
+            .post(format!("{}/internal/startup-admission", self.base_url))
+            .bearer_auth(&self.token)
+            .header("x-aelyris-input-authority", &self.input_authority_token)
+            .json(&serde_json::json!({
+                "action": "begin",
+                "epoch": self.startup_admission_epoch,
+            }))
+            .send()
+            .await
+            .map_err(|err| format!("PTY sidecar startup admission reset failed: {err}"))?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        Err(format!(
+            "PTY sidecar startup admission reset rejected ({status}): {}",
+            detail.trim()
+        ))
+    }
+
+    pub async fn publish_startup_admission(
+        &self,
+        report: &crate::startup_reconciliation::StartupReconciliationReport,
+    ) -> Result<(), String> {
+        if report.phase == crate::startup_reconciliation::StartupReconciliationPhase::Pending {
+            return Err("cannot publish a pending startup admission decision".to_string());
+        }
+        let response = self
+            .http
+            .post(format!("{}/internal/startup-admission", self.base_url))
+            .bearer_auth(&self.token)
+            .header("x-aelyris-input-authority", &self.input_authority_token)
+            .json(&serde_json::json!({
+                "action": "publish",
+                "epoch": self.startup_admission_epoch,
+                "report": report,
+            }))
+            .send()
+            .await
+            .map_err(|err| format!("PTY sidecar startup admission publish failed: {err}"))?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        Err(format!(
+            "PTY sidecar startup admission publish rejected ({status}): {}",
+            detail.trim()
+        ))
     }
 
     pub async fn spawn(
@@ -1202,6 +1259,10 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
                     sessions.len()
                 );
             }
+            if let Err(err) = tauri::async_runtime::block_on(client.begin_startup_admission()) {
+                log::warn!("PTY sidecar probe could not reset startup admission to pending: {err}");
+                return false;
+            }
             true
         }
         Err(err) => {
@@ -1357,7 +1418,10 @@ mod tests {
     fn stream_state_payload_serializes_contract_shape() {
         for (state, attempt) in [("reconnecting", 2), ("recovered", 2), ("gone", 10)] {
             let value = serde_json::to_value(SidecarStreamState { state, attempt }).unwrap();
-            assert_eq!(value, serde_json::json!({ "state": state, "attempt": attempt }));
+            assert_eq!(
+                value,
+                serde_json::json!({ "state": state, "attempt": attempt })
+            );
         }
     }
 }

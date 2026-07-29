@@ -587,6 +587,7 @@ pub fn run() {
                         log::info!("PTY sidecar connected in background");
                         let app_handle = sidecar_adopt_app.clone();
                         tauri::async_runtime::spawn(async move {
+                            let admission_client = client.clone();
                             let result = async {
                                 let adopted = ipc::adopt_sidecar_terminals(
                                     &app_handle,
@@ -675,32 +676,58 @@ pub fn run() {
                             let state = app_handle.state::<std::sync::Arc<
                                 startup_reconciliation::StartupReconciliationState,
                             >>();
-                            match result {
-                                Ok(((adopted, restored, reconciled), authority_reports)) => {
-                                    for report in authority_reports {
-                                        if let Err(error) = state.record_authority(report) {
-                                            log::error!(
-                                                "Startup authority reconciliation report failed: {error}"
-                                            );
-                                            let _ = state.fail("authority_report", error);
-                                            return;
-                                        }
-                                    }
-                                    match state.complete(adopted, restored, reconciled) {
-                                        Ok(true) => log::info!(
-                                            "Durable startup reconciliation ready: adopted={adopted} restored={restored} reconciled={reconciled}"
-                                        ),
-                                        Ok(false) => log::warn!(
-                                            "Durable startup reconciliation result was already terminal"
-                                        ),
-                                        Err(error) => log::error!(
-                                            "Durable startup reconciliation completion failed: {error}"
-                                        ),
-                                    }
+                            let outcome = async {
+                                let ((adopted, restored, reconciled), authority_reports) = result?;
+                                for report in authority_reports {
+                                    state.record_authority(report)?;
                                 }
+                                // The process-external owner must accept the exact
+                                // terminal report before local effectful surfaces can
+                                // observe Ready. A sync failure therefore leaves both
+                                // sides non-admitting.
+                                let ready =
+                                    state.preview_complete(adopted, restored, reconciled)?;
+                                admission_client.publish_startup_admission(&ready).await?;
+                                if !state.complete(adopted, restored, reconciled)? {
+                                    return Err(
+                                        "startup reconciliation became terminal before local ready commit"
+                                            .to_string(),
+                                    );
+                                }
+                                Ok::<(usize, usize, usize), String>((
+                                    adopted,
+                                    restored,
+                                    reconciled,
+                                ))
+                            }
+                            .await;
+                            match outcome {
+                                Ok((adopted, restored, reconciled)) => log::info!(
+                                    "Durable startup reconciliation ready: adopted={adopted} restored={restored} reconciled={reconciled}"
+                                ),
                                 Err(error) => {
                                     log::error!("Durable startup reconciliation failed: {error}");
                                     let _ = state.fail("adoption_reconciliation", error);
+                                    match state.snapshot() {
+                                        Ok(report)
+                                            if report.phase
+                                                == startup_reconciliation::StartupReconciliationPhase::Failed =>
+                                        {
+                                            if let Err(sync_error) =
+                                                admission_client
+                                                    .publish_startup_admission(&report)
+                                                    .await
+                                            {
+                                                log::error!(
+                                                    "PTY sidecar failed-decision sync failed closed: {sync_error}"
+                                                );
+                                            }
+                                        }
+                                        Ok(_) => {}
+                                        Err(snapshot_error) => log::error!(
+                                            "Startup failure snapshot unavailable: {snapshot_error}"
+                                        ),
+                                    }
                                 }
                             }
                         });
@@ -723,6 +750,20 @@ pub fn run() {
                     .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>();
                 if matches!(state.fail_if_pending(), Ok(true)) {
                     log::error!("Durable startup reconciliation timed out; spawn remains blocked");
+                    if let (Ok(report), Some(client)) = (
+                        state.snapshot(),
+                        startup_timeout_app
+                            .state::<pty_sidecar::PtySidecarState>()
+                            .client(),
+                    ) {
+                        if let Err(error) = tauri::async_runtime::block_on(
+                            client.publish_startup_admission(&report),
+                        ) {
+                            log::error!(
+                                "PTY sidecar timeout-decision sync failed closed: {error}"
+                            );
+                        }
+                    }
                 }
             });
 

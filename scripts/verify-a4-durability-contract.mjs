@@ -187,7 +187,11 @@ function topLevelQuotedKeys(source, openIndex) {
   return keys;
 }
 const state = read("src-tauri/src/startup_reconciliation.rs");
+const acceptanceVerifier = read("scripts/verify-a4-durability-acceptance.mjs");
 const lib = read("src-tauri/src/lib.rs");
+const ptySidecar = read("src-tauri/src/pty_sidecar.rs");
+const ptyServer = read("src-tauri/pty-server/src/main.rs");
+const ptyServerHttpTest = read("src-tauri/pty-server/tests/startup_admission_http.rs");
 const terminal = read("src-tauri/src/ipc/commands.rs");
 const interactive = read("src-tauri/src/ipc/interactive_commands.rs");
 const ptyManager = read("src-tauri/src/pty/manager.rs");
@@ -201,7 +205,9 @@ const durableFile = read("src-tauri/src/durable_file.rs");
 const settings = read("src-tauri/src/config/settings.rs");
 const muxStore = read("src-tauri/src/mux/store.rs");
 const workflow = read("src-tauri/src/workflow/executor.rs");
+const workflowCommands = read("src-tauri/src/ipc/workflow_commands.rs");
 const proofbookLedger = read("src-tauri/src/proofbook/ledger.rs");
+const proofbookCommands = read("src-tauri/src/ipc/proofbook_commands.rs");
 const contextManager = read("src-tauri/src/context_store/manager.rs");
 const taskManager = read("src-tauri/src/task/manager.rs");
 const taskGraph = read("src-tauri/src/task/graph.rs");
@@ -216,6 +222,18 @@ const eventRepo = read("src-tauri/src/persistence/event_repo.rs");
 const eventCommands = read("src-tauri/src/ipc/event_commands.rs");
 const contextCommands = read("src-tauri/src/ipc/context_commands.rs");
 const mcp = read("src-tauri/src/api/mcp.rs");
+const mcpProofbookStatusAdapter = mcp.slice(
+  mcp.indexOf("fn mcp_proofbook_status"),
+  mcp.indexOf("fn mcp_proofbook_settle_agent_session"),
+);
+const mcpProofbookSettleAdapter = mcp.slice(
+  mcp.indexOf("fn mcp_proofbook_settle_agent_session"),
+  mcp.indexOf("fn mcp_proofbook_cancel"),
+);
+const mcpProofbookGateAdapter = mcp.slice(
+  mcp.indexOf("fn mcp_proofbook_decide_gate"),
+  mcp.indexOf("fn tool_safety"),
+);
 const apiState = read("src-tauri/src/api/mod.rs");
 const terminalAuthority = read("src-tauri/src/command_risk/authority.rs");
 const orchestratorCommands = read("src-tauri/src/ipc/orchestrator_commands.rs");
@@ -378,11 +396,84 @@ const checks = {
     terminal.match(/require_spawn_admitted\(\)\?/g)?.length >= 2 &&
     interactive.includes("require_spawn_admitted()?") &&
     ptyManager.includes("with_startup_reconciliation") &&
-    ptyManager.includes("state.require_spawn_admitted()?") &&
+    ptyManager.includes("state.acquire_spawn_admission()") &&
     lib.includes("with_startup_reconciliation(startup_reconciliation.clone())") &&
     state.includes("startup_reconciliation_pending") &&
     state.includes("startup_reconciliation_failed") &&
-    state.includes("production_pty_owner_rejects_spawn_before_reconciliation"),
+    state.includes("a4_12_production_pty_owner_rejects_spawn_before_reconciliation"),
+  crossProcessStartupAdmission:
+    apiState.includes("pub const DAEMON_PROTOCOL_VERSION: u32 = 4") &&
+    apiState.includes('"/internal/startup-admission"') &&
+    apiState.includes("verify_input_authority(supplied)") &&
+    apiState.includes('require_session_creation_admitted(&state, "REST session creation")') &&
+    apiState.includes(
+      'require_session_creation_admitted(&state, "REST command session creation")',
+    ) &&
+    apiState.includes(
+      "a4_12_sidecar_rest_session_and_command_creation_deny_pending_and_failed_startup",
+    ) &&
+    apiState.includes("a4_12_public_bearer_cannot_change_sidecar_startup_admission") &&
+    ptyServer.includes("with_startup_reconciliation(startup_reconciliation.clone())") &&
+    ptyServerHttpTest.includes(
+      "a4_12_live_sidecar_process_enforces_startup_admission_over_http",
+    ) &&
+    ptyServerHttpTest.includes('"/internal/startup-admission"') &&
+    ptyServerHttpTest.includes("Some(PUBLIC_TOKEN)") &&
+    apiState.includes("a4_12_equal_public_and_private_capabilities_fail_closed") &&
+    ptySidecar.includes("startup_admission_epoch") &&
+    ptySidecar.includes("client.begin_startup_admission()") &&
+    ptySidecar.includes("pub async fn publish_startup_admission") &&
+    ptySidecar.includes('header("x-aelyris-input-authority"') &&
+    state.includes("pub fn begin_remote_admission") &&
+    state.includes("pub fn apply_remote_admission") &&
+    state.includes("stale startup admission epoch") &&
+    state.includes("a4_12_remote_admission_rejects_stale_ready_and_keeps_latest_epoch_pending") &&
+    lib.includes("state.preview_complete(adopted, restored, reconciled)?") &&
+    lib.indexOf("admission_client.publish_startup_admission(&ready).await?") >= 0 &&
+    lib.indexOf("admission_client.publish_startup_admission(&ready).await?") <
+      lib.indexOf("state.complete(adopted, restored, reconciled)?"),
+  effectfulRuntimeStartAdmission:
+    workflowCommands.includes('require_effect_admitted("Workflow start")') &&
+    workflowCommands.includes(
+      "a4_12_workflow_start_fails_closed_for_pending_and_failed_startup",
+    ) &&
+    proofbookCommands.includes("require_proofbook_effect_admitted") &&
+    proofbookCommands.includes('"Proofbook manual-gate continuation"') &&
+    proofbookCommands.includes('"Proofbook agent-session continuation"') &&
+    proofbookCommands.includes(
+      "a4_12_proofbook_effectful_adapters_fail_closed_for_pending_and_failed_startup",
+    ) &&
+    mcp.includes("require_mcp_proofbook_effect_admitted") &&
+    !mcpProofbookStatusAdapter.includes("require_mcp_proofbook_effect_admitted") &&
+    mcpProofbookSettleAdapter.includes(
+      'require_mcp_proofbook_effect_admitted(state, "Proofbook MCP agent-session continuation")',
+    ) &&
+    mcpProofbookGateAdapter.includes(
+      'require_mcp_proofbook_effect_admitted(state, "Proofbook MCP gate continuation")',
+    ) &&
+    mcp.includes(
+      "a4_12_proofbook_mcp_status_dispatch_remains_available_while_startup_is_blocked",
+    ) &&
+    mcp.includes(
+      "a4_12_proofbook_mcp_effectful_tools_call_adapters_deny_pending_and_failed_startup",
+    ) &&
+    mcp.includes('"aelyris.proofbook.settle_agent_session"') &&
+    mcp.includes('"aelyris.proofbook.approve_gate"') &&
+    mcp.includes('"aelyris.proofbook.reject_gate"') &&
+    acceptanceVerifier.includes(
+      "a4_12_proofbook_mcp_status_dispatch_remains_available_while_startup_is_blocked",
+    ) &&
+    acceptanceVerifier.includes(
+      "a4_12_proofbook_mcp_effectful_tools_call_adapters_deny_pending_and_failed_startup",
+    ) &&
+    acceptanceVerifier.includes("requiredOutputMarkers") &&
+    acceptanceVerifier.includes(
+      "allProofbookEffectContinuationsAreAdmissionGated: proofbookEffectAdapterProofPassed",
+    ) &&
+    state.includes("pub fn acquire_spawn_admission") &&
+    state.includes(
+      "a4_12_begin_waits_for_admitted_spawn_guard_before_returning_to_pending",
+    ),
   typedStatusIsPublished:
     terminal.includes("pub fn startup_reconciliation_status") && lib.includes("ipc::startup_reconciliation_status"),
   approvalCheckpointSchema:
@@ -615,7 +706,7 @@ const checks = {
     remediationPlan.includes(
       "### **A4.11** Complete - Structured Handoff Acceptance And Successor Quarantine",
     ) &&
-    activeSlice === acceptance?.remainingSlices?.[0] &&
+    activeSlice === "A6.2e1" &&
     completedSlice === acceptance?.completedThrough,
   structuredHandoffAcceptanceAndQuarantine:
     migrations.includes("pub const CURRENT_SCHEMA_VERSION: i64 = 6") &&
@@ -671,23 +762,52 @@ const checks = {
   fullAcceptanceMatrix:
     packageJson.scripts?.["verify:a4:durability:acceptance"] === "node scripts/verify-a4-durability-acceptance.mjs" &&
     acceptance?.status === "pass-current-a4-durability-evidence" &&
-    acceptance?.schema === "aelyris.a4-durability-acceptance/v7" &&
-    acceptance?.completedThrough === "A4.11" &&
-    acceptance?.repoOwnedComplete === false &&
-    acceptance?.phaseComplete === false &&
-    exactSet(acceptance?.remainingSlices ?? [], ["A4.12"]) &&
-    acceptance?.scenarios?.length === 23 &&
+    acceptance?.schema === "aelyris.a4-durability-acceptance/v8" &&
+    acceptance?.completedThrough === "A4.12" &&
+    acceptance?.repoOwnedComplete === true &&
+    acceptance?.phaseComplete === true &&
+    exactSet(acceptance?.remainingSlices ?? [], []) &&
+    acceptance?.scenarios?.length === 25 &&
     acceptance.scenarios.every((scenario) => scenario.status === "pass") &&
     [
       "work-execution-attempt-generation-and-load-integrity",
       "execution-fence-crash-boundaries-and-stale-token",
       "all-authority-startup-reconciliation-and-dispatch-admission",
+      "a4-12-cross-process-and-effectful-start-admission",
+      "a4-12-live-sidecar-process-http-admission",
       "structured-handoff-acceptance-and-successor-quarantine",
       "event-outbox-append-query-gap-and-consumer-ack",
       "event-mcp-structured-error-and-catalog-contract",
       "session-lifecycle-event-publish-failure-truth",
       "event-typescript-wire-mirror",
     ].every((id) => acceptance.scenarios.some((scenario) => scenario.id === id)) &&
+    acceptance?.combinedRuntimeIntegrityMatrix?.schema ===
+      "aelyris.a4-runtime-integrity-matrix/v1" &&
+    acceptance?.combinedRuntimeIntegrityMatrix?.status === "pass" &&
+    exactSet(
+      acceptance?.combinedRuntimeIntegrityMatrix?.dimensions?.map((dimension) => dimension.id) ??
+        [],
+      [
+        "authoritative_mutation",
+        "event_bus_delivery",
+        "execution_fencing",
+        "startup_reconciliation",
+        "handoff_acceptance",
+        "admission_surfaces",
+      ],
+    ) &&
+    acceptance.combinedRuntimeIntegrityMatrix.dimensions.every(
+      (dimension) =>
+        dimension.status === "pass" &&
+        dimension.scenarioIds.every((id) =>
+          acceptance.scenarios.some((scenario) => scenario.id === id && scenario.status === "pass"),
+        ),
+    ) &&
+    Object.values(acceptance.combinedRuntimeIntegrityMatrix.guarantees).every(Boolean) &&
+    acceptance?.externalProof?.protocolCompatibilityResidual?.currentProtocolVersion === 4 &&
+    acceptance?.externalProof?.protocolCompatibilityResidual?.legacyLiveSidecarVersion === 3 &&
+    acceptance?.externalProof?.protocolCompatibilityResidual?.status ===
+      "nonblocking-restart-required" &&
     acceptance?.externalProof?.codexWatchdogSleepGapStatus === "excluded-non-product-helper" &&
     acceptanceProvenance.ok,
   packageEntryPoint: packageJson.scripts?.["verify:a4:durability"] === "node scripts/verify-a4-durability-contract.mjs",
@@ -703,11 +823,11 @@ if (failures.length > 0) {
 const generatedAt = new Date().toISOString();
 const output = join(root, ".codex-auto", "quality", "a4-durability-contract.json");
 const report = {
-  schema: "aelyris.a4-durability-contract/v7",
+  schema: "aelyris.a4-durability-contract/v8",
   status: "pass-current-a4-durability-contract",
   activeSlice,
   completedSlice,
-  phaseComplete: false,
+  phaseComplete: true,
   remainingSlices: acceptance.remainingSlices,
   externalProof: acceptance.externalProof,
   checks,
@@ -721,6 +841,9 @@ const report = {
       "scripts/verify-session-checkpoint-restore.mjs",
       "src-tauri/src/startup_reconciliation.rs",
       "src-tauri/src/lib.rs",
+      "src-tauri/src/pty_sidecar.rs",
+      "src-tauri/pty-server/src/main.rs",
+      "src-tauri/pty-server/tests/startup_admission_http.rs",
       "src-tauri/src/ipc/commands.rs",
       "src-tauri/src/ipc/interactive_commands.rs",
       "src-tauri/src/pty/manager.rs",
@@ -747,6 +870,8 @@ const report = {
       "src-tauri/src/command_risk/authority.rs",
       "src-tauri/src/ipc/orchestrator_commands.rs",
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
+      "src-tauri/src/ipc/workflow_commands.rs",
+      "src-tauri/src/ipc/proofbook_commands.rs",
       "src/shared/types/eventBus.ts",
       "docs/specs/MCP_TOOL_SURFACE_SPEC.md",
       "docs/hardening/00_README.md",
