@@ -1048,7 +1048,7 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    `contractVersion=a6.2e4-stateful-owner-behavior/v1`, and
    `phaseComplete=false`.
 
-#### A6.2f Active - Component and Command Composition
+#### **A6.2f Active - Component and Command Composition**
 
 1. Split `useAppMenus.ts` only along proven typed command/menu ownership boundaries;
    keep one narrow public composition hook and verify that behavior and dependency
