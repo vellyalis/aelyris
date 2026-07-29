@@ -144,7 +144,12 @@ if (granularSliceId(nextImplementationSlice) !== nextImplementationSlice) {
   workOrderSliceProblems.push("next-slice-exact-id");
 }
 if (phaseForSlice(activeSlice) !== activePhase) workOrderSliceProblems.push("active-slice-phase");
-if (phaseForSlice(completedSlice) !== activePhase) workOrderSliceProblems.push("completed-slice-phase");
+const completedPhase = phaseForSlice(completedSlice);
+const activePhaseNumber = Number.parseInt(activePhase.slice(1), 10);
+const completedPhaseNumber = Number.parseInt(completedPhase?.slice(1) ?? "", 10);
+if (!Number.isInteger(completedPhaseNumber) || completedPhaseNumber > activePhaseNumber) {
+  workOrderSliceProblems.push("completed-slice-phase");
+}
 if (phaseForSlice(nextImplementationSlice) !== activePhase) workOrderSliceProblems.push("next-slice-phase");
 if (!/^A\d+$/.test(nextPhase)) workOrderSliceProblems.push("next-phase-exact");
 checks.push(
