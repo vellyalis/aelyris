@@ -1445,7 +1445,7 @@ A6.2f owner-split stop audit complete:
   scheduler, durable owner, runtime state owner, or new test owner changed.
   A6.2f is complete and A6.2g is now the exact frontend acceptance frontier.
 
-#### A6.2g - Combined Frontend Acceptance
+#### **A6.2g Active - Combined Frontend Acceptance**
 
 A6.2 is complete only when fresh evidence proves all of the following together:
 
