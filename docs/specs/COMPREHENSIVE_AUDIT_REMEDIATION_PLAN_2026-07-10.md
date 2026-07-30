@@ -47,7 +47,7 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6.2-A6.4 are complete; A6 resumes at A6.5 and is accepted by ownership,
+3. A6.2-A6.5 are complete; A6 resumes at A6.6 and is accepted by ownership,
    dependency direction, behavior, and concurrency evidence. Line counts are
    non-growth diagnostics, not universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
@@ -1588,7 +1588,7 @@ Closeout evidence:
 - the global inventory remains failed only at A6.5 `queries.rs`
   (`3334 > 3330`), so `phaseComplete=false` remains truthful.
 
-#### **A6.5 Active - SQLite Domain Repositories**
+#### **A6.5 Complete - SQLite Domain Repositories**
 
 Start with an explicit inventory of the query domains, transaction boundaries,
 connection acquisition, and migration dependencies in
@@ -1606,6 +1606,41 @@ First acceptance boundary:
 - the frozen `queries.rs` ceiling is lowered from the current `3334 > 3330`
   failure without rebaselining;
 - A6.6-A6.8 remain queued and A6 `phaseComplete=false` remains truthful.
+
+Completion evidence:
+
+- code-graph snapshot and pane-layout behavior are split into owner-local child
+  modules behind the unchanged `Database` facade, without a new repository object,
+  connection, migration, schema, service, or runtime-state owner;
+- existing callsites and method signatures remain unchanged, the code-graph
+  replacement transaction has an executable whole-snapshot rollback proof, and
+  pane-layout JSON validation remains executable;
+- the focused database surface passes 27/27 and the Rust library passes 1308/1308;
+- four negative topology mutations reject commented-only module registration,
+  independent connections, second schema ownership, and duplicate facade methods;
+- `queries.rs` is `3174 <= 3330`; A6.6-A6.8 remain and A6
+  `phaseComplete=false` remains truthful.
+
+#### **A6.6 Active - Native Proof CLI Boundary**
+
+Inventory the command router, proof-domain modules, side effects, artifact schemas,
+and host behavior in `src-tauri/src/bin/aelyris_native.rs` before extraction.
+Isolate the existing proof binary behind an optional Cargo feature or equivalent
+proof-only package boundary. This slice may reorganize existing proof behavior but
+must not expand native product functionality; A8.0 remains the sole activation
+decision for further native or full-native work.
+
+First acceptance boundary:
+
+- router and proof-domain modules depend toward the existing proof owners without
+  creating a second runtime, product-state, storage, or command authority;
+- existing command names, artifact schemas, side effects, exit behavior, and
+  supported-host behavior remain executable;
+- the proof binary is isolated behind an optional Cargo feature or equivalent
+  proof-only package boundary without activating new native product scope;
+- the frozen `aelyris_native.rs` ceiling is lowered from `8827` without
+  rebaselining or moving logic solely for line count;
+- A6.7-A6.8 remain queued and A6 `phaseComplete=false` remains truthful.
 
 ## A7 - Evidence-Backed Core Mission Loop
 

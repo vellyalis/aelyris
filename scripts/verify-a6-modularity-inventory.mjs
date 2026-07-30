@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -7,8 +8,8 @@ const root = resolve(process.cwd());
 const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.json");
 const cliArgs = process.argv.slice(2);
 const requestedSlice = cliArgs.length === 2 && cliArgs[0] === "--require-slice" ? cliArgs[1] : null;
-if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4"].includes(requestedSlice)) {
-  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, or A6.4.");
+if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4", "A6.5"].includes(requestedSlice)) {
+  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, A6.4, or A6.5.");
   process.exit(2);
 }
 const owners = [
@@ -520,6 +521,146 @@ const mcpSlice = {
   negativeDriftProof,
   phaseComplete: false,
 };
+const dbQueriesOwnerPath = "src-tauri/src/db/queries.rs";
+const dbCodeGraphOwnerPath = "src-tauri/src/db/queries/code_graph.rs";
+const dbPaneLayoutOwnerPath = "src-tauri/src/db/queries/pane_layout.rs";
+const dbQueriesSource = read(dbQueriesOwnerPath);
+const dbCodeGraphSource = read(dbCodeGraphOwnerPath);
+const dbPaneLayoutSource = read(dbPaneLayoutOwnerPath);
+const dbQueriesExecutableSource = executableSource(dbQueriesSource);
+const dbCodeGraphExecutableSource = executableSource(dbCodeGraphSource);
+const dbPaneLayoutExecutableSource = executableSource(dbPaneLayoutSource);
+const dbDomainExecutableSources = [dbCodeGraphExecutableSource, dbPaneLayoutExecutableSource];
+const dbOwner = results.find((result) => result.path === dbQueriesOwnerPath);
+const dbFacadeMethods = {
+  [dbCodeGraphOwnerPath]: ["replace_code_graph", "load_code_graph"],
+  [dbPaneLayoutOwnerPath]: ["save_pane_tree_layout", "get_pane_tree_layout", "delete_pane_tree_layout"],
+};
+const countMethodDeclarations = (source, method) =>
+  [...source.matchAll(new RegExp(`\\bpub\\s+fn\\s+${escapeRegExp(method)}\\s*\\(`, "g"))].length;
+const dbFacadeMethodsExact = Object.entries(dbFacadeMethods).every(([path, methods]) => {
+  const ownerSource = path === dbCodeGraphOwnerPath ? dbCodeGraphExecutableSource : dbPaneLayoutExecutableSource;
+  return methods.every(
+    (method) =>
+      countMethodDeclarations(ownerSource, method) === 1 &&
+      countMethodDeclarations(dbQueriesExecutableSource, method) === 0 &&
+      dbDomainExecutableSources.reduce((count, source) => count + countMethodDeclarations(source, method), 0) === 1,
+  );
+});
+const dbDomainModulesRegistered = (source) =>
+  /\bmod\s+code_graph\s*;/.test(source) && /\bmod\s+pane_layout\s*;/.test(source);
+const dbDomainImplsUseExistingOwner = (sources) =>
+  sources.every(
+    (source) =>
+      /\bimpl\s+Database\s*\{/.test(source) &&
+      !/\bstruct\s+\w*Repository\b/.test(source) &&
+      !/\bConnection::open(?:_in_memory)?\s*\(/.test(source),
+  );
+const dbDomainModulesOwnNoSchemaOrMigration = (sources) =>
+  sources.every(
+    (source) =>
+      !/\b(?:CREATE|ALTER|DROP)\s+TABLE\b/i.test(source) &&
+      !/\b(?:run_migrations|schema_version|CURRENT_SCHEMA_VERSION)\b/.test(source),
+  );
+const dbSingleConnectionAndMigrationOwner = (source) =>
+  /\bpub\s+struct\s+Database\s*\{[\s\S]*?\bconn\s*:\s*Connection\b/.test(source) &&
+  /\bConnection::open\s*\(/.test(source) &&
+  /\bConnection::open_in_memory\s*\(/.test(source) &&
+  /\bmigrations::run_migrations\s*\(/.test(source);
+const currentDbDomainModulesRegistered = dbDomainModulesRegistered(dbQueriesExecutableSource);
+const currentDbDomainImplsUseExistingOwner = dbDomainImplsUseExistingOwner(dbDomainExecutableSources);
+const currentDbDomainModulesOwnNoSchemaOrMigration = dbDomainModulesOwnNoSchemaOrMigration(dbDomainExecutableSources);
+const currentDbSingleConnectionAndMigrationOwner = dbSingleConnectionAndMigrationOwner(dbQueriesExecutableSource);
+const commentedRegistrationSource = dbQueriesSource.replace(
+  /mod\s+code_graph\s*;\s*mod\s+pane_layout\s*;/,
+  "/* mod code_graph;\nmod pane_layout; */",
+);
+const dbNegativeTopologyProof = {
+  commentedRegistrationRejected: !dbDomainModulesRegistered(executableSource(commentedRegistrationSource)),
+  independentConnectionRejected: !dbDomainImplsUseExistingOwner([
+    ...dbDomainExecutableSources,
+    'fn forbidden_connection() { let _ = rusqlite::Connection::open("forbidden.db"); }',
+  ]),
+  schemaOwnerRejected: !dbDomainModulesOwnNoSchemaOrMigration([
+    ...dbDomainExecutableSources,
+    'const FORBIDDEN_SCHEMA: &str = "CREATE TABLE forbidden (id TEXT)";',
+  ]),
+  duplicateFacadeMethodRejected:
+    countMethodDeclarations(
+      `${dbCodeGraphExecutableSource}\nimpl Database { pub fn replace_code_graph(&self) {} }`,
+      "replace_code_graph",
+    ) !== 1,
+};
+const focusedDbTestCommand = process.platform === "win32" ? "cargo.exe" : "cargo";
+const focusedDbTestArgs = [
+  "test",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--lib",
+  "db::queries",
+  "--",
+  "--color",
+  "never",
+];
+const focusedDbTestExecution = spawnSync(focusedDbTestCommand, focusedDbTestArgs, {
+  cwd: root,
+  encoding: "utf8",
+  maxBuffer: 4 * 1024 * 1024,
+  windowsHide: true,
+});
+const focusedDbTestOutput = `${focusedDbTestExecution.stdout ?? ""}\n${focusedDbTestExecution.stderr ?? ""}`;
+const focusedDbTestSummary = focusedDbTestOutput.match(
+  /test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/,
+);
+const requiredDbBehaviorTests = [
+  "db::queries::tests::test_code_graph_replace_load_roundtrip",
+  "db::queries::code_graph::tests::replace_code_graph_rolls_back_the_whole_snapshot_on_insert_failure",
+  "db::queries::tests::test_pane_tree_layout_save_get_delete",
+  "db::queries::tests::test_pane_tree_layout_rejects_invalid_json",
+];
+const focusedDbTests = {
+  command: `${focusedDbTestCommand} ${focusedDbTestArgs.join(" ")}`,
+  status: focusedDbTestExecution.status,
+  signal: focusedDbTestExecution.signal,
+  error: focusedDbTestExecution.error?.message ?? null,
+  passed: Number(focusedDbTestSummary?.[1] ?? 0),
+  ignored: Number(focusedDbTestSummary?.[2] ?? 0),
+  requiredAssertionsExecuted: requiredDbBehaviorTests.every((testName) =>
+    focusedDbTestOutput.includes(`test ${testName} ... ok`),
+  ),
+};
+const focusedDbTestsPassed =
+  focusedDbTests.status === 0 &&
+  focusedDbTests.passed > 0 &&
+  focusedDbTests.ignored === 0 &&
+  focusedDbTests.requiredAssertionsExecuted;
+const dbSliceComplete =
+  (dbOwner?.status ?? "fail") === "pass" &&
+  currentDbDomainModulesRegistered &&
+  dbFacadeMethodsExact &&
+  currentDbDomainImplsUseExistingOwner &&
+  currentDbDomainModulesOwnNoSchemaOrMigration &&
+  currentDbSingleConnectionAndMigrationOwner &&
+  Object.values(dbNegativeTopologyProof).every(Boolean) &&
+  focusedDbTestsPassed;
+const dbSlice = {
+  id: "A6.5",
+  owner: "SQLite domain repositories behind the existing Database owner",
+  status: dbSliceComplete ? "pass" : "fail",
+  sliceComplete: dbSliceComplete,
+  queriesLines: dbOwner?.lines ?? null,
+  queriesBaselineLines: dbOwner?.baselineLines ?? null,
+  databaseOwnerPath: dbQueriesOwnerPath,
+  domainOwnerPaths: [dbCodeGraphOwnerPath, dbPaneLayoutOwnerPath],
+  domainModulesRegistered: currentDbDomainModulesRegistered,
+  facadeMethodsExact: dbFacadeMethodsExact,
+  domainImplsUseExistingOwner: currentDbDomainImplsUseExistingOwner,
+  domainModulesOwnNoSchemaOrMigration: currentDbDomainModulesOwnNoSchemaOrMigration,
+  singleConnectionAndMigrationOwner: currentDbSingleConnectionAndMigrationOwner,
+  negativeTopologyProof: dbNegativeTopologyProof,
+  focusedDbTests,
+  phaseComplete: false,
+};
 
 const slices = [
   {
@@ -589,7 +730,9 @@ const commandFailed =
       ? !ipcSlice.sliceComplete
       : requestedSlice === "A6.4"
         ? !mcpSlice.sliceComplete
-        : failed;
+        : requestedSlice === "A6.5"
+          ? !dbSlice.sliceComplete
+          : failed;
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-modularity-inventory/v3",
@@ -606,6 +749,7 @@ const report = {
   frontendSlice,
   ipcSlice,
   mcpSlice,
+  dbSlice,
   owners: results,
   ipcClassification,
   slices,
@@ -620,6 +764,8 @@ const report = {
       "src-tauri/src/ipc/ime_commands.rs",
       mcpCatalogOwnerPath,
       mcpDispatcherOwnerPath,
+      dbCodeGraphOwnerPath,
+      dbPaneLayoutOwnerPath,
       ...rustRuntimeSources.map(([path]) => path),
       "src/shared/lib/ipc.ts",
       ...owners.map((owner) => owner.path),

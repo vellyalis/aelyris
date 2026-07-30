@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.5`.
-LAST COMPLETED SLICE: `A6.4`.
+ACTIVE SLICE: `A6.6`.
+LAST COMPLETED SLICE: `A6.5`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.5`.
+NEXT IMPLEMENTATION SLICE: `A6.6`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -33,9 +33,10 @@ existing IME adapter, one Rust/TypeScript event-name contract, and a fail-closed
 deletion policy. A6.4 MCP transport/catalog/schema/governance/domain dispatch is
 complete with one catalog owner, one authorized dispatcher, exact 83/83/83
 catalog/schema/dispatch parity, and `mcp.rs=2539 <= 5943`. A6.5 SQLite domain
-repositories behind the existing Database connection/migration owner is the exact
-implementation frontier. Do not reopen A4 or completed A6.2-A6.4 owners without a
-fresh regression, and do not mix A7/native work into A6.
+repositories are complete behind the existing Database connection/migration owner.
+A6.6 native proof CLI boundary is the exact implementation frontier. Do not reopen
+A4 or completed A6.2-A6.5 owners without a fresh regression, and do not mix A7 or
+native product expansion into A6.
 
 ## Objective
 
@@ -59,7 +60,8 @@ volatile value.
 A4.12 complete
   -> A6.2e1-A6.2e4 complete -> A6.2f/A6 component and command composition
   -> A6.3 IPC adapter complete -> A6.4 MCP catalog and dispatch complete
-  -> A6.5 SQLite domain repositories
+  -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI
+  -> A6.7 duplicate/unowned infrastructure -> A6.8 combined acceptance
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -80,10 +82,10 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. **A6.4 is complete.** Execute **A6.5**, then finish A6 by dependency direction, state ownership,
-   executed behavior, and concurrency safety. File length remains a diagnostic
-   non-growth ratchet, not a universal `<=800` completion requirement. Do not move
-   logic solely to satisfy a line count.
+2. **A6.5 is complete.** Execute **A6.6**, then finish A6 by dependency direction,
+   state ownership, executed behavior, and concurrency safety. File length remains
+   a diagnostic non-growth ratchet, not a universal `<=800` completion requirement.
+   Do not move logic solely to satisfy a line count.
 3. Enter **A7.0** as a scope-lock gate before A7 runtime work. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
@@ -616,13 +618,21 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   nested Proofbook calls, and `mcp.rs=2539 <= 5943`. Rust library tests pass
   1307/1307. This completes only
   A6.4; the global artifact remains failed and `phaseComplete=false`.
-- Continue A6.5 by inventorying the query domains and transaction boundaries in
-  `src-tauri/src/db/queries.rs` before extraction. Keep one existing Database
-  connection/migration owner, move domain repository behavior without creating a
-  second schema/connection owner, preserve executable behavior and concurrency
-  boundaries, and lower the frozen `queries.rs` ceiling from `3334 > 3330`.
-  A6.6-A6.8 remain after A6.5. The queued NUI proposal does not alter this
-  frontier.
+- A6.5 SQLite domain repository closeout is complete. Code-graph snapshot and
+  pane-layout behavior now live in owner-local child modules behind the unchanged
+  `Database` facade; there is still one connection, migration, and schema owner.
+  The focused database surface passes 27/27, the Rust library passes 1308/1308,
+  transaction rollback and pane-layout validation remain executable, and four
+  negative topology mutations reject commented registration, independent
+  connections, duplicate schema ownership, and duplicate facade methods.
+  `queries.rs=3174 <= 3330`; A6 remains `phaseComplete=false`.
+- Continue A6.6 by inventorying the command router, proof domains, side effects,
+  artifact schemas, and host behavior in `src-tauri/src/bin/aelyris_native.rs`.
+  Isolate the existing proof binary behind an optional Cargo feature or equivalent
+  proof-only package boundary, split router/proof domains without expanding native
+  functionality, preserve schemas and host behavior, and lower the frozen
+  `aelyris_native.rs` ceiling from `8827` without rebaselining. A6.7-A6.8 remain
+  after A6.6; A8.0 remains the sole native activation decision.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.
