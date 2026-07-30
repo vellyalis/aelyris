@@ -1084,8 +1084,27 @@ Terminal command-owner checkpoint complete:
   runtime state owner.
 - This is an A6.2f checkpoint, not slice acceptance. The artifact retains
   `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
-  `phaseComplete=false`. The next exact boundary is the right-rail typed
-  projection/action contract in item 2.
+  `phaseComplete=false`.
+
+Right-rail shell checkpoint complete:
+
+- `RightRailShell` now owns visibility, geometry, mode tabs, pointer/keyboard
+  resizing, and roving-tab keyboard behavior through a four-field view model and
+  two-action contract. App retains width, mode, visibility, and badge state; the
+  shell derives no duplicate runtime truth.
+- The former `rightRailModel.tsx` wildcard exports are closed. App and affected
+  hooks import audit, feedback, visual-QA, widget-frame, and type contracts from
+  their declaration owners.
+- Focused executed tests prove content/badge projection, click and keyboard mode
+  routing, pointer and keyboard resize semantics, drag-owner cleanup, and hidden
+  projection. Diagnostic ceilings are 4155 lines for App, 666 for the runtime
+  model, 107 for the shell, and 14 for its pure contract.
+- This remains an A6.2f checkpoint, not slice acceptance. The artifact retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is to inventory the remaining
+  inline right-rail body and extract only the first cohesive mode-owned
+  sub-surface; moving its approximately 90 App-local dependencies behind a giant
+  prop contract is forbidden.
 
 #### A6.2g - Combined Frontend Acceptance
 

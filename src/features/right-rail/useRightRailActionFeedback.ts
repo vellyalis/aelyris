@@ -5,11 +5,13 @@ import {
   createRightRailActionResult,
   createRightRailDestinationResult,
   RIGHT_RAIL_ACTION_HISTORY_LIMIT,
-  type RightRailActionResult,
-  type RightRailActionResultTone,
-  type RightRailRouteConfirmation,
-  type RightRailWidgetId,
 } from "./rightRailModel";
+import type {
+  RightRailActionResult,
+  RightRailActionResultTone,
+  RightRailRouteConfirmation,
+  RightRailWidgetId,
+} from "./rightRailTypes";
 
 export function useRightRailActionFeedback() {
   const [rightRailRouteConfirmation, setRightRailRouteConfirmation] = useState<RightRailRouteConfirmation | null>(null);

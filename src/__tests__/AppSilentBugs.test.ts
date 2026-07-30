@@ -33,6 +33,10 @@ function getRightRailModelSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/rightRailModel.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getRightRailShellSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailShell.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getLazyPanelsSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/lazyPanels.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -1804,6 +1808,7 @@ describe("App right rail composition", () => {
   it("keeps the Aelyris mode rail visible and routed to the inspector", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const rightRailShellSrc = getRightRailShellSource();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const verifier = readFileSync(join(process.cwd(), "scripts/verify-mode-shell-refresh-contract.mjs"), "utf8");
@@ -1826,8 +1831,9 @@ describe("App right rail composition", () => {
     expect(src).toContain("handleProductModeSelect(mode.id)");
     expect(src).toContain('className="mode-rail"');
     expect(src).toContain("data-product-mode={mode.id}");
-    expect(src).toContain('aria-label="Contextual inspector"');
-    expect(src).toContain('aria-label="Inspector mode"');
+    expect(src).toContain("<RightRailShell");
+    expect(rightRailShellSrc).toContain('aria-label="Contextual inspector"');
+    expect(rightRailShellSrc).toContain('aria-label="Inspector mode"');
     expect(src).toContain('className="right-panel-inspector-hero"');
     expect(src).toContain("rightRailInspectorPrimaryAction");
     expect(src).toContain("rightRailInspectorProof");
@@ -2441,6 +2447,7 @@ describe("App right rail composition", () => {
   it("keeps right rail tabs operable with the ARIA keyboard pattern", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const rightRailShellSrc = getRightRailShellSource();
 
     expect(rightRailModelSrc).toContain(
       "function getNextRightRailMode(current: RightRailMode, key: string): RightRailMode | null",
@@ -2449,19 +2456,19 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain('key === "ArrowLeft" || key === "ArrowUp"');
     expect(rightRailModelSrc).toContain('if (key === "Home") return RIGHT_RAIL_MODES[0]?.id ?? null');
     expect(rightRailModelSrc).toContain('if (key === "End") return RIGHT_RAIL_MODES.at(-1)?.id ?? null');
-    expect(src).toContain("const handleRightRailModeKeyDown = useCallback");
-    expect(src).toContain("setRightRailMode(nextMode)");
-    expect(src).toContain(
+    expect(rightRailShellSrc).toContain("const handleModeKeyDown = (event: KeyboardEvent<HTMLButtonElement>)");
+    expect(rightRailShellSrc).toContain("actions.onModeChange(nextMode)");
+    expect(rightRailShellSrc).toContain(
       `document.querySelector<HTMLButtonElement>(\`[data-right-rail-mode="${templatePlaceholder("nextMode")}"]\`)?.focus()`,
     );
-    expect(src).toContain(`id={\`right-rail-tab-${templatePlaceholder("mode.id")}\`}`);
-    expect(src).toContain("data-right-rail-mode={mode.id}");
-    expect(src).toContain('aria-controls="right-rail-panel"');
-    expect(src).toContain(
+    expect(rightRailShellSrc).toContain(`id={\`right-rail-tab-${templatePlaceholder("mode.id")}\`}`);
+    expect(rightRailShellSrc).toContain("data-right-rail-mode={mode.id}");
+    expect(rightRailShellSrc).toContain('aria-controls="right-rail-panel"');
+    expect(rightRailShellSrc).toContain(
       `aria-label={\`${templatePlaceholder("mode.label")}: ${templatePlaceholder("mode.description")}\`}`,
     );
-    expect(src).toContain("tabIndex={rightRailMode === mode.id ? 0 : -1}");
-    expect(src).toContain("onKeyDown={handleRightRailModeKeyDown}");
+    expect(rightRailShellSrc).toContain("tabIndex={activeMode === mode.id ? 0 : -1}");
+    expect(rightRailShellSrc).toContain("onKeyDown={handleModeKeyDown}");
     expect(src).toContain('id="right-rail-purpose"');
     expect(src).toContain("activeRightRailMode.description");
     expect(src).toContain('role="tabpanel"');

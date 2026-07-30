@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -42,6 +42,7 @@ try {
           "src/__tests__/useOperationalPaneSelection.test.tsx",
           "src/__tests__/PaneTreeContainerActiveTerminal.test.tsx",
           "src/__tests__/useTerminalMenuCommands.test.tsx",
+          "src/__tests__/RightRailShell.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -140,6 +141,16 @@ try {
         "useTerminalMenuCommands refreshes close-tab command ownership after the active tab changes",
       ],
     },
+    {
+      id: "right-rail-shell-composition-behavior",
+      tests: [
+        "RightRailShell projects shell geometry, active mode, badges, and content from one typed view model",
+        "RightRailShell routes mode click and keyboard navigation through the action contract",
+        "RightRailShell routes keyboard resizing through the width action without owning duplicate width state",
+        "RightRailShell routes pointer resizing with the inverted rail delta and releases its drag owner",
+        "RightRailShell projects the existing zen or collapsed visibility decision without rederiving it",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -166,6 +177,7 @@ try {
     { id: "pane-state-owner-behavior", status: "fail", error: detail },
     { id: "pane-tree-settlement-behavior", status: "fail", error: detail },
     { id: "terminal-menu-command-composition-behavior", status: "fail", error: detail },
+    { id: "right-rail-shell-composition-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -176,6 +188,9 @@ const paths = {
   keyboardShortcuts: "src/shared/hooks/useKeyboardShortcuts.ts",
   keyboardShortcutsTest: "src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx",
   model: "src/features/right-rail/rightRailModel.tsx",
+  rightRailShell: "src/features/right-rail/RightRailShell.tsx",
+  rightRailShellContract: "src/features/right-rail/rightRailShellContract.ts",
+  rightRailShellTest: "src/__tests__/RightRailShell.test.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
   widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx",
@@ -234,6 +249,8 @@ for (const [id, ceiling] of Object.entries({
   keyboardShortcuts: 261,
   decisionInbox: 134,
   orchestraDispatch: 169,
+  rightRailShell: 107,
+  rightRailShellContract: 14,
 })) {
   const lines = source[id].split(/\r?\n/).length;
   const ok = lines <= ceiling;
@@ -269,7 +286,7 @@ const genericOwnersImportingRightRailModel = [
   "orchestraDispatch",
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
-  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 4239, { lines: source.app.split(/\r?\n/).length, ceiling: 4239 }],
+  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 4155, { lines: source.app.split(/\r?\n/).length, ceiling: 4155 }],
   [
     "app-shell-store-subscription-narrow",
     source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
@@ -281,7 +298,7 @@ for (const [id, ok, evidence] of [
       source.appShellStoreTest.includes("does not rerender the shell owner for an unrelated store mutation"),
     {},
   ],
-  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 688, { lines: source.model.split(/\r?\n/).length, ceiling: 688 }],
+  ["right-rail-baseline-lowered", source.model.split(/\r?\n/).length <= 666, { lines: source.model.split(/\r?\n/).length, ceiling: 666 }],
   ["neutral-project-artifact-utilities-owned",
     source.projectArtifacts.includes("export function resolveProjectFilePath") &&
       source.projectArtifacts.includes("export function parseJsonArtifact") &&
@@ -315,13 +332,66 @@ for (const [id, ok, evidence] of [
       !source.model.includes("BootstrapAppConfig"),
     {}],
   ["bootstrap-effects-owned", source.app.includes("useBootstrapAppConfig()") && source.bootstrapHook.includes('invoke<BootstrapAppConfig>("load_app_config")'), {}],
-  ["right-rail-types-owned", source.model.includes('from "./rightRailTypes"') && source.types.includes("export interface RightRailEdgeScore"), {}],
+  [
+    "right-rail-types-owned",
+    source.model.includes('from "./rightRailTypes"') &&
+      !source.model.includes('export type * from "./rightRailTypes"') &&
+      source.types.includes("export interface RightRailEdgeScore"),
+    {},
+  ],
   ["feedback-lifecycle-owned", source.app.includes("useRightRailFeedbackPersistence(") && source.feedbackHook.includes("skipSaveKeyRef"), {}],
-  ["feedback-contract-owned", source.model.includes('from "./rightRailFeedbackContract"') && source.feedbackContract.includes("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX"), {}],
+  [
+    "feedback-contract-owned",
+    source.app.includes('from "./features/right-rail/rightRailFeedbackContract"') &&
+      !source.model.includes('export * from "./rightRailFeedbackContract"') &&
+      source.feedbackContract.includes("RIGHT_RAIL_EDGE_FEEDBACK_STORAGE_PREFIX"),
+    {},
+  ],
   ["feedback-storage-owned", source.model.includes('from "./rightRailFeedbackPersistence"') && source.feedbackStorage.includes("rightRailWorkspaceStorageHash"), {}],
-  ["right-rail-audit-owned", source.model.includes('export * from "./rightRailAudit"') && source.audit.includes("export async function appendRightRailActionAudit"), {}],
-  ["right-rail-visual-qa-owned", source.model.includes('export * from "./rightRailVisualQa"') && source.visualQa.includes("export function readDevVisualQaState") && source.visualQa.includes("export function createDevVisualQaCommandBlocks") && source.visualQa.includes("export function createDevVisualQaPanes"), {}],
-  ["right-rail-widget-frame-owned", source.model.includes('export * from "./rightRailWidgetFrame"') && source.widgetFrame.includes("export function RightRailWidgetFrame"), {}],
+  [
+    "right-rail-audit-owned",
+    source.app.includes('from "./features/right-rail/rightRailAudit"') &&
+      !source.model.includes('export * from "./rightRailAudit"') &&
+      source.audit.includes("export async function appendRightRailActionAudit"),
+    {},
+  ],
+  [
+    "right-rail-visual-qa-owned",
+    source.app.includes('from "./features/right-rail/rightRailVisualQa"') &&
+      !source.model.includes('export * from "./rightRailVisualQa"') &&
+      source.visualQa.includes("export function readDevVisualQaState") &&
+      source.visualQa.includes("export function createDevVisualQaCommandBlocks") &&
+      source.visualQa.includes("export function createDevVisualQaPanes"),
+    {},
+  ],
+  [
+    "right-rail-widget-frame-owned",
+    source.app.includes('from "./features/right-rail/rightRailWidgetFrame"') &&
+      !source.model.includes('export * from "./rightRailWidgetFrame"') &&
+      source.widgetFrame.includes("export function RightRailWidgetFrame"),
+    {},
+  ],
+  [
+    "right-rail-runtime-barrel-closed",
+    !source.model.includes("export * from") &&
+      source.feedbackHook.includes('from "./rightRailFeedbackPersistence"') &&
+      source.guardrailSelection.includes('from "./rightRailWidgetFrame"') &&
+      source.actionFeedback.includes('from "./rightRailTypes"'),
+    {},
+  ],
+  [
+    "right-rail-shell-contract-owned",
+    source.app.includes('import { RightRailShell } from "./features/right-rail/RightRailShell"') &&
+      source.app.includes("<RightRailShell") &&
+      source.app.includes("onWidthChange: setRightPanelWidth") &&
+      source.app.includes("onModeChange: setRightRailMode") &&
+      source.rightRailShellContract.includes("export interface RightRailShellViewModel") &&
+      source.rightRailShellContract.includes("export interface RightRailShellActions") &&
+      source.rightRailShell.includes("export interface RightRailShellProps") &&
+      source.rightRailShell.includes("getNextRightRailMode(activeMode, event.key)") &&
+      source.rightRailShellTest.includes("without owning duplicate width state"),
+    {},
+  ],
   ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
@@ -391,11 +461,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v1",
-  status: failed ? "failed" : "pass-a6.2f-terminal-command-owner",
+  contractVersion: "a6.2f-component-command-composition/v2",
+  status: failed ? "failed" : "pass-a6.2f-right-rail-shell-contract",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "terminal-command-owner",
+  checkpoint: failed ? null : "right-rail-shell-contract",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

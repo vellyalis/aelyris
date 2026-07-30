@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import type { RightRailGuardrailSelection } from "./rightRailTypes";
 import {
   isRightRailGuardrailSelection,
   loadRightRailGuardrailSelection,
   RIGHT_RAIL_GUARDRAIL_SYNC_EVENT,
   saveRightRailGuardrailSelection,
-  type RightRailGuardrailSelection,
-} from "./rightRailModel";
+} from "./rightRailWidgetFrame";
 
 export function useRightRailGuardrailSelection() {
   const [rightRailGuardrailSelection, setRightRailGuardrailSelection] = useState<RightRailGuardrailSelection>(

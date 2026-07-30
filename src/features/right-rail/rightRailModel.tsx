@@ -12,28 +12,24 @@ import {
 } from "lucide-react";
 import { writeClipboardText as writeNativeClipboardText } from "../../shared/lib/nativeClipboard";
 import type { GitChangedFile } from "../../shared/lib/reviewQueue";
-import {
-  type RightRailAction,
-  type RightRailMode,
-} from "../../shared/lib/rightRailAdvisor";
+import type { RightRailAction, RightRailMode } from "../../shared/lib/rightRailAdvisor";
 import type { AgentSession } from "../../shared/types/agent";
 import type { AuditJournalEventRecord } from "../../shared/types/audit";
 import { SHELL_LABELS, type ShellType } from "../../shared/types/terminalPane";
-
+import { normalizeProjectPath } from "./rightRailFeedbackPersistence";
 import type {
-  RightRailActionResult, RightRailActionResultTone,
-  RightRailDestinationPrompt, RightRailEdgeFeedbackAxisSummary,
-  RightRailEdgeFeedbackStaleGroup, RightRailEdgeNextBestAction, RightRailEdgeRecommendationOutcome,
-  RightRailEdgeScore, RightRailEdgeScoreFeedbackEntry, RightRailEdgeScoreItem,
+  RightRailActionResult,
+  RightRailActionResultTone,
+  RightRailDestinationPrompt,
+  RightRailEdgeFeedbackAxisSummary,
+  RightRailEdgeFeedbackStaleGroup,
+  RightRailEdgeNextBestAction,
+  RightRailEdgeRecommendationOutcome,
+  RightRailEdgeScore,
+  RightRailEdgeScoreFeedbackEntry,
+  RightRailEdgeScoreItem,
   RightRailWidgetId,
 } from "./rightRailTypes";
-export type * from "./rightRailTypes";
-export * from "./rightRailFeedbackContract";
-import { normalizeProjectPath } from "./rightRailFeedbackPersistence";
-export * from "./rightRailFeedbackPersistence";
-export * from "./rightRailAudit";
-export * from "./rightRailVisualQa";
-export * from "./rightRailWidgetFrame";
 
 export const RIGHT_RAIL_ACTION_HISTORY_LIMIT = 5;
 export const RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID = "right-panel-edge-feedback-list";

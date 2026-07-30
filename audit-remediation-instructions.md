@@ -25,8 +25,13 @@ selection, and explicit frontend artifact metadata. A6.2f is the exact implement
 frontier. Its terminal command-owner checkpoint is complete: `useAppMenus` remains the
 single public composition hook while terminal commands, the Terminal menu, pane/tab
 selection, broadcast confirmation, and IME actions now have one typed owner with
-executed behavior proof. A6.2f remains active at the right-rail typed projection/action
-boundary; do not reopen A4 without a fresh regression or mix A7/native work into A6.
+executed behavior proof. Its right-rail shell checkpoint is also complete:
+`RightRailShell` owns visibility, geometry, mode tabs, pointer/keyboard resizing, and
+mode-keyboard behavior through a four-field view model and two-action contract while
+App retains the existing runtime state owners. Wildcard runtime-barrel exports are
+closed and affected consumers use their declaration owners directly. A6.2f remains
+active at the right-rail body composition boundary; do not reopen A4 without a fresh
+regression or mix A7/native work into A6.
 
 ## Objective
 
@@ -397,10 +402,21 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - A6.2f terminal command composition checkpoint is complete: `useAppMenus.ts` is 433
   lines, `useTerminalMenuCommands.ts` is 639 lines, and the focused ratchet proves the
   preserved command/menu order, pane-switch routing, failed-focus reporting, and
-  post-confirm broadcast target recheck. The artifact truthfully retains
-  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, and `sliceComplete=false`.
-- Continue A6.2f at the right-rail typed projection/action contract. The queued NUI
-  proposal does not alter that frontier.
+  post-confirm broadcast target recheck.
+- A6.2f right-rail shell checkpoint is complete: `RightRailShell.tsx` is 107
+  lines and its pure contract is 14 lines. App supplies visibility, width, mode,
+  badges, and two typed actions without transferring state ownership; executed
+  tests prove content/badge projection, click and roving-tab behavior, keyboard
+  and pointer resize semantics, pointer-owner cleanup, and hidden-state projection.
+  `rightRailModel.tsx` no longer wildcard-re-exports adjacent owners, and affected
+  App/hooks import their declaration owners directly. The frontend ratchet v2
+  lowers App/model ceilings to 4155/666 and fixes non-growth ceilings for both new
+  shell files. The artifact truthfully retains `completedSlice=A6.2e4`,
+  `activeSlice=A6.2f`, `sliceComplete=false`, and `phaseComplete=false`.
+- Continue A6.2f by inventorying the remaining inline right-rail body and selecting
+  the first cohesive mode-owned sub-surface; do not move the full approximately
+  90-dependency body into a giant contract. The queued NUI proposal does not alter
+  that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

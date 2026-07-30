@@ -3,7 +3,7 @@ import {
   loadRightRailEdgeFeedbackHistory,
   rightRailEdgeFeedbackStorageKey,
   saveRightRailEdgeFeedbackHistory,
-} from "./rightRailModel";
+} from "./rightRailFeedbackPersistence";
 import type { RightRailEdgeScoreFeedbackEntry } from "./rightRailTypes";
 
 export function useRightRailFeedbackPersistence(

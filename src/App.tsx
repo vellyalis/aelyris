@@ -1,7 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { Activity, ClipboardCopy, Users } from "lucide-react";
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
   Suspense,
   useCallback,
   useEffect,
@@ -86,19 +85,22 @@ import {
 import type { CommandHistoryRecord } from "./shared/types/history";
 
 import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
+import { RightRailShell } from "./features/right-rail/RightRailShell";
 import {
   appendRightRailActionAudit,
   appendRightRailActionOutcomeAudit,
   appendRightRailEdgeFeedbackStaleAudit,
   appendRightRailEdgeScoreInteractionAudit,
+  formatInspectorProof,
+  formatRightRailActionOwner,
+} from "./features/right-rail/rightRailAudit";
+import { RIGHT_RAIL_EDGE_FEEDBACK_LIMIT } from "./features/right-rail/rightRailFeedbackContract";
+import {
   clearRightRailEdgeFeedbackHistory,
+  saveRightRailEdgeFeedbackHistory,
+} from "./features/right-rail/rightRailFeedbackPersistence";
+import {
   copyTextToClipboard,
-  createDevVisualQaAuditEvents,
-  createDevVisualQaChangedFiles,
-  createDevVisualQaCommandBlocks,
-  createDevVisualQaNegativePathAction,
-  createDevVisualQaPanes,
-  createDevVisualQaSessions,
   createRightRailEdgeScoreFeedbackEntry,
   deriveRightRailEdgeFeedbackAxisSummary,
   deriveRightRailEdgeFeedbackStaleEntries,
@@ -106,15 +108,11 @@ import {
   deriveRightRailEdgeNextBestAction,
   deriveRightRailEdgeRecommendationOutcome,
   deriveRightRailEdgeScore,
-  formatInspectorProof,
-  formatRightRailActionOwner,
   formatRightRailEdgeFeedbackStaleReason,
   formatRightRailRecoveryDetail,
   formatTerminalTarget,
-  getNextRightRailMode,
   isLiveInteractiveSessionStatus,
   isRightRailQaFixtureRisk,
-  isRightRailWidgetId,
   mergeRightRailChangedFiles,
   PRODUCT_MODE_INSPECTOR_SUMMARY,
   PRODUCT_MODE_RAIL,
@@ -122,26 +120,37 @@ import {
   type ProductModeId,
   RIGHT_RAIL_ACTION_PHASE,
   RIGHT_RAIL_ACTION_WIDGET,
-  RIGHT_RAIL_EDGE_FEEDBACK_LIMIT,
   RIGHT_RAIL_EDGE_FEEDBACK_LIST_ID,
   RIGHT_RAIL_EDGE_FEEDBACK_STALE_COUNT_ID,
-  RIGHT_RAIL_GUARDRAIL_OPTIONS,
   RIGHT_RAIL_MODES,
-  type RightRailActionResult,
-  type RightRailActionResultTone,
-  type RightRailDestinationPrompt,
   RightRailDestinationPromptCard,
-  type RightRailEdgeFeedbackResetNotice,
-  type RightRailEdgeScore,
-  type RightRailEdgeScoreFeedbackEntry,
-  type RightRailEdgeScoreItem,
-  type RightRailGuardrailSelection,
-  RightRailWidgetFrame,
-  readDevVisualQaState,
   rightRailModeForOutcomeWidget,
-  saveRightRailEdgeFeedbackHistory,
   sessionTabMatches,
 } from "./features/right-rail/rightRailModel";
+import type {
+  RightRailActionResult,
+  RightRailActionResultTone,
+  RightRailDestinationPrompt,
+  RightRailEdgeFeedbackResetNotice,
+  RightRailEdgeScore,
+  RightRailEdgeScoreFeedbackEntry,
+  RightRailEdgeScoreItem,
+  RightRailGuardrailSelection,
+} from "./features/right-rail/rightRailTypes";
+import {
+  createDevVisualQaAuditEvents,
+  createDevVisualQaChangedFiles,
+  createDevVisualQaCommandBlocks,
+  createDevVisualQaNegativePathAction,
+  createDevVisualQaPanes,
+  createDevVisualQaSessions,
+  readDevVisualQaState,
+} from "./features/right-rail/rightRailVisualQa";
+import {
+  isRightRailWidgetId,
+  RIGHT_RAIL_GUARDRAIL_OPTIONS,
+  RightRailWidgetFrame,
+} from "./features/right-rail/rightRailWidgetFrame";
 import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightRailFeedbackPersistence";
 import { useRightRailActionFeedback } from "./features/right-rail/useRightRailActionFeedback";
 import { useRightRailGuardrailSelection } from "./features/right-rail/useRightRailGuardrailSelection";
@@ -1745,19 +1754,6 @@ export function App() {
     return () => window.removeEventListener("keydown", onModeShortcut);
   }, [handleProductModeSelect]);
 
-  const handleRightRailModeKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-      const nextMode = getNextRightRailMode(rightRailMode, event.key);
-      if (!nextMode) return;
-      event.preventDefault();
-      setRightRailMode(nextMode);
-      requestAnimationFrame(() => {
-        document.querySelector<HTMLButtonElement>(`[data-right-rail-mode="${nextMode}"]`)?.focus();
-      });
-    },
-    [rightRailMode, setRightRailMode],
-  );
-
   const terminalTabs = tabs.map((tab) => (
     <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId && !activeInteractive}>
       <PaneTreeContainer
@@ -2463,97 +2459,18 @@ export function App() {
               )}
             </section>
 
-            <aside
-              className="right-panel"
-              aria-label="Contextual inspector"
-              aria-hidden={zenMode || rightRailCollapsed ? "true" : undefined}
-              hidden={zenMode || rightRailCollapsed}
-              data-workspace-region="right-rail"
-              tabIndex={-1}
-              /* `flex-basis` (not `width`) is what flex layout reads as
-               * the preferred size. Setting only `width` left the
-               * computed width at the CSS default (280 px) on Chromium
-               * even with `flex-shrink: 0`, because `flex-basis: auto`
-               * resolved against the *original* declared width rather
-               * than re-resolving on inline-style change. Driving
-               * basis directly is the canonical fix and matches how
-               * VS Code / Linear size their resizable side panels. */
-              style={{ flexBasis: `${rightPanelWidth}px`, width: `${rightPanelWidth}px` }}
+            <RightRailShell
+              viewModel={{
+                hidden: zenMode || rightRailCollapsed,
+                width: rightPanelWidth,
+                activeMode: rightRailMode,
+                modeBadges: rightRailModeBadges,
+              }}
+              actions={{
+                onWidthChange: setRightPanelWidth,
+                onModeChange: setRightRailMode,
+              }}
             >
-              <hr
-                className="right-panel-resize-handle"
-                aria-orientation="vertical"
-                aria-label="Resize agent inspector panel"
-                aria-valuemin={260}
-                aria-valuemax={480}
-                aria-valuenow={rightPanelWidth}
-                tabIndex={0}
-                onPointerDown={(e) => {
-                  // Mirror of the left-panel handle. Handle lives on the
-                  // panel's LEFT edge, so dragging *left* (negative dx)
-                  // makes the panel WIDER — invert the sign vs. the
-                  // sidebar handler.
-                  const startX = e.clientX;
-                  const startWidth = rightPanelWidth;
-                  const handleEl = e.currentTarget;
-                  handleEl.setPointerCapture(e.pointerId);
-                  document.body.style.cursor = "col-resize";
-                  const onMove = (ev: PointerEvent) => {
-                    setRightPanelWidth(startWidth - (ev.clientX - startX));
-                  };
-                  const onUp = () => {
-                    document.body.style.cursor = "";
-                    handleEl.releasePointerCapture(e.pointerId);
-                    handleEl.removeEventListener("pointermove", onMove);
-                    handleEl.removeEventListener("pointerup", onUp);
-                  };
-                  handleEl.addEventListener("pointermove", onMove);
-                  handleEl.addEventListener("pointerup", onUp);
-                }}
-                onKeyDown={(e) => {
-                  // Inverted vs. left-panel: handle on LEFT edge, so
-                  // ArrowLeft *grows* the panel toward the centre and
-                  // ArrowRight shrinks it. Shift accelerates 16→64 px.
-                  const step = e.shiftKey ? 64 : 16;
-                  if (e.key === "ArrowLeft") {
-                    e.preventDefault();
-                    setRightPanelWidth(rightPanelWidth + step);
-                  } else if (e.key === "ArrowRight") {
-                    e.preventDefault();
-                    setRightPanelWidth(rightPanelWidth - step);
-                  }
-                }}
-              />
-              <div className="right-panel-content">
-                <div className="right-panel-mode-switch" role="tablist" aria-label="Inspector mode">
-                  {RIGHT_RAIL_MODES.map((mode) => {
-                    const Icon = mode.icon;
-                    const badge = rightRailModeBadges[mode.id];
-                    return (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        role="tab"
-                        id={`right-rail-tab-${mode.id}`}
-                        className="right-panel-mode-tab"
-                        data-active={rightRailMode === mode.id}
-                        data-has-badge={badge > 0 ? "true" : undefined}
-                        data-right-rail-mode={mode.id}
-                        aria-selected={rightRailMode === mode.id}
-                        aria-controls="right-rail-panel"
-                        aria-label={`${mode.label}: ${mode.description}`}
-                        tabIndex={rightRailMode === mode.id ? 0 : -1}
-                        title={`${mode.title}. ${mode.description}`}
-                        onClick={() => setRightRailMode(mode.id)}
-                        onKeyDown={handleRightRailModeKeyDown}
-                      >
-                        <Icon size={12} strokeWidth={1.8} aria-hidden="true" />
-                        <span>{mode.label}</span>
-                        {badge > 0 && <span className="right-panel-mode-badge">{badge}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
                 <div id="right-rail-purpose" className={appStyles.rightRailPurpose}>
                   <span className={appStyles.rightRailPurposeKicker}>Orchestra Command</span>
                   <span className={appStyles.rightRailPurposeText}>{activeRightRailMode.description}</span>
@@ -4105,8 +4022,7 @@ export function App() {
                     </>
                   )}
                 </div>
-              </div>
-            </aside>
+            </RightRailShell>
           </main>
 
           <WorkspaceTabs
