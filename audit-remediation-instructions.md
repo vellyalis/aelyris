@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.2f`.
-LAST COMPLETED SLICE: `A6.2e4`.
+ACTIVE SLICE: `A6.2g`.
+LAST COMPLETED SLICE: `A6.2f`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.2f`.
+NEXT IMPLEMENTATION SLICE: `A6.2g`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -21,31 +21,13 @@ accepted-transition behavior, detaches Close Folder from the effective project p
 and routes keyboard tab switching through the same contract. A6.2e4 closes
 generation-bound evidence polling, serialized pane request ownership, consumer-
 acknowledged focus, initiating-tab agent spawn routing, owner-key-bound operational
-selection, and explicit frontend artifact metadata. A6.2f is the exact implementation
-frontier. Its terminal command-owner checkpoint is complete: `useAppMenus` remains the
-single public composition hook while terminal commands, the Terminal menu, pane/tab
-selection, broadcast confirmation, and IME actions now have one typed owner with
-executed behavior proof. Its right-rail shell checkpoint is also complete:
-`RightRailShell` owns visibility, geometry, mode tabs, pointer/keyboard resizing, and
-mode-keyboard behavior through a four-field view model and two-action contract while
-App retains the existing runtime state owners. Wildcard runtime-barrel exports are
-closed and affected consumers use their declaration owners directly. The first
-right-rail body checkpoints are complete for review, command, and observe:
-`RightRailReviewMode` owns the review queue, inspector slot, SCM, and compact
-context composition, while `RightRailCommandMode` owns toolkit, Decision Inbox,
-agents, orchestrator, workflow, and command-context composition, and
-`RightRailObserveMode` owns process, pane, audit, context, graph, ledger,
-reliability, diagnostics, and observer-inspector composition. All remain lazy
-behind typed projection/action contracts and add no runtime state owner. The first
-workspace checkpoint is also complete: `WorkspaceEditorArea` owns file-tab chrome
-and lazy editor composition through a five-field projection and three actions while
-the existing editor/tab/runtime state owners remain single. The product mode-rail
-checkpoint is complete as well: `ProductModeRail` owns visible rail projection and
-Alt+number intent capture through a two-field projection and one action while App
-retains route and state mutation ownership. A6.2f remains active at the remaining
-left-sidebar composition boundary; do not reopen
-A4 without a fresh regression or mix A7/native
-work into A6.
+selection, and explicit frontend artifact metadata. A6.2f component/command
+composition and owner-local test splitting are complete. The v18 stop audit proves
+that the remaining 41 `AppSilentBugs.test.ts` blocks are authoritative App wiring,
+cross-owner integration, or retained completed-owner guards; it does not create a
+new editor test owner merely to shorten the central file. A6.2g combined frontend
+acceptance is the exact implementation frontier. Do not reopen A4 or completed
+A6.2f owners without a fresh regression, and do not mix A7/native work into A6.
 
 ## Objective
 
@@ -88,7 +70,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. Resume **A6.2f**, then finish A6 by dependency direction, state ownership,
+2. Execute **A6.2g**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
@@ -567,13 +549,25 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   production source or runtime owner changed. The artifact still truthfully
   retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
   `sliceComplete=false`, and `phaseComplete=false`.
-- Continue A6.2f by inventorying the remaining owner-local
-  `AppSilentBugs.test.ts` split boundary before moving the next cohesive owner
-  slice. Do not weaken source-contract or executed behavior coverage, and do not
-  reopen completed right-rail, editor, mode-rail, sidebar, or dialog-host owners.
-  `ProjectHeaderBar`, `WorkspaceTabs`, and `StatusBar` already own their render
-  surfaces; do not add wrapper-only owners around their existing typed props.
-  The queued NUI proposal does not alter that frontier.
+- A6.2f owner-split stop audit is complete: the original 42-block inventory
+  reconciles to 41 current blocks because the separate unsaved guard moved into
+  the project-tab lifecycle owner. The remaining breakdown is 11 App/extracted-
+  owner wiring blocks, 15 release/operator scenarios, 13 right-rail/terminal
+  integration blocks, and 2 visual-QA truth blocks. No completed owner source
+  path remains centralized. `useEditorOpenMode` remains the only direct
+  declaration-owner source read, but it has no existing owner-local behavior
+  suite and no fresh regression; creating a new suite solely to reduce central
+  file size would violate the complexity and completed-owner stop rules. The
+  frontend ratchet contract is v18, requires this topology and absence proof,
+  records `completedSlice=A6.2f`, `activeSlice=A6.2g`,
+  `sliceComplete=false`, and `phaseComplete=false`, and adds no production or
+  runtime owner.
+- Continue A6.2g with the combined frontend acceptance contract. Do not weaken
+  later Rust modularity ceilings to make the aggregate inventory green; classify
+  and repair any cross-slice gate dependency explicitly. Do not reopen completed
+  right-rail, editor, mode-rail, sidebar, dialog-host, or A6.2f test owners
+  without a fresh regression. The queued NUI proposal does not alter this
+  frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

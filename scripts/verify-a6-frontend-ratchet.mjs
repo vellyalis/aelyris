@@ -296,6 +296,7 @@ try {
 }
 const paths = {
   app: "src/App.tsx",
+  appSilentBugs: "src/__tests__/AppSilentBugs.test.ts",
   appShellStore: "src/features/app/useAppShellStore.ts",
   appShellStoreTest: "src/__tests__/useAppShellStore.test.tsx",
   projectTabLifecycleTest: "src/__tests__/useProjectTabLifecycle.test.tsx",
@@ -367,6 +368,77 @@ const paths = {
   feedbackStorage: "src/features/right-rail/rightRailFeedbackPersistence.ts",
 };
 const source = Object.fromEntries(Object.entries(paths).map(([id, path]) => [id, readFileSync(join(root, path), "utf8")]));
+const appSilentBugDescribeMatches = [...source.appSilentBugs.matchAll(/^describe\("([^"]+)"/gm)];
+const appSilentBugDescribeTitles = appSilentBugDescribeMatches.map((match) => match[1]);
+const expectedAppSilentBugDescribeTitles = [
+  "App editor open-mode ownership",
+  "App pane registry wiring",
+  "App pane agent spawn wiring",
+  "App pane request controller wiring",
+  "App operational pane selection wiring",
+  "App release goal evidence wiring",
+  "App authenticated prompt evidence wiring",
+  "App AI CLI launch evidence ownership",
+  "App project/tab lifecycle wiring",
+  "Release evidence gates",
+  "App right rail composition",
+  "App visual QA bootstrap",
+  "App config bootstrap",
+  "App active terminal routing",
+];
+const completedOwnerSourcePaths = [
+  "src/features/app/useReleaseGoalEvidence.ts",
+  "src/features/app/useAuthenticatedPromptEvidence.ts",
+  "src/features/app/useAiCliLaunchEvidence.ts",
+  "src/features/app/useProjectTabLifecycle.ts",
+  "src/features/terminal/usePaneAgentSpawns.ts",
+  "src/features/terminal/useOperationalPaneSelection.ts",
+  "src/features/terminal/usePaneRegistry.ts",
+  "src/features/terminal/usePaneRequestController.ts",
+];
+const centralizedCompletedOwnerPaths = completedOwnerSourcePaths.filter((path) =>
+  source.appSilentBugs.includes(path),
+);
+const appSilentBugTestCount = source.appSilentBugs.match(/^\s+it\("/gm)?.length ?? 0;
+const appSilentBugTestsByDescribe = Object.fromEntries(
+  appSilentBugDescribeMatches.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = appSilentBugDescribeMatches[index + 1]?.index ?? source.appSilentBugs.length;
+    return [match[1], source.appSilentBugs.slice(start, end).match(/^\s+it\("/gm)?.length ?? 0];
+  }),
+);
+const appSilentBugClassificationCounts = {
+  appWiringAndExtractedOwners:
+    expectedAppSilentBugDescribeTitles
+      .slice(0, 9)
+      .reduce((count, title) => count + (appSilentBugTestsByDescribe[title] ?? 0), 0) +
+    (appSilentBugTestsByDescribe["App config bootstrap"] ?? 0) +
+    (appSilentBugTestsByDescribe["App active terminal routing"] ?? 0),
+  releaseOperatorScenarios: appSilentBugTestsByDescribe["Release evidence gates"] ?? 0,
+  rightRailTerminalIntegration: appSilentBugTestsByDescribe["App right rail composition"] ?? 0,
+  visualQaTruth: appSilentBugTestsByDescribe["App visual QA bootstrap"] ?? 0,
+};
+const appSilentBugOwnerSplitStopBoundary =
+  appSilentBugTestCount === 41 &&
+  JSON.stringify(appSilentBugDescribeTitles) === JSON.stringify(expectedAppSilentBugDescribeTitles) &&
+  JSON.stringify(appSilentBugClassificationCounts) ===
+    JSON.stringify({
+      appWiringAndExtractedOwners: 11,
+      releaseOperatorScenarios: 15,
+      rightRailTerminalIntegration: 13,
+      visualQaTruth: 2,
+    }) &&
+  source.appSilentBugs.includes("src/features/editor/useEditorOpenMode.ts") &&
+  centralizedCompletedOwnerPaths.length === 0;
+scenarios.push({
+  id: "app-silent-bugs-owner-split-stop-boundary",
+  status: appSilentBugOwnerSplitStopBoundary ? "pass" : "fail",
+  testCount: appSilentBugTestCount,
+  describeTitles: appSilentBugDescribeTitles,
+  classificationCounts: appSilentBugClassificationCounts,
+  centralizedCompletedOwnerPaths,
+});
+failed ||= !appSilentBugOwnerSplitStopBoundary;
 for (const [id, ceiling] of Object.entries({
   projectArtifacts: 17,
   releaseGoalEvidence: 139,
@@ -721,11 +793,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v17",
-  status: failed ? "failed" : "pass-a6.2f-project-tab-lifecycle-test-owner",
-  completedSlice: failed ? null : "A6.2e4",
-  activeSlice: "A6.2f",
-  checkpoint: failed ? null : "project-tab-lifecycle-test-owner",
+  contractVersion: "a6.2f-component-command-composition/v18",
+  status: failed ? "failed" : "pass-a6.2f-owner-split-stop-audit",
+  completedSlice: failed ? null : "A6.2f",
+  activeSlice: "A6.2g",
+  checkpoint: failed ? null : "owner-split-stop-audit",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

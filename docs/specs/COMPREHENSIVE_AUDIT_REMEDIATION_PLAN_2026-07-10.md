@@ -1425,6 +1425,26 @@ Project-tab-lifecycle test-owner checkpoint complete:
   active at the next cohesive owner-local assertion slice; this checkpoint
   does not authorize A6.2g.
 
+A6.2f owner-split stop audit complete:
+
+- The recorded 42-block `AppSilentBugs.test.ts` inventory reconciles to 41
+  current blocks because the separate unsaved guard was merged into the
+  project-tab lifecycle owner. The remaining comparison classes are 11
+  App/extracted-owner wiring blocks, 15 release/operator scenario blocks, 13
+  right-rail/terminal integration blocks, and 2 visual-QA truth blocks.
+- None of the eight completed declaration-owner source paths remains
+  centralized. `useEditorOpenMode` is the only remaining direct declaration-
+  owner source read, but it has no existing owner-local behavior suite and no
+  fresh regression. Creating a new suite only to reduce the central file would
+  violate the completed-owner and unjustified-complexity stop rules.
+- The frontend ratchet contract is v18 and fail-closes on the remaining
+  41-test/14-describe topology plus absence of those completed owner paths. It
+  records `completedSlice=A6.2f`, `activeSlice=A6.2g`,
+  `sliceComplete=false`, and `phaseComplete=false`.
+- No production source, import layout, dependency, store, service, queue,
+  scheduler, durable owner, runtime state owner, or new test owner changed.
+  A6.2f is complete and A6.2g is now the exact frontend acceptance frontier.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:
