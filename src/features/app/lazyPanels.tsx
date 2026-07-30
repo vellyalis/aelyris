@@ -8,7 +8,6 @@ export const RightRailCommandMode = lazy(() => import("../right-rail/RightRailCo
 export const RightRailObserveMode = lazy(() => import("../right-rail/RightRailObserveMode").then((module) => ({ default: module.RightRailObserveMode })));
 export const RightRailReviewMode = lazy(() => import("../right-rail/RightRailReviewMode").then((module) => ({ default: module.RightRailReviewMode })));
 export const QuickOpen = lazy(() => import("../quick-open/QuickOpen").then((module) => ({ default: module.QuickOpen })));
-export const EditorPanel = lazy(() => import("../editor/EditorPanel").then((module) => ({ default: module.EditorPanel })));
 export const CommandPalette = lazy(() => import("../command-palette/CommandPalette").then((module) => ({ default: module.CommandPalette })));
 export const PaneSwitcherDialog = lazy(() => import("../terminal/pane-switcher").then((module) => ({ default: module.PaneSwitcherDialog })));
 export const Settings = lazy(() => import("../settings/Settings").then((module) => ({ default: module.Settings })));

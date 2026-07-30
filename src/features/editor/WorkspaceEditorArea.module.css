@@ -1,0 +1,96 @@
+.editorArea {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.editorTabsBar {
+  display: flex;
+  height: var(--bottom-tabs-height);
+  background:
+    linear-gradient(180deg, rgba(142, 226, 241, 0.018), rgba(3, 10, 18, 0.018)), var(--chrome-legibility-scrim),
+    rgba(3, 10, 18, 0.08);
+  backdrop-filter: var(--chrome-frame-filter);
+  -webkit-backdrop-filter: var(--chrome-frame-filter);
+  border-bottom: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.022),
+    inset 0 -1px 0 rgba(3, 10, 18, 0.18);
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  overflow-x: auto;
+}
+
+.editorTabsBar::-webkit-scrollbar {
+  display: none;
+}
+
+.editorTab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-5);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.editorTab:hover {
+  background: rgba(142, 226, 241, 0.04);
+  color: var(--text-secondary);
+}
+
+.editorTab[data-active="true"] {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(142, 226, 241, 0.018)), rgba(4, 13, 22, 0.18);
+  color: var(--text-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(142, 226, 241, 0.065);
+}
+
+.editorTab[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 82%, #9ee8f2 18%), transparent);
+  pointer-events: none;
+}
+
+.editorTabClose {
+  font-size: var(--text-sm);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast);
+}
+
+.editorTab:hover .editorTabClose {
+  opacity: 0.5;
+}
+
+.editorTabClose:hover {
+  opacity: 1 !important;
+}
+
+.editorLoading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  font-family: var(--font-ui);
+}

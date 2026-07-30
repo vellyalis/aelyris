@@ -1170,6 +1170,26 @@ Observe-mode body checkpoint complete:
   composition; completed right-rail owners may not be reopened without a fresh
   regression.
 
+Workspace editor-area checkpoint complete:
+
+- `WorkspaceEditorArea` owns the file-tab strip and lazy `EditorPanel`
+  composition. Its five-field projection carries the active file, open files,
+  project, initial line, and diff mode; three actions route selection, close, and
+  editor-started agent intents without moving tab or editor runtime state.
+- The prior editor-tab and loading styles moved unchanged into the owner-local
+  CSS module. `WorkspaceEditorArea` owns the single nested `EditorPanel` lazy
+  boundary, preserving immediate tab chrome and deferred editor loading.
+  Executed tests prove active/open-file projection, keyboard and pointer tab
+  selection, close isolation, active editor close, and agent intent routing.
+- Diagnostic ceilings are 3889 lines for App, 66 for the component, 14 for its
+  pure contract, and 97 for its owner-local styles. No dependency, store,
+  service, queue, scheduler, or duplicate runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v6`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is the remaining workspace
+  chrome composition; dialog/overlay ownership remains later in A6.2f.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

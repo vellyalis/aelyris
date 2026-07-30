@@ -15,7 +15,6 @@ import {
   AboutDialog,
   AgentInspector,
   CommandPalette,
-  EditorPanel,
   FleetHud,
   HelpDialog,
   KanbanBoard,
@@ -43,6 +42,7 @@ import { useAiCliLaunchEvidence } from "./features/app/useAiCliLaunchEvidence";
 import { useReleaseGoalEvidence } from "./features/app/useReleaseGoalEvidence";
 import { resolveEffectiveProjectPath, useProjectTabLifecycle } from "./features/app/useProjectTabLifecycle";
 import { useDecisionInbox } from "./features/decision-inbox/useDecisionInbox";
+import { WorkspaceEditorArea } from "./features/editor/WorkspaceEditorArea";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { useOrchestraDispatch } from "./features/orchestrator/useOrchestraDispatch";
@@ -2211,60 +2211,20 @@ export function App() {
     </div>
   );
   const editorArea = activeFile ? (
-    <div className={appStyles.editorArea}>
-      <div className={appStyles.editorTabsBar}>
-        {openFiles.map((f) => {
-          const name = f.split(/[\\/]/).pop() ?? f;
-          // Editor tab = row container + inline close affordance. Two nested
-          // <button>s would be invalid HTML, so the outer is a tab-role div
-          // with keyboard activation; the inner × is a real button.
-          return (
-            <div
-              key={f}
-              className={appStyles.editorTab}
-              role="tab"
-              tabIndex={0}
-              aria-selected={f === activeFile}
-              data-active={f === activeFile}
-              onClick={() => setActiveFile(f)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setActiveFile(f);
-                }
-              }}
-            >
-              {name}
-              <button
-                type="button"
-                className={appStyles.editorTabClose}
-                aria-label={`Close ${name}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseFile(f);
-                }}
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
-      </div>
-      <ErrorBoundary>
-        <Suspense fallback={<div className={appStyles.editorLoading}>Loading editor...</div>}>
-          <EditorPanel
-            filePath={activeFile}
-            onClose={() => {
-              if (activeFile) void handleCloseFile(activeFile);
-            }}
-            projectPath={projectPath}
-            initialLine={editorLine}
-            initialDiffMode={openInDiff}
-            onStartAgent={handleStartAgent}
-          />
-        </Suspense>
-      </ErrorBoundary>
-    </div>
+    <WorkspaceEditorArea
+      viewModel={{
+        activeFile,
+        openFiles,
+        projectPath,
+        initialLine: editorLine,
+        initialDiffMode: openInDiff,
+      }}
+      actions={{
+        onSelectFile: setActiveFile,
+        onCloseFile: handleCloseFile,
+        onStartAgent: handleStartAgent,
+      }}
+    />
   ) : null;
 
   return (
