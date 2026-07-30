@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.2g`.
-LAST COMPLETED SLICE: `A6.2f`.
+ACTIVE SLICE: `A6.3`.
+LAST COMPLETED SLICE: `A6.2g`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.2g`.
+NEXT IMPLEMENTATION SLICE: `A6.3`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -26,8 +26,10 @@ composition and owner-local test splitting are complete. The v18 stop audit prov
 that the remaining 41 `AppSilentBugs.test.ts` blocks are authoritative App wiring,
 cross-owner integration, or retained completed-owner guards; it does not create a
 new editor test owner merely to shorten the central file. A6.2g combined frontend
-acceptance is the exact implementation frontier. Do not reopen A4 or completed
-A6.2f owners without a fresh regression, and do not mix A7/native work into A6.
+acceptance is complete from exact-SHA hosted run `30535550369` at `548fe1e`;
+A6.3 Tauri IPC adapter, typed facade, event registry, and handler classification is
+the exact implementation frontier. Do not reopen A4 or completed A6.2 owners
+without a fresh regression, and do not mix A7/native work into A6.
 
 ## Objective
 
@@ -70,7 +72,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. Execute **A6.2g**, then finish A6 by dependency direction, state ownership,
+2. **A6.2g is complete.** Execute **A6.3**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
@@ -562,12 +564,15 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   records `completedSlice=A6.2f`, `activeSlice=A6.2g`,
   `sliceComplete=false`, and `phaseComplete=false`, and adds no production or
   runtime owner.
-- Continue A6.2g with the combined frontend acceptance contract. Do not weaken
-  later Rust modularity ceilings to make the aggregate inventory green; classify
-  and repair any cross-slice gate dependency explicitly. Do not reopen completed
-  right-rail, editor, mode-rail, sidebar, dialog-host, or A6.2f test owners
-  without a fresh regression. The queued NUI proposal does not alter this
-  frontier.
+- A6.2g combined frontend acceptance is complete. Exact-SHA hosted run
+  `30535550369` at `548fe1e` passed rendered UI trust, frontend, Rust, dependency
+  audits, and the blocking A6.2 combined job. The hosted artifact reports
+  `status=pass-a6.2g-combined-frontend-acceptance`,
+  `frontendComplete=true`, `sliceComplete=true`, `completedSlice=A6.2g`,
+  `activeSlice=A6.3`, and `phaseComplete=false`. The overall workflow remains
+  red only because release hardening separately retains its stack-risk blocker.
+  Do not reopen completed right-rail, editor, mode-rail, sidebar, dialog-host,
+  or A6.2 test owners without a fresh regression.
 - A6.2g local gate-contract checkpoint is implemented: the modularity inventory
   now emits an explicit fail-closed A6.2 frontend slice result while retaining
   its global BLOCK and every later Rust ceiling. `pnpm
@@ -575,13 +580,18 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   trust contract, v18 frontend ratchet, frontend-slice inventory, fresh
   provenance, and blocking CI source contract. The blocking Windows CI job
   depends on both the normal frontend job and rendered Playwright trust job.
-  Local PASS must remain `sliceComplete=false` and `frontendComplete=false`
-  until that exact committed SHA has a green hosted run; do not advance to A6.3
-  from local evidence alone. The enforced A3 source contract now follows split
+  Local PASS remains non-completing; only the exact committed SHA in the blocking
+  hosted context may emit A6.2 completion. That hosted proof is now green at
+  `548fe1e`. The enforced A3 source contract follows split
   menu IDs through `useAppMenus.ts` into their extracted
   `useTerminalMenuCommands.ts` owner while retaining App's
   `TERMINAL_PREFIX_COMMAND_EVENT` dispatch boundary; executed terminal-menu
   behavior remains covered by the v18 ratchet.
+- Continue A6.3 by inventorying and classifying the Tauri IPC adapter, command
+  registration/event registry, typed frontend facade, MCP/HTTP reuse, tests, and
+  compatibility aliases before deleting or moving handlers. Do not weaken the
+  frozen `src-tauri/src/ipc/commands.rs` ceiling to make inventory green. The
+  queued NUI proposal does not alter this frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

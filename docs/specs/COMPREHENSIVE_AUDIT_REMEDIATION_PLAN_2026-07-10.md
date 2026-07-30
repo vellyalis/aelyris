@@ -1445,7 +1445,7 @@ A6.2f owner-split stop audit complete:
   scheduler, durable owner, runtime state owner, or new test owner changed.
   A6.2f is complete and A6.2g is now the exact frontend acceptance frontier.
 
-#### **A6.2g Active - Combined Frontend Acceptance**
+#### **A6.2g Complete - Combined Frontend Acceptance**
 
 A6.2 is complete only when fresh evidence proves all of the following together:
 
@@ -1489,8 +1489,48 @@ A6.2g local gate-contract checkpoint:
   context may emit the A6.2g completion fields, and that claim is usable only
   after the hosted job itself is green.
 
-A6.3 remains next and must not start until A6.2g is complete. Only the A6.8 combined
-aggregate may emit A6 `phaseComplete=true` after A6.2-A6.7 and blocking CI all pass.
+A6.2g hosted closeout:
+
+- exact-SHA GitHub Actions run `30535550369` at
+  `548fe1e1aac389c9d06791f4f79075a6987dbbff` passed rendered UI trust,
+  frontend, Rust, dependency audits, and the blocking A6.2 combined frontend
+  acceptance job;
+- rendered Playwright completed with `70 passed`, `1 flaky`, and `4 skipped`;
+  the 1440px dialog-dismissal retry remains residual reliability evidence, not
+  a stable A6.2 blocker;
+- the hosted artifact reports
+  `status=pass-a6.2g-combined-frontend-acceptance`,
+  `localComplete=true`, `frontendComplete=true`, `sliceComplete=true`,
+  `completedSlice=A6.2g`, `activeSlice=A6.3`, and `phaseComplete=false`;
+- the overall workflow conclusion remains failure only because release hardening
+  separately retains its stack-risk blocker. That release result does not
+  reopen A6.2 or promote A6/Aelyris release readiness.
+
+#### **A6.3 Active - Tauri IPC Adapter And Handler Classification**
+
+Start A6.3 with inventory and classification before persistence, deletion, or
+adapter movement. Reconcile the authoritative Tauri command registration and
+event registry against the typed frontend invoke facade, MCP/HTTP reuse, focused
+tests, and compatibility aliases. Every handler must be classified from direct
+evidence; inventory absence alone never authorizes deletion.
+
+Primary target:
+
+- `src-tauri/src/ipc/commands.rs`
+
+First acceptance boundary:
+
+- the current handler/registration/callsite/compatibility inventory is explicit;
+- one authoritative adapter/facade/event owner is identified without adding a
+  second registry;
+- dead candidates are fail-closed until registration, frontend invoke,
+  MCP/HTTP reuse, tests, and compatibility aliases are all disproved;
+- the frozen modularity ceiling remains unchanged until a supported ownership
+  extraction lowers it;
+- A6 `phaseComplete=false` remains truthful.
+
+Only the A6.8 combined aggregate may emit A6 `phaseComplete=true` after
+A6.2-A6.7 and blocking CI all pass.
 
 ## A7 - Evidence-Backed Core Mission Loop
 
