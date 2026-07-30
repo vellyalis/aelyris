@@ -30,13 +30,15 @@ executed behavior proof. Its right-rail shell checkpoint is also complete:
 mode-keyboard behavior through a four-field view model and two-action contract while
 App retains the existing runtime state owners. Wildcard runtime-barrel exports are
 closed and affected consumers use their declaration owners directly. The first
-right-rail body checkpoints are complete for review and command:
+right-rail body checkpoints are complete for review, command, and observe:
 `RightRailReviewMode` owns the review queue, inspector slot, SCM, and compact
 context composition, while `RightRailCommandMode` owns toolkit, Decision Inbox,
-agents, orchestrator, workflow, and command-context composition. Both remain lazy
+agents, orchestrator, workflow, and command-context composition, and
+`RightRailObserveMode` owns process, pane, audit, context, graph, ledger,
+reliability, diagnostics, and observer-inspector composition. All remain lazy
 behind typed projection/action contracts and add no runtime state owner. A6.2f
-remains active at the observe-mode body composition boundary; do not reopen A4
-without a fresh regression or mix A7/native
+remains active at the workspace/editor/chrome composition boundary; do not reopen
+A4 without a fresh regression or mix A7/native
 work into A6.
 
 ## Objective
@@ -436,10 +438,18 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   workflow intent routing. App is 4048 lines, the frontend ratchet contract is v4,
   and the artifact still truthfully retains `completedSlice=A6.2e4`,
   `activeSlice=A6.2f`, `sliceComplete=false`, and `phaseComplete=false`.
-- Continue A6.2f at the observe-mode body boundary with the same
-  projection/action discipline; do not combine it with the completed command or
-  review owners or recreate their runtime owners. The queued NUI proposal does
-  not alter that frontier.
+- A6.2f observe-mode body checkpoint is complete: `RightRailObserveMode.tsx` is
+  205 lines and its pure contract is 64 lines. Process, live-pane, audit,
+  context, run graph, tool ledger, inspector, reliability, and diagnostic-log
+  composition use one grouped projection, twelve actions, and five render slots.
+  Existing panel and App runtime owners remain single. Executed tests prove
+  projection plus process, pane, audit, session, reliability, and destination
+  intent routing. App is 3929 lines, the frontend ratchet contract is v5, and
+  the artifact still truthfully retains `completedSlice=A6.2e4`,
+  `activeSlice=A6.2f`, `sliceComplete=false`, and `phaseComplete=false`.
+- Continue A6.2f at the workspace/editor/chrome composition boundary; do not
+  reopen completed right-rail owners or recreate their runtime owners. The
+  queued NUI proposal does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

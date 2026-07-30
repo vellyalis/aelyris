@@ -14,29 +14,22 @@ import { UpdateBanner } from "./features/app/UpdateBanner";
 import {
   AboutDialog,
   AgentInspector,
-  AuditTimelinePanel,
   CommandPalette,
-  ContextPanel,
   EditorPanel,
   FleetHud,
   HelpDialog,
   KanbanBoard,
-  LivePanesPanel,
-  LogsPanel,
   MergeQueuePanel,
   OnboardingOverlay,
   PaneSwitcherDialog,
   PRInspector,
-  ProcessManagerPanel,
   QuickOpen,
-  ReliabilityPanel,
   RightRailCommandMode,
+  RightRailObserveMode,
   RightRailReviewMode,
-  RunGraphPanel,
   SCMPanel,
   SearchPanel,
   Settings,
-  ToolLedgerPanel,
   WatchdogDialog,
   WebInspector,
   WelcomeScreen,
@@ -146,7 +139,6 @@ import {
 import {
   isRightRailWidgetId,
   RIGHT_RAIL_GUARDRAIL_OPTIONS,
-  RightRailWidgetFrame,
 } from "./features/right-rail/rightRailWidgetFrame";
 import { useRightRailFeedbackPersistence } from "./features/right-rail/useRightRailFeedbackPersistence";
 import { useRightRailActionFeedback } from "./features/right-rail/useRightRailActionFeedback";
@@ -3748,171 +3740,60 @@ export function App() {
                   )}
 
                   {rightRailMode === "observe" && (
-                    <>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="processes">
-                            {renderRightRailDestinationPrompt("processes")}
-                            <ProcessManagerPanel
-                              panes={visualTerminalPaneTargets}
-                              activeTerminalId={visualActivePtyId}
-                              highlightedPaneId={selectedOperationalPane?.paneId ?? null}
-                              highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
-                              onFocusPane={handleFocusOperationalPane}
-                              onClosePane={handlePaneClose}
-                              onRestartPane={handlePaneRestart}
-                              onAttachProcess={handlePaneAttach}
-                              onProcessEnded={(terminalId) => {
-                                clearEndedOperationalPane(terminalId);
-                                clearActivePtyId(terminalId);
-                              }}
-                            />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="live-panes">
-                            {renderRightRailDestinationPrompt("live-panes")}
-                            <LivePanesPanel
-                              panes={visualTerminalPaneTargets}
-                              highlightedPaneId={selectedOperationalPane?.paneId ?? null}
-                              highlightedTerminalId={selectedOperationalPane?.terminalId ?? null}
-                              onFocusPane={handleFocusOperationalPane}
-                              onAttachPane={handlePaneAttach}
-                              onSelectPane={selectOperationalPane}
-                            />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="audit-timeline"
-                            title="Audit"
-                            subtitle="events and recovery"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "audit-timeline"}
-                            focusConfirmation={
+                    <ErrorBoundary>
+                      <Suspense fallback={null}>
+                        <RightRailObserveMode
+                          viewModel={{
+                            sessions: rightRailSessions,
+                            activeSessionId: rightRailActiveSessionId,
+                            panes: visualTerminalPaneTargets,
+                            activeTerminalId: visualActivePtyId,
+                            highlightedPane: {
+                              paneId: selectedOperationalPane?.paneId ?? null,
+                              terminalId: selectedOperationalPane?.terminalId ?? null,
+                            },
+                            audit: {
+                              events: scopedOperationalAuditEvents,
+                              error: visualAuditEvents === undefined ? auditStream.error : null,
+                              ready: visualAuditEvents === undefined ? auditStream.ready : true,
+                              selectedEventId: selectedAuditEventId,
+                              traceFilter: selectedAuditTraceFilter,
+                            },
+                            changedFiles: rightRailAllChangedFiles,
+                            project: { name: projectName, path: projectPath, branch },
+                            workstationGraph: focusedRightRailGraph,
+                            focusedWidget: rightRailFocusWidget,
+                            auditConfirmation:
                               rightRailRouteConfirmation?.widget === "audit-timeline"
                                 ? rightRailRouteConfirmation
-                                : null
-                            }
-                          >
-                            {renderRightRailDestinationPrompt("audit-timeline")}
-                            <AuditTimelinePanel
-                              auditEvents={scopedOperationalAuditEvents}
-                              auditError={visualAuditEvents === undefined ? auditStream.error : null}
-                              auditReady={visualAuditEvents === undefined ? auditStream.ready : true}
-                              panes={visualTerminalPaneTargets}
-                              selectedEventId={selectedAuditEventId}
-                              traceFilter={selectedAuditTraceFilter}
-                              workstationGraph={focusedRightRailGraph}
-                              onFocusPane={handleFocusOperationalPane}
-                              onRestartPane={handlePaneRestart}
-                              onSelectEvent={handleSelectAuditEvent}
-                              onTraceFilterChange={setSelectedAuditTraceFilter}
-                              onDestinationOutcome={showRightRailDestinationOutcome}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="context"
-                            title="Context"
-                            subtitle="handoff state"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "context"}
-                          >
-                            <ContextPanel
-                              sessions={rightRailSessions}
-                              activeSessionId={rightRailActiveSessionId}
-                              changedFilesCount={rightRailAllChangedFiles.length}
-                              changedFiles={rightRailAllChangedFiles}
-                              panes={visualTerminalPaneTargets}
-                              auditEvents={scopedOperationalAuditEvents}
-                              projectName={projectName}
-                              projectPath={projectPath}
-                              branch={branch}
-                              density="compact"
-                              workstationGraph={focusedRightRailGraph}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="run-graph"
-                            title="Run Graph"
-                            subtitle="roles and handoffs"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "run-graph"}
-                          >
-                            <RunGraphPanel
-                              sessions={rightRailSessions}
-                              activeSessionId={rightRailActiveSessionId}
-                              onSelectSession={handleSelectRightRailSession}
-                              workstationGraph={focusedRightRailGraph}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="tool-ledger"
-                            title="Run Ledger"
-                            subtitle="tool activity"
-                            defaultOpen={false}
-                          >
-                            <ToolLedgerPanel
-                              sessions={rightRailSessions}
-                              activeSessionId={rightRailActiveSessionId}
-                              onSelectSession={handleSelectRightRailSession}
-                              workstationGraph={focusedRightRailGraph}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                            <AgentInspector {...agentInspectorProps} />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="reliability">
-                            {renderRightRailDestinationPrompt("reliability")}
-                            <ReliabilityPanel
-                              sessions={rightRailSessions}
-                              panes={visualTerminalPaneTargets}
-                              changedFilesCount={rightRailAllChangedFiles.length}
-                              auditEvents={scopedOperationalAuditEvents}
-                              workstationGraph={focusedRightRailGraph}
-                              selectedEventId={selectedAuditEventId}
-                              onFocusPane={handleFocusOperationalPane}
-                              onRestartPane={handlePaneRestart}
-                              onSelectIncident={handleSelectReliabilityIncident}
-                              onTraceIncident={handleTraceReliabilityIncident}
-                            />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      {devVisualQa.diagnosticsEnabled && (
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame widget="logs" title="Logs" subtitle="diagnostics" defaultOpen={false}>
-                              <LogsPanel defaultCollapsed />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                      )}
-                    </>
+                                : null,
+                            diagnosticsEnabled: devVisualQa.diagnosticsEnabled,
+                          }}
+                          actions={{
+                            onFocusPane: handleFocusOperationalPane,
+                            onClosePane: handlePaneClose,
+                            onRestartPane: handlePaneRestart,
+                            onAttachPane: handlePaneAttach,
+                            onProcessEnded: (terminalId) => {
+                              clearEndedOperationalPane(terminalId);
+                              clearActivePtyId(terminalId);
+                            },
+                            onSelectPane: selectOperationalPane,
+                            onSelectEvent: handleSelectAuditEvent,
+                            onTraceFilterChange: setSelectedAuditTraceFilter,
+                            onSelectSession: handleSelectRightRailSession,
+                            onSelectIncident: handleSelectReliabilityIncident,
+                            onTraceIncident: handleTraceReliabilityIncident,
+                            onDestinationOutcome: showRightRailDestinationOutcome,
+                          }}
+                          processDestination={renderRightRailDestinationPrompt("processes")}
+                          livePanesDestination={renderRightRailDestinationPrompt("live-panes")}
+                          auditDestination={renderRightRailDestinationPrompt("audit-timeline")}
+                          reliabilityDestination={renderRightRailDestinationPrompt("reliability")}
+                          agentInspector={<AgentInspector {...agentInspectorProps} />}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
                   )}
                 </div>
             </RightRailShell>

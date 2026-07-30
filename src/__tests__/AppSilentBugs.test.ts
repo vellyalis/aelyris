@@ -45,6 +45,10 @@ function getRightRailCommandModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailCommandMode.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getRightRailObserveModeSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailObserveMode.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getLazyPanelsSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/lazyPanels.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -2121,6 +2125,7 @@ describe("App right rail composition", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
     const rightRailCommandModeSrc = getRightRailCommandModeSource();
+    const rightRailObserveModeSrc = getRightRailObserveModeSource();
     const rightRailReviewModeSrc = getRightRailReviewModeSource();
     const lazyPanelsSrc = getLazyPanelsSource();
     const appStoreSrc = getAppStoreSource();
@@ -2157,14 +2162,15 @@ describe("App right rail composition", () => {
     expect(src).toContain("{rightRailHasBlockingDecision && (");
     expect(src).toContain('data-has-decision={rightRailHasBlockingDecision ? "true" : "false"}');
     expect(src).toContain('setRightRailFocusWidget("decision-inbox")');
-    expect(lazyPanelsSrc).toContain('import("../context/ContextPanel")');
     expect(lazyPanelsSrc).toContain('import("../context/WorkstationPulse")');
-    expect(lazyPanelsSrc).toContain('import("../context/RunGraphPanel")');
-    expect(lazyPanelsSrc).toContain('import("../context/ToolLedgerPanel")');
-    expect(lazyPanelsSrc).toContain('import("../context/ReliabilityPanel")');
     expect(lazyPanelsSrc).toContain('import("../right-rail/RightRailCommandMode")');
+    expect(lazyPanelsSrc).toContain('import("../right-rail/RightRailObserveMode")');
     expect(lazyPanelsSrc).toContain('import("../right-rail/RightRailReviewMode")');
     expect(rightRailCommandModeSrc).toContain('from "../decision-inbox"');
+    expect(rightRailObserveModeSrc).toContain('from "../context/ContextPanel"');
+    expect(rightRailObserveModeSrc).toContain('from "../context/RunGraphPanel"');
+    expect(rightRailObserveModeSrc).toContain('from "../context/ToolLedgerPanel"');
+    expect(rightRailObserveModeSrc).toContain('from "../context/ReliabilityPanel"');
     expect(rightRailReviewModeSrc).toContain('from "../review/ReviewQueuePanel"');
     expect(src).toContain("filterWorkspaceScopedEvents");
     expect(src).toContain("const workspaceProfile = useMemo(");
@@ -2411,10 +2417,10 @@ describe("App right rail composition", () => {
     );
     expect(src).toContain('decisionInboxDestination={renderRightRailDestinationPrompt("decision-inbox")}');
     expect(src).toContain('reviewQueueDestination={renderRightRailDestinationPrompt("review-queue")}');
-    expect(src).toContain('{renderRightRailDestinationPrompt("audit-timeline")}');
-    expect(src).toContain('{renderRightRailDestinationPrompt("reliability")}');
-    expect(src).toContain('{renderRightRailDestinationPrompt("live-panes")}');
-    expect(src).toContain('{renderRightRailDestinationPrompt("processes")}');
+    expect(src).toContain('auditDestination={renderRightRailDestinationPrompt("audit-timeline")}');
+    expect(src).toContain('reliabilityDestination={renderRightRailDestinationPrompt("reliability")}');
+    expect(src).toContain('livePanesDestination={renderRightRailDestinationPrompt("live-panes")}');
+    expect(src).toContain('processDestination={renderRightRailDestinationPrompt("processes")}');
     expect(rightRailModelSrc).toContain("Weakest:");
     expect(getRightRailVisualQaSource()).toContain(
       'blockedReason: "Destructive file-system write requires explicit approval before deleting generated output."',
@@ -2438,13 +2444,13 @@ describe("App right rail composition", () => {
     expect(src).toContain("filterWorkstationGraph(rightRailGraph");
     expect(src).toContain("workstationGraph: focusedRightRailGraph");
     expect(rightRailReviewModeSrc).toContain('data-widget="review-queue"');
-    expect(src).toContain('widget="context"');
-    expect(src).toContain('widget="run-graph"');
-    expect(src).toContain('widget="tool-ledger"');
-    expect(src).toContain('data-widget="reliability"');
-    expect(src).toContain("<RunGraphPanel");
-    expect(src).toContain("<ToolLedgerPanel");
-    expect(src).toContain("<ReliabilityPanel");
+    expect(rightRailObserveModeSrc).toContain('widget="context"');
+    expect(rightRailObserveModeSrc).toContain('widget="run-graph"');
+    expect(rightRailObserveModeSrc).toContain('widget="tool-ledger"');
+    expect(rightRailObserveModeSrc).toContain('data-widget="reliability"');
+    expect(rightRailObserveModeSrc).toContain("<RunGraphPanel");
+    expect(rightRailObserveModeSrc).toContain("<ToolLedgerPanel");
+    expect(rightRailObserveModeSrc).toContain("<ReliabilityPanel");
     expect(src).toContain("const rightRailChangedFiles = useMemo(");
     expect(src).toContain("const rightRailAllChangedFiles = useMemo(");
     expect(src).toContain("changedFiles: rightRailAllChangedFiles");
@@ -2459,10 +2465,11 @@ describe("App right rail composition", () => {
     expect(rightRailCommandModeSrc).not.toContain('density="compact"');
     expect(reviewRail).toContain("<RightRailReviewMode");
     expect(rightRailReviewModeSrc).toContain('density="compact"');
-    expect(observeRail).toContain('density="compact"');
-    expect(observeRail).toContain('data-widget="reliability"');
-    expect(observeRail).toContain("devVisualQa.diagnosticsEnabled");
-    expect(observeRail).toContain("<LogsPanel defaultCollapsed />");
+    expect(observeRail).toContain("<RightRailObserveMode");
+    expect(observeRail).toContain("diagnosticsEnabled: devVisualQa.diagnosticsEnabled");
+    expect(rightRailObserveModeSrc).toContain('density="compact"');
+    expect(rightRailObserveModeSrc).toContain('data-widget="reliability"');
+    expect(rightRailObserveModeSrc).toContain("<LogsPanel defaultCollapsed />");
   });
 
   it("keeps right rail tabs operable with the ARIA keyboard pattern", () => {
@@ -2499,6 +2506,7 @@ describe("App right rail composition", () => {
 
   it("keeps right rail action results visible inside the rail instead of toast-only feedback", () => {
     const src = getSrc();
+    const rightRailObserveModeSrc = getRightRailObserveModeSource();
     const rightRailModelSrc = getRightRailModelSource();
     const advisor = getRightRailAdvisorSource();
 
@@ -2541,7 +2549,8 @@ describe("App right rail composition", () => {
     expect(getRightRailActionFeedbackSource()).toContain("routeLabel?: string | null");
     expect(getRightRailActionFeedbackSource()).toContain("routeDetail?: string | null");
     expect(src).toContain("showRightRailDestinationOutcome");
-    expect(src).toContain("onDestinationOutcome={showRightRailDestinationOutcome}");
+    expect(src).toContain("onDestinationOutcome: showRightRailDestinationOutcome");
+    expect(rightRailObserveModeSrc).toContain("onDestinationOutcome={actions.onDestinationOutcome}");
     expect(src).toContain('className="right-panel-action-result"');
     expect(src).toContain('className="right-panel-action-history"');
     expect(src).toContain('aria-label="Recent right rail action history"');
@@ -2579,6 +2588,7 @@ describe("App right rail composition", () => {
   it("persists secondary right rail widget collapse preferences without hiding core flows", () => {
     const src = getSrc();
     const rightRailCommandModeSrc = getRightRailCommandModeSource();
+    const rightRailObserveModeSrc = getRightRailObserveModeSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -2599,16 +2609,16 @@ describe("App right rail composition", () => {
     expect(rightRailCommandModeSrc).toContain('widget="workflow"');
     expect(rightRailCommandModeSrc).toContain('data-widget="toolkit"');
     expect(rightRailCommandModeSrc).toContain('widget="context"');
-    expect(src).toContain('widget="audit-timeline"');
-    expect(src).toContain('widget="run-graph"');
-    expect(src).toContain('widget="tool-ledger"');
-    expect(src).toContain('widget="logs"');
+    expect(rightRailObserveModeSrc).toContain('widget="audit-timeline"');
+    expect(rightRailObserveModeSrc).toContain('widget="run-graph"');
+    expect(rightRailObserveModeSrc).toContain('widget="tool-ledger"');
+    expect(rightRailObserveModeSrc).toContain('widget="logs"');
     expect(rightRailCommandModeSrc).toContain('data-rail-focus={focusedWidget === "toolkit" || undefined}');
     expect(rightRailCommandModeSrc).toContain('forceExpanded={focusedWidget === "toolkit"}');
     expect(rightRailCommandModeSrc).toContain('forceOpen={focusedWidget === "workflow"}');
     expect(rightRailCommandModeSrc).toContain('forceOpen={focusedWidget === "context"}');
-    expect(src).toContain('forceOpen={rightRailFocusWidget === "audit-timeline"}');
-    expect(src).toContain('forceOpen={rightRailFocusWidget === "run-graph"}');
+    expect(rightRailObserveModeSrc).toContain('forceOpen={focusedWidget === "audit-timeline"}');
+    expect(rightRailObserveModeSrc).toContain('forceOpen={focusedWidget === "run-graph"}');
 
     const commandRail = src.slice(commandStart, reviewStart);
     const observeRail = src.slice(observeStart);
@@ -2636,8 +2646,13 @@ describe("App right rail composition", () => {
     expect(rightRailCommandModeSrc.indexOf('widget="decision-inbox"')).toBeGreaterThan(
       rightRailCommandModeSrc.indexOf("decisionInbox.visible"),
     );
-    expect(observeRail.indexOf('data-widget="processes"')).toBeLessThan(observeRail.indexOf('widget="audit-timeline"'));
-    expect(observeRail.indexOf('data-widget="live-panes"')).toBeLessThan(observeRail.indexOf('widget="run-graph"'));
+    expect(observeRail).toContain("<RightRailObserveMode");
+    expect(rightRailObserveModeSrc.indexOf('data-widget="processes"')).toBeLessThan(
+      rightRailObserveModeSrc.indexOf('widget="audit-timeline"'),
+    );
+    expect(rightRailObserveModeSrc.indexOf('data-widget="live-panes"')).toBeLessThan(
+      rightRailObserveModeSrc.indexOf('widget="run-graph"'),
+    );
   });
 
   it("keeps the right rail focused by collapsing secondary proof detail", () => {

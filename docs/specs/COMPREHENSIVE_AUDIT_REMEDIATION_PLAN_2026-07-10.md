@@ -1146,6 +1146,30 @@ Command-mode body checkpoint complete:
   `phaseComplete=false`. The next exact boundary is the inline observe-mode body;
   it may not be combined with the completed command or review owners.
 
+Observe-mode body checkpoint complete:
+
+- `RightRailObserveMode` owns process manager, live panes, audit timeline,
+  compact context, run graph, tool ledger, inspector placement, reliability,
+  and conditional diagnostics composition. Its grouped projection carries
+  session, pane, audit, project, graph, focus, confirmation, and diagnostics
+  state; twelve actions route existing pane/process, audit, session,
+  reliability, and destination intents. Five render slots preserve the existing
+  inspector and destination-prompt runtime owners.
+- The component remains lazy through the existing `lazyPanels` registry.
+  Obsolete direct observe-panel registry entries were removed. Executed tests
+  prove projection plus process focus/close/restart/attach/end, pane
+  focus/attach/select, audit select/trace/outcome, session select, and
+  reliability select/trace routing.
+- Diagnostic ceilings are 3929 lines for App, 205 for the observe-mode
+  component, and 64 for its pure contract. No dependency, store, service, queue,
+  scheduler, or duplicate runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v5`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is workspace/editor/chrome
+  composition; completed right-rail owners may not be reopened without a fresh
+  regression.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:
