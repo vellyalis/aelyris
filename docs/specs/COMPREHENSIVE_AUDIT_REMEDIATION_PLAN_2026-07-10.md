@@ -1190,6 +1190,26 @@ Workspace editor-area checkpoint complete:
   `phaseComplete=false`. The next exact boundary is the remaining workspace
   chrome composition; dialog/overlay ownership remains later in A6.2f.
 
+Product mode-rail checkpoint complete:
+
+- `ProductModeRail` now owns visible mode-rail projection and Alt+number shortcut
+  capture. Its two-field projection carries active mode and hidden state; its one
+  action carries mode-selection intent back to App, which retains route and state
+  mutation ownership.
+- The owner remains mounted while Zen mode hides the visual rail, preserving the
+  prior global shortcut behavior. Executed tests prove active-mode projection,
+  pointer intent routing, visible shortcut focus, and hidden-rail shortcut routing.
+- Diagnostic ceilings are 3848 lines for App, 66 for the component, and 11 for its
+  pure contract. No dependency, store, service, queue, scheduler, or duplicate
+  runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v7`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. `ProjectHeaderBar`, `WorkspaceTabs`, and `StatusBar`
+  already own their render surfaces, so the next exact boundary is the remaining
+  inline left-sidebar composition; wrapper-only extraction of those existing
+  owners is not progress. Dialog/overlay ownership remains later in A6.2f.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

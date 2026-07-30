@@ -37,6 +37,10 @@ function getRightRailShellSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailShell.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getProductModeRailSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/ProductModeRail.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getRightRailReviewModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailReviewMode.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -1821,6 +1825,7 @@ describe("App right rail composition", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
     const rightRailShellSrc = getRightRailShellSource();
+    const productModeRailSrc = getProductModeRailSource();
     const styles = getStyles();
     const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
     const verifier = readFileSync(join(process.cwd(), "scripts/verify-mode-shell-refresh-contract.mjs"), "utf8");
@@ -1840,9 +1845,10 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain('id: "settings"');
     expect(rightRailModelSrc).toContain('shortcut: "Alt+1"');
     expect(rightRailModelSrc).toContain('shortcut: "Alt+8"');
-    expect(src).toContain("handleProductModeSelect(mode.id)");
-    expect(src).toContain('className="mode-rail"');
-    expect(src).toContain("data-product-mode={mode.id}");
+    expect(src).toContain("onSelectMode: handleProductModeSelect");
+    expect(productModeRailSrc).toContain("onSelectMode(mode.id)");
+    expect(productModeRailSrc).toContain('className="mode-rail"');
+    expect(productModeRailSrc).toContain("data-product-mode={mode.id}");
     expect(src).toContain("<RightRailShell");
     expect(rightRailShellSrc).toContain('aria-label="Contextual inspector"');
     expect(rightRailShellSrc).toContain('aria-label="Inspector mode"');

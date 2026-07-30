@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx src/__tests__/RightRailCommandMode.test.tsx src/__tests__/RightRailObserveMode.test.tsx src/__tests__/WorkspaceEditorArea.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx src/__tests__/RightRailCommandMode.test.tsx src/__tests__/RightRailObserveMode.test.tsx src/__tests__/WorkspaceEditorArea.test.tsx src/__tests__/ProductModeRail.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -47,6 +47,7 @@ try {
           "src/__tests__/RightRailCommandMode.test.tsx",
           "src/__tests__/RightRailObserveMode.test.tsx",
           "src/__tests__/WorkspaceEditorArea.test.tsx",
+          "src/__tests__/ProductModeRail.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -183,6 +184,14 @@ try {
         "WorkspaceEditorArea routes tab, close, and agent intents through the action contract",
       ],
     },
+    {
+      id: "product-mode-rail-composition-behavior",
+      tests: [
+        "ProductModeRail projects the active product mode from one typed view model",
+        "ProductModeRail routes pointer and Alt shortcut intents through the action contract",
+        "ProductModeRail keeps Alt shortcut routing active while the visual rail is hidden",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -214,6 +223,7 @@ try {
     { id: "right-rail-command-mode-composition-behavior", status: "fail", error: detail },
     { id: "right-rail-observe-mode-composition-behavior", status: "fail", error: detail },
     { id: "workspace-editor-area-composition-behavior", status: "fail", error: detail },
+    { id: "product-mode-rail-composition-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -240,6 +250,9 @@ const paths = {
   workspaceEditorAreaContract: "src/features/editor/workspaceEditorAreaContract.ts",
   workspaceEditorAreaStyles: "src/features/editor/WorkspaceEditorArea.module.css",
   workspaceEditorAreaTest: "src/__tests__/WorkspaceEditorArea.test.tsx",
+  productModeRail: "src/features/app/ProductModeRail.tsx",
+  productModeRailContract: "src/features/app/productModeRailContract.ts",
+  productModeRailTest: "src/__tests__/ProductModeRail.test.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
   widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx",
@@ -309,6 +322,8 @@ for (const [id, ceiling] of Object.entries({
   workspaceEditorArea: 66,
   workspaceEditorAreaContract: 14,
   workspaceEditorAreaStyles: 97,
+  productModeRail: 66,
+  productModeRailContract: 11,
 })) {
   const lines = source[id].split(/\r?\n/).length;
   const ok = lines <= ceiling;
@@ -344,7 +359,7 @@ const genericOwnersImportingRightRailModel = [
   "orchestraDispatch",
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
-  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 3889, { lines: source.app.split(/\r?\n/).length, ceiling: 3889 }],
+  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 3848, { lines: source.app.split(/\r?\n/).length, ceiling: 3848 }],
   [
     "app-shell-store-subscription-narrow",
     source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
@@ -510,6 +525,21 @@ for (const [id, ok, evidence] of [
       source.workspaceEditorAreaTest.includes("through the action contract"),
     {},
   ],
+  [
+    "product-mode-rail-contract-owned",
+    source.app.includes('import { ProductModeRail } from "./features/app/ProductModeRail"') &&
+      source.app.includes("<ProductModeRail") &&
+      source.app.includes("onSelectMode: handleProductModeSelect") &&
+      source.productModeRailContract.includes("export interface ProductModeRailViewModel") &&
+      source.productModeRailContract.includes("export interface ProductModeRailActions") &&
+      source.productModeRail.includes("PRODUCT_MODE_RAIL.map") &&
+      source.productModeRail.includes('window.addEventListener("keydown", handleModeShortcut)') &&
+      source.productModeRail.includes("if (hidden) return null") &&
+      source.productModeRail.includes("onSelectMode(mode.id)") &&
+      source.productModeRailTest.includes("from one typed view model") &&
+      source.productModeRailTest.includes("through the action contract"),
+    {},
+  ],
   ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
@@ -579,11 +609,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v6",
-  status: failed ? "failed" : "pass-a6.2f-workspace-editor-area-contract",
+  contractVersion: "a6.2f-component-command-composition/v7",
+  status: failed ? "failed" : "pass-a6.2f-product-mode-rail-contract",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "workspace-editor-area-contract",
+  checkpoint: failed ? null : "product-mode-rail-contract",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

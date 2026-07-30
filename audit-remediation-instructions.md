@@ -39,8 +39,11 @@ reliability, diagnostics, and observer-inspector composition. All remain lazy
 behind typed projection/action contracts and add no runtime state owner. The first
 workspace checkpoint is also complete: `WorkspaceEditorArea` owns file-tab chrome
 and lazy editor composition through a five-field projection and three actions while
-the existing editor/tab/runtime state owners remain single. A6.2f remains active at
-the remaining workspace chrome composition boundary; do not reopen
+the existing editor/tab/runtime state owners remain single. The product mode-rail
+checkpoint is complete as well: `ProductModeRail` owns visible rail projection and
+Alt+number intent capture through a two-field projection and one action while App
+retains route and state mutation ownership. A6.2f remains active at the remaining
+left-sidebar composition boundary; do not reopen
 A4 without a fresh regression or mix A7/native
 work into A6.
 
@@ -460,7 +463,18 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   contract is v6, and the artifact still truthfully retains
   `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
   `phaseComplete=false`.
-- Continue A6.2f at the remaining workspace chrome composition boundary; do not
+- A6.2f product mode-rail checkpoint is complete: `ProductModeRail.tsx` is 66
+  lines and its pure contract is 11 lines. Active mode and hidden state project
+  through one typed boundary, while click and Alt+number intents route through one
+  action. The owner stays mounted when Zen mode hides the rail, preserving the
+  pre-existing shortcut behavior. Executed tests prove projection, pointer routing,
+  visible shortcut focus, and hidden-rail shortcut routing. App is 3848 lines, the
+  frontend ratchet contract is v7, and the artifact still truthfully retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
+- Continue A6.2f at the inline left-sidebar composition boundary. `ProjectHeaderBar`,
+  `WorkspaceTabs`, and `StatusBar` already own their render surfaces; do not add
+  wrapper-only owners around their existing typed props. Do not
   reopen completed right-rail owners or recreate their runtime owners. The
   queued NUI proposal does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the

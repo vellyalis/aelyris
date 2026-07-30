@@ -10,6 +10,7 @@ import {
 } from "react";
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
+import { ProductModeRail } from "./features/app/ProductModeRail";
 import { UpdateBanner } from "./features/app/UpdateBanner";
 import {
   AboutDialog,
@@ -1727,22 +1728,6 @@ export function App() {
     [setProductMode, setRightRailFocusWidget, setRightRailMode, setSettingsVisible, setSidebarCollapsed],
   );
 
-  useEffect(() => {
-    const onModeShortcut = (event: KeyboardEvent) => {
-      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      const index = Number(event.key) - 1;
-      const mode = Number.isInteger(index) ? PRODUCT_MODE_RAIL[index] : undefined;
-      if (!mode) return;
-      event.preventDefault();
-      handleProductModeSelect(mode.id);
-      requestAnimationFrame(() => {
-        document.querySelector<HTMLButtonElement>(`[data-product-mode="${mode.id}"]`)?.focus();
-      });
-    };
-    window.addEventListener("keydown", onModeShortcut);
-    return () => window.removeEventListener("keydown", onModeShortcut);
-  }, [handleProductModeSelect]);
-
   const terminalTabs = tabs.map((tab) => (
     <div key={tab.id} className={appStyles.terminalTabPane} data-active={tab.id === activeTabId && !activeInteractive}>
       <PaneTreeContainer
@@ -2252,36 +2237,10 @@ export function App() {
           )}
 
           <main className="app-main">
-            {!zenMode && (
-              <nav className="mode-rail" aria-label={`${PRODUCT_NAME} mode rail`} data-active-mode={productMode}>
-                <div className="mode-rail-brand" aria-hidden="true">
-                  {PRODUCT_NAME[0]}
-                </div>
-                <div className="mode-rail-list">
-                  {PRODUCT_MODE_RAIL.map((mode) => {
-                    const Icon = mode.icon;
-                    const active = productMode === mode.id;
-                    return (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        className="mode-rail-button"
-                        data-active={active ? "true" : "false"}
-                        data-product-mode={mode.id}
-                        aria-pressed={active}
-                        aria-label={`${mode.label}. ${mode.description} ${mode.shortcut}`}
-                        title={`${mode.shortcut} - ${mode.description}`}
-                        onClick={() => handleProductModeSelect(mode.id)}
-                      >
-                        <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
-                        <span className="mode-rail-label">{mode.label}</span>
-                        <span className="mode-rail-shortcut">{mode.shortcut.replace("Alt+", "")}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </nav>
-            )}
+            <ProductModeRail
+              viewModel={{ activeMode: productMode, hidden: zenMode }}
+              actions={{ onSelectMode: handleProductModeSelect }}
+            />
             <nav
               className={`left-panel${sidebarCollapsed || zenMode ? " left-panel-collapsed" : ""}`}
               aria-label="Project sidebar"
