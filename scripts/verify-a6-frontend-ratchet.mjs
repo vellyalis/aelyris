@@ -79,6 +79,12 @@ try {
       ],
     },
     {
+      id: "project-tab-lifecycle-owner-source-contract",
+      tests: [
+        "useProjectTabLifecycle owns unsaved guards, project normalization, knowledge adoption, and snapshot cleanup",
+      ],
+    },
+    {
       id: "project-tab-shortcut-routing-behavior",
       tests: [
         "useKeyboardShortcuts terminal focus routes Ctrl+Tab and Ctrl+Shift+Tab through the guarded project-tab switch callback",
@@ -267,6 +273,7 @@ try {
   scenarios.push(
     { id: "app-shell-store-subscription-behavior", status: "fail", error: detail },
     { id: "project-tab-lifecycle-behavior", status: "fail", error: detail },
+    { id: "project-tab-lifecycle-owner-source-contract", status: "fail", error: detail },
     { id: "project-tab-shortcut-routing-behavior", status: "fail", error: detail },
     { id: "evidence-generation-behavior", status: "fail", error: detail },
     { id: "release-goal-evidence-owner-source-contract", status: "fail", error: detail },
@@ -714,11 +721,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v16",
-  status: failed ? "failed" : "pass-a6.2f-pane-request-controller-test-owner",
+  contractVersion: "a6.2f-component-command-composition/v17",
+  status: failed ? "failed" : "pass-a6.2f-project-tab-lifecycle-test-owner",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "pane-request-controller-test-owner",
+  checkpoint: failed ? null : "project-tab-lifecycle-test-owner",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

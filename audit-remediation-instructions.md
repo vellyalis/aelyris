@@ -556,6 +556,17 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   assertion status handling. No production source or runtime owner changed.
   The artifact still truthfully retains `completedSlice=A6.2e4`,
   `activeSlice=A6.2f`, `sliceComplete=false`, and `phaseComplete=false`.
+- A6.2f project-tab-lifecycle test-owner checkpoint is complete: all 12
+  assertions that inspect `useProjectTabLifecycle.ts` now live beside its
+  five open, switch, close-folder, inactive-tab close, and active-tab close
+  behavior tests. `AppSilentBugs.test.ts` retains the six App composition
+  assertions and two keyboard-routing assertions because App and
+  `useKeyboardShortcuts` own those wiring boundaries. The frontend ratchet
+  contract is v17 and requires the exact owner-local source-contract test to
+  execute and pass through structured Vitest assertion status handling. No
+  production source or runtime owner changed. The artifact still truthfully
+  retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
+  `sliceComplete=false`, and `phaseComplete=false`.
 - Continue A6.2f by inventorying the remaining owner-local
   `AppSilentBugs.test.ts` split boundary before moving the next cohesive owner
   slice. Do not weaken source-contract or executed behavior coverage, and do not

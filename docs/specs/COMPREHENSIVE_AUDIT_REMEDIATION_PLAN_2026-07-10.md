@@ -1406,6 +1406,25 @@ Pane-request-controller test-owner checkpoint complete:
   active at the next cohesive owner-local assertion slice; this checkpoint
   does not authorize A6.2g.
 
+Project-tab-lifecycle test-owner checkpoint complete:
+
+- All twelve assertions that inspect
+  `src/features/app/useProjectTabLifecycle.ts` now live in
+  `src/__tests__/useProjectTabLifecycle.test.tsx` beside its five open,
+  switch, close-folder, inactive-tab close, and active-tab close behavior
+  tests. `AppSilentBugs.test.ts` retains the six App composition assertions
+  and two keyboard-routing assertions because App and `useKeyboardShortcuts`
+  own those wiring boundaries.
+- The frontend ratchet contract is v17 and requires the exact owner-local
+  source-contract test to execute and pass through structured Vitest
+  assertion status handling. It truthfully retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
+- No production source, import layout, dependency, store, service, queue,
+  scheduler, durable owner, or runtime state owner changed. A6.2f remains
+  active at the next cohesive owner-local assertion slice; this checkpoint
+  does not authorize A6.2g.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

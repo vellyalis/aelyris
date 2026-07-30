@@ -15,10 +15,22 @@ vi.mock("../shared/ui/ConfirmDialog", () => ({
   showConfirm: vi.fn(),
 }));
 
+const ownerSources = import.meta.glob("../features/app/useProjectTabLifecycle.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 const tabs: Tab[] = [
   { id: "tab-a", label: "Repo A", shell: "powershell", cwd: "C:/repo-a" },
   { id: "tab-b", label: "Repo B", shell: "powershell", cwd: "C:/repo-b" },
 ];
+
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
 
 function seedActiveContext() {
   useAppStore.setState({
@@ -90,6 +102,27 @@ beforeEach(() => {
 });
 
 describe("useProjectTabLifecycle", () => {
+  it("owns unsaved guards, project normalization, knowledge adoption, and snapshot cleanup", () => {
+    const source = getOwnerSource();
+
+    expect(source).toMatch(/const confirmDiscardUnsavedFiles\s*=\s*useCallback/);
+    expect(source).toMatch(/useAppStore\.getState\(\)\.unsavedFiles\.size/);
+    expect(source).toMatch(/await confirmDiscardUnsavedFiles\("Switch tabs and discard them"\)/);
+    expect(source).toMatch(/await confirmDiscardUnsavedFiles\("Open another project and discard them"\)/);
+    expect(source).toMatch(/await confirmDiscardUnsavedFiles\("Close this project and discard them"\)/);
+
+    const tabSwitch = source.match(/const handleTabSwitch\s*=\s*useCallback\([\s\S]*?\n\s*\);/);
+    expect(tabSwitch).not.toBeNull();
+    const body = tabSwitch?.[0] ?? "";
+    expect(body.indexOf("await confirmDiscardUnsavedFiles")).toBeLessThan(body.indexOf("clearFiles()"));
+    expect(body).toMatch(/if\s*\(!\(await confirmDiscardUnsavedFiles/);
+
+    expect(source).toContain('path.replace(/\\\\/g, "/")');
+    expect(source).toContain('tauriInvoke("populate_knowledge_graph"');
+    expect(source).toContain("tabs.length <= 1");
+    expect(source).toContain("deletePaneTreeSnapshotFromBackend(storageKey)");
+  });
+
   it("opens a project only after confirmation and clears active context after the tab transition", async () => {
     seedActiveContext();
     const { options, state } = createOptions();

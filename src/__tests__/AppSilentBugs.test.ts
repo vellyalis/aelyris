@@ -113,10 +113,6 @@ function getEditorOpenModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/editor/useEditorOpenMode.ts"), "utf8");
 }
 
-function getProjectTabLifecycleSource(): string {
-  return readFileSync(join(process.cwd(), "src/features/app/useProjectTabLifecycle.ts"), "utf8");
-}
-
 function getDecisionInboxHookSource(): string {
   return readFileSync(join(process.cwd(), "src/features/decision-inbox/useDecisionInbox.ts"), "utf8").replace(
     /\r\n/g,
@@ -162,24 +158,6 @@ function cssBlock(source: string, selector: string): string {
 function templatePlaceholder(name: string): string {
   return `${"$"}{${name}}`;
 }
-
-describe("App unsaved editor guards", () => {
-  it("does not clear editor state on project/tab changes without an unsaved confirmation", () => {
-    const src = getProjectTabLifecycleSource();
-
-    expect(src).toMatch(/const confirmDiscardUnsavedFiles\s*=\s*useCallback/);
-    expect(src).toMatch(/useAppStore\.getState\(\)\.unsavedFiles\.size/);
-    expect(src).toMatch(/await confirmDiscardUnsavedFiles\("Switch tabs and discard them"\)/);
-    expect(src).toMatch(/await confirmDiscardUnsavedFiles\("Open another project and discard them"\)/);
-    expect(src).toMatch(/await confirmDiscardUnsavedFiles\("Close this project and discard them"\)/);
-
-    const tabSwitch = src.match(/const handleTabSwitch\s*=\s*useCallback\([\s\S]*?\n\s*\);/);
-    expect(tabSwitch).not.toBeNull();
-    const body = tabSwitch?.[0] ?? "";
-    expect(body.indexOf("await confirmDiscardUnsavedFiles")).toBeLessThan(body.indexOf("clearFiles()"));
-    expect(body).toMatch(/if\s*\(!\(await confirmDiscardUnsavedFiles/);
-  });
-});
 
 describe("App editor open-mode ownership", () => {
   it("keeps mode synchronization and external-editor fallbacks in one hook owner", () => {
@@ -252,17 +230,12 @@ describe("App AI CLI launch evidence ownership", () => {
   });
 });
 
-describe("App project/tab lifecycle ownership", () => {
-  it("keeps unsaved guards, project normalization, knowledge graph adoption, and snapshot cleanup together", () => {
+describe("App project/tab lifecycle wiring", () => {
+  it("composes the lifecycle owner and routes keyboard tab switches through its guarded callback", () => {
     const src = getSrc();
-    const owner = getProjectTabLifecycleSource();
     const shortcuts = getKeyboardShortcutsSource();
 
     expect(src).toContain("useProjectTabLifecycle({");
-    expect(owner).toContain('path.replace(/\\\\/g, "/")');
-    expect(owner).toContain('tauriInvoke("populate_knowledge_graph"');
-    expect(owner).toContain("tabs.length <= 1");
-    expect(owner).toContain("deletePaneTreeSnapshotFromBackend(storageKey)");
     expect(src).toContain("onSelectTab={(id) => void handleTabSwitch(id)}");
     expect(src).toContain("resolveEffectiveProjectPath(rootProjectPath, activeTab.cwd)");
     expect(src).toContain("onActiveContextChanged: () => {");
