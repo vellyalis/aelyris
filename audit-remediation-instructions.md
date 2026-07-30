@@ -482,12 +482,24 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   lines, the frontend ratchet contract is v8, and the artifact still truthfully
   retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
   `sliceComplete=false`, and `phaseComplete=false`.
-- Continue A6.2f at the inline dialog/overlay host boundary after inventorying
-  its visibility and intent contracts. `ProjectHeaderBar`, `WorkspaceTabs`, and
-  `StatusBar` already own their render surfaces; do not add wrapper-only owners
-  around their existing typed props. Do not reopen completed right-rail,
-  editor, mode-rail, or sidebar owners or recreate their runtime owners. The
-  queued NUI proposal does not alter that frontier.
+- A6.2f app-dialog-host checkpoint is complete: `AppDialogHost.tsx` is 51
+  lines and its pure contract is 10 lines. Ten typed lazy-dialog entries project
+  visibility through the shared `LazyDialog` boundary; Prompt, Confirm,
+  Handoff, Orchestra, History, Onboarding, and Fleet surfaces now have one
+  placement owner. History acceptance routes through one typed action while
+  individual close, project, pane, agent, and navigation runtime owners remain
+  unchanged. Executed tests prove visible-only projection, close/intent
+  preservation, persistent surface placement, and history routing. App is 3769
+  lines, the frontend ratchet contract is v9, and the artifact still truthfully
+  retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
+  `sliceComplete=false`, and `phaseComplete=false`.
+- Continue A6.2f by inventorying the remaining owner-local
+  `AppSilentBugs.test.ts` split boundary before moving any assertions. Do not
+  weaken source-contract or executed behavior coverage, and do not reopen
+  completed right-rail, editor, mode-rail, sidebar, or dialog-host owners.
+  `ProjectHeaderBar`, `WorkspaceTabs`, and `StatusBar` already own their render
+  surfaces; do not add wrapper-only owners around their existing typed props.
+  The queued NUI proposal does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

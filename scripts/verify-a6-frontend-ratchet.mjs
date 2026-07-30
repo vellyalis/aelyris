@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx src/__tests__/RightRailCommandMode.test.tsx src/__tests__/RightRailObserveMode.test.tsx src/__tests__/WorkspaceEditorArea.test.tsx src/__tests__/ProductModeRail.test.tsx src/__tests__/WorkspaceSidebar.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx src/__tests__/RightRailCommandMode.test.tsx src/__tests__/RightRailObserveMode.test.tsx src/__tests__/WorkspaceEditorArea.test.tsx src/__tests__/ProductModeRail.test.tsx src/__tests__/WorkspaceSidebar.test.tsx src/__tests__/AppDialogHost.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -49,6 +49,7 @@ try {
           "src/__tests__/WorkspaceEditorArea.test.tsx",
           "src/__tests__/ProductModeRail.test.tsx",
           "src/__tests__/WorkspaceSidebar.test.tsx",
+          "src/__tests__/AppDialogHost.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -202,6 +203,14 @@ try {
         "WorkspaceSidebar routes pointer resize intents and releases its drag owner",
       ],
     },
+    {
+      id: "app-dialog-host-composition-behavior",
+      tests: [
+        "AppDialogHost projects only visible lazy dialogs through the shared host boundary",
+        "AppDialogHost preserves close and dialog intents carried by visible content slots",
+        "AppDialogHost owns persistent surfaces and routes history acceptance through the typed action contract",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -235,6 +244,7 @@ try {
     { id: "workspace-editor-area-composition-behavior", status: "fail", error: detail },
     { id: "product-mode-rail-composition-behavior", status: "fail", error: detail },
     { id: "workspace-sidebar-composition-behavior", status: "fail", error: detail },
+    { id: "app-dialog-host-composition-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -267,6 +277,9 @@ const paths = {
   workspaceSidebar: "src/features/sidebar/WorkspaceSidebar.tsx",
   workspaceSidebarContract: "src/features/sidebar/workspaceSidebarContract.ts",
   workspaceSidebarTest: "src/__tests__/WorkspaceSidebar.test.tsx",
+  appDialogHost: "src/features/app/AppDialogHost.tsx",
+  appDialogHostContract: "src/features/app/appDialogHostContract.ts",
+  appDialogHostTest: "src/__tests__/AppDialogHost.test.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
   widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx",
@@ -340,6 +353,8 @@ for (const [id, ceiling] of Object.entries({
   productModeRailContract: 11,
   workspaceSidebar: 95,
   workspaceSidebarContract: 9,
+  appDialogHost: 51,
+  appDialogHostContract: 10,
 })) {
   const lines = source[id].split(/\r?\n/).length;
   const ok = lines <= ceiling;
@@ -375,7 +390,7 @@ const genericOwnersImportingRightRailModel = [
   "orchestraDispatch",
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
-  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 3788, { lines: source.app.split(/\r?\n/).length, ceiling: 3788 }],
+  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 3769, { lines: source.app.split(/\r?\n/).length, ceiling: 3769 }],
   [
     "app-shell-store-subscription-narrow",
     source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
@@ -573,6 +588,23 @@ for (const [id, ok, evidence] of [
       source.workspaceSidebarTest.includes("without owning duplicate width state"),
     {},
   ],
+  [
+    "app-dialog-host-contract-owned",
+    source.app.includes('import { AppDialogHost } from "./features/app/AppDialogHost"') &&
+      source.app.includes("<AppDialogHost") &&
+      source.app.includes("viewModel={{ historyCwdPrefix: projectPath || undefined }}") &&
+      source.app.includes("actions={{ onHistoryAccept: handleHistoryAccept }}") &&
+      source.appDialogHostContract.includes("export interface AppDialogHostViewModel") &&
+      source.appDialogHostContract.includes("export interface AppDialogHostActions") &&
+      source.appDialogHost.includes("export interface AppLazyDialogEntry") &&
+      source.appDialogHost.includes("lazyDialogs.map((dialog)") &&
+      source.appDialogHost.includes("<PromptDialog />") &&
+      source.appDialogHost.includes("<HistorySearchDialog") &&
+      source.appDialogHost.includes("<OnboardingOverlay />") &&
+      source.appDialogHostTest.includes("through the shared host boundary") &&
+      source.appDialogHostTest.includes("through the typed action contract"),
+    {},
+  ],
   ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
@@ -642,11 +674,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v8",
-  status: failed ? "failed" : "pass-a6.2f-workspace-sidebar-contract",
+  contractVersion: "a6.2f-component-command-composition/v9",
+  status: failed ? "failed" : "pass-a6.2f-app-dialog-host-contract",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "workspace-sidebar-contract",
+  checkpoint: failed ? null : "app-dialog-host-contract",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

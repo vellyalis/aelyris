@@ -41,6 +41,10 @@ function getProductModeRailSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/ProductModeRail.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getAppDialogHostSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/app/AppDialogHost.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getWorkspaceSidebarSource(): string {
   return readFileSync(join(process.cwd(), "src/features/sidebar/WorkspaceSidebar.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -2195,6 +2199,12 @@ describe("App right rail composition", () => {
     const workspaceSidebarSrc = getWorkspaceSidebarSource();
     expect(workspaceSidebarSrc).toContain('className={`left-panel${hidden ? " left-panel-collapsed" : ""}`}');
     expect(workspaceSidebarSrc).toContain('data-workspace-region="sidebar"');
+    expect(src).toContain('import { AppDialogHost } from "./features/app/AppDialogHost"');
+    expect(src).toContain("viewModel={{ historyCwdPrefix: projectPath || undefined }}");
+    const appDialogHostSrc = getAppDialogHostSource();
+    expect(appDialogHostSrc).toContain("lazyDialogs.map((dialog)");
+    expect(appDialogHostSrc).toContain("<HistorySearchDialog");
+    expect(appDialogHostSrc).toContain("<OnboardingOverlay />");
     expect(src).toContain("const scopedOperationalAuditEvents = useMemo(");
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
     const decisionInboxHookSrc = getDecisionInboxHookSource();

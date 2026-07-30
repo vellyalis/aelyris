@@ -1231,6 +1231,26 @@ Workspace sidebar checkpoint complete:
   host after its visibility and intent contracts are inventoried; completed
   owners may not be reopened without a fresh regression.
 
+App dialog-host checkpoint complete:
+
+- `AppDialogHost` now owns visible-only `LazyDialog` placement for ten typed
+  dialog entries plus the persistent Prompt, Confirm, Handoff, Orchestra,
+  History, Onboarding, and Fleet surfaces.
+- Its one-field projection carries the current project history scope and its
+  one action carries history acceptance back to App. Individual dialog content
+  retains existing close, project, pane, agent, and navigation runtime owners.
+  Executed tests prove visible-only projection, close/intent preservation,
+  persistent surface placement, and history routing.
+- Diagnostic ceilings are 3769 lines for App, 51 for the component, and 10 for
+  its pure contract. No dependency, store, service, queue, scheduler, or
+  duplicate runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v9`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is the remaining owner-local
+  `AppSilentBugs.test.ts` split after its source-contract assertions are
+  inventoried; completed owners may not be reopened without a fresh regression.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

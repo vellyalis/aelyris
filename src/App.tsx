@@ -10,17 +10,16 @@ import {
 } from "react";
 import appStyles from "./App.module.css";
 import { AgentTerminal } from "./features/agent-terminal";
+import { AppDialogHost } from "./features/app/AppDialogHost";
 import { ProductModeRail } from "./features/app/ProductModeRail";
 import { UpdateBanner } from "./features/app/UpdateBanner";
 import {
   AboutDialog,
   AgentInspector,
   CommandPalette,
-  FleetHud,
   HelpDialog,
   KanbanBoard,
   MergeQueuePanel,
-  OnboardingOverlay,
   PaneSwitcherDialog,
   PRInspector,
   QuickOpen,
@@ -76,7 +75,7 @@ import {
 } from "./shared/lib/workstationGraph";
 import type { CommandHistoryRecord } from "./shared/types/history";
 
-import { HistorySearchDialog, showHistorySearch } from "./features/history/HistorySearchDialog";
+import { showHistorySearch } from "./features/history/HistorySearchDialog";
 import { RightRailShell } from "./features/right-rail/RightRailShell";
 import {
   appendRightRailActionAudit,
@@ -185,12 +184,9 @@ import { DEFAULT_RIGHT_PANEL_WIDTH, useAppStore } from "./shared/store/appStore"
 import { toast } from "./shared/store/toastStore";
 import type { SearchHit } from "./shared/types/history";
 import type { ShellType, TerminalPaneTarget } from "./shared/types/terminalPane";
-import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
+import { showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
-import { HandoffDialog } from "./shared/ui/HandoffDialog";
 import { LazyDialog } from "./shared/ui/LazyDialog";
-import { OrchestraDialog } from "./shared/ui/OrchestraDialog";
-import { PromptDialog } from "./shared/ui/PromptDialog";
 import { SplitPane } from "./shared/ui/SplitPane";
 import { ToastProvider } from "./shared/ui/Toast";
 import { TooltipProvider } from "./shared/ui/Tooltip";
@@ -3686,87 +3682,72 @@ export function App() {
             />
           </div>
 
-          {paletteVisible && (
-            <LazyDialog>
-              <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
-            </LazyDialog>
-          )}
-          {settingsVisible && (
-            <LazyDialog>
-              <Settings visible onClose={() => setSettingsVisible(false)} />
-            </LazyDialog>
-          )}
-          {watchdogVisible && (
-            <LazyDialog>
-              <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} />
-            </LazyDialog>
-          )}
-          {aboutVisible && (
-            <LazyDialog>
-              <AboutDialog visible onClose={() => setAboutVisible(false)} />
-            </LazyDialog>
-          )}
-          {helpVisible && (
-            <LazyDialog>
-              <HelpDialog visible onClose={() => setHelpVisible(false)} />
-            </LazyDialog>
-          )}
-          {webInspectorVisible && (
-            <LazyDialog>
-              <WebInspector visible onClose={() => setWebInspectorVisible(false)} />
-            </LazyDialog>
-          )}
-          {prInspectorVisible && (
-            <LazyDialog>
-              <PRInspector
-                visible
-                projectPath={projectPath}
-                onClose={() => setPrInspectorVisible(false)}
-                onStartReview={handleStartAgent}
-              />
-            </LazyDialog>
-          )}
-          {mergeQueueVisible && (
-            <LazyDialog>
-              <MergeQueuePanel visible onClose={() => setMergeQueueVisible(false)} />
-            </LazyDialog>
-          )}
-          {quickOpenMode && (
-            <LazyDialog>
-              <QuickOpen
-                projectPath={projectPath}
-                openFiles={openFiles}
-                onSelectFile={handleFileSelect}
-                onClose={() => setQuickOpenMode(null)}
-                initialMode={quickOpenMode}
-              />
-            </LazyDialog>
-          )}
-          {paneSwitcherVisible && (
-            <LazyDialog>
-              <PaneSwitcherDialog
-                visible
-                panes={visualTerminalPaneTargets}
-                activeTabId={activeTabId}
-                activeTerminalId={visualActivePtyId}
-                onFocusPane={handleFocusOperationalPane}
-                onRestartPane={handlePaneRestart}
-                onClosePane={handlePaneClose}
-                onRenamePane={handlePaneRename}
-                onCyclePaneRole={handlePaneRoleCycle}
-                onClose={() => setPaneSwitcherVisible(false)}
-              />
-            </LazyDialog>
-          )}
-          <PromptDialog />
-          <ConfirmDialog />
-          <HandoffDialog />
-          <OrchestraDialog />
-          <HistorySearchDialog onAccept={handleHistoryAccept} defaultCwdPrefix={projectPath || undefined} />
-          <Suspense fallback={null}>
-            <OnboardingOverlay />
-            <FleetHud />
-          </Suspense>
+          <AppDialogHost
+            viewModel={{ historyCwdPrefix: projectPath || undefined }}
+            actions={{ onHistoryAccept: handleHistoryAccept }}
+            lazyDialogs={[
+              {
+                id: "command-palette",
+                visible: paletteVisible,
+                content: (
+                  <CommandPalette visible onClose={() => setPaletteVisible(false)} commands={commands} />
+                ),
+              },
+              { id: "settings", visible: settingsVisible, content: <Settings visible onClose={() => setSettingsVisible(false)} /> },
+              { id: "watchdog", visible: watchdogVisible, content: <WatchdogDialog visible onClose={() => setWatchdogVisible(false)} /> },
+              { id: "about", visible: aboutVisible, content: <AboutDialog visible onClose={() => setAboutVisible(false)} /> },
+              { id: "help", visible: helpVisible, content: <HelpDialog visible onClose={() => setHelpVisible(false)} /> },
+              { id: "web-inspector", visible: webInspectorVisible, content: <WebInspector visible onClose={() => setWebInspectorVisible(false)} /> },
+              {
+                id: "pr-inspector",
+                visible: prInspectorVisible,
+                content: (
+                  <PRInspector
+                    visible
+                    projectPath={projectPath}
+                    onClose={() => setPrInspectorVisible(false)}
+                    onStartReview={handleStartAgent}
+                  />
+                ),
+              },
+              {
+                id: "merge-queue",
+                visible: mergeQueueVisible,
+                content: <MergeQueuePanel visible onClose={() => setMergeQueueVisible(false)} />,
+              },
+              {
+                id: "quick-open",
+                visible: quickOpenMode !== null,
+                content: quickOpenMode ? (
+                  <QuickOpen
+                    projectPath={projectPath}
+                    openFiles={openFiles}
+                    onSelectFile={handleFileSelect}
+                    onClose={() => setQuickOpenMode(null)}
+                    initialMode={quickOpenMode}
+                  />
+                ) : null,
+              },
+              {
+                id: "pane-switcher",
+                visible: paneSwitcherVisible,
+                content: (
+                  <PaneSwitcherDialog
+                    visible
+                    panes={visualTerminalPaneTargets}
+                    activeTabId={activeTabId}
+                    activeTerminalId={visualActivePtyId}
+                    onFocusPane={handleFocusOperationalPane}
+                    onRestartPane={handlePaneRestart}
+                    onClosePane={handlePaneClose}
+                    onRenamePane={handlePaneRename}
+                    onCyclePaneRole={handlePaneRoleCycle}
+                    onClose={() => setPaneSwitcherVisible(false)}
+                  />
+                ),
+              },
+            ]}
+          />
         </div>
       </ToastProvider>
     </TooltipProvider>
