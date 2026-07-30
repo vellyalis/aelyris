@@ -1713,7 +1713,7 @@ Completion evidence:
   after two bounded rework rounds. A6.8 remains active and A6
   `phaseComplete=false` remains truthful.
 
-#### **A6.8 Active - Combined Ratchet And Regression Acceptance**
+#### **A6.8 Complete - Combined Ratchet And Regression Acceptance**
 
 Only after A6.2-A6.7 owner, behavior, and blocking CI evidence is current may the
 combined aggregate retire advisory mode and emit A6 `phaseComplete=true`. A6.8
@@ -1777,6 +1777,17 @@ Local implementation checkpoint:
   child-process allowance is raised to 720 seconds inside the existing 45-minute
   blocking job. A fresh exact-SHA hosted run and authenticated closeout remain
   mandatory.
+- Exact-SHA hosted run `30575942362` at
+  `baeb8f5936359b9dccc38b66738a66450b5c037c` completed with success for
+  frontend, rendered UI trust, isolated A6.2 frontend acceptance, Rust, and the
+  A6.8 all-owner candidate. Authenticated post-run closeout from the clean matching
+  HEAD verified repository identity, workflow name/path, run ID/attempt/URL, the
+  complete job list, and exactly one completed-success match for all five A6 jobs.
+  The artifact reports `localComplete=true`, `hostedComplete=true`,
+  `sliceComplete=true`, `phaseComplete=true`, `completedSlice=A6.8`, and
+  `activeSlice=A7.0`. The overall workflow conclusion remains failure because the
+  separately owned release-hardening stack-risk gate remains unresolved; A6 neither
+  consumes nor conceals that release blocker.
 
 ## A7 - Evidence-Backed Core Mission Loop
 
@@ -1823,7 +1834,9 @@ learning layers are deferred from A7 Core and remain explicitly tracked destinat
 work. Existing Proofbook evidence may be referenced when already available, but A7
 does not create a second runner or require Proofbook productization.
 
-### A7.0 - Core Mission Scope Lock And Owner Inventory
+### **A7.0 - Core Mission Scope Lock And Owner Inventory**
+
+Status: active.
 
 - freeze one fixed request fixture and the seven-step canonical acceptance journey;
 - inventory only the TaskGraph, runtime/PTY, ownership, event/evidence, test,

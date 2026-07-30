@@ -2,11 +2,11 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.8`.
-LAST COMPLETED SLICE: `A6.7`.
-NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.8`.
+CURRENT PHASE: `A7`.
+ACTIVE SLICE: `A7.0`.
+LAST COMPLETED SLICE: `A6.8`.
+NEXT PHASE: `A8` after A7 combined acceptance.
+NEXT IMPLEMENTATION SLICE: `A7.0`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -40,16 +40,16 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    infrastructure removal is complete: the unregistered legacy `SessionManager`
    and its auto-discovered test were removed, authoritative Database/PTY/mux owners
    remain, and retained runtime/compatibility surfaces remain classified. A6.8
-   combined ratchet and regression acceptance is implemented locally with one
-   fail-closed combined owner and blocking hosted-candidate job. The exact frontier
-   is the cold-runner aggregate timeout repair after hosted run `30574240201`
-   proved frontend, rendered UI, Rust, and A6.2 acceptance green but reached the
-   old 360-second child-process limit in the A6.8 global aggregate. The aggregate
-   retains every behavior owner and now has a 720-second verifier allowance inside
-   the existing 45-minute job; a new exact-SHA GitHub run plus externally verified
-   run closeout remains required. Do
-   not reopen A4 or completed A6.2-A6.7 owners without a fresh regression, and do
-   not mix A7 or native product expansion into A6.
+   combined ratchet and regression acceptance is complete. Exact-SHA hosted run
+   `30575942362` at `baeb8f5` passed frontend, rendered UI trust, isolated A6.2
+   acceptance, Rust, and the all-owner A6.8 candidate. Authenticated clean-worktree
+   closeout verified the repository, workflow, run attempt, exact HEAD, and all
+   five jobs, then emitted A6 `phaseComplete=true` and frontier `A7.0`. The
+   workflow-level conclusion remains failure only because the separately owned
+   release-hardening stack-risk gate is unresolved; it was not promoted into or
+   hidden by A6. A7.0 scope lock and owner inventory is now active. Do not reopen
+   A4 or completed A6 owners without a fresh regression, and do not begin A7.1
+   implementation until A7.0 freezes the canonical fixture and responsibility map.
 
 ## Objective
 
@@ -95,10 +95,11 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. **A6.7 is complete.** Execute **A6.8** to finish A6 by dependency direction,
-   state ownership, executed behavior, and concurrency safety. File length remains
-   a diagnostic non-growth ratchet, not a universal `<=800` completion requirement.
-   Do not move logic solely to satisfy a line count.
+2. **A6.8 and A6 are complete.** Dependency direction, state ownership,
+   executed behavior, concurrency safety, blocking hosted evidence, and
+   authenticated exact-SHA closeout all pass. File length remains a diagnostic
+   non-growth ratchet, not a universal `<=800` completion requirement. Do not move
+   logic solely to satisfy a line count.
 3. Enter **A7.0** as a scope-lock gate before A7 runtime work. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
@@ -652,8 +653,9 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   current feature-gated binary, and a negative child-source mutation is rejected.
   `aelyris_native.rs=8436 <= 8827`, focused native tests pass 7/7, live
   native-client checks pass, upper compatibility passes 6/6, text shaping
-  produces a fresh current fixture, Rust library tests pass 1308/1308, and A6
-  remains `phaseComplete=false`.
+  produces a fresh current fixture, and Rust library tests pass 1308/1308. At the
+  A6.6 boundary, A6 correctly remained `phaseComplete=false`; A6.8 has since
+  closed the aggregate.
 - A6.7 duplicate/unowned infrastructure closeout is complete. A callsite-first
   inventory accepted removal only for the unregistered legacy `SessionManager`
   and retained the runtime-reachable `PaneRegistry` and typed IPC facade. The
@@ -661,22 +663,22 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   missing-path provenance rejects reintroduction, scanner-bound negative mutations
   pass 4/4, focused Database tests pass 3/3, mux restore tests pass 7/7, and Rust
   library tests pass 1308/1308. Independent review found two blocking evidence
-  gaps; both bounded rework rounds are closed with zero remaining blockers. A6
-  remains `phaseComplete=false`.
-- Continue A6.8 as the only combined A6 acceptance. It must aggregate current
-  A6.2-A6.7 owner/behavior evidence and blocking exact-SHA CI before it can retire
-  advisory mode or emit A6 `phaseComplete=true`. A8.0 remains the sole native
-  activation decision.
-- A6.8 local implementation is ready for hosted proof. The combined verifier
-  executes the default A6.2-A6.7 aggregate, requires exact current provenance,
-  all six frozen owner ceilings, each slice and its negative proof, and the A6.3
-  same-line-count event-registry mutation. Local and in-progress hosted-candidate
-  execution remain `phaseComplete=false`; only explicit post-run closeout may
-  query the authenticated GitHub CLI, and it requires a clean worktree plus exact
-  repository/workflow/run/SHA/attempt and five completed-success job bindings.
-  The workflow must be completed, but its aggregate conclusion does not override
-  those five bindings because the separate release-hardening job retains its own
-  blocker and did not block the A6.2g exact-SHA precedent.
+  gaps; both bounded rework rounds are closed with zero remaining blockers. At the
+  A6.7 boundary, A6 correctly remained `phaseComplete=false`; A6.8 has since
+  closed the aggregate.
+- A6.8 is the only combined A6 acceptance and is complete. It aggregates current
+  A6.2-A6.7 owner/behavior evidence and blocking exact-SHA CI, and only the
+  explicit authenticated post-run closeout may emit A6 `phaseComplete=true`.
+  A8.0 remains the sole native activation decision.
+- The completed A6.8 verifier executes the default A6.2-A6.7 aggregate, requires
+  exact current provenance, all six frozen owner ceilings, each slice and its
+  negative proof, and the A6.3 same-line-count event-registry mutation. Candidate
+  execution alone remains non-completing; explicit post-run closeout requires a
+  clean worktree plus exact repository/workflow/run/SHA/attempt and five
+  completed-success job bindings. The workflow must be completed, but its
+  aggregate conclusion does not override those five bindings because the separate
+  release-hardening job retains its own blocker and did not block the A6.2g
+  exact-SHA precedent.
   The frontend acceptance now consumes inventory schema v3, uses a measured
   360-second modularity timeout, and records the A6.3-required one-line
   `PaneTreeContainer` owner growth at a 1692-line diagnostic ceiling. Hosted
@@ -687,8 +689,12 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   timeout. Required-slice mode now executes only the requested slice behavior,
   reports every skipped later behavior as `not-run`, and leaves global truth
   `not-evaluated`; default A6.8 mode still executes all A6.2-A6.7 behavior.
-  Local required-slice matrix, frontend acceptance, and combined acceptance
-  pass, but replacement hosted completion remains unobserved.
+  Local required-slice matrix, frontend acceptance, and combined acceptance pass.
+  Run `30574240201` proved the isolated A6.2 path but exposed the 360-second
+  cold global-aggregate allowance. The all-owner allowance was raised to 720
+  seconds without changing failure or completion authority. Exact-SHA run
+  `30575942362` at `baeb8f5` then passed all five A6 jobs, and authenticated
+  clean-worktree closeout emitted `phaseComplete=true` and activated A7.0.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.
