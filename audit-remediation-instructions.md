@@ -568,6 +568,20 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   right-rail, editor, mode-rail, sidebar, dialog-host, or A6.2f test owners
   without a fresh regression. The queued NUI proposal does not alter this
   frontier.
+- A6.2g local gate-contract checkpoint is implemented: the modularity inventory
+  now emits an explicit fail-closed A6.2 frontend slice result while retaining
+  its global BLOCK and every later Rust ceiling. `pnpm
+  verify:a6:frontend-acceptance` combines the production build, enforced A3 UI
+  trust contract, v18 frontend ratchet, frontend-slice inventory, fresh
+  provenance, and blocking CI source contract. The blocking Windows CI job
+  depends on both the normal frontend job and rendered Playwright trust job.
+  Local PASS must remain `sliceComplete=false` and `frontendComplete=false`
+  until that exact committed SHA has a green hosted run; do not advance to A6.3
+  from local evidence alone. The enforced A3 source contract now follows split
+  menu IDs through `useAppMenus.ts` into their extracted
+  `useTerminalMenuCommands.ts` owner while retaining App's
+  `TERMINAL_PREFIX_COMMAND_EVENT` dispatch boundary; executed terminal-menu
+  behavior remains covered by the v18 ratchet.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

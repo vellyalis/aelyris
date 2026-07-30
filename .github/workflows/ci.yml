@@ -115,6 +115,38 @@ jobs:
             playwright-report/**
           if-no-files-found: warn
 
+  a6-frontend-acceptance:
+    name: A6.2 combined frontend acceptance
+    needs: [frontend, rendered-ui-trust]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Combined A6.2 frontend acceptance
+        env:
+          AELYRIS_A6_BLOCKING_CI_CONTEXT: "1"
+        run: pnpm verify:a6:frontend-acceptance
+      - name: Upload A6.2 frontend acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: a6-frontend-acceptance-${{ github.sha }}
+          path: |
+            .codex-auto/quality/a6-frontend-acceptance.json
+            .codex-auto/quality/a6-frontend-ratchet.json
+            .codex-auto/quality/a6-modularity-inventory.json
+            .codex-auto/quality/ui-trust-contract.json
+          if-no-files-found: error
+
   rust:
     name: Rust (cargo test --lib)
     runs-on: windows-latest

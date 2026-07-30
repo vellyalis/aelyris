@@ -27,6 +27,7 @@ const sourcePaths = {
   keyboardShortcuts: "src/shared/hooks/useKeyboardShortcuts.ts",
   shortcutRegistry: "src/shared/lib/shortcutRegistry.ts",
   appMenus: "src/features/app/useAppMenus.ts",
+  terminalMenuCommands: "src/features/app/useTerminalMenuCommands.ts",
   decisionInboxTests: "src/__tests__/DecisionInboxPanel.test.tsx",
   toast: "src/shared/ui/Toast.tsx",
   app: "src/App.tsx",
@@ -153,8 +154,9 @@ add(
     s.workspaceRegionFocus.includes('"sidebar", "center", "right-rail", "status-bar"') &&
     s.workspaceRegionFocusTests.includes("skips hidden regions") &&
     s.appMenus.includes('id: "toggle-right-rail"') &&
-    s.appMenus.includes('id: "split-pane-right"') &&
-    s.appMenus.includes('id: "split-pane-down"') &&
+    s.appMenus.includes("useTerminalMenuCommands({") &&
+    s.terminalMenuCommands.includes('id: "split-pane-right"') &&
+    s.terminalMenuCommands.includes('id: "split-pane-down"') &&
     s.app.includes("TERMINAL_PREFIX_COMMAND_EVENT"),
   "F6 cycles visible shell regions, the right rail has a conflict-checked toggle, and palette splits reuse the terminal prefix owner.",
 );

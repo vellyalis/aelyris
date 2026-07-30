@@ -1457,12 +1457,37 @@ A6.2 is complete only when fresh evidence proves all of the following together:
   rail dependency for neutral contracts;
 - executed behavioral suites cover the stateful owner transitions listed in A6.2e;
 - TypeScript no-emit, production build, focused frontend tests, A3 rendered-trust
-  regressions, `verify:a6:frontend-ratchet`, and `verify:a6:modularity-inventory`
-  pass with fresh provenance;
+  regressions, `verify:a6:frontend-ratchet`, and the explicit
+  `verify:a6:modularity-inventory:frontend` slice invocation pass with fresh
+  provenance; the default aggregate inventory retains its independent global
+  result for later A6 owners;
 - a blocking CI job runs both A6 verifiers and the combined frontend acceptance on
   the required branch/PR lane, and current hosted evidence is green;
 - the frontend artifact reports `sliceComplete=true` and `frontendComplete=true`
   only after these checks pass, while `phaseComplete=false` remains truthful.
+
+A6.2g local gate-contract checkpoint:
+
+- `verify:a6:modularity-inventory` retains its global exit/status contract and
+  all frozen Rust ceilings. The same verifier exposes `frontendSlice` and the
+  explicit `verify:a6:modularity-inventory:frontend` invocation exits only on
+  the A6.2 owner result while the artifact continues to report the global
+  BLOCK.
+- `verify:a6:frontend-acceptance` is the single local combined owner for
+  production build, enforced A3 UI trust source contract, v18 frontend ratchet,
+  A6.2 inventory slice, fresh child provenance, and global-block preservation.
+- the A3 keyboard-shell source contract follows split menu IDs through
+  `useAppMenus.ts` into `useTerminalMenuCommands.ts` while retaining App's
+  `TERMINAL_PREFIX_COMMAND_EVENT` dispatch boundary. The v18 ratchet retains
+  executed terminal-menu command behavior proof.
+- the blocking Windows `a6-frontend-acceptance` CI job depends on both
+  `frontend` and `rendered-ui-trust`, executes the combined owner, and uploads
+  all four evidence artifacts with `if-no-files-found: error`.
+- a local green run reports `localComplete=true` but keeps
+  `sliceComplete=false`, `frontendComplete=false`, `completedSlice=A6.2f`, and
+  `activeSlice=A6.2g`. Only the same committed SHA executing in the blocking CI
+  context may emit the A6.2g completion fields, and that claim is usable only
+  after the hosted job itself is green.
 
 A6.3 remains next and must not start until A6.2g is complete. Only the A6.8 combined
 aggregate may emit A6 `phaseComplete=true` after A6.2-A6.7 and blocking CI all pass.
