@@ -101,6 +101,7 @@ jobs:
         env:
           AELYRIS_E2E_PROJECT_PATH: ${{ github.workspace }}
           AELYRIS_E2E_EXTERNAL_DASHBOARD: "0"
+          AELYRIS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:1420"
         run: pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend
       - name: Upload rendered UI trust artifacts
         if: always()

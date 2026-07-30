@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+const baseURL = process.env.AELYRIS_PLAYWRIGHT_BASE_URL ?? "http://localhost:1420";
+
 /**
  * Playwright E2E config for Aelyris (Tauri + WebView2).
  *
@@ -20,8 +22,8 @@ export default defineConfig({
   timeout: 30_000,
   retries: 1,
   use: {
-    // Test against Vite dev server for frontend-only tests
-    baseURL: "http://localhost:1420",
+    // Local Tauri/Vite keeps localhost; hosted CI injects its exact IPv4 listener.
+    baseURL,
     headless: true,
     screenshot: "only-on-failure",
     trace: "on-first-retry",

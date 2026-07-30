@@ -6,6 +6,7 @@ import { createEvidenceProvenance, currentGitHead, validateEvidenceProvenance } 
 const root = resolve(process.cwd());
 const artifactPath = join(root, ".codex-auto", "quality", "a6-frontend-acceptance.json");
 const workflowPath = ".github/workflows/ci.yml";
+const playwrightConfigPath = "playwright.config.ts";
 const ratchetArtifactPath = ".codex-auto/quality/a6-frontend-ratchet.json";
 const inventoryArtifactPath = ".codex-auto/quality/a6-modularity-inventory.json";
 const uiTrustArtifactPath = ".codex-auto/quality/ui-trust-contract.json";
@@ -57,7 +58,9 @@ runPnpm("frontend-ratchet", ["run", "verify:a6:frontend-ratchet"], 300_000);
 runPnpm("frontend-modularity-slice", ["run", "verify:a6:modularity-inventory:frontend"], 120_000);
 
 const workflow = read(workflowPath);
+const playwrightConfig = read(playwrightConfigPath);
 const job = workflow.split("\n  a6-frontend-acceptance:")[1]?.split("\n  rust:")[0] ?? "";
+const renderedUiJob = workflow.split("\n  rendered-ui-trust:")[1]?.split("\n  a6-frontend-acceptance:")[0] ?? "";
 const ciContract =
   job.length > 0 &&
   job.includes("needs: [frontend, rendered-ui-trust]") &&
@@ -65,11 +68,15 @@ const ciContract =
   job.includes("run: pnpm verify:a6:frontend-acceptance") &&
   job.includes('AELYRIS_A6_BLOCKING_CI_CONTEXT: "1"') &&
   job.includes("name: a6-frontend-acceptance-$" + "{{ github.sha }}") &&
-  job.includes("if-no-files-found: error");
+  job.includes("if-no-files-found: error") &&
+  renderedUiJob.includes('AELYRIS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:1420"') &&
+  playwrightConfig.includes("process.env.AELYRIS_PLAYWRIGHT_BASE_URL") &&
+  playwrightConfig.includes('"http://localhost:1420"');
 scenarios.push({
   id: "blocking-ci-contract",
   status: ciContract ? "pass" : "fail",
   needs: ["frontend", "rendered-ui-trust"],
+  renderedUiBaseUrl: "http://127.0.0.1:1420",
 });
 failed ||= !ciContract;
 
@@ -203,6 +210,7 @@ const report = {
       "scripts/verify-a6-modularity-inventory.mjs",
       "scripts/verify-ui-trust-contract.mjs",
       workflowPath,
+      playwrightConfigPath,
       ratchetArtifactPath,
       inventoryArtifactPath,
       uiTrustArtifactPath,
