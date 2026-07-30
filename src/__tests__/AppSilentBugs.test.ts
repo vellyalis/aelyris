@@ -113,10 +113,6 @@ function getEditorOpenModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/editor/useEditorOpenMode.ts"), "utf8");
 }
 
-function getPaneRegistrySource(): string {
-  return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRegistry.ts"), "utf8");
-}
-
 function getPaneRequestControllerSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRequestController.ts"), "utf8");
 }
@@ -204,16 +200,11 @@ describe("App editor open-mode ownership", () => {
   });
 });
 
-describe("App pane registry ownership", () => {
-  it("keeps registry deduplication, ended-process cleanup, and closed-tab pruning in one hook", () => {
+describe("App pane registry wiring", () => {
+  it("composes the pane registry owner with active-tab and tab-list state", () => {
     const src = getSrc();
-    const owner = getPaneRegistrySource();
 
     expect(src).toContain("usePaneRegistry(");
-    expect(owner).toContain("paneRegistryEqual");
-    expect(owner).toContain("clearActivePtyId");
-    expect(owner).toContain("const liveIds = new Set(tabs.map");
-    expect(owner).toContain("previous[tabId] === ptyId");
   });
 });
 

@@ -109,6 +109,10 @@ try {
       tests: ["useAiCliLaunchEvidence owns six-artifact partial preflight assembly and fail-closed telemetry source contracts"],
     },
     {
+      id: "pane-registry-owner-source-contract",
+      tests: ["usePaneRegistry owns registry deduplication, ended-process cleanup, and closed-tab pruning"],
+    },
+    {
       id: "pane-agent-spawn-owner-source-contract",
       tests: [
         "usePaneAgentSpawns owns event parsing, explicit owner routing, global sequencing, and terminal deduplication",
@@ -704,11 +708,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v14",
-  status: failed ? "failed" : "pass-a6.2f-operational-pane-selection-test-owner",
+  contractVersion: "a6.2f-component-command-composition/v15",
+  status: failed ? "failed" : "pass-a6.2f-pane-registry-test-owner",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "operational-pane-selection-test-owner",
+  checkpoint: failed ? null : "pane-registry-test-owner",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,
