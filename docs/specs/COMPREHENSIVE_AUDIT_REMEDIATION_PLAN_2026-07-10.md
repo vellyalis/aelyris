@@ -1388,6 +1388,24 @@ Pane-registry test-owner checkpoint complete:
   active at the next cohesive owner-local assertion slice; this checkpoint
   does not authorize A6.2g.
 
+Pane-request-controller test-owner checkpoint complete:
+
+- All six assertions that inspect
+  `src/features/terminal/usePaneRequestController.ts` now live in
+  `src/__tests__/usePaneRequestController.test.tsx` beside its twelve
+  concurrency, cancellation, settlement, routing, and cleanup behavior
+  tests. `AppSilentBugs.test.ts` retains only the App-owned
+  `usePaneRequestController({` composition guard.
+- The frontend ratchet contract is v16 and requires the exact owner-local
+  source-contract test to execute and pass through structured Vitest
+  assertion status handling. It truthfully retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
+- No production source, import layout, dependency, store, service, queue,
+  scheduler, durable owner, or runtime state owner changed. A6.2f remains
+  active at the next cohesive owner-local assertion slice; this checkpoint
+  does not authorize A6.2g.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

@@ -113,6 +113,12 @@ try {
       tests: ["usePaneRegistry owns registry deduplication, ended-process cleanup, and closed-tab pruning"],
     },
     {
+      id: "pane-request-controller-owner-source-contract",
+      tests: [
+        "usePaneRequestController owns routed focus, serialized requests, cancellation, liveness, completion, and selection reset",
+      ],
+    },
+    {
       id: "pane-agent-spawn-owner-source-contract",
       tests: [
         "usePaneAgentSpawns owns event parsing, explicit owner routing, global sequencing, and terminal deduplication",
@@ -708,11 +714,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v15",
-  status: failed ? "failed" : "pass-a6.2f-pane-registry-test-owner",
+  contractVersion: "a6.2f-component-command-composition/v16",
+  status: failed ? "failed" : "pass-a6.2f-pane-request-controller-test-owner",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "pane-registry-test-owner",
+  checkpoint: failed ? null : "pane-request-controller-test-owner",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

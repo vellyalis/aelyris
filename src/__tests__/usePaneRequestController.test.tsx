@@ -4,6 +4,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PaneRequestCancelledError, usePaneRequestController } from "../features/terminal/usePaneRequestController";
 
+const ownerSources = import.meta.glob("../features/terminal/usePaneRequestController.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => {
@@ -36,6 +48,17 @@ afterEach(() => {
 });
 
 describe("usePaneRequestController", () => {
+  it("owns routed focus, serialized requests, cancellation, liveness, completion, and selection reset", () => {
+    const owner = getOwnerSource();
+
+    expect(owner).toContain("const [paneFocusRequest");
+    expect(owner).toContain("useSerializedPaneRequest");
+    expect(owner).toContain("PaneRequestCancelledError");
+    expect(owner).toContain("liveTabIds");
+    expect(owner).toContain("onComplete");
+    expect(owner).toContain('selectInteractiveSession("")');
+  });
+
   it("continues dispatching after the StrictMode effect rehearsal", async () => {
     const { result } = renderHook(() => usePaneRequestController(options()), {
       wrapper: StrictMode,

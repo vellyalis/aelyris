@@ -113,10 +113,6 @@ function getEditorOpenModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/editor/useEditorOpenMode.ts"), "utf8");
 }
 
-function getPaneRequestControllerSource(): string {
-  return readFileSync(join(process.cwd(), "src/features/terminal/usePaneRequestController.ts"), "utf8");
-}
-
 function getProjectTabLifecycleSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useProjectTabLifecycle.ts"), "utf8");
 }
@@ -216,18 +212,11 @@ describe("App pane agent spawn wiring", () => {
   });
 });
 
-describe("App pane request controller ownership", () => {
-  it("keeps routed request state, tab switching, completion, and independent sequences in one hook", () => {
+describe("App pane request controller wiring", () => {
+  it("composes the pane request controller with App-owned tab and interactive-session state", () => {
     const src = getSrc();
-    const owner = getPaneRequestControllerSource();
 
     expect(src).toContain("usePaneRequestController({");
-    expect(owner).toContain("const [paneFocusRequest");
-    expect(owner).toContain("useSerializedPaneRequest");
-    expect(owner).toContain("PaneRequestCancelledError");
-    expect(owner).toContain("liveTabIds");
-    expect(owner).toContain("onComplete");
-    expect(owner).toContain("selectInteractiveSession(\"\")");
   });
 });
 
