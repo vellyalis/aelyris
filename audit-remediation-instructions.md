@@ -40,8 +40,10 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    infrastructure removal is complete: the unregistered legacy `SessionManager`
    and its auto-discovered test were removed, authoritative Database/PTY/mux owners
    remain, and retained runtime/compatibility surfaces remain classified. A6.8
-   combined ratchet and regression acceptance is the exact implementation frontier.
-   Do not reopen A4 or completed A6.2-A6.7 owners without a fresh regression, and do
+   combined ratchet and regression acceptance is implemented locally with one
+   fail-closed combined owner and blocking hosted-candidate job. The exact frontier
+   is its committed exact-SHA GitHub run plus externally verified run closeout. Do
+   not reopen A4 or completed A6.2-A6.7 owners without a fresh regression, and do
    not mix A7 or native product expansion into A6.
 
 ## Objective
@@ -660,6 +662,20 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   A6.2-A6.7 owner/behavior evidence and blocking exact-SHA CI before it can retire
   advisory mode or emit A6 `phaseComplete=true`. A8.0 remains the sole native
   activation decision.
+- A6.8 local implementation is ready for hosted proof. The combined verifier
+  executes the default A6.2-A6.7 aggregate, requires exact current provenance,
+  all six frozen owner ceilings, each slice and its negative proof, and the A6.3
+  same-line-count event-registry mutation. Local and in-progress hosted-candidate
+  execution remain `phaseComplete=false`; only explicit post-run closeout may
+  query the authenticated GitHub CLI, and it requires a clean worktree plus exact
+  repository/workflow/run/SHA/attempt and five completed-success job bindings.
+  The workflow must be completed, but its aggregate conclusion does not override
+  those five bindings because the separate release-hardening job retains its own
+  blocker and did not block the A6.2g exact-SHA precedent.
+  The frontend acceptance now consumes inventory schema v3, uses a measured
+  360-second modularity timeout, and records the A6.3-required one-line
+  `PaneTreeContainer` owner growth at a 1692-line diagnostic ceiling. Local
+  frontend and combined gates pass, but hosted completion remains unobserved.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

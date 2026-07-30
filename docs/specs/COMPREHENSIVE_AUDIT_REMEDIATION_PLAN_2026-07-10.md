@@ -1719,6 +1719,42 @@ Only after A6.2-A6.7 owner, behavior, and blocking CI evidence is current may th
 combined aggregate retire advisory mode and emit A6 `phaseComplete=true`. A6.8
 does not reopen completed slices without a fresh regression.
 
+Local implementation checkpoint:
+
+- `verify:a6:combined-acceptance` is the single A6.8 owner. It executes and
+  validates the current default A6.2-A6.7 aggregate, exact provenance, all six
+  frozen owner ceilings, slice completion and negative proofs, and the A6.3
+  same-line-count IPC event-registry mutation;
+- the blocking Windows hosted-candidate job depends directly on frontend,
+  rendered UI trust, A6.2 frontend acceptance, and Rust library jobs. It runs
+  after every dependency outcome, passes the exact four-result `needs` payload,
+  uses the pinned Rust toolchain, and uploads exact-SHA evidence without advisory
+  failure handling;
+- ordinary local execution and the in-progress hosted candidate cannot emit
+  completion. Only explicit post-run `--github-run-id` closeout may use the
+  existing authenticated GitHub CLI, and it requires a clean tracked/untracked
+  worktree plus exact repository, CI workflow/path, completed run, HEAD SHA, run
+  attempt, run URL, and one completed-success match for all four dependency jobs
+  and the A6.8 candidate job. As with the completed A6.2g precedent, the aggregate
+  workflow conclusion is recorded but does not override those five authoritative
+  A6 bindings when the separate release-hardening job retains its own blocker;
+- full synthetic CI environment, missing/failed/extra dependency, SHA mismatch,
+  and dirty-worktree mutations cannot authorize completion. No workflow token,
+  permission, OIDC grant, dependency, second completion owner, or secret-bearing
+  transcript is added;
+- A6.8 exposed two fresh A6.2 execution regressions without reopening product
+  behavior: the frontend acceptance now requires inventory schema v3 and allows
+  360 seconds for the measured modularity child. The one A6.3-required
+  `ipcEvents` import is recorded by raising only the `PaneTreeContainer`
+  diagnostic ceiling from 1691 to 1692; the A6.3 aggregate separately requires
+  that typed facade callsite, so no source was moved or shortened for the metric;
+- fresh local frontend and combined acceptance pass as
+  `pass-local-awaiting-hosted-ci`, with `localComplete=true`,
+  `hostedComplete=false`, `sliceComplete=false`, and `phaseComplete=false`.
+  Independent review found and closed the environment-spoof and mixed-OID
+  completion paths in two bounded rework rounds. A6.8 remains active until the
+  committed exact-SHA GitHub run is green and external closeout verifies it.
+
 ## A7 - Evidence-Backed Core Mission Loop
 
 Objective: prove one useful end-to-end Verifiable Agent Work OS mission without

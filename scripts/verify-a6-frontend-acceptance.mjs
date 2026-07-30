@@ -55,7 +55,7 @@ function runPnpm(id, args, timeoutMs) {
 runPnpm("production-build", ["run", "build"], 300_000);
 runPnpm("a3-ui-trust-contract", ["run", "verify:ui:trust"], 180_000);
 runPnpm("frontend-ratchet", ["run", "verify:a6:frontend-ratchet"], 300_000);
-runPnpm("frontend-modularity-slice", ["run", "verify:a6:modularity-inventory:frontend"], 120_000);
+runPnpm("frontend-modularity-slice", ["run", "verify:a6:modularity-inventory:frontend"], 360_000);
 
 const workflow = read(workflowPath);
 const playwrightConfig = read(playwrightConfigPath);
@@ -120,7 +120,7 @@ if (ratchet && inventory && uiTrust) {
     ratchet.phaseComplete === false &&
     ratchetProvenance.ok;
   const inventoryAccepted =
-    inventory.schema === "aelyris.a6-modularity-inventory/v2" &&
+    inventory.schema === "aelyris.a6-modularity-inventory/v3" &&
     inventory.frontendSlice?.id === "A6.2" &&
     inventory.frontendSlice?.status === "pass" &&
     inventory.frontendSlice?.sliceComplete === true &&

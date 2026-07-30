@@ -448,7 +448,7 @@ for (const [id, ceiling] of Object.entries({
   paneAgentSpawns: 130,
   paneRequestController: 375,
   operationalPaneSelection: 123,
-  paneTreeContainer: 1691,
+  paneTreeContainer: 1692,
   bootstrapHook: 53,
   config: 34,
   appMenus: 433,
