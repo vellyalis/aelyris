@@ -61,6 +61,8 @@ const workflow = read(workflowPath);
 const playwrightConfig = read(playwrightConfigPath);
 const job = workflow.split("\n  a6-frontend-acceptance:")[1]?.split("\n  rust:")[0] ?? "";
 const renderedUiJob = workflow.split("\n  rendered-ui-trust:")[1]?.split("\n  a6-frontend-acceptance:")[0] ?? "";
+const renderedUiTestStep =
+  renderedUiJob.split("\n      - name: Rendered layout Playwright spec")[1]?.split("\n      - ")[0] ?? "";
 const ciContract =
   job.length > 0 &&
   job.includes("needs: [frontend, rendered-ui-trust]") &&
@@ -69,7 +71,12 @@ const ciContract =
   job.includes('AELYRIS_A6_BLOCKING_CI_CONTEXT: "1"') &&
   job.includes("name: a6-frontend-acceptance-$" + "{{ github.sha }}") &&
   job.includes("if-no-files-found: error") &&
-  renderedUiJob.includes('AELYRIS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:1420"') &&
+  !renderedUiJob.includes("- name: Start Vite server") &&
+  renderedUiTestStep.includes('AELYRIS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:1420"') &&
+  renderedUiTestStep.includes("$server = Start-Process") &&
+  renderedUiTestStep.includes("pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend") &&
+  renderedUiTestStep.includes("finally {") &&
+  renderedUiTestStep.includes("Stop-Process -Id $server.Id") &&
   playwrightConfig.includes("process.env.AELYRIS_PLAYWRIGHT_BASE_URL") &&
   playwrightConfig.includes('"http://localhost:1420"');
 scenarios.push({
@@ -77,6 +84,7 @@ scenarios.push({
   status: ciContract ? "pass" : "fail",
   needs: ["frontend", "rendered-ui-trust"],
   renderedUiBaseUrl: "http://127.0.0.1:1420",
+  renderedUiServerLifecycle: "same-step-as-playwright",
 });
 failed ||= !ciContract;
 
