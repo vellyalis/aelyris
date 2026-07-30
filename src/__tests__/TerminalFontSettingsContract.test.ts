@@ -12,18 +12,18 @@ function read(path: string): string {
 
 describe("terminal font settings contract", () => {
   it("hydrates config font settings into the runtime terminal store", () => {
-    const app = read("src/App.tsx");
-    const rightRailModel = read("src/features/right-rail/rightRailModel.tsx");
+    const bootstrapConfig = read("src/features/right-rail/bootstrapAppConfig.ts");
+    const bootstrapHook = read("src/features/app/useBootstrapAppConfig.ts");
 
-    expect(rightRailModel).toContain("terminal_font_family?: string");
-    expect(rightRailModel).toContain("font_size?: number");
-    expect(rightRailModel).toContain('terminal_text_clarity?: "glass" | "balanced" | "solid"');
-    expect(rightRailModel).toContain("terminal_surface_opacity?: number");
-    expect(app).toContain("store.setTerminalAppearance({");
-    expect(app).toContain("fontFamily: cfg.appearance.terminal_font_family");
-    expect(app).toContain("fontSize: cfg.appearance.font_size");
-    expect(app).toContain("textClarity: cfg.appearance.terminal_text_clarity");
-    expect(app).toContain("surfaceOpacity: cfg.appearance.terminal_surface_opacity");
+    expect(bootstrapConfig).toContain("terminal_font_family?: string");
+    expect(bootstrapConfig).toContain("font_size?: number");
+    expect(bootstrapConfig).toContain('terminal_text_clarity?: "glass" | "balanced" | "solid"');
+    expect(bootstrapConfig).toContain("terminal_surface_opacity?: number");
+    expect(bootstrapHook).toContain("store.setTerminalAppearance({");
+    expect(bootstrapHook).toContain("fontFamily: cfg.appearance.terminal_font_family");
+    expect(bootstrapHook).toContain("fontSize: cfg.appearance.font_size");
+    expect(bootstrapHook).toContain("textClarity: cfg.appearance.terminal_text_clarity");
+    expect(bootstrapHook).toContain("surfaceOpacity: cfg.appearance.terminal_surface_opacity");
   });
 
   it("saves settings font changes into both config and live terminal rendering state", () => {

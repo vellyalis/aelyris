@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 const sources = import.meta.glob(
-  "../../src-tauri/src/{session/manager.rs,git/worktree.rs,workflow/executor.rs,db/migrations.rs,db/queries.rs,ipc/*.rs,lib.rs}",
+  "../../src-tauri/src/{audit.rs,session/manager.rs,git/worktree.rs,workflow/executor.rs,db/migrations.rs,db/queries.rs,ipc/*.rs,lib.rs}",
   {
     query: "?raw",
     import: "default",
@@ -68,6 +68,7 @@ describe("backend silent state guards", () => {
   it("persists redacted audit events for terminal and workflow operations", () => {
     const migrations = sourceFor("db/migrations.rs");
     const queries = sourceFor("db/queries.rs");
+    const audit = sourceFor("audit.rs");
     const commands = ipcCombined();
     const lib = sourceFor("lib.rs");
 
@@ -77,7 +78,7 @@ describe("backend silent state guards", () => {
     expect(queries).toContain("pub fn save_audit_event");
     expect(queries).toContain("pub fn recent_audit_events");
     expect(commands).toContain("fn record_audit_event");
-    expect(commands).toContain('"write_failed"');
+    expect(audit).toContain('kind: "audit_journal_write_failed".to_string()');
     expect(commands).toContain('"phase_done"');
     expect(commands).toContain('"containsEnter"');
     expect(commands).not.toContain('"data": data');

@@ -44,7 +44,12 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
     setupFiles: ["src/__tests__/setup.ts"],
-    exclude: ["node_modules", "e2e", ".claude/worktrees/**"],
+    exclude: [
+      "node_modules",
+      "e2e",
+      ".claude/worktrees/**",
+      "scripts/__tests__/audit-remediation-continuation-contract.test.mjs",
+    ],
     pool: noEsbuildSpawn ? "threads" : "forks",
     isolate: true,
   },

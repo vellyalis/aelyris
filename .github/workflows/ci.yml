@@ -47,7 +47,7 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit
       - name: Unit tests (vitest, forks pool for CI stability)
-        run: pnpm test -- --pool=forks
+        run: pnpm test --pool=forks
       - name: Biome lint (informational until repo-wide CRLF drift is settled)
         continue-on-error: true
         run: pnpm exec biome lint src
@@ -78,7 +78,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $ciDir | Out-Null
           $stdout = Join-Path $ciDir "vite-rendered-ui-trust.out.log"
           $stderr = Join-Path $ciDir "vite-rendered-ui-trust.err.log"
-          $server = Start-Process -WindowStyle Hidden -FilePath "pnpm.cmd" -ArgumentList @("dev", "--", "--host", "127.0.0.1", "--port", "1420") -WorkingDirectory $env:GITHUB_WORKSPACE -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          $server = Start-Process -WindowStyle Hidden -FilePath "pnpm.cmd" -ArgumentList @("dev", "--host", "127.0.0.1", "--port", "1420") -WorkingDirectory $env:GITHUB_WORKSPACE -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
           $server.Id | Set-Content -Path (Join-Path $ciDir "vite-rendered-ui-trust.pid")
           $ready = $false
           for ($attempt = 0; $attempt -lt 60; $attempt++) {
