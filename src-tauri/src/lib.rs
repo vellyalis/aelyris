@@ -33,7 +33,6 @@ pub mod proofbook;
 pub mod pty;
 pub mod pty_sidecar;
 pub mod review;
-pub mod session;
 pub mod shared_brain;
 pub mod shell_integration;
 pub mod snapshot;

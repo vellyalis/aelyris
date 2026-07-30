@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
@@ -8,8 +8,9 @@ const root = resolve(process.cwd());
 const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.json");
 const cliArgs = process.argv.slice(2);
 const requestedSlice = cliArgs.length === 2 && cliArgs[0] === "--require-slice" ? cliArgs[1] : null;
-if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4", "A6.5", "A6.6"].includes(requestedSlice)) {
-  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, A6.4, A6.5, or A6.6.");
+const isA67RequiredMode = requestedSlice === "A6.7";
+if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4", "A6.5", "A6.6", "A6.7"].includes(requestedSlice)) {
+  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, A6.4, A6.5, A6.6, or A6.7.");
   process.exit(2);
 }
 const owners = [
@@ -602,12 +603,15 @@ const focusedDbTestArgs = [
   "--color",
   "never",
 ];
-const focusedDbTestExecution = spawnSync(focusedDbTestCommand, focusedDbTestArgs, {
-  cwd: root,
-  encoding: "utf8",
-  maxBuffer: 4 * 1024 * 1024,
-  windowsHide: true,
-});
+const focusedDbTestExecution =
+  requestedSlice === "A6.7"
+    ? { stdout: "", stderr: "", status: null, signal: null, error: null }
+    : spawnSync(focusedDbTestCommand, focusedDbTestArgs, {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 4 * 1024 * 1024,
+        windowsHide: true,
+      });
 const focusedDbTestOutput = `${focusedDbTestExecution.stdout ?? ""}\n${focusedDbTestExecution.stderr ?? ""}`;
 const focusedDbTestSummary = focusedDbTestOutput.match(
   /test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/,
@@ -620,6 +624,7 @@ const requiredDbBehaviorTests = [
 ];
 const focusedDbTests = {
   command: `${focusedDbTestCommand} ${focusedDbTestArgs.join(" ")}`,
+  executedByThisRun: requestedSlice !== "A6.7",
   status: focusedDbTestExecution.status,
   signal: focusedDbTestExecution.signal,
   error: focusedDbTestExecution.error?.message ?? null,
@@ -630,24 +635,31 @@ const focusedDbTests = {
   ),
 };
 const focusedDbTestsPassed =
-  focusedDbTests.status === 0 &&
-  focusedDbTests.passed > 0 &&
-  focusedDbTests.ignored === 0 &&
-  focusedDbTests.requiredAssertionsExecuted;
-const dbSliceComplete =
+  !focusedDbTests.executedByThisRun ||
+  (focusedDbTests.status === 0 &&
+    focusedDbTests.passed > 0 &&
+    focusedDbTests.ignored === 0 &&
+    focusedDbTests.requiredAssertionsExecuted);
+const dbSourceContractComplete =
   (dbOwner?.status ?? "fail") === "pass" &&
   currentDbDomainModulesRegistered &&
   dbFacadeMethodsExact &&
   currentDbDomainImplsUseExistingOwner &&
   currentDbDomainModulesOwnNoSchemaOrMigration &&
   currentDbSingleConnectionAndMigrationOwner &&
-  Object.values(dbNegativeTopologyProof).every(Boolean) &&
-  focusedDbTestsPassed;
+  Object.values(dbNegativeTopologyProof).every(Boolean);
+const dbSliceComplete = dbSourceContractComplete && focusedDbTestsPassed;
 const dbSlice = {
   id: "A6.5",
   owner: "SQLite domain repositories behind the existing Database owner",
-  status: dbSliceComplete ? "pass" : "fail",
-  sliceComplete: dbSliceComplete,
+  status: isA67RequiredMode ? "not-run" : dbSliceComplete ? "pass" : "fail",
+  sliceComplete: isA67RequiredMode ? null : dbSliceComplete,
+  carriedSourceContract: isA67RequiredMode
+    ? {
+        status: dbSourceContractComplete ? "pass" : "fail",
+        behaviorProofStatus: "not-run",
+      }
+    : null,
   queriesLines: dbOwner?.lines ?? null,
   queriesBaselineLines: dbOwner?.baselineLines ?? null,
   databaseOwnerPath: dbQueriesOwnerPath,
@@ -792,9 +804,10 @@ try {
 } catch {
   nativeMetadata = null;
 }
-const nativeMetadataTarget = nativeMetadata?.packages
-  ?.find((pkg) => pkg.name === "aelyris")
-  ?.targets?.find((target) => target.name === "aelyris-native" && target.kind?.includes("bin"));
+const nativeMetadataPackage = nativeMetadata?.packages?.find((pkg) => pkg.name === "aelyris");
+const nativeMetadataTarget = nativeMetadataPackage?.targets?.find(
+  (target) => target.name === "aelyris-native" && target.kind?.includes("bin"),
+);
 const nativeDefaultUnavailable =
   nativeMetadataExecution.status === 0 &&
   nativeMetadataTarget?.["required-features"]?.length === 1 &&
@@ -811,12 +824,15 @@ const focusedNativeTestArgs = [
   "--color",
   "never",
 ];
-const focusedNativeTestExecution = spawnSync(cargoCommand, focusedNativeTestArgs, {
-  cwd: root,
-  encoding: "utf8",
-  maxBuffer: 4 * 1024 * 1024,
-  windowsHide: true,
-});
+const focusedNativeTestExecution =
+  requestedSlice === "A6.7"
+    ? { stdout: "", stderr: "", status: null, signal: null, error: null }
+    : spawnSync(cargoCommand, focusedNativeTestArgs, {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 4 * 1024 * 1024,
+        windowsHide: true,
+      });
 const focusedNativeTestOutput = `${focusedNativeTestExecution.stdout ?? ""}\n${focusedNativeTestExecution.stderr ?? ""}`;
 const focusedNativeTestSummary = focusedNativeTestOutput.match(
   /test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/,
@@ -828,6 +844,7 @@ const requiredNativeBehaviorTests = [
 ];
 const focusedNativeTests = {
   command: `${cargoCommand} ${focusedNativeTestArgs.join(" ")}`,
+  executedByThisRun: requestedSlice !== "A6.7",
   status: focusedNativeTestExecution.status,
   signal: focusedNativeTestExecution.signal,
   error: focusedNativeTestExecution.error?.message ?? null,
@@ -838,10 +855,11 @@ const focusedNativeTests = {
   ),
 };
 const focusedNativeTestsPassed =
-  focusedNativeTests.status === 0 &&
-  focusedNativeTests.passed > 0 &&
-  focusedNativeTests.ignored === 0 &&
-  focusedNativeTests.requiredAssertionsExecuted;
+  !focusedNativeTests.executedByThisRun ||
+  (focusedNativeTests.status === 0 &&
+    focusedNativeTests.passed > 0 &&
+    focusedNativeTests.ignored === 0 &&
+    focusedNativeTests.requiredAssertionsExecuted);
 const nativeExecutableBehavior = {
   helpListsFrozenCommands:
     nativeCommandContractExact &&
@@ -885,9 +903,7 @@ const nativeFreshnessConsumerPaths = [
   "scripts/verify-native-visual-regression.mjs",
   "scripts/verify-upper-compat-gates.mjs",
 ];
-const nativeFreshnessConsumers = Object.fromEntries(
-  nativeFreshnessConsumerPaths.map((path) => [path, read(path)]),
-);
+const nativeFreshnessConsumers = Object.fromEntries(nativeFreshnessConsumerPaths.map((path) => [path, read(path)]));
 const nativeFreshnessConsumersCausal = Object.values(nativeFreshnessConsumers).every((source) =>
   nativeOwnerPaths.every((path) => source.includes(path)),
 );
@@ -921,7 +937,7 @@ const nativeNegativeTopologyProof = {
       .includes(path),
   ),
 };
-const nativeSliceComplete =
+const nativeSourceContractComplete =
   (nativeOwner?.status ?? "fail") === "pass" &&
   (nativeOwner?.lines ?? 0) < (nativeOwner?.baselineLines ?? 0) &&
   nativeModulesRegistered &&
@@ -935,14 +951,20 @@ const nativeSliceComplete =
   nativeProofInvocationsOptIn &&
   nativeFreshnessConsumersCausal &&
   nativeScoreConsumerCausal &&
-  focusedNativeTestsPassed &&
   nativeExecutableBehaviorPassed &&
   Object.values(nativeNegativeTopologyProof).every(Boolean);
+const nativeSliceComplete = nativeSourceContractComplete && focusedNativeTestsPassed;
 const nativeSlice = {
   id: "A6.6",
   owner: "feature-gated native proof CLI router, readiness contract, and daemon client",
-  status: nativeSliceComplete ? "pass" : "fail",
-  sliceComplete: nativeSliceComplete,
+  status: isA67RequiredMode ? "not-run" : nativeSliceComplete ? "pass" : "fail",
+  sliceComplete: isA67RequiredMode ? null : nativeSliceComplete,
+  carriedSourceContract: isA67RequiredMode
+    ? {
+        status: nativeSourceContractComplete ? "pass" : "fail",
+        behaviorProofStatus: "not-run",
+      }
+    : null,
   entrypointLines: nativeOwner?.lines ?? null,
   baselineLines: nativeOwner?.baselineLines ?? null,
   ownerPaths: nativeOwnerPaths,
@@ -969,6 +991,336 @@ const nativeSlice = {
   executableBehavior: nativeExecutableBehavior,
   negativeTopologyProof: nativeNegativeTopologyProof,
   phaseComplete: false,
+};
+
+const legacySessionPaths = [
+  "src-tauri/src/session/mod.rs",
+  "src-tauri/src/session/manager.rs",
+  "src-tauri/tests/test_session.rs",
+];
+const rustIntegrationTestSources = collectFiles("src-tauri/tests", (path) => path.endsWith(".rs")).map((path) => [
+  path,
+  read(path),
+]);
+const sessionRuntimeReferencePattern = /\bSessionManager\b|\bcrate::session\b|\baelyris_lib::session\b/;
+const cargoTargets = nativeMetadataPackage?.targets?.map((target) => target.name) ?? [];
+const scanSessionTopology = ({
+  fileExists = (path) => existsSync(join(root, path)),
+  moduleSource = libSource,
+  runtimeSources = rustRuntimeSources,
+  integrationTestSources = rustIntegrationTestSources,
+  targetNames = cargoTargets,
+} = {}) => ({
+  legacyFilesPresent: legacySessionPaths.filter((path) => fileExists(path)),
+  topLevelModuleExposed: /\bpub\s+mod\s+session\s*;/.test(moduleSource),
+  runtimeReferencePaths: runtimeSources
+    .filter(([, source]) => sessionRuntimeReferencePattern.test(source))
+    .map(([path]) => path),
+  integrationTestReferencePaths: integrationTestSources
+    .filter(([, source]) => sessionRuntimeReferencePattern.test(source))
+    .map(([path]) => path),
+  cargoAutoDiscoveredLegacyTest: targetNames.includes("test_session"),
+});
+const currentSessionTopology = scanSessionTopology();
+const acceptsRemovedSessionTopology = (candidate) =>
+  candidate.legacyFilesPresent.length === 0 &&
+  candidate.topLevelModuleExposed === false &&
+  candidate.runtimeReferencePaths.length === 0 &&
+  candidate.integrationTestReferencePaths.length === 0 &&
+  candidate.cargoAutoDiscoveredLegacyTest === false;
+const sessionTopologyScanner = "scanSessionTopology";
+const sessionNegativeReachabilityProof = {
+  legacyFileMutationRejected: !acceptsRemovedSessionTopology(
+    scanSessionTopology({
+      fileExists: (path) => path === "src-tauri/src/session/manager.rs" || existsSync(join(root, path)),
+    }),
+  ),
+  moduleExposureMutationRejected: !acceptsRemovedSessionTopology(
+    scanSessionTopology({ moduleSource: `${libSource}\npub mod session;\n` }),
+  ),
+  runtimeSymbolMutationRejected: !acceptsRemovedSessionTopology(
+    scanSessionTopology({
+      runtimeSources: [
+        ...rustRuntimeSources,
+        ["src-tauri/src/__a67_mutation__.rs", "fn mutation(manager: SessionManager) {}"],
+      ],
+    }),
+  ),
+  cargoTestTargetMutationRejected: !acceptsRemovedSessionTopology(
+    scanSessionTopology({ targetNames: [...cargoTargets, "test_session"] }),
+  ),
+};
+
+const runA67CargoProof = (args, requiredAssertions) => {
+  const execution = spawnSync(cargoCommand, args, {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+    windowsHide: true,
+  });
+  const output = `${execution.stdout ?? ""}\n${execution.stderr ?? ""}`;
+  const summary = output.match(/test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/);
+  return {
+    command: `${cargoCommand} ${args.join(" ")}`,
+    status: execution.status,
+    signal: execution.signal,
+    error: execution.error?.message ?? null,
+    passed: Number(summary?.[1] ?? 0),
+    ignored: Number(summary?.[2] ?? 0),
+    requiredAssertionsExecuted: requiredAssertions.every((testName) => output.includes(`test ${testName} ... ok`)),
+  };
+};
+const dbSessionOwnerTests = runA67CargoProof(
+  ["test", "--manifest-path", "src-tauri/Cargo.toml", "--test", "test_db_session", "--", "--color", "never"],
+  [
+    "database_session_window_pane_round_trip_restores_layout",
+    "database_session_delete_cascades_to_windows_and_panes",
+    "database_deactivate_all_sessions_clears_active_state",
+  ],
+);
+const muxRestoreOwnerTests = runA67CargoProof(
+  ["test", "--manifest-path", "src-tauri/Cargo.toml", "--lib", "mux::store::tests", "--", "--color", "never"],
+  [
+    "mux::store::tests::restored_session_converts_to_valid_mux_graph",
+    "mux::store::tests::restored_session_without_panes_is_not_silently_accepted",
+    "mux::store::tests::snapshot_restore_marks_live_pty_bindings_detached",
+  ],
+);
+const a67FocusedTests = {
+  databaseSessionOwner: dbSessionOwnerTests,
+  muxRestoreOwner: muxRestoreOwnerTests,
+};
+const a67FocusedTestsPassed = Object.values(a67FocusedTests).every(
+  (test) => test.status === 0 && test.passed > 0 && test.ignored === 0 && test.requiredAssertionsExecuted,
+);
+
+const dbSessionIpcPath = "src-tauri/src/ipc/db_session_commands.rs";
+const dbSessionIpcSource = read(dbSessionIpcPath);
+const dbSessionHandlerNames = [
+  "create_session",
+  "list_db_sessions",
+  "delete_session",
+  "restore_last_session",
+  "create_window",
+  "create_pane",
+  "save_session_state",
+];
+const authoritativeSessionOwnership = {
+  databaseOwnerPath: dbQueriesOwnerPath,
+  ipcOwnerPath: dbSessionIpcPath,
+  ptyOwnerPath: "src-tauri/src/pty/manager.rs",
+  muxOwnerPath: "src-tauri/src/mux/manager.rs",
+  muxRestoreOwnerPath: "src-tauri/src/mux/store.rs",
+  databaseCallsOwnedByIpc: [
+    "db.create_session(",
+    "db.list_sessions(",
+    "db.delete_session(",
+    "db.restore_last_session(",
+    "db.create_window(",
+    "db.create_pane(",
+    "db.touch_session(",
+  ].every((call) => dbSessionIpcSource.includes(call)),
+  handlersRegistered: dbSessionHandlerNames.every((name) =>
+    registrationBlocks[0]?.match(new RegExp(`\\bipc::${escapeRegExp(name)}\\b`)),
+  ),
+  runtimeOwnersRegistered:
+    libSource.includes(".manage(pty_manager)") &&
+    libSource.includes("mux::manager::MuxManager::new()") &&
+    libSource.includes("app.handle().manage(managed)"),
+  frontendRestoreCallsite: /invoke<\{\s*session:/.test(read("src/App.tsx")),
+};
+
+const paneRegistryOwnerPath = "src-tauri/src/pty/registry.rs";
+const paneRegistryCallsitePaths = rustRuntimeSources
+  .filter(
+    ([path, source]) =>
+      path !== paneRegistryOwnerPath && path !== "src-tauri/src/lib.rs" && /\bPaneRegistry\b/.test(source),
+  )
+  .map(([path]) => path);
+const paneRegistryTestPaths = [paneRegistryOwnerPath, "src-tauri/src/control/pane.rs"].filter((path) =>
+  read(path).includes("#[cfg(test)]"),
+);
+const frontendProductionSources = collectFiles(
+  "src",
+  (path) =>
+    (path.endsWith(".ts") || path.endsWith(".tsx")) &&
+    path !== frontendFacadePath &&
+    !path.includes("/__tests__/") &&
+    !path.endsWith(".test.ts") &&
+    !path.endsWith(".test.tsx"),
+).map((path) => [path, read(path)]);
+const ipcFacadeCallsitePaths = frontendProductionSources
+  .filter(([, source]) => /shared\/lib\/ipc["']/.test(source))
+  .map(([path]) => path);
+const futureFleetManifestPath = "scripts/fleet/wu-manifest.json";
+const futureFleetManifestSource = read(futureFleetManifestPath);
+const rustCompatibilityPolicyPath = "docs/specs/AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md";
+const rustCompatibilityPolicySource = read(rustCompatibilityPolicyPath);
+const currentPublicContractPaths = [
+  "README.md",
+  "docs/README.md",
+  "docs/PUBLICATION_READINESS.md",
+  "docs/requirements.md",
+];
+const documentedRustSdkClaimPattern =
+  /\b(?:public|supported|stable)\s+Rust\s+SDK\b|\bRust\s+SDK\s+(?:support|is\s+(?:public|supported|stable))/i;
+const documentedCurrentRustSdkClaimPaths = currentPublicContractPaths.filter((path) =>
+  documentedRustSdkClaimPattern.test(read(path)),
+);
+const rustCompatibilityPolicyExact =
+  rustCompatibilityPolicySource.includes("- no crates.io publish") &&
+  rustCompatibilityPolicySource.includes("- no semantic compatibility promise") &&
+  rustCompatibilityPolicySource.includes("- no third-party widget API");
+const cratesIoPublishDisabled =
+  nativeMetadataExecution.status === 0 &&
+  Array.isArray(nativeMetadataPackage?.publish) &&
+  nativeMetadataPackage.publish.length === 0;
+const applicationTargetNames = nativeMetadataPackage?.targets
+  ?.filter((target) => target.kind?.includes("bin"))
+  .map((target) => target.name);
+const publicCompatibility = {
+  classification: "internal-unpublished-legacy-surface",
+  supportedRustSdk: false,
+  supportedPublicContract: false,
+  cratesIoPublishDisabled,
+  cargoMetadataPublish: nativeMetadataPackage?.publish ?? null,
+  trackedPolicy: {
+    path: rustCompatibilityPolicyPath,
+    sha256: createHash("sha256").update(rustCompatibilityPolicySource).digest("hex"),
+    exact: rustCompatibilityPolicyExact,
+  },
+  currentProductContract: {
+    kind: "application",
+    manifestPath: "src-tauri/Cargo.toml",
+    applicationTargetNames: applicationTargetNames ?? [],
+    applicationTargetsPresent: ["Aelyris", "aelys"].every((name) => applicationTargetNames?.includes(name)),
+    documentedCurrentRustSdkClaimPaths,
+    noDocumentedCurrentRustSdkClaim: documentedCurrentRustSdkClaimPaths.length === 0,
+  },
+  residualRisks: [
+    {
+      id: "external-path-dependency-consumer",
+      status: "unverified-residual",
+      supportedContract: false,
+      detail:
+        "An out-of-repository Cargo path dependency could have compiled against the former module; no supported public Rust SDK compatibility is claimed.",
+    },
+  ],
+};
+const publicCompatibilityComplete =
+  publicCompatibility.classification === "internal-unpublished-legacy-surface" &&
+  publicCompatibility.supportedRustSdk === false &&
+  publicCompatibility.supportedPublicContract === false &&
+  publicCompatibility.cratesIoPublishDisabled &&
+  publicCompatibility.trackedPolicy.exact &&
+  publicCompatibility.currentProductContract.applicationTargetsPresent &&
+  publicCompatibility.currentProductContract.noDocumentedCurrentRustSdkClaim;
+const legacySessionPreRemovalEvidence = {
+  registrationOrModuleExposure: ["src-tauri/src/lib.rs: pub mod session"],
+  directCallsites: ["src-tauri/tests/test_session.rs"],
+  productionRegistrations: [],
+  productionRuntimeCallsites: [],
+  compatibilityAliases: [],
+  generatedOrReflectiveEntrypoints: ["Cargo auto-discovered integration target test_session"],
+  tests: ["src-tauri/tests/test_session.rs"],
+  runtimeReachable: false,
+  evidenceBasis:
+    "Direct source and Cargo target inventory before removal; the only symbol consumers were the auto-discovered integration test.",
+};
+const a67Candidates = [
+  {
+    id: "legacy-session-manager",
+    comparisonClass: "top-level module/manager",
+    decision: "accepted-removal",
+    authoritativeOwners: [
+      dbQueriesOwnerPath,
+      dbSessionIpcPath,
+      "src-tauri/src/pty/manager.rs",
+      "src-tauri/src/mux/manager.rs",
+      "src-tauri/src/mux/store.rs",
+    ],
+    preRemovalEvidence: legacySessionPreRemovalEvidence,
+    registrationOrModuleExposure: currentSessionTopology.topLevelModuleExposed
+      ? ["src-tauri/src/lib.rs: pub mod session"]
+      : [],
+    directCallsites: [
+      ...currentSessionTopology.runtimeReferencePaths,
+      ...currentSessionTopology.integrationTestReferencePaths,
+    ],
+    compatibilityAliases: [],
+    generatedOrReflectiveEntrypoints: currentSessionTopology.cargoAutoDiscoveredLegacyTest
+      ? ["Cargo auto-discovered integration target test_session"]
+      : [],
+    classifiedNonRuntimeReferences: futureFleetManifestSource.includes("src-tauri/src/session/")
+      ? [`${futureFleetManifestPath}: future work-unit destination`]
+      : [],
+    runtimeReachable: currentSessionTopology.runtimeReferencePaths.length > 0,
+    tests: ["src-tauri/tests/test_db_session.rs", "src-tauri/src/mux/store.rs", "src-tauri/src/pty/manager.rs"],
+    reason:
+      "The removed wrapper owned a second Database handle and coordinated PTY/mux behavior without production registration; current owners remain directly registered and tested.",
+  },
+  {
+    id: "pane-registry",
+    comparisonClass: "duplicate adapter/registry",
+    decision: "rejected-removal-retained",
+    authoritativeOwners: [paneRegistryOwnerPath],
+    registrationOrModuleExposure: libSource.includes(".manage(pty::PaneRegistry::new())")
+      ? ["src-tauri/src/lib.rs: Tauri managed state"]
+      : [],
+    directCallsites: paneRegistryCallsitePaths,
+    compatibilityAliases: [],
+    generatedOrReflectiveEntrypoints: ["Tauri type-state lookup: state::<crate::pty::PaneRegistry>()"],
+    runtimeReachable: paneRegistryCallsitePaths.length > 0,
+    tests: paneRegistryTestPaths,
+    reason:
+      "Pane metadata/targeting is distinct from native terminal parsing and is reached through managed Tauri state.",
+  },
+  {
+    id: "typed-ipc-facade",
+    comparisonClass: "generated-or-compatibility surface",
+    decision: "retained-compatibility",
+    authoritativeOwners: [frontendFacadePath, rustEventOwnerPath],
+    registrationOrModuleExposure: frontendFacadeSource.includes('from "@tauri-apps/api/core"')
+      ? ["tauri invoke imported as tauriInvoke"]
+      : [],
+    directCallsites: ipcFacadeCallsitePaths,
+    compatibilityAliases: ["tauri invoke -> tauriInvoke", "invokeIpc typed native-input overloads"],
+    generatedOrReflectiveEntrypoints: ["Tauri invoke command names", "Tauri event wire-name registry"],
+    runtimeReachable: ipcFacadeCallsitePaths.length > 0,
+    tests: ["src/__tests__/ipc.test.ts"],
+    reason: "The facade is the typed compatibility boundary for native-input commands and shared event names.",
+  },
+];
+const a67RetainedCandidatesReachable =
+  a67Candidates[1].registrationOrModuleExposure.length === 1 &&
+  a67Candidates[1].directCallsites.length > 0 &&
+  a67Candidates[1].tests.length > 0 &&
+  a67Candidates[2].registrationOrModuleExposure.length === 1 &&
+  a67Candidates[2].directCallsites.length > 0 &&
+  a67Candidates[2].tests.length === 1;
+const a67SliceComplete =
+  acceptsRemovedSessionTopology(currentSessionTopology) &&
+  Object.values(sessionNegativeReachabilityProof).every(Boolean) &&
+  Object.values(authoritativeSessionOwnership)
+    .filter((value) => typeof value === "boolean")
+    .every(Boolean) &&
+  publicCompatibilityComplete &&
+  a67RetainedCandidatesReachable &&
+  a67FocusedTestsPassed;
+const a67Slice = {
+  id: "A6.7",
+  owner: "callsite-proven duplicate and unowned infrastructure removal",
+  status: a67SliceComplete ? "pass" : "fail",
+  sliceComplete: a67SliceComplete,
+  phaseComplete: false,
+  candidates: a67Candidates,
+  removedTopology: currentSessionTopology,
+  topologyScanner: sessionTopologyScanner,
+  authoritativeSessionOwnership,
+  publicCompatibility,
+  focusedBehaviorTests: a67FocusedTests,
+  negativeReachabilityProof: sessionNegativeReachabilityProof,
+  retainedCandidatesReachable: a67RetainedCandidatesReachable,
 };
 
 const slices = [
@@ -1010,7 +1362,51 @@ const slices = [
   },
 ];
 
-const failed = results.some((result) => result.status === "fail");
+const globalAggregationFailed = ({ ownerResults, ipcComplete, mcpComplete, dbComplete, nativeComplete, a67Complete }) =>
+  ownerResults.some((result) => result.status === "fail") ||
+  !ipcComplete ||
+  !mcpComplete ||
+  !dbComplete ||
+  !nativeComplete ||
+  !a67Complete;
+const globalAggregationInputs = {
+  ownerResults: results,
+  ipcComplete: ipcSliceComplete,
+  mcpComplete: mcpSliceComplete,
+  dbComplete: dbSliceComplete,
+  nativeComplete: nativeSliceComplete,
+  a67Complete: a67SliceComplete,
+};
+const currentGlobalAggregationFailed = globalAggregationFailed(globalAggregationInputs);
+const sameLineCountIpcEventRegistryMutation = {
+  classificationComplete,
+  nativeExtractionComplete,
+  eventRegistryComplete: false,
+  commandsLines: ipcOwner?.lines ?? null,
+};
+const sameLineCountIpcMutationFailed = globalAggregationFailed({
+  ...globalAggregationInputs,
+  ipcComplete:
+    ipcOwner?.status === "pass" &&
+    sameLineCountIpcEventRegistryMutation.classificationComplete &&
+    sameLineCountIpcEventRegistryMutation.nativeExtractionComplete &&
+    sameLineCountIpcEventRegistryMutation.eventRegistryComplete,
+});
+const globalAggregationNegativeProof = {
+  sameLineCountIpcEventRegistryMutationRejected:
+    currentGlobalAggregationFailed === false &&
+    sameLineCountIpcMutationFailed === true &&
+    (ipcOwner?.lines ?? null) === sameLineCountIpcEventRegistryMutation.commandsLines,
+  mutation: {
+    target: "ipc.eventRegistry.complete",
+    before: eventRegistryComplete,
+    after: sameLineCountIpcEventRegistryMutation.eventRegistryComplete,
+    commandsLinesBefore: ipcOwner?.lines ?? null,
+    commandsLinesAfter: sameLineCountIpcEventRegistryMutation.commandsLines,
+  },
+};
+const failed =
+  currentGlobalAggregationFailed || !globalAggregationNegativeProof.sameLineCountIpcEventRegistryMutationRejected;
 const frontendOwners = results.filter((result) => result.nextSlice === "A6.2");
 const frontendFailedOwners = frontendOwners.filter((result) => result.status === "fail");
 const frontendSlice = {
@@ -1043,25 +1439,39 @@ const commandFailed =
           ? !dbSlice.sliceComplete
           : requestedSlice === "A6.6"
             ? !nativeSlice.sliceComplete
-            : failed;
+            : requestedSlice === "A6.7"
+              ? !a67Slice.sliceComplete
+              : failed;
 const generatedAt = new Date().toISOString();
+const reportStatus = isA67RequiredMode
+  ? commandFailed
+    ? "failed"
+    : "pass-a6.7-dead-infrastructure"
+  : failed
+    ? "failed"
+    : "pass-a6.1-inventory-frozen";
 const report = {
   schema: "aelyris.a6-modularity-inventory/v3",
-  status: failed ? "failed" : "pass-a6.1-inventory-frozen",
-  sliceComplete: !failed,
+  status: reportStatus,
+  sliceComplete: isA67RequiredMode ? !commandFailed : !failed,
   phaseComplete: false,
   ratchetMode: "reject-growth-from-frozen-baseline",
   evaluation: {
     mode: requestedSlice ? "required-slice" : "global",
     requestedSlice,
     commandStatus: commandFailed ? "failed" : "passed",
-    globalStatus: failed ? "failed" : "passed",
+    globalStatus: isA67RequiredMode ? "not-evaluated" : failed ? "failed" : "passed",
   },
   frontendSlice,
   ipcSlice,
   mcpSlice,
   dbSlice,
   nativeSlice,
+  a67Slice,
+  globalAggregation: {
+    status: failed ? "fail" : "pass",
+    negativeProof: globalAggregationNegativeProof,
+  },
   owners: results,
   ipcClassification,
   slices,
@@ -1072,12 +1482,21 @@ const report = {
     inputPaths: [
       "scripts/evidence-provenance.mjs",
       "src-tauri/src/lib.rs",
+      ...legacySessionPaths,
       "src-tauri/src/ipc/event_commands.rs",
       "src-tauri/src/ipc/ime_commands.rs",
       mcpCatalogOwnerPath,
       mcpDispatcherOwnerPath,
       dbCodeGraphOwnerPath,
       dbPaneLayoutOwnerPath,
+      dbSessionIpcPath,
+      "src-tauri/tests/test_db_session.rs",
+      "src-tauri/src/mux/store.rs",
+      "src-tauri/src/pty/manager.rs",
+      paneRegistryOwnerPath,
+      futureFleetManifestPath,
+      rustCompatibilityPolicyPath,
+      ...currentPublicContractPaths,
       ...nativeOwnerPaths.slice(1),
       "src-tauri/Cargo.toml",
       "scripts/verify-native-client-spike.mjs",

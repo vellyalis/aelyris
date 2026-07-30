@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.7`.
-LAST COMPLETED SLICE: `A6.6`.
+ACTIVE SLICE: `A6.8`.
+LAST COMPLETED SLICE: `A6.7`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.7`.
+NEXT IMPLEMENTATION SLICE: `A6.8`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -36,10 +36,13 @@ catalog/schema/dispatch parity, and `mcp.rs=2539 <= 5943`. A6.5 SQLite domain
 repositories are complete behind the existing Database connection/migration owner.
 A6.6 native proof CLI boundary is complete with an optional proof-only Cargo feature,
 one router/readiness/client ownership split, exact command/schema preservation, and
-causal downstream freshness checks. A6.7 callsite-proven duplicate/unowned
-infrastructure removal is the exact implementation frontier. Do not reopen A4 or
-completed A6.2-A6.6 owners without a fresh regression, and do not mix A7 or native
-product expansion into A6.
+   causal downstream freshness checks. A6.7 callsite-proven duplicate/unowned
+   infrastructure removal is complete: the unregistered legacy `SessionManager`
+   and its auto-discovered test were removed, authoritative Database/PTY/mux owners
+   remain, and retained runtime/compatibility surfaces remain classified. A6.8
+   combined ratchet and regression acceptance is the exact implementation frontier.
+   Do not reopen A4 or completed A6.2-A6.7 owners without a fresh regression, and do
+   not mix A7 or native product expansion into A6.
 
 ## Objective
 
@@ -64,7 +67,7 @@ A4.12 complete
   -> A6.2e1-A6.2e4 complete -> A6.2f/A6 component and command composition
   -> A6.3 IPC adapter complete -> A6.4 MCP catalog and dispatch complete
   -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI complete
-  -> A6.7 duplicate/unowned infrastructure -> A6.8 combined acceptance
+  -> A6.7 duplicate/unowned infrastructure complete -> A6.8 combined acceptance
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -85,7 +88,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. **A6.6 is complete.** Execute **A6.7**, then finish A6 by dependency direction,
+2. **A6.7 is complete.** Execute **A6.8** to finish A6 by dependency direction,
    state ownership, executed behavior, and concurrency safety. File length remains
    a diagnostic non-growth ratchet, not a universal `<=800` completion requirement.
    Do not move logic solely to satisfy a line count.
@@ -98,9 +101,9 @@ implementation phase and not a reduction of the product Goal.
    the release-blocking A7 Core.
 4. **A6.6** isolated `aelyris_native` behind the optional `native-proof-cli`
    feature without expanding native functionality. A8.0 remains the only
-   activation decision for further native/full-native work. At **A6.7**, delete
-   only duplicate or unowned infrastructure whose registration, callsites,
-   compatibility surfaces, and runtime ownership have been disproved directly.
+   activation decision for further native/full-native work. **A6.7** removed only
+   duplicate or unowned infrastructure whose registration, callsites,
+   compatibility surfaces, and runtime ownership were disproved directly.
 5. Do not start a verifier-cleanup program. When a touched owner relies on a brittle
    source-string check, replace or supplement that check with the smallest executed
    behavior proof needed for the changed risk. Add a new verifier only for a unique
@@ -644,11 +647,19 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   native-client checks pass, upper compatibility passes 6/6, text shaping
   produces a fresh current fixture, Rust library tests pass 1308/1308, and A6
   remains `phaseComplete=false`.
-- Continue A6.7 with a callsite-first inventory of duplicate or unowned
-  infrastructure. Do not delete from name, size, or absence alone; prove the
-  authoritative owner, registration, callsites, compatibility surface, and
-  runtime/test reachability first. A6.8 remains the only combined A6 acceptance,
-  and A8.0 remains the sole native activation decision.
+- A6.7 duplicate/unowned infrastructure closeout is complete. A callsite-first
+  inventory accepted removal only for the unregistered legacy `SessionManager`
+  and retained the runtime-reachable `PaneRegistry` and typed IPC facade. The
+  package is explicitly unpublished, no supported Rust SDK contract is claimed,
+  missing-path provenance rejects reintroduction, scanner-bound negative mutations
+  pass 4/4, focused Database tests pass 3/3, mux restore tests pass 7/7, and Rust
+  library tests pass 1308/1308. Independent review found two blocking evidence
+  gaps; both bounded rework rounds are closed with zero remaining blockers. A6
+  remains `phaseComplete=false`.
+- Continue A6.8 as the only combined A6 acceptance. It must aggregate current
+  A6.2-A6.7 owner/behavior evidence and blocking exact-SHA CI before it can retire
+  advisory mode or emit A6 `phaseComplete=true`. A8.0 remains the sole native
+  activation decision.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

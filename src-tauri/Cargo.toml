@@ -6,6 +6,7 @@ authors = ["vellyalis"]
 edition = "2021"
 default-run = "Aelyris"
 autobins = false
+publish = false
 
 [[bin]]
 name = "Aelyris"

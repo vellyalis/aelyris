@@ -35,6 +35,7 @@
     "verify:a6:modularity-inventory:frontend": "node scripts/verify-a6-modularity-inventory.mjs --require-slice A6.2",
     "verify:a6:modularity-inventory:ipc": "node scripts/verify-a6-modularity-inventory.mjs --require-slice A6.3",
     "verify:a6:modularity-inventory:mcp": "node scripts/verify-a6-modularity-inventory.mjs --require-slice A6.4",
+    "verify:a6:modularity-inventory:dead-infrastructure": "node scripts/verify-a6-modularity-inventory.mjs --require-slice A6.7",
     "verify:a6:frontend-ratchet": "node scripts/verify-a6-frontend-ratchet.mjs",
     "verify:a6:frontend-acceptance": "node scripts/verify-a6-frontend-acceptance.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",

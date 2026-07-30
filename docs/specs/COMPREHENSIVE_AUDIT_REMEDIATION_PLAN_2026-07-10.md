@@ -316,8 +316,11 @@ Current durable owners:
 - `src-tauri/src/persistence/session_checkpoint_repo.rs` owns durable visible-agent
   checkpoints and handoff state. `src-tauri/src/ipc/session_lifecycle_commands.rs`
   restores live sidecar-backed checkpoints and reconciles unresolved handoffs.
-- `src-tauri/src/session/manager.rs` owns legacy terminal session/window/pane restore;
-  `src-tauri/src/mux/store.rs` owns versioned file snapshots for the mux graph.
+- At this A4.1 inventory point, `src-tauri/src/session/manager.rs` exposed a legacy
+  terminal session/window/pane restore wrapper. A6.7 later proved that wrapper had
+  no production registration or runtime callsite and retired it; the existing
+  Database, PTY, and mux owners remain authoritative. `src-tauri/src/mux/store.rs`
+  owns versioned file snapshots for the mux graph.
 - `src-tauri/src/lib.rs` is the startup composition owner. It opens the same SQLite
   file for the managed DB, Context Store, Intent Bus, Task Graph, Event Bus, merge,
   and MCP surfaces, hydrates several projections, then starts sidecar adoption.
@@ -1665,7 +1668,7 @@ Completion evidence:
   focused round 2 reports zero findings. A6.7-A6.8 remain and A6
   `phaseComplete=false` remains truthful.
 
-#### **A6.7 Active - Callsite-Proven Duplicate/Unowned Infrastructure Removal**
+#### **A6.7 Complete - Callsite-Proven Duplicate/Unowned Infrastructure Removal**
 
 Start with an explicit candidate inventory across the frozen A6 owner surfaces.
 Do not infer dead or unowned status from name, file size, missing frontend
@@ -1683,9 +1686,34 @@ First acceptance boundary:
 - removal does not create a replacement manager, registry, service, storage
   layer, state owner, or dependency;
 - focused behavior and negative reachability proof cover each accepted removal;
-- A6.8 remains queued and A6 `phaseComplete=false` remains truthful.
+- A6.8 remains active and A6 `phaseComplete=false` remains truthful.
 
-#### **A6.8 Queued - Combined Ratchet And Regression Acceptance**
+Completion evidence:
+
+- the explicit candidate inventory accepted removal only for the legacy
+  `session::SessionManager`; it had top-level module exposure and an
+  auto-discovered integration test, but no production registration or runtime
+  callsite. Database session persistence, PTY lifecycle, and mux restore remain
+  with their existing authoritative owners;
+- the runtime-reachable Tauri `PaneRegistry` and typed frontend IPC facade remain
+  classified and retained. No replacement manager, registry, service, storage
+  layer, state owner, dependency, shim, or compatibility alias was added;
+- `src-tauri/Cargo.toml` explicitly disables publication, the tracked native UI
+  policy makes no semantic compatibility promise or crates.io publication, and
+  current public product documents claim no supported Rust SDK. Unknown external
+  path-dependency use remains an unverified residual, not a supported contract;
+- the A6.7 gate hashes all three absent legacy paths, rejects file/module/runtime/
+  Cargo-target reintroduction through the source scanner, and separates carried
+  A6.5/A6.6 source contracts from current-run behavior. Its required mode reports
+  `globalStatus=not-evaluated`;
+- the default aggregate executes A6.5-A6.7 behavior and includes the A6.3 IPC
+  contract in its fail-closed result. Its same-line-count event-registry mutation
+  is rejected. Database tests pass 3/3, mux restore tests pass 7/7, the full Rust
+  library passes 1308/1308, and independent review closes both blocking findings
+  after two bounded rework rounds. A6.8 remains active and A6
+  `phaseComplete=false` remains truthful.
+
+#### **A6.8 Active - Combined Ratchet And Regression Acceptance**
 
 Only after A6.2-A6.7 owner, behavior, and blocking CI evidence is current may the
 combined aggregate retire advisory mode and emit A6 `phaseComplete=true`. A6.8
