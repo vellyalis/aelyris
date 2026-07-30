@@ -521,6 +521,19 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   Vitest assertion status handling. The artifact still truthfully retains
   `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
   `sliceComplete=false`, and `phaseComplete=false`.
+- A6.2f operational-pane-selection test-owner checkpoint is complete: the
+  remaining candidates were compared and `useOperationalPaneSelection` was
+  selected over the one-test pane-registry boundary and the 12-test pane-request
+  concurrency suite. All 5 assertions that inspect
+  `useOperationalPaneSelection.ts` now live beside its pane reconciliation,
+  owner-key transition, stale-callback rejection, and audit/reliability
+  selection behavior proof. `AppSilentBugs.test.ts` retains only
+  `useOperationalPaneSelection(visualTerminalPaneTargets, projectPath)` because
+  App owns that composition wiring. The frontend ratchet contract is v14 and
+  requires the exact owner-local source-contract test to execute and pass
+  through structured Vitest assertion status handling. The artifact still
+  truthfully retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
+  `sliceComplete=false`, and `phaseComplete=false`.
 - Continue A6.2f by inventorying the remaining owner-local
   `AppSilentBugs.test.ts` split boundary before moving the next cohesive owner
   slice. Do not weaken source-contract or executed behavior coverage, and do not

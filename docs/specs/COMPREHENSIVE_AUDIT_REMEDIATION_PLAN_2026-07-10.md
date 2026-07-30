@@ -1344,6 +1344,28 @@ Pane-agent-spawn test-owner checkpoint complete:
   active at the next cohesive owner-local assertion slice; this checkpoint
   does not authorize A6.2g.
 
+Operational-pane-selection test-owner checkpoint complete:
+
+- The remaining owner-local candidates were compared before selection.
+  `useOperationalPaneSelection` was selected over the one-test pane-registry
+  boundary and the 12-test pane-request concurrency suite because its five
+  existing behavior tests already cover one closed hook owner without widening
+  the current checkpoint.
+- All five assertions that inspect
+  `src/features/terminal/useOperationalPaneSelection.ts` now live in
+  `src/__tests__/useOperationalPaneSelection.test.tsx` beside pane
+  reconciliation, owner-key cleanup, stale-callback rejection, and
+  audit/reliability selection behavior. `AppSilentBugs.test.ts` retains only
+  the App-owned composition guard for visual pane targets plus `projectPath`.
+- The frontend ratchet contract is v14 and requires the exact owner-local
+  source-contract test to execute and pass through structured Vitest assertion
+  status handling. It truthfully retains `completedSlice=A6.2e4`,
+  `activeSlice=A6.2f`, `sliceComplete=false`, and `phaseComplete=false`.
+- No production source, import layout, dependency, store, service, queue,
+  scheduler, durable owner, or runtime state owner changed. A6.2f remains
+  active at the next cohesive owner-local assertion slice; this checkpoint
+  does not authorize A6.2g.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

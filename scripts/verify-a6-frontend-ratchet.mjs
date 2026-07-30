@@ -115,6 +115,12 @@ try {
       ],
     },
     {
+      id: "operational-pane-selection-owner-source-contract",
+      tests: [
+        "useOperationalPaneSelection owns pane reconciliation, project-bound selection, and audit/reliability trace routing",
+      ],
+    },
+    {
       id: "pane-request-lifecycle-behavior",
       tests: [
         "usePaneRequestController continues dispatching after the StrictMode effect rehearsal",
@@ -698,11 +704,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v13",
-  status: failed ? "failed" : "pass-a6.2f-pane-agent-spawn-test-owner",
+  contractVersion: "a6.2f-component-command-composition/v14",
+  status: failed ? "failed" : "pass-a6.2f-operational-pane-selection-test-owner",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "pane-agent-spawn-test-owner",
+  checkpoint: failed ? null : "operational-pane-selection-test-owner",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

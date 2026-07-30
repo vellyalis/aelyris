@@ -4,6 +4,18 @@ import { describe, expect, it } from "vitest";
 import { useOperationalPaneSelection } from "../features/terminal/useOperationalPaneSelection";
 import type { TerminalPaneTarget } from "../shared/types/terminalPane";
 
+const ownerSources = import.meta.glob("../features/terminal/useOperationalPaneSelection.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
+
 const pane: TerminalPaneTarget = {
   index: 0,
   paneId: "pane-a",
@@ -15,6 +27,16 @@ const pane: TerminalPaneTarget = {
 };
 
 describe("useOperationalPaneSelection", () => {
+  it("owns pane reconciliation, project-bound selection, and audit/reliability trace routing", () => {
+    const owner = getOwnerSource();
+
+    expect(owner).toContain("reconcileOperationalPaneSelection(selected, panes)");
+    expect(owner).toContain("clearEndedOperationalTerminal(selected, terminalId)");
+    expect(owner).toContain("setSelectedAuditTraceFilter(correlationId)");
+    expect(owner).toContain("setSelectedAuditEventId(incident.eventId)");
+    expect(owner).toContain("currentOwnerKeyRef.current === ownerKey");
+  });
+
   it("clears a selected pane after registry cleanup removes its owner", async () => {
     const { result, rerender } = renderHook(({ panes }) => useOperationalPaneSelection(panes), {
       initialProps: { panes: [pane] },
