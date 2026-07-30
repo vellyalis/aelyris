@@ -135,6 +135,7 @@ import {
   createDevVisualQaNegativePathAction,
   createDevVisualQaPanes,
   createDevVisualQaSessions,
+  isDevVisualQaPaneFixture,
   readDevVisualQaState,
 } from "./features/right-rail/rightRailVisualQa";
 import {
@@ -1109,11 +1110,10 @@ export function App() {
       const terminalId = command.terminalId;
       if (!terminalId) return;
       const target = visualTerminalPaneTargets.find((pane) => pane.terminalId === terminalId);
-      if (target) {
-        const outcome = await handlePaneSwitch(target.tabId, target.paneId);
-        if (outcome.status !== "focused") return;
-        selectOperationalPane(target);
-      }
+      const targetToFocus = target && !isDevVisualQaPaneFixture(devVisualQa.enabled, target, terminalPaneTargets) ? target : null;
+      const outcome = targetToFocus ? await handlePaneSwitch(targetToFocus.tabId, targetToFocus.paneId) : { status: "focused" as const };
+      if (outcome.status !== "focused") return;
+      if (target) selectOperationalPane(target);
       const sequence = command.endSequence ?? command.outputSequence ?? command.commandSequence ?? null;
       const historySize = command.endHistorySize ?? command.outputHistorySize ?? command.commandHistorySize ?? null;
       const screenLine = command.endScreenLine ?? command.outputScreenLine ?? command.commandScreenLine ?? null;
@@ -1135,7 +1135,7 @@ export function App() {
         detail: `${command.label} opened in its source pane.`,
       });
     },
-    [handlePaneSwitch, selectOperationalPane, showRightRailRouteConfirmation, visualTerminalPaneTargets],
+    [devVisualQa.enabled, handlePaneSwitch, selectOperationalPane, showRightRailRouteConfirmation, terminalPaneTargets, visualTerminalPaneTargets],
   );
 
   const focusAdjacentPane = useCallback(

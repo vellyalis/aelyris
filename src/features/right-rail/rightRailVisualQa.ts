@@ -304,3 +304,17 @@ export function createDevVisualQaPanes(
     },
   ];
 }
+
+export function isDevVisualQaPaneFixture(
+  enabled: boolean,
+  target: TerminalPaneTarget,
+  runtimePanes: readonly TerminalPaneTarget[],
+): boolean {
+  return (
+    enabled &&
+    !runtimePanes.some(
+      (pane) =>
+        pane.tabId === target.tabId && pane.paneId === target.paneId && pane.terminalId === target.terminalId,
+    )
+  );
+}
