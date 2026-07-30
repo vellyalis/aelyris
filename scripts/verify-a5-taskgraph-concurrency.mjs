@@ -101,6 +101,8 @@ const report = {
       "src-tauri/src/ipc/task_commands.rs",
       "src-tauri/src/ipc/orchestrator_commands.rs",
       "src-tauri/src/api/mcp.rs",
+      "src-tauri/src/api/mcp/catalog.rs",
+      "src-tauri/src/api/mcp/dispatch.rs",
       "package.json",
     ],
     generatedAt,

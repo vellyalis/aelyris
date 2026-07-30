@@ -25,7 +25,7 @@ function sliceBetween(source, startMarker, endMarkers = []) {
 
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const mergeControl = read("src-tauri/src/control/merge.rs");
-const mcp = read("src-tauri/src/api/mcp.rs");
+const mcp = read("src-tauri/src/api/mcp/dispatch.rs");
 const ipc = read("src-tauri/src/ipc/orchestrator_commands.rs");
 const lib = read("src-tauri/src/lib.rs");
 
@@ -176,6 +176,8 @@ const report = {
     "src-tauri/src/control/merge.rs",
     "src-tauri/src/control/loop_ports.rs",
     "src-tauri/src/api/mcp.rs",
+    "src-tauri/src/api/mcp/catalog.rs",
+    "src-tauri/src/api/mcp/dispatch.rs",
     "src-tauri/src/ipc/orchestrator_commands.rs",
     "src-tauri/src/lib.rs",
   ],

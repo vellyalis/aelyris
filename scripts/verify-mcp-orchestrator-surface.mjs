@@ -9,7 +9,11 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const api = read("src-tauri/src/api/mod.rs");
-const apiMcp = read("src-tauri/src/api/mcp.rs");
+const apiMcp = [
+  read("src-tauri/src/api/mcp.rs"),
+  read("src-tauri/src/api/mcp/catalog.rs"),
+  read("src-tauri/src/api/mcp/dispatch.rs"),
+].join("\n");
 const lib = read("src-tauri/src/lib.rs");
 const merge = read("src-tauri/src/control/merge.rs");
 const gitMod = read("src-tauri/src/git/mod.rs");

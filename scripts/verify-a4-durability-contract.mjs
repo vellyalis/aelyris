@@ -221,18 +221,21 @@ const eventTypes = read("src-tauri/src/event_bus/mod.rs");
 const eventRepo = read("src-tauri/src/persistence/event_repo.rs");
 const eventCommands = read("src-tauri/src/ipc/event_commands.rs");
 const contextCommands = read("src-tauri/src/ipc/context_commands.rs");
-const mcp = read("src-tauri/src/api/mcp.rs");
-const mcpProofbookStatusAdapter = mcp.slice(
-  mcp.indexOf("fn mcp_proofbook_status"),
-  mcp.indexOf("fn mcp_proofbook_settle_agent_session"),
+const mcpTransport = read("src-tauri/src/api/mcp.rs");
+const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
+const mcpDispatch = read("src-tauri/src/api/mcp/dispatch.rs");
+const mcp = [mcpTransport, mcpCatalog, mcpDispatch].join("\n");
+const mcpProofbookStatusAdapter = mcpDispatch.slice(
+  mcpDispatch.indexOf("fn mcp_proofbook_status"),
+  mcpDispatch.indexOf("fn mcp_proofbook_settle_agent_session"),
 );
-const mcpProofbookSettleAdapter = mcp.slice(
-  mcp.indexOf("fn mcp_proofbook_settle_agent_session"),
-  mcp.indexOf("fn mcp_proofbook_cancel"),
+const mcpProofbookSettleAdapter = mcpDispatch.slice(
+  mcpDispatch.indexOf("fn mcp_proofbook_settle_agent_session"),
+  mcpDispatch.indexOf("fn mcp_proofbook_cancel"),
 );
-const mcpProofbookGateAdapter = mcp.slice(
-  mcp.indexOf("fn mcp_proofbook_decide_gate"),
-  mcp.indexOf("fn tool_safety"),
+const mcpProofbookGateAdapter = mcpDispatch.slice(
+  mcpDispatch.indexOf("fn mcp_proofbook_decide_gate"),
+  mcpDispatch.indexOf("fn tool_safety"),
 );
 const apiState = read("src-tauri/src/api/mod.rs");
 const terminalAuthority = read("src-tauri/src/command_risk/authority.rs");
@@ -251,6 +254,9 @@ const acceptanceProvenance = acceptance
   : { ok: false, errors: ["missing-acceptance-artifact"] };
 const activeSlice = workOrder.match(/^ACTIVE SLICE:\s+`([^`]+)`\.$/m)?.[1] ?? null;
 const completedSlice = workOrder.match(/^LAST COMPLETED SLICE:\s+`([^`]+)`\.$/m)?.[1] ?? null;
+const slicePhaseNumber = (slice) => Number.parseInt(slice?.match(/^A(\d+)/)?.[1] ?? "", 10);
+const remediationHasAdvancedBeyondA4 =
+  slicePhaseNumber(activeSlice) >= 6 && slicePhaseNumber(completedSlice) >= 6;
 
 const expectedEventTools = [
   "aelyris.event.recent",
@@ -308,9 +314,9 @@ const seqEventShapeExact =
   eventTypesTs.includes("export interface SeqEvent extends AgentEvent") &&
   exactSet(tsInterfaceShape(eventTypesTs, "SeqEvent").fields, ["seq"]);
 
-const envelopeFunction = mcp.slice(
-  mcp.indexOf("fn event_bus_error_response("),
-  mcp.indexOf("pub(super) async fn tools_call("),
+const envelopeFunction = mcpDispatch.slice(
+  mcpDispatch.indexOf("fn event_bus_error_response("),
+  mcpDispatch.indexOf("pub(super) async fn dispatch_authorized("),
 );
 const envelopeMacro = envelopeFunction.indexOf("serde_json::json!({");
 const envelopeOpen = envelopeFunction.indexOf("{", envelopeMacro);
@@ -321,11 +327,14 @@ const envelopeErrorFields = topLevelQuotedKeys(envelopeFunction, envelopeErrorOp
 const tsMcpErrorShape = tsInterfaceShape(eventTypesTs, "EventBusMcpError");
 const tsMcpFailureShape = tsInterfaceShape(eventTypesTs, "EventBusMcpFailure");
 
-const catalogBody = mcp.slice(mcp.indexOf("fn build_tools_list_value()"), mcp.indexOf("fn tools_list_value()"));
+const catalogBody = mcpCatalog.slice(
+  mcpCatalog.indexOf("fn build_tools_list_value()"),
+  mcpCatalog.indexOf("fn tools_list_value()"),
+);
 const catalogEventTools = [...catalogBody.matchAll(/"name":\s*"(aelyris\.event\.[a-z_]+)"/g)].map((match) => match[1]);
-const toolsCallBody = mcp.slice(
-  mcp.indexOf("pub(super) async fn tools_call("),
-  mcp.indexOf("pub(super) async fn mcp_rpc("),
+const toolsCallBody = mcpDispatch.slice(
+  mcpDispatch.indexOf("pub(super) async fn dispatch_authorized("),
+  mcpDispatch.indexOf("// A6.4_DISPATCH_TOOL_ARMS_END"),
 );
 const structuredErrorCallTools = [
   ...toolsCallBody.matchAll(/event_bus_error_response\(\s*"(aelyris\.event\.[a-z_]+)"/g),
@@ -706,8 +715,8 @@ const checks = {
     remediationPlan.includes(
       "### **A4.11** Complete - Structured Handoff Acceptance And Successor Quarantine",
     ) &&
-    activeSlice === "A6.2e1" &&
-    completedSlice === acceptance?.completedThrough,
+    remediationHasAdvancedBeyondA4 &&
+    acceptance?.completedThrough === "A4.12",
   structuredHandoffAcceptanceAndQuarantine:
     migrations.includes("pub const CURRENT_SCHEMA_VERSION: i64 = 6") &&
     migrations.includes("const V6_SCHEMA") &&
@@ -866,6 +875,8 @@ const report = {
       "src-tauri/src/ipc/event_commands.rs",
       "src-tauri/src/ipc/context_commands.rs",
       "src-tauri/src/api/mcp.rs",
+      "src-tauri/src/api/mcp/catalog.rs",
+      "src-tauri/src/api/mcp/dispatch.rs",
       "src-tauri/src/api/mod.rs",
       "src-tauri/src/command_risk/authority.rs",
       "src-tauri/src/ipc/orchestrator_commands.rs",

@@ -15,7 +15,11 @@ function record(id, ok, detail) {
 const outputMonitor = read("src-tauri/src/agent/output_monitor.rs");
 const sendKeys = read("src-tauri/src/ipc/send_keys_commands.rs");
 const inputAuthority = read("src-tauri/src/command_risk/authority.rs");
-const mcp = read("src-tauri/src/api/mcp.rs");
+const mcp = [
+  read("src-tauri/src/api/mcp.rs"),
+  read("src-tauri/src/api/mcp/catalog.rs"),
+  read("src-tauri/src/api/mcp/dispatch.rs"),
+].join("\n");
 const apiMod = read("src-tauri/src/api/mod.rs");
 const apiMux = read("src-tauri/src/api/mux.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");

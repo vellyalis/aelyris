@@ -351,6 +351,8 @@ const report = {
       "src-tauri/src/ipc/session_lifecycle_commands.rs",
       "src-tauri/src/command_risk/authority.rs",
       "src-tauri/src/api/mcp.rs",
+      "src-tauri/src/api/mcp/catalog.rs",
+      "src-tauri/src/api/mcp/dispatch.rs",
       "src-tauri/src/api/mod.rs",
       "src-tauri/src/ipc/orchestrator_commands.rs",
       "src/shared/types/eventBus.ts",

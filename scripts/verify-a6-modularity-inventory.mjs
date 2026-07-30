@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createEvidenceProvenance } from "./evidence-provenance.mjs";
@@ -6,8 +7,8 @@ const root = resolve(process.cwd());
 const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.json");
 const cliArgs = process.argv.slice(2);
 const requestedSlice = cliArgs.length === 2 && cliArgs[0] === "--require-slice" ? cliArgs[1] : null;
-if (cliArgs.length > 0 && !["A6.2", "A6.3"].includes(requestedSlice)) {
-  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2 or A6.3.");
+if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4"].includes(requestedSlice)) {
+  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, or A6.4.");
   process.exit(2);
 }
 const owners = [
@@ -34,7 +35,7 @@ const owners = [
   },
   {
     path: "src-tauri/src/api/mcp.rs",
-    owner: "MCP catalog, governance adapter, and dispatcher",
+    owner: "MCP transport, governance, and composition gateway",
     baselineLines: 5943,
     targetLines: 1200,
     nextSlice: "A6.4",
@@ -286,6 +287,240 @@ const ipcClassification = {
   rule: "No handler may be deleted until registration, frontend invoke, MCP/HTTP reuse, tests, and compatibility aliases are all classified.",
 };
 
+const mcpTransportOwnerPath = "src-tauri/src/api/mcp.rs";
+const mcpCatalogOwnerPath = "src-tauri/src/api/mcp/catalog.rs";
+const mcpDispatcherOwnerPath = "src-tauri/src/api/mcp/dispatch.rs";
+const mcpTransportSource = read(mcpTransportOwnerPath);
+const mcpCatalogSource = read(mcpCatalogOwnerPath);
+const mcpDispatcherSource = read(mcpDispatcherOwnerPath);
+const FROZEN_A64_SCHEMA_DIGEST = "7e5a99274a83c58d7068f3cdaa3af2d007e87fe827a1c80bddc68a4b59e2daf7";
+const catalogBuilderStart = mcpCatalogSource.indexOf("fn build_tools_list_value()");
+const catalogBuilderEnd = mcpCatalogSource.indexOf("pub(super) fn tools_list_value()", catalogBuilderStart);
+const catalogBuilderSource =
+  catalogBuilderStart >= 0 && catalogBuilderEnd > catalogBuilderStart
+    ? mcpCatalogSource.slice(catalogBuilderStart, catalogBuilderEnd)
+    : "";
+
+const findBalancedObjectEnd = (source, start) => {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+};
+
+const extractCatalogSchemaEntries = (source) => {
+  const entries = [];
+  let cursor = 0;
+  while (true) {
+    const schemaLabelIndex = source.indexOf('"inputSchema"', cursor);
+    if (schemaLabelIndex < 0) return { entries, error: null };
+    const prefix = source.slice(cursor, schemaLabelIndex);
+    const names = [...prefix.matchAll(/"name":\s*"([A-Za-z0-9_.-]+)"/g)];
+    const name = names.at(-1)?.[1];
+    const objectStart = source.indexOf("{", schemaLabelIndex + '"inputSchema"'.length);
+    const objectEnd = objectStart >= 0 ? findBalancedObjectEnd(source, objectStart) : -1;
+    if (!name || objectEnd < 0) {
+      return { entries: [], error: `could not parse inputSchema at offset ${schemaLabelIndex}` };
+    }
+    const schemaSource = source.slice(objectStart, objectEnd + 1).replace(/,\s*([}\]])/g, "$1");
+    try {
+      entries.push([name, JSON.parse(schemaSource)]);
+    } catch (error) {
+      return {
+        entries: [],
+        error: `invalid inputSchema JSON for ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    cursor = objectEnd + 1;
+  }
+};
+
+const canonicalJson = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalJson(entry)]),
+    );
+  }
+  return value;
+};
+
+const schemaContractDigest = (entries) =>
+  createHash("sha256")
+    .update(JSON.stringify(entries.map(([name, schema]) => [name, canonicalJson(schema)])))
+    .digest("hex");
+
+const frozenA64Match = mcpTransportSource.match(/const FROZEN_A64_VERBS:\s*\[&str;\s*83\]\s*=\s*\[([\s\S]*?)\];/);
+const frozenA64Verbs = frozenA64Match
+  ? [...frozenA64Match[1].matchAll(/"([A-Za-z0-9_.-]+)"/g)].map((match) => match[1])
+  : [];
+const catalogVerbs = [...mcpCatalogSource.matchAll(/"name":\s*"([A-Za-z0-9_.-]+)"/g)].map((match) => match[1]);
+const catalogSchemaExtraction = extractCatalogSchemaEntries(catalogBuilderSource);
+const catalogSchemaEntries = catalogSchemaExtraction.entries;
+const schemaCount = catalogSchemaEntries.length;
+const schemaDigest = schemaCount > 0 ? schemaContractDigest(catalogSchemaEntries) : null;
+const schemaDigestExact = schemaDigest === FROZEN_A64_SCHEMA_DIGEST;
+const dispatchStartMarker = "// A6.4_DISPATCH_TOOL_ARMS_BEGIN";
+const dispatchEndMarker = "// A6.4_DISPATCH_TOOL_ARMS_END";
+const dispatchStartMarkerCount = mcpDispatcherSource.split(dispatchStartMarker).length - 1;
+const dispatchEndMarkerCount = mcpDispatcherSource.split(dispatchEndMarker).length - 1;
+const dispatchRegion =
+  dispatchStartMarkerCount === 1 && dispatchEndMarkerCount === 1
+    ? mcpDispatcherSource.split(dispatchStartMarker, 2)[1].split(dispatchEndMarker, 1)[0]
+    : "";
+const dispatchVerbs = [...dispatchRegion.matchAll(/^\s*"([A-Za-z0-9_.-]+)"\s*=>/gm)].map((match) => match[1]);
+const duplicates = (values) =>
+  values
+    .filter((value, index) => values.indexOf(value) !== index)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .sort();
+const sameSet = (left, right) => {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return left.length === leftSet.size && right.length === rightSet.size && leftSet.size === rightSet.size
+    ? [...leftSet].every((value) => rightSet.has(value))
+    : false;
+};
+const missingDispatch = catalogVerbs.filter((verb) => !dispatchVerbs.includes(verb)).sort();
+const extraDispatch = dispatchVerbs.filter((verb) => !catalogVerbs.includes(verb)).sort();
+const missingFrozen = frozenA64Verbs.filter((verb) => !catalogVerbs.includes(verb)).sort();
+const extraFrozen = catalogVerbs.filter((verb) => !frozenA64Verbs.includes(verb)).sort();
+const duplicateCatalog = duplicates(catalogVerbs);
+const duplicateDispatch = duplicates(dispatchVerbs);
+const transportToolsCallStart = mcpTransportSource.indexOf("pub(super) async fn tools_call(");
+const transportToolsCallEnd = mcpTransportSource.indexOf(
+  "// ---- Native MCP: JSON-RPC 2.0 over Streamable HTTP ----",
+  transportToolsCallStart,
+);
+const transportToolsCall =
+  transportToolsCallStart >= 0 && transportToolsCallEnd > transportToolsCallStart
+    ? mcpTransportSource.slice(transportToolsCallStart, transportToolsCallEnd)
+    : "";
+const authorizeIndex = transportToolsCall.indexOf(".authorize(");
+const schemaIndex = transportToolsCall.indexOf("input_schema_for_tool(");
+const dispatchIndex = transportToolsCall.indexOf("dispatch::dispatch_authorized(");
+const governanceBeforeSchema = authorizeIndex >= 0 && schemaIndex > authorizeIndex;
+const schemaBeforeDispatch = schemaIndex >= 0 && dispatchIndex > schemaIndex;
+const singleCatalogOwner =
+  mcpTransportSource.includes("mod catalog;") &&
+  mcpCatalogSource.includes("static TOOL_CATALOG:") &&
+  mcpCatalogSource.includes("static TOOL_SCHEMA_INDEX:") &&
+  mcpCatalogSource.includes("pub(super) fn tool_names()") &&
+  mcpCatalogSource.includes('.get("tools")') &&
+  !mcpTransportSource.includes("static TOOL_CATALOG:") &&
+  !mcpTransportSource.includes("fn build_tools_list_value()");
+const singleDispatcherOwner =
+  mcpTransportSource.includes("mod dispatch;") &&
+  (mcpDispatcherSource.match(/pub\(super\)\s+async\s+fn\s+dispatch_authorized\s*\(/g) ?? []).length === 1 &&
+  dispatchStartMarkerCount === 1 &&
+  dispatchEndMarkerCount === 1 &&
+  !mcpTransportSource.includes("let result = match body.name.as_str()");
+const proofbookReentryUsesGuardedToolsCall =
+  mcpDispatcherSource.includes("match tools_call(State(state), Json(ToolCallBody { name, arguments })).await") &&
+  !mcpDispatcherSource.includes("dispatch_authorized(&self.state");
+const frozenContractExact =
+  frozenA64Verbs.length === 83 &&
+  sameSet(frozenA64Verbs, catalogVerbs) &&
+  missingFrozen.length === 0 &&
+  extraFrozen.length === 0;
+const catalogSchemaExact =
+  catalogVerbs.length === 83 &&
+  schemaCount === 83 &&
+  catalogSchemaExtraction.error === null &&
+  schemaDigestExact &&
+  duplicateCatalog.length === 0 &&
+  mcpCatalogSource.includes("pub(super) fn tool_names()") &&
+  mcpCatalogSource.includes("TOOL_CATALOG");
+const catalogDispatchExact =
+  dispatchVerbs.length === 83 &&
+  duplicateDispatch.length === 0 &&
+  sameSet(catalogVerbs, dispatchVerbs) &&
+  missingDispatch.length === 0 &&
+  extraDispatch.length === 0;
+const acceptsFrozenVerbInventory = (candidate) =>
+  candidate.length === 83 && duplicates(candidate).length === 0 && sameSet(candidate, frozenA64Verbs);
+const mutatedSchemaEntries = catalogSchemaEntries.map(([name, schema]) => [name, structuredClone(schema)]);
+const schemaMutationTarget = mutatedSchemaEntries.find(([name]) => name === "aelyris.knowledge.graph");
+if (schemaMutationTarget) {
+  schemaMutationTarget[1].additionalProperties = !schemaMutationTarget[1].additionalProperties;
+}
+const negativeDriftProof = {
+  missingRejected: !acceptsFrozenVerbInventory(dispatchVerbs.slice(1)),
+  extraRejected: !acceptsFrozenVerbInventory([...dispatchVerbs, "aelyris.test.extra"]),
+  duplicateRejected: !acceptsFrozenVerbInventory([...dispatchVerbs.slice(0, -1), dispatchVerbs.at(-2)]),
+  schemaMutationRejected:
+    Boolean(schemaMutationTarget) && schemaContractDigest(mutatedSchemaEntries) !== FROZEN_A64_SCHEMA_DIGEST,
+};
+const mcpOwner = results.find((result) => result.path === mcpTransportOwnerPath);
+const mcpSliceComplete =
+  mcpOwner?.status === "pass" &&
+  singleCatalogOwner &&
+  singleDispatcherOwner &&
+  frozenContractExact &&
+  catalogSchemaExact &&
+  catalogDispatchExact &&
+  governanceBeforeSchema &&
+  schemaBeforeDispatch &&
+  proofbookReentryUsesGuardedToolsCall &&
+  Object.values(negativeDriftProof).every(Boolean);
+const mcpSlice = {
+  id: "A6.4",
+  owner: "MCP transport, catalog/schema, governance, and authorized domain dispatch",
+  status: mcpSliceComplete ? "pass" : "fail",
+  sliceComplete: mcpSliceComplete,
+  mcpLines: mcpOwner?.lines ?? null,
+  baselineLines: mcpOwner?.baselineLines ?? null,
+  catalogOwnerPath: mcpCatalogOwnerPath,
+  dispatcherOwnerPath: mcpDispatcherOwnerPath,
+  frozenCount: frozenA64Verbs.length,
+  catalogCount: catalogVerbs.length,
+  schemaCount,
+  schemaDigest,
+  frozenSchemaDigest: FROZEN_A64_SCHEMA_DIGEST,
+  schemaDigestExact,
+  schemaExtractionError: catalogSchemaExtraction.error,
+  dispatchCount: dispatchVerbs.length,
+  singleCatalogOwner,
+  singleDispatcherOwner,
+  catalogSchemaExact,
+  catalogDispatchExact,
+  frozenContractExact,
+  governanceBeforeSchema,
+  schemaBeforeDispatch,
+  proofbookReentryUsesGuardedToolsCall,
+  missingDispatch,
+  extraDispatch,
+  missingFrozen,
+  extraFrozen,
+  duplicateCatalog,
+  duplicateDispatch,
+  negativeDriftProof,
+  phaseComplete: false,
+};
+
 const slices = [
   {
     id: "A6.2",
@@ -352,10 +587,12 @@ const commandFailed =
     ? !frontendSlice.sliceComplete
     : requestedSlice === "A6.3"
       ? !ipcSlice.sliceComplete
-      : failed;
+      : requestedSlice === "A6.4"
+        ? !mcpSlice.sliceComplete
+        : failed;
 const generatedAt = new Date().toISOString();
 const report = {
-  schema: "aelyris.a6-modularity-inventory/v2",
+  schema: "aelyris.a6-modularity-inventory/v3",
   status: failed ? "failed" : "pass-a6.1-inventory-frozen",
   sliceComplete: !failed,
   phaseComplete: false,
@@ -368,6 +605,7 @@ const report = {
   },
   frontendSlice,
   ipcSlice,
+  mcpSlice,
   owners: results,
   ipcClassification,
   slices,
@@ -380,6 +618,8 @@ const report = {
       "src-tauri/src/lib.rs",
       "src-tauri/src/ipc/event_commands.rs",
       "src-tauri/src/ipc/ime_commands.rs",
+      mcpCatalogOwnerPath,
+      mcpDispatcherOwnerPath,
       ...rustRuntimeSources.map(([path]) => path),
       "src/shared/lib/ipc.ts",
       ...owners.map((owner) => owner.path),

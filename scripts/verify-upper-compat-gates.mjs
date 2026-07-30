@@ -44,12 +44,14 @@ function gateComplete(proof, name) {
 }
 
 const apiSource = read("src-tauri/src/api/mod.rs");
-// The MCP tool surface (tool names + Rust-backed handlers) was extracted from the
-// api/mod.rs god-file into a dedicated api/mcp.rs module by refactor 6919221. The
-// router that mounts /mcp/* still lives in mod.rs, but the tool-name strings moved
-// here. Assert routes against mod.rs and tool names against mcp.rs — both are real
-// and wired (mod.rs routes /mcp/tools/call -> mcp::tools_call).
-const mcpSource = read("src-tauri/src/api/mcp.rs");
+// The MCP transport, catalog/schema, and authorized dispatcher are separate
+// owners under api/mcp. Assert the composed runtime face without collapsing
+// those responsibilities back into the transport module.
+const mcpSource = [
+  read("src-tauri/src/api/mcp.rs"),
+  read("src-tauri/src/api/mcp/catalog.rs"),
+  read("src-tauri/src/api/mcp/dispatch.rs"),
+].join("\n");
 const dbSource = read("src-tauri/src/db/queries.rs");
 const migrationSource = read("src-tauri/src/db/migrations.rs");
 const nativeSource = read("src-tauri/src/bin/aelyris_native.rs");

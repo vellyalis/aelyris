@@ -13,6 +13,8 @@ const paths = {
   runner: "src-tauri/src/proofbook/runner.rs",
   ipc: "src-tauri/src/ipc/proofbook_commands.rs",
   apiMcp: "src-tauri/src/api/mcp.rs",
+  apiMcpCatalog: "src-tauri/src/api/mcp/catalog.rs",
+  apiMcpDispatch: "src-tauri/src/api/mcp/dispatch.rs",
   verifier: "scripts/verify-proofbook-agent-session.mjs",
 };
 
@@ -20,6 +22,7 @@ const full = (path) => join(ROOT, path);
 const read = (path) => (existsSync(full(path)) ? readFileSync(full(path), "utf8") : "");
 const mtime = (path) => (existsSync(full(path)) ? statSync(full(path)).mtimeMs : null);
 const files = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, read(path)]));
+files.apiMcp = [files.apiMcp, files.apiMcpCatalog, files.apiMcpDispatch].join("\n");
 const normalizedSpec = files.spec.replace(/\s+/g, " ");
 const normalizedIndex = files.index.replace(/\s+/g, " ");
 

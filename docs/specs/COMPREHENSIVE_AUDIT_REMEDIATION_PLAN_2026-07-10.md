@@ -47,7 +47,7 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6.2-A6.3 are complete; A6 resumes at A6.4 and is accepted by ownership,
+3. A6.2-A6.4 are complete; A6 resumes at A6.5 and is accepted by ownership,
    dependency direction, behavior, and concurrency evidence. Line counts are
    non-growth diagnostics, not universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
@@ -1550,7 +1550,7 @@ Completion evidence:
 - the global inventory remains failed for A6.4 `mcp.rs` (`6578 > 5943`) and A6.5
   `queries.rs` (`3334 > 3330`), so `phaseComplete=false` remains truthful.
 
-#### **A6.4 Active - MCP Catalog, Governance, And Domain Dispatch**
+#### **A6.4 Complete - MCP Catalog, Governance, And Domain Dispatch**
 
 Start with an explicit inventory of the current tool catalog, JSON schemas,
 governance-before-effect checks, and domain dispatch paths in
@@ -1566,6 +1566,46 @@ First acceptance boundary:
 - exact verb/schema drift and focused domain behavior remain executable;
 - the frozen `mcp.rs` ceiling is lowered from the current `6578 > 5943` failure;
 - A6 `phaseComplete=false` remains truthful.
+
+Closeout evidence:
+
+- `mcp.rs` retains transport/composition and the sole ordered
+  governance -> schema -> authorized-dispatch pipeline;
+- `mcp/catalog.rs` owns the runtime catalog, schema index, and schema validation,
+  while contract tool names are derived from that catalog;
+- `mcp/dispatch.rs` owns one marked 83-arm authorized dispatcher and delegates
+  to existing PTY, mux, Proofbook, task, event, merge, ownership, context,
+  intent, and knowledge owners without new state, service, storage, or router;
+- the focused A6.4 verifier reports frozen/catalog/schema/dispatch
+  `83/83/83/83`, exact set parity, no duplicates, missing, or extras, negative
+  missing/extra/duplicate rejection, governance-before-schema,
+  schema-before-dispatch, and guarded Proofbook re-entry;
+- the canonical ordered `(name,inputSchema)` digest matches the frozen contract,
+  an in-memory schema mutation is rejected, and a denied malformed nested
+  Proofbook call is audited before schema validation;
+- `mcp.rs` is `2539 <= 5943`, focused MCP tests pass 42/42, Rust library tests
+  pass 1307/1307, and `cargo check` passes;
+- the global inventory remains failed only at A6.5 `queries.rs`
+  (`3334 > 3330`), so `phaseComplete=false` remains truthful.
+
+#### **A6.5 Active - SQLite Domain Repositories**
+
+Start with an explicit inventory of the query domains, transaction boundaries,
+connection acquisition, and migration dependencies in
+`src-tauri/src/db/queries.rs`. Preserve the existing Database as the single
+connection and migration owner before extracting any domain repository.
+
+First acceptance boundary:
+
+- query-domain modules depend toward the existing Database owner and do not open
+  an independent connection or create a second migration/schema owner;
+- transaction boundaries, row mapping, error behavior, and concurrency-sensitive
+  behavior remain executable against the existing database test surface;
+- callsites continue through the same Database contract rather than acquiring
+  split repository state;
+- the frozen `queries.rs` ceiling is lowered from the current `3334 > 3330`
+  failure without rebaselining;
+- A6.6-A6.8 remain queued and A6 `phaseComplete=false` remains truthful.
 
 ## A7 - Evidence-Backed Core Mission Loop
 

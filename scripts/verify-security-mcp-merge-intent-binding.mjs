@@ -14,7 +14,7 @@ const qualityDir = path.join(root, ".codex-auto", "quality");
 fs.mkdirSync(qualityDir, { recursive: true });
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 
-const mcp = read("src-tauri/src/api/mcp.rs");
+const mcp = [read("src-tauri/src/api/mcp/catalog.rs"), read("src-tauri/src/api/mcp/dispatch.rs")].join("\n");
 const repo = read("src-tauri/src/persistence/merge_repo.rs");
 const migrations = read("src-tauri/src/db/migrations.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");

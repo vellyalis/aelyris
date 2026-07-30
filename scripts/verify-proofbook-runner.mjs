@@ -19,6 +19,8 @@ const paths = {
   manualGate: "src-tauri/src/proofbook/step_manual_gate.rs",
   ipc: "src-tauri/src/ipc/proofbook_commands.rs",
   apiMcp: "src-tauri/src/api/mcp.rs",
+  apiMcpCatalog: "src-tauri/src/api/mcp/catalog.rs",
+  apiMcpDispatch: "src-tauri/src/api/mcp/dispatch.rs",
   apiMod: "src-tauri/src/api/mod.rs",
   lib: "src-tauri/src/lib.rs",
   verifier: "scripts/verify-proofbook-runner.mjs",
@@ -27,6 +29,7 @@ const paths = {
 const files = Object.fromEntries(
   Object.entries(paths).map(([key, path]) => [key, existsSync(join(ROOT, path)) ? read(path) : ""]),
 );
+files.apiMcp = [files.apiMcp, files.apiMcpCatalog, files.apiMcpDispatch].join("\n");
 const normalizedSpec = files.spec.replace(/\s+/g, " ");
 const normalizedIndex = files.index.replace(/\s+/g, " ");
 
