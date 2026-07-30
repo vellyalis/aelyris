@@ -41,6 +41,10 @@ function getProductModeRailSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/ProductModeRail.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getWorkspaceSidebarSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/sidebar/WorkspaceSidebar.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getRightRailReviewModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailReviewMode.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -2186,9 +2190,11 @@ describe("App right rail composition", () => {
     const zenShells = src.match(/data-zen-mode=\{zenMode \? "true" : "false"\}/g) ?? [];
     expect(zenShells).toHaveLength(2);
     expect(src).toContain("{!zenMode && (");
-    expect(src).toMatch(
-      /className=\{`left-panel\$\{sidebarCollapsed \|\| zenMode \? " left-panel-collapsed" : ""\}`\}/,
-    );
+    expect(src).toContain('import { WorkspaceSidebar } from "./features/sidebar/WorkspaceSidebar"');
+    expect(src).toContain("viewModel={{ hidden: sidebarCollapsed || zenMode, width: sidebarWidth }}");
+    const workspaceSidebarSrc = getWorkspaceSidebarSource();
+    expect(workspaceSidebarSrc).toContain('className={`left-panel${hidden ? " left-panel-collapsed" : ""}`}');
+    expect(workspaceSidebarSrc).toContain('data-workspace-region="sidebar"');
     expect(src).toContain("const scopedOperationalAuditEvents = useMemo(");
     expect(src).toContain("setWorkspaceThreadRunState(projectPath, activeTabId");
     const decisionInboxHookSrc = getDecisionInboxHookSource();

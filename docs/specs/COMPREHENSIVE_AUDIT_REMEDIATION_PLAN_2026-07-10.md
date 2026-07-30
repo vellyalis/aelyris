@@ -1210,6 +1210,27 @@ Product mode-rail checkpoint complete:
   inline left-sidebar composition; wrapper-only extraction of those existing
   owners is not progress. Dialog/overlay ownership remains later in A6.2f.
 
+Workspace sidebar checkpoint complete:
+
+- `WorkspaceSidebar` now owns the project-sidebar shell, Files/Tasks/Source
+  Control section hierarchy, optional Search placement, and resize gesture
+  lifecycle. Its two-field projection carries the pre-existing collapsed/Zen
+  visibility decision and width; its one action carries width-change intent
+  back to App.
+- Four named content slots preserve the existing FileTree, Kanban, SCM, Search,
+  project, tab, and navigation runtime owners. Executed tests prove
+  section/content projection, collapsed/Zen visibility, keyboard resizing,
+  pointer resizing, and drag cleanup.
+- Diagnostic ceilings are 3788 lines for App, 95 for the component, and 9 for
+  its pure contract. No dependency, store, service, queue, scheduler, or
+  duplicate runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v8`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is the inline dialog/overlay
+  host after its visibility and intent contracts are inventoried; completed
+  owners may not be reopened without a fresh regression.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

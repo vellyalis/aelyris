@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx src/__tests__/RightRailCommandMode.test.tsx src/__tests__/RightRailObserveMode.test.tsx src/__tests__/WorkspaceEditorArea.test.tsx src/__tests__/ProductModeRail.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx src/__tests__/RightRailCommandMode.test.tsx src/__tests__/RightRailObserveMode.test.tsx src/__tests__/WorkspaceEditorArea.test.tsx src/__tests__/ProductModeRail.test.tsx src/__tests__/WorkspaceSidebar.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -48,6 +48,7 @@ try {
           "src/__tests__/RightRailObserveMode.test.tsx",
           "src/__tests__/WorkspaceEditorArea.test.tsx",
           "src/__tests__/ProductModeRail.test.tsx",
+          "src/__tests__/WorkspaceSidebar.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -192,6 +193,15 @@ try {
         "ProductModeRail keeps Alt shortcut routing active while the visual rail is hidden",
       ],
     },
+    {
+      id: "workspace-sidebar-composition-behavior",
+      tests: [
+        "WorkspaceSidebar projects shell geometry, sections, and named content from one typed view model",
+        "WorkspaceSidebar projects the existing collapsed or zen visibility decision without rederiving it",
+        "WorkspaceSidebar routes keyboard resize intents through the width action without owning duplicate width state",
+        "WorkspaceSidebar routes pointer resize intents and releases its drag owner",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -224,6 +234,7 @@ try {
     { id: "right-rail-observe-mode-composition-behavior", status: "fail", error: detail },
     { id: "workspace-editor-area-composition-behavior", status: "fail", error: detail },
     { id: "product-mode-rail-composition-behavior", status: "fail", error: detail },
+    { id: "workspace-sidebar-composition-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -253,6 +264,9 @@ const paths = {
   productModeRail: "src/features/app/ProductModeRail.tsx",
   productModeRailContract: "src/features/app/productModeRailContract.ts",
   productModeRailTest: "src/__tests__/ProductModeRail.test.tsx",
+  workspaceSidebar: "src/features/sidebar/WorkspaceSidebar.tsx",
+  workspaceSidebarContract: "src/features/sidebar/workspaceSidebarContract.ts",
+  workspaceSidebarTest: "src/__tests__/WorkspaceSidebar.test.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
   widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx",
@@ -324,6 +338,8 @@ for (const [id, ceiling] of Object.entries({
   workspaceEditorAreaStyles: 97,
   productModeRail: 66,
   productModeRailContract: 11,
+  workspaceSidebar: 95,
+  workspaceSidebarContract: 9,
 })) {
   const lines = source[id].split(/\r?\n/).length;
   const ok = lines <= ceiling;
@@ -359,7 +375,7 @@ const genericOwnersImportingRightRailModel = [
   "orchestraDispatch",
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
-  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 3848, { lines: source.app.split(/\r?\n/).length, ceiling: 3848 }],
+  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 3788, { lines: source.app.split(/\r?\n/).length, ceiling: 3788 }],
   [
     "app-shell-store-subscription-narrow",
     source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
@@ -540,6 +556,23 @@ for (const [id, ok, evidence] of [
       source.productModeRailTest.includes("through the action contract"),
     {},
   ],
+  [
+    "workspace-sidebar-contract-owned",
+    source.app.includes('import { WorkspaceSidebar } from "./features/sidebar/WorkspaceSidebar"') &&
+      source.app.includes("<WorkspaceSidebar") &&
+      source.app.includes("viewModel={{ hidden: sidebarCollapsed || zenMode, width: sidebarWidth }}") &&
+      source.app.includes("actions={{ onWidthChange: setSidebarWidth }}") &&
+      source.workspaceSidebarContract.includes("export interface WorkspaceSidebarViewModel") &&
+      source.workspaceSidebarContract.includes("export interface WorkspaceSidebarActions") &&
+      source.workspaceSidebar.includes("export interface WorkspaceSidebarContent") &&
+      source.workspaceSidebar.includes('<CollapsibleSection storageKey="files"') &&
+      source.workspaceSidebar.includes('<CollapsibleSection storageKey="tasks"') &&
+      source.workspaceSidebar.includes('<CollapsibleSection storageKey="source-control"') &&
+      source.workspaceSidebar.includes("actions.onWidthChange") &&
+      source.workspaceSidebarTest.includes("from one typed view model") &&
+      source.workspaceSidebarTest.includes("without owning duplicate width state"),
+    {},
+  ],
   ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
@@ -609,11 +642,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v7",
-  status: failed ? "failed" : "pass-a6.2f-product-mode-rail-contract",
+  contractVersion: "a6.2f-component-command-composition/v8",
+  status: failed ? "failed" : "pass-a6.2f-workspace-sidebar-contract",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "product-mode-rail-contract",
+  checkpoint: failed ? null : "workspace-sidebar-contract",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

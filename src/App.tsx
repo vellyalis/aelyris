@@ -47,6 +47,7 @@ import { WorkspaceEditorArea } from "./features/editor/WorkspaceEditorArea";
 import { FileTree } from "./features/file-tree/FileTree";
 import { ProjectHeaderBar } from "./features/header/ProjectHeaderBar";
 import { useOrchestraDispatch } from "./features/orchestrator/useOrchestraDispatch";
+import { WorkspaceSidebar } from "./features/sidebar/WorkspaceSidebar";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { TERMINAL_PREFIX_COMMAND_EVENT } from "./features/terminal/hooks/useCanvasIME";
 import { PaneTreeContainer, paneTreeStorageKey } from "./features/terminal/pane-tree";
@@ -184,7 +185,6 @@ import { DEFAULT_RIGHT_PANEL_WIDTH, useAppStore } from "./shared/store/appStore"
 import { toast } from "./shared/store/toastStore";
 import type { SearchHit } from "./shared/types/history";
 import type { ShellType, TerminalPaneTarget } from "./shared/types/terminalPane";
-import { CollapsibleSection } from "./shared/ui/CollapsibleSection";
 import { ConfirmDialog, showConfirm } from "./shared/ui/ConfirmDialog";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { HandoffDialog } from "./shared/ui/HandoffDialog";
@@ -2241,17 +2241,11 @@ export function App() {
               viewModel={{ activeMode: productMode, hidden: zenMode }}
               actions={{ onSelectMode: handleProductModeSelect }}
             />
-            <nav
-              className={`left-panel${sidebarCollapsed || zenMode ? " left-panel-collapsed" : ""}`}
-              aria-label="Project sidebar"
-              aria-hidden={sidebarCollapsed || zenMode ? "true" : undefined}
-              data-workspace-region="sidebar"
-              tabIndex={-1}
-              data-collapsed={sidebarCollapsed || zenMode}
-              style={sidebarCollapsed || zenMode ? undefined : { width: `${sidebarWidth}px` }}
-            >
-              <CollapsibleSection storageKey="files" title="Files" defaultOpen>
-                <ErrorBoundary>
+            <WorkspaceSidebar
+              viewModel={{ hidden: sidebarCollapsed || zenMode, width: sidebarWidth }}
+              actions={{ onWidthChange: setSidebarWidth }}
+              content={{
+                files: (
                   <FileTree
                     key={fileTreeKey}
                     rootPath={projectPath}
@@ -2259,100 +2253,46 @@ export function App() {
                     onOpenDiff={handleOpenDiff}
                     changedFiles={changedFiles}
                   />
-                </ErrorBoundary>
-              </CollapsibleSection>
-              <CollapsibleSection storageKey="tasks" title="Tasks" defaultOpen={false}>
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <KanbanBoard
-                      onStartAgent={handleStartAgent}
-                      projectPath={projectPath}
-                      agentStatuses={agentStatuses}
-                      sessions={sessions}
-                      onActivateTask={(taskId) => {
-                        // Jump from a task card to its linked agent: headless
-                        // agents launched here are inspector session cards (not
-                        // PTY panes), so reveal the sessions inspector and select
-                        // the run by its `assignedAgentId` (the session id).
-                        const task = kanbanTasks.find((t) => t.id === taskId);
-                        if (!task?.assignedAgentId) return;
-                        // Don't switch the inspector mode for a session that
-                        // has already been pruned — that reads as a dead click.
-                        if (!sessions.some((s) => s.id === task.assignedAgentId)) {
-                          toast.info("Agent session has ended", "This task's agent run is no longer active.");
-                          return;
-                        }
-                        setRightRailMode("command");
-                        handleSelectRightRailSession(task.assignedAgentId);
-                      }}
-                    />
-                  </Suspense>
-                </ErrorBoundary>
-              </CollapsibleSection>
-              <CollapsibleSection storageKey="source-control" title="Source Control" defaultOpen={false}>
-                <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
-                  </Suspense>
-                </ErrorBoundary>
-              </CollapsibleSection>
-              {searchVisible && (
-                <Suspense fallback={null}>
-                  <ErrorBoundary>
-                    <SearchPanel
-                      visible
-                      rootPath={projectPath}
-                      onClose={() => setSearchVisible(false)}
-                      onResultClick={(file, line) => {
-                        handleFileSelect(file, { line });
-                      }}
-                    />
-                  </ErrorBoundary>
-                </Suspense>
-              )}
-              <hr
-                className="left-panel-resize-handle"
-                aria-orientation="vertical"
-                aria-label="Resize sidebar"
-                aria-valuemin={200}
-                aria-valuemax={480}
-                aria-valuenow={sidebarWidth}
-                tabIndex={0}
-                onPointerDown={(e) => {
-                  // Drag-to-resize. We capture the pointer on the handle so
-                  // the move events keep coming even if the cursor leaves
-                  // the handle's bounds (large drags).
-                  const startX = e.clientX;
-                  const startWidth = sidebarWidth;
-                  const handleEl = e.currentTarget;
-                  handleEl.setPointerCapture(e.pointerId);
-                  document.body.style.cursor = "col-resize";
-                  const onMove = (ev: PointerEvent) => {
-                    setSidebarWidth(startWidth + (ev.clientX - startX));
-                  };
-                  const onUp = () => {
-                    document.body.style.cursor = "";
-                    handleEl.releasePointerCapture(e.pointerId);
-                    handleEl.removeEventListener("pointermove", onMove);
-                    handleEl.removeEventListener("pointerup", onUp);
-                  };
-                  handleEl.addEventListener("pointermove", onMove);
-                  handleEl.addEventListener("pointerup", onUp);
-                }}
-                onKeyDown={(e) => {
-                  // Keyboard accessibility — Arrow keys nudge the
-                  // sidebar by 16 px, Shift+Arrow by 64 px.
-                  const step = e.shiftKey ? 64 : 16;
-                  if (e.key === "ArrowLeft") {
-                    e.preventDefault();
-                    setSidebarWidth(sidebarWidth - step);
-                  } else if (e.key === "ArrowRight") {
-                    e.preventDefault();
-                    setSidebarWidth(sidebarWidth + step);
-                  }
-                }}
-              />
-            </nav>
+                ),
+                tasks: (
+                  <KanbanBoard
+                    onStartAgent={handleStartAgent}
+                    projectPath={projectPath}
+                    agentStatuses={agentStatuses}
+                    sessions={sessions}
+                    onActivateTask={(taskId) => {
+                      // Jump from a task card to its linked agent: headless
+                      // agents launched here are inspector session cards (not
+                      // PTY panes), so reveal the sessions inspector and select
+                      // the run by its `assignedAgentId` (the session id).
+                      const task = kanbanTasks.find((t) => t.id === taskId);
+                      if (!task?.assignedAgentId) return;
+                      // Don't switch the inspector mode for a session that
+                      // has already been pruned — that reads as a dead click.
+                      if (!sessions.some((s) => s.id === task.assignedAgentId)) {
+                        toast.info("Agent session has ended", "This task's agent run is no longer active.");
+                        return;
+                      }
+                      setRightRailMode("command");
+                      handleSelectRightRailSession(task.assignedAgentId);
+                    }}
+                  />
+                ),
+                sourceControl: (
+                  <SCMPanel projectPath={projectPath} onOpenFile={handleFileSelect} onOpenDiff={handleOpenDiff} />
+                ),
+                search: searchVisible ? (
+                  <SearchPanel
+                    visible
+                    rootPath={projectPath}
+                    onClose={() => setSearchVisible(false)}
+                    onResultClick={(file, line) => {
+                      handleFileSelect(file, { line });
+                    }}
+                  />
+                ) : null,
+              }}
+            />
 
             <section
               className="center-panel"

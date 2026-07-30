@@ -472,10 +472,21 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   frontend ratchet contract is v7, and the artifact still truthfully retains
   `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
   `phaseComplete=false`.
-- Continue A6.2f at the inline left-sidebar composition boundary. `ProjectHeaderBar`,
-  `WorkspaceTabs`, and `StatusBar` already own their render surfaces; do not add
-  wrapper-only owners around their existing typed props. Do not
-  reopen completed right-rail owners or recreate their runtime owners. The
+- A6.2f workspace-sidebar checkpoint is complete: `WorkspaceSidebar.tsx` is 95
+  lines and its pure contract is 9 lines. Hidden state and width project through
+  one typed boundary; pointer and keyboard resize intents return through one
+  action. Named Files, Tasks, Source Control, and Search slots preserve the
+  existing FileTree, Kanban, SCM, Search, project, tab, and navigation runtime
+  owners. Executed tests prove section/content projection, collapsed/Zen
+  visibility, keyboard resizing, pointer resizing, and drag cleanup. App is 3788
+  lines, the frontend ratchet contract is v8, and the artifact still truthfully
+  retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
+  `sliceComplete=false`, and `phaseComplete=false`.
+- Continue A6.2f at the inline dialog/overlay host boundary after inventorying
+  its visibility and intent contracts. `ProjectHeaderBar`, `WorkspaceTabs`, and
+  `StatusBar` already own their render surfaces; do not add wrapper-only owners
+  around their existing typed props. Do not reopen completed right-rail,
+  editor, mode-rail, or sidebar owners or recreate their runtime owners. The
   queued NUI proposal does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
