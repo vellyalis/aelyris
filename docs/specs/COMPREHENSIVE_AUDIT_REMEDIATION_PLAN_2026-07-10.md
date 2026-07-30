@@ -1125,6 +1125,27 @@ Review-mode body checkpoint complete:
   `phaseComplete=false`. The next exact boundary is the inline command-mode body;
   command and observe may not be hidden behind one undifferentiated contract.
 
+Command-mode body checkpoint complete:
+
+- `RightRailCommandMode` owns toolkit, Decision Inbox, agents, orchestrator,
+  workflow, and command-context composition. Its grouped projection separates
+  project, context, toolkit, decision, agent, and focus state; seven actions carry
+  existing terminal, decision, session, workflow, agent-start, and outcome
+  intents. Three render slots preserve AgentInspector and destination-prompt
+  runtime ownership.
+- The component remains lazy through the existing `lazyPanels` registry. Obsolete
+  direct command-panel registry entries were removed. Executed tests prove view
+  projection plus toolkit command, decision select/open/resolve, workflow agent
+  start, and workflow outcome routing.
+- Diagnostic ceilings are 4048 lines for App, 159 for the command-mode component,
+  and 48 for its pure contract. No dependency, store, service, queue, scheduler,
+  or duplicate runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v4`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is the inline observe-mode body;
+  it may not be combined with the completed command or review owners.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

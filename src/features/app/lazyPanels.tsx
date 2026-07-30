@@ -2,11 +2,7 @@ import { lazy } from "react";
 
 export const KanbanBoard = lazy(() => import("../kanban/KanbanBoard").then((module) => ({ default: module.KanbanBoard })));
 export const AgentInspector = lazy(() => import("../agent-inspector/AgentInspector").then((module) => ({ default: module.AgentInspector })));
-export const OrchestratorPanel = lazy(() => import("../orchestrator/OrchestratorPanel").then((module) => ({ default: module.OrchestratorPanel })));
-export const ToolkitPanel = lazy(() => import("../toolkit/ToolkitPanel").then((module) => ({ default: module.ToolkitPanel })));
-export const WorkflowPanel = lazy(() => import("../workflow/WorkflowPanel").then((module) => ({ default: module.WorkflowPanel })));
 export const ContextPanel = lazy(() => import("../context/ContextPanel").then((module) => ({ default: module.ContextPanel })));
-export const DecisionInboxPanel = lazy(() => import("../decision-inbox").then((module) => ({ default: module.DecisionInboxPanel })));
 export const WorkstationPulse = lazy(() => import("../context/WorkstationPulse").then((module) => ({ default: module.WorkstationPulse })));
 export const RunGraphPanel = lazy(() => import("../context/RunGraphPanel").then((module) => ({ default: module.RunGraphPanel })));
 export const ToolLedgerPanel = lazy(() => import("../context/ToolLedgerPanel").then((module) => ({ default: module.ToolLedgerPanel })));
@@ -16,6 +12,7 @@ export const ReliabilityPanel = lazy(() => import("../context/ReliabilityPanel")
 export const LogsPanel = lazy(() => import("../logs/LogsPanel").then((module) => ({ default: module.LogsPanel })));
 export const ProcessManagerPanel = lazy(() => import("../process-manager").then((module) => ({ default: module.ProcessManagerPanel })));
 export const SCMPanel = lazy(() => import("../scm/SCMPanel").then((module) => ({ default: module.SCMPanel })));
+export const RightRailCommandMode = lazy(() => import("../right-rail/RightRailCommandMode").then((module) => ({ default: module.RightRailCommandMode })));
 export const RightRailReviewMode = lazy(() => import("../right-rail/RightRailReviewMode").then((module) => ({ default: module.RightRailReviewMode })));
 export const QuickOpen = lazy(() => import("../quick-open/QuickOpen").then((module) => ({ default: module.QuickOpen })));
 export const EditorPanel = lazy(() => import("../editor/EditorPanel").then((module) => ({ default: module.EditorPanel })));

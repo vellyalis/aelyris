@@ -41,6 +41,10 @@ function getRightRailReviewModeSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailReviewMode.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getRightRailCommandModeSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailCommandMode.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getLazyPanelsSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/lazyPanels.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -2116,6 +2120,7 @@ describe("App right rail composition", () => {
   it("keeps debug logs out of the default workstation rail", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const rightRailCommandModeSrc = getRightRailCommandModeSource();
     const rightRailReviewModeSrc = getRightRailReviewModeSource();
     const lazyPanelsSrc = getLazyPanelsSource();
     const appStoreSrc = getAppStoreSource();
@@ -2157,8 +2162,9 @@ describe("App right rail composition", () => {
     expect(lazyPanelsSrc).toContain('import("../context/RunGraphPanel")');
     expect(lazyPanelsSrc).toContain('import("../context/ToolLedgerPanel")');
     expect(lazyPanelsSrc).toContain('import("../context/ReliabilityPanel")');
-    expect(lazyPanelsSrc).toContain('import("../decision-inbox")');
+    expect(lazyPanelsSrc).toContain('import("../right-rail/RightRailCommandMode")');
     expect(lazyPanelsSrc).toContain('import("../right-rail/RightRailReviewMode")');
+    expect(rightRailCommandModeSrc).toContain('from "../decision-inbox"');
     expect(rightRailReviewModeSrc).toContain('from "../review/ReviewQueuePanel"');
     expect(src).toContain("filterWorkspaceScopedEvents");
     expect(src).toContain("const workspaceProfile = useMemo(");
@@ -2186,7 +2192,8 @@ describe("App right rail composition", () => {
     expect(decisionInboxHookSrc).toContain("expectedPromptKey: item.approvalPromptKey");
     expect(decisionInboxHookSrc).toContain('message.includes("stale_approval")');
     expect(decisionInboxHookSrc).toContain("await refreshAgentFleet()");
-    expect(src).toContain("onDecide={handleDecideDecision}");
+    expect(src).toContain("onDecide: handleDecideDecision");
+    expect(rightRailCommandModeSrc).toContain("onDecide={actions.onDecide}");
     expect(src).toContain("deriveRightRailEdgeScore");
     expect(src).toContain("const rightRailEdgeScore = deriveRightRailEdgeScore({");
     expect(src).toContain('className="right-panel-edge-score"');
@@ -2402,7 +2409,7 @@ describe("App right rail composition", () => {
     expect(rightRailModelSrc).toContain(
       `aria-label={\`${templatePlaceholder("prompt.axisLabel")} remediation prompt\`}`,
     );
-    expect(src).toContain('{renderRightRailDestinationPrompt("decision-inbox")}');
+    expect(src).toContain('decisionInboxDestination={renderRightRailDestinationPrompt("decision-inbox")}');
     expect(src).toContain('reviewQueueDestination={renderRightRailDestinationPrompt("review-queue")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("audit-timeline")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("reliability")}');
@@ -2413,21 +2420,23 @@ describe("App right rail composition", () => {
       'blockedReason: "Destructive file-system write requires explicit approval before deleting generated output."',
     );
     expect(getRightRailVisualQaSource()).toContain('nextActor: "human"');
-    expect(src).toContain('widget="decision-inbox"');
-    expect(src).toContain("<DecisionInboxPanel");
-    expect(src).toContain("onOpenWorkflow={handleOpenDecisionWorkflow}");
-    expect(src).toContain("onOpenAudit={handleOpenDecisionAudit}");
+    expect(rightRailCommandModeSrc).toContain('widget="decision-inbox"');
+    expect(rightRailCommandModeSrc).toContain("<DecisionInboxPanel");
+    expect(src).toContain("onOpenWorkflow: handleOpenDecisionWorkflow");
+    expect(src).toContain("onOpenAudit: handleOpenDecisionAudit");
+    expect(rightRailCommandModeSrc).toContain("onOpenWorkflow={actions.onOpenWorkflow}");
+    expect(rightRailCommandModeSrc).toContain("onOpenAudit={actions.onOpenAudit}");
     expect(src).toContain('setRightRailFocusWidget("workflow")');
     expect(getRightRailActionFeedbackSource()).toContain("const [rightRailRouteConfirmation, setRightRailRouteConfirmation]");
     expect(src).toContain("showRightRailRouteConfirmation");
-    expect(src).toContain("focusConfirmation={");
+    expect(rightRailCommandModeSrc).toContain("focusConfirmation={workflowConfirmation}");
     expect(getRightRailWidgetFrameSource()).toContain("right-panel-widget-focus-confirmation");
     expect(src).toContain("setSelectedAuditTraceFilter(traceId)");
     expect(src).toContain("const rightRailGraph = useMemo(");
     expect(src).toContain("buildWorkstationGraph({");
     expect(src).toContain("const focusedRightRailGraph = useMemo(");
     expect(src).toContain("filterWorkstationGraph(rightRailGraph");
-    expect(src).toContain("workstationGraph={focusedRightRailGraph}");
+    expect(src).toContain("workstationGraph: focusedRightRailGraph");
     expect(rightRailReviewModeSrc).toContain('data-widget="review-queue"');
     expect(src).toContain('widget="context"');
     expect(src).toContain('widget="run-graph"');
@@ -2438,11 +2447,16 @@ describe("App right rail composition", () => {
     expect(src).toContain("<ReliabilityPanel");
     expect(src).toContain("const rightRailChangedFiles = useMemo(");
     expect(src).toContain("const rightRailAllChangedFiles = useMemo(");
-    expect(src).toContain("changedFilesCount={rightRailAllChangedFiles.length}");
-    expect(src).toContain("changedFiles={rightRailAllChangedFiles}");
+    expect(src).toContain("changedFiles: rightRailAllChangedFiles");
+    expect(rightRailCommandModeSrc).toContain("changedFilesCount={context.changedFiles.length}");
+    expect(rightRailCommandModeSrc).toContain("changedFiles={context.changedFiles}");
     expect(commandRail).not.toContain('data-widget="logs"');
     expect(commandRail).not.toContain("LogsPanel");
     expect(commandRail).not.toContain('density="compact"');
+    expect(commandRail).toContain("<RightRailCommandMode");
+    expect(rightRailCommandModeSrc).not.toContain('data-widget="logs"');
+    expect(rightRailCommandModeSrc).not.toContain("LogsPanel");
+    expect(rightRailCommandModeSrc).not.toContain('density="compact"');
     expect(reviewRail).toContain("<RightRailReviewMode");
     expect(rightRailReviewModeSrc).toContain('density="compact"');
     expect(observeRail).toContain('density="compact"');
@@ -2564,6 +2578,7 @@ describe("App right rail composition", () => {
 
   it("persists secondary right rail widget collapse preferences without hiding core flows", () => {
     const src = getSrc();
+    const rightRailCommandModeSrc = getRightRailCommandModeSource();
     const commandStart = src.indexOf('{rightRailMode === "command"');
     const reviewStart = src.indexOf('{rightRailMode === "review"', commandStart);
     const observeStart = src.indexOf('{rightRailMode === "observe"', reviewStart);
@@ -2581,24 +2596,25 @@ describe("App right rail composition", () => {
     expect(getRightRailWidgetFrameSource()).toContain("if (!forceOpen) return");
     expect(getRightRailWidgetFrameSource()).toContain("saveRightRailWidgetOpen(widget, true)");
     expect(getRightRailWidgetFrameSource()).toContain("right-panel-widget-frame-header");
-    expect(src).toContain('widget="workflow"');
-    expect(src).toContain('widget="toolkit"');
-    expect(src).toContain('widget="context"');
+    expect(rightRailCommandModeSrc).toContain('widget="workflow"');
+    expect(rightRailCommandModeSrc).toContain('data-widget="toolkit"');
+    expect(rightRailCommandModeSrc).toContain('widget="context"');
     expect(src).toContain('widget="audit-timeline"');
     expect(src).toContain('widget="run-graph"');
     expect(src).toContain('widget="tool-ledger"');
     expect(src).toContain('widget="logs"');
-    expect(src).toContain('data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}');
-    expect(src).toContain('forceExpanded={rightRailFocusWidget === "toolkit"}');
-    expect(src).toContain('forceOpen={rightRailFocusWidget === "workflow"}');
-    expect(src).toContain('forceOpen={rightRailFocusWidget === "context"}');
+    expect(rightRailCommandModeSrc).toContain('data-rail-focus={focusedWidget === "toolkit" || undefined}');
+    expect(rightRailCommandModeSrc).toContain('forceExpanded={focusedWidget === "toolkit"}');
+    expect(rightRailCommandModeSrc).toContain('forceOpen={focusedWidget === "workflow"}');
+    expect(rightRailCommandModeSrc).toContain('forceOpen={focusedWidget === "context"}');
     expect(src).toContain('forceOpen={rightRailFocusWidget === "audit-timeline"}');
     expect(src).toContain('forceOpen={rightRailFocusWidget === "run-graph"}');
 
     const commandRail = src.slice(commandStart, reviewStart);
     const observeRail = src.slice(observeStart);
-    expect(commandRail).toContain('widget="decision-inbox"');
-    expect(commandRail).toContain('widget="sessions"');
+    expect(commandRail).toContain("<RightRailCommandMode");
+    expect(rightRailCommandModeSrc).toContain('widget="decision-inbox"');
+    expect(rightRailCommandModeSrc).toContain('widget="sessions"');
     expect(src.indexOf("{rightRailHasBlockingDecision && (")).toBeLessThan(
       src.indexOf('className="right-panel-decision-focus"'),
     );
@@ -2611,10 +2627,14 @@ describe("App right rail composition", () => {
     expect(src.indexOf('className="right-panel-decision-focus"')).toBeLessThan(
       src.indexOf('className="right-panel-action-stack"'),
     );
-    expect(commandRail.indexOf('data-widget="toolkit"')).toBeLessThan(commandRail.indexOf('widget="sessions"'));
-    expect(commandRail.indexOf('widget="sessions"')).toBeLessThan(commandRail.indexOf('widget="workflow"'));
-    expect(commandRail.indexOf('widget="decision-inbox"')).toBeGreaterThan(
-      commandRail.indexOf("rightRailHasBlockingDecision"),
+    expect(rightRailCommandModeSrc.indexOf('data-widget="toolkit"')).toBeLessThan(
+      rightRailCommandModeSrc.indexOf('widget="sessions"'),
+    );
+    expect(rightRailCommandModeSrc.indexOf('widget="sessions"')).toBeLessThan(
+      rightRailCommandModeSrc.indexOf('widget="workflow"'),
+    );
+    expect(rightRailCommandModeSrc.indexOf('widget="decision-inbox"')).toBeGreaterThan(
+      rightRailCommandModeSrc.indexOf("decisionInbox.visible"),
     );
     expect(observeRail.indexOf('data-widget="processes"')).toBeLessThan(observeRail.indexOf('widget="audit-timeline"'));
     expect(observeRail.indexOf('data-widget="live-panes"')).toBeLessThan(observeRail.indexOf('widget="run-graph"'));
@@ -2765,13 +2785,16 @@ describe("App config bootstrap", () => {
 describe("App active terminal routing", () => {
   it("does not send workstation commands to the first backend terminal implicitly", () => {
     const src = getSrc();
+    const rightRailCommandModeSrc = getRightRailCommandModeSource();
     const rightRailModelSrc = getRightRailModelSource();
 
     expect(src).toContain("interface ActiveTerminalTarget");
     expect(src).toContain("const activeTerminalTarget = useMemo<ActiveTerminalTarget>");
     expect(src).toContain("const visualActiveTerminalTargetLabel = formatTerminalTarget");
-    expect(src).toContain("activeTargetLabel={visualActiveTerminalTargetLabel}");
-    expect(src).toContain("activeTargetReady={activeTerminalTarget.ready}");
+    expect(src).toContain("activeTargetLabel: visualActiveTerminalTargetLabel");
+    expect(src).toContain("activeTargetReady: activeTerminalTarget.ready");
+    expect(rightRailCommandModeSrc).toContain("activeTargetLabel={toolkit.activeTargetLabel}");
+    expect(rightRailCommandModeSrc).toContain("activeTargetReady={toolkit.activeTargetReady}");
     expect(src).toContain("const writeToActiveTerminal = useCallback");
     expect(src).toContain("No active terminal");
     expect(src).toContain("activeTerminalTarget.terminalId");

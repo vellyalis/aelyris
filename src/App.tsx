@@ -17,7 +17,6 @@ import {
   AuditTimelinePanel,
   CommandPalette,
   ContextPanel,
-  DecisionInboxPanel,
   EditorPanel,
   FleetHud,
   HelpDialog,
@@ -26,23 +25,21 @@ import {
   LogsPanel,
   MergeQueuePanel,
   OnboardingOverlay,
-  OrchestratorPanel,
   PaneSwitcherDialog,
   PRInspector,
   ProcessManagerPanel,
   QuickOpen,
   ReliabilityPanel,
+  RightRailCommandMode,
   RightRailReviewMode,
   RunGraphPanel,
   SCMPanel,
   SearchPanel,
   Settings,
   ToolLedgerPanel,
-  ToolkitPanel,
   WatchdogDialog,
   WebInspector,
   WelcomeScreen,
-  WorkflowPanel,
   WorkstationPulse,
 } from "./features/app/lazyPanels";
 import { useAppMenus } from "./features/app/useAppMenus";
@@ -3670,123 +3667,56 @@ export function App() {
                   aria-describedby="right-rail-purpose"
                 >
                   {rightRailMode === "command" && (
-                    <>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div
-                            className="bento-widget"
-                            data-widget="toolkit"
-                            data-rail-focus={rightRailFocusWidget === "toolkit" ? "true" : undefined}
-                          >
-                            {renderRightRailDestinationPrompt("toolkit")}
-                            <ToolkitPanel
-                              projectName={projectName}
-                              onRunCommand={handleRunCommand}
-                              activeTargetLabel={visualActiveTerminalTargetLabel}
-                              activeTargetReady={activeTerminalTarget.ready}
-                              forceExpanded={rightRailFocusWidget === "toolkit"}
-                            />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      {(rightRailHasBlockingDecision || rightRailFocusWidget === "decision-inbox") && (
-                        <ErrorBoundary>
-                          <Suspense fallback={null}>
-                            <RightRailWidgetFrame
-                              widget="decision-inbox"
-                              title="Decision Inbox"
-                              subtitle={`${decisionInbox.pendingCount} waiting`}
-                              defaultOpen={rightRailHasBlockingDecision}
-                              forceOpen={rightRailFocusWidget === "decision-inbox"}
-                            >
-                              {renderRightRailDestinationPrompt("decision-inbox")}
-                              <DecisionInboxPanel
-                                sessions={rightRailSessions}
-                                auditEvents={scopedOperationalAuditEvents}
-                                workflows={workflowStatuses}
-                                activeSessionId={rightRailActiveSessionId}
-                                onSelectSession={handleSelectRightRailSession}
-                                onOpenWorkflow={handleOpenDecisionWorkflow}
-                                onOpenAudit={handleOpenDecisionAudit}
-                                onDecide={handleDecideDecision}
-                                focusRequestKey={decisionInboxFocusRequest}
-                              />
-                            </RightRailWidgetFrame>
-                          </Suspense>
-                        </ErrorBoundary>
-                      )}
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="sessions"
-                            title="Agents"
-                            subtitle={`${rightRailAgentsSummary} · ${rightRailAgentsDetail}`}
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "sessions"}
-                          >
-                            <AgentInspector {...agentInspectorProps} />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="orchestrator"
-                            title="Orchestrator"
-                            subtitle="autonomy loop"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "orchestrator"}
-                          >
-                            <OrchestratorPanel />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="workflow"
-                            title="Workflows"
-                            subtitle="multi-step runs"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "workflow"}
-                            focusConfirmation={
-                              rightRailRouteConfirmation?.widget === "workflow" ? rightRailRouteConfirmation : null
-                            }
-                          >
-                            <WorkflowPanel
-                              projectPath={projectPath}
-                              sessions={rightRailSessions}
-                              onStartAgent={handleStartAgent}
-                              onDestinationOutcome={showRightRailDestinationOutcome}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="context"
-                            title="Context"
-                            subtitle="handoff state"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "context"}
-                          >
-                            <ContextPanel
-                              sessions={rightRailSessions}
-                              activeSessionId={rightRailActiveSessionId}
-                              changedFilesCount={rightRailAllChangedFiles.length}
-                              changedFiles={rightRailAllChangedFiles}
-                              panes={visualTerminalPaneTargets}
-                              auditEvents={scopedOperationalAuditEvents}
-                              projectName={projectName}
-                              projectPath={projectPath}
-                              branch={branch}
-                              workstationGraph={focusedRightRailGraph}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                    </>
+                    <ErrorBoundary>
+                      <Suspense fallback={null}>
+                        <RightRailCommandMode
+                          viewModel={{
+                            sessions: rightRailSessions,
+                            activeSessionId: rightRailActiveSessionId,
+                            auditEvents: scopedOperationalAuditEvents,
+                            workflows: workflowStatuses,
+                            project: { name: projectName, path: projectPath, branch },
+                            context: {
+                              changedFiles: rightRailAllChangedFiles,
+                              panes: visualTerminalPaneTargets,
+                              workstationGraph: focusedRightRailGraph,
+                            },
+                            focusedWidget: rightRailFocusWidget,
+                            toolkit: {
+                              activeTargetLabel: visualActiveTerminalTargetLabel,
+                              activeTargetReady: activeTerminalTarget.ready,
+                            },
+                            decisionInbox: {
+                              visible:
+                                rightRailHasBlockingDecision ||
+                                rightRailFocusWidget === "decision-inbox",
+                              pendingCount: decisionInbox.pendingCount,
+                              focusRequestKey: decisionInboxFocusRequest,
+                            },
+                            agents: {
+                              summary: rightRailAgentsSummary,
+                              detail: rightRailAgentsDetail,
+                            },
+                            workflowConfirmation:
+                              rightRailRouteConfirmation?.widget === "workflow"
+                                ? rightRailRouteConfirmation
+                                : null,
+                          }}
+                          actions={{
+                            onRunCommand: handleRunCommand,
+                            onSelectSession: handleSelectRightRailSession,
+                            onOpenWorkflow: handleOpenDecisionWorkflow,
+                            onOpenAudit: handleOpenDecisionAudit,
+                            onDecide: handleDecideDecision,
+                            onStartAgent: handleStartAgent,
+                            onDestinationOutcome: showRightRailDestinationOutcome,
+                          }}
+                          toolkitDestination={renderRightRailDestinationPrompt("toolkit")}
+                          decisionInboxDestination={renderRightRailDestinationPrompt("decision-inbox")}
+                          agentInspector={<AgentInspector {...agentInspectorProps} />}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
                   )}
 
                   {rightRailMode === "review" && (
