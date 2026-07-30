@@ -5,6 +5,12 @@ import { useAuthenticatedPromptEvidence } from "../features/app/useAuthenticated
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
+const ownerSources = import.meta.glob("../features/app/useAuthenticatedPromptEvidence.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 const invokeMock = vi.fn() as unknown as InvokeFn & { mock: ReturnType<typeof vi.fn>["mock"] };
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -49,10 +55,29 @@ async function flushPromises(): Promise<void> {
   });
 }
 
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
+
 describe("useAuthenticatedPromptEvidence", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("owns consent, preflight, and fail-closed polling source contracts", () => {
+    const owner = getOwnerSource();
+
+    expect(owner).toContain("Promise.allSettled");
+    expect(owner).toContain("authenticated-ai-cli-prompt-smoke.json");
+    expect(owner).toContain("authenticated-ai-cli-preflight-matrix.json");
+    expect(owner).toContain("deriveAuthenticatedPromptConsentPacket(null)");
+    expect(owner).toContain("deriveAuthenticatedPromptConsentPacket");
+    expect(owner).toContain("parseAuthenticatedPromptConsentReport");
+    expect(owner).toContain('invoke<string>("read_file", { path: consentPath })');
+    expect(owner).toContain('".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"');
   });
 
   it("suppresses overlap and rejects completion from an old project or unmounted owner", async () => {

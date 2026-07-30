@@ -489,12 +489,13 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   placement owner. History acceptance routes through one typed action while
   individual close, project, pane, agent, and navigation runtime owners remain
   unchanged. Executed tests prove visible-only projection, close/intent
-  preservation, persistent surface placement, and history routing. The first
-  owner-local test split is also complete: all 16 `useReleaseGoalEvidence`
-  source-contract assertions moved from `AppSilentBugs.test.ts` into the existing
-  executed owner suite, while the central test retains only App's
-  effective-project composition wiring. App is 3769 lines, the frontend ratchet
-  contract is v10, and the artifact still truthfully retains
+  preservation, persistent surface placement, and history routing. The first two
+  owner-local test splits are also complete: all 16 `useReleaseGoalEvidence` and
+  all 8 `useAuthenticatedPromptEvidence` source-contract assertions moved from
+  `AppSilentBugs.test.ts` into their existing executed owner suites, while the
+  central test retains only App's effective-project composition wiring for those
+  hooks. App is 3769 lines, the frontend ratchet contract is v11, and the artifact
+  still truthfully retains
   `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
   `phaseComplete=false`.
 - Continue A6.2f by inventorying the remaining owner-local

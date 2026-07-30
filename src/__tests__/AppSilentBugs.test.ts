@@ -129,10 +129,6 @@ function getOperationalPaneSelectionSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/useOperationalPaneSelection.ts"), "utf8");
 }
 
-function getAuthenticatedPromptEvidenceSource(): string {
-  return readFileSync(join(process.cwd(), "src/features/app/useAuthenticatedPromptEvidence.ts"), "utf8");
-}
-
 function getAiCliLaunchEvidenceSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useAiCliLaunchEvidence.ts"), "utf8");
 }
@@ -285,16 +281,11 @@ describe("App release goal evidence wiring", () => {
   });
 });
 
-describe("App authenticated prompt evidence ownership", () => {
-  it("preserves partial consent/preflight evidence and fail-closed defaults in one hook", () => {
+describe("App authenticated prompt evidence wiring", () => {
+  it("composes the authenticated prompt evidence owner with the effective project path", () => {
     const src = getSrc();
-    const owner = getAuthenticatedPromptEvidenceSource();
 
     expect(src).toContain("useAuthenticatedPromptEvidence(projectPath)");
-    expect(owner).toContain("Promise.allSettled");
-    expect(owner).toContain("authenticated-ai-cli-prompt-smoke.json");
-    expect(owner).toContain("authenticated-ai-cli-preflight-matrix.json");
-    expect(owner).toContain("deriveAuthenticatedPromptConsentPacket(null)");
   });
 });
 
@@ -1294,13 +1285,6 @@ describe("Release evidence gates", () => {
     );
 
     expect(src).toContain("deriveRightRailGoalTrack");
-    const authenticatedPromptEvidence = getAuthenticatedPromptEvidenceSource();
-    expect(authenticatedPromptEvidence).toContain("deriveAuthenticatedPromptConsentPacket");
-    expect(authenticatedPromptEvidence).toContain("parseAuthenticatedPromptConsentReport");
-    expect(authenticatedPromptEvidence).toContain('invoke<string>("read_file", { path: consentPath })');
-    expect(authenticatedPromptEvidence).toContain(
-      '".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"',
-    );
     const aiCliLaunchEvidence = getAiCliLaunchEvidenceSource();
     expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
     expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
