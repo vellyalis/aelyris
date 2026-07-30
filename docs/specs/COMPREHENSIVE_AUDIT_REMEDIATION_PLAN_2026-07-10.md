@@ -1754,6 +1754,20 @@ Local implementation checkpoint:
   Independent review found and closed the environment-spoof and mixed-OID
   completion paths in two bounded rework rounds. A6.8 remains active until the
   committed exact-SHA GitHub run is green and external closeout verifies it.
+- Hosted run `30570956763` then found two stale source-contract cases for the
+  A6.7-removed `SessionManager`; removing only that dead glob entry and those
+  two obsolete cases leaves the current guard suite at 9/9 and the full
+  frontend at 2044/2044. Replacement run `30571656787` passed normal frontend,
+  rendered UI, and Rust, then exposed a distinct execution-owner defect:
+  required A6.2 inventory still ran the later A6.5 database, A6.6 native, and
+  A6.7 removal behavior and timed out at 360 seconds on a cold runner. The
+  inventory now executes later behavior only in its matching required slice or
+  default global mode. Skipped slices are explicit `not-run` with carried
+  source contracts, required runs report global truth `not-evaluated`, frontend
+  acceptance requires that exact isolation, and default A6.8 still executes
+  and requires every behavior owner. The local A6.2-A6.7 required-slice matrix,
+  frontend acceptance, and default combined acceptance pass; a new exact-SHA
+  hosted replacement remains required before A6 completion.
 
 ## A7 - Evidence-Backed Core Mission Loop
 

@@ -121,23 +121,30 @@ if (ratchet && inventory && uiTrust) {
     ratchetProvenance.ok;
   const inventoryAccepted =
     inventory.schema === "aelyris.a6-modularity-inventory/v3" &&
+    inventory.status === "pass-a6.1-inventory-frozen" &&
+    inventory.sliceComplete === true &&
     inventory.frontendSlice?.id === "A6.2" &&
     inventory.frontendSlice?.status === "pass" &&
     inventory.frontendSlice?.sliceComplete === true &&
+    inventory.evaluation?.mode === "required-slice" &&
     inventory.evaluation?.requestedSlice === "A6.2" &&
     inventory.evaluation?.commandStatus === "passed" &&
+    inventory.evaluation?.globalStatus === "not-evaluated" &&
+    inventory.evaluation?.behaviorExecution?.database === false &&
+    inventory.evaluation?.behaviorExecution?.native === false &&
+    inventory.evaluation?.behaviorExecution?.deadInfrastructure === false &&
+    inventory.dbSlice?.status === "not-run" &&
+    inventory.dbSlice?.sliceComplete === null &&
+    inventory.nativeSlice?.status === "not-run" &&
+    inventory.nativeSlice?.sliceComplete === null &&
+    inventory.a67Slice?.status === "not-run" &&
+    inventory.a67Slice?.sliceComplete === null &&
     inventory.phaseComplete === false &&
     inventoryProvenance.ok;
   const failedInventoryOwners = inventory.owners?.filter((owner) => owner.status === "fail") ?? [];
-  const globalInventoryTruthPreserved =
+  const requiredSliceIsolationPreserved =
     failedInventoryOwners.every((owner) => owner.nextSlice !== "A6.2") &&
-    (failedInventoryOwners.length > 0
-      ? inventory.status === "failed" &&
-        inventory.sliceComplete === false &&
-        inventory.evaluation?.globalStatus === "failed"
-      : inventory.status === "pass-a6.1-inventory-frozen" &&
-        inventory.sliceComplete === true &&
-        inventory.evaluation?.globalStatus === "passed");
+    inventory.globalAggregation?.status === "not-evaluated";
   const uiTrustAccepted =
     uiTrust.ok === true && uiTrust.status === "passed" && uiTrust.failedChecks?.length === 0 && uiTrustProvenance.ok;
 
@@ -145,10 +152,11 @@ if (ratchet && inventory && uiTrust) {
     ["frontend-ratchet-artifact", ratchetAccepted, { provenanceErrors: ratchetProvenance.errors }],
     ["frontend-inventory-artifact", inventoryAccepted, { provenanceErrors: inventoryProvenance.errors }],
     [
-      "global-inventory-truth-preserved",
-      globalInventoryTruthPreserved,
+      "required-slice-isolation-preserved",
+      requiredSliceIsolationPreserved,
       {
-        globalStatus: inventory.status,
+        inventoryStatus: inventory.status,
+        globalStatus: inventory.evaluation?.globalStatus,
         blockedOwners: failedInventoryOwners.map((owner) => owner.path),
       },
     ],

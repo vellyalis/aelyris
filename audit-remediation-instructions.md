@@ -674,8 +674,16 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   blocker and did not block the A6.2g exact-SHA precedent.
   The frontend acceptance now consumes inventory schema v3, uses a measured
   360-second modularity timeout, and records the A6.3-required one-line
-  `PaneTreeContainer` owner growth at a 1692-line diagnostic ceiling. Local
-  frontend and combined gates pass, but hosted completion remains unobserved.
+  `PaneTreeContainer` owner growth at a 1692-line diagnostic ceiling. Hosted
+  run `30570956763` exposed and closed a stale frontend test reference to the
+  removed A6.7 `SessionManager`. Replacement run `30571656787` then proved the
+  normal frontend, rendered UI, and Rust jobs but exposed that required A6.2
+  mode still executed later A6.5-A6.7 Rust behavior and exhausted the child
+  timeout. Required-slice mode now executes only the requested slice behavior,
+  reports every skipped later behavior as `not-run`, and leaves global truth
+  `not-evaluated`; default A6.8 mode still executes all A6.2-A6.7 behavior.
+  Local required-slice matrix, frontend acceptance, and combined acceptance
+  pass, but replacement hosted completion remains unobserved.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

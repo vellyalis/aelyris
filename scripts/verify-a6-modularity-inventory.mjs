@@ -9,6 +9,10 @@ const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.j
 const cliArgs = process.argv.slice(2);
 const requestedSlice = cliArgs.length === 2 && cliArgs[0] === "--require-slice" ? cliArgs[1] : null;
 const isA67RequiredMode = requestedSlice === "A6.7";
+const isGlobalMode = requestedSlice === null;
+const shouldRunDbBehavior = isGlobalMode || requestedSlice === "A6.5";
+const shouldRunNativeBehavior = isGlobalMode || requestedSlice === "A6.6";
+const shouldRunA67Behavior = isGlobalMode || requestedSlice === "A6.7";
 if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4", "A6.5", "A6.6", "A6.7"].includes(requestedSlice)) {
   console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, A6.4, A6.5, A6.6, or A6.7.");
   process.exit(2);
@@ -603,15 +607,14 @@ const focusedDbTestArgs = [
   "--color",
   "never",
 ];
-const focusedDbTestExecution =
-  requestedSlice === "A6.7"
-    ? { stdout: "", stderr: "", status: null, signal: null, error: null }
-    : spawnSync(focusedDbTestCommand, focusedDbTestArgs, {
-        cwd: root,
-        encoding: "utf8",
-        maxBuffer: 4 * 1024 * 1024,
-        windowsHide: true,
-      });
+const focusedDbTestExecution = shouldRunDbBehavior
+  ? spawnSync(focusedDbTestCommand, focusedDbTestArgs, {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true,
+    })
+  : { stdout: "", stderr: "", status: null, signal: null, error: null };
 const focusedDbTestOutput = `${focusedDbTestExecution.stdout ?? ""}\n${focusedDbTestExecution.stderr ?? ""}`;
 const focusedDbTestSummary = focusedDbTestOutput.match(
   /test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/,
@@ -624,7 +627,7 @@ const requiredDbBehaviorTests = [
 ];
 const focusedDbTests = {
   command: `${focusedDbTestCommand} ${focusedDbTestArgs.join(" ")}`,
-  executedByThisRun: requestedSlice !== "A6.7",
+  executedByThisRun: shouldRunDbBehavior,
   status: focusedDbTestExecution.status,
   signal: focusedDbTestExecution.signal,
   error: focusedDbTestExecution.error?.message ?? null,
@@ -652,9 +655,9 @@ const dbSliceComplete = dbSourceContractComplete && focusedDbTestsPassed;
 const dbSlice = {
   id: "A6.5",
   owner: "SQLite domain repositories behind the existing Database owner",
-  status: isA67RequiredMode ? "not-run" : dbSliceComplete ? "pass" : "fail",
-  sliceComplete: isA67RequiredMode ? null : dbSliceComplete,
-  carriedSourceContract: isA67RequiredMode
+  status: shouldRunDbBehavior ? (dbSliceComplete ? "pass" : "fail") : "not-run",
+  sliceComplete: shouldRunDbBehavior ? dbSliceComplete : null,
+  carriedSourceContract: !shouldRunDbBehavior
     ? {
         status: dbSourceContractComplete ? "pass" : "fail",
         behaviorProofStatus: "not-run",
@@ -824,15 +827,14 @@ const focusedNativeTestArgs = [
   "--color",
   "never",
 ];
-const focusedNativeTestExecution =
-  requestedSlice === "A6.7"
-    ? { stdout: "", stderr: "", status: null, signal: null, error: null }
-    : spawnSync(cargoCommand, focusedNativeTestArgs, {
-        cwd: root,
-        encoding: "utf8",
-        maxBuffer: 4 * 1024 * 1024,
-        windowsHide: true,
-      });
+const focusedNativeTestExecution = shouldRunNativeBehavior
+  ? spawnSync(cargoCommand, focusedNativeTestArgs, {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true,
+    })
+  : { stdout: "", stderr: "", status: null, signal: null, error: null };
 const focusedNativeTestOutput = `${focusedNativeTestExecution.stdout ?? ""}\n${focusedNativeTestExecution.stderr ?? ""}`;
 const focusedNativeTestSummary = focusedNativeTestOutput.match(
   /test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/,
@@ -844,7 +846,7 @@ const requiredNativeBehaviorTests = [
 ];
 const focusedNativeTests = {
   command: `${cargoCommand} ${focusedNativeTestArgs.join(" ")}`,
-  executedByThisRun: requestedSlice !== "A6.7",
+  executedByThisRun: shouldRunNativeBehavior,
   status: focusedNativeTestExecution.status,
   signal: focusedNativeTestExecution.signal,
   error: focusedNativeTestExecution.error?.message ?? null,
@@ -957,9 +959,9 @@ const nativeSliceComplete = nativeSourceContractComplete && focusedNativeTestsPa
 const nativeSlice = {
   id: "A6.6",
   owner: "feature-gated native proof CLI router, readiness contract, and daemon client",
-  status: isA67RequiredMode ? "not-run" : nativeSliceComplete ? "pass" : "fail",
-  sliceComplete: isA67RequiredMode ? null : nativeSliceComplete,
-  carriedSourceContract: isA67RequiredMode
+  status: shouldRunNativeBehavior ? (nativeSliceComplete ? "pass" : "fail") : "not-run",
+  sliceComplete: shouldRunNativeBehavior ? nativeSliceComplete : null,
+  carriedSourceContract: !shouldRunNativeBehavior
     ? {
         status: nativeSourceContractComplete ? "pass" : "fail",
         behaviorProofStatus: "not-run",
@@ -1052,6 +1054,18 @@ const sessionNegativeReachabilityProof = {
 };
 
 const runA67CargoProof = (args, requiredAssertions) => {
+  if (!shouldRunA67Behavior) {
+    return {
+      command: `${cargoCommand} ${args.join(" ")}`,
+      executedByThisRun: false,
+      status: null,
+      signal: null,
+      error: null,
+      passed: 0,
+      ignored: 0,
+      requiredAssertionsExecuted: false,
+    };
+  }
   const execution = spawnSync(cargoCommand, args, {
     cwd: root,
     encoding: "utf8",
@@ -1062,6 +1076,7 @@ const runA67CargoProof = (args, requiredAssertions) => {
   const summary = output.match(/test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/);
   return {
     command: `${cargoCommand} ${args.join(" ")}`,
+    executedByThisRun: true,
     status: execution.status,
     signal: execution.signal,
     error: execution.error?.message ?? null,
@@ -1091,7 +1106,9 @@ const a67FocusedTests = {
   muxRestoreOwner: muxRestoreOwnerTests,
 };
 const a67FocusedTestsPassed = Object.values(a67FocusedTests).every(
-  (test) => test.status === 0 && test.passed > 0 && test.ignored === 0 && test.requiredAssertionsExecuted,
+  (test) =>
+    !test.executedByThisRun ||
+    (test.status === 0 && test.passed > 0 && test.ignored === 0 && test.requiredAssertionsExecuted),
 );
 
 const dbSessionIpcPath = "src-tauri/src/ipc/db_session_commands.rs";
@@ -1310,9 +1327,15 @@ const a67SliceComplete =
 const a67Slice = {
   id: "A6.7",
   owner: "callsite-proven duplicate and unowned infrastructure removal",
-  status: a67SliceComplete ? "pass" : "fail",
-  sliceComplete: a67SliceComplete,
+  status: shouldRunA67Behavior ? (a67SliceComplete ? "pass" : "fail") : "not-run",
+  sliceComplete: shouldRunA67Behavior ? a67SliceComplete : null,
   phaseComplete: false,
+  carriedSourceContract: !shouldRunA67Behavior
+    ? {
+        status: a67SliceComplete ? "pass" : "fail",
+        behaviorProofStatus: "not-run",
+      }
+    : null,
   candidates: a67Candidates,
   removedTopology: currentSessionTopology,
   topologyScanner: sessionTopologyScanner,
@@ -1443,24 +1466,27 @@ const commandFailed =
               ? !a67Slice.sliceComplete
               : failed;
 const generatedAt = new Date().toISOString();
-const reportStatus = isA67RequiredMode
-  ? commandFailed
-    ? "failed"
-    : "pass-a6.7-dead-infrastructure"
-  : failed
-    ? "failed"
+const reportStatus = commandFailed
+  ? "failed"
+  : isA67RequiredMode
+    ? "pass-a6.7-dead-infrastructure"
     : "pass-a6.1-inventory-frozen";
 const report = {
   schema: "aelyris.a6-modularity-inventory/v3",
   status: reportStatus,
-  sliceComplete: isA67RequiredMode ? !commandFailed : !failed,
+  sliceComplete: requestedSlice ? !commandFailed : !failed,
   phaseComplete: false,
   ratchetMode: "reject-growth-from-frozen-baseline",
   evaluation: {
     mode: requestedSlice ? "required-slice" : "global",
     requestedSlice,
     commandStatus: commandFailed ? "failed" : "passed",
-    globalStatus: isA67RequiredMode ? "not-evaluated" : failed ? "failed" : "passed",
+    globalStatus: requestedSlice ? "not-evaluated" : failed ? "failed" : "passed",
+    behaviorExecution: {
+      database: shouldRunDbBehavior,
+      native: shouldRunNativeBehavior,
+      deadInfrastructure: shouldRunA67Behavior,
+    },
   },
   frontendSlice,
   ipcSlice,
@@ -1469,7 +1495,7 @@ const report = {
   nativeSlice,
   a67Slice,
   globalAggregation: {
-    status: failed ? "fail" : "pass",
+    status: requestedSlice ? "not-evaluated" : failed ? "fail" : "pass",
     negativeProof: globalAggregationNegativeProof,
   },
   owners: results,
