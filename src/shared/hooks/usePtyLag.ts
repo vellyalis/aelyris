@@ -1,5 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
+import { ipcEvents } from "../lib/ipc";
 
 /**
  * Subset of the `term:lag-<id>` payload Tauri emits when the broadcast
@@ -32,7 +33,7 @@ export const LAG_DECAY_MS = 5_000;
 export type Subscriber = (terminalId: string, onEvent: (payload: LagEventPayload) => void) => Promise<UnlistenFn>;
 
 const defaultSubscribe: Subscriber = (terminalId, onEvent) =>
-  listen<LagEventPayload>(`term:lag-${terminalId}`, (ev) => onEvent(ev.payload));
+  listen<LagEventPayload>(ipcEvents.terminalLag(terminalId), (ev) => onEvent(ev.payload));
 
 /**
  * Subscribe to broadcast-lag events for a single terminal and decay

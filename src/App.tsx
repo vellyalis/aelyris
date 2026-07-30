@@ -169,6 +169,7 @@ import {
   reportInvokeFailure,
 } from "./shared/lib/fallbackTelemetry";
 import { allowedToolsForGuardrailProfile, describeGuardrailProfile } from "./shared/lib/guardrailPolicy";
+import { invokeIpc } from "./shared/lib/ipc";
 import { ORCHESTRA_ROLES } from "./shared/lib/orchestrator";
 import {
   deriveRightRailActions,
@@ -1200,8 +1201,7 @@ export function App() {
         return false;
       }
       try {
-        const { invoke } = await Promise.resolve({ invoke: tauriInvoke });
-        await invoke("native_terminal_input_commit", {
+        await invokeIpc("native_terminal_input_commit", {
           terminalId: activeTerminalTarget.terminalId,
           data,
           source: "command-center",

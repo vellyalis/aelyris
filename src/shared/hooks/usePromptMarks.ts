@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { formatFallbackError, reportFallback } from "../lib/fallbackTelemetry";
+import { ipcEvents } from "../lib/ipc";
 
 export type PromptMarkKind = "promptStart" | "commandStart" | "outputStart" | "commandEnd";
 
@@ -76,7 +77,7 @@ export function usePromptMarks(terminalId: string | null): PromptMark[] {
       try {
         // Step 1: register listener first so any mark emitted while the
         // seed query is in flight is captured into state.
-        unlisten = await listen<PromptMark>(`term:prompt-mark-${terminalId}`, (event) => {
+        unlisten = await listen<PromptMark>(ipcEvents.terminalPromptMark(terminalId), (event) => {
           if (cancelled) return;
           setMarks((prev) => mergeMark(prev, event.payload));
         });

@@ -14,6 +14,10 @@ use crate::pty::{ExitInfo, PtyManager};
 use crate::pty_sidecar::PtySidecarState;
 use crate::term::NativeTerminalRegistry;
 
+use super::event_commands::{
+    terminal_diff_event, terminal_exit_event, terminal_output_event, terminal_prompt_mark_event,
+};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SpawnResult {
     pub session_id: String,
@@ -272,7 +276,7 @@ pub(crate) async fn spawn_interactive_agent_internal(
             while alive.load(Ordering::Acquire) {
                 std::thread::sleep(std::time::Duration::from_millis(33));
                 if let Some(diff) = flush_registry.flush(&flush_id) {
-                    let _ = flush_handle.emit(&format!("term:diff-{}", flush_id), diff);
+                    let _ = flush_handle.emit(&terminal_diff_event(&flush_id), diff);
                 }
             }
         });
@@ -463,11 +467,11 @@ fn emit_native_advance(
 ) {
     let advance_result = native_registry.advance(id, data);
     if let Some(diff) = advance_result.diff {
-        let _ = app.emit(&format!("term:diff-{}", id), diff);
+        let _ = app.emit(&terminal_diff_event(id), diff);
     }
     for mark in advance_result.new_marks {
         persist_prompt_mark_exit_code(app, id, &mark);
-        let _ = app.emit(&format!("term:prompt-mark-{}", id), mark);
+        let _ = app.emit(&terminal_prompt_mark_event(id), mark);
     }
 }
 
@@ -511,7 +515,7 @@ pub(crate) fn spawn_loop_pane_render(
             while alive.load(Ordering::Acquire) {
                 std::thread::sleep(std::time::Duration::from_millis(33));
                 if let Some(diff) = flush_registry.flush(&flush_id) {
-                    let _ = flush_handle.emit(&format!("term:diff-{}", flush_id), diff);
+                    let _ = flush_handle.emit(&terminal_diff_event(&flush_id), diff);
                 }
             }
         });
@@ -537,7 +541,7 @@ async fn run_loop_pane_monitor(
     loop {
         match rx.recv().await {
             Ok(chunk) => {
-                let _ = app.emit(&format!("pty-output-{}", terminal_id), chunk.clone());
+                let _ = app.emit(&terminal_output_event(terminal_id), chunk.clone());
                 emit_native_advance(app, &native_registry, terminal_id, &chunk);
             }
             Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -567,7 +571,7 @@ async fn run_loop_pane_monitor(
     // success/failure via task status; this only stops the resize loop and shows
     // the pane as done).
     let _ = app.emit(
-        &format!("pty-exit-{}", terminal_id),
+        &terminal_exit_event(terminal_id),
         ExitInfo {
             code: None,
             crashed: false,
@@ -596,7 +600,7 @@ async fn run_output_monitor(
                 let data: &[u8] = &chunk;
 
                 // Emit raw output as byte array (no base64 overhead)
-                let event = format!("pty-output-{}", session_id);
+                let event = terminal_output_event(session_id);
                 let _ = app.emit(&event, chunk.clone());
 
                 // Fan out to native engine for grid-based rendering, plus
@@ -732,7 +736,7 @@ async fn run_output_monitor(
     // would clear the exit state rather than set it. Same contract as the loop
     // pane monitor above — every `pty-exit-<id>` carries `{ code, crashed }`.
     let _ = app.emit(
-        &format!("pty-exit-{}", session_id),
+        &terminal_exit_event(session_id),
         ExitInfo {
             code: None,
             crashed: false,

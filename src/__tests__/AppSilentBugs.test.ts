@@ -297,6 +297,7 @@ describe("Release evidence gates", () => {
       "utf8",
     );
     const commands = readFileSync(join(process.cwd(), "src-tauri/src/ipc/commands.rs"), "utf8");
+    const imeCommands = readFileSync(join(process.cwd(), "src-tauri/src/ipc/ime_commands.rs"), "utf8");
     const lib = readFileSync(join(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
     const nativeInput = readFileSync(join(process.cwd(), "src-tauri/src/term/native_input.rs"), "utf8");
 
@@ -529,12 +530,12 @@ describe("Release evidence gates", () => {
     expect(paneTreePersistence).toContain("if (!isTauriRuntime()) return false");
     expect(paneTreePersistence).toContain('"local_load_snapshot"');
     expect(paneTreePersistence).toContain('"backend_save_snapshot"');
-    expect(commands).toContain("native_terminal_input_commit");
-    expect(commands).toContain("native_terminal_input_focus");
-    expect(commands).toContain("native_terminal_input_drain");
-    expect(commands).toContain("native_terminal_input_preedit");
-    expect(commands).toContain("native_terminal_input_status");
-    expect(commands).toContain("commit_native_terminal_input(&app, host, terminal_id, data, source).await");
+    expect(imeCommands).toContain("native_terminal_input_commit");
+    expect(imeCommands).toContain("native_terminal_input_focus");
+    expect(imeCommands).toContain("native_terminal_input_drain");
+    expect(imeCommands).toContain("native_terminal_input_preedit");
+    expect(imeCommands).toContain("native_terminal_input_status");
+    expect(imeCommands).toContain("commit_native_terminal_input(&app, host, terminal_id, data, source).await");
     // The pending-source label moved with the input pipeline into
     // term/native_input.rs; assert it where it now lives.
     expect(nativeInput).toContain('"native-input-surface".to_string()');

@@ -9,6 +9,7 @@ import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { decodeBase64ToBytes } from "../../shared/lib/decodeBase64";
 import { openInVSCode } from "../../shared/lib/externalEditor";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { invokeIpc, ipcEvents } from "../../shared/lib/ipc";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import { useAppStore } from "../../shared/store/appStore";
 import type { LayerIdPayload } from "../../shared/types/ghostdiff";
@@ -254,13 +255,13 @@ function defaultResize(id: string, cols: number, rows: number): Promise<void> {
 }
 
 function defaultWrite(id: string, data: string): Promise<void> {
-  return invoke<void>("native_terminal_input_commit", { terminalId: id, data, source: "terminal-area" }).then(
+  return invokeIpc<void>("native_terminal_input_commit", { terminalId: id, data, source: "terminal-area" }).then(
     () => undefined,
   );
 }
 
 async function defaultSubscribeOutput(terminalId: string, onBytes: (bytes: Uint8Array) => void): Promise<UnlistenFn> {
-  return listen<number[] | { dataBase64: string }>(`pty-output-${terminalId}`, (event) => {
+  return listen<number[] | { dataBase64: string }>(ipcEvents.terminalOutput(terminalId), (event) => {
     const payload = event.payload;
     if (Array.isArray(payload)) {
       onBytes(new Uint8Array(payload));
@@ -271,7 +272,7 @@ async function defaultSubscribeOutput(terminalId: string, onBytes: (bytes: Uint8
 }
 
 async function defaultSubscribeExit(terminalId: string, onExit: (info: PtyExitInfo) => void): Promise<UnlistenFn> {
-  return listen<PtyExitInfo>(`pty-exit-${terminalId}`, (event) => {
+  return listen<PtyExitInfo>(ipcEvents.terminalExit(terminalId), (event) => {
     onExit(event.payload);
   });
 }

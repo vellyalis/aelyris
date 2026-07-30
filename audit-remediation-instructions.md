@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.3`.
-LAST COMPLETED SLICE: `A6.2g`.
+ACTIVE SLICE: `A6.4`.
+LAST COMPLETED SLICE: `A6.3`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.3`.
+NEXT IMPLEMENTATION SLICE: `A6.4`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -28,7 +28,10 @@ cross-owner integration, or retained completed-owner guards; it does not create 
 new editor test owner merely to shorten the central file. A6.2g combined frontend
 acceptance is complete from exact-SHA hosted run `30535550369` at `548fe1e`;
 A6.3 Tauri IPC adapter, typed facade, event registry, and handler classification is
-the exact implementation frontier. Do not reopen A4 or completed A6.2 owners
+complete with 40/40 handlers classified, six native-input wrappers extracted to the
+existing IME adapter, one Rust/TypeScript event-name contract, and a fail-closed
+deletion policy. A6.4 MCP catalog/schema/governance/domain dispatch is the exact
+implementation frontier. Do not reopen A4 or completed A6.2/A6.3 owners
 without a fresh regression, and do not mix A7/native work into A6.
 
 ## Objective
@@ -52,6 +55,7 @@ volatile value.
 ```text
 A4.12 complete
   -> A6.2e1-A6.2e4 complete -> A6.2f/A6 component and command composition
+  -> A6.3 IPC adapter complete -> A6.4 MCP catalog and dispatch
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -72,7 +76,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. **A6.2g is complete.** Execute **A6.3**, then finish A6 by dependency direction, state ownership,
+2. **A6.3 is complete.** Execute **A6.4**, then finish A6 by dependency direction, state ownership,
    executed behavior, and concurrency safety. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
@@ -587,11 +591,24 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   `useTerminalMenuCommands.ts` owner while retaining App's
   `TERMINAL_PREFIX_COMMAND_EVENT` dispatch boundary; executed terminal-menu
   behavior remains covered by the v18 ratchet.
-- Continue A6.3 by inventorying and classifying the Tauri IPC adapter, command
-  registration/event registry, typed frontend facade, MCP/HTTP reuse, tests, and
-  compatibility aliases before deleting or moving handlers. Do not weaken the
-  frozen `src-tauri/src/ipc/commands.rs` ceiling to make inventory green. The
-  queued NUI proposal does not alter this frontier.
+- A6.3 Tauri IPC adapter closeout is complete. The machine inventory classifies
+  all 40 frozen handlers against the sole `generate_handler!` registration owner,
+  frontend invokes, MCP/HTTP reuse, tests, and observed compatibility aliases;
+  absence alone never authorizes deletion. Six native-input wrappers now live in
+  the existing IME adapter, while shared commit/write authority remains in
+  `commands.rs`. Fourteen terminal/agent/chat event names have one Rust owner and
+  one typed TypeScript projection, and the verifier rejects owner-external
+  production Rust literals. The A6.3 slice gate passes at
+  `commands.rs=4429 <= 4574`; independent review round 2 reports zero findings,
+  while the global A6 artifact truthfully remains failed and
+  `phaseComplete=false`.
+- Continue A6.4 by inventorying the MCP catalog, JSON schemas, governance checks,
+  and domain dispatch in `src-tauri/src/api/mcp.rs` before extraction. Preserve
+  exact verb/schema behavior and the existing governance-before-effect boundary,
+  then lower the frozen owner ceiling without adding a second catalog or
+  dispatcher. Current global inventory reports `6578 > 5943`; A6.5 also retains
+  its separate `queries.rs` `3334 > 3330` blocker. The queued NUI proposal does
+  not alter this frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

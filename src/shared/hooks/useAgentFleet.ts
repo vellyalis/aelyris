@@ -8,6 +8,7 @@ import {
   mergeAgentFleetSessions,
 } from "../lib/agentFleet";
 import { reportInvokeFailure } from "../lib/fallbackTelemetry";
+import { ipcEvents } from "../lib/ipc";
 import { isTauriRuntime } from "../lib/tauriRuntime";
 import { type StartAgentMeta, useAgentManager } from "./useAgentManager";
 import { useInteractiveAgent } from "./useInteractiveAgent";
@@ -37,7 +38,7 @@ export function useAgentFleet() {
       setBackendFleetReady(true);
     };
 
-    void listen<BackendAgentFleetSession[]>("agent-fleet-updated", (event) => {
+    void listen<BackendAgentFleetSession[]>(ipcEvents.agentFleetUpdated, (event) => {
       apply(event.payload);
     })
       .then((unsubscribe) => {

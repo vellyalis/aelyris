@@ -5,7 +5,153 @@
 //! Helpers `ime_coord`/`ime_position_result` are unit-tested. Extracted
 //! from `commands.rs` during the IPC god-file split.
 
-use tauri::{AppHandle, Manager};
+use std::sync::{mpsc, Arc};
+use std::time::Duration;
+
+use tauri::{AppHandle, Manager, State};
+
+use super::commands::commit_native_terminal_input;
+
+#[tauri::command]
+pub fn native_terminal_input_status(
+    host: State<'_, Arc<crate::term::NativeTerminalInputHost>>,
+) -> crate::term::NativeTerminalInputStatus {
+    host.status()
+}
+
+#[tauri::command]
+pub fn native_terminal_input_preedit(
+    host: State<'_, Arc<crate::term::NativeTerminalInputHost>>,
+) -> crate::term::NativeTerminalPreedit {
+    host.preedit()
+}
+
+fn native_input_coord(value: f64) -> i32 {
+    if !value.is_finite() {
+        return 0;
+    }
+    value.round().clamp(0.0, i32::MAX as f64) as i32
+}
+
+#[tauri::command]
+pub async fn native_terminal_input_focus(
+    app: AppHandle,
+    terminal_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    caret_inset: Option<f64>,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    let app_for_main = app.clone();
+    let (tx, rx) = mpsc::channel();
+    let rect = crate::term::NativeInputSurfaceRect {
+        x: native_input_coord(x),
+        y: native_input_coord(y),
+        width: native_input_coord(width).max(1),
+        height: native_input_coord(height).max(1),
+        caret_inset: native_input_coord(caret_inset.unwrap_or(0.0)),
+    };
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            let window = app_for_main
+                .get_webview_window("main")
+                .ok_or_else(|| "No main window".to_string())?;
+            let hwnd = window.hwnd().map_err(|err| err.to_string())?;
+            host.focus_native_surface(hwnd.0 as isize, terminal_id, rect)
+        })();
+        let _ = tx.send(result);
+    })
+    .map_err(|err| format!("native input focus dispatch failed: {err}"))?;
+    rx.recv_timeout(Duration::from_secs(2))
+        .map_err(|err| format!("native input focus timed out: {err}"))?
+}
+
+#[tauri::command]
+pub async fn native_terminal_input_drain(
+    app: AppHandle,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    let host_for_main = host.clone();
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(host_for_main.drain_native_surface_text());
+    })
+    .map_err(|err| format!("native input drain dispatch failed: {err}"))?;
+    let drained = rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|err| format!("native input drain timed out: {err}"))??;
+    let Some((terminal_id, text, source)) = drained else {
+        return Ok(host.status());
+    };
+    commit_native_terminal_input(&app, host, terminal_id, text, source).await
+}
+
+#[tauri::command]
+pub async fn native_terminal_input_paste(
+    app: AppHandle,
+    terminal_id: String,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    let staged = host.stage_native_clipboard_paste(terminal_id)?;
+    let Some((terminal_id, text)) = staged else {
+        return Ok(host.status());
+    };
+    commit_native_terminal_input(
+        &app,
+        host,
+        terminal_id,
+        text,
+        "native-clipboard-paste".to_string(),
+    )
+    .await
+}
+
+/// Rust-owned terminal input commit path. The WebView can still own temporary
+/// IME preedit during the current migration, but committed text is routed here
+/// so every surface retains the shared PTY authority and audit semantics.
+#[tauri::command]
+pub async fn native_terminal_input_commit(
+    app: AppHandle,
+    terminal_id: String,
+    data: String,
+    source: Option<String>,
+) -> Result<crate::term::NativeTerminalInputStatus, String> {
+    let host = app
+        .state::<Arc<crate::term::NativeTerminalInputHost>>()
+        .inner()
+        .clone();
+    if data.is_empty() {
+        return Ok(host.activate_terminal(terminal_id));
+    }
+
+    let source = sanitize_native_input_source(source);
+    commit_native_terminal_input(&app, host, terminal_id, data, source).await
+}
+
+fn sanitize_native_input_source(source: Option<String>) -> String {
+    let source = source.unwrap_or_else(|| "terminal-input".to_string());
+    let source = source
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'))
+        .take(48)
+        .collect::<String>();
+    if source.is_empty() {
+        "terminal-input".to_string()
+    } else {
+        source
+    }
+}
 
 /// Set the IME composition window position via Win32 API.
 /// This directly tells Windows where to place the IME candidate popup,
@@ -154,5 +300,21 @@ mod tests {
         assert!(err.contains("ImmSetCompositionWindow failed"));
         assert!(err.contains("ImmSetCandidateWindow failed"));
         assert!(err.contains("ImmReleaseContext failed"));
+    }
+
+    #[test]
+    fn native_input_source_is_sanitized_for_audit_metadata() {
+        assert_eq!(
+            sanitize_native_input_source(Some("native edit/surface!@# with spaces".to_string())),
+            "nativeeditsurfacewithspaces"
+        );
+        assert_eq!(
+            sanitize_native_input_source(Some("native-edit:surface_01".to_string())),
+            "native-edit:surface_01"
+        );
+        assert_eq!(
+            sanitize_native_input_source(Some("!!!".to_string())),
+            "terminal-input"
+        );
     }
 }

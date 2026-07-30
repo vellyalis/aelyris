@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 
+import { ipcEvents } from "../lib/ipc";
 import type { GridDiff, GridSnapshot, ImageRef } from "../types/terminal";
 
 /**
@@ -51,7 +52,7 @@ export function useTerminalSnapshot(terminalId: string | null): GridSnapshot | n
       try {
         // Step 1: register listener first so we capture any diff
         // emitted while the term_snapshot IPC is in flight.
-        unlisten = await listen<GridDiff>(`term:diff-${terminalId}`, (event) => {
+        unlisten = await listen<GridDiff>(ipcEvents.terminalDiff(terminalId), (event) => {
           if (cancelled) return;
           const diff = event.payload;
           setSnapshot((prev) => {

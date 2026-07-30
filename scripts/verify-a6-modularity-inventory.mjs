@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
@@ -6,8 +6,8 @@ const root = resolve(process.cwd());
 const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.json");
 const cliArgs = process.argv.slice(2);
 const requestedSlice = cliArgs.length === 2 && cliArgs[0] === "--require-slice" ? cliArgs[1] : null;
-if (cliArgs.length > 0 && requestedSlice !== "A6.2") {
-  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2.");
+if (cliArgs.length > 0 && !["A6.2", "A6.3"].includes(requestedSlice)) {
+  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2 or A6.3.");
   process.exit(2);
 }
 const owners = [
@@ -67,22 +67,222 @@ const results = owners.map((owner) => {
   };
 });
 
-const commandsSource = read("src-tauri/src/ipc/commands.rs");
+const normalizePath = (path) => path.replaceAll("\\", "/");
+const collectFiles = (relativeDir, predicate) => {
+  const files = [];
+  const visit = (relativePath) => {
+    for (const entry of readdirSync(join(root, relativePath), { withFileTypes: true })) {
+      const child = normalizePath(join(relativePath, entry.name));
+      if (entry.isDirectory()) {
+        visit(child);
+      } else if (predicate(child)) {
+        files.push(child);
+      }
+    }
+  };
+  visit(relativeDir);
+  return files.sort();
+};
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const commandCallPattern = (name) =>
+  new RegExp(`\\b(?:invoke|invokeIpc)(?:<[^>\\r\\n]+>)?\\s*\\(\\s*["']${escapeRegExp(name)}["']`);
+const stripSourceComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const executableSource = (source) => stripSourceComments(source).split("#[cfg(test)]", 1)[0];
+const rustCallPattern = (name) => new RegExp(`\\b${escapeRegExp(name)}\\s*\\(`);
+const exactStringPattern = (name) => new RegExp(`["']${escapeRegExp(name)}["']`);
+
+const frozenA63Handlers = [
+  "startup_reconciliation_status",
+  "spawn_terminal",
+  "respawn_terminal",
+  "force_restart_terminal",
+  "write_terminal",
+  "native_terminal_input_status",
+  "native_terminal_input_preedit",
+  "native_terminal_input_focus",
+  "native_terminal_input_drain",
+  "native_terminal_input_paste",
+  "native_terminal_input_commit",
+  "resize_terminal",
+  "close_terminal",
+  "mux_process_keymap_event",
+  "term_snapshot",
+  "term_prompt_marks",
+  "term_command_blocks",
+  "term_persisted_command_blocks",
+  "term_history_size",
+  "term_history_rows",
+  "terminal_output_journal",
+  "term_search_history",
+  "term_image_data",
+  "term_image_metrics",
+  "performance_observatory_metrics",
+  "list_terminals",
+  "detect_shells",
+  "start_agent",
+  "stop_agent",
+  "list_agents",
+  "list_agent_fleet",
+  "route_agent",
+  "inspect_merge_worktree_branch",
+  "start_chat_agent",
+  "save_temp_image",
+  "save_clipboard_image",
+  "read_clipboard_text",
+  "write_clipboard_text",
+  "stop_chat_agent",
+  "list_all_files",
+];
+const extractedNativeInputHandlers = [
+  "native_terminal_input_status",
+  "native_terminal_input_preedit",
+  "native_terminal_input_focus",
+  "native_terminal_input_drain",
+  "native_terminal_input_paste",
+  "native_terminal_input_commit",
+];
+const handlerOwnerPaths = ["src-tauri/src/ipc/commands.rs", "src-tauri/src/ipc/ime_commands.rs"];
+const handlerOwnerSources = Object.fromEntries(handlerOwnerPaths.map((path) => [path, read(path)]));
 const libSource = read("src-tauri/src/lib.rs");
-const commandNames = commandsSource
-  .split("#[tauri::command]")
-  .slice(1)
-  .map((chunk) => chunk.slice(0, 400).match(/\bfn\s+([A-Za-z0-9_]+)/)?.[1])
-  .filter(Boolean);
-const unregistered = commandNames.filter((name) => !libSource.includes(`ipc::${name}`));
-const ipcClassification = {
-  declaredInLegacyAdapter: commandNames.length,
-  registered: commandNames.length - unregistered.length,
-  unregistered: unregistered.map((name) => ({
+const registrationBlocks = [...libSource.matchAll(/tauri::generate_handler!\s*\[([\s\S]*?)\]/g)].map(
+  (match) => match[1],
+);
+const registrationSource = registrationBlocks.length === 1 ? registrationBlocks[0] : "";
+const frontendFacadePath = "src/shared/lib/ipc.ts";
+const frontendFacadeSource = read(frontendFacadePath);
+const frontendSources = collectFiles(
+  "src",
+  (path) => /\.(?:ts|tsx)$/.test(path) && !path.includes("/__tests__/") && path !== frontendFacadePath,
+);
+const frontendSourceEntries = frontendSources.map((path) => [path, read(path)]);
+const apiSources = collectFiles("src-tauri/src/api", (path) => path.endsWith(".rs"));
+const apiSourceEntries = apiSources.map((path) => [path, read(path)]);
+const testSources = [
+  ...collectFiles("src/__tests__", (path) => /\.(?:ts|tsx)$/.test(path)).map((path) => [path, read(path)]),
+  ...collectFiles("src-tauri/tests", (path) => path.endsWith(".rs")).map((path) => [path, read(path)]),
+  ...collectFiles("src-tauri/src", (path) => path.endsWith(".rs") && path !== "src-tauri/src/lib.rs").map((path) => {
+    const source = read(path);
+    const testStart = source.lastIndexOf("#[cfg(test)]");
+    return [path, testStart >= 0 ? source.slice(testStart) : ""];
+  }),
+];
+const declarationPattern = (name) =>
+  new RegExp(
+    `#\\[tauri::command(?:\\([^\\]]*\\))?\\]\\s*(?:#\\[[^\\]]+\\]\\s*)*pub(?:\\([^)]*\\))?\\s+(?:async\\s+)?fn\\s+${escapeRegExp(name)}\\b`,
+  );
+const handlerClassifications = frozenA63Handlers.map((name) => {
+  const declaredOwnerPaths = handlerOwnerPaths.filter((path) =>
+    declarationPattern(name).test(handlerOwnerSources[path]),
+  );
+  const registered = new RegExp(`\\bipc::${escapeRegExp(name)}\\b`).test(registrationSource);
+  const frontendInvokePaths = frontendSourceEntries
+    .filter(([, source]) => commandCallPattern(name).test(stripSourceComments(source)))
+    .map(([path]) => path);
+  const typedFacade = new RegExp(`command:\\s*["']${escapeRegExp(name)}["']`).test(frontendFacadeSource);
+  const mcpHttpReusePaths = apiSourceEntries
+    .filter(([, source]) => rustCallPattern(name).test(executableSource(source)))
+    .map(([path]) => path);
+  const testPaths = testSources
+    .filter(
+      ([, source]) =>
+        rustCallPattern(name).test(stripSourceComments(source)) ||
+        exactStringPattern(name).test(stripSourceComments(source)),
+    )
+    .map(([path]) => path);
+  const compatibilityAliases = [];
+  return {
     name,
-    classification: "retain-pending-a6.3-callsite-proof",
+    declaredOwnerPaths,
+    registered,
+    frontendInvokePaths,
+    typedFacade,
+    mcpHttpReusePaths,
+    testPaths,
+    compatibilityAliases,
+    compatibilityAliasClassification: "none-observed",
+    compatibilityStatus: registered ? "canonical-command-name-preserved" : "registration-missing",
     deletionAuthorized: false,
-  })),
+    deletionAuthorizationReason: "absence-alone-never-authorizes-deletion",
+  };
+});
+const unregistered = handlerClassifications.filter((entry) => !entry.registered).map((entry) => entry.name);
+const duplicateDeclarations = handlerClassifications
+  .filter((entry) => entry.declaredOwnerPaths.length !== 1)
+  .map((entry) => ({ name: entry.name, ownerPaths: entry.declaredOwnerPaths }));
+const classificationComplete =
+  registrationBlocks.length === 1 &&
+  handlerClassifications.length === frozenA63Handlers.length &&
+  unregistered.length === 0 &&
+  duplicateDeclarations.length === 0 &&
+  handlerClassifications.every((entry) => entry.deletionAuthorized === false);
+const nativeExtractionComplete = extractedNativeInputHandlers.every((name) => {
+  const entry = handlerClassifications.find((candidate) => candidate.name === name);
+  return (
+    entry?.declaredOwnerPaths.length === 1 &&
+    entry.declaredOwnerPaths[0] === "src-tauri/src/ipc/ime_commands.rs" &&
+    entry.typedFacade
+  );
+});
+
+const rustEventOwnerPath = "src-tauri/src/ipc/event_commands.rs";
+const rustEventOwnerSource = read(rustEventOwnerPath);
+const rustRuntimeSources = collectFiles(
+  "src-tauri/src",
+  (path) => path.endsWith(".rs") && path !== rustEventOwnerPath,
+).map((path) => [path, executableSource(read(path))]);
+const eventContracts = [
+  ["agentSessionsUpdated", "agent-sessions-updated"],
+  ["agentFleetUpdated", "agent-fleet-updated"],
+  ["terminalOutput", "pty-output-"],
+  ["terminalExit", "pty-exit-"],
+  ["terminalDiff", "term:diff-"],
+  ["terminalPromptMark", "term:prompt-mark-"],
+  ["terminalLag", "term:lag-"],
+  ["snapshotCaptured", "snapshot:captured-"],
+  ["agentOutput", "agent-output-"],
+  ["watchdogDecision", "watchdog-decision-"],
+  ["agentExit", "agent-exit-"],
+  ["chatStream", "chat-stream-"],
+  ["chatSessionId", "chat-session-id-"],
+  ["chatComplete", "chat-complete-"],
+].map(([key, wirePrefix]) => {
+  const rawRuntimeOwnerViolations = rustRuntimeSources
+    .filter(([, source]) => source.includes(`"${wirePrefix}`))
+    .map(([path]) => path);
+  return {
+    key,
+    wirePrefix,
+    rustOwner: rustEventOwnerSource.includes(wirePrefix),
+    frontendOwner: frontendFacadeSource.includes(wirePrefix),
+    rawRuntimeOwnerViolations,
+  };
+});
+const eventRegistryComplete = eventContracts.every(
+  (entry) => entry.rustOwner && entry.frontendOwner && entry.rawRuntimeOwnerViolations.length === 0,
+);
+const ipcOwner = results.find((result) => result.path === "src-tauri/src/ipc/commands.rs");
+const ipcSliceComplete =
+  ipcOwner?.status === "pass" && classificationComplete && nativeExtractionComplete && eventRegistryComplete;
+const ipcClassification = {
+  frozenHandlerCount: frozenA63Handlers.length,
+  declaredHandlerCount: handlerClassifications.filter((entry) => entry.declaredOwnerPaths.length === 1).length,
+  registered: handlerClassifications.filter((entry) => entry.registered).length,
+  unregistered,
+  duplicateDeclarations,
+  registrationRegistry: {
+    ownerPath: "src-tauri/src/lib.rs",
+    generateHandlerBlockCount: registrationBlocks.length,
+    complete: registrationBlocks.length === 1 && unregistered.length === 0,
+  },
+  classificationComplete,
+  nativeExtractionComplete,
+  handlerClassifications,
+  eventRegistry: {
+    rustOwnerPath: rustEventOwnerPath,
+    frontendOwnerPath: frontendFacadePath,
+    contracts: eventContracts,
+    complete: eventRegistryComplete,
+  },
   rule: "No handler may be deleted until registration, frontend invoke, MCP/HTTP reuse, tests, and compatibility aliases are all classified.",
 };
 
@@ -136,7 +336,23 @@ const frontendSlice = {
   ownerPaths: frontendOwners.map((result) => result.path),
   failedOwnerPaths: frontendFailedOwners.map((result) => result.path),
 };
-const commandFailed = requestedSlice === "A6.2" ? !frontendSlice.sliceComplete : failed;
+const ipcSlice = {
+  id: "A6.3",
+  owner: "Tauri IPC adapter, typed facade, and event registry",
+  status: ipcSliceComplete ? "pass" : "fail",
+  sliceComplete: ipcSliceComplete,
+  handlerCount: frozenA63Handlers.length,
+  classifiedHandlerCount: handlerClassifications.length,
+  commandsLines: ipcOwner?.lines ?? null,
+  commandsBaselineLines: ipcOwner?.baselineLines ?? null,
+  phaseComplete: false,
+};
+const commandFailed =
+  requestedSlice === "A6.2"
+    ? !frontendSlice.sliceComplete
+    : requestedSlice === "A6.3"
+      ? !ipcSlice.sliceComplete
+      : failed;
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-modularity-inventory/v2",
@@ -151,6 +367,7 @@ const report = {
     globalStatus: failed ? "failed" : "passed",
   },
   frontendSlice,
+  ipcSlice,
   owners: results,
   ipcClassification,
   slices,
@@ -161,6 +378,10 @@ const report = {
     inputPaths: [
       "scripts/evidence-provenance.mjs",
       "src-tauri/src/lib.rs",
+      "src-tauri/src/ipc/event_commands.rs",
+      "src-tauri/src/ipc/ime_commands.rs",
+      ...rustRuntimeSources.map(([path]) => path),
+      "src/shared/lib/ipc.ts",
       ...owners.map((owner) => owner.path),
       "package.json",
     ],

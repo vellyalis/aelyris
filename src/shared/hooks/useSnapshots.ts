@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 
+import { ipcEvents } from "../lib/ipc";
 import type { LayerSummary } from "../types/ghostdiff";
 import type { SnapshotCapturedEvent, SnapshotSummary, TerminalSnapshot } from "../types/snapshot";
 
@@ -48,7 +49,7 @@ export function useSnapshots(sessionId: string | null): UseSnapshotsResult {
     (async () => {
       await refresh();
       try {
-        unlistenCaptured = await listen<SnapshotCapturedEvent>(`snapshot:captured-${sessionId}`, () => {
+        unlistenCaptured = await listen<SnapshotCapturedEvent>(ipcEvents.snapshotCaptured(sessionId), () => {
           void refresh();
         });
       } catch {

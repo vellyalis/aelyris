@@ -47,7 +47,7 @@ the durable dependency order:
 2. A4.12 closes the remaining startup-admission surfaces and then runs one combined
    runtime-integrity matrix. No new A4 slice is added for already-known acceptance
    gaps.
-3. A6.2e1-A6.2e4 are complete; A6 resumes at A6.2f and is accepted by ownership,
+3. A6.2-A6.3 are complete; A6 resumes at A6.4 and is accepted by ownership,
    dependency direction, behavior, and concurrency evidence. Line counts are
    non-growth diagnostics, not universal architectural targets.
 4. A7.0 locks one canonical Core Mission before runtime work. The release-blocking
@@ -1506,7 +1506,7 @@ A6.2g hosted closeout:
   separately retains its stack-risk blocker. That release result does not
   reopen A6.2 or promote A6/Aelyris release readiness.
 
-#### **A6.3 Active - Tauri IPC Adapter And Handler Classification**
+#### **A6.3 Complete - Tauri IPC Adapter And Handler Classification**
 
 Start A6.3 with inventory and classification before persistence, deletion, or
 adapter movement. Reconcile the authoritative Tauri command registration and
@@ -1531,6 +1531,41 @@ First acceptance boundary:
 
 Only the A6.8 combined aggregate may emit A6 `phaseComplete=true` after
 A6.2-A6.7 and blocking CI all pass.
+
+Completion evidence:
+
+- the frozen inventory classifies all 40 handlers from the sole
+  `tauri::generate_handler!` registration block through frontend invoke,
+  MCP/HTTP reuse, test, and compatibility-alias surfaces;
+- all 40 handlers remain `deletionAuthorized=false`; an absent signal is recorded
+  as none observed and never promotes deletion authority;
+- six `native_terminal_input_*` wrappers moved to the existing IME adapter while
+  the shared commit/write authority remains in `commands.rs`;
+- fourteen terminal/agent/chat wire names have one Rust owner in
+  `event_commands.rs` and one typed TypeScript projection in `ipc.ts`; the
+  verifier rejects raw production Rust wire literals outside that owner;
+- `commands.rs` is `4429 <= 4574`, the A6.3 required-slice gate passes, a
+  negative owner-duplication probe fails closed, Rust tests pass 1306/1306, and
+  independent review round 2 reports zero findings;
+- the global inventory remains failed for A6.4 `mcp.rs` (`6578 > 5943`) and A6.5
+  `queries.rs` (`3334 > 3330`), so `phaseComplete=false` remains truthful.
+
+#### **A6.4 Active - MCP Catalog, Governance, And Domain Dispatch**
+
+Start with an explicit inventory of the current tool catalog, JSON schemas,
+governance-before-effect checks, and domain dispatch paths in
+`src-tauri/src/api/mcp.rs`. Preserve exact verb/schema behavior and existing
+runtime owners before extracting any module.
+
+First acceptance boundary:
+
+- catalog and schema expose exactly the same verb set without a second registry;
+- governance remains ahead of every effectful dispatch path;
+- extracted domain adapters depend toward their existing runtime owners and do
+  not create parallel state or dispatch owners;
+- exact verb/schema drift and focused domain behavior remain executable;
+- the frozen `mcp.rs` ceiling is lowered from the current `6578 > 5943` failure;
+- A6 `phaseComplete=false` remains truthful.
 
 ## A7 - Evidence-Backed Core Mission Loop
 

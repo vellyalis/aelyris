@@ -16,6 +16,12 @@ use crate::term::NativeTerminalRegistry;
 use crate::watchdog::auto_repair::AutoRepairManager;
 use crate::watchdog::{pane_watcher, AutoRepairConfig, ErrorContext};
 
+use super::event_commands::{
+    agent_exit_event, agent_output_event, chat_complete_event, chat_session_id_event,
+    chat_stream_event, snapshot_captured_event, terminal_diff_event, terminal_exit_event,
+    terminal_lag_event, terminal_output_event, terminal_prompt_mark_event, watchdog_decision_event,
+    AGENT_FLEET_UPDATED_EVENT, AGENT_SESSIONS_UPDATED_EVENT,
+};
 use super::persistence_commands::{normalize_command_history_cwd, save_command_history};
 
 const PTY_OUTPUT_BATCH_MAX_BYTES: usize = 64 * 1024;
@@ -1467,7 +1473,7 @@ pub(crate) fn wire_terminal_streaming(
         let flush_registry = native_registry.clone();
         let flush_handle = app.clone();
         let flush_id = terminal_id.to_string();
-        let flush_event = format!("term:diff-{terminal_id}");
+        let flush_event = terminal_diff_event(&terminal_id);
         std::thread::spawn(move || {
             use std::sync::atomic::Ordering;
             while alive.load(Ordering::Acquire) {
@@ -1493,10 +1499,10 @@ pub(crate) fn wire_terminal_streaming(
 
     tauri::async_runtime::spawn(async move {
         let terminal_id = terminal_id_owned;
-        let event_name = format!("pty-output-{}", terminal_id);
-        let diff_event_name = format!("term:diff-{}", terminal_id);
-        let prompt_mark_event_name = format!("term:prompt-mark-{}", terminal_id);
-        let lag_event_name = format!("term:lag-{}", terminal_id);
+        let event_name = terminal_output_event(&terminal_id);
+        let diff_event_name = terminal_diff_event(&terminal_id);
+        let prompt_mark_event_name = terminal_prompt_mark_event(&terminal_id);
+        let lag_event_name = terminal_lag_event(&terminal_id);
         let mut output_batch = Vec::<u8>::with_capacity(PTY_OUTPUT_BATCH_MAX_BYTES);
         let mut output_batch_chunks = 0usize;
         let mut bell_filter_in_osc = false;
@@ -1661,7 +1667,7 @@ pub(crate) fn wire_terminal_streaming(
                     "redacted": true,
                 }),
             );
-            let _ = waiter_app.emit(&format!("pty-exit-{}", waiter_id), exit_info);
+            let _ = waiter_app.emit(&terminal_exit_event(&waiter_id), exit_info);
         });
     }
 
@@ -1755,7 +1761,7 @@ pub(crate) async fn wire_sidecar_terminal_streaming(
         let flush_registry = native_registry.clone();
         let flush_handle = app.clone();
         let flush_id = terminal_id.to_string();
-        let flush_event = format!("term:diff-{terminal_id}");
+        let flush_event = terminal_diff_event(&terminal_id);
         std::thread::spawn(move || {
             use std::sync::atomic::Ordering;
             while alive.load(Ordering::Acquire) {
@@ -1781,10 +1787,10 @@ pub(crate) async fn wire_sidecar_terminal_streaming(
 
     tauri::async_runtime::spawn(async move {
         let terminal_id = terminal_id_owned;
-        let event_name = format!("pty-output-{}", terminal_id);
-        let diff_event_name = format!("term:diff-{}", terminal_id);
-        let prompt_mark_event_name = format!("term:prompt-mark-{}", terminal_id);
-        let lag_event_name = format!("term:lag-{}", terminal_id);
+        let event_name = terminal_output_event(&terminal_id);
+        let diff_event_name = terminal_diff_event(&terminal_id);
+        let prompt_mark_event_name = terminal_prompt_mark_event(&terminal_id);
+        let lag_event_name = terminal_lag_event(&terminal_id);
         let mut output_batch = Vec::<u8>::with_capacity(PTY_OUTPUT_BATCH_MAX_BYTES);
         let mut output_batch_chunks = 0usize;
         let mut bell_filter_in_osc = false;
@@ -1879,7 +1885,7 @@ pub(crate) async fn wire_sidecar_terminal_streaming(
                 }),
             );
             let _ = app_handle.emit(
-                &format!("pty-exit-{}", terminal_id),
+                &terminal_exit_event(&terminal_id),
                 ExitInfo {
                     code: None,
                     crashed: false,
@@ -2043,149 +2049,7 @@ pub async fn write_terminal(app: AppHandle, id: String, data: String) -> Result<
     Ok(())
 }
 
-#[tauri::command]
-pub fn native_terminal_input_status(
-    host: State<'_, Arc<crate::term::NativeTerminalInputHost>>,
-) -> crate::term::NativeTerminalInputStatus {
-    host.status()
-}
-
-#[tauri::command]
-pub fn native_terminal_input_preedit(
-    host: State<'_, Arc<crate::term::NativeTerminalInputHost>>,
-) -> crate::term::NativeTerminalPreedit {
-    host.preedit()
-}
-
-fn native_input_coord(value: f64) -> i32 {
-    if !value.is_finite() {
-        return 0;
-    }
-    value.round().clamp(0.0, i32::MAX as f64) as i32
-}
-
-#[tauri::command]
-pub async fn native_terminal_input_focus(
-    app: AppHandle,
-    terminal_id: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    caret_inset: Option<f64>,
-) -> Result<crate::term::NativeTerminalInputStatus, String> {
-    let host = app
-        .state::<Arc<crate::term::NativeTerminalInputHost>>()
-        .inner()
-        .clone();
-    let app_for_main = app.clone();
-    let (tx, rx) = mpsc::channel();
-    let rect = crate::term::NativeInputSurfaceRect {
-        x: native_input_coord(x),
-        y: native_input_coord(y),
-        width: native_input_coord(width).max(1),
-        height: native_input_coord(height).max(1),
-        caret_inset: native_input_coord(caret_inset.unwrap_or(0.0)),
-    };
-    app.run_on_main_thread(move || {
-        let result = (|| {
-            let window = app_for_main
-                .get_webview_window("main")
-                .ok_or_else(|| "No main window".to_string())?;
-            let hwnd = window.hwnd().map_err(|err| err.to_string())?;
-            host.focus_native_surface(hwnd.0 as isize, terminal_id, rect)
-        })();
-        let _ = tx.send(result);
-    })
-    .map_err(|err| format!("native input focus dispatch failed: {err}"))?;
-    rx.recv_timeout(Duration::from_secs(2))
-        .map_err(|err| format!("native input focus timed out: {err}"))?
-}
-
-#[tauri::command]
-pub async fn native_terminal_input_drain(
-    app: AppHandle,
-) -> Result<crate::term::NativeTerminalInputStatus, String> {
-    let host = app
-        .state::<Arc<crate::term::NativeTerminalInputHost>>()
-        .inner()
-        .clone();
-    let host_for_main = host.clone();
-    let (tx, rx) = mpsc::channel();
-    app.run_on_main_thread(move || {
-        let _ = tx.send(host_for_main.drain_native_surface_text());
-    })
-    .map_err(|err| format!("native input drain dispatch failed: {err}"))?;
-    let drained = rx
-        .recv_timeout(Duration::from_secs(2))
-        .map_err(|err| format!("native input drain timed out: {err}"))??;
-    let Some((terminal_id, text, source)) = drained else {
-        return Ok(host.status());
-    };
-    commit_native_terminal_input(&app, host, terminal_id, text, source).await
-}
-
-#[tauri::command]
-pub async fn native_terminal_input_paste(
-    app: AppHandle,
-    terminal_id: String,
-) -> Result<crate::term::NativeTerminalInputStatus, String> {
-    let host = app
-        .state::<Arc<crate::term::NativeTerminalInputHost>>()
-        .inner()
-        .clone();
-    let staged = host.stage_native_clipboard_paste(terminal_id)?;
-    let Some((terminal_id, text)) = staged else {
-        return Ok(host.status());
-    };
-    commit_native_terminal_input(
-        &app,
-        host,
-        terminal_id,
-        text,
-        "native-clipboard-paste".to_string(),
-    )
-    .await
-}
-
-/// Rust-owned terminal input commit path. The WebView can still own temporary
-/// IME preedit during the current migration, but the committed text is routed
-/// through this command so the native composition host can take over without
-/// changing PTY write, synchronized-input, audit, or snapshot semantics again.
-#[tauri::command]
-pub async fn native_terminal_input_commit(
-    app: AppHandle,
-    terminal_id: String,
-    data: String,
-    source: Option<String>,
-) -> Result<crate::term::NativeTerminalInputStatus, String> {
-    let host = app
-        .state::<Arc<crate::term::NativeTerminalInputHost>>()
-        .inner()
-        .clone();
-    if data.is_empty() {
-        return Ok(host.activate_terminal(terminal_id));
-    }
-
-    let source = sanitize_native_input_source(source);
-    commit_native_terminal_input(&app, host, terminal_id, data, source).await
-}
-
-fn sanitize_native_input_source(source: Option<String>) -> String {
-    let source = source.unwrap_or_else(|| "terminal-input".to_string());
-    let source = source
-        .chars()
-        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'))
-        .take(48)
-        .collect::<String>();
-    if source.is_empty() {
-        "terminal-input".to_string()
-    } else {
-        source
-    }
-}
-
-async fn commit_native_terminal_input(
+pub(super) async fn commit_native_terminal_input(
     app: &AppHandle,
     host: Arc<crate::term::NativeTerminalInputHost>,
     terminal_id: String,
@@ -2210,12 +2074,6 @@ async fn commit_native_terminal_input(
         );
         return Err(err);
     }
-    // P0-4: gate native input by its kind. The app's command-center is a full submit and
-    // classifies atomically. Clipboard paste is a programmatic complete-line stream, so it
-    // uses hold-until-approved semantics like send_keys: nothing reaches the PTY until the
-    // pasted line terminator is allowed. Raw keystroke sources need char echo ->
-    // echo-preserving mode (a catastrophic submission's Enter becomes Ctrl-C). The source_kind
-    // is stable per kind so one terminal's pending line shares one mirror.
     let (gate_source, gate_mode) = match source.as_str() {
         "command-center" => (
             "ipc-native-command-center",
@@ -2231,8 +2089,6 @@ async fn commit_native_terminal_input(
         ),
     };
     let raw = data.into_bytes();
-    // Serialize the gate-check + PTY write per terminal so echoed keystrokes and the
-    // (possibly neutralizing) terminator cannot reorder on the PTY (see TERMINAL_WRITE_ORDER).
     let write_order = terminal_write_order_lock(&terminal_id);
     let _write_guard = write_order.lock().await;
     let ack = match terminal_write_authorized_async(
@@ -2536,7 +2392,7 @@ fn capture_user_submit_snapshot(app: &AppHandle, terminal_id: &str) {
     };
     let id = store_state.inner().push(snap);
     let _ = app.emit(
-        &format!("snapshot:captured-{}", terminal_id),
+        &snapshot_captured_event(terminal_id),
         serde_json::json!({ "snapshotId": id, "sessionId": terminal_id }),
     );
 }
@@ -2628,7 +2484,7 @@ pub async fn resize_terminal(
         }
     };
     if let Some(diff) = native_diff {
-        let _ = app.emit(&format!("term:diff-{}", id), diff);
+        let _ = app.emit(&terminal_diff_event(&id), diff);
     }
     sync_mux_pane_size(&app, &id, cols, rows);
     Ok(())
@@ -3247,22 +3103,6 @@ fn extract_agent_tool_name(value: &serde_json::Value) -> Option<&str> {
         })
 }
 
-fn agent_sessions_updated_event() -> &'static str {
-    "agent-sessions-updated"
-}
-
-fn agent_output_event(session_id: &str) -> String {
-    format!("agent-output-{session_id}")
-}
-
-fn watchdog_decision_event(session_id: &str) -> String {
-    format!("watchdog-decision-{session_id}")
-}
-
-fn agent_exit_event(session_id: &str) -> String {
-    format!("agent-exit-{session_id}")
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AgentWatchdogEventPayload {
     decision: String,
@@ -3441,7 +3281,7 @@ pub fn start_agent(
         // Helper: emit full session list to frontend (push updates)
         let emit_sessions = |mgr: &crate::agent::AgentManager, handle: &AppHandle| {
             let sessions = mgr.list_sessions();
-            let _ = handle.emit(agent_sessions_updated_event(), &sessions);
+            let _ = handle.emit(AGENT_SESSIONS_UPDATED_EVENT, &sessions);
             emit_agent_fleet(handle);
         };
 
@@ -3508,7 +3348,7 @@ pub fn stop_agent(app: AppHandle, id: String) -> Result<(), String> {
     agent_manager.stop_session(&id)?;
     // Push updated session list
     let sessions = agent_manager.list_sessions();
-    let _ = app.emit(agent_sessions_updated_event(), &sessions);
+    let _ = app.emit(AGENT_SESSIONS_UPDATED_EVENT, &sessions);
     emit_agent_fleet(&app);
     Ok(())
 }
@@ -3564,7 +3404,7 @@ pub(crate) fn agent_fleet_snapshot(app: &AppHandle) -> Vec<crate::agent::AgentSe
 
 pub(crate) fn emit_agent_fleet(app: &AppHandle) {
     let sessions = agent_fleet_snapshot(app);
-    let _ = app.emit("agent-fleet-updated", &sessions);
+    let _ = app.emit(AGENT_FLEET_UPDATED_EVENT, &sessions);
 }
 
 /// List headless and interactive agents through the unified AgentSession contract.
@@ -3756,7 +3596,7 @@ pub fn start_chat_agent(
         for line in reader.lines() {
             match line {
                 Ok(line) if !line.is_empty() => {
-                    let event = format!("chat-stream-{}", conv_id);
+                    let event = chat_stream_event(&conv_id);
                     let _ = app_handle.emit(&event, &line);
 
                     // Update session status from stream
@@ -3780,8 +3620,8 @@ pub fn start_chat_agent(
                                     if let Some(sid) =
                                         val.get("session_id").and_then(|v| v.as_str())
                                     {
-                                        let _ = app_handle
-                                            .emit(&format!("chat-session-id-{}", conv_id), sid);
+                                        let _ =
+                                            app_handle.emit(&chat_session_id_event(&conv_id), sid);
                                     }
                                 }
                                 _ => {}
@@ -3793,7 +3633,7 @@ pub fn start_chat_agent(
                 Err(_) => break,
             }
         }
-        let _ = app_handle.emit(&format!("chat-complete-{}", conv_id), &session_id);
+        let _ = app_handle.emit(&chat_complete_event(&conv_id), &session_id);
 
         // Clean up temp images
         for p in &image_paths {
@@ -4315,22 +4155,6 @@ mod tests {
     }
 
     #[test]
-    fn native_input_source_is_sanitized_for_audit_metadata() {
-        assert_eq!(
-            sanitize_native_input_source(Some("native edit/surface!@# with spaces".to_string())),
-            "nativeeditsurfacewithspaces"
-        );
-        assert_eq!(
-            sanitize_native_input_source(Some("native-edit:surface_01".to_string())),
-            "native-edit:surface_01"
-        );
-        assert_eq!(
-            sanitize_native_input_source(Some("!!!".to_string())),
-            "terminal-input"
-        );
-    }
-
-    #[test]
     fn safe_temp_diff_name_removes_path_separators_and_preserves_extension() {
         assert_eq!(safe_temp_diff_name("src/main.rs"), "src_main.rs");
         assert_eq!(safe_temp_diff_name("馬/設定.toml"), "____.toml");
@@ -4540,17 +4364,6 @@ mod tests {
             "tool_name": "Edit"
         });
         assert_eq!(extract_agent_tool_name(&value), Some("Edit"));
-    }
-
-    #[test]
-    fn agent_event_names_match_frontend_subscription_contract() {
-        assert_eq!(agent_sessions_updated_event(), "agent-sessions-updated");
-        assert_eq!(agent_output_event("agent-1"), "agent-output-agent-1");
-        assert_eq!(
-            watchdog_decision_event("agent-1"),
-            "watchdog-decision-agent-1"
-        );
-        assert_eq!(agent_exit_event("agent-1"), "agent-exit-agent-1");
     }
 
     #[test]

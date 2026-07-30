@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown } from "lucide-react";
 import { type ClipboardEvent as ReactClipboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +6,7 @@ import { findNextPromptMark, findPrevPromptMark, useScrollback } from "../../sha
 import { useTerminalImages } from "../../shared/hooks/useTerminalImages";
 import { useTerminalSnapshot } from "../../shared/hooks/useTerminalSnapshot";
 import { formatFallbackError, reportFallback } from "../../shared/lib/fallbackTelemetry";
+import { invokeIpc } from "../../shared/lib/ipc";
 import { TERMINAL_COMMAND_EVIDENCE_EVENT, type TerminalCommandEvidenceDetail } from "../../shared/lib/terminalEvidence";
 import {
   type TerminalCursorStyle,
@@ -1205,7 +1205,7 @@ export function TerminalCanvas({
       event.preventDefault();
       event.stopPropagation();
       focusInputSurface();
-      void invoke("native_terminal_input_paste", { terminalId }).catch((err) => {
+      void invokeIpc("native_terminal_input_paste", { terminalId }).catch((err) => {
         reportFallback(
           {
             source: "terminal.native-input",

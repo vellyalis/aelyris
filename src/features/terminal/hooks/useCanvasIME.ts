@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef } from "react";
 import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
+import { invokeIpc } from "../../../shared/lib/ipc";
 import { writeClipboardText } from "../../../shared/lib/nativeClipboard";
 import {
   classifyTerminalPasteInput,
@@ -348,7 +349,7 @@ function recordImeDiagnostic(
 }
 
 const defaultWriteBytes: WriteBytesFn = (id, data) => {
-  invoke("native_terminal_input_commit", { terminalId: id, data, source: "webview-ime-bridge" }).catch((err) => {
+  invokeIpc("native_terminal_input_commit", { terminalId: id, data, source: "webview-ime-bridge" }).catch((err) => {
     reportInvokeFailure({
       source: "terminal-ime",
       operation: "native_terminal_input_commit",
@@ -543,7 +544,7 @@ export function useCanvasIME({
     const syncNativePreedit = () => {
       if (inFlight) return;
       inFlight = true;
-      invoke<NativeTerminalPreedit>("native_terminal_input_preedit")
+      invokeIpc<NativeTerminalPreedit>("native_terminal_input_preedit")
         .then((preedit) => {
           if (cancelled) return;
           const ownsTerminal = preedit?.terminalId === terminalId;
@@ -1304,7 +1305,7 @@ export function useImePosition({
         });
       }
       if (terminalId && nativeInputSurface) {
-        invoke("native_terminal_input_focus", {
+        invokeIpc("native_terminal_input_focus", {
           terminalId,
           x: rect.left + candidateX,
           y: rect.top + safeCursor.row * cellHeight,
@@ -1339,7 +1340,7 @@ export function useImePosition({
   useEffect(() => {
     if (!terminalId || !nativeInputSurface) return;
     const drain = () => {
-      invoke("native_terminal_input_drain").catch((err) => {
+      invokeIpc("native_terminal_input_drain").catch((err) => {
         reportInvokeFailure({
           source: "terminal-ime",
           operation: "native_terminal_input_drain",

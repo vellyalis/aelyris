@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatFallbackError, reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
+import { ipcEvents } from "../../shared/lib/ipc";
 import { useAppStore } from "../../shared/store/appStore";
 import { type AgentStatus, STATUS_COLORS, STATUS_LABELS } from "../../shared/types/agent";
 import { type AgentCliType, getCliColor, getCliLabel } from "../../shared/types/interactiveAgent";
@@ -128,7 +129,7 @@ export function AgentTerminal({ ptyId, cli, status, model, cost, accentColor }: 
     let cancelled = false;
     (async () => {
       try {
-        const fn = await listen(`pty-exit-${ptyId}`, () => setExited(true));
+        const fn = await listen(ipcEvents.terminalExit(ptyId), () => setExited(true));
         if (cancelled) {
           fn();
           return;

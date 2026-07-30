@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseFileChangeEvent } from "../lib/agentFileChanges";
-import { normalizeContextRemaining } from "../lib/contextTelemetry";
 import {
   createAgentTelemetryRecoverySession,
   loadAgentTelemetrySnapshot,
@@ -10,7 +9,9 @@ import {
   saveAgentTelemetrySnapshot,
   serializeAgentTelemetrySnapshot,
 } from "../lib/agentTelemetryPersistence";
+import { normalizeContextRemaining } from "../lib/contextTelemetry";
 import { reportInvokeFailure } from "../lib/fallbackTelemetry";
+import { ipcEvents } from "../lib/ipc";
 import type { OrchestraRoleId } from "../lib/orchestrator";
 import type { WorkforceGuardrailProfile } from "../lib/rightRailWorkforce";
 import { isTauriRuntime } from "../lib/tauriRuntime";
@@ -228,7 +229,7 @@ export function useAgentManager() {
     let receivedPushUpdate = false;
 
     const setup = async () => {
-      const unsub = await listen<AgentSessionRaw[]>("agent-sessions-updated", (event) => {
+      const unsub = await listen<AgentSessionRaw[]>(ipcEvents.agentSessionsUpdated, (event) => {
         receivedPushUpdate = true;
         const raw = event.payload;
         setSessions((prev) => {
@@ -279,7 +280,7 @@ export function useAgentManager() {
     const unlistens: UnlistenFn[] = [];
 
     try {
-      const unlisten1 = await listen<string>(`agent-output-${id}`, (event) => {
+      const unlisten1 = await listen<string>(ipcEvents.agentOutput(id), (event) => {
         const line = event.payload;
         let logType: AgentLog["type"] = "text";
         let content = line;
@@ -337,14 +338,14 @@ export function useAgentManager() {
       });
       unlistens.push(unlisten1);
 
-      const unlisten2 = await listen(`agent-exit-${id}`, () => {
+      const unlisten2 = await listen(ipcEvents.agentExit(id), () => {
         setSessions((prev) =>
           prev.map((s) => (s.id === id ? { ...s, status: "done" as AgentStatus, closeState: "collectable" } : s)),
         );
       });
       unlistens.push(unlisten2);
 
-      const unlisten3 = await listen<string>(`watchdog-decision-${id}`, (event) => {
+      const unlisten3 = await listen<string>(ipcEvents.watchdogDecision(id), (event) => {
         const decision = parseWatchdogDecision(event.payload);
         if (!decision) return;
         const log = watchdogDecisionToLog(decision);

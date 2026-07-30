@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportFallback, reportInvokeFailure } from "../../../shared/lib/fallbackTelemetry";
+import { ipcEvents } from "../../../shared/lib/ipc";
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import type { ShellType } from "../../../shared/types/terminalPane";
 import type { PaneSwitcherEntry } from "./operations";
@@ -1308,7 +1309,7 @@ export function PaneTreeContainer({
 
       if (isTauriRuntime()) {
         const id = terminalId;
-        void listen(`pty-exit-${id}`, () => {
+        void listen(ipcEvents.terminalExit(id), () => {
           const unlisten = agentPaneUnlistenRef.current.get(id);
           unlisten?.();
           agentPaneUnlistenRef.current.delete(id);
