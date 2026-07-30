@@ -5,6 +5,12 @@ import { useReleaseGoalEvidence } from "../features/app/useReleaseGoalEvidence";
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
+const ownerSources = import.meta.glob("../features/app/useReleaseGoalEvidence.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 const invokeMock = vi.fn() as unknown as InvokeFn & { mock: ReturnType<typeof vi.fn>["mock"] };
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -74,10 +80,37 @@ async function flushPromises(): Promise<void> {
   });
 }
 
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
+
 describe("useReleaseGoalEvidence", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("owns release, final-audit, and safe-summary parsing and fail-closed polling contracts", () => {
+    const owner = getOwnerSource();
+
+    expect(owner).toContain("release-quality-score.json");
+    expect(owner).toContain("final-goal-audit.json");
+    expect(owner).toContain("final-goal-safe-summary.json");
+    expect(owner).toContain("deriveReleaseQualityGoalInputs");
+    expect(owner).toContain("parseReleaseQualityReport");
+    expect(owner).toContain("deriveFinalGoalResidualRisk");
+    expect(owner).toContain("parseFinalGoalAuditReport");
+    expect(owner).toContain("deriveFinalGoalRequirementProofs");
+    expect(owner).toContain("deriveFinalGoalSafeGate");
+    expect(owner).toContain("parseFinalGoalSafeSummaryReport");
+    expect(owner).toContain('invoke<string>("read_file", { path })');
+    expect(owner).toContain('".codex-auto/quality/release-quality-score.json"');
+    expect(owner).toContain('".codex-auto/quality/final-goal-audit.json"');
+    expect(owner).toContain('".codex-auto/quality/final-goal-safe-summary.json"');
+    expect(owner).toContain("deriveFinalGoalRequirementProofs(null)");
+    expect(owner).toContain("const REFRESH_INTERVAL_MS = 60_000");
   });
 
   it("adopts all three files as one snapshot and fails closed on a partial generation", async () => {

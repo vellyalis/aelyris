@@ -1251,6 +1251,28 @@ App dialog-host checkpoint complete:
   `AppSilentBugs.test.ts` split after its source-contract assertions are
   inventoried; completed owners may not be reopened without a fresh regression.
 
+Release-goal-evidence test-owner checkpoint complete:
+
+- The pre-move inventory classified all 42 remaining `AppSilentBugs.test.ts`
+  test blocks by their declaration owner: 12 App/extracted-owner wiring blocks,
+  15 release/operator/scenario evidence blocks, 13 right-rail/terminal
+  composition blocks, and 2 visual-QA bootstrap/truth blocks.
+- Exactly one cohesive owner-local slice moved in this checkpoint. All 16
+  assertions that inspect `useReleaseGoalEvidence.ts` now live beside its
+  generation, overlap, project-change, and unmount behavior tests.
+  `AppSilentBugs.test.ts` retains the single
+  `useReleaseGoalEvidence(projectPath)` composition guard because App owns that
+  wiring.
+- The frontend ratchet requires the exact owner-local source-contract test to
+  execute and pass in addition to the existing behavior proof. Its contract is
+  `a6.2f-component-command-composition/v10`; it retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
+- No production source, dependency, store, service, queue, scheduler, durable
+  owner, or runtime state owner changed. The next exact boundary remains one
+  cohesive owner-local assertion slice from the inventoried central test; this
+  checkpoint does not authorize A6.2g.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

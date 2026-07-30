@@ -129,10 +129,6 @@ function getOperationalPaneSelectionSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/useOperationalPaneSelection.ts"), "utf8");
 }
 
-function getReleaseGoalEvidenceSource(): string {
-  return readFileSync(join(process.cwd(), "src/features/app/useReleaseGoalEvidence.ts"), "utf8");
-}
-
 function getAuthenticatedPromptEvidenceSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useAuthenticatedPromptEvidence.ts"), "utf8");
 }
@@ -281,17 +277,11 @@ describe("App operational pane selection ownership", () => {
   });
 });
 
-describe("App release goal evidence ownership", () => {
-  it("keeps release, final audit, and safe-gate polling fail closed in one hook", () => {
+describe("App release goal evidence wiring", () => {
+  it("composes the release goal evidence owner with the effective project path", () => {
     const src = getSrc();
-    const owner = getReleaseGoalEvidenceSource();
 
     expect(src).toContain("useReleaseGoalEvidence(projectPath)");
-    expect(owner).toContain("release-quality-score.json");
-    expect(owner).toContain("final-goal-audit.json");
-    expect(owner).toContain("final-goal-safe-summary.json");
-    expect(owner).toContain("deriveFinalGoalRequirementProofs(null)");
-    expect(owner).toContain("const REFRESH_INTERVAL_MS = 60_000");
   });
 });
 
@@ -1304,22 +1294,10 @@ describe("Release evidence gates", () => {
     );
 
     expect(src).toContain("deriveRightRailGoalTrack");
-    const releaseGoalEvidence = getReleaseGoalEvidenceSource();
-    expect(releaseGoalEvidence).toContain("deriveReleaseQualityGoalInputs");
-    expect(releaseGoalEvidence).toContain("parseReleaseQualityReport");
-    expect(releaseGoalEvidence).toContain("deriveFinalGoalResidualRisk");
-    expect(releaseGoalEvidence).toContain("parseFinalGoalAuditReport");
-    expect(releaseGoalEvidence).toContain("deriveFinalGoalRequirementProofs");
-    expect(releaseGoalEvidence).toContain("deriveFinalGoalSafeGate");
-    expect(releaseGoalEvidence).toContain("parseFinalGoalSafeSummaryReport");
     const authenticatedPromptEvidence = getAuthenticatedPromptEvidenceSource();
     expect(authenticatedPromptEvidence).toContain("deriveAuthenticatedPromptConsentPacket");
     expect(authenticatedPromptEvidence).toContain("parseAuthenticatedPromptConsentReport");
-    expect(releaseGoalEvidence).toContain('invoke<string>("read_file", { path })');
     expect(authenticatedPromptEvidence).toContain('invoke<string>("read_file", { path: consentPath })');
-    expect(releaseGoalEvidence).toContain('".codex-auto/quality/release-quality-score.json"');
-    expect(releaseGoalEvidence).toContain('".codex-auto/quality/final-goal-audit.json"');
-    expect(releaseGoalEvidence).toContain('".codex-auto/quality/final-goal-safe-summary.json"');
     expect(authenticatedPromptEvidence).toContain(
       '".codex-auto/production-smoke/authenticated-ai-cli-prompt-smoke.json"',
     );

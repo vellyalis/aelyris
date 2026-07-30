@@ -489,14 +489,18 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   placement owner. History acceptance routes through one typed action while
   individual close, project, pane, agent, and navigation runtime owners remain
   unchanged. Executed tests prove visible-only projection, close/intent
-  preservation, persistent surface placement, and history routing. App is 3769
-  lines, the frontend ratchet contract is v9, and the artifact still truthfully
-  retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
-  `sliceComplete=false`, and `phaseComplete=false`.
+  preservation, persistent surface placement, and history routing. The first
+  owner-local test split is also complete: all 16 `useReleaseGoalEvidence`
+  source-contract assertions moved from `AppSilentBugs.test.ts` into the existing
+  executed owner suite, while the central test retains only App's
+  effective-project composition wiring. App is 3769 lines, the frontend ratchet
+  contract is v10, and the artifact still truthfully retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
 - Continue A6.2f by inventorying the remaining owner-local
-  `AppSilentBugs.test.ts` split boundary before moving any assertions. Do not
-  weaken source-contract or executed behavior coverage, and do not reopen
-  completed right-rail, editor, mode-rail, sidebar, or dialog-host owners.
+  `AppSilentBugs.test.ts` split boundary before moving the next cohesive owner
+  slice. Do not weaken source-contract or executed behavior coverage, and do not
+  reopen completed right-rail, editor, mode-rail, sidebar, or dialog-host owners.
   `ProjectHeaderBar`, `WorkspaceTabs`, and `StatusBar` already own their render
   surfaces; do not add wrapper-only owners around their existing typed props.
   The queued NUI proposal does not alter that frontier.
