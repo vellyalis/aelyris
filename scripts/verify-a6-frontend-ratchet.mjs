@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -41,6 +41,7 @@ try {
           "src/__tests__/usePaneRegistry.test.tsx",
           "src/__tests__/useOperationalPaneSelection.test.tsx",
           "src/__tests__/PaneTreeContainerActiveTerminal.test.tsx",
+          "src/__tests__/useTerminalMenuCommands.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -127,6 +128,18 @@ try {
         "PaneTreeContainer onActiveTerminalChange settles rename and role requests on success and missing targets",
       ],
     },
+    {
+      id: "terminal-menu-command-composition-behavior",
+      tests: [
+        "useTerminalMenuCommands exposes the terminal command and menu contract from one owner",
+        "useTerminalMenuCommands opens the pane switcher without prompting for a fallback target",
+        "useTerminalMenuCommands does not report focus success when the pane owner rejects the target",
+        "useTerminalMenuCommands rechecks broadcast targets after confirmation before sending",
+        "useTerminalMenuCommands normalizes the exact targeted-send payload",
+        "useTerminalMenuCommands normalizes the exact confirmed broadcast payload",
+        "useTerminalMenuCommands refreshes close-tab command ownership after the active tab changes",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -152,6 +165,7 @@ try {
     { id: "pane-request-lifecycle-behavior", status: "fail", error: detail },
     { id: "pane-state-owner-behavior", status: "fail", error: detail },
     { id: "pane-tree-settlement-behavior", status: "fail", error: detail },
+    { id: "terminal-menu-command-composition-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -187,6 +201,8 @@ const paths = {
   orchestratorCommands: "src-tauri/src/ipc/orchestrator_commands.rs",
   projectTabLifecycle: "src/features/app/useProjectTabLifecycle.ts",
   appMenus: "src/features/app/useAppMenus.ts",
+  terminalMenuCommands: "src/features/app/useTerminalMenuCommands.ts",
+  terminalMenuCommandsTest: "src/__tests__/useTerminalMenuCommands.test.tsx",
   decisionInbox: "src/features/decision-inbox/useDecisionInbox.ts",
   orchestraDispatch: "src/features/orchestrator/useOrchestraDispatch.ts",
   lazy: "src/features/app/lazyPanels.tsx",
@@ -212,7 +228,8 @@ for (const [id, ceiling] of Object.entries({
   paneTreeContainer: 1691,
   bootstrapHook: 53,
   config: 34,
-  appMenus: 994,
+  appMenus: 433,
+  terminalMenuCommands: 639,
   appShellStore: 60,
   keyboardShortcuts: 261,
   decisionInbox: 134,
@@ -308,6 +325,18 @@ for (const [id, ok, evidence] of [
   ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
+  [
+    "terminal-menu-command-owner",
+    source.appMenus.includes('from "./useTerminalMenuCommands"') &&
+      source.appMenus.includes("...terminalCommands") &&
+      source.appMenus.includes("terminalMenu,") &&
+      !source.appMenus.includes('id: "switch-terminal-pane"') &&
+      source.terminalMenuCommands.includes("export function useTerminalMenuCommands") &&
+      source.terminalMenuCommandsTest.includes(
+        "rechecks broadcast targets after confirmation before sending",
+      ),
+    {},
+  ],
   ["pane-registry-owned", source.app.includes("usePaneRegistry(") && source.paneRegistry.includes("export function usePaneRegistry") && source.paneRegistry.includes("paneRegistryEqual") && source.paneRegistry.includes("clearActivePtyId"), {}],
   ["pane-agent-spawns-owned",
     source.app.includes("usePaneAgentSpawns(paneAgentSpawnOwners)") &&
@@ -362,10 +391,12 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2e4-stateful-owner-behavior/v1",
-  status: failed ? "failed" : "pass-a6.2e4-stateful-owner-behavior",
+  contractVersion: "a6.2f-component-command-composition/v1",
+  status: failed ? "failed" : "pass-a6.2f-terminal-command-owner",
   completedSlice: failed ? null : "A6.2e4",
-  sliceComplete: !failed,
+  activeSlice: "A6.2f",
+  checkpoint: failed ? null : "terminal-command-owner",
+  sliceComplete: false,
   phaseComplete: false,
   scenarios,
   generatedAt,

@@ -22,7 +22,11 @@ and routes keyboard tab switching through the same contract. A6.2e4 closes
 generation-bound evidence polling, serialized pane request ownership, consumer-
 acknowledged focus, initiating-tab agent spawn routing, owner-key-bound operational
 selection, and explicit frontend artifact metadata. A6.2f is the exact implementation
-frontier; do not reopen A4 without a fresh regression or mix A7/native work into A6.
+frontier. Its terminal command-owner checkpoint is complete: `useAppMenus` remains the
+single public composition hook while terminal commands, the Terminal menu, pane/tab
+selection, broadcast confirmation, and IME actions now have one typed owner with
+executed behavior proof. A6.2f remains active at the right-rail typed projection/action
+boundary; do not reopen A4 without a fresh regression or mix A7/native work into A6.
 
 ## Objective
 
@@ -390,8 +394,13 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   operational selection callbacks remain bound to their initiating tab/project owner.
   The frontend ratchet records explicit A6.2e4 contract metadata and executes the
   required concurrency, cancellation, routing, and cleanup behavior.
-- Resume A6 at A6.2f component and command composition. The queued NUI proposal does
-  not alter that frontier.
+- A6.2f terminal command composition checkpoint is complete: `useAppMenus.ts` is 433
+  lines, `useTerminalMenuCommands.ts` is 639 lines, and the focused ratchet proves the
+  preserved command/menu order, pane-switch routing, failed-focus reporting, and
+  post-confirm broadcast target recheck. The artifact truthfully retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, and `sliceComplete=false`.
+- Continue A6.2f at the right-rail typed projection/action contract. The queued NUI
+  proposal does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

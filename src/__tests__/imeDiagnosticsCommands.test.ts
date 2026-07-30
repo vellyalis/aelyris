@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-const sources = import.meta.glob("../features/app/useAppMenus.ts", {
+const sources = import.meta.glob("../features/app/useTerminalMenuCommands.ts", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -34,7 +34,7 @@ describe("IME diagnostics command surface", () => {
 
     expect(src).toContain('id: "broadcast-to-all-panes"');
     expect(src).toContain("Broadcast Command to All Panes...");
-    expect(src).toContain('invoke<unknown[]>("list_panes_info")');
+    expect(src).toContain('tauriInvoke<unknown[]>("list_panes_info")');
     expect(src).toContain("Broadcast unavailable");
     expect(src).toContain("showConfirm");
     expect(src).toContain("Review first");

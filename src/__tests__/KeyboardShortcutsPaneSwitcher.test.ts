@@ -6,13 +6,19 @@ const sources = import.meta.glob("../shared/hooks/useKeyboardShortcuts.ts", {
   eager: true,
 }) as Record<string, string>;
 
-const menuSources = import.meta.glob("../features/app/useAppMenus.ts", {
+const menuSources = import.meta.glob("../features/app/useTerminalMenuCommands.ts", {
   query: "?raw",
   import: "default",
   eager: true,
 }) as Record<string, string>;
 
 const registrySources = import.meta.glob("../shared/lib/shortcutRegistry.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+const appMenuSources = import.meta.glob("../features/app/useAppMenus.ts", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -66,7 +72,7 @@ describe("pane switcher keyboard shortcut", () => {
 
   it("exposes a non-conflicting Zen mode shortcut", () => {
     const shortcutSrc = getOnlySource(sources);
-    const menuSrc = getOnlySource(menuSources);
+    const menuSrc = getOnlySource(appMenuSources);
 
     expect(shortcutSrc).toContain("matchesShortcut(e, SHORTCUTS.toggleZenMode)");
     expect(shortcutSrc).toContain("setZenMode?.((v: boolean) => !v);");

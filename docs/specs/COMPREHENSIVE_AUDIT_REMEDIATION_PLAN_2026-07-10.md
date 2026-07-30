@@ -1070,6 +1070,23 @@ work must not start until A6.2g and then A6.8 satisfy their dependency gates.
    live with and decide the owner contract. No blanket file-length target is an
    acceptance criterion.
 
+Terminal command-owner checkpoint complete:
+
+- `useAppMenus` remains the single public composition hook while
+  `useTerminalMenuCommands` owns terminal command/menu definitions, pane/tab selection,
+  broadcast confirmation, and IME actions through one typed input contract.
+- Focused executed tests preserve command and Terminal menu order, pane-switch routing,
+  failed-focus reporting, and the post-confirm broadcast target recheck. The frontend
+  ratchet also fixes diagnostic ceilings at 433 and 639 lines respectively.
+- The combined production surface is 1,072 lines versus the former 994-line owner.
+  The 78-line increase is accepted as explicit typed-boundary/import/return-contract
+  overhead; it adds no dependency, store, service, scheduler, queue, or duplicate
+  runtime state owner.
+- This is an A6.2f checkpoint, not slice acceptance. The artifact retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is the right-rail typed
+  projection/action contract in item 2.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:
