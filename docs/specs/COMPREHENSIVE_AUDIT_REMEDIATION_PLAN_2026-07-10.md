@@ -1297,6 +1297,31 @@ Authenticated-prompt-evidence test-owner checkpoint complete:
   active at the next cohesive owner-local assertion slice; this checkpoint
   does not authorize A6.2g.
 
+AI-CLI-launch-evidence test-owner checkpoint complete:
+
+- The remaining single-owner candidates were compared before selection.
+  `useAiCliLaunchEvidence` retained the strongest next boundary because it had
+  one closed declaration owner, an existing executed behavior suite, four
+  assertions in its dedicated central block, and five more source assertions
+  in the final-goal block. `usePaneRegistry` had a closed owner but only one
+  behavior test; `useProjectTabLifecycle` mixed App and keyboard-shortcut
+  wiring; and `useEditorOpenMode` had no dedicated owner-local test surface.
+- Exactly one declaration owner moved. All 9 assertions that inspect
+  `useAiCliLaunchEvidence.ts` now live beside its overlap, project-change,
+  unmount, partial-preflight, failure, and telemetry contracts.
+  `AppSilentBugs.test.ts` retains only
+  `useAiCliLaunchEvidence(projectPath)` because App owns that composition
+  wiring.
+- The frontend ratchet requires the exact owner-local source-contract test to
+  execute and pass through structured Vitest assertion status handling. Its
+  contract is `a6.2f-component-command-composition/v12`; it retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
+- No production source, import layout, dependency, store, service, queue,
+  scheduler, durable owner, or runtime state owner changed. A6.2f remains
+  active at the next cohesive owner-local assertion slice; this checkpoint
+  does not authorize A6.2g.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:

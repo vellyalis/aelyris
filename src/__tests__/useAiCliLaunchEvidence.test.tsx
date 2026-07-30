@@ -5,6 +5,12 @@ import { useAiCliLaunchEvidence } from "../features/app/useAiCliLaunchEvidence";
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
+const ownerSources = import.meta.glob("../features/app/useAiCliLaunchEvidence.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 const invokeMock = vi.fn() as unknown as InvokeFn & { mock: ReturnType<typeof vi.fn>["mock"] };
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -37,10 +43,30 @@ async function flushPromises(): Promise<void> {
   });
 }
 
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
+
 describe("useAiCliLaunchEvidence", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     (invokeMock as unknown as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("owns six-artifact partial preflight assembly and fail-closed telemetry source contracts", () => {
+    const owner = getOwnerSource();
+
+    expect(owner).toContain("Promise.allSettled");
+    expect(owner).toContain("nativeInputHost || ime || processReconnect || muxLiveProcessPreservation");
+    expect(owner).toContain('operation: "read_ai_cli_launch_evidence"');
+    expect(owner).toContain("const EMPTY_EVIDENCE");
+    expect(owner).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
+    expect(owner).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
+    expect(owner).toContain('".codex-auto/production-smoke/process-reconnect-command-evidence.json"');
+    expect(owner).toContain('".codex-auto/production-smoke/interactive-ai-cli-boundary.json"');
+    expect(owner).toContain("setLaunchEvidence");
   });
 
   it("suppresses overlap and rejects completion from an old project or unmounted owner", async () => {

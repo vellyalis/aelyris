@@ -129,10 +129,6 @@ function getOperationalPaneSelectionSource(): string {
   return readFileSync(join(process.cwd(), "src/features/terminal/useOperationalPaneSelection.ts"), "utf8");
 }
 
-function getAiCliLaunchEvidenceSource(): string {
-  return readFileSync(join(process.cwd(), "src/features/app/useAiCliLaunchEvidence.ts"), "utf8");
-}
-
 function getProjectTabLifecycleSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/useProjectTabLifecycle.ts"), "utf8");
 }
@@ -290,15 +286,10 @@ describe("App authenticated prompt evidence wiring", () => {
 });
 
 describe("App AI CLI launch evidence ownership", () => {
-  it("preserves six-artifact partial preflight assembly and fail-closed telemetry", () => {
+  it("wires the effective project into the AI CLI launch evidence owner", () => {
     const src = getSrc();
-    const owner = getAiCliLaunchEvidenceSource();
 
     expect(src).toContain("useAiCliLaunchEvidence(projectPath)");
-    expect(owner).toContain("Promise.allSettled");
-    expect(owner).toContain("nativeInputHost || ime || processReconnect || muxLiveProcessPreservation");
-    expect(owner).toContain('operation: "read_ai_cli_launch_evidence"');
-    expect(owner).toContain("const EMPTY_EVIDENCE");
   });
 });
 
@@ -1285,14 +1276,6 @@ describe("Release evidence gates", () => {
     );
 
     expect(src).toContain("deriveRightRailGoalTrack");
-    const aiCliLaunchEvidence = getAiCliLaunchEvidenceSource();
-    expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/real-ai-cli-binary-probe.json"');
-    expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/native-terminal-input-host.json"');
-    expect(aiCliLaunchEvidence).toContain(
-      '".codex-auto/production-smoke/process-reconnect-command-evidence.json"',
-    );
-    expect(aiCliLaunchEvidence).toContain('".codex-auto/production-smoke/interactive-ai-cli-boundary.json"');
-    expect(aiCliLaunchEvidence).toContain("setLaunchEvidence");
     expect(src).toContain("rightRailAiCliPromptContract");
     expect(src).toContain("evidence: rightRailAiCliLaunchEvidence.evidence");
     expect(src).toContain("preflight: rightRailAiCliLaunchEvidence.preflight");

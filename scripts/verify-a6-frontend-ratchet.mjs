@@ -105,6 +105,10 @@ try {
       tests: ["useAuthenticatedPromptEvidence owns consent, preflight, and fail-closed polling source contracts"],
     },
     {
+      id: "ai-cli-launch-evidence-owner-source-contract",
+      tests: ["useAiCliLaunchEvidence owns six-artifact partial preflight assembly and fail-closed telemetry source contracts"],
+    },
+    {
       id: "pane-request-lifecycle-behavior",
       tests: [
         "usePaneRequestController continues dispatching after the StrictMode effect rehearsal",
@@ -245,6 +249,7 @@ try {
     { id: "evidence-generation-behavior", status: "fail", error: detail },
     { id: "release-goal-evidence-owner-source-contract", status: "fail", error: detail },
     { id: "authenticated-prompt-evidence-owner-source-contract", status: "fail", error: detail },
+    { id: "ai-cli-launch-evidence-owner-source-contract", status: "fail", error: detail },
     { id: "pane-request-lifecycle-behavior", status: "fail", error: detail },
     { id: "pane-state-owner-behavior", status: "fail", error: detail },
     { id: "pane-tree-settlement-behavior", status: "fail", error: detail },
@@ -686,11 +691,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v11",
-  status: failed ? "failed" : "pass-a6.2f-authenticated-prompt-evidence-test-owner",
+  contractVersion: "a6.2f-component-command-composition/v12",
+  status: failed ? "failed" : "pass-a6.2f-ai-cli-launch-evidence-test-owner",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "authenticated-prompt-evidence-test-owner",
+  checkpoint: failed ? null : "ai-cli-launch-evidence-test-owner",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,
