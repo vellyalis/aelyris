@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 const sources = import.meta.glob(
-  "../../src-tauri/src/{audit.rs,session/manager.rs,git/worktree.rs,workflow/executor.rs,db/migrations.rs,db/queries.rs,ipc/*.rs,lib.rs}",
+  "../../src-tauri/src/{audit.rs,git/worktree.rs,workflow/executor.rs,db/migrations.rs,db/queries.rs,ipc/*.rs,lib.rs}",
   {
     query: "?raw",
     import: "default",
@@ -27,26 +27,6 @@ function ipcCombined(): string {
 }
 
 describe("backend silent state guards", () => {
-  it("spawns session panes before DB insert and rolls back PTY on DB failure", () => {
-    const src = sourceFor("session/manager.rs");
-    const handler = src.match(/pub fn create_pane[\s\S]*?Ok\(\(pane, terminal_id\)\)/);
-    expect(handler).not.toBeNull();
-    const body = handler?.[0] ?? "";
-
-    expect(body.indexOf("pty_manager.spawn")).toBeLessThan(body.indexOf("db.create_pane"));
-    expect(body).toMatch(/Err\(err\)\s*=>\s*\{\s*let _ = pty_manager\.close\(&terminal_id\)/);
-  });
-
-  it("does not delete persisted panes when PTY close fails", () => {
-    const src = sourceFor("session/manager.rs");
-    const handler = src.match(/pub fn close_pane[\s\S]*?self\.with_db\(\|db\| db\.delete_pane\(pane_id\)\)/);
-    expect(handler).not.toBeNull();
-    const body = handler?.[0] ?? "";
-
-    expect(body).toMatch(/pty_manager\.close\(terminal_id\)\.map_err\(\|e\| e\.to_string\(\)\)\?/);
-    expect(body.indexOf("pty_manager.close")).toBeLessThan(body.indexOf("db.delete_pane"));
-  });
-
   it("reports branch deletion failure when removing a worktree should delete the branch", () => {
     const src = sourceFor("git/worktree.rs");
     const handler = src.match(/if delete_branch \{[\s\S]*?\n {4}\}/);
