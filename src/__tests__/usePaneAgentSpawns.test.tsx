@@ -7,6 +7,18 @@ const tauriMocks = vi.hoisted(() => ({ listen: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauriMocks.listen }));
 vi.mock("../shared/lib/tauriRuntime", () => ({ isTauriRuntime: () => true }));
 
+const ownerSources = import.meta.glob("../features/terminal/usePaneAgentSpawns.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+function getOwnerSource(): string {
+  const entries = Object.entries(ownerSources);
+  expect(entries).toHaveLength(1);
+  return entries[0][1].replace(/\r\n/g, "\n");
+}
+
 describe("usePaneAgentSpawns", () => {
   let emit!: (event: unknown) => void;
   let unlisten: ReturnType<typeof vi.fn>;
@@ -18,6 +30,17 @@ describe("usePaneAgentSpawns", () => {
       emit = listener;
       return Promise.resolve(unlisten);
     });
+  });
+
+  it("owns event parsing, explicit owner routing, global sequencing, and terminal deduplication", () => {
+    const owner = getOwnerSource();
+
+    expect(owner).toContain('tauriListen<AgentSpawnedEvent>("agent-event"');
+    expect(owner).toContain("sequenceRef.current += 1");
+    expect(owner).toContain("mounted.terminalId === agent.terminalId");
+    expect(owner).toContain('event.payload?.kind !== "agent_spawned"');
+    expect(owner).toContain("resolveEventOwnerTabId");
+    expect(owner).toContain("paneAgentSpawnsByTab");
   });
 
   it("retains the explicit initiating tab when an agent-spawn event arrives after a tab switch", async () => {

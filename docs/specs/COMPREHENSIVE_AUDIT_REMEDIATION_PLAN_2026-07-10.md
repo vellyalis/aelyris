@@ -1322,6 +1322,28 @@ AI-CLI-launch-evidence test-owner checkpoint complete:
   active at the next cohesive owner-local assertion slice; this checkpoint
   does not authorize A6.2g.
 
+Pane-agent-spawn test-owner checkpoint complete:
+
+- The next candidate comparison selected `usePaneAgentSpawns` over the
+  one-test pane-registry boundary, the already-large pane-request concurrency
+  suite, and the broader operational-selection boundary. It has one closed
+  declaration owner and existing behavior proof for explicit tab/repo routing,
+  delayed events, listener cleanup, deduplication, and multi-tab retention.
+- Exactly one declaration owner moved. All 6 assertions that inspect
+  `usePaneAgentSpawns.ts` now live in its existing owner-local suite.
+  `AppSilentBugs.test.ts` retains only
+  `usePaneAgentSpawns(paneAgentSpawnOwners)` because App owns that composition
+  wiring.
+- The frontend ratchet requires the exact owner-local source-contract test to
+  execute and pass through structured Vitest assertion status handling. Its
+  contract is `a6.2f-component-command-composition/v13`; it retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`.
+- No production source, import layout, dependency, store, service, queue,
+  scheduler, durable owner, or runtime state owner changed. A6.2f remains
+  active at the next cohesive owner-local assertion slice; this checkpoint
+  does not authorize A6.2g.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:
