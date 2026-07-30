@@ -42,7 +42,12 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    remain, and retained runtime/compatibility surfaces remain classified. A6.8
    combined ratchet and regression acceptance is implemented locally with one
    fail-closed combined owner and blocking hosted-candidate job. The exact frontier
-   is its committed exact-SHA GitHub run plus externally verified run closeout. Do
+   is the cold-runner aggregate timeout repair after hosted run `30574240201`
+   proved frontend, rendered UI, Rust, and A6.2 acceptance green but reached the
+   old 360-second child-process limit in the A6.8 global aggregate. The aggregate
+   retains every behavior owner and now has a 720-second verifier allowance inside
+   the existing 45-minute job; a new exact-SHA GitHub run plus externally verified
+   run closeout remains required. Do
    not reopen A4 or completed A6.2-A6.7 owners without a fresh regression, and do
    not mix A7 or native product expansion into A6.
 

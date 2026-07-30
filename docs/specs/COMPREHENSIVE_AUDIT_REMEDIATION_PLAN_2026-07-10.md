@@ -1768,6 +1768,15 @@ Local implementation checkpoint:
   and requires every behavior owner. The local A6.2-A6.7 required-slice matrix,
   frontend acceptance, and default combined acceptance pass; a new exact-SHA
   hosted replacement remains required before A6 completion.
+- Hosted run `30574240201` then proved frontend, rendered UI trust, Rust, and the
+  isolated A6.2 acceptance green. Its A6.8 candidate accepted the exact four-job
+  dependency context but the cold global inventory reached the verifier's
+  360-second child-process limit before it could write its artifact. This is an
+  execution allowance defect, not authority to skip the global behavior owners:
+  A6.8 continues to execute all A6.2-A6.7 behavior in default mode, while its
+  child-process allowance is raised to 720 seconds inside the existing 45-minute
+  blocking job. A fresh exact-SHA hosted run and authenticated closeout remain
+  mandatory.
 
 ## A7 - Evidence-Backed Core Mission Loop
 

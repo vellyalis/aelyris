@@ -9,6 +9,7 @@ const workflowPath = ".github/workflows/ci.yml";
 const workflowName = "CI";
 const inventoryArtifactPath = ".codex-auto/quality/a6-modularity-inventory.json";
 const artifactPath = join(root, ".codex-auto", "quality", "a6-combined-acceptance.json");
+const modularityAggregateTimeoutMs = 720_000;
 const requiredDependencyJobs = ["frontend", "rendered-ui-trust", "a6-frontend-acceptance", "rust"];
 const combinedJobDisplayName = "A6.8 combined hosted candidate";
 const requiredJobDisplayNames = {
@@ -79,12 +80,12 @@ function runModularityAggregate() {
     env: process.env,
     stdio: "inherit",
     windowsHide: true,
-    timeout: 360_000,
+    timeout: modularityAggregateTimeoutMs,
   });
   const ok = result.status === 0 && !result.error;
   record("current-default-modularity-aggregate", ok, {
     command: "pnpm verify:a6:modularity-inventory",
-    timeoutMs: 360_000,
+    timeoutMs: modularityAggregateTimeoutMs,
     durationMs: Date.now() - startedAt,
     exitCode: result.status,
     signal: result.signal,
