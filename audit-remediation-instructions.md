@@ -29,9 +29,13 @@ executed behavior proof. Its right-rail shell checkpoint is also complete:
 `RightRailShell` owns visibility, geometry, mode tabs, pointer/keyboard resizing, and
 mode-keyboard behavior through a four-field view model and two-action contract while
 App retains the existing runtime state owners. Wildcard runtime-barrel exports are
-closed and affected consumers use their declaration owners directly. A6.2f remains
-active at the right-rail body composition boundary; do not reopen A4 without a fresh
-regression or mix A7/native work into A6.
+closed and affected consumers use their declaration owners directly. The first
+right-rail body checkpoint is complete: `RightRailReviewMode` owns the review queue,
+inspector slot, SCM, and compact context composition through one eight-field
+projection and five-action contract, remains lazy behind the existing registry, and
+adds no runtime state owner. A6.2f remains active at the command/observe body
+composition boundary; do not reopen A4 without a fresh regression or mix A7/native
+work into A6.
 
 ## Objective
 
@@ -413,10 +417,17 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   lowers App/model ceilings to 4155/666 and fixes non-growth ceilings for both new
   shell files. The artifact truthfully retains `completedSlice=A6.2e4`,
   `activeSlice=A6.2f`, `sliceComplete=false`, and `phaseComplete=false`.
-- Continue A6.2f by inventorying the remaining inline right-rail body and selecting
-  the first cohesive mode-owned sub-surface; do not move the full approximately
-  90-dependency body into a giant contract. The queued NUI proposal does not alter
-  that frontier.
+- A6.2f review-mode body checkpoint is complete: `RightRailReviewMode.tsx` is 87
+  lines and its pure contract is 33 lines. Review queue, inspector slot, SCM, and
+  compact context composition use the existing lazy registry plus an eight-field
+  projection, five actions, and two render slots without copying runtime state.
+  Executed tests prove projection and review/SCM/agent intent routing. App is 4118
+  lines, the frontend ratchet contract is v3, and the artifact still truthfully
+  retains `completedSlice=A6.2e4`, `activeSlice=A6.2f`,
+  `sliceComplete=false`, and `phaseComplete=false`.
+- Continue A6.2f at the command-mode body boundary with the same projection/action
+  discipline; do not move command plus observe as one body or recreate their runtime
+  owners. The queued NUI proposal does not alter that frontier.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

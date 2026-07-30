@@ -15,8 +15,8 @@ export const LivePanesPanel = lazy(() => import("../context/LivePanesPanel").the
 export const ReliabilityPanel = lazy(() => import("../context/ReliabilityPanel").then((module) => ({ default: module.ReliabilityPanel })));
 export const LogsPanel = lazy(() => import("../logs/LogsPanel").then((module) => ({ default: module.LogsPanel })));
 export const ProcessManagerPanel = lazy(() => import("../process-manager").then((module) => ({ default: module.ProcessManagerPanel })));
-export const ReviewQueuePanel = lazy(() => import("../review/ReviewQueuePanel").then((module) => ({ default: module.ReviewQueuePanel })));
 export const SCMPanel = lazy(() => import("../scm/SCMPanel").then((module) => ({ default: module.SCMPanel })));
+export const RightRailReviewMode = lazy(() => import("../right-rail/RightRailReviewMode").then((module) => ({ default: module.RightRailReviewMode })));
 export const QuickOpen = lazy(() => import("../quick-open/QuickOpen").then((module) => ({ default: module.QuickOpen })));
 export const EditorPanel = lazy(() => import("../editor/EditorPanel").then((module) => ({ default: module.EditorPanel })));
 export const CommandPalette = lazy(() => import("../command-palette/CommandPalette").then((module) => ({ default: module.CommandPalette })));

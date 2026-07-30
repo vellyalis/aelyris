@@ -32,7 +32,7 @@ import {
   ProcessManagerPanel,
   QuickOpen,
   ReliabilityPanel,
-  ReviewQueuePanel,
+  RightRailReviewMode,
   RunGraphPanel,
   SCMPanel,
   SearchPanel,
@@ -3790,68 +3790,31 @@ export function App() {
                   )}
 
                   {rightRailMode === "review" && (
-                    <>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="review-queue">
-                            {renderRightRailDestinationPrompt("review-queue")}
-                            <ReviewQueuePanel
-                              sessions={rightRailSessions}
-                              changedFiles={rightRailAllChangedFiles}
-                              activeSessionId={rightRailActiveSessionId}
-                              onSelectSession={handleSelectRightRailSession}
-                              onOpenDiff={handleOpenDiff}
-                              onOpenCommandEvidence={handleOpenCommandEvidence}
-                              onStartAgent={handleStartAgent}
-                              workstationGraph={focusedRightRailGraph}
-                            />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="sessions" style={{ minHeight: 200 }}>
-                            <AgentInspector {...agentInspectorProps} />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <div className="bento-widget" data-widget="scm">
-                            <SCMPanel
-                              projectPath={projectPath}
-                              onOpenFile={handleFileSelect}
-                              onOpenDiff={handleOpenDiff}
-                            />
-                          </div>
-                        </Suspense>
-                      </ErrorBoundary>
-                      <ErrorBoundary>
-                        <Suspense fallback={null}>
-                          <RightRailWidgetFrame
-                            widget="context"
-                            title="Context"
-                            subtitle="handoff state"
-                            defaultOpen={false}
-                            forceOpen={rightRailFocusWidget === "context"}
-                          >
-                            <ContextPanel
-                              sessions={rightRailSessions}
-                              activeSessionId={rightRailActiveSessionId}
-                              changedFilesCount={rightRailAllChangedFiles.length}
-                              changedFiles={rightRailAllChangedFiles}
-                              panes={visualTerminalPaneTargets}
-                              auditEvents={scopedOperationalAuditEvents}
-                              projectName={projectName}
-                              projectPath={projectPath}
-                              branch={branch}
-                              density="compact"
-                              workstationGraph={focusedRightRailGraph}
-                            />
-                          </RightRailWidgetFrame>
-                        </Suspense>
-                      </ErrorBoundary>
-                    </>
+                    <ErrorBoundary>
+                      <Suspense fallback={null}>
+                        <RightRailReviewMode
+                          viewModel={{
+                            sessions: rightRailSessions,
+                            activeSessionId: rightRailActiveSessionId,
+                            changedFiles: rightRailAllChangedFiles,
+                            panes: visualTerminalPaneTargets,
+                            auditEvents: scopedOperationalAuditEvents,
+                            project: { name: projectName, path: projectPath, branch },
+                            workstationGraph: focusedRightRailGraph,
+                            contextFocused: rightRailFocusWidget === "context",
+                          }}
+                          actions={{
+                            onSelectSession: handleSelectRightRailSession,
+                            onOpenDiff: handleOpenDiff,
+                            onOpenCommandEvidence: handleOpenCommandEvidence,
+                            onStartAgent: handleStartAgent,
+                            onOpenFile: handleFileSelect,
+                          }}
+                          reviewQueueDestination={renderRightRailDestinationPrompt("review-queue")}
+                          agentInspector={<AgentInspector {...agentInspectorProps} />}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
                   )}
 
                   {rightRailMode === "observe" && (

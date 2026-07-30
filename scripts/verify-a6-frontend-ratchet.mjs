@@ -24,7 +24,7 @@ try {
           "/d",
           "/s",
           "/c",
-          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx --configLoader native --reporter=json",
+          "pnpm.cmd exec vitest run src/__tests__/useAppShellStore.test.tsx src/__tests__/useProjectTabLifecycle.test.tsx src/__tests__/KeyboardShortcutsTerminalFocus.test.tsx src/__tests__/useReleaseGoalEvidence.test.tsx src/__tests__/useAuthenticatedPromptEvidence.test.tsx src/__tests__/useAiCliLaunchEvidence.test.tsx src/__tests__/usePaneRequestController.test.tsx src/__tests__/usePaneAgentSpawns.test.tsx src/__tests__/usePaneRegistry.test.tsx src/__tests__/useOperationalPaneSelection.test.tsx src/__tests__/PaneTreeContainerActiveTerminal.test.tsx src/__tests__/useTerminalMenuCommands.test.tsx src/__tests__/RightRailShell.test.tsx src/__tests__/RightRailReviewMode.test.tsx --configLoader native --reporter=json",
         ]
       : [
           "exec",
@@ -43,6 +43,7 @@ try {
           "src/__tests__/PaneTreeContainerActiveTerminal.test.tsx",
           "src/__tests__/useTerminalMenuCommands.test.tsx",
           "src/__tests__/RightRailShell.test.tsx",
+          "src/__tests__/RightRailReviewMode.test.tsx",
           "--configLoader",
           "native",
           "--reporter=json",
@@ -151,6 +152,13 @@ try {
         "RightRailShell projects the existing zen or collapsed visibility decision without rederiving it",
       ],
     },
+    {
+      id: "right-rail-review-mode-composition-behavior",
+      tests: [
+        "RightRailReviewMode projects the cohesive review surface from one view model without duplicating runtime state",
+        "RightRailReviewMode routes review, SCM, and agent intents through the typed action contract",
+      ],
+    },
   ];
   for (const requirement of behaviorRequirements) {
     const missingOrFailing = requirement.tests.filter(
@@ -178,6 +186,7 @@ try {
     { id: "pane-tree-settlement-behavior", status: "fail", error: detail },
     { id: "terminal-menu-command-composition-behavior", status: "fail", error: detail },
     { id: "right-rail-shell-composition-behavior", status: "fail", error: detail },
+    { id: "right-rail-review-mode-composition-behavior", status: "fail", error: detail },
   );
 }
 const paths = {
@@ -191,6 +200,9 @@ const paths = {
   rightRailShell: "src/features/right-rail/RightRailShell.tsx",
   rightRailShellContract: "src/features/right-rail/rightRailShellContract.ts",
   rightRailShellTest: "src/__tests__/RightRailShell.test.tsx",
+  rightRailReviewMode: "src/features/right-rail/RightRailReviewMode.tsx",
+  rightRailReviewModeContract: "src/features/right-rail/rightRailReviewModeContract.ts",
+  rightRailReviewModeTest: "src/__tests__/RightRailReviewMode.test.tsx",
   audit: "src/features/right-rail/rightRailAudit.ts",
   visualQa: "src/features/right-rail/rightRailVisualQa.ts",
   widgetFrame: "src/features/right-rail/rightRailWidgetFrame.tsx",
@@ -251,6 +263,8 @@ for (const [id, ceiling] of Object.entries({
   orchestraDispatch: 169,
   rightRailShell: 107,
   rightRailShellContract: 14,
+  rightRailReviewMode: 87,
+  rightRailReviewModeContract: 33,
 })) {
   const lines = source[id].split(/\r?\n/).length;
   const ok = lines <= ceiling;
@@ -286,7 +300,7 @@ const genericOwnersImportingRightRailModel = [
   "orchestraDispatch",
 ].filter((id) => source[id].includes("rightRailModel"));
 for (const [id, ok, evidence] of [
-  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 4155, { lines: source.app.split(/\r?\n/).length, ceiling: 4155 }],
+  ["app-composition-non-growth", source.app.split(/\r?\n/).length <= 4118, { lines: source.app.split(/\r?\n/).length, ceiling: 4118 }],
   [
     "app-shell-store-subscription-narrow",
     source.app.includes('import { useAppShellStore } from "./features/app/useAppShellStore"') &&
@@ -392,6 +406,19 @@ for (const [id, ok, evidence] of [
       source.rightRailShellTest.includes("without owning duplicate width state"),
     {},
   ],
+  [
+    "right-rail-review-mode-contract-owned",
+    source.app.includes("<RightRailReviewMode") &&
+      source.app.includes('reviewQueueDestination={renderRightRailDestinationPrompt("review-queue")}') &&
+      source.lazy.includes('import("../right-rail/RightRailReviewMode")') &&
+      source.rightRailReviewModeContract.includes("export interface RightRailReviewModeViewModel") &&
+      source.rightRailReviewModeContract.includes("export interface RightRailReviewModeActions") &&
+      source.rightRailReviewMode.includes('data-widget="review-queue"') &&
+      source.rightRailReviewMode.includes('density="compact"') &&
+      source.rightRailReviewModeTest.includes("without duplicating runtime state") &&
+      source.rightRailReviewModeTest.includes("through the typed action contract"),
+    {},
+  ],
   ["right-rail-action-feedback-owned", source.app.includes("useRightRailActionFeedback()") && source.actionFeedback.includes("export function useRightRailActionFeedback"), {}],
   ["right-rail-guardrail-selection-owned", source.app.includes("useRightRailGuardrailSelection()") && source.guardrailSelection.includes("export function useRightRailGuardrailSelection") && source.guardrailSelection.includes("RIGHT_RAIL_GUARDRAIL_SYNC_EVENT") && source.guardrailSelection.includes("saveRightRailGuardrailSelection"), {}],
   ["editor-open-mode-owned", source.app.includes("useEditorOpenMode({") && source.editorOpenMode.includes("export function useEditorOpenMode") && source.editorOpenMode.includes("EDITOR_OPEN_MODE_CHANGE_EVENT") && source.editorOpenMode.includes('operation: "open_git_file_diff_in_vscode"'), {}],
@@ -461,11 +488,11 @@ for (const [id, ok, evidence] of [
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-frontend-ratchet/v1",
-  contractVersion: "a6.2f-component-command-composition/v2",
-  status: failed ? "failed" : "pass-a6.2f-right-rail-shell-contract",
+  contractVersion: "a6.2f-component-command-composition/v3",
+  status: failed ? "failed" : "pass-a6.2f-right-rail-review-mode-contract",
   completedSlice: failed ? null : "A6.2e4",
   activeSlice: "A6.2f",
-  checkpoint: failed ? null : "right-rail-shell-contract",
+  checkpoint: failed ? null : "right-rail-review-mode-contract",
   sliceComplete: false,
   phaseComplete: false,
   scenarios,

@@ -37,6 +37,10 @@ function getRightRailShellSource(): string {
   return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailShell.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
 
+function getRightRailReviewModeSource(): string {
+  return readFileSync(join(process.cwd(), "src/features/right-rail/RightRailReviewMode.tsx"), "utf8").replace(/\r\n/g, "\n");
+}
+
 function getLazyPanelsSource(): string {
   return readFileSync(join(process.cwd(), "src/features/app/lazyPanels.tsx"), "utf8").replace(/\r\n/g, "\n");
 }
@@ -2112,6 +2116,7 @@ describe("App right rail composition", () => {
   it("keeps debug logs out of the default workstation rail", () => {
     const src = getSrc();
     const rightRailModelSrc = getRightRailModelSource();
+    const rightRailReviewModeSrc = getRightRailReviewModeSource();
     const lazyPanelsSrc = getLazyPanelsSource();
     const appStoreSrc = getAppStoreSource();
     const rightRailTypesSrc = getRightRailTypesSource();
@@ -2153,7 +2158,8 @@ describe("App right rail composition", () => {
     expect(lazyPanelsSrc).toContain('import("../context/ToolLedgerPanel")');
     expect(lazyPanelsSrc).toContain('import("../context/ReliabilityPanel")');
     expect(lazyPanelsSrc).toContain('import("../decision-inbox")');
-    expect(lazyPanelsSrc).toContain('import("../review/ReviewQueuePanel")');
+    expect(lazyPanelsSrc).toContain('import("../right-rail/RightRailReviewMode")');
+    expect(rightRailReviewModeSrc).toContain('from "../review/ReviewQueuePanel"');
     expect(src).toContain("filterWorkspaceScopedEvents");
     expect(src).toContain("const workspaceProfile = useMemo(");
     const densityShells =
@@ -2397,7 +2403,7 @@ describe("App right rail composition", () => {
       `aria-label={\`${templatePlaceholder("prompt.axisLabel")} remediation prompt\`}`,
     );
     expect(src).toContain('{renderRightRailDestinationPrompt("decision-inbox")}');
-    expect(src).toContain('{renderRightRailDestinationPrompt("review-queue")}');
+    expect(src).toContain('reviewQueueDestination={renderRightRailDestinationPrompt("review-queue")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("audit-timeline")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("reliability")}');
     expect(src).toContain('{renderRightRailDestinationPrompt("live-panes")}');
@@ -2422,7 +2428,7 @@ describe("App right rail composition", () => {
     expect(src).toContain("const focusedRightRailGraph = useMemo(");
     expect(src).toContain("filterWorkstationGraph(rightRailGraph");
     expect(src).toContain("workstationGraph={focusedRightRailGraph}");
-    expect(src).toContain('data-widget="review-queue"');
+    expect(rightRailReviewModeSrc).toContain('data-widget="review-queue"');
     expect(src).toContain('widget="context"');
     expect(src).toContain('widget="run-graph"');
     expect(src).toContain('widget="tool-ledger"');
@@ -2437,7 +2443,8 @@ describe("App right rail composition", () => {
     expect(commandRail).not.toContain('data-widget="logs"');
     expect(commandRail).not.toContain("LogsPanel");
     expect(commandRail).not.toContain('density="compact"');
-    expect(reviewRail).toContain('density="compact"');
+    expect(reviewRail).toContain("<RightRailReviewMode");
+    expect(rightRailReviewModeSrc).toContain('density="compact"');
     expect(observeRail).toContain('density="compact"');
     expect(observeRail).toContain('data-widget="reliability"');
     expect(observeRail).toContain("devVisualQa.diagnosticsEnabled");

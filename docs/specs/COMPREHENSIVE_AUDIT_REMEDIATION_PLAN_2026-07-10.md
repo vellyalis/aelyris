@@ -1106,6 +1106,25 @@ Right-rail shell checkpoint complete:
   sub-surface; moving its approximately 90 App-local dependencies behind a giant
   prop contract is forbidden.
 
+Review-mode body checkpoint complete:
+
+- `RightRailReviewMode` owns the review queue, inspector slot, SCM, and compact
+  context composition. Its pure contract carries eight cohesive projection fields
+  and five actions; two render slots preserve the existing AgentInspector and
+  destination-prompt runtime owners instead of cloning their state.
+- The component remains lazy through the existing `lazyPanels` registry, and the
+  obsolete direct ReviewQueuePanel registry entry was removed. Executed tests prove
+  view projection plus review, SCM, command-evidence, reviewer-start, file-open, and
+  diff intent routing.
+- Diagnostic ceilings are 4118 lines for App, 87 for the review-mode component,
+  and 33 for its pure contract. No dependency, store, service, queue, scheduler, or
+  runtime state owner was added.
+- This is still an A6.2f checkpoint, not slice acceptance. The artifact uses
+  `a6.2f-component-command-composition/v3`, retains
+  `completedSlice=A6.2e4`, `activeSlice=A6.2f`, `sliceComplete=false`, and
+  `phaseComplete=false`. The next exact boundary is the inline command-mode body;
+  command and observe may not be hidden behind one undifferentiated contract.
+
 #### A6.2g - Combined Frontend Acceptance
 
 A6.2 is complete only when fresh evidence proves all of the following together:
