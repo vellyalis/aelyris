@@ -34,12 +34,18 @@ const canvasIme = source("src/features/terminal/hooks/useCanvasIME.ts");
 const terminalCanvas = source("src/features/terminal/TerminalCanvas.tsx");
 const nativeClientArtifactPath = ".codex-auto/quality/native-client-spike.json";
 const nativeClient = readJson(nativeClientArtifactPath);
+const nativeProofSourcePaths = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
 const nativeClientFresh =
   nativeClient?.status === "passed" &&
   mtime(nativeClientArtifactPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
-      mtime("src-tauri/src/bin/aelyris_native.rs"),
+      ...nativeProofSourcePaths.map(mtime),
       mtime("src-tauri/src/term/native_input.rs"),
       mtime("src-tauri/src/ipc/commands.rs"),
     );

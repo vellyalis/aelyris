@@ -455,7 +455,14 @@ const interactiveAgentSource = readFileSync(join(ROOT, "src-tauri", "src", "agen
 const tauriLibSource = readFileSync(join(ROOT, "src-tauri", "src", "lib.rs"), "utf8");
 const apiSource = readFileSync(join(ROOT, "src-tauri", "src", "api", "mod.rs"), "utf8");
 const aelysSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aelys.rs"), "utf8");
-const aelyrisNativeSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aelyris_native.rs"), "utf8");
+const nativeProofSourcePaths = [
+  join(ROOT, "src-tauri", "src", "bin", "aelyris_native.rs"),
+  join(ROOT, "src-tauri", "src", "bin", "aelyris_native", "client.rs"),
+  join(ROOT, "src-tauri", "src", "bin", "aelyris_native", "readiness.rs"),
+  join(ROOT, "src-tauri", "src", "bin", "aelyris_native", "router.rs"),
+];
+const aelyrisNativeSource = nativeProofSourcePaths.map((path) => readFileSync(path, "utf8")).join("\n");
+const nativeProofSourceMtime = Math.max(...nativeProofSourcePaths.map(mtimeMs));
 const termModSource = readFileSync(join(ROOT, "src-tauri", "src", "term", "mod.rs"), "utf8");
 const termRenderFrameSource = readFileSync(join(ROOT, "src-tauri", "src", "term", "render_frame.rs"), "utf8");
 const termRenderPipelineSource = readFileSync(join(ROOT, "src-tauri", "src", "term", "render_pipeline.rs"), "utf8");
@@ -1101,7 +1108,7 @@ const nativeBoundaryFresh =
       mtimeMs(join(ROOT, "src-tauri", "Cargo.toml")),
       mtimeMs(join(ROOT, "src-tauri", "src", "api", "mod.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "bin", "aelys.rs")),
-      mtimeMs(join(ROOT, "src-tauri", "src", "bin", "aelyris_native.rs")),
+      nativeProofSourceMtime,
       mtimeMs(join(ROOT, "src-tauri", "src", "term", "mod.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "term", "render_frame.rs")),
       mtimeMs(join(ROOT, "src-tauri", "src", "term", "render_pipeline.rs")),

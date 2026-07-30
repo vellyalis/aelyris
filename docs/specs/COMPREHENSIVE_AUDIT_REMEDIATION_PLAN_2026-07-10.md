@@ -1621,7 +1621,7 @@ Completion evidence:
 - `queries.rs` is `3174 <= 3330`; A6.6-A6.8 remain and A6
   `phaseComplete=false` remains truthful.
 
-#### **A6.6 Active - Native Proof CLI Boundary**
+#### **A6.6 Complete - Native Proof CLI Boundary**
 
 Inventory the command router, proof-domain modules, side effects, artifact schemas,
 and host behavior in `src-tauri/src/bin/aelyris_native.rs` before extraction.
@@ -1641,6 +1641,55 @@ First acceptance boundary:
 - the frozen `aelyris_native.rs` ceiling is lowered from `8827` without
   rebaselining or moving logic solely for line count;
 - A6.7-A6.8 remain queued and A6 `phaseComplete=false` remains truthful.
+
+Completion evidence:
+
+- the default Cargo application build excludes `aelyris-native`; the existing
+  proof binary is available only through the optional `native-proof-cli` feature;
+- command routing, readiness contracts, and daemon client behavior live in three
+  owner-local modules behind the existing binary entrypoint, without a second
+  runtime, product-state, storage, service, or command authority;
+- the focused A6.6 gate freezes and preserves 40 command names, 62 artifact
+  schemas and their canonical digest, host cfg behavior, exact error prefix/exit
+  behavior, and the feature boundary; missing, extra, duplicate, schema,
+  default-feature, and freshness-source mutations all fail closed;
+- ten downstream native proof consumers include all four proof-source owners in
+  their freshness graph; the directly executed A6.6 native-client,
+  text-shaping, sleep-guard, and upper-compat proof paths build the current
+  feature-gated binary, while the sleep guard rejects a stale explicit override;
+- `aelyris_native.rs` is `8436 <= 8827`; focused native tests pass 7/7,
+  live native-client checks pass 88/88, upper compatibility passes 6/6,
+  text-shaping emits a fresh current fixture, the no-sleep guard refusal passes,
+  default `cargo check` passes, and Rust library tests pass 1308/1308;
+- independent review found and then closed the causal freshness/build gaps;
+  focused round 2 reports zero findings. A6.7-A6.8 remain and A6
+  `phaseComplete=false` remains truthful.
+
+#### **A6.7 Active - Callsite-Proven Duplicate/Unowned Infrastructure Removal**
+
+Start with an explicit candidate inventory across the frozen A6 owner surfaces.
+Do not infer dead or unowned status from name, file size, missing frontend
+references, or an advisory scan. For each candidate, identify the authoritative
+owner and directly check registrations, callsites, compatibility aliases,
+runtime reachability, tests, and generated/reflective entry points before any
+removal.
+
+First acceptance boundary:
+
+- every removed candidate has callsite and runtime evidence that it is duplicate
+  or unowned, and absence alone never authorizes deletion;
+- retained compatibility adapters and generated/reflective registrations remain
+  classified rather than silently discarded;
+- removal does not create a replacement manager, registry, service, storage
+  layer, state owner, or dependency;
+- focused behavior and negative reachability proof cover each accepted removal;
+- A6.8 remains queued and A6 `phaseComplete=false` remains truthful.
+
+#### **A6.8 Queued - Combined Ratchet And Regression Acceptance**
+
+Only after A6.2-A6.7 owner, behavior, and blocking CI evidence is current may the
+combined aggregate retire advisory mode and emit A6 `phaseComplete=true`. A6.8
+does not reopen completed slices without a fresh regression.
 
 ## A7 - Evidence-Backed Core Mission Loop
 

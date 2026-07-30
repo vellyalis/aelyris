@@ -19,11 +19,17 @@ const ARTIFACTS = {
   nativePostcheck:
     ".codex-auto/production-smoke/postcheck-write-smoke/real-os-suspend-native-postcheck-write-smoke.json",
 };
+const NATIVE_PROOF_SOURCE_PATHS = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
 
 const SOURCE_GROUPS = {
   nativeClient: [
     "scripts/verify-native-client-spike.mjs",
-    "src-tauri/src/bin/aelyris_native.rs",
+    ...NATIVE_PROOF_SOURCE_PATHS,
     "src-tauri/src/term/mod.rs",
     "src-tauri/src/term/text_shaping.rs",
     "src-tauri/Cargo.toml",
@@ -31,14 +37,14 @@ const SOURCE_GROUPS = {
   nativeBoundary: [
     "scripts/verify-native-boundary-contract.mjs",
     "scripts/verify-mux-live-restore.mjs",
-    "src-tauri/src/bin/aelyris_native.rs",
+    ...NATIVE_PROOF_SOURCE_PATHS,
     "src-tauri/src/mux/graph.rs",
     "src-tauri/src/mux/manager.rs",
     "src-tauri/src/mux/store.rs",
   ],
   textShaping: [
     "scripts/verify-native-text-shaping-fallback.mjs",
-    "src-tauri/src/bin/aelyris_native.rs",
+    ...NATIVE_PROOF_SOURCE_PATHS,
     "src-tauri/src/term/mod.rs",
     "src-tauri/src/term/text_shaping.rs",
     "src-tauri/Cargo.toml",
@@ -77,7 +83,7 @@ const SOURCE_GROUPS = {
   nativePostcheck: [
     "scripts/verify-real-os-suspend-evidence.mjs",
     "scripts/verify-native-client-spike.mjs",
-    "src-tauri/src/bin/aelyris_native.rs",
+    ...NATIVE_PROOF_SOURCE_PATHS,
   ],
 };
 

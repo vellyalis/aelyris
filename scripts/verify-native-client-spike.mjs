@@ -254,16 +254,26 @@ function nearlyEqual(actual, expected, epsilon = 0.001) {
 }
 
 function buildNativeBinary() {
-  if (process.env.AELYRIS_NATIVE_CLIENT_FORCE_BUILD !== "1" && existsSync(nativeBin)) {
-    return;
-  }
-  const result = spawnSync("cargo", ["build", "--quiet", "--manifest-path", cargoManifest, "--bin", "aelyris-native"], {
-    cwd: root,
-    encoding: "utf8",
-    shell: false,
-    timeout: 600_000,
-    windowsHide: true,
-  });
+  const result = spawnSync(
+    "cargo",
+    [
+      "build",
+      "--quiet",
+      "--manifest-path",
+      cargoManifest,
+      "--features",
+      "native-proof-cli",
+      "--bin",
+      "aelyris-native",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      shell: false,
+      timeout: 600_000,
+      windowsHide: true,
+    },
+  );
   if (result.error) throw new Error(`cargo build spawn failed: ${result.error.message}`);
   if (result.status !== 0) {
     throw new Error(`cargo build aelyris-native failed with ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);

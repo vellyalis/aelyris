@@ -14,12 +14,18 @@ const NATIVE_BIN = join(
   "debug",
   process.platform === "win32" ? "aelyris-native.exe" : "aelyris-native",
 );
+const NATIVE_PROOF_SOURCE_PATHS = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
 
 const SOURCE_PATHS = [
   "package.json",
   "src-tauri/src/term/mod.rs",
   "src-tauri/src/term/text_shaping.rs",
-  "src-tauri/src/bin/aelyris_native.rs",
+  ...NATIVE_PROOF_SOURCE_PATHS,
   "src-tauri/Cargo.toml",
   "docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md",
   "docs/requirements.md",
@@ -55,13 +61,35 @@ function readJson(path) {
 }
 
 function runTextShapingFixture() {
-  if (!existsSync(NATIVE_BIN)) {
+  const build = spawnSync(
+    process.platform === "win32" ? "cargo.exe" : "cargo",
+    [
+      "build",
+      "--quiet",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--features",
+      "native-proof-cli",
+      "--bin",
+      "aelyris-native",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+      timeout: 600_000,
+      windowsHide: true,
+    },
+  );
+  if (build.status !== 0 || build.error || !existsSync(NATIVE_BIN)) {
     return {
-      status: null,
+      status: build.status,
       ok: false,
-      error: `native binary missing: ${NATIVE_BIN}; run cargo build --manifest-path src-tauri/Cargo.toml --bin aelyris-native`,
-      stdoutTail: "",
-      stderrTail: "",
+      error:
+        build.error?.message ??
+        `native binary build failed: cargo build --manifest-path src-tauri/Cargo.toml --features native-proof-cli --bin aelyris-native`,
+      stdoutTail: String(build.stdout ?? "").slice(-2000),
+      stderrTail: String(build.stderr ?? "").slice(-2000),
     };
   }
   const result = spawnSync(
@@ -95,13 +123,13 @@ function check(id, passed, detail, evidence = {}) {
 const packageJson = source("package.json");
 const termMod = source("src-tauri/src/term/mod.rs");
 const textShaping = source("src-tauri/src/term/text_shaping.rs");
-const nativeClient = source("src-tauri/src/bin/aelyris_native.rs");
+const nativeClient = NATIVE_PROOF_SOURCE_PATHS.map(source).join("\n");
 const cargoToml = source("src-tauri/Cargo.toml");
 const requirements = source("docs/requirements.md");
 const sourceCutoffMs = Math.max(mtime("scripts/verify-native-text-shaping-fallback.mjs"), ...SOURCE_PATHS.map(mtime));
 const visualFixtureSourceCutoffMs = Math.max(
   mtime("src-tauri/src/term/text_shaping.rs"),
-  mtime("src-tauri/src/bin/aelyris_native.rs"),
+  ...NATIVE_PROOF_SOURCE_PATHS.map(mtime),
   mtime("src-tauri/Cargo.toml"),
 );
 const fixtureRun = runTextShapingFixture();

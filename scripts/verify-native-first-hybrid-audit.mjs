@@ -38,6 +38,12 @@ function freshArtifact(artifactPath, sourcePaths, graceMs = 5_000) {
 function allPassed(checks) {
   return Array.isArray(checks) && checks.length > 0 && checks.every((check) => check?.status === "passed");
 }
+const NATIVE_PROOF_SOURCE_PATHS = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
 
 function hasChecks(report, names) {
   const checks = new Set(report?.checks ?? []);
@@ -189,6 +195,7 @@ addItem(
     allPassed(nativeBoundary?.checks) &&
     freshArtifact(nativeBoundaryPath, [
       "scripts/verify-native-boundary-contract.mjs",
+      ...NATIVE_PROOF_SOURCE_PATHS,
       "src-tauri/src/term/native_input.rs",
       "src-tauri/src/ipc/commands.rs",
       "src-tauri/src/pty_sidecar.rs",
@@ -317,7 +324,7 @@ addItem(
     upperCompat?.score === 100 &&
     freshArtifact(upperCompatPath, [
       "scripts/verify-upper-compat-gates.mjs",
-      "src-tauri/src/bin/aelyris_native.rs",
+      ...NATIVE_PROOF_SOURCE_PATHS,
       "src-tauri/src/api/mod.rs",
       "src-tauri/src/db/queries.rs",
       "src-tauri/src/db/migrations.rs",

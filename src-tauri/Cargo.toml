@@ -18,10 +18,16 @@ path = "src/bin/aelys.rs"
 [[bin]]
 name = "aelyris-native"
 path = "src/bin/aelyris_native.rs"
+required-features = ["native-proof-cli"]
 
 [lib]
 name = "aelyris_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# A6.6 proof-only boundary: the experimental native CLI is not part of default
+# application builds. Existing proof verifiers opt in explicitly.
+native-proof-cli = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

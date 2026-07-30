@@ -54,11 +54,29 @@ const mcpSource = [
 ].join("\n");
 const dbSource = read("src-tauri/src/db/queries.rs");
 const migrationSource = read("src-tauri/src/db/migrations.rs");
-const nativeSource = read("src-tauri/src/bin/aelyris_native.rs");
+const nativeSource = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+]
+  .map(read)
+  .join("\n");
 
 const run = spawnSync(
   "cargo",
-  ["run", "--quiet", "--manifest-path", "src-tauri/Cargo.toml", "--bin", "aelyris-native", "--", "upper-compat-proof"],
+  [
+    "run",
+    "--quiet",
+    "--manifest-path",
+    "src-tauri/Cargo.toml",
+    "--features",
+    "native-proof-cli",
+    "--bin",
+    "aelyris-native",
+    "--",
+    "upper-compat-proof",
+  ],
   {
     cwd: ROOT,
     encoding: "utf8",

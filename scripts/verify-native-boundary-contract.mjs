@@ -60,7 +60,14 @@ const commands = source("src-tauri/src/ipc/commands.rs");
 const lib = source("src-tauri/src/lib.rs");
 const api = source("src-tauri/src/api/mod.rs");
 const aelys = source("src-tauri/src/bin/aelys.rs");
-const aelyrisNative = source("src-tauri/src/bin/aelyris_native.rs");
+const nativeProofSourcePaths = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
+const aelyrisNative = nativeProofSourcePaths.map(source).join("\n");
+const nativeProofSourceMtime = Math.max(...nativeProofSourcePaths.map(mtime));
 const termMod = source("src-tauri/src/term/mod.rs");
 const termRenderFrame = source("src-tauri/src/term/render_frame.rs");
 const termRenderPipeline = source("src-tauri/src/term/render_pipeline.rs");
@@ -175,7 +182,7 @@ const nativeClientFresh =
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
       mtime("src-tauri/Cargo.toml"),
-      mtime("src-tauri/src/bin/aelyris_native.rs"),
+      nativeProofSourceMtime,
       mtime("src-tauri/src/term/mod.rs"),
       mtime("src-tauri/src/term/render_frame.rs"),
       mtime("src-tauri/src/term/render_pipeline.rs"),

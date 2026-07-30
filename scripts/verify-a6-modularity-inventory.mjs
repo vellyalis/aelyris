@@ -8,8 +8,8 @@ const root = resolve(process.cwd());
 const artifact = join(root, ".codex-auto", "quality", "a6-modularity-inventory.json");
 const cliArgs = process.argv.slice(2);
 const requestedSlice = cliArgs.length === 2 && cliArgs[0] === "--require-slice" ? cliArgs[1] : null;
-if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4", "A6.5"].includes(requestedSlice)) {
-  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, A6.4, or A6.5.");
+if (cliArgs.length > 0 && !["A6.2", "A6.3", "A6.4", "A6.5", "A6.6"].includes(requestedSlice)) {
+  console.error("verify-a6-modularity-inventory supports only --require-slice A6.2, A6.3, A6.4, A6.5, or A6.6.");
   process.exit(2);
 }
 const owners = [
@@ -662,6 +662,315 @@ const dbSlice = {
   phaseComplete: false,
 };
 
+const nativeEntrypointPath = "src-tauri/src/bin/aelyris_native.rs";
+const nativeRouterOwnerPath = "src-tauri/src/bin/aelyris_native/router.rs";
+const nativeReadinessOwnerPath = "src-tauri/src/bin/aelyris_native/readiness.rs";
+const nativeClientOwnerPath = "src-tauri/src/bin/aelyris_native/client.rs";
+const nativeOwnerPaths = [nativeEntrypointPath, nativeRouterOwnerPath, nativeReadinessOwnerPath, nativeClientOwnerPath];
+const nativeEntrypointSource = read(nativeEntrypointPath);
+const nativeRouterSource = read(nativeRouterOwnerPath);
+const nativeReadinessSource = read(nativeReadinessOwnerPath);
+const nativeClientSource = read(nativeClientOwnerPath);
+const nativeProofSources = [nativeEntrypointSource, nativeRouterSource, nativeReadinessSource, nativeClientSource];
+const nativeProofSource = nativeProofSources.join("\n");
+const nativeOwner = results.find((result) => result.path === nativeEntrypointPath);
+const cargoTomlSource = read("src-tauri/Cargo.toml");
+const frozenA66Commands = [
+  "help",
+  "--help",
+  "-h",
+  "contract",
+  "window-proof",
+  "render-proof",
+  "grid-render-proof",
+  "present-loop-proof",
+  "gpu-render-proof",
+  "winit-wgpu-proof",
+  "text-shaping-fixture-proof",
+  "ime-proof",
+  "ime-dogfood-proof",
+  "ime-os-dogfood-proof",
+  "ime-os-dogfood-worker",
+  "paste-guard-proof",
+  "settings-proof",
+  "settings-window-proof",
+  "command-center-proof",
+  "command-center-window-proof",
+  "command-center-input-scroll-proof",
+  "mode-shell-proof",
+  "mode-rail-window-proof",
+  "inspector-window-proof",
+  "right-rail-demotion-proof",
+  "accessibility-proof",
+  "uia-provider-proof",
+  "visual-qa-proof",
+  "primary-shell-proof",
+  "power-events-proof",
+  "db-smoke-proof",
+  "upper-compat-proof",
+  "sleep-now",
+  "list",
+  "mux",
+  "graph",
+  "attach",
+  "detach",
+  "send",
+  "capture",
+];
+const nativeRouterStartMarker = "// A6.6_COMMAND_ROUTER_START";
+const nativeRouterEndMarker = "// A6.6_COMMAND_ROUTER_END";
+const nativeRouterStart = nativeRouterSource.indexOf(nativeRouterStartMarker);
+const nativeRouterEnd = nativeRouterSource.indexOf(nativeRouterEndMarker);
+const nativeRouterBlock =
+  nativeRouterStart >= 0 && nativeRouterEnd > nativeRouterStart
+    ? nativeRouterSource.slice(nativeRouterStart + nativeRouterStartMarker.length, nativeRouterEnd)
+    : "";
+const nativeRouterCommands = [...nativeRouterBlock.matchAll(/"([^"]+)"\s*(?:\||=>)/g)].map((match) => match[1]);
+const nativeCommandContractExact =
+  nativeRouterCommands.length === frozenA66Commands.length &&
+  duplicates(nativeRouterCommands).length === 0 &&
+  sameSet(nativeRouterCommands, frozenA66Commands);
+const nativeSchemaEntries = [...nativeProofSource.matchAll(/"schema"\s*:\s*"([^"]+)"/g)]
+  .map((match) => match[1])
+  .sort();
+const nativeSchemaDigest = createHash("sha256").update(nativeSchemaEntries.join("\n")).digest("hex");
+const FROZEN_A66_SCHEMA_DIGEST = "adb8ce52f0e06ee1926f8ace2239dffd7e16ba318272dd67e7b6a7bbeefa26b9";
+const nativeSchemaContractExact = nativeSchemaEntries.length === 62 && nativeSchemaDigest === FROZEN_A66_SCHEMA_DIGEST;
+const nativeModulesRegistered =
+  nativeEntrypointSource.includes('#[path = "aelyris_native/client.rs"]') &&
+  nativeEntrypointSource.includes('#[path = "aelyris_native/readiness.rs"]') &&
+  nativeEntrypointSource.includes('#[path = "aelyris_native/router.rs"]') &&
+  !nativeEntrypointSource.includes("match command {") &&
+  nativeRouterSource.includes("pub(super) async fn run()") &&
+  nativeReadinessSource.includes("pub(super) async fn contract()") &&
+  nativeReadinessSource.includes("pub(super) fn full_native_readiness_contract()") &&
+  nativeClientSource.includes("pub(super) async fn request(");
+const nativeOwnerBoundaryIsSingle =
+  (nativeProofSource.match(/\basync\s+fn\s+run\s*\(/g) ?? []).length === 1 &&
+  (nativeProofSource.match(/\basync\s+fn\s+contract\s*\(/g) ?? []).length === 1 &&
+  (nativeProofSource.match(/\basync\s+fn\s+request\s*\(/g) ?? []).length === 1 &&
+  (nativeProofSource.match(/\bfn\s+full_native_readiness_contract\s*\(/g) ?? []).length === 1 &&
+  (nativeProofSource.match(/std::process::exit\s*\(\s*1\s*\)/g) ?? []).length === 1 &&
+  nativeEntrypointSource.includes('eprintln!("aelyris-native: {err}")');
+const nativeChildOwnersAddNoRuntimeState = [nativeRouterSource, nativeReadinessSource, nativeClientSource].every(
+  (source) =>
+    !/\b(?:static|struct)\s+\w*(?:Manager|Store|Repository|Runtime)\b/.test(source) &&
+    !/\b(?:rusqlite|Connection::open|Database::new|OnceLock|static\s+\w+\s*:\s*Mutex)\b/.test(source),
+);
+const nativeHostBehaviorBoundaryRetained =
+  (nativeEntrypointSource.match(/#\[cfg\(target_os = "windows"\)\]/g) ?? []).length === 43 &&
+  (nativeEntrypointSource.match(/#\[cfg\(not\(target_os = "windows"\)\)\]/g) ?? []).length === 18 &&
+  (nativeEntrypointSource.match(/#\[cfg\(windows\)\]/g) ?? []).length === 3 &&
+  (nativeEntrypointSource.match(/#\[cfg\(not\(windows\)\)\]/g) ?? []).length === 2 &&
+  [nativeRouterSource, nativeReadinessSource, nativeClientSource].every((source) => !source.includes("#[cfg("));
+const nativeBinBlock =
+  [...cargoTomlSource.matchAll(/\[\[bin\]\]([\s\S]*?)(?=\n\[\[bin\]\]|\n\[lib\])/g)]
+    .map((match) => match[1])
+    .find((block) => /\bname\s*=\s*"aelyris-native"/.test(block)) ?? "";
+const nativeFeatureBoundaryDeclared =
+  /\brequired-features\s*=\s*\[\s*"native-proof-cli"\s*\]/.test(nativeBinBlock) &&
+  /\[features\][\s\S]*?\bnative-proof-cli\s*=\s*\[\s*\]/.test(cargoTomlSource) &&
+  !/\bdefault\s*=\s*\[[^\]]*"native-proof-cli"/.test(cargoTomlSource);
+const cargoCommand = process.platform === "win32" ? "cargo.exe" : "cargo";
+const nativeMetadataArgs = [
+  "metadata",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--no-deps",
+  "--format-version",
+  "1",
+];
+const nativeMetadataExecution = spawnSync(cargoCommand, nativeMetadataArgs, {
+  cwd: root,
+  encoding: "utf8",
+  maxBuffer: 4 * 1024 * 1024,
+  windowsHide: true,
+});
+let nativeMetadata = null;
+try {
+  nativeMetadata = JSON.parse(nativeMetadataExecution.stdout ?? "");
+} catch {
+  nativeMetadata = null;
+}
+const nativeMetadataTarget = nativeMetadata?.packages
+  ?.find((pkg) => pkg.name === "aelyris")
+  ?.targets?.find((target) => target.name === "aelyris-native" && target.kind?.includes("bin"));
+const nativeDefaultUnavailable =
+  nativeMetadataExecution.status === 0 &&
+  nativeMetadataTarget?.["required-features"]?.length === 1 &&
+  nativeMetadataTarget["required-features"][0] === "native-proof-cli";
+const focusedNativeTestArgs = [
+  "test",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--features",
+  "native-proof-cli",
+  "--bin",
+  "aelyris-native",
+  "--",
+  "--color",
+  "never",
+];
+const focusedNativeTestExecution = spawnSync(cargoCommand, focusedNativeTestArgs, {
+  cwd: root,
+  encoding: "utf8",
+  maxBuffer: 4 * 1024 * 1024,
+  windowsHide: true,
+});
+const focusedNativeTestOutput = `${focusedNativeTestExecution.stdout ?? ""}\n${focusedNativeTestExecution.stderr ?? ""}`;
+const focusedNativeTestSummary = focusedNativeTestOutput.match(
+  /test result:\s+ok\.\s+(\d+) passed;\s+0 failed;\s+(\d+) ignored;/,
+);
+const requiredNativeBehaviorTests = [
+  "tests::join_text_args_preserves_text_and_enter",
+  "tests::grid_render_frame_uses_term_engine_cells",
+  "tests::full_native_contract_is_honest_about_missing_daily_driver_work",
+];
+const focusedNativeTests = {
+  command: `${cargoCommand} ${focusedNativeTestArgs.join(" ")}`,
+  status: focusedNativeTestExecution.status,
+  signal: focusedNativeTestExecution.signal,
+  error: focusedNativeTestExecution.error?.message ?? null,
+  passed: Number(focusedNativeTestSummary?.[1] ?? 0),
+  ignored: Number(focusedNativeTestSummary?.[2] ?? 0),
+  requiredAssertionsExecuted: requiredNativeBehaviorTests.every((testName) =>
+    focusedNativeTestOutput.includes(`test ${testName} ... ok`),
+  ),
+};
+const focusedNativeTestsPassed =
+  focusedNativeTests.status === 0 &&
+  focusedNativeTests.passed > 0 &&
+  focusedNativeTests.ignored === 0 &&
+  focusedNativeTests.requiredAssertionsExecuted;
+const nativeExecutableBehavior = {
+  helpListsFrozenCommands:
+    nativeCommandContractExact &&
+    frozenA66Commands
+      .filter((command) => !["--help", "-h", "mux", "upper-compat-proof"].includes(command))
+      .every((command) => nativeRouterSource.includes(command)),
+  unknownCommandReturnsError: nativeRouterSource.includes('other => Err(format!("unknown command: {other}"))'),
+  mainErrorPrefixExact: nativeEntrypointSource.includes('eprintln!("aelyris-native: {err}")'),
+  mainErrorExitCodeOne: /std::process::exit\s*\(\s*1\s*\)/.test(nativeEntrypointSource),
+  imeProofSchemaRetained: nativeProofSource.includes('"schema": "aelyris.native.client.v1"'),
+};
+const nativeExecutableBehaviorPassed =
+  nativeExecutableBehavior.helpListsFrozenCommands &&
+  nativeExecutableBehavior.unknownCommandReturnsError &&
+  nativeExecutableBehavior.mainErrorPrefixExact &&
+  nativeExecutableBehavior.mainErrorExitCodeOne &&
+  nativeExecutableBehavior.imeProofSchemaRetained;
+const nativeInvocationSources = {
+  nativeClient: read("scripts/verify-native-client-spike.mjs"),
+  sleepGuard: read("scripts/verify-native-sleep-guard.mjs"),
+  upperCompat: read("scripts/verify-upper-compat-gates.mjs"),
+  textShaping: read("scripts/verify-native-text-shaping-fallback.mjs"),
+};
+const nativeProofInvocationsOptIn =
+  nativeInvocationSources.nativeClient.includes('"--features"') &&
+  nativeInvocationSources.nativeClient.includes('"native-proof-cli"') &&
+  nativeInvocationSources.sleepGuard.includes('"--features"') &&
+  nativeInvocationSources.sleepGuard.includes('"native-proof-cli"') &&
+  nativeInvocationSources.upperCompat.includes('"--features"') &&
+  nativeInvocationSources.upperCompat.includes('"native-proof-cli"') &&
+  nativeInvocationSources.textShaping.includes("--features native-proof-cli --bin aelyris-native");
+const nativeFreshnessConsumerPaths = [
+  "scripts/verify-full-native-rust-gap-audit.mjs",
+  "scripts/verify-native-boundary-contract.mjs",
+  "scripts/verify-native-first-hybrid-audit.mjs",
+  "scripts/verify-native-hwnd-paste-live.mjs",
+  "scripts/verify-native-operator-primary-terminal.mjs",
+  "scripts/verify-native-sleep-guard.mjs",
+  "scripts/verify-native-terminal-input-host.mjs",
+  "scripts/verify-native-text-shaping-fallback.mjs",
+  "scripts/verify-native-visual-regression.mjs",
+  "scripts/verify-upper-compat-gates.mjs",
+];
+const nativeFreshnessConsumers = Object.fromEntries(
+  nativeFreshnessConsumerPaths.map((path) => [path, read(path)]),
+);
+const nativeFreshnessConsumersCausal = Object.values(nativeFreshnessConsumers).every((source) =>
+  nativeOwnerPaths.every((path) => source.includes(path)),
+);
+const nativeScoreConsumerSource = read("scripts/score-release-quality.mjs");
+const nativeScoreConsumerCausal =
+  nativeScoreConsumerSource.includes("const nativeProofSourcePaths = [") &&
+  ["aelyris_native.rs", "client.rs", "readiness.rs", "router.rs"].every((leaf) =>
+    nativeScoreConsumerSource.includes(leaf),
+  );
+const acceptsFrozenNativeCommands = (candidate) =>
+  candidate.length === frozenA66Commands.length &&
+  duplicates(candidate).length === 0 &&
+  sameSet(candidate, frozenA66Commands);
+const nativeNegativeTopologyProof = {
+  missingCommandRejected: !acceptsFrozenNativeCommands(nativeRouterCommands.slice(1)),
+  extraCommandRejected: !acceptsFrozenNativeCommands([...nativeRouterCommands, "a6.6-extra"]),
+  duplicateCommandRejected: !acceptsFrozenNativeCommands([
+    ...nativeRouterCommands.slice(0, -1),
+    nativeRouterCommands.at(-2),
+  ]),
+  schemaMutationRejected:
+    createHash("sha256")
+      .update([...nativeSchemaEntries.slice(1), "aelyris.native.mutated.v1"].sort().join("\n"))
+      .digest("hex") !== FROZEN_A66_SCHEMA_DIGEST,
+  defaultFeatureMutationRejected: !/\brequired-features\s*=\s*\[\s*"native-proof-cli"\s*\]/.test(
+    nativeBinBlock.replace('required-features = ["native-proof-cli"]', ""),
+  ),
+  freshnessSourceMutationRejected: !nativeOwnerPaths.every((path) =>
+    nativeFreshnessConsumers["scripts/verify-native-text-shaping-fallback.mjs"]
+      .replace(nativeClientOwnerPath, "src-tauri/src/bin/aelyris_native/missing-client.rs")
+      .includes(path),
+  ),
+};
+const nativeSliceComplete =
+  (nativeOwner?.status ?? "fail") === "pass" &&
+  (nativeOwner?.lines ?? 0) < (nativeOwner?.baselineLines ?? 0) &&
+  nativeModulesRegistered &&
+  nativeOwnerBoundaryIsSingle &&
+  nativeChildOwnersAddNoRuntimeState &&
+  nativeCommandContractExact &&
+  nativeSchemaContractExact &&
+  nativeHostBehaviorBoundaryRetained &&
+  nativeFeatureBoundaryDeclared &&
+  nativeDefaultUnavailable &&
+  nativeProofInvocationsOptIn &&
+  nativeFreshnessConsumersCausal &&
+  nativeScoreConsumerCausal &&
+  focusedNativeTestsPassed &&
+  nativeExecutableBehaviorPassed &&
+  Object.values(nativeNegativeTopologyProof).every(Boolean);
+const nativeSlice = {
+  id: "A6.6",
+  owner: "feature-gated native proof CLI router, readiness contract, and daemon client",
+  status: nativeSliceComplete ? "pass" : "fail",
+  sliceComplete: nativeSliceComplete,
+  entrypointLines: nativeOwner?.lines ?? null,
+  baselineLines: nativeOwner?.baselineLines ?? null,
+  ownerPaths: nativeOwnerPaths,
+  modulesRegistered: nativeModulesRegistered,
+  singleOwnerBoundaries: nativeOwnerBoundaryIsSingle,
+  childOwnersAddNoRuntimeState: nativeChildOwnersAddNoRuntimeState,
+  commandCount: nativeRouterCommands.length,
+  frozenCommandCount: frozenA66Commands.length,
+  commandContractExact: nativeCommandContractExact,
+  schemaCount: nativeSchemaEntries.length,
+  schemaDigest: nativeSchemaDigest,
+  frozenSchemaDigest: FROZEN_A66_SCHEMA_DIGEST,
+  schemaContractExact: nativeSchemaContractExact,
+  hostBehaviorBoundaryRetained: nativeHostBehaviorBoundaryRetained,
+  featureBoundaryDeclared: nativeFeatureBoundaryDeclared,
+  defaultUnavailable: nativeDefaultUnavailable,
+  proofInvocationsOptIn: nativeProofInvocationsOptIn,
+  freshnessConsumers: {
+    paths: nativeFreshnessConsumerPaths,
+    causal: nativeFreshnessConsumersCausal,
+    scoreConsumerCausal: nativeScoreConsumerCausal,
+  },
+  focusedNativeTests,
+  executableBehavior: nativeExecutableBehavior,
+  negativeTopologyProof: nativeNegativeTopologyProof,
+  phaseComplete: false,
+};
+
 const slices = [
   {
     id: "A6.2",
@@ -732,7 +1041,9 @@ const commandFailed =
         ? !mcpSlice.sliceComplete
         : requestedSlice === "A6.5"
           ? !dbSlice.sliceComplete
-          : failed;
+          : requestedSlice === "A6.6"
+            ? !nativeSlice.sliceComplete
+            : failed;
 const generatedAt = new Date().toISOString();
 const report = {
   schema: "aelyris.a6-modularity-inventory/v3",
@@ -750,6 +1061,7 @@ const report = {
   ipcSlice,
   mcpSlice,
   dbSlice,
+  nativeSlice,
   owners: results,
   ipcClassification,
   slices,
@@ -766,6 +1078,11 @@ const report = {
       mcpDispatcherOwnerPath,
       dbCodeGraphOwnerPath,
       dbPaneLayoutOwnerPath,
+      ...nativeOwnerPaths.slice(1),
+      "src-tauri/Cargo.toml",
+      "scripts/verify-native-client-spike.mjs",
+      "scripts/verify-native-text-shaping-fallback.mjs",
+      "scripts/verify-upper-compat-gates.mjs",
       ...rustRuntimeSources.map(([path]) => path),
       "src/shared/lib/ipc.ts",
       ...owners.map((owner) => owner.path),

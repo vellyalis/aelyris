@@ -20,6 +20,12 @@ const APP_URL = process.env.AELYRIS_TAURI_APP_URL ?? "http://localhost:1420/";
 const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_TAURI_PAGE_TIMEOUT_MS ?? "20000", 10);
 const PASTE_SENDER_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_NATIVE_PASTE_TIMEOUT_MS ?? "30000", 10);
 const WM_PASTE = "0x0302";
+const NATIVE_PROOF_SOURCE_PATHS = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
 
 function writeArtifact(report) {
   mkdirSync(dirname(OUT), { recursive: true });
@@ -55,7 +61,7 @@ function nativeClientPasteGuardFresh(nativeClient) {
     mtime(NATIVE_CLIENT_ARTIFACT) + 5_000 >=
       Math.max(
         mtime(resolve(ROOT, "scripts/verify-native-client-spike.mjs")),
-        mtime(resolve(ROOT, "src-tauri/src/bin/aelyris_native.rs")),
+        ...NATIVE_PROOF_SOURCE_PATHS.map((path) => mtime(resolve(ROOT, path))),
         mtime(resolve(ROOT, "src-tauri/src/term/native_input.rs")),
         mtime(resolve(ROOT, "src-tauri/src/ipc/commands.rs")),
       )

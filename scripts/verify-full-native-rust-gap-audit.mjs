@@ -71,7 +71,14 @@ function nearlyEqual(actual, expected, epsilon = 0.001) {
 
 const packageJson = source("package.json");
 const cargoToml = source("src-tauri/Cargo.toml");
-const aelyrisNative = source("src-tauri/src/bin/aelyris_native.rs");
+const nativeProofSourcePaths = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
+const aelyrisNative = nativeProofSourcePaths.map(source).join("\n");
+const nativeProofSourceMtime = Math.max(...nativeProofSourcePaths.map(mtime));
 const renderFrame = source("src-tauri/src/term/render_frame.rs");
 const renderPipeline = source("src-tauri/src/term/render_pipeline.rs");
 const nativeInput = source("src-tauri/src/term/native_input.rs");
@@ -617,7 +624,7 @@ const nativeClientFresh =
   mtime(nativeClientPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
-      mtime("src-tauri/src/bin/aelyris_native.rs"),
+      nativeProofSourceMtime,
       mtime("src-tauri/src/term/render_frame.rs"),
       mtime("src-tauri/src/term/render_pipeline.rs"),
     );
@@ -625,7 +632,7 @@ const nativeClientFresh =
 const nativeBoundaryFresh =
   (nativeBoundary?.status === "passed" || nativeBoundary?.status === "pass") &&
   mtime(nativeBoundaryPath) + 5_000 >=
-    Math.max(mtime("scripts/verify-native-boundary-contract.mjs"), mtime("src-tauri/src/bin/aelyris_native.rs"));
+    Math.max(mtime("scripts/verify-native-boundary-contract.mjs"), nativeProofSourceMtime);
 
 const nativeInputFresh =
   nativeInputArtifact?.status === "pass" &&
@@ -749,7 +756,7 @@ const hasNativeImeHwndDogfoodClientProof =
 const hasNativeImeHwndDogfoodStandaloneProof =
   exactImeHwndDogfoodProof(nativeImeDogfoodArtifact) &&
   mtime(nativeImeDogfoodPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeImeHwndDogfood = hasNativeImeHwndDogfoodClientProof || hasNativeImeHwndDogfoodStandaloneProof;
 const hasNativeImeOsDogfoodClientProof =
   exactImeOsDogfoodProof(nativeClient?.nativeImeOsDogfood) &&
@@ -759,7 +766,7 @@ const hasNativeImeOsDogfoodClientProof =
 const hasNativeImeOsDogfoodStandaloneProof =
   exactImeOsDogfoodProof(nativeImeOsDogfoodArtifact) &&
   mtime(nativeImeOsDogfoodPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeImeDogfood = hasNativeImeOsDogfoodClientProof || hasNativeImeOsDogfoodStandaloneProof;
 const hasNativeSettingsProof =
   nativeClient?.nativeSettings?.operation === "settings-proof" &&
@@ -787,7 +794,7 @@ const hasNativeSettingsWindowClientProof =
 const hasNativeSettingsWindowStandaloneProof =
   exactSettingsWindowProof(nativeSettingsWindowArtifact) &&
   mtime(nativeSettingsWindowPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeSettings = hasNativeSettingsWindowClientProof || hasNativeSettingsWindowStandaloneProof;
 const hasNativeCommandCenterClientProof =
   nativeClient?.nativeCommandCenter?.operation === "command-center-proof" &&
@@ -818,7 +825,7 @@ const hasNativeCommandCenterStandaloneProof =
   nativeCommandCenterArtifact?.commandCenter?.aiCliSurface?.operation === "open-ai-cli-launch-plan" &&
   exactNativeSleepResumeRunbook(nativeCommandCenterArtifact?.commandCenter) &&
   nativeCommandCenterArtifact?.commandCenter?.nextProof === "native-command-center-window-ui" &&
-  mtime(nativeCommandCenterPath) + 5_000 >= mtime("src-tauri/src/bin/aelyris_native.rs");
+  mtime(nativeCommandCenterPath) + 5_000 >= nativeProofSourceMtime;
 const hasNativeCommandCenterProof = hasNativeCommandCenterClientProof || hasNativeCommandCenterStandaloneProof;
 const hasNativeCommandCenterClientWindowProof =
   nativeClient?.nativeCommandCenterWindow?.operation === "command-center-window-proof" &&
@@ -857,7 +864,7 @@ const hasNativeCommandCenterStandaloneWindowProof =
   nativeCommandCenterWindowArtifact?.window?.nonBlank === true &&
   nativeCommandCenterWindowArtifact?.window?.rightRailUiStatus === "native-command-center-window-ui-proof" &&
   nativeCommandCenterWindowArtifact?.window?.nextProof === "native-command-center-input-and-scroll" &&
-  mtime(nativeCommandCenterWindowPath) + 5_000 >= mtime("src-tauri/src/bin/aelyris_native.rs");
+  mtime(nativeCommandCenterWindowPath) + 5_000 >= nativeProofSourceMtime;
 const hasNativeCommandCenterWindowProof =
   hasNativeCommandCenterClientWindowProof || hasNativeCommandCenterStandaloneWindowProof;
 const hasNativeCommandCenterClientInputScrollProof =
@@ -903,7 +910,7 @@ const hasNativeCommandCenterStandaloneInputScrollProof =
   nativeCommandCenterInputScrollArtifact?.inputScroll?.guardrails?.dispatchDoesNotRequireReact === true &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.guardrails?.dispatchDoesNotRequireWebView === true &&
   nativeCommandCenterInputScrollArtifact?.inputScroll?.nextProof === "react-right-rail-compatibility-demotion" &&
-  mtime(nativeCommandCenterInputScrollPath) + 5_000 >= mtime("src-tauri/src/bin/aelyris_native.rs");
+  mtime(nativeCommandCenterInputScrollPath) + 5_000 >= nativeProofSourceMtime;
 const hasNativeCommandCenterInputScrollProof =
   hasNativeCommandCenterClientInputScrollProof || hasNativeCommandCenterStandaloneInputScrollProof;
 const hasNativeModeShellClientProof =
@@ -916,7 +923,7 @@ const hasNativeModeShellStandaloneProof =
   nativeModeShellArtifact?.operation === "mode-shell-proof" &&
   exactModeShellProof(nativeModeShellArtifact) &&
   mtime(nativeModeShellPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeModeShellProof = hasNativeModeShellClientProof || hasNativeModeShellStandaloneProof;
 const hasNativeModeRailWindowClientProof =
   exactModeRailWindowProof(nativeClient?.nativeModeRailWindow) &&
@@ -927,7 +934,7 @@ const hasNativeModeRailWindowClientProof =
 const hasNativeModeRailWindowStandaloneProof =
   exactModeRailWindowProof(nativeModeRailWindowArtifact) &&
   mtime(nativeModeRailWindowPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeModeRailWindowProof = hasNativeModeRailWindowClientProof || hasNativeModeRailWindowStandaloneProof;
 const hasNativeInspectorWindowClientProof =
   exactInspectorWindowProof(nativeClient?.nativeInspectorWindow) &&
@@ -938,7 +945,7 @@ const hasNativeInspectorWindowClientProof =
 const hasNativeInspectorWindowStandaloneProof =
   exactInspectorWindowProof(nativeInspectorWindowArtifact) &&
   mtime(nativeInspectorWindowPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeInspectorWindowProof =
   hasNativeInspectorWindowClientProof || hasNativeInspectorWindowStandaloneProof;
 const hasNativeRightRailDemotionClientProof =
@@ -950,7 +957,7 @@ const hasNativeRightRailDemotionClientProof =
 const hasNativeRightRailDemotionStandaloneProof =
   exactRightRailDemotionProof(nativeRightRailDemotionArtifact) &&
   mtime(nativeRightRailDemotionPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeRightRailDemotionProof =
   hasNativeRightRailDemotionClientProof || hasNativeRightRailDemotionStandaloneProof;
 const hasNativeRightRail =
@@ -971,7 +978,7 @@ const hasNativeAccessibilityTreeClientProof =
 const hasNativeAccessibilityTreeStandaloneProof =
   exactAccessibilityTreeProof(nativeAccessibilityArtifact) &&
   mtime(nativeAccessibilityPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeAccessibilityTreeProof =
   hasNativeAccessibilityTreeClientProof || hasNativeAccessibilityTreeStandaloneProof;
 const hasNativeUiaProviderClientProof =
@@ -982,7 +989,7 @@ const hasNativeUiaProviderClientProof =
 const hasNativeUiaProviderStandaloneProof =
   exactUiaProviderProof(nativeUiaProviderArtifact) &&
   mtime(nativeUiaProviderPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeUiaProviderProof = hasNativeUiaProviderClientProof || hasNativeUiaProviderStandaloneProof;
 const hasNativeAccessibility =
   hasNativeAccessibilityTreeProof && hasNativeUiaProviderProof;
@@ -996,7 +1003,7 @@ const hasNativeVisualQaHarnessClientProof =
 const hasNativeVisualQaHarnessStandaloneProof =
   exactVisualQaHarnessProof(nativeVisualQaArtifact) &&
   mtime(nativeVisualQaPath) + 5_000 >=
-    Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
+    Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs"));
 const hasNativeVisualQaHarness =
   hasNativeVisualQaHarnessClientProof || hasNativeVisualQaHarnessStandaloneProof;
 const hasNativeVisualQa =
@@ -1008,7 +1015,7 @@ const hasPrimaryNativeShellPromotion =
     nativeClient?.checks?.includes?.("react-webview-compatibility-only-proof")) ||
   (exactPrimaryShellProof(nativePrimaryShellArtifact) &&
     mtime(nativePrimaryShellPath) + 5_000 >=
-      Math.max(mtime("src-tauri/src/bin/aelyris_native.rs"), mtime("scripts/verify-full-native-rust-gap-audit.mjs")));
+      Math.max(nativeProofSourceMtime, mtime("scripts/verify-full-native-rust-gap-audit.mjs")));
 const hasCompatibilityOnlyShell = !hasReactWebViewShell || hasPrimaryNativeShellPromotion;
 
 const items = [

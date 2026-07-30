@@ -1,13 +1,30 @@
-import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 
 const root = resolve(process.cwd());
 const extension = process.platform === "win32" ? ".exe" : "";
+const explicitNativeExe = process.env.AELYRIS_NATIVE_EXE;
 const nativeBin = resolve(
-  process.env.AELYRIS_NATIVE_EXE ?? join(root, "src-tauri", "target", "debug", `aelyris-native${extension}`),
+  explicitNativeExe ?? join(root, "src-tauri", "target", "debug", `aelyris-native${extension}`),
 );
+const nativeProofSourcePaths = [
+  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/bin/aelyris_native/client.rs",
+  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/bin/aelyris_native/router.rs",
+];
 const out = resolve(
   process.env.AELYRIS_NATIVE_SLEEP_GUARD_OUT ??
     join(root, ".codex-auto", "production-smoke", "native-sleep-guard-refusal.json"),
@@ -23,6 +40,53 @@ function writeJsonAtomic(path, value) {
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
   renameSync(tmp, path);
+}
+
+function prepareNativeBinary() {
+  const sourceCutoffMs = Math.max(
+    statSync(join(root, "src-tauri", "Cargo.toml")).mtimeMs,
+    ...nativeProofSourcePaths.map((path) => statSync(join(root, path)).mtimeMs),
+  );
+  if (explicitNativeExe) {
+    const executableMtimeMs = existsSync(nativeBin) ? statSync(nativeBin).mtimeMs : 0;
+    return {
+      ok: executableMtimeMs + 5_000 >= sourceCutoffMs,
+      mode: "explicit-current-executable",
+      status: null,
+      executableMtimeMs,
+      sourceCutoffMs,
+      stderrTail: "",
+    };
+  }
+  const result = spawnSync(
+    process.platform === "win32" ? "cargo.exe" : "cargo",
+    [
+      "build",
+      "--quiet",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--features",
+      "native-proof-cli",
+      "--bin",
+      "aelyris-native",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      shell: false,
+      timeout: 600_000,
+      windowsHide: true,
+    },
+  );
+  return {
+    ok: result.status === 0 && !result.error && existsSync(nativeBin),
+    mode: "cargo-feature-build",
+    status: result.status,
+    executableMtimeMs: existsSync(nativeBin) ? statSync(nativeBin).mtimeMs : 0,
+    sourceCutoffMs,
+    stderrTail: String(result.stderr ?? "").slice(-2000),
+    error: result.error?.message ?? null,
+  };
 }
 
 async function runNativeSleepWithoutOptIn() {
@@ -88,8 +152,12 @@ async function runNativeSleepWithoutOptIn() {
   });
 }
 
-if (!existsSync(nativeBin)) {
-  fail("aelyris-native binary is missing", nativeBin);
+const preparation = prepareNativeBinary();
+if (!preparation.ok) {
+  fail(
+    "current aelyris-native binary is unavailable",
+    preparation.error ?? preparation.stderrTail ?? nativeBin,
+  );
 } else {
   const result = await runNativeSleepWithoutOptIn();
   const refusalText = `${result.stderr}\n${result.stdout}`;
@@ -113,6 +181,7 @@ if (!existsSync(nativeBin)) {
     status: missing.length === 0 ? "pass" : "fail",
     command: `${nativeBin} sleep-now`,
     executable: nativeBin,
+    preparation,
     checks,
     missing,
     result: {

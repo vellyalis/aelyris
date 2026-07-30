@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A6`.
-ACTIVE SLICE: `A6.6`.
-LAST COMPLETED SLICE: `A6.5`.
+ACTIVE SLICE: `A6.7`.
+LAST COMPLETED SLICE: `A6.6`.
 NEXT PHASE: `A7` after A6 owner/behavior acceptance.
-NEXT IMPLEMENTATION SLICE: `A6.6`.
+NEXT IMPLEMENTATION SLICE: `A6.7`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -34,9 +34,12 @@ deletion policy. A6.4 MCP transport/catalog/schema/governance/domain dispatch is
 complete with one catalog owner, one authorized dispatcher, exact 83/83/83
 catalog/schema/dispatch parity, and `mcp.rs=2539 <= 5943`. A6.5 SQLite domain
 repositories are complete behind the existing Database connection/migration owner.
-A6.6 native proof CLI boundary is the exact implementation frontier. Do not reopen
-A4 or completed A6.2-A6.5 owners without a fresh regression, and do not mix A7 or
-native product expansion into A6.
+A6.6 native proof CLI boundary is complete with an optional proof-only Cargo feature,
+one router/readiness/client ownership split, exact command/schema preservation, and
+causal downstream freshness checks. A6.7 callsite-proven duplicate/unowned
+infrastructure removal is the exact implementation frontier. Do not reopen A4 or
+completed A6.2-A6.6 owners without a fresh regression, and do not mix A7 or native
+product expansion into A6.
 
 ## Objective
 
@@ -60,7 +63,7 @@ volatile value.
 A4.12 complete
   -> A6.2e1-A6.2e4 complete -> A6.2f/A6 component and command composition
   -> A6.3 IPC adapter complete -> A6.4 MCP catalog and dispatch complete
-  -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI
+  -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI complete
   -> A6.7 duplicate/unowned infrastructure -> A6.8 combined acceptance
   -> A7.0 scope lock -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
@@ -82,7 +85,7 @@ implementation phase and not a reduction of the product Goal.
    Workflow and Proofbook starts share the existing startup admission owner, and the
    v8 combined crash/fault/restart matrix passes. Do not create A4.13 or reopen A4
    without a fresh regression.
-2. **A6.5 is complete.** Execute **A6.6**, then finish A6 by dependency direction,
+2. **A6.6 is complete.** Execute **A6.7**, then finish A6 by dependency direction,
    state ownership, executed behavior, and concurrency safety. File length remains
    a diagnostic non-growth ratchet, not a universal `<=800` completion requirement.
    Do not move logic solely to satisfy a line count.
@@ -93,9 +96,11 @@ implementation phase and not a reduction of the product Goal.
    Continuity, universal all-face Control Kernel migration beyond the enabled
    Mission path, and learning layers remain in the full Goal but are deferred from
    the release-blocking A7 Core.
-4. At **A6.6**, isolate `aelyris_native` behind an optional Cargo feature or
-   equivalent proof-only package boundary without expanding native functionality.
-   A8.0 remains the only activation decision for further native/full-native work.
+4. **A6.6** isolated `aelyris_native` behind the optional `native-proof-cli`
+   feature without expanding native functionality. A8.0 remains the only
+   activation decision for further native/full-native work. At **A6.7**, delete
+   only duplicate or unowned infrastructure whose registration, callsites,
+   compatibility surfaces, and runtime ownership have been disproved directly.
 5. Do not start a verifier-cleanup program. When a touched owner relies on a brittle
    source-string check, replace or supplement that check with the smallest executed
    behavior proof needed for the changed risk. Add a new verifier only for a unique
@@ -626,13 +631,24 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   negative topology mutations reject commented registration, independent
   connections, duplicate schema ownership, and duplicate facade methods.
   `queries.rs=3174 <= 3330`; A6 remains `phaseComplete=false`.
-- Continue A6.6 by inventorying the command router, proof domains, side effects,
-  artifact schemas, and host behavior in `src-tauri/src/bin/aelyris_native.rs`.
-  Isolate the existing proof binary behind an optional Cargo feature or equivalent
-  proof-only package boundary, split router/proof domains without expanding native
-  functionality, preserve schemas and host behavior, and lower the frozen
-  `aelyris_native.rs` ceiling from `8827` without rebaselining. A6.7-A6.8 remain
-  after A6.6; A8.0 remains the sole native activation decision.
+- A6.6 native proof CLI closeout is complete. `aelyris-native` is excluded from
+  default application builds behind the optional `native-proof-cli` feature;
+  router, readiness contract, and daemon client responsibilities live in
+  owner-local modules without a second runtime, storage, state, or command owner.
+  The frozen 40-command and 62-schema contracts, exit behavior, supported-host
+  boundary, and live native-client behavior remain executable. All downstream
+  freshness consumers now include all four proof source owners; the A6.6
+  native-client, text-shaping, sleep-guard, and upper-compat proof paths build the
+  current feature-gated binary, and a negative child-source mutation is rejected.
+  `aelyris_native.rs=8436 <= 8827`, focused native tests pass 7/7, live
+  native-client checks pass, upper compatibility passes 6/6, text shaping
+  produces a fresh current fixture, Rust library tests pass 1308/1308, and A6
+  remains `phaseComplete=false`.
+- Continue A6.7 with a callsite-first inventory of duplicate or unowned
+  infrastructure. Do not delete from name, size, or absence alone; prove the
+  authoritative owner, registration, callsites, compatibility surface, and
+  runtime/test reachability first. A6.8 remains the only combined A6 acceptance,
+  and A8.0 remains the sole native activation decision.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.
