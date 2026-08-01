@@ -119,6 +119,10 @@ fn outputs_present(worktree_path: &str, outputs: &[String]) -> bool {
     outputs.iter().all(|rel| root.join(rel).is_file())
 }
 
+fn done_marker_complete(path: &Path) -> bool {
+    std::fs::read(path).is_ok_and(|contents| contents == b"done")
+}
+
 /// Persistent registry mapping each loop task to its visible PTY pane and
 /// observing pane exits for the loop's completion sensor. Clone-cheap (Arc-backed
 /// like `PtyManager`/`AgentManager`) so it can be shared as Tauri managed state.
@@ -371,7 +375,7 @@ impl PaneFleet {
             .iter()
             .filter(|run| run.exit.is_none() && now.saturating_sub(run.started_at) <= timeout_secs)
         {
-            if run.done_marker_path.is_file() {
+            if done_marker_complete(&run.done_marker_path) {
                 live_done.insert(run.task_id.clone());
                 continue;
             }
@@ -778,6 +782,19 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a7_2_done_marker_requires_exact_done_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("complete.done");
+        assert!(!done_marker_complete(&marker));
+        std::fs::write(&marker, "not-done").unwrap();
+        assert!(!done_marker_complete(&marker));
+        std::fs::write(&marker, "done\n").unwrap();
+        assert!(!done_marker_complete(&marker));
+        std::fs::write(&marker, "done").unwrap();
+        assert!(done_marker_complete(&marker));
     }
 
     #[test]

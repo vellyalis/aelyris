@@ -96,6 +96,7 @@ const expectedFrozenAdmission = {
     "test",
     "--manifest-path",
     "src-tauri/Cargo.toml",
+    "--lib",
     "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
     "--",
     "--exact",

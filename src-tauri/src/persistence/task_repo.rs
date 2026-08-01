@@ -17,8 +17,8 @@ use rusqlite::{params, OptionalExtension};
 use crate::db::Database;
 use crate::task::graph::{Task, TaskGraph, TaskPriority};
 use crate::task::mission::{
-    decision_unix_ms, validate_decision_principal, MissionPlanError, MissionPlanPreview,
-    MissionPlanStatus,
+    decision_unix_ms, validate_decision_principal, MissionGateEvidence, MissionPlanActivation,
+    MissionPlanError, MissionPlanPreview, MissionPlanStatus,
 };
 use crate::task::status::TaskStatus;
 
@@ -66,6 +66,11 @@ impl TaskRepo {
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| format!("Begin task tx: {e}"))?;
+        Self::save_graph_tx(&tx, graph)?;
+        tx.commit().map_err(|e| format!("Commit task tx: {e}"))
+    }
+
+    fn save_graph_tx(tx: &rusqlite::Transaction<'_>, graph: &TaskGraph) -> Result<(), String> {
         for (sort_order, task) in graph.list().iter().enumerate() {
             let outputs_json = serde_json::to_string(&task.outputs)
                 .map_err(|e| format!("Serialize outputs for {}: {e}", task.id))?;
@@ -126,7 +131,7 @@ impl TaskRepo {
                 .map_err(|e| format!("Insert dep {}->{}: {e}", task.id, dep))?;
             }
         }
-        tx.commit().map_err(|e| format!("Commit task tx: {e}"))
+        Ok(())
     }
 
     /// Rebuild the graph from SQLite (startup restore). Tasks are re-added in
@@ -408,6 +413,310 @@ impl TaskRepo {
             }
         };
         raws.into_iter().map(decode_mission_plan).collect()
+    }
+
+    pub fn load_mission_activation(
+        db: &Database,
+        plan_id: &str,
+        plan_revision: u64,
+    ) -> Result<Option<MissionPlanActivation>, MissionPlanError> {
+        let revision = i64::try_from(plan_revision)
+            .map_err(|_| MissionPlanError::Validation("planRevision exceeds SQLite i64".into()))?;
+        db.conn()
+            .query_row(
+                "SELECT activation_id, plan_id, plan_revision, mission_id, mission_revision,
+                        work_unit_id, task_id, plan_content_digest, accepted_base_oid,
+                        repository_root, source_branch, target_branch, owned_targets_json,
+                        test_argv_json, activated_by, activated_at_ms
+                   FROM mission_plan_activations
+                  WHERE plan_id=?1 AND plan_revision=?2",
+                params![plan_id, revision],
+                |row| {
+                    let plan_revision: i64 = row.get(2)?;
+                    let mission_revision: i64 = row.get(4)?;
+                    let activated_at: i64 = row.get(15)?;
+                    let owned: String = row.get(12)?;
+                    let argv: String = row.get(13)?;
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        plan_revision,
+                        row.get::<_, String>(3)?,
+                        mission_revision,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        owned,
+                        argv,
+                        row.get::<_, String>(14)?,
+                        activated_at,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?
+            .map(|row| {
+                Ok(MissionPlanActivation {
+                    schema: "aelyris.mission_plan_activation/v1".into(),
+                    activation_id: row.0,
+                    plan_id: row.1,
+                    plan_revision: u64::try_from(row.2).map_err(|_| {
+                        MissionPlanError::Persistence("negative plan revision".into())
+                    })?,
+                    mission_id: row.3,
+                    mission_revision: u64::try_from(row.4).map_err(|_| {
+                        MissionPlanError::Persistence("negative mission revision".into())
+                    })?,
+                    work_unit_id: row.5,
+                    task_id: row.6,
+                    plan_content_digest: row.7,
+                    accepted_base_oid: row.8,
+                    repository_root: row.9,
+                    source_branch: row.10,
+                    target_branch: row.11,
+                    owned_targets: serde_json::from_str(&row.12).map_err(|error| {
+                        MissionPlanError::Persistence(format!("decode activation targets: {error}"))
+                    })?,
+                    test_argv: serde_json::from_str(&row.13).map_err(|error| {
+                        MissionPlanError::Persistence(format!("decode activation argv: {error}"))
+                    })?,
+                    activated_by: row.14,
+                    activated_at_unix_ms: u64::try_from(row.15).map_err(|_| {
+                        MissionPlanError::Persistence("negative activation time".into())
+                    })?,
+                })
+            })
+            .transpose()
+    }
+
+    pub fn load_mission_activation_for_task(
+        db: &Database,
+        task_id: &str,
+    ) -> Result<Option<MissionPlanActivation>, MissionPlanError> {
+        let key: Option<(String, i64)> = db
+            .conn()
+            .query_row(
+                "SELECT plan_id, plan_revision FROM mission_plan_activations WHERE task_id=?1",
+                [task_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        match key {
+            Some((plan_id, revision)) => Self::load_mission_activation(
+                db,
+                &plan_id,
+                u64::try_from(revision).map_err(|_| {
+                    MissionPlanError::Persistence("negative activation plan revision".into())
+                })?,
+            ),
+            None => Ok(None),
+        }
+    }
+
+    /// Commit the activation fact and the whole staged TaskGraph in one SQLite
+    /// transaction. A crash can expose both or neither, never executable graph
+    /// state without its accepted-plan authority binding.
+    pub fn persist_mission_activation(
+        db: &Database,
+        activation: &MissionPlanActivation,
+        graph: &TaskGraph,
+    ) -> Result<MissionPlanActivation, MissionPlanError> {
+        if let Some(existing) =
+            Self::load_mission_activation(db, &activation.plan_id, activation.plan_revision)?
+        {
+            return if existing == *activation {
+                Ok(existing)
+            } else {
+                Err(MissionPlanError::ContentConflict(
+                    "Mission plan revision already has a different activation".into(),
+                ))
+            };
+        }
+        let plan_revision = i64::try_from(activation.plan_revision)
+            .map_err(|_| MissionPlanError::Validation("planRevision exceeds SQLite i64".into()))?;
+        let mission_revision = i64::try_from(activation.mission_revision).map_err(|_| {
+            MissionPlanError::Validation("missionRevision exceeds SQLite i64".into())
+        })?;
+        let activated_at_ms = i64::try_from(activation.activated_at_unix_ms).map_err(|_| {
+            MissionPlanError::Validation("activatedAtUnixMs exceeds SQLite i64".into())
+        })?;
+        let conn = db.conn();
+        let tx = conn.unchecked_transaction().map_err(|error| {
+            MissionPlanError::Persistence(format!("begin activation tx: {error}"))
+        })?;
+        let accepted: Option<(String, String, i64)> = tx
+            .query_row(
+                "SELECT status, content_digest, mission_revision FROM mission_plan_revisions
+                  WHERE plan_id=?1 AND plan_revision=?2",
+                params![activation.plan_id, plan_revision],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        if accepted
+            != Some((
+                "accepted".into(),
+                activation.plan_content_digest.clone(),
+                mission_revision,
+            ))
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "activation no longer matches an accepted immutable plan".into(),
+            ));
+        }
+        Self::save_graph_tx(&tx, graph).map_err(MissionPlanError::Persistence)?;
+        let owned = serde_json::to_string(&activation.owned_targets)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        let argv = serde_json::to_string(&activation.test_argv)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        tx.execute(
+            "INSERT INTO mission_plan_activations (
+                activation_id,plan_id,plan_revision,mission_id,mission_revision,work_unit_id,
+                task_id,plan_content_digest,accepted_base_oid,repository_root,source_branch,
+                target_branch,owned_targets_json,test_argv_json,activated_by,activated_at_ms
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+            params![
+                activation.activation_id,
+                activation.plan_id,
+                plan_revision,
+                activation.mission_id,
+                mission_revision,
+                activation.work_unit_id,
+                activation.task_id,
+                activation.plan_content_digest,
+                activation.accepted_base_oid,
+                activation.repository_root,
+                activation.source_branch,
+                activation.target_branch,
+                owned,
+                argv,
+                activation.activated_by,
+                activated_at_ms,
+            ],
+        )
+        .map_err(|error| {
+            MissionPlanError::Persistence(format!("insert Mission activation: {error}"))
+        })?;
+        tx.commit().map_err(|error| {
+            MissionPlanError::Persistence(format!("commit activation tx: {error}"))
+        })?;
+        Ok(activation.clone())
+    }
+
+    pub fn insert_mission_gate_evidence(
+        db: &Database,
+        evidence: &MissionGateEvidence,
+    ) -> Result<MissionGateEvidence, MissionPlanError> {
+        if evidence.tested_oid != evidence.candidate_oid {
+            return Err(MissionPlanError::Validation(
+                "testedOid must equal candidateOid".into(),
+            ));
+        }
+        let execution_generation = i64::try_from(evidence.execution_generation).map_err(|_| {
+            MissionPlanError::Validation("executionGeneration exceeds SQLite i64".into())
+        })?;
+        let started_at_ms = i64::try_from(evidence.started_at_unix_ms).map_err(|_| {
+            MissionPlanError::Validation("startedAtUnixMs exceeds SQLite i64".into())
+        })?;
+        let ended_at_ms = i64::try_from(evidence.ended_at_unix_ms)
+            .map_err(|_| MissionPlanError::Validation("endedAtUnixMs exceeds SQLite i64".into()))?;
+        let argv = serde_json::to_string(&evidence.command_argv)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        db.conn()
+            .execute(
+                "INSERT INTO mission_gate_evidence (
+                    evidence_id,activation_id,plan_content_digest,attempt_id,execution_generation,
+                    agent_run_id,runtime_domain_id,pty_session_id,gate_id,contract_version,
+                    command_argv_json,command_fingerprint,environment_fingerprint,result,
+                    evidence_digest,base_oid,candidate_oid,tested_oid,started_at_ms,ended_at_ms
+                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+                params![
+                    evidence.evidence_id,
+                    evidence.activation_id,
+                    evidence.plan_content_digest,
+                    evidence.attempt_id,
+                    execution_generation,
+                    evidence.agent_run_id,
+                    evidence.runtime_domain_id,
+                    evidence.pty_session_id,
+                    evidence.gate_id,
+                    evidence.contract_version,
+                    argv,
+                    evidence.command_fingerprint,
+                    evidence.environment_fingerprint,
+                    evidence.result,
+                    evidence.evidence_digest,
+                    evidence.base_oid,
+                    evidence.candidate_oid,
+                    evidence.tested_oid,
+                    started_at_ms,
+                    ended_at_ms,
+                ],
+            )
+            .map_err(|error| {
+                MissionPlanError::Persistence(format!("insert Mission gate evidence: {error}"))
+            })?;
+        Ok(evidence.clone())
+    }
+
+    pub fn load_mission_gate_evidence(
+        db: &Database,
+        activation_id: &str,
+    ) -> Result<Option<MissionGateEvidence>, MissionPlanError> {
+        db.conn()
+            .query_row(
+                "SELECT evidence_id,activation_id,plan_content_digest,attempt_id,execution_generation,
+                        agent_run_id,runtime_domain_id,pty_session_id,gate_id,contract_version,
+                        command_argv_json,command_fingerprint,environment_fingerprint,result,
+                        evidence_digest,base_oid,candidate_oid,tested_oid,started_at_ms,ended_at_ms
+                   FROM mission_gate_evidence WHERE activation_id=?1
+                  ORDER BY ended_at_ms DESC LIMIT 1",
+                [activation_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?, row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?, row.get::<_, String>(10)?, row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?, row.get::<_, String>(13)?, row.get::<_, String>(14)?,
+                        row.get::<_, String>(15)?, row.get::<_, String>(16)?, row.get::<_, String>(17)?,
+                        row.get::<_, i64>(18)?, row.get::<_, i64>(19)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?
+            .map(|row| {
+                Ok(MissionGateEvidence {
+                    schema: "aelyris.mission_gate_evidence/v1".into(),
+                    evidence_id: row.0,
+                    activation_id: row.1,
+                    plan_content_digest: row.2,
+                    attempt_id: row.3,
+                    execution_generation: u64::try_from(row.4).map_err(|_| MissionPlanError::Persistence("negative evidence generation".into()))?,
+                    agent_run_id: row.5,
+                    runtime_domain_id: row.6,
+                    pty_session_id: row.7,
+                    gate_id: row.8,
+                    contract_version: row.9,
+                    command_argv: serde_json::from_str(&row.10).map_err(|error| MissionPlanError::Persistence(format!("decode evidence argv: {error}")))?,
+                    command_fingerprint: row.11,
+                    environment_fingerprint: row.12,
+                    result: row.13,
+                    evidence_digest: row.14,
+                    base_oid: row.15,
+                    candidate_oid: row.16,
+                    tested_oid: row.17,
+                    started_at_unix_ms: u64::try_from(row.18).map_err(|_| MissionPlanError::Persistence("negative evidence start".into()))?,
+                    ended_at_unix_ms: u64::try_from(row.19).map_err(|_| MissionPlanError::Persistence("negative evidence end".into()))?,
+                })
+            })
+            .transpose()
     }
 
     pub fn decide_mission_plan(

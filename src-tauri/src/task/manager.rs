@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
 use super::graph::{Task, TaskGraph, TaskGraphError};
 use super::mission::{
+    activation_from_accepted_plan, decision_unix_ms, MissionGateEvidence, MissionPlanActivation,
     MissionPlanError, MissionPlanPreview, MissionPlanPreviewInput, MissionPlanStatus,
 };
 use super::planner::validate_plan;
@@ -140,6 +141,32 @@ impl TaskManager {
         let loaded_executions = db
             .try_with(WorkExecutionRepo::load_latest)
             .map_err(|error: ExecutionFenceError| error.to_string())?;
+        // A7 Mission completion is durable before candidate freeze: the exact
+        // visible execution is fenced at Review/Reserved. Preserve only that
+        // narrowly-proven state so a crash between marker observation and
+        // evidence persistence resumes freeze instead of dispatching a second
+        // implementer generation. The fence also heals a `Ready` graph row
+        // written by an older restore that collapsed Mission Review blindly.
+        let mut resumable_mission_reviews = HashSet::new();
+        for attempt in &loaded_executions {
+            let is_pre_review_mission_completion = loaded.get(&attempt.identity.task_id).is_some()
+                && attempt.runtime == super::ExecutionRuntime::VisiblePty
+                && attempt.fence.effect == ExecutionEffect::Review
+                && attempt.fence.state == ExecutionFenceState::Reserved;
+            if is_pre_review_mission_completion
+                && db
+                    .try_with(|database| {
+                        TaskRepo::load_mission_activation_for_task(
+                            database,
+                            &attempt.identity.task_id,
+                        )
+                    })
+                    .map_err(|error: MissionPlanError| error.to_string())?
+                    .is_some()
+            {
+                resumable_mission_reviews.insert(attempt.identity.task_id.clone());
+            }
+        }
         // Collapse the volatile in-flight states (Running/Review) before the graph
         // goes live: at crash the worker for such a task is gone (headless agents
         // exited; visible-pane PTYs died with the app), so leaving it Running/Review
@@ -151,8 +178,13 @@ impl TaskManager {
         // re-readied once its deps are Done, never dispatched out of order. `load_graph`
         // already proved every dependency exists (its own `add` would have errored
         // otherwise), so rebuilding in the same order re-adds cleanly.
-        let collapsed =
+        let mut collapsed =
             crate::task::tasks_for_restore(loaded.list().into_iter().cloned().collect());
+        for task in &mut collapsed {
+            if resumable_mission_reviews.contains(&task.id) {
+                task.status = TaskStatus::Review;
+            }
+        }
         let mut restored = TaskGraph::new();
         for task in collapsed {
             restored
@@ -443,6 +475,161 @@ impl TaskManager {
     ) -> Result<Vec<MissionPlanPreview>, MissionPlanError> {
         let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
         db.try_with(|database| TaskRepo::list_mission_plans(database, request_id))
+    }
+
+    /// Activate one accepted A7.1 plan into exactly one existing TaskGraph task.
+    /// The activation row and full graph snapshot commit atomically. Retrying the
+    /// same accepted revision returns the durable activation without minting a
+    /// second task or authority record.
+    pub fn activate_mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+    ) -> Result<MissionPlanActivation, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        // Serialize the durable lookup and graph publication together. Without
+        // this existing owner lock, two simultaneous first activations could
+        // both miss the row and the loser would observe a non-empty graph
+        // instead of returning the winner's identical activation.
+        let _writer = self.persistence_lock();
+        if let Some(existing) = db.try_with(|database| {
+            TaskRepo::load_mission_activation(database, plan_id, plan_revision)
+        })? {
+            let preview = self.mission_plan(plan_id, plan_revision)?;
+            let (expected_activation, expected_task) = activation_from_accepted_plan(
+                &preview,
+                existing.activation_id.clone(),
+                existing.activated_at_unix_ms,
+            )?;
+            let actual_task = self
+                .read(|graph| {
+                    if graph.list().len() == 1 {
+                        graph.get(&existing.task_id).cloned()
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| {
+                    MissionPlanError::ContentConflict(
+                        "durable Mission activation is not the exclusive TaskGraph projection"
+                            .into(),
+                    )
+                })?;
+            if existing != expected_activation
+                || actual_task.id != expected_task.id
+                || actual_task.title != expected_task.title
+                || actual_task.description != expected_task.description
+                || actual_task.owner != expected_task.owner
+                || actual_task.model != expected_task.model
+                || actual_task.priority != expected_task.priority
+                || actual_task.dependencies != expected_task.dependencies
+                || actual_task.outputs != expected_task.outputs
+                || actual_task.source_branch != expected_task.source_branch
+                || actual_task.target_branch != expected_task.target_branch
+            {
+                return Err(MissionPlanError::ContentConflict(
+                    "durable Mission activation or TaskGraph projection no longer matches the accepted plan".into(),
+                ));
+            }
+            return Ok(existing);
+        }
+        let preview = self.mission_plan(plan_id, plan_revision)?;
+        let (root, head) = resolve_a7_repository_head(&preview.repository_root)?;
+        if root != preview.repository_root
+            || head != preview.accepted_mission_head_oid
+            || head != preview.mission_definition.base_oid
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "accepted Mission base changed before A7.2 activation".into(),
+            ));
+        }
+        let (activation, task) = activation_from_accepted_plan(
+            &preview,
+            uuid::Uuid::now_v7().to_string(),
+            decision_unix_ms()?,
+        )?;
+
+        let mut state = self.lock();
+        Self::require_mutation_available(&state)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        if !state.graph.is_empty() {
+            return Err(MissionPlanError::ContentConflict(
+                "A7.2 activation requires an otherwise empty TaskGraph so mission_plan_run cannot dispatch or review unrelated work".into(),
+            ));
+        }
+        if state.graph.get(&task.id).is_some() {
+            return Err(MissionPlanError::ContentConflict(format!(
+                "TaskGraph already contains Mission task {} without its activation",
+                task.id
+            )));
+        }
+        let mut staging = state.graph.clone();
+        staging
+            .add(task)
+            .map_err(|error| MissionPlanError::ContentConflict(error.to_string()))?;
+        staging.recompute_ready();
+        let persisted = db.try_with(|database| {
+            TaskRepo::persist_mission_activation(database, &activation, &staging)
+        })?;
+        Self::publish_mutation(&mut state, staging);
+        Ok(persisted)
+    }
+
+    pub fn mission_activation_for_task(
+        &self,
+        task_id: &str,
+    ) -> Result<Option<MissionPlanActivation>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| TaskRepo::load_mission_activation_for_task(database, task_id))
+    }
+
+    pub fn mission_gate_evidence(
+        &self,
+        activation_id: &str,
+    ) -> Result<Option<MissionGateEvidence>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| TaskRepo::load_mission_gate_evidence(database, activation_id))
+    }
+
+    pub fn persist_mission_gate_evidence(
+        &self,
+        activation: &MissionPlanActivation,
+        evidence: &MissionGateEvidence,
+    ) -> Result<MissionGateEvidence, MissionPlanError> {
+        if let Some(existing) = self.mission_gate_evidence(&activation.activation_id)? {
+            return if existing == *evidence {
+                Ok(existing)
+            } else {
+                Err(MissionPlanError::ContentConflict(
+                    "Mission activation already has different gate evidence".into(),
+                ))
+            };
+        }
+        let attempt = self.current_execution(&activation.task_id).ok_or_else(|| {
+            MissionPlanError::Validation("Mission gate evidence lacks an execution attempt".into())
+        })?;
+        if attempt.runtime != super::ExecutionRuntime::VisiblePty
+            || attempt.identity.attempt_id != evidence.attempt_id
+            || attempt.identity.execution_generation != evidence.execution_generation
+            || attempt.identity.agent_run_id != evidence.agent_run_id
+            || evidence.runtime_domain_id != "visible_pty"
+            || attempt.identity.pty_session_id.as_deref() != Some(&evidence.pty_session_id)
+            || attempt.fence.effect != ExecutionEffect::Review
+            || attempt.fence.state != ExecutionFenceState::Reserved
+            || evidence.activation_id != activation.activation_id
+            || evidence.plan_content_digest != activation.plan_content_digest
+            || evidence.base_oid != activation.accepted_base_oid
+            || evidence.command_argv != activation.test_argv
+            || evidence.candidate_oid != evidence.tested_oid
+        {
+            return Err(MissionPlanError::Validation(
+                "Mission gate evidence is not bound to the active visible candidate generation"
+                    .into(),
+            ));
+        }
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        let _writer = self.persistence_lock();
+        db.try_with(|database| TaskRepo::insert_mission_gate_evidence(database, evidence))
     }
 
     pub fn accept_mission_plan(
@@ -1494,6 +1681,171 @@ mod tests {
         assert_eq!(manager.lock().revision, graph_revision);
         assert!(manager.list().is_empty());
         assert!(manager.execution_lock().is_empty());
+    }
+
+    #[test]
+    fn a7_2_activation_atomically_materializes_one_task_and_is_idempotent() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+
+        let activation = manager.activate_mission_plan(&plan_id, 1).unwrap();
+        assert_eq!(manager.list().len(), 1);
+        let task = manager.get(&activation.task_id).unwrap();
+        assert_eq!(task.outputs, activation.owned_targets);
+        assert_eq!(task.owner.as_deref(), Some("implementer"));
+        assert_eq!(task.model.as_deref(), Some("codex-no-hooks"));
+        assert_eq!(
+            task.source_branch.as_deref(),
+            Some(activation.source_branch.as_str())
+        );
+        assert_eq!(task.status, TaskStatus::Ready);
+        assert!(task.description.contains(crate::task::A7_FIXTURE_REQUEST));
+        assert!(task
+            .description
+            .contains(crate::task::A7_FIXTURE_OWNED_TARGET));
+        assert_eq!(
+            manager.activate_mission_plan(&plan_id, 1).unwrap(),
+            activation
+        );
+        assert_eq!(manager.list().len(), 1);
+        let durable = db
+            .try_with(|database| TaskRepo::load_mission_activation(database, &plan_id, 1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(durable, activation);
+
+        manager
+            .create(Task::new(
+                "compatibility-task",
+                "Must not join the Mission run",
+            ))
+            .unwrap();
+        assert!(matches!(
+            manager.activate_mission_plan(&plan_id, 1),
+            Err(MissionPlanError::ContentConflict(message))
+                if message.contains("exclusive TaskGraph projection")
+        ));
+    }
+
+    #[test]
+    fn a7_2_concurrent_first_activation_returns_one_durable_identity() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let manager = Arc::new(TaskManager::new_durable());
+        manager.attach_db(mem_db()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let calls = (0..2)
+            .map(|_| {
+                let manager = manager.clone();
+                let barrier = barrier.clone();
+                let plan_id = plan_id.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    manager.activate_mission_plan(&plan_id, 1).unwrap()
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        let activations = calls
+            .into_iter()
+            .map(|call| call.join().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(activations[0], activations[1]);
+        assert_eq!(manager.list().len(), 1);
+    }
+
+    #[test]
+    fn a7_2_restart_preserves_completed_mission_at_pre_review_fence() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        let activation = manager.activate_mission_plan(&plan_id, 1).unwrap();
+
+        let attempt = manager
+            .reserve_execution(ExecutionReservation {
+                task_id: activation.task_id.clone(),
+                repo_path: activation.repository_root.clone(),
+                runtime: crate::task::ExecutionRuntime::VisiblePty,
+                ownership_claim_ids: vec!["claim-a7".to_string()],
+                now: 10,
+            })
+            .unwrap();
+        let mut now = 11;
+        manager
+            .commit_execution_reservation(&attempt.token(), now)
+            .unwrap();
+        for effect in [ExecutionEffect::FirstEffect, ExecutionEffect::Spawn] {
+            commit_effect(&manager, &attempt, effect, &mut now);
+        }
+        now += 1;
+        manager
+            .reserve_execution_effect(&attempt.token(), ExecutionEffect::Review, None, now)
+            .unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Review)
+            .unwrap();
+        db.with(|database| {
+            database
+                .conn()
+                .execute(
+                    "UPDATE tasks SET status='ready' WHERE id=?1",
+                    [&activation.task_id],
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        drop(manager);
+
+        let restored = TaskManager::new_durable();
+        restored.attach_db(db).unwrap();
+        assert_eq!(
+            restored.get(&activation.task_id).unwrap().status,
+            TaskStatus::Review,
+            "a durable Mission completion must resume candidate freeze, not dispatch again"
+        );
+        let restored_attempt = restored.current_execution(&activation.task_id).unwrap();
+        assert_eq!(restored_attempt.fence.effect, ExecutionEffect::Review);
+        assert_eq!(restored_attempt.fence.state, ExecutionFenceState::Reserved);
+    }
+
+    #[test]
+    fn a7_2_activation_rejects_unrelated_live_graph_authority() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(mem_db()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        manager.create(Task::new("unrelated", "Unrelated")).unwrap();
+
+        assert!(matches!(
+            manager.activate_mission_plan(&plan_id, 1),
+            Err(MissionPlanError::ContentConflict(message)) if message.contains("otherwise empty")
+        ));
+        assert!(manager
+            .get(crate::task::mission::A7_FIXTURE_WORK_UNIT_ID)
+            .is_none());
     }
 
     #[test]

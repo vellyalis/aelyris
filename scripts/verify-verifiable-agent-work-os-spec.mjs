@@ -425,7 +425,7 @@ const requiredWorkOrderClauses = [
   "Execution Order And Complexity Stop Rules",
   "A7.0 scope lock and owner inventory is complete",
   "A7.1 request contract and versioned plan preview is complete",
-  "A7.2 visible implementation and fresh tests is now active",
+  "A7.3 independent review and exact-OID acceptance is now active",
 ];
 
 const requiredArchitectureClauses = [
@@ -812,6 +812,7 @@ const expectedA7TestArgv = [
   "test",
   "--manifest-path",
   "src-tauri/Cargo.toml",
+  "--lib",
   "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
   "--",
   "--exact",
@@ -978,7 +979,8 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.2" && currentFrontier.lastCompletedSlice === "A7.1";
+const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.3" && currentFrontier.lastCompletedSlice === "A7.2";
+const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
 const sourcePaths = Object.values(paths);
@@ -1230,7 +1232,7 @@ const checks = [
       currentFrontier.phase === "A7" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
       a7AcceptedFrontierValid,
-    "Work order records A7.1 complete and exposes exactly one A7.2 implementation frontier",
+    "Work order records A7.2 complete and exposes exactly one A7.3 implementation frontier",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(
@@ -1264,9 +1266,9 @@ const checks = [
   ),
   check(
     "design-only-slice-has-no-runtime-diff",
-    runtimeDirty.length === 0,
-    "The A7.0 scope lock changes no runtime or product test source",
-    { dirtyPaths: dirty, runtimeDirty },
+    !a7ScopeLockStillActive || runtimeDirty.length === 0,
+    "The no-runtime-diff boundary applies while A7.0 scope lock is active, not after implementation slices begin",
+    { a7ScopeLockStillActive, dirtyPaths: dirty, runtimeDirty },
   ),
 ];
 

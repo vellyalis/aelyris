@@ -31,11 +31,12 @@ const A7_FIXTURE_UNLOCK_ID: &str = "0197c000-0000-7000-8000-00000000000d";
 pub const A7_FIXTURE_OWNED_TARGET: &str = "src-tauri/src/task/graph.rs";
 pub const A7_FIXTURE_GATE_ID: &str = "a7-fixed-test";
 pub const A7_FIXTURE_REQUEST: &str = "Add a Rust regression test named equal_priority_ready_tasks_preserve_insertion_order in src-tauri/src/task/graph.rs. It must insert two Medium root tasks in order, recompute readiness, and prove ready_tasks() preserves insertion order. Change no production behavior unless the new test first demonstrates a defect.";
-pub const A7_FIXTURE_TEST_ARGV: [&str; 7] = [
+pub const A7_FIXTURE_TEST_ARGV: [&str; 8] = [
     "cargo",
     "test",
     "--manifest-path",
     "src-tauri/Cargo.toml",
+    "--lib",
     "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
     "--",
     "--exact",
@@ -445,6 +446,138 @@ pub struct MissionPlanPreview {
     pub decision_reason: Option<String>,
     pub persisted_at_unix_ms: u64,
     pub decided_at_unix_ms: Option<u64>,
+}
+
+/// Immutable bridge from an accepted A7.1 preview into the existing TaskGraph.
+/// It records authority derivation only; live execution state remains owned by
+/// WorkExecutionAttempt and the graph.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MissionPlanActivation {
+    pub schema: String,
+    pub activation_id: String,
+    pub plan_id: String,
+    pub plan_revision: u64,
+    pub mission_id: String,
+    pub mission_revision: u64,
+    pub work_unit_id: String,
+    pub task_id: String,
+    pub plan_content_digest: String,
+    pub accepted_base_oid: String,
+    pub repository_root: String,
+    pub source_branch: String,
+    pub target_branch: String,
+    pub owned_targets: Vec<String>,
+    pub test_argv: Vec<String>,
+    pub activated_by: String,
+    pub activated_at_unix_ms: u64,
+}
+
+impl MissionPlanActivation {
+    pub fn task(&self, title: &str, objective: &str) -> Task {
+        let mut task = Task::new(self.task_id.clone(), title.to_string())
+            .with_branches(self.source_branch.clone(), self.target_branch.clone());
+        task.description = objective.to_string();
+        task.owner = Some("implementer".to_string());
+        task.model = Some("codex-no-hooks".to_string());
+        task.outputs = self.owned_targets.clone();
+        task
+    }
+}
+
+/// Immutable A7.2 fresh-test fact. `tested_oid == candidate_oid` is enforced
+/// both by construction and SQLite; A7.3 consumes it but owns review/merge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MissionGateEvidence {
+    pub schema: String,
+    pub evidence_id: String,
+    pub activation_id: String,
+    pub plan_content_digest: String,
+    pub attempt_id: String,
+    pub execution_generation: u64,
+    pub agent_run_id: String,
+    pub runtime_domain_id: String,
+    pub pty_session_id: String,
+    pub gate_id: String,
+    pub contract_version: String,
+    pub command_argv: Vec<String>,
+    pub command_fingerprint: String,
+    pub environment_fingerprint: String,
+    pub result: String,
+    pub evidence_digest: String,
+    pub base_oid: String,
+    pub candidate_oid: String,
+    pub tested_oid: String,
+    pub started_at_unix_ms: u64,
+    pub ended_at_unix_ms: u64,
+}
+
+/// Derive the only executable A7.2 authority from a durable accepted preview.
+/// No caller-provided repo, branch, target, or gate may enter this path.
+pub fn activation_from_accepted_plan(
+    preview: &MissionPlanPreview,
+    activation_id: String,
+    activated_at_unix_ms: u64,
+) -> Result<(MissionPlanActivation, Task), MissionPlanError> {
+    preview.verify_integrity()?;
+    if preview.status != MissionPlanStatus::Accepted {
+        return validation("only an accepted Mission plan can be activated");
+    }
+    validate_uuid_v7("activationId", &activation_id)?;
+    let work = preview
+        .work_units
+        .first()
+        .ok_or_else(|| MissionPlanError::Validation("accepted plan has no work unit".into()))?;
+    if preview.work_units.len() != 1
+        || preview.owned_targets != [A7_FIXTURE_OWNED_TARGET.to_string()]
+        || preview.expected_tests.len() != 1
+        || work.required_role != "implementer"
+    {
+        return validation("A7.2 activation authority differs from the frozen one-work-unit plan");
+    }
+    let activated_by = preview.decision_principal_id.clone().ok_or_else(|| {
+        MissionPlanError::Validation("accepted plan lacks decision principal".into())
+    })?;
+    validate_decision_principal(&activated_by)?;
+    let activation = MissionPlanActivation {
+        schema: "aelyris.mission_plan_activation/v1".into(),
+        activation_id,
+        plan_id: preview.plan_id.clone(),
+        plan_revision: preview.plan_revision,
+        mission_id: preview.mission_definition.mission_id.clone(),
+        mission_revision: preview.mission_definition.revision,
+        work_unit_id: work.work_unit_id.clone(),
+        task_id: work.work_unit_id.clone(),
+        plan_content_digest: preview.content_digest.clone(),
+        accepted_base_oid: preview.accepted_mission_head_oid.clone(),
+        repository_root: preview.repository_root.clone(),
+        source_branch: format!("a7-preview/{}", work.work_unit_id),
+        target_branch: "a7-acceptance".into(),
+        owned_targets: preview.owned_targets.clone(),
+        test_argv: preview.expected_tests[0].command_argv.clone(),
+        activated_by,
+        activated_at_unix_ms,
+    };
+    let acceptance = preview
+        .mission_definition
+        .acceptance
+        .iter()
+        .map(|clause| format!("- {}", clause.statement))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let exact_argv = serde_json::to_string(&activation.test_argv)
+        .map_err(|error| MissionPlanError::Validation(error.to_string()))?;
+    let runtime_description = format!(
+        "{}\n\nAccepted immutable Mission request:\n{}\n\nAcceptance clauses:\n{}\n\nOwned target (exclusive): {}\nExact post-freeze test argv (the backend runs this; do not widen or replace it): {}\nOn Windows, use apply_patch with repo-relative paths only. Do not run the declared cargo test yourself; the backend freezes the candidate and runs it at the exact OID. Edit no other path. Do not commit or merge; Aelyris freezes the owned diff after your exact done marker.",
+        work.objective,
+        preview.request,
+        acceptance,
+        activation.owned_targets.join(", "),
+        exact_argv,
+    );
+    let task = activation.task(&work.title, &runtime_description);
+    Ok((activation, task))
 }
 
 #[derive(Serialize)]
@@ -1753,6 +1886,7 @@ pub(crate) mod tests {
                         "test".into(),
                         "--manifest-path".into(),
                         "src-tauri/Cargo.toml".into(),
+                        "--lib".into(),
                         "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order".into(),
                         "--".into(),
                         "--exact".into(),

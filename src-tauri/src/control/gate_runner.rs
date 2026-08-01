@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use crate::control::loop_ports::GateRunner;
 use crate::review::GateResults;
+use sha2::{Digest, Sha256};
 
 /// Safe default for a task with no supplied verdict: every gate red, so it is
 /// never merged without an explicit green (mirrors the loop's prior default).
@@ -59,6 +60,162 @@ pub trait CommandRunner {
 /// success. A spawn failure is a gate *failure* — an unrunnable gate cannot be
 /// proven green.
 pub struct SystemCommandRunner;
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExactCommandEvidence {
+    pub command_argv: Vec<String>,
+    pub command_fingerprint: String,
+    pub environment_fingerprint: String,
+    pub result: String,
+    pub exit_code: Option<i32>,
+    pub evidence_digest: String,
+    pub started_at_unix_ms: u64,
+    pub ended_at_unix_ms: u64,
+}
+
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn a7_environment_fingerprint(
+    cwd: &str,
+    cargo_target_dir: Option<&std::path::Path>,
+) -> Result<String, String> {
+    fn version(program: &str, args: &[&str], cwd: &str) -> Result<String, String> {
+        let mut command = crate::process::hidden_command(program);
+        command.args(args).current_dir(cwd);
+        let output = crate::process::run_supervised(
+            &mut command,
+            &crate::process::SupervisedCommandConfig {
+                deadline: Duration::from_secs(30),
+                output_limit_bytes: 32 * 1024,
+                cancellation: None,
+            },
+        )
+        .map_err(|error| format!("read {program} environment identity: {error}"))?;
+        if output.status != crate::process::SupervisedCommandStatus::Exited
+            || output.exit_code != Some(0)
+        {
+            return Err(format!(
+                "{program} environment identity command did not pass"
+            ));
+        }
+        String::from_utf8(output.stdout_tail)
+            .map(|value| value.trim().to_string())
+            .map_err(|error| format!("decode {program} environment identity: {error}"))
+    }
+
+    let canonical_cwd = std::fs::canonicalize(cwd)
+        .map_err(|error| format!("canonicalize exact gate cwd: {error}"))?;
+    let canonical_cargo_target = cargo_target_dir
+        .map(|path| {
+            std::fs::canonicalize(path)
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+                .map_err(|error| format!("canonicalize exact gate Cargo target: {error}"))
+        })
+        .transpose()?;
+    let identity = serde_json::json!({
+        "schema": "aelyris.a7_gate_environment/v1",
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "family": std::env::consts::FAMILY,
+        "cwd": canonical_cwd.to_string_lossy().replace('\\', "/"),
+        "cargoTargetDir": canonical_cargo_target,
+        "cargoVersion": version("cargo", &["-V"], cwd)?,
+        "rustcVersionVerbose": version("rustc", &["-Vv"], cwd)?,
+    });
+    serde_json::to_vec(&identity)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|error| format!("serialize exact gate environment identity: {error}"))
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0)
+}
+
+/// Execute exactly one backend-derived argv and retain only canonical digests,
+/// never a secret-bearing transcript. The command fingerprint is over JSON argv
+/// (not a shell-joined string), and the evidence digest binds cwd, lifecycle,
+/// exit, and bounded output digests.
+pub fn run_exact_command(argv: &[String], cwd: &str) -> Result<ExactCommandEvidence, String> {
+    run_exact_command_with_cargo_target(argv, cwd, None)
+}
+
+pub fn run_exact_command_with_cargo_target(
+    argv: &[String],
+    cwd: &str,
+    cargo_target_dir: Option<&std::path::Path>,
+) -> Result<ExactCommandEvidence, String> {
+    let (program, args) = argv
+        .split_first()
+        .ok_or_else(|| "exact gate argv must not be empty".to_string())?;
+    if let Some(target) = cargo_target_dir {
+        std::fs::create_dir_all(target)
+            .map_err(|error| format!("prepare exact gate Cargo target: {error}"))?;
+    }
+    let canonical_argv =
+        serde_json::to_vec(argv).map_err(|error| format!("serialize exact gate argv: {error}"))?;
+    let command_fingerprint = sha256_hex(&canonical_argv);
+    let environment_fingerprint = a7_environment_fingerprint(cwd, cargo_target_dir)?;
+    let started = now_unix_ms();
+    let mut command = crate::process::hidden_command(program);
+    command.args(args).current_dir(cwd);
+    if let Some(target) = cargo_target_dir {
+        command.env("CARGO_TARGET_DIR", target);
+    }
+    let output = crate::process::run_supervised(
+        &mut command,
+        &crate::process::SupervisedCommandConfig {
+            deadline: Duration::from_secs(10 * 60),
+            output_limit_bytes: 256 * 1024,
+            cancellation: None,
+        },
+    )
+    .map_err(|error| format!("run exact gate: {error}"))?;
+    let ended = now_unix_ms().max(started);
+    let result = match output.status {
+        crate::process::SupervisedCommandStatus::Exited if output.exit_code == Some(0) => "passed",
+        crate::process::SupervisedCommandStatus::Exited => "failed",
+        crate::process::SupervisedCommandStatus::TimedOut => "blocked",
+        crate::process::SupervisedCommandStatus::Cancelled => "cancelled",
+    };
+    let envelope = serde_json::json!({
+        "schema": "aelyris.command_evidence/v1",
+        "commandFingerprint": command_fingerprint,
+        "environmentFingerprint": environment_fingerprint,
+        "cwd": cwd.replace('\\', "/"),
+        "startedAtUnixMs": started,
+        "endedAtUnixMs": ended,
+        "result": result,
+        "exitCode": output.exit_code,
+        "stdoutDigest": sha256_hex(&output.stdout_tail),
+        "stderrDigest": sha256_hex(&output.stderr_tail),
+        "stdoutTruncated": output.stdout_truncated,
+        "stderrTruncated": output.stderr_truncated,
+    });
+    let evidence_digest = sha256_hex(
+        &serde_json::to_vec(&envelope)
+            .map_err(|error| format!("serialize exact gate evidence: {error}"))?,
+    );
+    Ok(ExactCommandEvidence {
+        command_argv: argv.to_vec(),
+        command_fingerprint,
+        environment_fingerprint,
+        result: result.to_string(),
+        exit_code: output.exit_code,
+        evidence_digest,
+        started_at_unix_ms: started,
+        ended_at_unix_ms: ended,
+    })
+}
 
 impl CommandRunner for SystemCommandRunner {
     fn run(&self, argv: &[String], cwd: &str) -> bool {
@@ -269,5 +426,31 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         assert_eq!(ran[0].1, expected);
+    }
+
+    #[test]
+    fn a7_2_exact_command_evidence_binds_safe_environment_identity() {
+        let argv = vec!["cargo".to_string(), "-V".to_string()];
+        let evidence = run_exact_command(&argv, env!("CARGO_MANIFEST_DIR")).unwrap();
+        assert_eq!(evidence.command_argv, argv);
+        assert_eq!(evidence.result, "passed");
+        assert_eq!(evidence.exit_code, Some(0));
+        assert_eq!(evidence.command_fingerprint.len(), 64);
+        assert_eq!(evidence.environment_fingerprint.len(), 64);
+        assert_eq!(evidence.evidence_digest.len(), 64);
+        assert!(evidence.ended_at_unix_ms >= evidence.started_at_unix_ms);
+
+        let cache = tempfile::tempdir().unwrap();
+        let cached = run_exact_command_with_cargo_target(
+            &argv,
+            env!("CARGO_MANIFEST_DIR"),
+            Some(cache.path()),
+        )
+        .unwrap();
+        assert_eq!(cached.result, "passed");
+        assert_ne!(
+            cached.environment_fingerprint, evidence.environment_fingerprint,
+            "the exact evidence must bind the shared Cargo cache identity"
+        );
     }
 }

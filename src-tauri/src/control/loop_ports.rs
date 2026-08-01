@@ -248,28 +248,38 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
         let Some(context) = self.execution else {
             return Ok(None);
         };
-        let (agent, paths) = context
+        let (_logical_owner, paths) = context
             .lanes
             .get(task_id)
             .cloned()
             .unwrap_or_else(|| (task_id.to_string(), Vec::new()));
-        let mut claims = Vec::with_capacity(paths.len());
-        for path in paths {
-            let mut claim = OwnershipClaim::new(agent.clone(), path);
-            claim.claim_id = Some(uuid::Uuid::now_v7().to_string());
-            claim.task_id = Some(task_id.to_string());
-            claims.push(claim);
-        }
+        let claim_ids = paths
+            .iter()
+            .map(|_| uuid::Uuid::now_v7().to_string())
+            .collect::<Vec<_>>();
         let attempt = context
             .tasks
             .reserve_execution(ExecutionReservation {
                 task_id: task_id.to_string(),
                 repo_path: self.repo_path.clone(),
                 runtime: context.runtime,
-                ownership_claim_ids: claims.iter().map(OwnershipClaim::stable_id).collect(),
+                ownership_claim_ids: claim_ids.clone(),
                 now: now_secs(),
             })
             .map_err(|error| error.to_string())?;
+        // Concrete execution identity, not the logical role label, owns every
+        // live file claim. This binds Mission authority to the exact agent run
+        // and generation retained by WorkExecutionAttempt.
+        let claims = paths
+            .into_iter()
+            .zip(claim_ids)
+            .map(|(path, claim_id)| {
+                let mut claim = OwnershipClaim::new(attempt.identity.agent_run_id.clone(), path);
+                claim.claim_id = Some(claim_id);
+                claim.task_id = Some(task_id.to_string());
+                claim
+            })
+            .collect::<Vec<_>>();
 
         let receipt = context
             .events
@@ -383,8 +393,31 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
         // a re-dispatch after rework reuses it) before spawning, so the worker has
         // a real cwd without the conductor pre-creating it.
         if let Some(branch) = source.as_deref() {
-            if let Err(error) = crate::control::worktree::ensure_for_branch(&self.repo_path, branch)
-            {
+            let worktree_result = if let Some(context) = self.execution {
+                match context.tasks.mission_activation_for_task(task_id) {
+                    Ok(Some(activation)) => {
+                        let activation_root =
+                            canonical_dispatch_repo_path(&activation.repository_root)?;
+                        if activation_root != self.repo_path || activation.source_branch != branch {
+                            Err("Mission activation repo/branch binding changed before first effect".to_string())
+                        } else {
+                            crate::control::worktree::ensure_for_mission(
+                                &self.repo_path,
+                                branch,
+                                &activation.accepted_base_oid,
+                            )
+                            .map(|_| ())
+                        }
+                    }
+                    Ok(None) => {
+                        crate::control::worktree::ensure_for_branch(&self.repo_path, branch)
+                    }
+                    Err(error) => Err(error.to_string()),
+                }
+            } else {
+                crate::control::worktree::ensure_for_branch(&self.repo_path, branch)
+            };
+            if let Err(error) = worktree_result {
                 if let (Some(context), Some(identity)) = (self.execution, identity.as_ref()) {
                     let _ = context.tasks.mark_execution_needs_reconcile(
                         &execution_token(identity),
@@ -1219,6 +1252,7 @@ fn completion_marker_section(task_id: &str, cwd: &str, terminal_id: &str) -> Str
 Create this file as your LAST action, after all edits, declared outputs, and self-checks are complete:\n\
 {marker}\n\
 The relative marker path is {relative}. Create parent directories if needed and write exactly: done\n\
+On Windows, do not use apply_patch or Set-Content for this marker because they add a newline. As the final action, use [System.IO.File]::WriteAllBytes with exactly [byte[]](0x64,0x6f,0x6e,0x65).\n\
 Do not create the marker while work is still in progress. If blocked, leave the marker absent and state the blocker visibly.\n\n"
     )
 }
@@ -1279,6 +1313,19 @@ fn pane_spawn_specs(
         .into_iter()
         .map(|task| {
             let cwd = task_worktree_cwd(task, repo_path);
+            // A7 owned targets already exist at dispatch, so the compatibility
+            // outputs-present fallback would falsely complete the Mission after
+            // its idle grace without any implementation. Accepted Mission tasks
+            // require the exact backend-built `done` marker instead.
+            let outputs = if task
+                .source_branch
+                .as_deref()
+                .is_some_and(|branch| branch.starts_with("a7-preview/"))
+            {
+                Vec::new()
+            } else {
+                task.outputs.clone()
+            };
             (
                 task.id.clone(),
                 PaneSpawnSpec {
@@ -1290,7 +1337,7 @@ fn pane_spawn_specs(
                     model: task.agent_model(),
                     cols: PANE_COLS,
                     rows: PANE_ROWS,
-                    outputs: task.outputs.clone(),
+                    outputs,
                 },
             )
         })
@@ -1570,6 +1617,7 @@ pub fn run_step_visible(
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
+    exclusive_task_id: Option<&str>,
 ) -> Result<crate::orchestrator::autonomy::StepReport, String> {
     startup.require_dispatch_admitted()?;
     let repo_path = canonical_dispatch_repo_path(&repo_path)?;
@@ -1579,41 +1627,48 @@ pub fn run_step_visible(
     let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
     let lanes = capture_lanes(tasks);
     let report = tasks
-        .run_autonomy_step(|graph| {
-            let info = TaskBranchSnapshot::from_graph(graph);
-            let specs = pane_spawn_specs(
-                graph,
-                &repo_path,
-                &adr_header,
-                &guidelines_header,
-                claims_snapshot.as_deref(),
-            );
-            let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
-                repo_path.clone(),
-                gate_commands.unwrap_or_default(),
-                gates,
-                crate::control::gate_runner::SystemCommandRunner,
-            );
-            let mut ports = LoopPortsAdapter::new(
-                repo_path,
-                reviewer_id,
-                gate_runner,
-                PaneDispatcher { fleet, specs },
-                info,
-                symbol_ownership.clone(),
-            )
-            .with_durable_merge_store(merge_store.clone())
-            .with_execution_fence(ExecutionFenceContext {
-                tasks,
-                events,
-                ownership,
-                lanes: &lanes,
-                db,
-                runtime: ExecutionRuntime::VisiblePty,
-            });
-            crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
-        })
-        .map_err(|error| error.to_string())?;
+        .run_autonomy_step(
+            |graph| -> Result<crate::orchestrator::autonomy::StepReport, String> {
+                if let Some(task_id) = exclusive_task_id {
+                    require_exclusive_task(graph, task_id)?;
+                }
+                let info = TaskBranchSnapshot::from_graph(graph);
+                let specs = pane_spawn_specs(
+                    graph,
+                    &repo_path,
+                    &adr_header,
+                    &guidelines_header,
+                    claims_snapshot.as_deref(),
+                );
+                let gate_runner = crate::control::gate_runner::ProcessGateRunner::new(
+                    repo_path.clone(),
+                    gate_commands.unwrap_or_default(),
+                    gates,
+                    crate::control::gate_runner::SystemCommandRunner,
+                );
+                let mut ports = LoopPortsAdapter::new(
+                    repo_path,
+                    reviewer_id,
+                    gate_runner,
+                    PaneDispatcher { fleet, specs },
+                    info,
+                    symbol_ownership.clone(),
+                )
+                .with_durable_merge_store(merge_store.clone())
+                .with_execution_fence(ExecutionFenceContext {
+                    tasks,
+                    events,
+                    ownership,
+                    lanes: &lanes,
+                    db,
+                    runtime: ExecutionRuntime::VisiblePty,
+                });
+                Ok(crate::orchestrator::autonomy::step(
+                    graph, &caps, usage, &mut ports,
+                ))
+            },
+        )
+        .map_err(|error| error.to_string())??;
     apply_file_lanes(ownership, events, &lanes, &report, db)?;
     apply_symbol_lanes(symbol_ownership.as_ref(), &report);
     publish_escalations(events, &report)?;
@@ -1624,6 +1679,157 @@ pub fn run_step_visible(
         crate::supervisor::escalation_sink::persist_escalations(db, &report);
     }
     Ok(report)
+}
+
+fn require_exclusive_task(graph: &crate::task::TaskGraph, task_id: &str) -> Result<(), String> {
+    if graph.list().len() == 1 && graph.get(task_id).is_some() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Mission autonomy lease requires exactly its activated task {task_id}"
+        ))
+    }
+}
+
+/// Complete only the A7.2 post-worker boundary: convert the already-observed
+/// visible completion fence into an immutable owned-path candidate, run the
+/// accepted plan's exact argv at that candidate, and persist correlated
+/// evidence. This deliberately does not call reviewer, merge, settlement, or
+/// packet owners; A7.3 consumes the returned fact later.
+pub fn freeze_and_test_mission_candidate(
+    tasks: &crate::task::TaskManager,
+    activation: &crate::task::MissionPlanActivation,
+) -> Result<Option<crate::task::MissionGateEvidence>, String> {
+    if let Some(existing) = tasks
+        .mission_gate_evidence(&activation.activation_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(Some(existing));
+    }
+    let status = tasks
+        .get(&activation.task_id)
+        .ok_or_else(|| "activated Mission task is missing".to_string())?
+        .status;
+    if status != crate::task::TaskStatus::Review {
+        return Ok(None);
+    }
+    let attempt = tasks
+        .current_execution(&activation.task_id)
+        .ok_or_else(|| "completed Mission task has no execution attempt".to_string())?;
+    let repository_root = canonical_dispatch_repo_path(&activation.repository_root)?;
+    if attempt.runtime != ExecutionRuntime::VisiblePty
+        || attempt.identity.agent_run_id.is_empty()
+        || attempt.identity.pty_session_id.is_none()
+        || canonical_dispatch_repo_path(&attempt.repo_path)? != repository_root
+        || attempt.ownership_claim_ids.len() != activation.owned_targets.len()
+    {
+        return Err("Mission completion is not bound to one visible owned execution".to_string());
+    }
+    let token = attempt.token();
+    if attempt.fence.effect != ExecutionEffect::Review
+        || attempt.fence.state != crate::task::ExecutionFenceState::Reserved
+    {
+        return Err("Mission completion must remain at the pre-review fence".to_string());
+    }
+    // Candidate/test evidence is an A7.2 Mission fact, not an independent
+    // review. A7.3 remains the first authority that may start the Review fence.
+    let frozen = crate::control::worktree::freeze_mission_candidate(
+        &repository_root,
+        &activation.source_branch,
+        &activation.accepted_base_oid,
+        &activation.owned_targets,
+        &format!("aelyris: A7.2 {}", activation.work_unit_id),
+    )?;
+
+    let cwd = crate::control::worktree::predict_path(&repository_root, &activation.source_branch);
+    let cargo_target_dir = std::path::Path::new(&repository_root)
+        .join("src-tauri")
+        .join("target");
+    let command = crate::control::gate_runner::run_exact_command_with_cargo_target(
+        &activation.test_argv,
+        &cwd.to_string_lossy(),
+        Some(&cargo_target_dir),
+    )?;
+    let candidate_after_test = git2::Repository::open(&cwd)
+        .and_then(|repo| {
+            repo.head()?
+                .peel_to_commit()
+                .map(|commit| commit.id().to_string())
+        })
+        .map_err(|error| format!("verify tested candidate OID: {error}"))?;
+    if candidate_after_test != frozen.candidate_oid {
+        return Err("declared test changed the candidate OID".to_string());
+    }
+    let tested_repo = git2::Repository::open(&cwd)
+        .map_err(|error| format!("open tested Mission worktree: {error}"))?;
+    let mut status_options = git2::StatusOptions::new();
+    status_options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    if !tested_repo
+        .statuses(Some(&mut status_options))
+        .map_err(|error| format!("verify tested Mission worktree cleanliness: {error}"))?
+        .is_empty()
+    {
+        return Err("declared test left the candidate worktree dirty".to_string());
+    }
+    let pty_session_id = token
+        .pty_session_id
+        .clone()
+        .ok_or_else(|| "visible Mission execution lost its PTY identity".to_string())?;
+    let evidence_envelope = serde_json::json!({
+        "schema": "aelyris.mission_gate_evidence_digest/v1",
+        "activationId": activation.activation_id,
+        "planContentDigest": activation.plan_content_digest,
+        "attemptId": token.attempt_id,
+        "executionGeneration": token.execution_generation,
+        "agentRunId": token.agent_run_id,
+        "runtimeDomainId": "visible_pty",
+        "ptySessionId": pty_session_id,
+        "gateId": crate::task::A7_FIXTURE_GATE_ID,
+        "contractVersion": "1",
+        "commandFingerprint": command.command_fingerprint,
+        "environmentFingerprint": command.environment_fingerprint,
+        "commandEvidenceDigest": command.evidence_digest,
+        "result": command.result,
+        "baseOid": frozen.base_oid,
+        "candidateOid": frozen.candidate_oid,
+        "testedOid": frozen.candidate_oid,
+        "startedAtUnixMs": command.started_at_unix_ms,
+        "endedAtUnixMs": command.ended_at_unix_ms,
+    });
+    let evidence_digest = crate::control::gate_runner::sha256_hex(
+        &serde_json::to_vec(&evidence_envelope)
+            .map_err(|error| format!("serialize Mission gate evidence: {error}"))?,
+    );
+    let evidence = crate::task::MissionGateEvidence {
+        schema: "aelyris.mission_gate_evidence/v1".into(),
+        evidence_id: uuid::Uuid::now_v7().to_string(),
+        activation_id: activation.activation_id.clone(),
+        plan_content_digest: activation.plan_content_digest.clone(),
+        attempt_id: token.attempt_id.clone(),
+        execution_generation: token.execution_generation,
+        agent_run_id: token.agent_run_id.clone(),
+        runtime_domain_id: "visible_pty".into(),
+        pty_session_id,
+        gate_id: crate::task::A7_FIXTURE_GATE_ID.into(),
+        contract_version: "1".into(),
+        command_argv: command.command_argv,
+        command_fingerprint: command.command_fingerprint,
+        environment_fingerprint: command.environment_fingerprint,
+        result: command.result,
+        evidence_digest,
+        base_oid: frozen.base_oid,
+        candidate_oid: frozen.candidate_oid.clone(),
+        tested_oid: frozen.candidate_oid,
+        started_at_unix_ms: command.started_at_unix_ms,
+        ended_at_unix_ms: command.ended_at_unix_ms,
+    };
+    let persisted = tasks
+        .persist_mission_gate_evidence(activation, &evidence)
+        .map_err(|error| error.to_string())?;
+    Ok(Some(persisted))
 }
 
 fn canonical_dispatch_repo_path(repo_path: &str) -> Result<String, String> {
@@ -1848,6 +2054,34 @@ mod tests {
         design_consistent: true,
         context_aligned: true,
     };
+
+    #[cfg(windows)]
+    #[test]
+    fn a7_2_canonical_repo_identity_treats_verbatim_and_plain_windows_paths_as_equal() {
+        let directory = tempfile::tempdir().unwrap();
+        let verbatim = std::fs::canonicalize(directory.path()).unwrap();
+        let verbatim = verbatim.to_string_lossy();
+        let plain = verbatim.strip_prefix(r"\\?\").unwrap_or(&verbatim);
+
+        assert_eq!(
+            canonical_dispatch_repo_path(&verbatim).unwrap(),
+            canonical_dispatch_repo_path(plain).unwrap()
+        );
+    }
+
+    #[test]
+    fn a7_2_mission_autonomy_lease_rejects_graph_contamination() {
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("mission", "Mission task")).unwrap();
+        assert!(require_exclusive_task(&graph, "mission").is_ok());
+
+        graph
+            .add(Task::new("compatibility", "Unrelated compatibility task"))
+            .unwrap();
+        assert!(require_exclusive_task(&graph, "mission")
+            .unwrap_err()
+            .contains("exactly its activated task"));
+    }
 
     struct FakeGate(GateResults);
     impl GateRunner for FakeGate {
@@ -2676,7 +2910,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_dispatch_prompt_includes_backend_built_done_marker_contract() {
+    fn a7_2_visible_dispatch_prompt_includes_backend_built_done_marker_contract() {
         let mut graph = TaskGraph::new();
         graph.add(Task::new("task/one:two", "Build login")).unwrap();
 
@@ -2693,6 +2927,7 @@ mod tests {
             "{prompt}"
         );
         assert!(prompt.contains("write exactly: done"), "{prompt}");
+        assert!(prompt.contains("[byte[]](0x64,0x6f,0x6e,0x65)"), "{prompt}");
         assert!(!prompt.contains("capture_pane"), "{prompt}");
 
         let headless = spawn_specs(&graph, "/repo", "", "", None);

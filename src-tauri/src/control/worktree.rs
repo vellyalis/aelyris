@@ -30,6 +30,28 @@ pub fn ensure_for_branch(repo_path: &str, branch: &str) -> ControlResult<()> {
     git::ensure_worktree(repo_path, branch)
 }
 
+/// A7 authority path: exact accepted base, clean registered worktree, and no
+/// unrelated path reuse. Compatibility callers keep `ensure_for_branch`.
+pub fn ensure_for_mission(
+    repo_path: &str,
+    branch: &str,
+    accepted_base_oid: &str,
+) -> ControlResult<WorktreeInfo> {
+    git::ensure_worktree_at_base(repo_path, branch, accepted_base_oid)
+}
+
+/// A7 authority path: freeze only backend-derived owned targets. This creates
+/// an immutable candidate for fresh testing but does not review or merge it.
+pub fn freeze_mission_candidate(
+    repo_path: &str,
+    branch: &str,
+    accepted_base_oid: &str,
+    owned_paths: &[String],
+    message: &str,
+) -> ControlResult<git::ScopedCandidateFreeze> {
+    git::freeze_owned_candidate(repo_path, branch, accepted_base_oid, owned_paths, message)
+}
+
 /// Commit a green-reviewed task's worktree on its BRANCH before the loop merges
 /// it, so `perform_merge` sees the worker's real work as ahead of the target
 /// instead of an empty tip. `Ok(None)` means there was nothing to commit

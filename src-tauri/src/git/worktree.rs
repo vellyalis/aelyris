@@ -1,5 +1,7 @@
-use git2::Repository;
+use git2::{Delta, ObjectType, Oid, Repository, Status};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::path::{Component, Path};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreeInfo {
@@ -23,6 +25,352 @@ pub struct BranchInfo {
     pub name: String,
     pub is_head: bool,
     pub is_remote: bool,
+}
+
+/// Immutable A7.2 candidate produced from one accepted Mission work unit.
+/// The commit is created only after every changed path is proven to be one of
+/// the backend-derived owned targets and the worktree still sits on the exact
+/// accepted base. The caller may test this OID, but review/merge remain later
+/// effects owned by A7.3.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedCandidateFreeze {
+    pub base_oid: String,
+    pub candidate_oid: String,
+    pub changed_paths: Vec<String>,
+}
+
+fn validate_owned_path(path: &str) -> Result<(), String> {
+    let parsed = Path::new(path);
+    if path.is_empty()
+        || path.contains('\\')
+        || parsed.is_absolute()
+        || parsed.components().any(|part| {
+            matches!(
+                part,
+                Component::ParentDir
+                    | Component::CurDir
+                    | Component::RootDir
+                    | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(format!(
+            "owned target is not a normalized repository-relative path: {path}"
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_workdir(repo: &Repository) -> Result<std::path::PathBuf, String> {
+    let path = repo
+        .workdir()
+        .ok_or_else(|| "bare repositories cannot own an A7 worktree".to_string())?;
+    std::fs::canonicalize(path).map_err(|error| format!("canonicalize worktree: {error}"))
+}
+
+fn tree_entry_is_symlink(repo: &Repository, commit_oid: Oid, path: &str) -> bool {
+    repo.find_commit(commit_oid)
+        .ok()
+        .and_then(|commit| commit.tree().ok())
+        .and_then(|tree| {
+            tree.get_path(Path::new(path))
+                .ok()
+                .map(|entry| entry.filemode())
+        })
+        .is_some_and(|mode| mode == 0o120000)
+}
+
+fn validate_frozen_candidate_diff(
+    repo: &Repository,
+    base: Oid,
+    candidate: Oid,
+    owned: &HashSet<String>,
+) -> Result<Vec<String>, String> {
+    let base_tree = repo
+        .find_commit(base)
+        .and_then(|commit| commit.tree())
+        .map_err(|error| format!("load A7 base tree: {error}"))?;
+    let candidate_tree = repo
+        .find_commit(candidate)
+        .and_then(|commit| commit.tree())
+        .map_err(|error| format!("load A7 candidate tree: {error}"))?;
+    let diff = repo
+        .diff_tree_to_tree(Some(&base_tree), Some(&candidate_tree), None)
+        .map_err(|error| format!("inspect frozen A7 candidate: {error}"))?;
+    let mut paths = HashSet::new();
+    let mut conflicted = false;
+    diff.foreach(
+        &mut |delta, _| {
+            conflicted |= matches!(delta.status(), Delta::Conflicted);
+            for file in [delta.old_file(), delta.new_file()] {
+                if let Some(path) = file.path().and_then(Path::to_str) {
+                    paths.insert(path.replace('\\', "/"));
+                }
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )
+    .map_err(|error| format!("walk frozen A7 candidate: {error}"))?;
+    if conflicted || paths.is_empty() || paths.iter().any(|path| !owned.contains(path)) {
+        return Err("frozen A7 candidate contains a conflict, empty diff, or unowned path".into());
+    }
+    for path in &paths {
+        if tree_entry_is_symlink(repo, base, path) || tree_entry_is_symlink(repo, candidate, path) {
+            return Err(format!("frozen A7 candidate contains a symlink: {path}"));
+        }
+    }
+    let mut paths = paths.into_iter().collect::<Vec<_>>();
+    paths.sort();
+    Ok(paths)
+}
+
+/// Freeze exactly the declared owned paths into one candidate commit.
+///
+/// This deliberately does not reuse `commit_worktree`, whose compatibility
+/// contract stages every change. A7 authority is narrower: unrelated dirty
+/// paths, symlinks, branch/base drift, empty work, or a reused unrelated
+/// directory all fail closed before a commit is minted.
+pub fn freeze_owned_candidate(
+    repo_path: &str,
+    branch: &str,
+    accepted_base_oid: &str,
+    owned_paths: &[String],
+    message: &str,
+) -> Result<ScopedCandidateFreeze, String> {
+    validate_branch_name(branch)?;
+    let accepted_base = Oid::from_str(accepted_base_oid)
+        .map_err(|error| format!("accepted base OID is invalid: {error}"))?;
+    let authority = Repository::open(repo_path)
+        .map_err(|error| format!("open authoritative repository: {error}"))?;
+    let authority_head = authority
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| format!("read authoritative repository HEAD: {error}"))?;
+    if authority_head.id() != accepted_base {
+        return Err(format!(
+            "authoritative repository HEAD drifted: expected {accepted_base}, found {}",
+            authority_head.id()
+        ));
+    }
+    if owned_paths.is_empty() {
+        return Err("candidate freeze requires at least one owned target".to_string());
+    }
+    let mut owned = HashSet::with_capacity(owned_paths.len());
+    for path in owned_paths {
+        validate_owned_path(path)?;
+        if !owned.insert(path.clone()) {
+            return Err(format!("duplicate owned target: {path}"));
+        }
+    }
+
+    let expected_path = predict_worktree_path(repo_path, branch);
+    let metadata = std::fs::symlink_metadata(&expected_path)
+        .map_err(|error| format!("A7 worktree is unavailable: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("A7 worktree path must be a real directory, not a symlink".to_string());
+    }
+    let repo = Repository::open(&expected_path)
+        .map_err(|error| format!("open A7 worktree {}: {error}", expected_path.display()))?;
+    if canonical_workdir(&repo)?
+        != std::fs::canonicalize(&expected_path)
+            .map_err(|error| format!("canonicalize predicted A7 worktree: {error}"))?
+    {
+        return Err("predicted A7 path is not the opened Git worktree".to_string());
+    }
+    let head = repo
+        .head()
+        .map_err(|error| format!("read A7 worktree HEAD: {error}"))?;
+    if !head.is_branch()
+        || head
+            .shorthand()
+            .map_err(|error| format!("read A7 worktree branch name: {error}"))?
+            != branch
+    {
+        return Err(format!(
+            "A7 worktree is not on the accepted branch {branch}"
+        ));
+    }
+    let head_commit = head
+        .peel_to_commit()
+        .map_err(|error| format!("peel A7 worktree HEAD: {error}"))?;
+    if head_commit.id() != accepted_base {
+        let mut clean_options = git2::StatusOptions::new();
+        clean_options
+            .include_untracked(true)
+            .recurse_untracked_dirs(true);
+        if !repo
+            .statuses(Some(&mut clean_options))
+            .map_err(|error| format!("inspect existing A7 candidate status: {error}"))?
+            .is_empty()
+            || head_commit.parent_count() != 1
+            || head_commit.parent_id(0).ok() != Some(accepted_base)
+        {
+            return Err(format!(
+                "A7 worktree base drifted or candidate is not a clean single child: expected {accepted_base}, found {}",
+                head_commit.id()
+            ));
+        }
+        let changed_paths =
+            validate_frozen_candidate_diff(&repo, accepted_base, head_commit.id(), &owned)?;
+        return Ok(ScopedCandidateFreeze {
+            base_oid: accepted_base.to_string(),
+            candidate_oid: head_commit.id().to_string(),
+            changed_paths,
+        });
+    }
+
+    let mut options = git2::StatusOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    let statuses = repo
+        .statuses(Some(&mut options))
+        .map_err(|error| format!("read A7 worktree status: {error}"))?;
+    let mut changed = Vec::new();
+    for entry in statuses.iter() {
+        let path = entry
+            .path()
+            .map_err(|error| format!("read A7 changed path: {error}"))?
+            .replace('\\', "/");
+        if !owned.contains(&path) {
+            return Err(format!("A7 worktree contains an unowned change: {path}"));
+        }
+        if entry.status().intersects(
+            Status::CONFLICTED
+                | Status::INDEX_NEW
+                | Status::INDEX_MODIFIED
+                | Status::INDEX_DELETED
+                | Status::INDEX_RENAMED
+                | Status::INDEX_TYPECHANGE,
+        ) {
+            return Err(format!(
+                "A7 worktree contains pre-staged or conflicted state at {path}"
+            ));
+        }
+        if tree_entry_is_symlink(&repo, accepted_base, &path)
+            || std::fs::symlink_metadata(expected_path.join(&path))
+                .ok()
+                .is_some_and(|value| value.file_type().is_symlink())
+        {
+            return Err(format!("A7 owned target cannot be a symlink: {path}"));
+        }
+        changed.push(path);
+    }
+    changed.sort();
+    changed.dedup();
+    if changed.is_empty() {
+        return Err("A7 implementation produced no owned change".to_string());
+    }
+
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("open A7 index: {error}"))?;
+    for path in &changed {
+        let status = repo
+            .status_file(Path::new(path))
+            .map_err(|error| format!("read A7 status for {path}: {error}"))?;
+        if status.intersects(Status::WT_DELETED) {
+            index
+                .remove_path(Path::new(path))
+                .map_err(|error| format!("stage A7 deletion {path}: {error}"))?;
+        } else {
+            index
+                .add_path(Path::new(path))
+                .map_err(|error| format!("stage A7 target {path}: {error}"))?;
+        }
+    }
+    index
+        .write()
+        .map_err(|error| format!("write A7 index: {error}"))?;
+    let tree_oid = index
+        .write_tree()
+        .map_err(|error| format!("write A7 candidate tree: {error}"))?;
+    if tree_oid == head_commit.tree_id() {
+        return Err("A7 implementation produced an empty candidate tree".to_string());
+    }
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|error| format!("load A7 candidate tree: {error}"))?;
+    let diff = repo
+        .diff_tree_to_tree(
+            Some(&head_commit.tree().map_err(|e| e.to_string())?),
+            Some(&tree),
+            None,
+        )
+        .map_err(|error| format!("inspect A7 candidate diff: {error}"))?;
+    let mut committed_paths = HashSet::new();
+    diff.foreach(
+        &mut |delta, _| {
+            for file in [delta.old_file(), delta.new_file()] {
+                if let Some(path) = file.path().and_then(Path::to_str) {
+                    committed_paths.insert(path.replace('\\', "/"));
+                }
+            }
+            !matches!(delta.status(), Delta::Conflicted)
+        },
+        None,
+        None,
+        None,
+    )
+    .map_err(|error| format!("walk A7 candidate diff: {error}"))?;
+    if committed_paths.is_empty() || committed_paths.iter().any(|path| !owned.contains(path)) {
+        return Err("A7 candidate tree contains an empty or unowned delta".to_string());
+    }
+    for path in &committed_paths {
+        if tree.get_path(Path::new(path)).ok().is_some_and(|entry| {
+            entry.kind() == Some(ObjectType::Blob) && entry.filemode() == 0o120000
+        }) {
+            return Err(format!("A7 candidate tree contains a symlink: {path}"));
+        }
+    }
+
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("Aelyris", "aelyris@local"))
+        .map_err(|error| format!("A7 candidate signature: {error}"))?;
+    let candidate = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &[&head_commit],
+        )
+        .map_err(|error| format!("commit A7 candidate: {error}"))?;
+    let reloaded =
+        Repository::open(&expected_path).map_err(|error| format!("reopen A7 worktree: {error}"))?;
+    let final_head = reloaded
+        .head()
+        .and_then(|value| value.peel_to_commit())
+        .map_err(|error| format!("verify A7 candidate HEAD: {error}"))?;
+    if final_head.id() != candidate || final_head.parent_id(0).ok() != Some(accepted_base) {
+        return Err("A7 candidate OID or parent changed during freeze".to_string());
+    }
+    if !reloaded
+        .statuses(Some(
+            options.include_untracked(true).recurse_untracked_dirs(true),
+        ))
+        .map_err(|error| format!("verify clean A7 worktree: {error}"))?
+        .is_empty()
+    {
+        return Err("A7 worktree is not clean after candidate freeze".to_string());
+    }
+
+    Ok(ScopedCandidateFreeze {
+        base_oid: accepted_base.to_string(),
+        candidate_oid: candidate.to_string(),
+        changed_paths: {
+            let mut paths = committed_paths.into_iter().collect::<Vec<_>>();
+            paths.sort();
+            paths
+        },
+    })
 }
 
 /// List worktrees for a repo (includes main worktree)
@@ -339,6 +687,126 @@ pub fn ensure_worktree(repo_path: &str, branch_name: &str) -> Result<(), String>
     create_worktree(repo_path, branch_name).map(|_| ())
 }
 
+/// Ensure an isolated worktree is bound to the accepted Mission base exactly.
+/// Reusing an arbitrary directory/branch is forbidden even when the predicted
+/// path exists; this closes the compatibility helper's intentionally looser
+/// idempotency contract for the A7 authority path.
+pub fn ensure_worktree_at_base(
+    repo_path: &str,
+    branch_name: &str,
+    accepted_base_oid: &str,
+) -> Result<WorktreeInfo, String> {
+    validate_branch_name(branch_name)?;
+    let accepted = Oid::from_str(accepted_base_oid)
+        .map_err(|error| format!("accepted base OID is invalid: {error}"))?;
+    let main = Repository::open(repo_path).map_err(|error| format!("open repository: {error}"))?;
+    let main_head = main
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| format!("read authoritative repository HEAD: {error}"))?;
+    if main_head.id() != accepted {
+        return Err(format!(
+            "authoritative repository HEAD drifted: expected {accepted}, found {}",
+            main_head.id()
+        ));
+    }
+    let expected_path = predict_worktree_path(repo_path, branch_name);
+    if expected_path.exists() {
+        let metadata = std::fs::symlink_metadata(&expected_path)
+            .map_err(|error| format!("inspect existing A7 worktree: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err("existing A7 worktree path is not a real directory".to_string());
+        }
+        let worktree = Repository::open(&expected_path)
+            .map_err(|error| format!("open existing A7 worktree: {error}"))?;
+        let head = worktree
+            .head()
+            .map_err(|error| format!("read existing A7 worktree HEAD: {error}"))?;
+        if !head.is_branch()
+            || head
+                .shorthand()
+                .map_err(|error| format!("read existing A7 worktree branch name: {error}"))?
+                != branch_name
+            || head
+                .peel_to_commit()
+                .map_err(|error| format!("peel existing A7 worktree HEAD: {error}"))?
+                .id()
+                != accepted
+            || canonical_workdir(&worktree)?
+                != std::fs::canonicalize(&expected_path)
+                    .map_err(|error| format!("canonicalize existing A7 worktree: {error}"))?
+        {
+            return Err(
+                "existing A7 worktree does not match branch/base/path authority".to_string(),
+            );
+        }
+        let mut options = git2::StatusOptions::new();
+        options.include_untracked(true).recurse_untracked_dirs(true);
+        if !worktree
+            .statuses(Some(&mut options))
+            .map_err(|error| format!("read existing A7 worktree status: {error}"))?
+            .is_empty()
+        {
+            return Err("existing A7 worktree is dirty before dispatch".to_string());
+        }
+    } else {
+        if let Ok(reference) = main.find_reference(&format!("refs/heads/{branch_name}")) {
+            if reference.target() != Some(accepted) {
+                return Err("existing A7 branch does not point at the accepted base".to_string());
+            }
+        }
+        let output = crate::process::hidden_command("git")
+            .args([
+                "worktree",
+                "add",
+                &expected_path.to_string_lossy(),
+                "-b",
+                branch_name,
+                accepted_base_oid,
+            ])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|error| format!("create exact-base A7 worktree: {error}"))?;
+        if !output.status.success() {
+            let attach = crate::process::hidden_command("git")
+                .args([
+                    "worktree",
+                    "add",
+                    &expected_path.to_string_lossy(),
+                    branch_name,
+                ])
+                .current_dir(repo_path)
+                .output()
+                .map_err(|error| format!("attach exact-base A7 worktree: {error}"))?;
+            if !attach.status.success() {
+                return Err(format!(
+                    "exact-base A7 worktree creation failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+        }
+    }
+    let verified =
+        Repository::open(&expected_path).map_err(|error| format!("verify A7 worktree: {error}"))?;
+    let head_sha = verified
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| format!("verify A7 worktree HEAD: {error}"))?
+        .id()
+        .to_string();
+    if head_sha != accepted_base_oid {
+        return Err("created A7 worktree did not retain the accepted base".to_string());
+    }
+    Ok(WorktreeInfo {
+        name: branch_name.to_string(),
+        path: expected_path.to_string_lossy().replace('\\', "/"),
+        branch: branch_name.to_string(),
+        is_main: false,
+        head_sha,
+        status: WorktreeStatus::Clean,
+    })
+}
+
 /// Create a new worktree for a branch
 pub fn create_worktree(repo_path: &str, branch_name: &str) -> Result<WorktreeInfo, String> {
     validate_branch_name(branch_name)?;
@@ -533,6 +1001,47 @@ mod tests {
         assert!(commit_worktree(&repo_str, "agent/y", "aelyris: again")
             .expect("ok")
             .is_none());
+    }
+
+    #[test]
+    fn a7_2_exact_base_scoped_freeze_rejects_unowned_and_binds_candidate_parent() {
+        let (_tmp, repo_str) = base_repo();
+        let main = Repository::open(&repo_str).unwrap();
+        let base = main
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .id()
+            .to_string();
+        ensure_worktree_at_base(&repo_str, "a7-preview/test", &base).unwrap();
+        let worktree = predict_worktree_path(&repo_str, "a7-preview/test");
+        std::fs::write(worktree.join("base.txt"), "changed").unwrap();
+        std::fs::write(worktree.join("unowned.txt"), "no").unwrap();
+        let owned = vec!["base.txt".to_string()];
+        assert!(
+            freeze_owned_candidate(&repo_str, "a7-preview/test", &base, &owned, "candidate")
+                .unwrap_err()
+                .contains("unowned change")
+        );
+        std::fs::remove_file(worktree.join("unowned.txt")).unwrap();
+
+        let frozen =
+            freeze_owned_candidate(&repo_str, "a7-preview/test", &base, &owned, "candidate")
+                .unwrap();
+        assert_ne!(frozen.candidate_oid, base);
+        let candidate_repo = Repository::open(&worktree).unwrap();
+        let candidate = candidate_repo
+            .find_commit(Oid::from_str(&frozen.candidate_oid).unwrap())
+            .unwrap();
+        assert_eq!(candidate.parent_id(0).unwrap().to_string(), base);
+        assert_eq!(frozen.changed_paths, ["base.txt"]);
+        assert_eq!(
+            freeze_owned_candidate(&repo_str, "a7-preview/test", &base, &owned, "candidate",)
+                .unwrap(),
+            frozen,
+            "a crash after commit but before evidence must reuse the same candidate"
+        );
     }
 
     #[test]

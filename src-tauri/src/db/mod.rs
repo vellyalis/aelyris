@@ -57,8 +57,19 @@ impl ManagedDb {
     }
 }
 
-/// Returns the path to the Aelyris database file (~/.aelyris/aelyris.db)
+/// Returns the path to the Aelyris database file (~/.aelyris/aelyris.db).
+/// `AELYRIS_DB_PATH` is an explicit process-local override used by isolated
+/// verifier/app profiles; it must be absolute so a launch from the wrong cwd
+/// cannot silently write a different database.
 pub fn db_path() -> PathBuf {
+    if let Some(override_path) = std::env::var_os("AELYRIS_DB_PATH") {
+        let path = PathBuf::from(override_path);
+        assert!(
+            path.is_absolute(),
+            "AELYRIS_DB_PATH must be an absolute path"
+        );
+        return path;
+    }
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());

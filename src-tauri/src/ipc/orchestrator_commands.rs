@@ -6,7 +6,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::event_commands::publish_and_emit;
 use crate::context_store::ContextStoreManager;
-use crate::control::loop_ports::{run_step_visible, PANE_COLS, PANE_ROWS};
+use crate::control::loop_ports::{
+    freeze_and_test_mission_candidate, run_step_visible, PANE_COLS, PANE_ROWS,
+};
 use crate::control::pane_fleet::PaneFleet;
 use crate::cost::{CostManager, CostUsage};
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
@@ -17,7 +19,7 @@ use crate::pty::PtyManager;
 use crate::review::GateResults;
 use crate::startup_reconciliation::StartupReconciliationState;
 use crate::symbol_ownership::SymbolOwnership;
-use crate::task::TaskManager;
+use crate::task::{MissionGateEvidence, MissionPlanActivation, TaskManager};
 use crate::term::NativeTerminalRegistry;
 
 /// The orchestrator's next scheduling decision for the live task graph: which
@@ -89,8 +91,8 @@ pub fn orchestrator_step(
         // task survives restart instead of living only in the volatile Event Bus
         // ring. ManagedDb is always managed (file, or in-memory fallback).
         Some(app.state::<crate::db::ManagedDb>().inner()),
+        None,
     )?;
-
     // Make each freshly dispatched agent visible: the loop spawned its PTY
     // through PaneFleet; connect that terminal to the frontend (native engine +
     // render monitor) and announce it as `AgentSpawned` so the cockpit fleet
@@ -140,4 +142,110 @@ pub fn orchestrator_step(
         )?;
     }
     Ok(report)
+}
+
+/// One explicit A7.2 control-plane tick. The caller selects only the immutable
+/// accepted plan revision; repository, branch, role, owned target, gate argv,
+/// and execution actor/generation are derived by backend owners. The route
+/// dispatches one visible implementer, then on a later tick freezes and tests
+/// its owned diff. It never invokes independent review, acceptance, merge, or
+/// packet settlement (A7.3+).
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissionPlanRunReport {
+    pub activation: MissionPlanActivation,
+    pub step: StepReport,
+    pub gate_evidence: Option<MissionGateEvidence>,
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn mission_plan_run(
+    app: AppHandle,
+    tasks: State<'_, Arc<TaskManager>>,
+    startup: State<'_, Arc<StartupReconciliationState>>,
+    cost: State<'_, Arc<CostManager>>,
+    fleet: State<'_, PaneFleet>,
+    bus: State<'_, Arc<EventBus>>,
+    ownership: State<'_, Arc<Mutex<FileOwnership>>>,
+    symbol_ownership: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    context: State<'_, Arc<ContextStoreManager>>,
+    plan_id: String,
+    plan_revision: u64,
+) -> Result<MissionPlanRunReport, String> {
+    let activation = tasks
+        .activate_mission_plan(&plan_id, plan_revision)
+        .map_err(|error| error.to_string())?;
+    let mut report = run_step_visible(
+        &startup,
+        &tasks,
+        &cost,
+        &fleet,
+        &ownership,
+        Some(symbol_ownership.inner().clone()),
+        &bus,
+        &context,
+        &CostUsage::default(),
+        activation.repository_root.clone(),
+        // The generic loop checks separation before touching its gate/review/
+        // merge ports. Matching the immutable implementer role keeps the task
+        // waiting at Review, where the A7.2 exact candidate path takes over.
+        "implementer".into(),
+        HashMap::new(),
+        None,
+        None,
+        Some(app.state::<crate::db::ManagedDb>().inner()),
+        Some(&activation.task_id),
+    )?;
+    // The generic loop reports a same-role reviewer as `rejected` while leaving
+    // the task untouched at Review. In this typed route that is the intentional
+    // pre-review stop, not a rejected implementation; A7.3 supplies the first
+    // independent reviewer later.
+    report
+        .rejected
+        .retain(|task_id| task_id != &activation.task_id);
+
+    if report.dispatched == [activation.task_id.clone()] {
+        let terminal_id = fleet
+            .terminal_of(&activation.task_id)
+            .ok_or_else(|| "visible Mission dispatch has no PTY binding".to_string())?;
+        let pty = app.state::<PtyManager>().inner().clone();
+        let native_registry = app.state::<Arc<NativeTerminalRegistry>>().inner().clone();
+        super::interactive_commands::spawn_loop_pane_render(
+            &app,
+            &pty,
+            native_registry,
+            terminal_id.clone(),
+            PANE_COLS,
+            PANE_ROWS,
+        );
+        publish_and_emit(
+            &app,
+            &bus,
+            AgentEvent::new(
+                AgentEventKind::AgentSpawned,
+                json!({
+                    "taskId": activation.task_id,
+                    "terminalId": terminal_id,
+                    "model": tasks
+                        .get(&activation.task_id)
+                        .and_then(|task| task.agent_model())
+                        .unwrap_or_else(|| "sonnet".into()),
+                    "repoPath": activation.repository_root,
+                    "missionId": activation.mission_id,
+                    "workUnitId": activation.work_unit_id,
+                    "activationId": activation.activation_id,
+                }),
+            ),
+        )?;
+    }
+
+    let gate_evidence = freeze_and_test_mission_candidate(&tasks, &activation)?;
+    let _ = app.emit("task-graph-updated", tasks.list());
+    let _ = app.emit("orchestrator-step", &report);
+    Ok(MissionPlanRunReport {
+        activation,
+        step: report,
+        gate_evidence,
+    })
 }

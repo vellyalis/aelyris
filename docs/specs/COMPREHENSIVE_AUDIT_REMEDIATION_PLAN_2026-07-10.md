@@ -1899,7 +1899,7 @@ Implemented checkpoint:
 
 ### **A7.2 - Visible Implementation And Fresh Tests**
 
-Status: active.
+Status: complete; A7 as a whole remains incomplete.
 
 - launch one real implementation agent in a visible PTY and isolated worktree using
   existing runtime, ownership, startup-admission, and execution-fence owners;
@@ -1910,7 +1910,27 @@ Status: active.
 - unavailable unused adapters or product faces return typed `unsupported` or remain
   disabled; their migration is not A7 Core work.
 
-### A7.3 - Independent Review And Exact-OID Acceptance
+Implemented checkpoint:
+
+- `mission_plan_run` accepts only the fixed accepted plan revision and derives one
+  exclusive TaskGraph projection; concurrent duplicate activation returns the same
+  durable identity and graph contamination is rejected under the autonomy lease;
+- the visible implementation route uses `codex-no-hooks`, preserves the multiline
+  prompt through the PowerShell shim, requires an exact four-byte `done` marker, and
+  stops at the durable `Review/Reserved` pre-review fence;
+- the existing Git/worktree owner creates and reuses only an exact-base isolated
+  worktree, stages backend-derived owned targets only, commits before testing, and
+  requires `testedOid == candidateOid == clean worktree HEAD`;
+- SQLite schema v8 stores immutable activation and gate evidence without a second
+  DAG, journal, runner, dispatcher, or completion owner;
+- `pnpm verify:a7:visible-implementation` is the focused proof. It combines 14/14
+  runtime contract tests with one genuinely fresh visible-PTY execution, records
+  hooks disabled and five-minute evidence freshness, completes only A7.2, advances
+  the implementation frontier to A7.3, and keeps `phaseComplete=false`.
+
+### **A7.3 - Independent Review And Exact-OID Acceptance**
+
+Status: active.
 
 - the reviewer is independent from the implementation agent and evaluates the exact
   tested OID plus declared acceptance coverage;

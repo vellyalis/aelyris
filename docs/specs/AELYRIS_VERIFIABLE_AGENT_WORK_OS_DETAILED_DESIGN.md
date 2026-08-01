@@ -1720,6 +1720,7 @@ parses this block fail-closed and proves the section 3.2 catalog is exhaustive.
         "test",
         "--manifest-path",
         "src-tauri/Cargo.toml",
+        "--lib",
         "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
         "--",
         "--exact"
@@ -1815,7 +1816,7 @@ parses this block fail-closed and proves the section 3.2 catalog is exhaustive.
         "src-tauri/src/review/judge.rs",
         "src-tauri/src/ipc/review_commands.rs"
       ],
-      "a7Gap": "review_branch performs a hidden preparatory commit and accepts caller identity; it stays unsupported for A7 until A7.3 adds explicit candidate freeze and derived lineage"
+      "a7Gap": "review_branch performs a hidden preparatory commit and accepts caller identity; it stays unsupported for A7. A7.2 freezes and tests the candidate before review, while A7.3 adds derived reviewer lineage and consumes that immutable tested OID without another preparatory commit"
     },
     {
       "ownerId": "merge",
@@ -2811,6 +2812,7 @@ executable compatibility faces with no A7 authority.
       "test",
       "--manifest-path",
       "src-tauri/Cargo.toml",
+      "--lib",
       "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
       "--",
       "--exact"
@@ -2858,6 +2860,139 @@ executable compatibility faces with no A7 authority.
   evidence digest, and tested OID;
 - unused adapters and destination surfaces retain their compatibility behavior but
   receive no A7 Mission authority or completion credit.
+
+The exact candidate is frozen before the declared test. Candidate freeze is a
+Git/worktree identity operation, not review or acceptance: the existing owner stages
+only backend-derived owned targets, creates one immutable candidate commit, and then
+requires a clean worktree whose `HEAD` equals that candidate. The gate runs only after
+that check. Consequently `testedOid == candidateOid` is direct runtime evidence, not
+an inference that a later commit happened to contain the tested dirty tree. A7.3 must
+consume this frozen tested OID and may not create, amend, or silently replace it.
+
+The WorkUnit `CapabilityUnlock` remains a post-work-unit projection. Because its
+`availableAfterWorkUnitId` names the same WorkUnit, it cannot circularly authorize
+that WorkUnit's own implementation. A7.2 activation authority is instead the
+accepted Mission definition plus its implementer role, runtime, ownership, budget,
+risk, and proof policies. The unlock gains no dispatch or completion authority here.
+
+<!-- A7_2_VISIBLE_IMPLEMENTATION_CONTRACT_V1_BEGIN -->
+```json
+{
+  "schema": "aelyris.a7_2_visible_implementation_contract/v1",
+  "contractVersion": 1,
+  "owner": "TaskManager -> TaskRepo",
+  "route": "mission_plan_run",
+  "activation": {
+    "acceptedStatusRequired": true,
+    "taskCount": 1,
+    "atomicTaskGraphAndBinding": true,
+    "idempotent": true,
+    "derivedOnly": [
+      "MissionId and revision",
+      "WorkUnitId and revision",
+      "planId, revision, and contentDigest",
+      "repository identity and accepted base OID",
+      "implementer role and runtime policy",
+      "source and target branch",
+      "owned targets",
+      "declared gate argv"
+    ],
+    "callerMayWiden": false
+  },
+  "orderedEffects": [
+    "accepted plan integrity and authoritative HEAD recheck",
+    "durable activation plus TaskGraph materialization",
+    "durable execution-generation reservation",
+    "generation-bound ownership claims",
+    "exact-base isolated worktree",
+    "visible PTY implementation agent",
+    "owned-only candidate freeze",
+    "clean candidate HEAD verification",
+    "frozen declared test argv",
+    "immutable exact-OID gate evidence",
+    "await independent review"
+  ],
+  "candidateFreeze": {
+    "owner": "existing Git/worktree owner",
+    "beforeDeclaredTest": true,
+    "stage": "backend-derived owned targets only",
+    "reject": [
+      "empty candidate",
+      "unowned or extra changed path",
+      "symlink or repository escape",
+      "wrong existing worktree repository or branch",
+      "accepted base OID drift",
+      "dirty worktree after commit",
+      "candidate HEAD mismatch"
+    ]
+  },
+  "visibleCompletion": {
+    "primarySignal": "backend-derived marker with exact content done",
+    "legacyOutputsFallbackAuthorized": false,
+    "reason": "the owned graph.rs target exists before dispatch and cannot prove implementation completion"
+  },
+  "persistence": {
+    "schemaVersion": 8,
+    "activationTable": "mission_plan_activations",
+    "gateEvidenceTable": "mission_gate_evidence",
+    "mutableParallelJournal": false,
+    "deletable": false
+  },
+  "freshTestEvidence": {
+    "commandSource": "accepted WorkUnit GateRequirement.commandArgv",
+    "commandCallerSelectable": false,
+    "requiredFields": [
+      "gateId and contractVersion",
+      "exact argv and command fingerprint",
+      "runtime and execution identity",
+      "started and ended time",
+      "result and bounded artifact digest",
+      "baseOid, candidateOid, and testedOid",
+      "accepted plan content digest"
+    ],
+    "oidInvariant": "testedOid == candidateOid == clean worktree HEAD"
+  },
+  "authorityBoundary": {
+    "capabilityUnlockAuthorizesOwnImplementation": false,
+    "compatibilityWithoutA7Authority": [
+      "orchestrator_step caller repoPath/reviewerId/gates",
+      "aelyris.orchestrator.step",
+      "aelyris.spawn_agent",
+      "aelyris.agent.spawn_visible",
+      "review_branch"
+    ],
+    "stopsBefore": [
+      "independent review",
+      "acceptance",
+      "merge intent",
+      "merge",
+      "completion or blocked packet settlement"
+    ]
+  },
+  "proofCommand": "pnpm verify:a7:visible-implementation",
+  "phaseComplete": false
+}
+```
+<!-- A7_2_VISIBLE_IMPLEMENTATION_CONTRACT_V1_END -->
+
+Implemented checkpoint:
+
+- the accepted Mission plan atomically and idempotently projects exactly one task;
+  the existing persistence lock serializes concurrent first activation and the
+  autonomy lease rejects any unrelated graph member before an effect;
+- one real visible-PTY Codex implementation run is launched with hooks disabled,
+  an intact multiline prompt, an exact four-byte `done` completion signal, and an
+  exact-base isolated worktree;
+- the existing Git/worktree owner freezes only the backend-derived owned path into
+  a clean candidate commit before the declared `--lib` exact test runs;
+- immutable SQLite v8 evidence binds accepted plan digest, execution generation,
+  visible PTY, argv/environment fingerprints, times, result, base OID, candidate
+  OID, and tested OID;
+- restart keeps the completed worker at `Review/Reserved`; A7.2 starts no independent
+  review, acceptance, merge intent, merge, or packet settlement;
+- `pnpm verify:a7:visible-implementation` reports clean-state live provenance,
+  14/14 focused tests, `completedSlice=A7.2`, `nextImplementationSlice=A7.3`, and
+  `phaseComplete=false`.
 
 ### A7.3 Independent Review And Exact-OID Acceptance
 

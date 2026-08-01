@@ -249,7 +249,7 @@ const checks = [
       includesAll(normalizedDocs.auditWorkOrder, [
         "ACTIVE SLICE:",
         "NEXT IMPLEMENTATION SLICE:",
-        "NEXT PHASE: `A6`",
+        "NEXT PHASE:",
         "A8.0",
         "measured terminal-only native spike",
         "exact current slice is owned only by this root work order",

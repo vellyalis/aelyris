@@ -60,6 +60,42 @@ fn resolve_windows_cli_program_on_path(name: &str, path: &std::ffi::OsStr) -> Op
     None
 }
 
+/// Resolve a CLI that will be invoked *from PowerShell*. Unlike a direct
+/// `CreateProcessW` launch, PowerShell can execute an npm `.ps1` shim. Prefer
+/// that shim over `.cmd` because cmd.exe truncates a quoted multiline prompt at
+/// its first newline when npm's batch wrapper expands `%*`.
+fn platform_powershell_cli_program(name: &str) -> String {
+    #[cfg(windows)]
+    {
+        if let Some(path) = std::env::var_os("PATH") {
+            if let Some(candidate) = resolve_windows_powershell_cli_program_on_path(name, &path) {
+                return candidate;
+            }
+        }
+    }
+
+    platform_cli_program(name)
+}
+
+#[cfg(windows)]
+fn resolve_windows_powershell_cli_program_on_path(
+    name: &str,
+    path: &std::ffi::OsStr,
+) -> Option<String> {
+    for dir in std::env::split_paths(path) {
+        for ext in ["exe", "ps1", "cmd", "bat"] {
+            let candidate = format!("{name}.{ext}");
+            if dir.join(&candidate).is_file() {
+                return Some(candidate);
+            }
+        }
+        if dir.join(name).is_file() {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
 /// Which AI CLI is backing this session
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -287,6 +323,14 @@ pub fn agent_shell_command_spec(
     let cli = AgentCli::from_model(&model);
     cli.validate()?;
     let (cli_program, mut cli_args) = cli.program_and_args(Some(&model));
+    let cli_program = if cli == AgentCli::Codex {
+        platform_powershell_cli_program("codex")
+    } else {
+        cli_program
+    };
+    if cli == AgentCli::Codex && model == "codex-no-hooks" {
+        cli_args.extend(["--disable".to_string(), "hooks".to_string()]);
+    }
     // No -p: run the interactive TUI (visible, persistent), not headless print.
     // Autonomous fleet worker → grant the per-provider auto-approve policy so a
     // non-Claude worker (codex/gemini) builds without stalling at its own
@@ -962,6 +1006,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn a7_2_windows_powershell_cli_resolution_avoids_multiline_cmd_truncation() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("aelyris-shell-cli-resolution-{stamp}"));
+        std::fs::create_dir_all(&root).unwrap();
+
+        let name = format!("aelyris_shell_cli_resolution_{stamp}");
+        std::fs::write(root.join(format!("{name}.cmd")), "").unwrap();
+        std::fs::write(root.join(format!("{name}.ps1")), "").unwrap();
+        let path = std::env::join_paths([root.as_path()]).unwrap();
+
+        assert_eq!(
+            resolve_windows_powershell_cli_program_on_path(&name, &path),
+            Some(format!("{name}.ps1"))
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn program_and_args_custom() {
         let cli = AgentCli::Custom("my-agent".to_string());
@@ -1071,6 +1138,26 @@ mod tests {
         assert_eq!(
             env.get("AELYRIS_AGENT_CLI").map(String::as_str),
             Some("Codex")
+        );
+    }
+
+    #[test]
+    fn a7_2_visible_codex_route_disables_user_hooks() {
+        let prompt = "write the file\nthen run the exact test";
+        let (program, args, env) =
+            agent_shell_command_spec("codex-no-hooks", prompt, true).unwrap();
+        assert_eq!(program, platform_cli_program("powershell"));
+        let cmd = &args[3];
+        assert!(cmd.contains("'--disable' 'hooks'"), "hooks disabled: {cmd}");
+        assert!(!cmd.contains("'-p'"), "must remain interactive: {cmd}");
+        assert_eq!(
+            env.get("AELYRIS_AGENT_PROMPT").map(String::as_str),
+            Some(prompt),
+            "the multiline mission prompt must remain intact in the environment"
+        );
+        assert_eq!(
+            env.get("AELYRIS_AGENT_MODEL").map(String::as_str),
+            Some("codex-no-hooks")
         );
     }
 

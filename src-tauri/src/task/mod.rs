@@ -28,8 +28,10 @@ pub use execution::{
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use manager::TaskManager;
 pub use mission::{
-    IndependentReviewRequirement, MergePolicy, MissionDefinitionRevision, MissionPlanError,
-    MissionPlanPreview, MissionPlanPreviewInput, MissionPlanStatus, WorkUnitDefinition,
+    IndependentReviewRequirement, MergePolicy, MissionDefinitionRevision, MissionGateEvidence,
+    MissionPlanActivation, MissionPlanError, MissionPlanPreview, MissionPlanPreviewInput,
+    MissionPlanStatus, WorkUnitDefinition, A7_FIXTURE_GATE_ID, A7_FIXTURE_OWNED_TARGET,
+    A7_FIXTURE_REQUEST,
 };
 pub use planner::validate_plan;
 pub use replan::{replan_into, ReplanOutcome};

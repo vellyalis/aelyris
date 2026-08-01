@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A7`.
-ACTIVE SLICE: `A7.2`.
-LAST COMPLETED SLICE: `A7.1`.
+ACTIVE SLICE: `A7.3`.
+LAST COMPLETED SLICE: `A7.2`.
 NEXT PHASE: `A8` after A7 combined acceptance.
-NEXT IMPLEMENTATION SLICE: `A7.2`.
+NEXT IMPLEMENTATION SLICE: `A7.3`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -56,8 +56,10 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    HEAD-bound, restart-durable, immutable preview/decision chain that remains inert
    even after acceptance; its corrective scope-lock amendment records the dedicated
    `mission_plan_*` route and exact pre-acceptance revision recovery. A7.2 visible
-   implementation and fresh tests is now active. Do not reopen A4, completed A6,
-   A7.0, or A7.1 without a fresh regression.
+   implementation and fresh tests is complete with one clean-state no-hooks visible
+   agent, an owned-only candidate, fresh exact-OID gate evidence, and restart-safe
+   pre-review state. A7.3 independent review and exact-OID acceptance is now active.
+   Do not reopen A4, completed A6, A7.0, A7.1, or A7.2 without a fresh regression.
 
 ## Objective
 
@@ -83,7 +85,8 @@ A4.12 complete
   -> A6.3 IPC adapter complete -> A6.4 MCP catalog and dispatch complete
   -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI complete
   -> A6.7 duplicate/unowned infrastructure complete -> A6.8 combined acceptance
-  -> A7.0 scope lock complete -> A7.1 request/plan complete -> A7.2 visible execution
+  -> A7.0 scope lock complete -> A7.1 request/plan complete -> A7.2 visible execution complete
+  -> A7.3 independent review and exact-OID acceptance
   -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -109,8 +112,9 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.1 is complete; enter A7.2.** The accepted scope lock and durable inert
-   request/plan contract precede visible A7 runtime work. A7 Core proves only:
+3. **A7.2 is complete; enter A7.3.** The accepted scope lock, durable inert
+   request/plan contract, and clean-state visible implementation/fresh-test evidence
+   now precede independent review. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
    Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
@@ -716,6 +720,15 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   reject/cancel to the exact next aligned revision. The focused gate passes the
   Mission 4/4, TaskRepo 6/6, manager 6/6, and migration 10/10 surfaces and keeps
   `phaseComplete=false`; A7.2 owns the first visible execution activation.
+- A7.2 visible implementation and fresh-test closeout is complete. The typed
+  `mission_plan_run` route derives one exclusive Task from the accepted plan, uses
+  the existing execution/ownership/worktree/visible-PTY owners, launches Codex with
+  hooks disabled, freezes only the owned graph.rs delta, and persists immutable
+  candidate/tested-OID evidence after the exact `--lib` test passes. Concurrent
+  activation and post-activation graph contamination fail closed; restart preserves
+  the pre-review fence. `pnpm verify:a7:visible-implementation` reports 14/14 focused
+  tests, clean-state live provenance, `completedSlice=A7.2`, `nextImplementationSlice=A7.3`,
+  and `phaseComplete=false`.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

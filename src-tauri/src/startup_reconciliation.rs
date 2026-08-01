@@ -8,8 +8,8 @@ use crate::merge_intent::store::MergeIntentStore;
 use crate::merge_intent::MergeIntentState;
 use crate::persistence::{EventRepo, OwnershipRepo};
 use crate::task::{
-    ExecutionEffect, ExecutionFenceState, ExecutionIdentity, TaskManager, WorkExecutionAttempt,
-    WorkExecutionState,
+    ExecutionEffect, ExecutionFenceState, ExecutionIdentity, ExecutionRuntime, TaskManager,
+    WorkExecutionAttempt, WorkExecutionState,
 };
 
 pub const STARTUP_RECONCILIATION_TIMEOUT_SECS: u64 = 15;
@@ -795,7 +795,7 @@ pub fn reconcile_runtime_authorities(
         }
     }
 
-    let mut safely_failed = 0usize;
+    let mut reconciled_attempts = 0usize;
     let mut active_observed = 0usize;
     for attempt in &attempt_snapshot {
         if matches!(
@@ -830,6 +830,23 @@ pub fn reconcile_runtime_authorities(
         });
         let has_runtime_projection =
             headless_projection || pane_projection || conflicting_runtime_projection || wired_pty;
+
+        let resumable_mission_review = attempt.runtime == ExecutionRuntime::VisiblePty
+            && attempt.identity.pty_session_id.is_some()
+            && attempt.fence.effect == ExecutionEffect::Review
+            && attempt.fence.state == ExecutionFenceState::Reserved
+            && tasks
+                .mission_activation_for_task(task_id)
+                .map_err(|error| error.to_string())?
+                .is_some();
+        if resumable_mission_review && !has_runtime_projection {
+            // The visible worker's exact completion marker was already observed
+            // and persisted as Review/Reserved. Candidate freeze is the next
+            // owner, so preserve this generation instead of failing it merely
+            // because the old PTY correctly disappeared across restart.
+            reconciled_attempts = reconciled_attempts.saturating_add(1);
+            continue;
+        }
 
         if wired_pty && !generation_registered {
             pane_details.push(format!(
@@ -870,7 +887,7 @@ pub fn reconcile_runtime_authorities(
                 )
                 .map_err(|error| error.to_string())?;
             release_claim_task_ids.insert(task_id.to_string());
-            safely_failed = safely_failed.saturating_add(1);
+            reconciled_attempts = reconciled_attempts.saturating_add(1);
             continue;
         }
 
@@ -937,7 +954,7 @@ pub fn reconcile_runtime_authorities(
         report(
             "execution_attempts",
             active_observed,
-            safely_failed,
+            reconciled_attempts,
             execution_details,
         ),
         report(
@@ -1149,6 +1166,145 @@ mod tests {
         .unwrap();
         let merge_store = MergeIntentStore::new(db.clone());
         (repo_dir, tasks, db, merge_store, attempt)
+    }
+
+    fn commit_a7_test_repo(path: &std::path::Path) -> String {
+        let repo = git2::Repository::open(path).unwrap();
+        std::fs::write(path.join("base.txt"), "base\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("base.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let signature = git2::Signature::now("A7 Test", "a7@example.invalid").unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "A7 fixture",
+            &tree,
+            &[],
+        )
+        .unwrap()
+        .to_string()
+    }
+
+    fn bind_a7_input_head(
+        input: &mut crate::task::mission::MissionPlanPreviewInput,
+        head_oid: &str,
+    ) {
+        input.mission_definition.base_oid = head_oid.to_string();
+        for work in &mut input.work_units {
+            for intent in &mut work.file_intents {
+                intent.resource_ref.base_oid = head_oid.to_string();
+                intent.resource_ref.head_oid = head_oid.to_string();
+            }
+            for intent in &mut work.symbol_intents {
+                intent.resource_ref.base_oid = head_oid.to_string();
+                intent.resource_ref.head_oid = head_oid.to_string();
+            }
+        }
+    }
+
+    #[test]
+    fn a7_2_startup_reconciliation_preserves_mission_pre_review_generation() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        git2::Repository::init(repo_dir.path()).unwrap();
+        let head_oid = commit_a7_test_repo(repo_dir.path());
+        let repo_path = repo_dir.path().to_string_lossy().into_owned();
+        let mut input = crate::task::mission::tests::fixed_input();
+        bind_a7_input_head(&mut input, &head_oid);
+        let plan_id = input.plan_id.clone();
+        let actor = input.mission_definition.created_by.clone();
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = TaskManager::new_durable();
+        tasks.attach_db(db.clone()).unwrap();
+        tasks.preview_mission_plan(input, &repo_path).unwrap();
+        tasks.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        let activation = tasks.activate_mission_plan(&plan_id, 1).unwrap();
+        let attempt = tasks
+            .reserve_execution(ExecutionReservation {
+                task_id: activation.task_id.clone(),
+                repo_path: repo_path.clone(),
+                runtime: ExecutionRuntime::VisiblePty,
+                ownership_claim_ids: Vec::new(),
+                now: 10,
+            })
+            .unwrap();
+        let event = AgentEvent::new(
+            AgentEventKind::ExecutionReserved,
+            serde_json::json!({
+                "attemptId": attempt.identity.attempt_id,
+                "taskId": attempt.identity.task_id,
+                "repoPath": attempt.repo_path,
+                "executionGeneration": attempt.identity.execution_generation,
+                "agentRunId": attempt.identity.agent_run_id,
+                "processGeneration": attempt.identity.process_generation,
+                "sessionId": attempt.identity.session_id,
+                "ptySessionId": attempt.identity.pty_session_id,
+                "ownershipClaimIds": attempt.ownership_claim_ids,
+            }),
+        )
+        .with_idempotency_key(attempt.reservation_event_id.clone());
+        db.with(|database| {
+            EventRepo::append(database, &event)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        let mut now = 11;
+        tasks
+            .commit_execution_reservation(&attempt.token(), now)
+            .unwrap();
+        for effect in [ExecutionEffect::FirstEffect, ExecutionEffect::Spawn] {
+            now += 1;
+            tasks
+                .reserve_execution_effect(&attempt.token(), effect, None, now)
+                .unwrap();
+            now += 1;
+            tasks
+                .start_execution_effect(&attempt.token(), effect, now)
+                .unwrap();
+            now += 1;
+            tasks
+                .commit_execution_effect(&attempt.token(), effect, now)
+                .unwrap();
+        }
+        now += 1;
+        tasks
+            .reserve_execution_effect(&attempt.token(), ExecutionEffect::Review, None, now)
+            .unwrap();
+        tasks
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+        tasks
+            .transition(&activation.task_id, TaskStatus::Review)
+            .unwrap();
+
+        let reports = reconcile_runtime_authorities(
+            &tasks,
+            &db,
+            &MergeIntentStore::new(db.clone()),
+            &StartupRuntimeSnapshot::default(),
+            now + 1,
+        )
+        .unwrap();
+        let current = tasks.current_execution(&activation.task_id).unwrap();
+        assert_ne!(current.state, WorkExecutionState::Failed);
+        assert_eq!(current.fence.effect, ExecutionEffect::Review);
+        assert_eq!(current.fence.state, ExecutionFenceState::Reserved);
+        assert_eq!(
+            tasks.get(&activation.task_id).unwrap().status,
+            TaskStatus::Review
+        );
+        assert_eq!(
+            reports
+                .iter()
+                .find(|report| report.authority == "execution_attempts")
+                .unwrap()
+                .reconciled,
+            1
+        );
     }
 
     #[test]

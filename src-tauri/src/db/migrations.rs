@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 7;
+pub const CURRENT_SCHEMA_VERSION: i64 = 8;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1014,6 +1014,118 @@ const V7_SCHEMA: &str = "
     END;
 ";
 
+// A7.2: immutable accepted-plan activation and exact candidate/test evidence.
+// Both tables remain under TaskRepo/TaskManager; they are causal facts, not a
+// second mutable Mission journal or completion owner.
+const V8_SCHEMA: &str = "
+    CREATE TABLE mission_plan_activations (
+        activation_id       TEXT PRIMARY KEY NOT NULL,
+        plan_id             TEXT NOT NULL,
+        plan_revision       INTEGER NOT NULL CHECK (plan_revision > 0),
+        mission_id          TEXT NOT NULL,
+        mission_revision    INTEGER NOT NULL CHECK (mission_revision > 0),
+        work_unit_id        TEXT NOT NULL UNIQUE,
+        task_id             TEXT NOT NULL UNIQUE REFERENCES tasks(id) ON DELETE RESTRICT,
+        plan_content_digest TEXT NOT NULL CHECK (
+            length(plan_content_digest) = 64
+            AND plan_content_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        accepted_base_oid   TEXT NOT NULL CHECK (
+            length(accepted_base_oid) = 40
+            AND accepted_base_oid NOT GLOB '*[^0-9a-f]*'
+        ),
+        repository_root     TEXT NOT NULL,
+        source_branch       TEXT NOT NULL,
+        target_branch       TEXT NOT NULL,
+        owned_targets_json  TEXT NOT NULL CHECK (json_valid(owned_targets_json)),
+        test_argv_json      TEXT NOT NULL CHECK (json_valid(test_argv_json)),
+        activated_by        TEXT NOT NULL,
+        activated_at_ms     INTEGER NOT NULL CHECK (activated_at_ms >= 0),
+        UNIQUE (plan_id, plan_revision),
+        FOREIGN KEY (plan_id, plan_revision)
+            REFERENCES mission_plan_revisions(plan_id, plan_revision) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE mission_gate_evidence (
+        evidence_id         TEXT PRIMARY KEY NOT NULL,
+        activation_id       TEXT NOT NULL REFERENCES mission_plan_activations(activation_id) ON DELETE RESTRICT,
+        plan_content_digest TEXT NOT NULL CHECK (
+            length(plan_content_digest) = 64
+            AND plan_content_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        attempt_id          TEXT NOT NULL REFERENCES work_execution_attempts(attempt_id) ON DELETE RESTRICT,
+        execution_generation INTEGER NOT NULL CHECK (execution_generation > 0),
+        agent_run_id        TEXT NOT NULL,
+        runtime_domain_id   TEXT NOT NULL CHECK (runtime_domain_id = 'visible_pty'),
+        pty_session_id      TEXT NOT NULL,
+        gate_id             TEXT NOT NULL,
+        contract_version    TEXT NOT NULL,
+        command_argv_json   TEXT NOT NULL CHECK (json_valid(command_argv_json)),
+        command_fingerprint TEXT NOT NULL CHECK (
+            length(command_fingerprint) = 64
+            AND command_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        environment_fingerprint TEXT NOT NULL CHECK (
+            length(environment_fingerprint) = 64
+            AND environment_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        result              TEXT NOT NULL CHECK (result IN ('passed','failed','blocked','cancelled')),
+        evidence_digest     TEXT NOT NULL CHECK (
+            length(evidence_digest) = 64
+            AND evidence_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        base_oid            TEXT NOT NULL CHECK (
+            length(base_oid) = 40 AND base_oid NOT GLOB '*[^0-9a-f]*'
+        ),
+        candidate_oid       TEXT NOT NULL CHECK (
+            length(candidate_oid) = 40 AND candidate_oid NOT GLOB '*[^0-9a-f]*'
+        ),
+        tested_oid          TEXT NOT NULL CHECK (tested_oid = candidate_oid),
+        started_at_ms       INTEGER NOT NULL CHECK (started_at_ms >= 0),
+        ended_at_ms         INTEGER NOT NULL CHECK (ended_at_ms >= started_at_ms),
+        UNIQUE (activation_id, attempt_id, execution_generation, gate_id)
+    );
+
+    CREATE TRIGGER trg_mission_gate_evidence_binding
+    BEFORE INSERT ON mission_gate_evidence
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM mission_plan_activations AS activation
+          JOIN work_execution_attempts AS attempt
+            ON attempt.task_id = activation.task_id
+         WHERE activation.activation_id = NEW.activation_id
+           AND activation.plan_content_digest = NEW.plan_content_digest
+           AND activation.test_argv_json = NEW.command_argv_json
+           AND activation.accepted_base_oid = NEW.base_oid
+           AND attempt.attempt_id = NEW.attempt_id
+           AND attempt.execution_generation = NEW.execution_generation
+           AND attempt.agent_run_id = NEW.agent_run_id
+           AND attempt.runtime = NEW.runtime_domain_id
+           AND attempt.pty_session_id = NEW.pty_session_id
+           AND attempt.fence_effect = 'review'
+           AND attempt.fence_state = 'reserved'
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: activation/execution binding mismatch');
+    END;
+
+    CREATE TRIGGER trg_mission_plan_activation_immutable
+    BEFORE UPDATE ON mission_plan_activations BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_activations: immutable');
+    END;
+    CREATE TRIGGER trg_mission_plan_activation_no_delete
+    BEFORE DELETE ON mission_plan_activations BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_activations: immutable history');
+    END;
+    CREATE TRIGGER trg_mission_gate_evidence_immutable
+    BEFORE UPDATE ON mission_gate_evidence BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: immutable');
+    END;
+    CREATE TRIGGER trg_mission_gate_evidence_no_delete
+    BEFORE DELETE ON mission_gate_evidence BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: immutable history');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1144,6 +1256,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V7_SCHEMA)?;
             conn.pragma_update(None, "user_version", 7)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 8 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V8_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 8)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -1628,7 +1756,7 @@ mod tests {
         conn.execute_batch(V6_SCHEMA).unwrap();
         conn.pragma_update(None, "user_version", 6).unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 7);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
 
         let digest = "0".repeat(64);
         conn.execute(
@@ -1685,5 +1813,50 @@ mod tests {
                 [],
             )
             .is_err());
+    }
+
+    #[test]
+    fn a7_2_v7_to_v8_adds_immutable_activation_and_exact_oid_evidence() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 8);
+        let activation_table: Option<String> = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='mission_plan_activations'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        let evidence_table: Option<String> = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='mission_gate_evidence'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(
+            activation_table.as_deref(),
+            Some("mission_plan_activations")
+        );
+        assert_eq!(evidence_table.as_deref(), Some("mission_gate_evidence"));
+        for trigger in [
+            "trg_mission_gate_evidence_binding",
+            "trg_mission_plan_activation_immutable",
+            "trg_mission_plan_activation_no_delete",
+            "trg_mission_gate_evidence_immutable",
+            "trg_mission_gate_evidence_no_delete",
+        ] {
+            let present: Option<String> = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?1",
+                    [trigger],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(present.as_deref(), Some(trigger));
+        }
     }
 }
