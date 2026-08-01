@@ -1930,7 +1930,7 @@ Implemented checkpoint:
 
 ### **A7.3 - Independent Review And Exact-OID Acceptance**
 
-Status: active.
+Status: complete.
 
 - the reviewer is independent from the implementation agent and evaluates the exact
   tested OID plus declared acceptance coverage;
@@ -1940,7 +1940,9 @@ Status: active.
   dirty/unowned worktree, stale test result, or stale review invalidates settlement;
 - no automatic main merge is introduced.
 
-### A7.4 - Immutable Completion And Blocked Settlement
+### **A7.4 - Immutable Completion And Blocked Settlement**
+
+Status: active.
 
 - create an immutable `CompletedWorkPacket` only from the accepted Mission revision,
   tested and reviewed exact OID, owned diff, fresh test evidence, independent
