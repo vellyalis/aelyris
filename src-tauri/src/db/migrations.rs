@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 8;
+pub const CURRENT_SCHEMA_VERSION: i64 = 9;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1126,6 +1126,239 @@ const V8_SCHEMA: &str = "
     END;
 ";
 
+// A7.3: repeatable immutable gate revalidation plus exact-OID review and merge
+// acceptance records. These are companion facts under the existing Task,
+// Review, and MergeIntent owners; they do not form a second task graph or
+// completion journal.
+const V9_SCHEMA: &str = "
+    DROP TRIGGER trg_mission_gate_evidence_binding;
+    DROP TRIGGER trg_mission_gate_evidence_immutable;
+    DROP TRIGGER trg_mission_gate_evidence_no_delete;
+
+    ALTER TABLE mission_gate_evidence RENAME TO mission_gate_evidence_v8;
+    CREATE TABLE mission_gate_evidence (
+        evidence_id         TEXT PRIMARY KEY NOT NULL,
+        activation_id       TEXT NOT NULL REFERENCES mission_plan_activations(activation_id) ON DELETE RESTRICT,
+        plan_content_digest TEXT NOT NULL CHECK (length(plan_content_digest) = 64 AND plan_content_digest NOT GLOB '*[^0-9a-f]*'),
+        attempt_id          TEXT NOT NULL REFERENCES work_execution_attempts(attempt_id) ON DELETE RESTRICT,
+        execution_generation INTEGER NOT NULL CHECK (execution_generation > 0),
+        agent_run_id        TEXT NOT NULL,
+        runtime_domain_id   TEXT NOT NULL CHECK (runtime_domain_id = 'visible_pty'),
+        pty_session_id      TEXT NOT NULL,
+        gate_id             TEXT NOT NULL,
+        contract_version    TEXT NOT NULL,
+        command_argv_json   TEXT NOT NULL CHECK (json_valid(command_argv_json)),
+        command_fingerprint TEXT NOT NULL CHECK (length(command_fingerprint) = 64 AND command_fingerprint NOT GLOB '*[^0-9a-f]*'),
+        environment_fingerprint TEXT NOT NULL CHECK (length(environment_fingerprint) = 64 AND environment_fingerprint NOT GLOB '*[^0-9a-f]*'),
+        result              TEXT NOT NULL CHECK (result IN ('passed','failed','blocked','cancelled')),
+        evidence_digest     TEXT NOT NULL CHECK (length(evidence_digest) = 64 AND evidence_digest NOT GLOB '*[^0-9a-f]*'),
+        base_oid            TEXT NOT NULL CHECK (length(base_oid) = 40 AND base_oid NOT GLOB '*[^0-9a-f]*'),
+        candidate_oid       TEXT NOT NULL CHECK (length(candidate_oid) = 40 AND candidate_oid NOT GLOB '*[^0-9a-f]*'),
+        tested_oid          TEXT NOT NULL CHECK (tested_oid = candidate_oid),
+        started_at_ms       INTEGER NOT NULL CHECK (started_at_ms >= 0),
+        ended_at_ms         INTEGER NOT NULL CHECK (ended_at_ms >= started_at_ms)
+    );
+    INSERT INTO mission_gate_evidence SELECT * FROM mission_gate_evidence_v8;
+    DROP TABLE mission_gate_evidence_v8;
+
+    CREATE INDEX idx_mission_gate_evidence_latest
+        ON mission_gate_evidence(activation_id, ended_at_ms DESC);
+    CREATE TRIGGER trg_mission_gate_evidence_binding
+    BEFORE INSERT ON mission_gate_evidence
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM mission_plan_activations AS activation
+          JOIN work_execution_attempts AS attempt ON attempt.task_id = activation.task_id
+         WHERE activation.activation_id = NEW.activation_id
+           AND activation.plan_content_digest = NEW.plan_content_digest
+           AND activation.test_argv_json = NEW.command_argv_json
+           AND activation.accepted_base_oid = NEW.base_oid
+           AND attempt.attempt_id = NEW.attempt_id
+           AND attempt.execution_generation = NEW.execution_generation
+           AND attempt.agent_run_id = NEW.agent_run_id
+           AND attempt.runtime = NEW.runtime_domain_id
+           AND attempt.pty_session_id = NEW.pty_session_id
+           AND attempt.fence_effect = 'review'
+           AND attempt.fence_state = 'reserved'
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: activation/execution binding mismatch');
+    END;
+    CREATE TRIGGER trg_mission_gate_evidence_immutable
+    BEFORE UPDATE ON mission_gate_evidence BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: immutable');
+    END;
+    CREATE TRIGGER trg_mission_gate_evidence_no_delete
+    BEFORE DELETE ON mission_gate_evidence BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: immutable history');
+    END;
+
+    CREATE TABLE mission_reviewer_invocation_receipts (
+        receipt_id              TEXT PRIMARY KEY NOT NULL,
+        invocation_id           TEXT NOT NULL UNIQUE,
+        schema_id               TEXT NOT NULL CHECK (schema_id = 'aelyris.mission_reviewer_invocation_receipt/v1'),
+        provider                TEXT NOT NULL CHECK (provider = 'codex'),
+        model                   TEXT NOT NULL CHECK (model = 'gpt-5.6-sol'),
+        adapter_version         TEXT NOT NULL CHECK (adapter_version = 'aelyris.a7-codex-review-adapter/v1'),
+        runtime_domain_id       TEXT NOT NULL CHECK (runtime_domain_id = 'headless_fixed_reviewer'),
+        command_fingerprint     TEXT NOT NULL CHECK (length(command_fingerprint) = 64 AND command_fingerprint NOT GLOB '*[^0-9a-f]*'),
+        argv_contract_digest    TEXT NOT NULL CHECK (length(argv_contract_digest) = 64 AND argv_contract_digest NOT GLOB '*[^0-9a-f]*'),
+        canonical_response_json TEXT NOT NULL CHECK (json_valid(canonical_response_json)),
+        response_digest         TEXT NOT NULL CHECK (length(response_digest) = 64 AND response_digest NOT GLOB '*[^0-9a-f]*'),
+        started_at_ms           INTEGER NOT NULL CHECK (started_at_ms >= 0),
+        ended_at_ms             INTEGER NOT NULL CHECK (ended_at_ms >= started_at_ms),
+        exit_code               INTEGER NOT NULL CHECK (exit_code = 0),
+        process_status          TEXT NOT NULL CHECK (process_status = 'exited'),
+        lineage_ref             TEXT NOT NULL CHECK (json_valid(lineage_ref)),
+        principal_id            TEXT NOT NULL,
+        logical_session_id      TEXT NOT NULL,
+        ancestor_lineage_ids_json TEXT NOT NULL CHECK (json_valid(ancestor_lineage_ids_json)),
+        receipt_digest          TEXT NOT NULL UNIQUE CHECK (length(receipt_digest) = 64 AND receipt_digest NOT GLOB '*[^0-9a-f]*')
+    );
+    CREATE TRIGGER trg_mission_reviewer_invocation_receipt_immutable
+    BEFORE UPDATE ON mission_reviewer_invocation_receipts BEGIN
+        SELECT RAISE(ABORT, 'mission_reviewer_invocation_receipts: immutable');
+    END;
+    CREATE TRIGGER trg_mission_reviewer_invocation_receipt_no_delete
+    BEFORE DELETE ON mission_reviewer_invocation_receipts BEGIN
+        SELECT RAISE(ABORT, 'mission_reviewer_invocation_receipts: immutable history');
+    END;
+
+    CREATE TABLE mission_review_records (
+        review_id                    TEXT PRIMARY KEY NOT NULL,
+        activation_id                TEXT NOT NULL REFERENCES mission_plan_activations(activation_id) ON DELETE RESTRICT,
+        mission_id                   TEXT NOT NULL,
+        mission_revision             INTEGER NOT NULL CHECK (mission_revision > 0),
+        work_unit_id                 TEXT NOT NULL,
+        plan_content_digest          TEXT NOT NULL CHECK (length(plan_content_digest) = 64 AND plan_content_digest NOT GLOB '*[^0-9a-f]*'),
+        tested_evidence_id           TEXT NOT NULL REFERENCES mission_gate_evidence(evidence_id) ON DELETE RESTRICT,
+        reviewed_oid                 TEXT NOT NULL CHECK (length(reviewed_oid) = 40 AND reviewed_oid NOT GLOB '*[^0-9a-f]*'),
+        reviewer_invocation_receipt_id TEXT NOT NULL UNIQUE REFERENCES mission_reviewer_invocation_receipts(receipt_id) ON DELETE RESTRICT,
+        reviewer_invocation_receipt_ref TEXT NOT NULL CHECK (json_valid(reviewer_invocation_receipt_ref)),
+        reviewer_principal_id        TEXT NOT NULL,
+        builder_principal_id         TEXT NOT NULL,
+        reviewer_logical_session_id  TEXT NOT NULL,
+        builder_logical_session_id   TEXT NOT NULL,
+        reviewer_lineage_ref         TEXT NOT NULL,
+        builder_lineage_ref          TEXT NOT NULL,
+        independence_json            TEXT NOT NULL CHECK (json_valid(independence_json)),
+        independence_digest          TEXT NOT NULL CHECK (length(independence_digest) = 64 AND independence_digest NOT GLOB '*[^0-9a-f]*'),
+        independence_eligible        INTEGER NOT NULL CHECK (independence_eligible IN (0,1)),
+        verdict                      TEXT NOT NULL CHECK (verdict IN ('accepted_exact_oid','changes_requested','blocked')),
+        clause_coverage_json          TEXT NOT NULL CHECK (json_valid(clause_coverage_json)),
+        findings_json                 TEXT NOT NULL CHECK (json_valid(findings_json)),
+        next_action                   TEXT NOT NULL,
+        review_digest                 TEXT NOT NULL UNIQUE CHECK (length(review_digest) = 64 AND review_digest NOT GLOB '*[^0-9a-f]*'),
+        created_at_ms                 INTEGER NOT NULL CHECK (created_at_ms >= 0)
+    );
+    CREATE TRIGGER trg_mission_review_binding
+    BEFORE INSERT ON mission_review_records
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM mission_plan_activations AS activation
+          JOIN mission_gate_evidence AS evidence ON evidence.activation_id = activation.activation_id
+          JOIN mission_reviewer_invocation_receipts AS receipt
+            ON receipt.receipt_id = NEW.reviewer_invocation_receipt_id
+         WHERE activation.activation_id = NEW.activation_id
+           AND activation.mission_id = NEW.mission_id
+           AND activation.mission_revision = NEW.mission_revision
+           AND activation.work_unit_id = NEW.work_unit_id
+           AND activation.plan_content_digest = NEW.plan_content_digest
+           AND evidence.evidence_id = NEW.tested_evidence_id
+           AND evidence.tested_oid = NEW.reviewed_oid
+           AND evidence.result = 'passed'
+           AND evidence.agent_run_id = NEW.builder_principal_id
+           AND evidence.pty_session_id = NEW.builder_logical_session_id
+           AND receipt.principal_id = NEW.reviewer_principal_id
+           AND receipt.logical_session_id = NEW.reviewer_logical_session_id
+           AND receipt.invocation_id = json_extract(NEW.independence_json, '$.reviewerInvocationId')
+           AND json_extract(NEW.reviewer_invocation_receipt_ref, '$.id') = receipt.receipt_id
+           AND json_extract(NEW.reviewer_invocation_receipt_ref, '$.contractVersion') = receipt.schema_id
+           AND json_extract(NEW.reviewer_invocation_receipt_ref, '$.contentDigest') = receipt.receipt_digest
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_review_records: activation/evidence binding mismatch');
+    END;
+    CREATE TRIGGER trg_mission_review_immutable
+    BEFORE UPDATE ON mission_review_records BEGIN
+        SELECT RAISE(ABORT, 'mission_review_records: immutable');
+    END;
+    CREATE TRIGGER trg_mission_review_no_delete
+    BEFORE DELETE ON mission_review_records BEGIN
+        SELECT RAISE(ABORT, 'mission_review_records: immutable history');
+    END;
+
+    CREATE TABLE mission_merge_bindings (
+        intent_id                    TEXT PRIMARY KEY NOT NULL REFERENCES merge_intents(intent_id) ON DELETE RESTRICT,
+        activation_id                TEXT NOT NULL REFERENCES mission_plan_activations(activation_id) ON DELETE RESTRICT,
+        mission_id                   TEXT NOT NULL,
+        mission_revision             INTEGER NOT NULL CHECK (mission_revision > 0),
+        work_unit_id                 TEXT NOT NULL,
+        tested_evidence_id           TEXT NOT NULL REFERENCES mission_gate_evidence(evidence_id) ON DELETE RESTRICT,
+        review_id                    TEXT NOT NULL UNIQUE REFERENCES mission_review_records(review_id) ON DELETE RESTRICT,
+        reviewer_independence_digest TEXT NOT NULL CHECK (length(reviewer_independence_digest) = 64 AND reviewer_independence_digest NOT GLOB '*[^0-9a-f]*'),
+        source_oid                   TEXT NOT NULL CHECK (length(source_oid) = 40 AND source_oid NOT GLOB '*[^0-9a-f]*'),
+        target_oid                   TEXT NOT NULL CHECK (length(target_oid) = 40 AND target_oid NOT GLOB '*[^0-9a-f]*'),
+        created_at_ms                INTEGER NOT NULL CHECK (created_at_ms >= 0)
+    );
+    CREATE TRIGGER trg_mission_merge_binding_consistency
+    BEFORE INSERT ON mission_merge_bindings
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM merge_intents AS intent
+          JOIN mission_review_records AS review ON review.review_id = NEW.review_id
+         WHERE intent.intent_id = NEW.intent_id
+           AND intent.task_id = NEW.work_unit_id
+           AND intent.source_oid = NEW.source_oid
+           AND intent.target_oid = NEW.target_oid
+           AND review.activation_id = NEW.activation_id
+           AND review.mission_id = NEW.mission_id
+           AND review.mission_revision = NEW.mission_revision
+           AND review.work_unit_id = NEW.work_unit_id
+           AND review.tested_evidence_id = NEW.tested_evidence_id
+           AND review.reviewed_oid = NEW.source_oid
+           AND review.independence_digest = NEW.reviewer_independence_digest
+           AND review.independence_eligible = 1
+           AND review.verdict = 'accepted_exact_oid'
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_bindings: intent/review binding mismatch');
+    END;
+    CREATE TRIGGER trg_mission_merge_binding_immutable
+    BEFORE UPDATE ON mission_merge_bindings BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_bindings: immutable');
+    END;
+    CREATE TRIGGER trg_mission_merge_binding_no_delete
+    BEFORE DELETE ON mission_merge_bindings BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_bindings: immutable history');
+    END;
+
+    CREATE TABLE mission_merge_receipts (
+        receipt_id       TEXT PRIMARY KEY NOT NULL,
+        intent_id        TEXT NOT NULL UNIQUE REFERENCES mission_merge_bindings(intent_id) ON DELETE RESTRICT,
+        integrated_oid   TEXT NOT NULL CHECK (length(integrated_oid) = 40 AND integrated_oid NOT GLOB '*[^0-9a-f]*'),
+        merge_result     TEXT NOT NULL CHECK (merge_result = 'merged_exact_oid'),
+        created_at_ms    INTEGER NOT NULL CHECK (created_at_ms >= 0)
+    );
+    CREATE TRIGGER trg_mission_merge_receipt_consistency
+    BEFORE INSERT ON mission_merge_receipts
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM mission_merge_bindings AS binding
+          JOIN merge_intents AS intent ON intent.intent_id = binding.intent_id
+         WHERE binding.intent_id = NEW.intent_id
+           AND binding.source_oid = NEW.integrated_oid
+           AND intent.state = 'merged'
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_receipts: exact integrated OID not merged');
+    END;
+    CREATE TRIGGER trg_mission_merge_receipt_immutable
+    BEFORE UPDATE ON mission_merge_receipts BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_receipts: immutable');
+    END;
+    CREATE TRIGGER trg_mission_merge_receipt_no_delete
+    BEFORE DELETE ON mission_merge_receipts BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_receipts: immutable history');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1272,6 +1505,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V8_SCHEMA)?;
             conn.pragma_update(None, "user_version", 8)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 9 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V9_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 9)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -1819,7 +2068,7 @@ mod tests {
     fn a7_2_v7_to_v8_adds_immutable_activation_and_exact_oid_evidence() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 8);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         let activation_table: Option<String> = conn
             .query_row(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='mission_plan_activations'",
@@ -1847,6 +2096,57 @@ mod tests {
             "trg_mission_plan_activation_no_delete",
             "trg_mission_gate_evidence_immutable",
             "trg_mission_gate_evidence_no_delete",
+        ] {
+            let present: Option<String> = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?1",
+                    [trigger],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(present.as_deref(), Some(trigger));
+        }
+    }
+
+    #[test]
+    fn a7_3_v9_adds_repeatable_gate_review_binding_and_receipt_guards() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 9);
+        for table in [
+            "mission_review_records",
+            "mission_merge_bindings",
+            "mission_merge_receipts",
+        ] {
+            let present: Option<String> = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(present.as_deref(), Some(table));
+        }
+        let evidence_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='mission_gate_evidence'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            !evidence_sql.contains("UNIQUE (activation_id, attempt_id"),
+            "v9 must allow immutable revalidation rows for one candidate generation"
+        );
+        for trigger in [
+            "trg_mission_review_binding",
+            "trg_mission_review_immutable",
+            "trg_mission_merge_binding_consistency",
+            "trg_mission_merge_binding_immutable",
+            "trg_mission_merge_receipt_consistency",
+            "trg_mission_merge_receipt_immutable",
         ] {
             let present: Option<String> = conn
                 .query_row(

@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 use crate::db::ManagedDb;
-use crate::merge_intent::{MergeIntent, MergeIntentState};
+use crate::merge_intent::{
+    MergeIntent, MergeIntentState, MissionMergeBinding, MissionMergeReceipt,
+};
 use crate::persistence::MergeRepo;
 
 #[derive(Clone)]
@@ -29,6 +31,38 @@ impl MergeIntentStore {
 
     pub fn get(&self, intent_id: &str) -> Result<Option<MergeIntent>, String> {
         self.db.with(|d| MergeRepo::get(d, intent_id))
+    }
+
+    pub fn bind_mission(
+        &self,
+        binding: &MissionMergeBinding,
+    ) -> Result<MissionMergeBinding, String> {
+        self.db
+            .with(|db| MergeRepo::insert_mission_binding(db, binding))
+    }
+
+    pub fn mission_binding(&self, intent_id: &str) -> Result<Option<MissionMergeBinding>, String> {
+        self.db.with(|db| MergeRepo::mission_binding(db, intent_id))
+    }
+
+    pub fn mission_binding_for_activation(
+        &self,
+        activation_id: &str,
+    ) -> Result<Option<MissionMergeBinding>, String> {
+        self.db
+            .with(|db| MergeRepo::mission_binding_for_activation(db, activation_id))
+    }
+
+    pub fn record_mission_receipt(
+        &self,
+        receipt: &MissionMergeReceipt,
+    ) -> Result<MissionMergeReceipt, String> {
+        self.db
+            .with(|db| MergeRepo::insert_mission_receipt(db, receipt))
+    }
+
+    pub fn mission_receipt(&self, intent_id: &str) -> Result<Option<MissionMergeReceipt>, String> {
+        self.db.with(|db| MergeRepo::mission_receipt(db, intent_id))
     }
 
     /// Compare-and-swap claim into `merging`. `true` only for the single winner.
@@ -93,6 +127,19 @@ impl MergeIntentStore {
             reconciled += 1;
         }
         Ok(reconciled)
+    }
+
+    /// A7.3 local reconciliation for one already-bound intent. This reuses the
+    /// canonical git classifier and never scans or mutates unrelated intents.
+    pub fn reconcile_one_dangling(&self, intent_id: &str, now: i64) -> Result<MergeIntent, String> {
+        let intent = self
+            .get(intent_id)?
+            .ok_or_else(|| format!("merge intent not found: {intent_id}"))?;
+        if intent.state == MergeIntentState::Merging {
+            self.set_state(intent_id, classify_dangling(&intent), now)?;
+        }
+        self.get(intent_id)?
+            .ok_or_else(|| format!("merge intent vanished: {intent_id}"))
     }
 }
 

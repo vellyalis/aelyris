@@ -425,7 +425,8 @@ const requiredWorkOrderClauses = [
   "Execution Order And Complexity Stop Rules",
   "A7.0 scope lock and owner inventory is complete",
   "A7.1 request contract and versioned plan preview is complete",
-  "A7.3 independent review and exact-OID acceptance is now active",
+  "A7.3 independent review and exact-OID acceptance is complete",
+  "A7.4 immutable completion and blocked settlement is now active",
 ];
 
 const requiredArchitectureClauses = [
@@ -979,7 +980,7 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.3" && currentFrontier.lastCompletedSlice === "A7.2";
+const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.4" && currentFrontier.lastCompletedSlice === "A7.3";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1232,7 +1233,7 @@ const checks = [
       currentFrontier.phase === "A7" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
       a7AcceptedFrontierValid,
-    "Work order records A7.2 complete and exposes exactly one A7.3 implementation frontier",
+    "Work order records A7.3 complete and exposes exactly one A7.4 implementation frontier",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

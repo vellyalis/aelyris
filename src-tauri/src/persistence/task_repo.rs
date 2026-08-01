@@ -719,6 +719,60 @@ impl TaskRepo {
             .transpose()
     }
 
+    pub fn load_mission_gate_evidence_by_id(
+        db: &Database,
+        evidence_id: &str,
+    ) -> Result<Option<MissionGateEvidence>, MissionPlanError> {
+        db.conn()
+            .query_row(
+                "SELECT evidence_id,activation_id,plan_content_digest,attempt_id,execution_generation,
+                        agent_run_id,runtime_domain_id,pty_session_id,gate_id,contract_version,
+                        command_argv_json,command_fingerprint,environment_fingerprint,result,
+                        evidence_digest,base_oid,candidate_oid,tested_oid,started_at_ms,ended_at_ms
+                   FROM mission_gate_evidence WHERE evidence_id=?1",
+                [evidence_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?, row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?, row.get::<_, String>(10)?, row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?, row.get::<_, String>(13)?, row.get::<_, String>(14)?,
+                        row.get::<_, String>(15)?, row.get::<_, String>(16)?, row.get::<_, String>(17)?,
+                        row.get::<_, i64>(18)?, row.get::<_, i64>(19)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?
+            .map(|row| {
+                Ok(MissionGateEvidence {
+                    schema: "aelyris.mission_gate_evidence/v1".into(),
+                    evidence_id: row.0,
+                    activation_id: row.1,
+                    plan_content_digest: row.2,
+                    attempt_id: row.3,
+                    execution_generation: u64::try_from(row.4).map_err(|_| MissionPlanError::Persistence("negative evidence generation".into()))?,
+                    agent_run_id: row.5,
+                    runtime_domain_id: row.6,
+                    pty_session_id: row.7,
+                    gate_id: row.8,
+                    contract_version: row.9,
+                    command_argv: serde_json::from_str(&row.10).map_err(|error| MissionPlanError::Persistence(format!("decode evidence argv: {error}")))?,
+                    command_fingerprint: row.11,
+                    environment_fingerprint: row.12,
+                    result: row.13,
+                    evidence_digest: row.14,
+                    base_oid: row.15,
+                    candidate_oid: row.16,
+                    tested_oid: row.17,
+                    started_at_unix_ms: u64::try_from(row.18).map_err(|_| MissionPlanError::Persistence("negative evidence start".into()))?,
+                    ended_at_unix_ms: u64::try_from(row.19).map_err(|_| MissionPlanError::Persistence("negative evidence end".into()))?,
+                })
+            })
+            .transpose()
+    }
+
     pub fn decide_mission_plan(
         db: &Database,
         plan_id: &str,

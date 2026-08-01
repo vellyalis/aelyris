@@ -1832,6 +1832,118 @@ pub fn freeze_and_test_mission_candidate(
     Ok(Some(persisted))
 }
 
+/// A7.3 revalidation: rerun the immutable plan's exact gate against the already
+/// frozen candidate. This appends fresh evidence for the same execution/OID and
+/// never commits, amends, or recreates the candidate.
+pub fn revalidate_mission_candidate(
+    tasks: &crate::task::TaskManager,
+    activation: &crate::task::MissionPlanActivation,
+) -> Result<crate::task::MissionGateEvidence, String> {
+    let prior = tasks
+        .mission_gate_evidence(&activation.activation_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Mission review requires frozen A7.2 gate evidence".to_string())?;
+    let attempt = tasks
+        .current_execution(&activation.task_id)
+        .ok_or_else(|| "Mission review has no execution attempt".to_string())?;
+    if attempt.runtime != ExecutionRuntime::VisiblePty
+        || attempt.fence.effect != ExecutionEffect::Review
+        || attempt.fence.state != crate::task::ExecutionFenceState::Reserved
+        || attempt.identity.attempt_id != prior.attempt_id
+        || attempt.identity.execution_generation != prior.execution_generation
+        || attempt.identity.agent_run_id != prior.agent_run_id
+        || attempt.identity.pty_session_id.as_deref() != Some(&prior.pty_session_id)
+        || prior.activation_id != activation.activation_id
+        || prior.plan_content_digest != activation.plan_content_digest
+        || prior.base_oid != activation.accepted_base_oid
+        || prior.candidate_oid != prior.tested_oid
+    {
+        return Err(
+            "Mission revalidation is not bound to the frozen visible generation".to_string(),
+        );
+    }
+    let repository_root = canonical_dispatch_repo_path(&activation.repository_root)?;
+    let before = crate::git::inspect_exact_owned_candidate(
+        &repository_root,
+        &activation.source_branch,
+        &activation.accepted_base_oid,
+        &prior.candidate_oid,
+        &activation.owned_targets,
+        crate::review::judge::MAX_DIFF_CHARS,
+    )?;
+    let cwd = crate::control::worktree::predict_path(&repository_root, &activation.source_branch);
+    let cargo_target_dir = std::path::Path::new(&repository_root)
+        .join("src-tauri")
+        .join("target");
+    let command = crate::control::gate_runner::run_exact_command_with_cargo_target(
+        &activation.test_argv,
+        &cwd.to_string_lossy(),
+        Some(&cargo_target_dir),
+    )?;
+    let after = crate::git::inspect_exact_owned_candidate(
+        &repository_root,
+        &activation.source_branch,
+        &activation.accepted_base_oid,
+        &prior.candidate_oid,
+        &activation.owned_targets,
+        crate::review::judge::MAX_DIFF_CHARS,
+    )?;
+    if before != after || command.result != "passed" {
+        return Err("Mission exact gate failed or changed the frozen candidate".to_string());
+    }
+    let evidence_envelope = serde_json::json!({
+        "schema": "aelyris.mission_gate_evidence_digest/v1",
+        "activationId": activation.activation_id,
+        "planContentDigest": activation.plan_content_digest,
+        "attemptId": prior.attempt_id,
+        "executionGeneration": prior.execution_generation,
+        "agentRunId": prior.agent_run_id,
+        "runtimeDomainId": "visible_pty",
+        "ptySessionId": prior.pty_session_id,
+        "gateId": crate::task::A7_FIXTURE_GATE_ID,
+        "contractVersion": "1",
+        "commandFingerprint": command.command_fingerprint,
+        "environmentFingerprint": command.environment_fingerprint,
+        "commandEvidenceDigest": command.evidence_digest,
+        "result": command.result,
+        "baseOid": before.base_oid,
+        "candidateOid": before.candidate_oid,
+        "testedOid": before.candidate_oid,
+        "startedAtUnixMs": command.started_at_unix_ms,
+        "endedAtUnixMs": command.ended_at_unix_ms,
+    });
+    let evidence_digest = crate::control::gate_runner::sha256_hex(
+        &serde_json::to_vec(&evidence_envelope)
+            .map_err(|error| format!("serialize Mission revalidation evidence: {error}"))?,
+    );
+    let evidence = crate::task::MissionGateEvidence {
+        schema: "aelyris.mission_gate_evidence/v1".into(),
+        evidence_id: uuid::Uuid::now_v7().to_string(),
+        activation_id: activation.activation_id.clone(),
+        plan_content_digest: activation.plan_content_digest.clone(),
+        attempt_id: prior.attempt_id,
+        execution_generation: prior.execution_generation,
+        agent_run_id: prior.agent_run_id,
+        runtime_domain_id: "visible_pty".into(),
+        pty_session_id: prior.pty_session_id,
+        gate_id: crate::task::A7_FIXTURE_GATE_ID.into(),
+        contract_version: "1".into(),
+        command_argv: command.command_argv,
+        command_fingerprint: command.command_fingerprint,
+        environment_fingerprint: command.environment_fingerprint,
+        result: command.result,
+        evidence_digest,
+        base_oid: before.base_oid,
+        candidate_oid: before.candidate_oid.clone(),
+        tested_oid: before.candidate_oid,
+        started_at_unix_ms: command.started_at_unix_ms,
+        ended_at_unix_ms: command.ended_at_unix_ms,
+    };
+    tasks
+        .persist_mission_gate_evidence(activation, &evidence)
+        .map_err(|error| error.to_string())
+}
+
 fn canonical_dispatch_repo_path(repo_path: &str) -> Result<String, String> {
     let canonical = std::fs::canonicalize(repo_path)
         .map_err(|_| "repo path must exist and be accessible".to_string())?;

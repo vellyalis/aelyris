@@ -141,28 +141,14 @@ impl TaskManager {
         let loaded_executions = db
             .try_with(WorkExecutionRepo::load_latest)
             .map_err(|error: ExecutionFenceError| error.to_string())?;
-        // A7 Mission completion is durable before candidate freeze: the exact
-        // visible execution is fenced at Review/Reserved. Preserve only that
-        // narrowly-proven state so a crash between marker observation and
-        // evidence persistence resumes freeze instead of dispatching a second
-        // implementer generation. The fence also heals a `Ready` graph row
-        // written by an older restore that collapsed Mission Review blindly.
+        // Preserve only A7 attempts whose exact durable facts prove that the
+        // local acceptance coordinator can resume them. Review/EffectStarted
+        // without a review record remains uncertain and is deliberately not
+        // admitted by this exception.
         let mut resumable_mission_reviews = HashSet::new();
         for attempt in &loaded_executions {
-            let is_pre_review_mission_completion = loaded.get(&attempt.identity.task_id).is_some()
-                && attempt.runtime == super::ExecutionRuntime::VisiblePty
-                && attempt.fence.effect == ExecutionEffect::Review
-                && attempt.fence.state == ExecutionFenceState::Reserved;
-            if is_pre_review_mission_completion
-                && db
-                    .try_with(|database| {
-                        TaskRepo::load_mission_activation_for_task(
-                            database,
-                            &attempt.identity.task_id,
-                        )
-                    })
-                    .map_err(|error: MissionPlanError| error.to_string())?
-                    .is_some()
+            if loaded.get(&attempt.identity.task_id).is_some()
+                && db.with(|database| Self::a7_acceptance_resume_fact(database, attempt))?
             {
                 resumable_mission_reviews.insert(attempt.identity.task_id.clone());
             }
@@ -207,6 +193,108 @@ impl TaskManager {
             .collect();
         Self::publish_mutation(&mut state, restored);
         Ok(len)
+    }
+
+    fn a7_acceptance_resume_fact(
+        db: &crate::db::Database,
+        attempt: &WorkExecutionAttempt,
+    ) -> Result<bool, String> {
+        use crate::merge_intent::MergeIntentState;
+
+        if attempt.runtime != super::ExecutionRuntime::VisiblePty {
+            return Ok(false);
+        }
+        let Some(activation) =
+            TaskRepo::load_mission_activation_for_task(db, &attempt.identity.task_id)
+                .map_err(|error| error.to_string())?
+        else {
+            return Ok(false);
+        };
+        if attempt.fence.effect == ExecutionEffect::Review
+            && attempt.fence.state == ExecutionFenceState::Reserved
+        {
+            return Ok(true);
+        }
+        let binding = crate::persistence::MergeRepo::mission_binding_for_activation(
+            db,
+            &activation.activation_id,
+        )?;
+        let review = if let Some(binding) = &binding {
+            crate::persistence::ReviewRepo::mission_review_by_id(db, &binding.review_id)?
+        } else {
+            crate::persistence::ReviewRepo::latest_for_activation(db, &activation.activation_id)?
+        };
+        let Some(review) = review else {
+            return Ok(false);
+        };
+        let Some(evidence) =
+            TaskRepo::load_mission_gate_evidence_by_id(db, &review.tested_evidence_id)
+                .map_err(|error| error.to_string())?
+        else {
+            return Ok(false);
+        };
+        if evidence.attempt_id != attempt.identity.attempt_id
+            || evidence.execution_generation != attempt.identity.execution_generation
+            || evidence.agent_run_id != attempt.identity.agent_run_id
+            || attempt.identity.pty_session_id.as_deref() != Some(&evidence.pty_session_id)
+        {
+            return Ok(false);
+        }
+        if attempt.fence.effect == ExecutionEffect::Review {
+            return Ok(matches!(
+                attempt.fence.state,
+                ExecutionFenceState::EffectStarted | ExecutionFenceState::Committed
+            ));
+        }
+        if review.verdict != crate::review::MissionReviewVerdict::AcceptedExactOid {
+            return Ok(false);
+        }
+        let Some(binding) = binding else {
+            return Ok(false);
+        };
+        if binding.review_id != review.review_id
+            || binding.tested_evidence_id != evidence.evidence_id
+            || binding.source_oid != review.reviewed_oid
+            || binding.target_oid != activation.accepted_base_oid
+        {
+            return Ok(false);
+        }
+        if attempt.fence.effect == ExecutionEffect::CandidateFreeze {
+            return Ok(matches!(
+                attempt.fence.state,
+                ExecutionFenceState::Reserved | ExecutionFenceState::Committed
+            ));
+        }
+        if attempt.fence.effect != ExecutionEffect::Merge
+            || attempt.merge_intent_id.as_deref() != Some(binding.intent_id.as_str())
+        {
+            return Ok(false);
+        }
+        let Some(intent) = crate::persistence::MergeRepo::get(db, &binding.intent_id)? else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            attempt.fence.state,
+            ExecutionFenceState::Reserved
+                | ExecutionFenceState::EffectStarted
+                | ExecutionFenceState::Committed
+        ) && matches!(
+            intent.state,
+            MergeIntentState::Queued
+                | MergeIntentState::ReadyToMerge
+                | MergeIntentState::Merging
+                | MergeIntentState::Merged
+        ))
+    }
+
+    pub fn is_resumable_a7_acceptance(
+        &self,
+        attempt: &WorkExecutionAttempt,
+    ) -> Result<bool, String> {
+        let db = self
+            .db()
+            .ok_or_else(|| "Task persistence unavailable".to_string())?;
+        db.with(|database| Self::a7_acceptance_resume_fact(database, attempt))
     }
 
     /// Reserve one durable execution generation before any worktree, process,
@@ -583,6 +671,15 @@ impl TaskManager {
         db.try_with(|database| TaskRepo::load_mission_activation_for_task(database, task_id))
     }
 
+    pub fn mission_activation(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+    ) -> Result<Option<MissionPlanActivation>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| TaskRepo::load_mission_activation(database, plan_id, plan_revision))
+    }
+
     pub fn mission_gate_evidence(
         &self,
         activation_id: &str,
@@ -591,20 +688,19 @@ impl TaskManager {
         db.try_with(|database| TaskRepo::load_mission_gate_evidence(database, activation_id))
     }
 
+    pub fn mission_gate_evidence_by_id(
+        &self,
+        evidence_id: &str,
+    ) -> Result<Option<MissionGateEvidence>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| TaskRepo::load_mission_gate_evidence_by_id(database, evidence_id))
+    }
+
     pub fn persist_mission_gate_evidence(
         &self,
         activation: &MissionPlanActivation,
         evidence: &MissionGateEvidence,
     ) -> Result<MissionGateEvidence, MissionPlanError> {
-        if let Some(existing) = self.mission_gate_evidence(&activation.activation_id)? {
-            return if existing == *evidence {
-                Ok(existing)
-            } else {
-                Err(MissionPlanError::ContentConflict(
-                    "Mission activation already has different gate evidence".into(),
-                ))
-            };
-        }
         let attempt = self.current_execution(&activation.task_id).ok_or_else(|| {
             MissionPlanError::Validation("Mission gate evidence lacks an execution attempt".into())
         })?;
@@ -1826,6 +1922,195 @@ mod tests {
         let restored_attempt = restored.current_execution(&activation.task_id).unwrap();
         assert_eq!(restored_attempt.fence.effect, ExecutionEffect::Review);
         assert_eq!(restored_attempt.fence.state, ExecutionFenceState::Reserved);
+    }
+
+    #[test]
+    fn a7_3_appends_fresh_gate_evidence_for_the_same_frozen_generation() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        let activation = manager.activate_mission_plan(&plan_id, 1).unwrap();
+        let attempt = manager
+            .reserve_execution(ExecutionReservation {
+                task_id: activation.task_id.clone(),
+                repo_path: activation.repository_root.clone(),
+                runtime: crate::task::ExecutionRuntime::VisiblePty,
+                ownership_claim_ids: vec!["claim-a7".to_string()],
+                now: 10,
+            })
+            .unwrap();
+        let mut now = 11;
+        manager
+            .commit_execution_reservation(&attempt.token(), now)
+            .unwrap();
+        for effect in [ExecutionEffect::FirstEffect, ExecutionEffect::Spawn] {
+            commit_effect(&manager, &attempt, effect, &mut now);
+        }
+        now += 1;
+        manager
+            .reserve_execution_effect(&attempt.token(), ExecutionEffect::Review, None, now)
+            .unwrap();
+        let current = manager.current_execution(&activation.task_id).unwrap();
+        let evidence = |id: &str, digest_byte: char, ended_at: u64| MissionGateEvidence {
+            schema: "aelyris.mission_gate_evidence/v1".into(),
+            evidence_id: id.into(),
+            activation_id: activation.activation_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            attempt_id: current.identity.attempt_id.clone(),
+            execution_generation: current.identity.execution_generation,
+            agent_run_id: current.identity.agent_run_id.clone(),
+            runtime_domain_id: "visible_pty".into(),
+            pty_session_id: current.identity.pty_session_id.clone().unwrap(),
+            gate_id: crate::task::A7_FIXTURE_GATE_ID.into(),
+            contract_version: "1".into(),
+            command_argv: activation.test_argv.clone(),
+            command_fingerprint: "1".repeat(64),
+            environment_fingerprint: "2".repeat(64),
+            result: "passed".into(),
+            evidence_digest: digest_byte.to_string().repeat(64),
+            base_oid: activation.accepted_base_oid.clone(),
+            candidate_oid: "1234567890abcdef1234567890abcdef12345678".into(),
+            tested_oid: "1234567890abcdef1234567890abcdef12345678".into(),
+            started_at_unix_ms: ended_at - 1,
+            ended_at_unix_ms: ended_at,
+        };
+        let first = evidence("0197c000-0000-7000-8000-000000000020", 'a', 100);
+        let second = evidence("0197c000-0000-7000-8000-000000000021", 'b', 200);
+        manager
+            .persist_mission_gate_evidence(&activation, &first)
+            .unwrap();
+        manager
+            .persist_mission_gate_evidence(&activation, &second)
+            .unwrap();
+        assert_eq!(
+            manager
+                .mission_gate_evidence(&activation.activation_id)
+                .unwrap(),
+            Some(second.clone())
+        );
+        let count: i64 = db
+            .with(|database| {
+                database
+                    .conn()
+                    .query_row(
+                        "SELECT COUNT(*) FROM mission_gate_evidence WHERE activation_id=?1",
+                        [&activation.activation_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(count, 2);
+
+        let preview = manager.mission_plan(&plan_id, 1).unwrap();
+        let builder =
+            crate::review::mission::builder_runtime_attestation(&second, "codex-no-hooks").unwrap();
+        let coverage = preview
+            .mission_definition
+            .acceptance
+            .iter()
+            .map(|clause| {
+                serde_json::json!({
+                    "clauseId": clause.clause_id,
+                    "accepted": true,
+                    "reason": "exact evidence and owned diff verified"
+                })
+            })
+            .collect::<Vec<_>>();
+        let model = serde_json::json!({"clauseCoverage": coverage, "findings": []}).to_string();
+        let invocation = crate::review::ReviewerInvocation::test_only(&model);
+        db.with(|database| {
+            crate::persistence::ReviewRepo::insert_reviewer_invocation_receipt(
+                database,
+                invocation.receipt(),
+            )
+            .map(|_| ())
+        })
+        .unwrap();
+        let review = crate::review::review_exact_candidate(
+            &preview,
+            &activation,
+            &second,
+            &activation.owned_targets,
+            "+ exact owned test",
+            201,
+            &builder,
+            false,
+            &invocation,
+        )
+        .unwrap();
+        db.with(|database| {
+            crate::persistence::ReviewRepo::insert_mission_review(database, &review).map(|_| ())
+        })
+        .unwrap();
+        let intent = crate::merge_intent::MergeIntent {
+            intent_id: "merge-a7-3".into(),
+            repo_path: activation.repository_root.clone(),
+            source_branch: activation.source_branch.clone(),
+            target_branch: activation.target_branch.clone(),
+            source_oid: second.tested_oid.clone(),
+            target_oid: activation.accepted_base_oid.clone(),
+            merge_base_oid: Some(activation.accepted_base_oid.clone()),
+            task_id: activation.work_unit_id.clone(),
+            created_at: 202,
+            state: crate::merge_intent::MergeIntentState::Queued,
+            updated_at: 202,
+            session_id: Some(
+                review
+                    .reviewer_independence
+                    .reviewer_logical_session_id
+                    .clone(),
+            ),
+            reviewer_id: None,
+            gates_digest: None,
+        };
+        let binding = crate::merge_intent::MissionMergeBinding {
+            intent_id: intent.intent_id.clone(),
+            activation_id: activation.activation_id.clone(),
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            work_unit_id: activation.work_unit_id.clone(),
+            tested_evidence_id: second.evidence_id.clone(),
+            review_id: review.review_id.clone(),
+            reviewer_independence_digest: review.reviewer_independence.digest.clone(),
+            source_oid: second.tested_oid.clone(),
+            target_oid: activation.accepted_base_oid.clone(),
+            created_at_unix_ms: 202,
+        };
+        db.with(|database| {
+            crate::persistence::MergeRepo::insert_or_get(database, &intent)?;
+            crate::persistence::MergeRepo::insert_mission_binding(database, &binding)?;
+            crate::persistence::MergeRepo::set_state(
+                database,
+                &intent.intent_id,
+                crate::merge_intent::MergeIntentState::Merged,
+                203,
+            )?;
+            crate::persistence::MergeRepo::insert_mission_receipt(
+                database,
+                &crate::merge_intent::MissionMergeReceipt {
+                    receipt_id: "0197c000-0000-7000-8000-000000000024".into(),
+                    intent_id: intent.intent_id.clone(),
+                    integrated_oid: second.tested_oid.clone(),
+                    merge_result: "merged_exact_oid".into(),
+                    created_at_unix_ms: 204,
+                },
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let loaded = db
+            .with(|database| {
+                crate::persistence::MergeRepo::mission_receipt(database, &intent.intent_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.integrated_oid, second.tested_oid);
     }
 
     #[test]

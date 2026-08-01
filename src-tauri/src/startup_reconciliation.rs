@@ -7,9 +7,11 @@ use crate::event_bus::AgentEventKind;
 use crate::merge_intent::store::MergeIntentStore;
 use crate::merge_intent::MergeIntentState;
 use crate::persistence::{EventRepo, OwnershipRepo};
+#[cfg(test)]
+use crate::task::ExecutionRuntime;
 use crate::task::{
-    ExecutionEffect, ExecutionFenceState, ExecutionIdentity, ExecutionRuntime, TaskManager,
-    WorkExecutionAttempt, WorkExecutionState,
+    ExecutionEffect, ExecutionFenceState, ExecutionIdentity, TaskManager, WorkExecutionAttempt,
+    WorkExecutionState,
 };
 
 pub const STARTUP_RECONCILIATION_TIMEOUT_SECS: u64 = 15;
@@ -831,19 +833,12 @@ pub fn reconcile_runtime_authorities(
         let has_runtime_projection =
             headless_projection || pane_projection || conflicting_runtime_projection || wired_pty;
 
-        let resumable_mission_review = attempt.runtime == ExecutionRuntime::VisiblePty
-            && attempt.identity.pty_session_id.is_some()
-            && attempt.fence.effect == ExecutionEffect::Review
-            && attempt.fence.state == ExecutionFenceState::Reserved
-            && tasks
-                .mission_activation_for_task(task_id)
-                .map_err(|error| error.to_string())?
-                .is_some();
+        let resumable_mission_review = tasks.is_resumable_a7_acceptance(attempt)?;
         if resumable_mission_review && !has_runtime_projection {
-            // The visible worker's exact completion marker was already observed
-            // and persisted as Review/Reserved. Candidate freeze is the next
-            // owner, so preserve this generation instead of failing it merely
-            // because the old PTY correctly disappeared across restart.
+            // The old visible PTY correctly disappears across restart. Exact
+            // A7 review/binding/intent facts prove whether the route can resume;
+            // an unrecorded Review/EffectStarted is excluded and quarantined by
+            // the generic uncertain-effect path below.
             reconciled_attempts = reconciled_attempts.saturating_add(1);
             continue;
         }
@@ -1207,7 +1202,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_2_startup_reconciliation_preserves_mission_pre_review_generation() {
+    fn a7_3_startup_reconciliation_preserves_pre_review_and_recorded_review_effect() {
         let repo_dir = tempfile::tempdir().unwrap();
         git2::Repository::init(repo_dir.path()).unwrap();
         let head_oid = commit_a7_test_repo(repo_dir.path());
@@ -1305,6 +1300,95 @@ mod tests {
                 .reconciled,
             1
         );
+
+        let evidence = crate::task::MissionGateEvidence {
+            schema: "aelyris.mission_gate_evidence/v1".into(),
+            evidence_id: uuid::Uuid::now_v7().to_string(),
+            activation_id: activation.activation_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            attempt_id: attempt.identity.attempt_id.clone(),
+            execution_generation: attempt.identity.execution_generation,
+            agent_run_id: attempt.identity.agent_run_id.clone(),
+            runtime_domain_id: "visible_pty".into(),
+            pty_session_id: attempt.identity.pty_session_id.clone().unwrap(),
+            gate_id: crate::task::A7_FIXTURE_GATE_ID.into(),
+            contract_version: "1".into(),
+            command_argv: activation.test_argv.clone(),
+            command_fingerprint: "a".repeat(64),
+            environment_fingerprint: "b".repeat(64),
+            result: "passed".into(),
+            evidence_digest: "c".repeat(64),
+            base_oid: head_oid.clone(),
+            candidate_oid: head_oid.clone(),
+            tested_oid: head_oid.clone(),
+            started_at_unix_ms: 100,
+            ended_at_unix_ms: 101,
+        };
+        tasks
+            .persist_mission_gate_evidence(&activation, &evidence)
+            .unwrap();
+        tasks
+            .start_execution_effect(&attempt.token(), ExecutionEffect::Review, 102)
+            .unwrap();
+        let preview = tasks.mission_plan(&plan_id, 1).unwrap();
+        let coverage = preview
+            .mission_definition
+            .acceptance
+            .iter()
+            .map(|clause| {
+                serde_json::json!({
+                    "clauseId": clause.clause_id,
+                    "accepted": true,
+                    "reason": "startup exact review fact"
+                })
+            })
+            .collect::<Vec<_>>();
+        let builder =
+            crate::review::mission::builder_runtime_attestation(&evidence, "codex-no-hooks")
+                .unwrap();
+        let invocation = crate::review::ReviewerInvocation::test_only(
+            &serde_json::json!({
+                "clauseCoverage": coverage,
+                "findings": []
+            })
+            .to_string(),
+        );
+        db.with(|database| {
+            crate::persistence::ReviewRepo::insert_reviewer_invocation_receipt(
+                database,
+                invocation.receipt(),
+            )
+            .map(|_| ())
+        })
+        .unwrap();
+        let review = crate::review::review_exact_candidate(
+            &preview,
+            &activation,
+            &evidence,
+            &activation.owned_targets,
+            "+ exact startup review",
+            110,
+            &builder,
+            false,
+            &invocation,
+        )
+        .unwrap();
+        db.with(|database| {
+            crate::persistence::ReviewRepo::insert_mission_review(database, &review).map(|_| ())
+        })
+        .unwrap();
+        reconcile_runtime_authorities(
+            &tasks,
+            &db,
+            &MergeIntentStore::new(db.clone()),
+            &StartupRuntimeSnapshot::default(),
+            111,
+        )
+        .unwrap();
+        let current = tasks.current_execution(&activation.task_id).unwrap();
+        assert_ne!(current.state, WorkExecutionState::NeedsReconcile);
+        assert_eq!(current.fence.effect, ExecutionEffect::Review);
+        assert_eq!(current.fence.state, ExecutionFenceState::EffectStarted);
     }
 
     #[test]

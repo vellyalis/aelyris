@@ -42,6 +42,8 @@
     "verify:a7:mission-plan": "node scripts/verify-a7-mission-plan.mjs",
     "verify:a7:visible-implementation": "node scripts/verify-a7-visible-implementation.mjs",
     "verify:a7:visible-implementation:live": "node scripts/verify-a7-visible-implementation-live.mjs",
+    "verify:a7:review-acceptance": "node scripts/verify-a7-review-acceptance.mjs",
+    "verify:a7:review-acceptance:live": "node scripts/verify-a7-review-acceptance-live.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:native-ui:design-package": "node scripts/verify-native-ui-design-package.mjs",

@@ -116,6 +116,171 @@ pub fn resolve_branch_oid(repo_path: &str, branch: &str) -> Result<String, Strin
     Ok(resolve_branchish(&repo, branch)?.to_string())
 }
 
+/// Ensure an isolated local acceptance branch exists at one exact commit. An
+/// existing branch is accepted only when its tip still equals `expected_oid`;
+/// this never moves a branch and explicitly refuses `main`.
+pub fn ensure_isolated_branch_at_oid(
+    repo_path: &str,
+    branch: &str,
+    expected_oid: &str,
+) -> Result<String, String> {
+    validate_branch_name(branch)?;
+    if branch == "main" {
+        return Err("isolated acceptance target cannot be main".to_string());
+    }
+    let expected = git2::Oid::from_str(expected_oid)
+        .map_err(|error| format!("invalid isolated target OID: {error}"))?;
+    let repo = git2::Repository::open(repo_path).map_err(|error| format!("open repo: {error}"))?;
+    repo.find_commit(expected)
+        .map_err(|error| format!("isolated target commit is unavailable: {error}"))?;
+    let refname = format!("refs/heads/{branch}");
+    let result = match repo.find_reference(&refname) {
+        Ok(reference) if reference.target() == Some(expected) => Ok(expected.to_string()),
+        Ok(reference) => Err(format!(
+            "isolated acceptance target moved: expected {expected}, found {}",
+            reference
+                .target()
+                .map(|oid| oid.to_string())
+                .unwrap_or_else(|| "symbolic".to_string())
+        )),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => {
+            repo.reference(
+                &refname,
+                expected,
+                false,
+                "aelyris A7 isolated acceptance target",
+            )
+            .map_err(|error| format!("create isolated acceptance target: {error}"))?;
+            Ok(expected.to_string())
+        }
+        Err(error) => Err(format!("inspect isolated acceptance target: {error}")),
+    };
+    result
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExactCandidateSnapshot {
+    pub base_oid: String,
+    pub candidate_oid: String,
+    pub changed_paths: Vec<String>,
+    pub diff: String,
+}
+
+/// Inspect an already-frozen Mission candidate without committing or moving any
+/// ref. The candidate must be a clean direct child of the accepted base, remain
+/// the live source-branch/worktree HEAD, and touch only backend-derived owned
+/// paths.
+pub fn inspect_exact_owned_candidate(
+    repo_path: &str,
+    source_branch: &str,
+    expected_base_oid: &str,
+    expected_candidate_oid: &str,
+    owned_paths: &[String],
+    max_diff_bytes: usize,
+) -> Result<ExactCandidateSnapshot, String> {
+    validate_branch_name(source_branch)?;
+    if owned_paths.is_empty() {
+        return Err("exact candidate has no owned paths".to_string());
+    }
+    let base = git2::Oid::from_str(expected_base_oid)
+        .map_err(|error| format!("invalid accepted base OID: {error}"))?;
+    let candidate = git2::Oid::from_str(expected_candidate_oid)
+        .map_err(|error| format!("invalid candidate OID: {error}"))?;
+    let repo = git2::Repository::open(repo_path).map_err(|error| format!("open repo: {error}"))?;
+    if resolve_branchish(&repo, source_branch)? != candidate {
+        return Err("Mission source branch moved after testing".to_string());
+    }
+    let commit = repo
+        .find_commit(candidate)
+        .map_err(|error| format!("find candidate commit: {error}"))?;
+    if commit.parent_count() != 1 || commit.parent_id(0).ok() != Some(base) {
+        return Err(
+            "Mission candidate is not the frozen direct child of its accepted base".to_string(),
+        );
+    }
+
+    let worktree_path = crate::git::predict_worktree_path(repo_path, source_branch);
+    let worktree = git2::Repository::open(&worktree_path)
+        .map_err(|error| format!("open Mission candidate worktree: {error}"))?;
+    let head = worktree
+        .head()
+        .and_then(|reference| reference.peel_to_commit())
+        .map_err(|error| format!("read Mission candidate worktree HEAD: {error}"))?;
+    let head_ref = worktree
+        .head()
+        .map_err(|error| format!("read Mission candidate worktree ref: {error}"))?;
+    if head.id() != candidate
+        || !head_ref.is_branch()
+        || head_ref.shorthand().ok() != Some(source_branch)
+    {
+        return Err("Mission candidate worktree branch/OID binding changed".to_string());
+    }
+    let mut status = git2::StatusOptions::new();
+    status
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    if !worktree
+        .statuses(Some(&mut status))
+        .map_err(|error| format!("read Mission candidate worktree status: {error}"))?
+        .is_empty()
+    {
+        return Err("Mission candidate worktree is dirty".to_string());
+    }
+
+    let base_tree = repo
+        .find_commit(base)
+        .and_then(|value| value.tree())
+        .map_err(|error| format!("read accepted base tree: {error}"))?;
+    let candidate_tree = commit
+        .tree()
+        .map_err(|error| format!("read candidate tree: {error}"))?;
+    let diff = repo
+        .diff_tree_to_tree(Some(&base_tree), Some(&candidate_tree), None)
+        .map_err(|error| format!("diff exact candidate: {error}"))?;
+    let mut changed_paths = diff
+        .deltas()
+        .filter_map(|delta| delta.new_file().path().or_else(|| delta.old_file().path()))
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>();
+    changed_paths.sort();
+    changed_paths.dedup();
+    if changed_paths.is_empty()
+        || changed_paths
+            .iter()
+            .any(|path| !owned_paths.iter().any(|owned| owned == path))
+    {
+        return Err("Mission candidate contains an empty or unowned diff".to_string());
+    }
+
+    let mut rendered = String::new();
+    let mut truncated = false;
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
+        let prefix = usize::from(matches!(origin, '+' | '-' | ' '));
+        let content = String::from_utf8_lossy(line.content());
+        if rendered.len() + prefix + content.len() <= max_diff_bytes {
+            if prefix == 1 {
+                rendered.push(origin);
+            }
+            rendered.push_str(&content);
+        } else {
+            truncated = true;
+        }
+        true
+    })
+    .map_err(|error| format!("render exact candidate diff: {error}"))?;
+    if truncated {
+        return Err("exact candidate diff exceeds the review limit".to_string());
+    }
+    Ok(ExactCandidateSnapshot {
+        base_oid: base.to_string(),
+        candidate_oid: candidate.to_string(),
+        changed_paths,
+        diff: rendered,
+    })
+}
+
 /// Does `branch`'s current tip contain `commit_oid` (i.e. is that commit an
 /// ancestor of, or equal to, the tip)? Used by P0-3 restart reconciliation to
 /// detect a merge that actually landed before a crash. Errs if the repo/branch
@@ -516,6 +681,61 @@ mod tests {
             "got {merged:?}"
         );
         assert_eq!(resolve_branchish(&repo, "main").unwrap(), feat);
+    }
+
+    #[test]
+    fn a7_3_exact_candidate_requires_clean_owned_direct_child_and_exact_target() {
+        let (_dir, repo) = init_repo();
+        let base = commit(&repo, &[("owned.txt", "base")], "base", &[]);
+        repo.branch("a7-preview/test", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        checkout_branch(&repo, "a7-preview/test");
+        let candidate = commit(&repo, &[("owned.txt", "candidate")], "candidate", &[base]);
+        checkout_branch(&repo, "main");
+        let repo_path = path_of(&repo);
+        crate::git::create_worktree(&repo_path, "a7-preview/test").unwrap();
+
+        let snapshot = inspect_exact_owned_candidate(
+            &repo_path,
+            "a7-preview/test",
+            &base.to_string(),
+            &candidate.to_string(),
+            &["owned.txt".to_string()],
+            16_384,
+        )
+        .unwrap();
+        assert_eq!(snapshot.changed_paths, ["owned.txt"]);
+        assert!(snapshot.diff.contains("candidate"));
+
+        let worktree = crate::git::predict_worktree_path(&repo_path, "a7-preview/test");
+        std::fs::write(worktree.join("owned.txt"), "dirty").unwrap();
+        assert!(inspect_exact_owned_candidate(
+            &repo_path,
+            "a7-preview/test",
+            &base.to_string(),
+            &candidate.to_string(),
+            &["owned.txt".to_string()],
+            16_384,
+        )
+        .unwrap_err()
+        .contains("dirty"));
+        checkout_branch(&Repository::open(&worktree).unwrap(), "a7-preview/test");
+
+        assert_eq!(
+            ensure_isolated_branch_at_oid(&repo_path, "a7-acceptance", &base.to_string()).unwrap(),
+            base.to_string()
+        );
+        repo.find_reference("refs/heads/a7-acceptance")
+            .unwrap()
+            .set_target(candidate, "test drift")
+            .unwrap();
+        assert!(
+            ensure_isolated_branch_at_oid(&repo_path, "a7-acceptance", &base.to_string())
+                .unwrap_err()
+                .contains("moved")
+        );
+
+        let _ = crate::git::remove_worktree_for_branch(&repo_path, "a7-preview/test", false);
     }
 
     #[test]

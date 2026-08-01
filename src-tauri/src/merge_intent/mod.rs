@@ -121,6 +121,35 @@ pub struct MergeIntent {
     pub gates_digest: Option<String>,
 }
 
+/// Immutable A7 authority attached to an existing durable exact-OID intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MissionMergeBinding {
+    pub intent_id: String,
+    pub activation_id: String,
+    pub mission_id: String,
+    pub mission_revision: u64,
+    pub work_unit_id: String,
+    pub tested_evidence_id: String,
+    pub review_id: String,
+    pub reviewer_independence_digest: String,
+    pub source_oid: String,
+    pub target_oid: String,
+    pub created_at_unix_ms: u64,
+}
+
+/// Immutable exact integration receipt. A7.3 creates it only after the isolated
+/// target resolves to the reviewed source OID and the durable intent is merged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MissionMergeReceipt {
+    pub receipt_id: String,
+    pub intent_id: String,
+    pub integrated_oid: String,
+    pub merge_result: String,
+    pub created_at_unix_ms: u64,
+}
+
 impl MergeIntent {
     /// The idempotency key (audit §P0-3): two requests for the same task to merge
     /// the same source commit into the same target commit are the SAME intent.

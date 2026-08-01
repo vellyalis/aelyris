@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A7`.
-ACTIVE SLICE: `A7.3`.
-LAST COMPLETED SLICE: `A7.2`.
+ACTIVE SLICE: `A7.4`.
+LAST COMPLETED SLICE: `A7.3`.
 NEXT PHASE: `A8` after A7 combined acceptance.
-NEXT IMPLEMENTATION SLICE: `A7.3`.
+NEXT IMPLEMENTATION SLICE: `A7.4`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -58,8 +58,12 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    `mission_plan_*` route and exact pre-acceptance revision recovery. A7.2 visible
    implementation and fresh tests is complete with one clean-state no-hooks visible
    agent, an owned-only candidate, fresh exact-OID gate evidence, and restart-safe
-   pre-review state. A7.3 independent review and exact-OID acceptance is now active.
-   Do not reopen A4, completed A6, A7.0, A7.1, or A7.2 without a fresh regression.
+   pre-review state. A7.3 independent review and exact-OID acceptance is complete:
+   the fixed independent reviewer accepted all 4 clauses with zero findings, the
+   tested/reviewed/integrated OID remained exact, and only the isolated
+   `a7-acceptance` target moved. A7.4 immutable completion and blocked settlement is now active.
+   Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3
+   without a fresh regression.
 
 ## Objective
 
@@ -86,7 +90,7 @@ A4.12 complete
   -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI complete
   -> A6.7 duplicate/unowned infrastructure complete -> A6.8 combined acceptance
   -> A7.0 scope lock complete -> A7.1 request/plan complete -> A7.2 visible execution complete
-  -> A7.3 independent review and exact-OID acceptance
+  -> A7.3 exact-OID acceptance complete -> A7.4 immutable completion/blocked settlement
   -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
@@ -112,9 +116,10 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.2 is complete; enter A7.3.** The accepted scope lock, durable inert
-   request/plan contract, and clean-state visible implementation/fresh-test evidence
-   now precede independent review. A7 Core proves only:
+3. **A7.3 is complete; enter A7.4.** The accepted scope lock, durable inert
+   request/plan contract, clean-state visible implementation/fresh-test evidence,
+   independent exact-OID review, and isolated target receipt now precede immutable
+   settlement. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
    Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
@@ -729,6 +734,15 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   the pre-review fence. `pnpm verify:a7:visible-implementation` reports 14/14 focused
   tests, clean-state live provenance, `completedSlice=A7.2`, `nextImplementationSlice=A7.3`,
   and `phaseComplete=false`.
+- A7.3 independent review and exact-OID acceptance is complete. The reviewer
+  prompt now exposes the authoritative executed gate result, exact argv, evidence
+  digest, and tested OID; the fixed `gpt-5.6-sol` reviewer accepted 4/4 clauses
+  with zero findings. `pnpm verify:a7:review-acceptance:live` proves
+  `testedOid == reviewedOid == integratedOid == 5be87d52a8493552e4502b1cc58454bda021e372`,
+  a durable typed reviewer receipt and merge receipt, a clean unchanged candidate,
+  unchanged main/origin refs, and an isolated `a7-acceptance` target. The work unit
+  intentionally remains `Review`; A7.4 owns completion/blocked packets and trusted
+  Done settlement.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

@@ -10,12 +10,18 @@
 pub mod branch;
 pub mod gates;
 pub mod judge;
+pub mod mission;
 
 pub use branch::{detect_gate_commands, review_branch, BranchReview, ReviewInputs};
 pub use gates::{
     run_deterministic_gates, spawn_run, CommandRun, DeterministicGates, GateCommand, GateKind,
 };
 pub use judge::{judge_semantics, SemanticVerdict};
+pub use mission::{
+    review_exact_candidate, ClauseCoverage, EvidenceRefV2, MissionReviewFinding,
+    MissionReviewRecord, MissionReviewVerdict, ReviewerIndependenceProof, ReviewerInvocation,
+    ReviewerInvocationReceipt, RuntimeInvocationAttestation, VersionedRef,
+};
 
 use serde::{Deserialize, Serialize};
 

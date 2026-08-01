@@ -3003,6 +3003,89 @@ Implemented checkpoint:
   dirty/unowned worktrees, stale evidence, changed OID, or changed contract;
 - do not introduce automatic main merge.
 
+<!-- A7_3_REVIEW_ACCEPTANCE_CONTRACT_V2_BEGIN -->
+```json
+{
+  "schema": "aelyris.a7_3_review_acceptance_contract/v2",
+  "contractVersion": 2,
+  "route": "mission_plan_review_accept",
+  "callerAuthority": ["planId", "planRevision"],
+  "reviewerAuthority": {
+    "identity": "sealed successful-process receipt persisted before the review record and bound to builder attempt/runtime/provider lineage",
+    "modelCallerSelectable": false,
+    "fixedAdapter": "codex exec -m gpt-5.6-sol --ephemeral --ignore-user-config -s read-only --skip-git-repo-check --output-schema <ephemeral-fixed-schema>",
+    "outputSchema": "aelyris.a7-review-model-response/v1",
+    "windowsTransport": "PowerShell 7 pwsh shim plus process-local prompt environment; no multiline batch argument",
+    "policy": "a7-core-reviewer-independence/v1",
+    "typedRefs": ["VersionedRef", "EvidenceRefV2"],
+    "samePrincipalSessionForkDescendantOrDisallowedProvider": "blocked",
+    "builderAdapterFact": "codex-no-hooks",
+    "builderProviderFact": "codex",
+    "builderModelObservation": "unknown/unobserved"
+  },
+  "gateRevalidation": {
+    "schemaVersion": 9,
+    "appendOnly": true,
+    "candidateMutation": false,
+    "maxAgeMs": 300000,
+    "oidInvariant": "testedOid == candidateOid == source branch and clean worktree HEAD"
+  },
+  "review": {
+    "owner": "Review -> ReviewRepo",
+    "invocationReceiptTable": "mission_reviewer_invocation_receipts",
+    "recordTable": "mission_review_records",
+    "exactClauseCoverageRequired": true,
+    "missingCoverage": "blocked",
+    "rejectionFence": "Review/EffectStarted -> Review/Committed -> Failed/Committed",
+    "uncertainFailureFence": "NeedsReconcile",
+    "canonicalRepoValidation": ["exact sealed invocation receipt", "exact gate evidence", "activation/task/attempt", "reviewDigest", "independenceDigest", "eligible", "JSON/scalar equality"],
+    "rejectionCompletionCredit": false
+  },
+  "merge": {
+    "owner": "MergeIntentStore -> MergeRepo -> control::merge",
+    "bindingTable": "mission_merge_bindings",
+    "receiptTable": "mission_merge_receipts",
+    "targetBranch": "a7-acceptance",
+    "targetMustStartAtAcceptedBase": true,
+    "integratedOidInvariant": "integratedOid == reviewedOid == testedOid",
+    "automaticMainMerge": false,
+    "intentCollisionGuard": ["canonicalRepo", "sourceBranch", "targetBranch", "task", "sourceOid", "targetOid", "mergeBaseOid", "state"],
+    "resumeBoundaries": [
+      "reviewRecord",
+      "mergeBinding",
+      "reviewCommit",
+      "mergeReserve",
+      "mergeStart",
+      "intentMerged",
+      "receiptBeforeTaskCommit"
+    ],
+    "successTaskFence": "MergeReady/Merge/Committed",
+    "mergingRestartCases": ["git tips unchanged before effect", "git target equals exact source before merged state and receipt"]
+  },
+  "stopsBefore": [
+    "CompletedWorkPacket",
+    "BlockedWorkPacket",
+    "MissionCompletionPacket",
+    "A7 combined acceptance"
+  ],
+  "proofCommand": "pnpm verify:a7:review-acceptance",
+  "phaseComplete": false
+}
+```
+<!-- A7_3_REVIEW_ACCEPTANCE_CONTRACT_V2_END -->
+
+Executed A7.3 closeout (2026-08-02): the first live reviewer correctly failed
+closed because the prompt exposed only a gate-evidence identifier and not the
+executed result. The review context contract now carries the authoritative
+`result=passed`, exact test argv, evidence digest, timestamps, and tested OID, with
+a focused regression preventing that evidence omission. A fresh isolated run then
+produced an independent fixed-`gpt-5.6-sol` receipt, accepted all four clauses with
+zero findings, and integrated only
+`5be87d52a8493552e4502b1cc58454bda021e372` into `a7-acceptance`. The live artifact
+is `.codex-auto/quality/a7-review-acceptance-live.json`; main, origin/main, and the
+clean candidate remained unchanged. This completes only A7.3 and activates A7.4;
+the work unit remains `Review` and no completion packet or A7 completion is claimed.
+
 ### A7.4 Completion Settlement
 
 - immutable `CompletedWorkPacket` with accepted Mission revision, exact tested and

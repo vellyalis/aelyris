@@ -11,6 +11,7 @@ pub mod event_repo;
 pub mod intent_repo;
 pub mod merge_repo;
 pub mod ownership_repo;
+pub mod review_repo;
 pub mod session_checkpoint_repo;
 pub mod task_repo;
 pub mod work_execution_repo;
@@ -20,6 +21,7 @@ pub use event_repo::EventRepo;
 pub use intent_repo::IntentRepo;
 pub use merge_repo::MergeRepo;
 pub use ownership_repo::OwnershipRepo;
+pub use review_repo::ReviewRepo;
 pub use session_checkpoint_repo::{
     SessionCheckpointRecord, SessionCheckpointRepo, SessionHandoffRecord, SessionHandoffState,
 };

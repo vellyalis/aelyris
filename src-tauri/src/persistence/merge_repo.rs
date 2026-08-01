@@ -7,11 +7,13 @@
 //! conditional `UPDATE` (compare-and-swap): the row, not any in-memory copy, is the
 //! arbiter, so a claim survives restarts and serializes across callers.
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::str::FromStr;
 
 use crate::db::Database;
-use crate::merge_intent::{MergeIntent, MergeIntentState};
+use crate::merge_intent::{
+    MergeIntent, MergeIntentState, MissionMergeBinding, MissionMergeReceipt,
+};
 
 /// Raw columns of one `merge_intents` row, before the `state` enum is parsed
 /// (parsing happens outside the rusqlite closure so a bad value surfaces as
@@ -81,6 +83,162 @@ impl RawMergeRow {
 pub struct MergeRepo;
 
 impl MergeRepo {
+    pub fn insert_mission_binding(
+        db: &Database,
+        binding: &MissionMergeBinding,
+    ) -> Result<MissionMergeBinding, String> {
+        let revision = i64::try_from(binding.mission_revision)
+            .map_err(|_| "mission merge revision exceeds SQLite i64".to_string())?;
+        let created_at = i64::try_from(binding.created_at_unix_ms)
+            .map_err(|_| "mission merge binding time exceeds SQLite i64".to_string())?;
+        db.conn()
+            .execute(
+                "INSERT INTO mission_merge_bindings (
+                intent_id,activation_id,mission_id,mission_revision,work_unit_id,
+                tested_evidence_id,review_id,reviewer_independence_digest,
+                source_oid,target_oid,created_at_ms
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(intent_id) DO NOTHING",
+                params![
+                    binding.intent_id,
+                    binding.activation_id,
+                    binding.mission_id,
+                    revision,
+                    binding.work_unit_id,
+                    binding.tested_evidence_id,
+                    binding.review_id,
+                    binding.reviewer_independence_digest,
+                    binding.source_oid,
+                    binding.target_oid,
+                    created_at
+                ],
+            )
+            .map_err(|error| format!("insert Mission merge binding: {error}"))?;
+        let stored = Self::mission_binding(db, &binding.intent_id)?
+            .ok_or_else(|| "Mission merge binding vanished after insert".to_string())?;
+        if stored == *binding {
+            Ok(stored)
+        } else {
+            Err("merge intent already has different immutable Mission authority".to_string())
+        }
+    }
+
+    pub fn mission_binding(
+        db: &Database,
+        intent_id: &str,
+    ) -> Result<Option<MissionMergeBinding>, String> {
+        db.conn()
+            .query_row(
+                "SELECT activation_id,mission_id,mission_revision,work_unit_id,tested_evidence_id,
+                    review_id,reviewer_independence_digest,source_oid,target_oid,created_at_ms
+               FROM mission_merge_bindings WHERE intent_id=?1",
+                [intent_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, i64>(9)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| format!("load Mission merge binding: {error}"))?
+            .map(|row| {
+                Ok(MissionMergeBinding {
+                    intent_id: intent_id.to_string(),
+                    activation_id: row.0,
+                    mission_id: row.1,
+                    mission_revision: u64::try_from(row.2)
+                        .map_err(|_| "negative mission revision".to_string())?,
+                    work_unit_id: row.3,
+                    tested_evidence_id: row.4,
+                    review_id: row.5,
+                    reviewer_independence_digest: row.6,
+                    source_oid: row.7,
+                    target_oid: row.8,
+                    created_at_unix_ms: u64::try_from(row.9)
+                        .map_err(|_| "negative binding time".to_string())?,
+                })
+            })
+            .transpose()
+    }
+
+    pub fn mission_binding_for_activation(
+        db: &Database,
+        activation_id: &str,
+    ) -> Result<Option<MissionMergeBinding>, String> {
+        let intent_id = db.conn().query_row(
+            "SELECT intent_id FROM mission_merge_bindings WHERE activation_id=?1 ORDER BY created_at_ms DESC LIMIT 1",
+            [activation_id],
+            |row| row.get::<_, String>(0),
+        ).optional().map_err(|error| format!("load Mission merge binding by activation: {error}"))?;
+        intent_id
+            .map(|intent_id| Self::mission_binding(db, &intent_id))
+            .transpose()
+            .map(|value| value.flatten())
+    }
+
+    pub fn insert_mission_receipt(
+        db: &Database,
+        receipt: &MissionMergeReceipt,
+    ) -> Result<MissionMergeReceipt, String> {
+        let created_at = i64::try_from(receipt.created_at_unix_ms)
+            .map_err(|_| "mission merge receipt time exceeds SQLite i64".to_string())?;
+        db.conn().execute(
+            "INSERT INTO mission_merge_receipts (receipt_id,intent_id,integrated_oid,merge_result,created_at_ms)
+             VALUES (?1,?2,?3,?4,?5) ON CONFLICT(intent_id) DO NOTHING",
+            params![receipt.receipt_id,receipt.intent_id,receipt.integrated_oid,receipt.merge_result,created_at],
+        ).map_err(|error| format!("insert Mission merge receipt: {error}"))?;
+        let stored = Self::mission_receipt(db, &receipt.intent_id)?
+            .ok_or_else(|| "Mission merge receipt vanished after insert".to_string())?;
+        if stored.integrated_oid == receipt.integrated_oid
+            && stored.merge_result == receipt.merge_result
+        {
+            Ok(stored)
+        } else {
+            Err("merge intent already has a different exact integration receipt".to_string())
+        }
+    }
+
+    pub fn mission_receipt(
+        db: &Database,
+        intent_id: &str,
+    ) -> Result<Option<MissionMergeReceipt>, String> {
+        db.conn()
+            .query_row(
+                "SELECT receipt_id,integrated_oid,merge_result,created_at_ms
+               FROM mission_merge_receipts WHERE intent_id=?1",
+                [intent_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| format!("load Mission merge receipt: {error}"))?
+            .map(|row| {
+                Ok(MissionMergeReceipt {
+                    receipt_id: row.0,
+                    intent_id: intent_id.to_string(),
+                    integrated_oid: row.1,
+                    merge_result: row.2,
+                    created_at_unix_ms: u64::try_from(row.3)
+                        .map_err(|_| "negative receipt time".to_string())?,
+                })
+            })
+            .transpose()
+    }
     /// Insert a new intent, or return the EXISTING intent if one already holds the
     /// same idempotency key `(task_id, source_oid, target_oid)`. The duplicate
     /// request resolves to the original — no second row, no second merge claim.
