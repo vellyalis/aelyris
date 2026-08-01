@@ -7,11 +7,83 @@ use tauri::{AppHandle, Emitter, State};
 use super::event_commands::publish_and_emit;
 use crate::context_store::ContextStoreManager;
 use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
-use crate::task::{Task, TaskManager, TaskStatus};
+use crate::task::{MissionPlanPreview, MissionPlanPreviewInput, Task, TaskManager, TaskStatus};
 
 /// Emitted with the full task snapshot after any mutation so the frontend hook
 /// stays in sync (mirrors `agent-sessions-updated` / `agent-fleet-updated`).
 const TASK_GRAPH_UPDATED: &str = "task-graph-updated";
+
+/// Create or idempotently read a durable, inert A7.1 plan preview. This command
+/// never emits `task-graph-updated` because it does not materialize Tasks.
+#[tauri::command]
+pub fn mission_plan_preview(
+    manager: State<'_, Arc<TaskManager>>,
+    input: MissionPlanPreviewInput,
+    repo_path: String,
+) -> Result<MissionPlanPreview, String> {
+    manager
+        .preview_mission_plan(input, &repo_path)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn mission_plan_get(
+    manager: State<'_, Arc<TaskManager>>,
+    plan_id: String,
+    plan_revision: u64,
+) -> Result<MissionPlanPreview, String> {
+    manager
+        .mission_plan(&plan_id, plan_revision)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn mission_plan_list(
+    manager: State<'_, Arc<TaskManager>>,
+    request_id: Option<String>,
+) -> Result<Vec<MissionPlanPreview>, String> {
+    manager
+        .mission_plans(request_id.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn mission_plan_accept(
+    manager: State<'_, Arc<TaskManager>>,
+    plan_id: String,
+    plan_revision: u64,
+    decision_principal_id: String,
+) -> Result<MissionPlanPreview, String> {
+    manager
+        .accept_mission_plan(&plan_id, plan_revision, &decision_principal_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn mission_plan_reject(
+    manager: State<'_, Arc<TaskManager>>,
+    plan_id: String,
+    plan_revision: u64,
+    decision_principal_id: String,
+    reason: String,
+) -> Result<MissionPlanPreview, String> {
+    manager
+        .reject_mission_plan(&plan_id, plan_revision, &decision_principal_id, &reason)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn mission_plan_cancel(
+    manager: State<'_, Arc<TaskManager>>,
+    plan_id: String,
+    plan_revision: u64,
+    decision_principal_id: String,
+    reason: String,
+) -> Result<MissionPlanPreview, String> {
+    manager
+        .cancel_mission_plan(&plan_id, plan_revision, &decision_principal_id, &reason)
+        .map_err(|error| error.to_string())
+}
 
 fn emit_task_graph(app: &AppHandle, manager: &TaskManager) {
     let _ = app.emit(TASK_GRAPH_UPDATED, manager.list());

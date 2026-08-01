@@ -33,6 +33,26 @@ pub struct ChangedFile {
     pub binary: bool,
 }
 
+/// Resolve the canonical worktree root and commit currently named by `HEAD`.
+/// A7 Mission planning uses this read-only Git adapter so caller-shaped OIDs
+/// cannot become accepted plan authority. Bare repositories are outside the
+/// visible-worktree journey and therefore fail closed here.
+pub fn canonical_repository_head(repo_path: &str) -> Result<(String, String), String> {
+    let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
+    let worktree_root = repo
+        .workdir()
+        .ok_or_else(|| "A7 Mission planning requires a non-bare repository".to_string())?;
+    let canonical_root = std::fs::canonicalize(worktree_root)
+        .map_err(|e| format!("Failed to canonicalize repository root: {e}"))?;
+    let head_oid = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|e| format!("Failed to resolve repository HEAD commit: {e}"))?
+        .id()
+        .to_string();
+    Ok((canonical_root.to_string_lossy().into_owned(), head_oid))
+}
+
 pub fn git_status(repo_path: &str) -> Result<GitStatusInfo, String> {
     let repo = Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 

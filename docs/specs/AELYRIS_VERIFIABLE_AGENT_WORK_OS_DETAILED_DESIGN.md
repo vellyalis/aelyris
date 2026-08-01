@@ -1692,6 +1692,18 @@ parses this block fail-closed and proves the section 3.2 catalog is exhaustive.
         "0197c000-0000-7000-8000-000000000003"
       ]
     },
+    "revisionRecovery": {
+      "appliesBeforeAcceptance": true,
+      "headDriftAction": "reject_or_cancel_current_preview",
+      "nextRevision": "previous + 1",
+      "alignedVersions": [
+        "planRevision",
+        "missionRevision",
+        "workGraphDefinitionRevision",
+        "workUnitDefinitionRevision"
+      ],
+      "previewedOrAcceptedPredecessorMayBeBypassed": false
+    },
     "baseOidSource": "accepted_mission_head",
     "ownedTargets": [
       "src-tauri/src/task/graph.rs"
@@ -2613,13 +2625,13 @@ parses this block fail-closed and proves the section 3.2 catalog is exhaustive.
   "faceDisposition": [
     {
       "journeyStep": "request",
-      "ipc": { "action": "task_submit_plan", "disposition": "route", "seam": "TaskManager::submit_plan -> TaskRepo", "reason": "extend the existing TaskGraph writer with accepted Mission revision and request digest in A7.1" },
+      "ipc": { "action": "mission_plan_preview", "disposition": "route", "seam": "read-only Git HEAD adapter -> TaskManager::preview_mission_plan -> TaskRepo", "reason": "A7.1 uses a durable inert Mission-plan seam; task_submit_plan still executes as a compatibility TaskGraph writer but grants no A7 authority" },
       "mcp": { "action": "aelyris.task.create", "disposition": "compatibility_no_a7_authority", "seam": "TaskManager", "reason": "the compatibility endpoint still executes, but caller-shaped Task has no accepted Mission revision or fixed-plan digest and grants no A7 authority" },
       "pty": { "action": "terminal prompt text", "disposition": "no_a7_authority", "seam": "none", "reason": "terminal text may execute as input but is not request or Mission authority" }
     },
     {
       "journeyStep": "versioned_plan_preview",
-      "ipc": { "action": "orchestrator_plan", "disposition": "route", "seam": "TaskManager read projection", "reason": "A7.1 adds the accepted revision and non-effectful preview to the existing read owner" },
+      "ipc": { "action": "mission_plan_get | mission_plan_list | mission_plan_accept | mission_plan_reject | mission_plan_cancel", "disposition": "route", "seam": "TaskManager read/CAS projection -> TaskRepo", "reason": "A7.1 reads and decides the immutable inert plan through its sole owner; orchestrator_plan still executes as a compatibility scheduling projection but grants no A7 authority" },
       "mcp": { "action": "aelyris.orchestrator.plan", "disposition": "compatibility_no_a7_authority", "seam": "TaskManager read projection", "reason": "the compatibility read still executes but omits Mission revision, owned targets, proof, risk, and merge policy and grants no A7 authority" },
       "pty": { "action": "terminal plan text", "disposition": "no_a7_authority", "seam": "none", "reason": "terminal text may be displayed but cannot become an accepted versioned plan" }
     },
@@ -2696,6 +2708,145 @@ packet settlement, UI state, or completion claim. A7.1 starts from the existing
 - persist only the minimum causal facts required for explanation and resumption;
 - reject or cancel before plan acceptance without creating a worktree, PTY, lease,
   or other external effect.
+
+The A7.1 implementation keeps the accepted definition inert. `accepted` proves
+only that an immutable versioned plan was selected; it does not materialize a
+`Task`, recompute readiness, reserve an execution generation, or authorize the
+existing orchestrator to dispatch. A7.2 owns the first explicit activation into
+the visible execution path after its authority and fencing contract is present.
+SQLite persistence of the preview and its decision is internal causal state, not
+an implementation effect.
+
+The frozen A7 Core request is fail-closed at this boundary: the existing read-only
+Git owner resolves the canonical repository root and current HEAD for preview, and
+acceptance resolves it again before the terminal compare-and-swap. A moved HEAD,
+non-canonical UUID, different target, command, runtime domain, adapter capability,
+or A7.2 unlock contract cannot be accepted by changing caller-shaped text. A
+replacement must align plan, Mission, work-graph, and WorkUnit revisions, advance
+the previous plan revision by exactly one, and follow a durable `rejected` or
+`cancelled` predecessor; `previewed` and `accepted` revisions cannot be bypassed.
+The A7.0 face inventory is correspondingly corrected:
+the inert `mission_plan_*` commands are the A7 route, while the immediately
+materializing `task_submit_plan` and scheduling-only `orchestrator_plan` remain
+executable compatibility faces with no A7 authority.
+
+<!-- A7_1_INERT_PLAN_CONTRACT_V1_BEGIN -->
+```json
+{
+  "schema": "aelyris.a7_1_inert_plan_contract/v1",
+  "contractVersion": 1,
+  "owner": "TaskManager -> TaskRepo",
+  "previewSchema": "aelyris.mission_plan_preview/v1",
+  "canonicalization": "rfc8785_json_utf8",
+  "persistence": {
+    "schemaVersion": 7,
+    "table": "mission_plan_revisions",
+    "contentMutable": false,
+    "deletable": false,
+    "oneAcceptedPlanPerMissionDefinitionRevision": true
+  },
+  "states": {
+    "initial": "previewed",
+    "terminal": ["accepted", "rejected", "cancelled"],
+    "transitions": [
+      "previewed -> accepted",
+      "previewed -> rejected",
+      "previewed -> cancelled"
+    ]
+  },
+  "revisionChain": {
+    "firstRevision": 1,
+    "nextRevision": "previous + 1",
+    "alignedVersions": [
+      "planRevision",
+      "MissionDefinitionRevision.revision",
+      "MissionDefinitionRevision.workGraphDefinitionRevision",
+      "WorkUnitDefinition.definitionRevision"
+    ],
+    "predecessorTerminalStates": ["rejected", "cancelled"],
+    "previewedOrAcceptedPredecessorMayBeBypassed": false
+  },
+  "causalFacts": [
+    "requestId",
+    "normalizedRequest",
+    "requestDigest",
+    "planId",
+    "planRevision",
+    "contentDigest",
+    "repositoryId",
+    "repositoryRoot",
+    "acceptedMissionHeadOid",
+    "MissionDefinitionRevision",
+    "WorkUnitDefinition[]",
+    "ownedTargets",
+    "expectedTests",
+    "reviewRequirement",
+    "mergePolicy",
+    "explicitRisks",
+    "decisionPrincipalId",
+    "decisionReason",
+    "persistedAtUnixMs",
+    "decidedAtUnixMs"
+  ],
+  "ipc": [
+    "mission_plan_preview",
+    "mission_plan_get",
+    "mission_plan_list",
+    "mission_plan_accept",
+    "mission_plan_reject",
+    "mission_plan_cancel"
+  ],
+  "frozenAdmission": {
+    "baseOidSource": "accepted_mission_head",
+    "headReadOwner": "existing read-only Git adapter",
+    "headCheckedAt": ["preview", "accept"],
+    "runtimeDomainIds": ["visible_pty"],
+    "requiredAdapterCapabilities": ["prompt"],
+    "riskPolicy": "a7-core-risk/v1@1",
+    "budgetPolicy": "a7-budget/v1@1:wall_time_ms=600000:blocked",
+    "teamPolicy": "implementer=a7-impl/v1;independent_reviewer=a7-review/v1;a7-core-reviewer-independence/v1;a7-exact-path/v1;a7-core/v1",
+    "ownedTargets": ["src-tauri/src/task/graph.rs"],
+    "testCommandArgv": [
+      "cargo",
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
+      "--",
+      "--exact"
+    ],
+    "gateContractVersion": "1",
+    "freshnessPolicy": {
+      "policyId": "a7-exact-oid/v1",
+      "maxAgeMs": "300000",
+      "requireSameHeadOid": true,
+      "requireSameContractVersion": true,
+      "requireSameEnvironmentFingerprint": true
+    },
+    "requiredResult": "passed_exact_oid",
+    "capabilityUnlock": "a7.2.activate_visible_implementation"
+  },
+  "compatibilityWithoutA7Authority": [
+    "task_submit_plan",
+    "orchestrator_plan"
+  ],
+  "forbiddenBeforeA7_2": [
+    "TaskGraph materialization or revision change",
+    "worktree creation",
+    "PTY creation or input",
+    "ownership or capability lease",
+    "execution reservation",
+    "agent or LLM invocation",
+    "gate execution",
+    "review or merge",
+    "completion or blocked packet settlement"
+  ],
+  "acceptedNextAction": "A7.2 explicit visible activation",
+  "proofCommand": "pnpm verify:a7:mission-plan",
+  "phaseComplete": false
+}
+```
+<!-- A7_1_INERT_PLAN_CONTRACT_V1_END -->
 
 ### A7.2 Visible Implementation And Fresh Tests
 

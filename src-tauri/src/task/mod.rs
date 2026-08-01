@@ -11,6 +11,7 @@ pub mod decompose;
 pub mod execution;
 pub mod graph;
 pub mod manager;
+pub mod mission;
 pub mod planner;
 pub mod replan;
 pub mod status;
@@ -26,6 +27,10 @@ pub use execution::{
 };
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use manager::TaskManager;
+pub use mission::{
+    IndependentReviewRequirement, MergePolicy, MissionDefinitionRevision, MissionPlanError,
+    MissionPlanPreview, MissionPlanPreviewInput, MissionPlanStatus, WorkUnitDefinition,
+};
 pub use planner::validate_plan;
 pub use replan::{replan_into, ReplanOutcome};
 pub use status::{TaskStatus, TASK_STATUS_NAMES};

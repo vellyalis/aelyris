@@ -424,7 +424,8 @@ const requiredWorkOrderClauses = [
   "NEXT IMPLEMENTATION SLICE:",
   "Execution Order And Complexity Stop Rules",
   "A7.0 scope lock and owner inventory is complete",
-  "A7.1 request contract and versioned plan preview is now active",
+  "A7.1 request contract and versioned plan preview is complete",
+  "A7.2 visible implementation and fresh tests is now active",
 ];
 
 const requiredArchitectureClauses = [
@@ -857,6 +858,7 @@ const a7FixtureValid =
     "workUnitId",
     "workUnitDefinitionRevision",
     "acceptedPlan",
+    "revisionRecovery",
     "baseOidSource",
     "ownedTargets",
     "acceptanceClauses",
@@ -873,6 +875,23 @@ const a7FixtureValid =
   fixture.request.includes("src-tauri/src/task/graph.rs") &&
   fixture?.missionId === "0197c000-0000-7000-8000-000000000002" &&
   fixture?.missionRevision === 1 &&
+  exactKeys(fixture?.revisionRecovery, [
+    "appliesBeforeAcceptance",
+    "headDriftAction",
+    "nextRevision",
+    "alignedVersions",
+    "previewedOrAcceptedPredecessorMayBeBypassed",
+  ]) &&
+  fixture.revisionRecovery.appliesBeforeAcceptance === true &&
+  fixture.revisionRecovery.headDriftAction === "reject_or_cancel_current_preview" &&
+  fixture.revisionRecovery.nextRevision === "previous + 1" &&
+  exactSequence(fixture.revisionRecovery.alignedVersions, [
+    "planRevision",
+    "missionRevision",
+    "workGraphDefinitionRevision",
+    "workUnitDefinitionRevision",
+  ]) &&
+  fixture.revisionRecovery.previewedOrAcceptedPredecessorMayBeBypassed === false &&
   fixture?.workUnitId === "0197c000-0000-7000-8000-000000000003" &&
   fixture?.workUnitDefinitionRevision === 1 &&
   exactKeys(fixture?.acceptedPlan, ["planId", "planRevision", "status", "canonicalization", "workUnitIds"]) &&
@@ -959,7 +978,7 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.1" && currentFrontier.lastCompletedSlice === "A7.0";
+const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.2" && currentFrontier.lastCompletedSlice === "A7.1";
 
 const dirty = dirtyPaths();
 const sourcePaths = Object.values(paths);
@@ -1211,7 +1230,7 @@ const checks = [
       currentFrontier.phase === "A7" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
       a7AcceptedFrontierValid,
-    "Work order records A7.0 accepted and exposes exactly one A7.1 implementation frontier",
+    "Work order records A7.1 complete and exposes exactly one A7.2 implementation frontier",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

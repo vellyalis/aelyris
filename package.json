@@ -39,6 +39,7 @@
     "verify:a6:frontend-ratchet": "node scripts/verify-a6-frontend-ratchet.mjs",
     "verify:a6:frontend-acceptance": "node scripts/verify-a6-frontend-acceptance.mjs",
     "verify:a6:combined-acceptance": "node scripts/verify-a6-combined-acceptance.mjs",
+    "verify:a7:mission-plan": "node scripts/verify-a7-mission-plan.mjs",
     "verify:current-readiness-source": "node scripts/verify-current-readiness-source.mjs",
     "verify:requirements-spec-design-traceability": "node scripts/verify-requirements-spec-design-traceability.mjs",
     "verify:native-ui:design-package": "node scripts/verify-native-ui-design-package.mjs",

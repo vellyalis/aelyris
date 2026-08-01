@@ -1836,8 +1836,11 @@ does not create a second runner or require Proofbook productization.
 
 ### **A7.0 - Core Mission Scope Lock And Owner Inventory**
 
-Status: focused-gate accepted candidate, pending commit-bound closeout; no A7
-runtime claim is implemented.
+Status: complete at local commit `cef976f`; no A7 runtime claim was implemented by
+this design-only slice. A7.1 later made a corrective, verifier-backed amendment to
+the same machine authority: the inert `mission_plan_*` route replaces the
+immediately materializing compatibility faces, and pre-acceptance HEAD drift may
+advance only through the recorded reject/cancel plus aligned revision chain.
 
 Machine authority: the marked `aelyris.a7_core_scope_lock/v1` record in
 `AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md`. It freezes the fixture,
@@ -1868,7 +1871,7 @@ commit-bound closeout exists.
 
 ### **A7.1 - Request Contract And Versioned Plan Preview**
 
-Status: active.
+Status: complete; A7 as a whole remains incomplete.
 
 - accept one request into the existing TaskGraph-backed Mission owner;
 - produce a versioned, non-effectful plan preview with work unit, owned targets,
@@ -1877,7 +1880,26 @@ Status: active.
   or external effect;
 - persist only the minimum causal facts required to resume and explain this journey.
 
-### A7.2 - Visible Implementation And Fresh Tests
+Implemented checkpoint:
+
+- `TaskManager` remains the sole Mission/work owner and persists through the existing
+  `TaskRepo`/SQLite connection and migration owner; no second DAG, runner, journal,
+  dispatcher, or frontend state owner was added;
+- the fixed A7 Core request is admitted only with canonical UUIDv7 identities, the
+  authoritative repository HEAD, exact owned path/test, visible-PTY/Prompt policy,
+  independent review, isolated exact-OID merge policy, and the A7.2 unlock contract;
+- preview and `accepted` remain inert: no TaskGraph revision, task materialization,
+  execution reservation, worktree, PTY, lease, process, test, review, merge, or
+  settlement effect is created;
+- SQLite schema v7 keeps immutable content, no-delete history, terminal CAS decisions,
+  one accepted plan per Mission definition revision, restart restoration, and an
+  exact `rejected|cancelled -> next aligned revision` recovery chain;
+- `pnpm verify:a7:mission-plan` is the focused proof. It may complete A7.1 only;
+  `phaseComplete` remains false and A7.2 is the next implementation slice.
+
+### **A7.2 - Visible Implementation And Fresh Tests**
+
+Status: active.
 
 - launch one real implementation agent in a visible PTY and isolated worktree using
   existing runtime, ownership, startup-admission, and execution-fence owners;

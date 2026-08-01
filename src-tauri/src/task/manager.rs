@@ -3,6 +3,9 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
 use super::graph::{Task, TaskGraph, TaskGraphError};
+use super::mission::{
+    MissionPlanError, MissionPlanPreview, MissionPlanPreviewInput, MissionPlanStatus,
+};
 use super::planner::validate_plan;
 use super::status::TaskStatus;
 use crate::db::ManagedDb;
@@ -402,6 +405,135 @@ impl TaskManager {
         .map_err(|error| vec![format!("plan rejected — {error}")])
     }
 
+    /// Persist a typed, inspectable A7.1 plan preview without publishing any
+    /// executable TaskGraph state. A7 previews always require SQLite, including
+    /// when this manager was constructed in ordinary ephemeral test mode.
+    pub fn preview_mission_plan(
+        &self,
+        input: MissionPlanPreviewInput,
+        repo_path: &str,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        let (repository_root, trusted_head_oid) = resolve_a7_repository_head(repo_path)?;
+        let preview = MissionPlanPreview::from_input_with_repository(
+            input,
+            repository_root,
+            trusted_head_oid,
+        )?;
+        let _writer = self.persistence_lock();
+        db.try_with(|database| TaskRepo::insert_mission_plan_preview(database, &preview))
+    }
+
+    pub fn mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| TaskRepo::load_mission_plan(database, plan_id, plan_revision))?
+            .ok_or_else(|| MissionPlanError::NotFound {
+                plan_id: plan_id.to_string(),
+                plan_revision,
+            })
+    }
+
+    pub fn mission_plans(
+        &self,
+        request_id: Option<&str>,
+    ) -> Result<Vec<MissionPlanPreview>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| TaskRepo::list_mission_plans(database, request_id))
+    }
+
+    pub fn accept_mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+        decision_principal_id: &str,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        let preview = self.mission_plan(plan_id, plan_revision)?;
+        if preview.status != MissionPlanStatus::Previewed {
+            return self.decide_mission_plan(
+                plan_id,
+                plan_revision,
+                MissionPlanStatus::Accepted,
+                decision_principal_id,
+                None,
+            );
+        }
+        let (canonical_root, current_head_oid) =
+            resolve_a7_repository_head(&preview.repository_root)?;
+        if canonical_root != preview.repository_root
+            || current_head_oid != preview.accepted_mission_head_oid
+            || current_head_oid != preview.mission_definition.base_oid
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "accepted_mission_head changed after preview; cancel or reject this preview before creating the next aligned revision".into(),
+            ));
+        }
+        self.decide_mission_plan(
+            plan_id,
+            plan_revision,
+            MissionPlanStatus::Accepted,
+            decision_principal_id,
+            None,
+        )
+    }
+
+    pub fn reject_mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+        decision_principal_id: &str,
+        reason: &str,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        self.decide_mission_plan(
+            plan_id,
+            plan_revision,
+            MissionPlanStatus::Rejected,
+            decision_principal_id,
+            Some(reason),
+        )
+    }
+
+    pub fn cancel_mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+        decision_principal_id: &str,
+        reason: &str,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        self.decide_mission_plan(
+            plan_id,
+            plan_revision,
+            MissionPlanStatus::Cancelled,
+            decision_principal_id,
+            Some(reason),
+        )
+    }
+
+    fn decide_mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+        target: MissionPlanStatus,
+        decision_principal_id: &str,
+        reason: Option<&str>,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        let _writer = self.persistence_lock();
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| {
+            TaskRepo::decide_mission_plan(
+                database,
+                plan_id,
+                plan_revision,
+                target,
+                decision_principal_id,
+                reason,
+            )
+        })
+    }
+
     /// Mid-run RE-PLAN (autonomy gap #3): splice a Planner re-decomposition of a
     /// terminally-`Failed` task into the live graph ATOMICALLY. The subtasks are
     /// validated as a plan and added, and every task that depended on the failed
@@ -548,6 +680,14 @@ fn committed_work_state(effect: ExecutionEffect) -> WorkExecutionState {
         ExecutionEffect::CandidateFreeze | ExecutionEffect::Merge => WorkExecutionState::MergeReady,
         ExecutionEffect::Finalization => WorkExecutionState::Completed,
     }
+}
+
+fn resolve_a7_repository_head(repo_path: &str) -> Result<(String, String), MissionPlanError> {
+    crate::git::canonical_repository_head(repo_path).map_err(|error| {
+        MissionPlanError::Validation(format!(
+            "authoritative repository HEAD unavailable: {error}"
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -779,6 +919,71 @@ mod tests {
 
     fn mem_db() -> Arc<ManagedDb> {
         Arc::new(ManagedDb::new(crate::db::Database::open_memory().unwrap()))
+    }
+
+    fn commit_a7_test_repo(repo_path: &std::path::Path) -> String {
+        let repo = git2::Repository::open(repo_path).unwrap();
+        let signature = git2::Signature::now("A7 test", "a7-test@example.invalid").unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parents = repo
+            .head()
+            .ok()
+            .and_then(|head| head.peel_to_commit().ok())
+            .into_iter()
+            .collect::<Vec<_>>();
+        let parent_refs = parents.iter().collect::<Vec<_>>();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "A7 fixture",
+            &tree,
+            &parent_refs,
+        )
+        .unwrap()
+        .to_string()
+    }
+
+    fn a7_repo_input() -> (
+        tempfile::TempDir,
+        String,
+        crate::task::mission::MissionPlanPreviewInput,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        git2::Repository::init(directory.path()).unwrap();
+        let head_oid = commit_a7_test_repo(directory.path());
+        let mut input = crate::task::mission::tests::fixed_input();
+        bind_a7_input_revision(&mut input, 1, &head_oid);
+        let repo_path = directory.path().to_string_lossy().into_owned();
+        (directory, repo_path, input)
+    }
+
+    fn bind_a7_input_revision(
+        input: &mut crate::task::mission::MissionPlanPreviewInput,
+        revision: u64,
+        head_oid: &str,
+    ) {
+        input.plan_revision = revision;
+        input.mission_definition.revision = revision;
+        input.mission_definition.work_graph_definition_revision = revision;
+        for work in &mut input.work_units {
+            work.definition_revision = revision;
+        }
+        input.mission_definition.base_oid = head_oid.to_string();
+        for work in &mut input.work_units {
+            for intent in &mut work.file_intents {
+                intent.resource_ref.base_oid = head_oid.to_string();
+                intent.resource_ref.head_oid = head_oid.to_string();
+            }
+            for intent in &mut work.symbol_intents {
+                intent.resource_ref.base_oid = head_oid.to_string();
+                intent.resource_ref.head_oid = head_oid.to_string();
+            }
+        }
     }
 
     fn durable_execution_manager() -> (TaskManager, Arc<ManagedDb>) {
@@ -1096,6 +1301,199 @@ mod tests {
             Err(TaskGraphError::Persistence(_))
         ));
         assert!(mgr.get("blocked").is_none());
+    }
+
+    #[test]
+    fn a7_preview_accept_and_restart_are_durable_but_leave_taskgraph_inert() {
+        let (repository, repo_path, input) = a7_repo_input();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a7-restart.sqlite3");
+        let db = Arc::new(ManagedDb::new(crate::db::Database::open(&path).unwrap()));
+        let first = TaskManager::new_durable();
+        first.attach_db(db.clone()).unwrap();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let graph_revision = first.lock().revision;
+
+        let preview = first.preview_mission_plan(input, &repo_path).unwrap();
+        assert_eq!(preview.status, MissionPlanStatus::Previewed);
+        assert!(first.list().is_empty());
+        assert!(first.execution_lock().is_empty());
+        assert_eq!(first.lock().revision, graph_revision);
+
+        let accepted = first.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        assert_eq!(accepted.status, MissionPlanStatus::Accepted);
+        assert_eq!(
+            accepted.decision_principal_id.as_deref(),
+            Some(actor.as_str())
+        );
+        assert!(first.list().is_empty());
+        assert!(first.execution_lock().is_empty());
+        assert_eq!(first.lock().revision, graph_revision);
+        // Same terminal decision is a read/no-op, not another UPDATE.
+        assert_eq!(
+            first.accept_mission_plan(&plan_id, 1, &actor).unwrap(),
+            accepted
+        );
+        let moved_head = commit_a7_test_repo(repository.path());
+        assert_ne!(moved_head, accepted.accepted_mission_head_oid);
+        assert_eq!(
+            first.accept_mission_plan(&plan_id, 1, &actor).unwrap(),
+            accepted,
+            "an identical retry returns the durable decision; A7.2 rechecks activation freshness"
+        );
+        drop(first);
+        drop(db);
+
+        let reopened = Arc::new(ManagedDb::new(crate::db::Database::open(&path).unwrap()));
+        let restored = TaskManager::new_durable();
+        restored.attach_db(reopened).unwrap();
+        assert_eq!(restored.mission_plan(&plan_id, 1).unwrap(), accepted);
+        assert!(restored.list().is_empty());
+        assert!(restored.execution_lock().is_empty());
+    }
+
+    #[test]
+    fn a7_reject_cancel_and_conflicting_terminal_decisions_never_mutate_graph() {
+        let (_first_repository, first_repo_path, first) = a7_repo_input();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db).unwrap();
+        let actor = first.mission_definition.created_by.clone();
+        let first_plan = first.plan_id.clone();
+        manager
+            .preview_mission_plan(first, &first_repo_path)
+            .unwrap();
+        let rejected = manager
+            .reject_mission_plan(&first_plan, 1, &actor, "request withdrawn")
+            .unwrap();
+        assert_eq!(rejected.status, MissionPlanStatus::Rejected);
+        assert!(matches!(
+            manager.accept_mission_plan(&first_plan, 1, &actor),
+            Err(MissionPlanError::IllegalTransition { .. })
+        ));
+
+        let (_second_repository, second_repo_path, second) = a7_repo_input();
+        let cancel_manager = TaskManager::new_durable();
+        cancel_manager.attach_db(mem_db()).unwrap();
+        let second_plan = second.plan_id.clone();
+        cancel_manager
+            .preview_mission_plan(second, &second_repo_path)
+            .unwrap();
+        let cancelled = cancel_manager
+            .cancel_mission_plan(&second_plan, 1, &actor, "operator cancelled")
+            .unwrap();
+        assert_eq!(cancelled.status, MissionPlanStatus::Cancelled);
+        assert!(manager.list().is_empty());
+        assert!(manager.execution_lock().is_empty());
+        assert!(cancel_manager.list().is_empty());
+        assert!(cancel_manager.execution_lock().is_empty());
+    }
+
+    #[test]
+    fn a7_preview_requires_durability_even_on_ephemeral_manager() {
+        let manager = TaskManager::new();
+        assert_eq!(
+            manager
+                .preview_mission_plan(
+                    crate::task::mission::tests::fixed_input(),
+                    "C:/missing-a7-repository",
+                )
+                .unwrap_err(),
+            MissionPlanError::DurabilityUnavailable
+        );
+    }
+
+    #[test]
+    fn a7_preview_persistence_failure_has_no_hot_state_or_graph_side_effect() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        db.with(|database| {
+            database
+                .conn()
+                .execute("DROP TABLE mission_plan_revisions", [])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            manager.preview_mission_plan(input, &repo_path),
+            Err(MissionPlanError::Persistence(_))
+        ));
+        assert!(manager.list().is_empty());
+        assert!(manager.execution_lock().is_empty());
+    }
+
+    #[test]
+    fn a7_accept_rechecks_authoritative_head_and_leaves_stale_preview_inert() {
+        let (repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(mem_db()).unwrap();
+        let preview = manager.preview_mission_plan(input, &repo_path).unwrap();
+
+        let moved_head = commit_a7_test_repo(repository.path());
+        assert_ne!(moved_head, preview.accepted_mission_head_oid);
+        assert!(matches!(
+            manager.accept_mission_plan(&plan_id, 1, &actor),
+            Err(MissionPlanError::ContentConflict(_))
+        ));
+        assert_eq!(
+            manager.mission_plan(&plan_id, 1).unwrap().status,
+            MissionPlanStatus::Previewed
+        );
+        manager
+            .cancel_mission_plan(&plan_id, 1, &actor, "authoritative HEAD moved")
+            .unwrap();
+        let mut replacement = crate::task::mission::tests::fixed_input();
+        bind_a7_input_revision(&mut replacement, 2, &moved_head);
+        let replacement = manager
+            .preview_mission_plan(replacement, &repo_path)
+            .unwrap();
+        assert_eq!(replacement.plan_revision, 2);
+        assert_eq!(replacement.mission_definition.revision, 2);
+        let accepted = manager.accept_mission_plan(&plan_id, 2, &actor).unwrap();
+        assert_eq!(accepted.status, MissionPlanStatus::Accepted);
+        assert!(manager.list().is_empty());
+        assert!(manager.execution_lock().is_empty());
+    }
+
+    #[test]
+    fn a7_terminal_decision_failure_leaves_preview_and_all_hot_state_unchanged() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        let graph_revision = manager.lock().revision;
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(
+                    "CREATE TRIGGER test_deny_mission_decision
+                     BEFORE UPDATE OF status ON mission_plan_revisions
+                     BEGIN SELECT RAISE(ABORT, 'injected decision failure'); END;",
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+        assert!(matches!(
+            manager.accept_mission_plan(&plan_id, 1, &actor),
+            Err(MissionPlanError::Persistence(_))
+        ));
+        assert_eq!(
+            manager.mission_plan(&plan_id, 1).unwrap().status,
+            MissionPlanStatus::Previewed
+        );
+        assert_eq!(manager.lock().revision, graph_revision);
+        assert!(manager.list().is_empty());
+        assert!(manager.execution_lock().is_empty());
     }
 
     #[test]

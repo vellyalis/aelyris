@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 6;
+pub const CURRENT_SCHEMA_VERSION: i64 = 7;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -936,6 +936,84 @@ const V6_SCHEMA: &str = "
      WHERE state = 'failed';
 ";
 
+// A7.1: durable, inert Mission plan revisions. This table belongs to the existing
+// TaskRepo/TaskManager owner. A row may move once from `previewed` to one terminal
+// decision, but its request/plan content is immutable and cannot be deleted.
+const V7_SCHEMA: &str = "
+    CREATE TABLE mission_plan_revisions (
+        plan_id             TEXT NOT NULL,
+        plan_revision       INTEGER NOT NULL CHECK (plan_revision > 0),
+        request_id          TEXT NOT NULL,
+        mission_id          TEXT NOT NULL,
+        mission_revision    INTEGER NOT NULL CHECK (mission_revision > 0),
+        request_digest      TEXT NOT NULL CHECK (
+            length(request_digest) = 64
+            AND request_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        content_digest      TEXT NOT NULL CHECK (
+            length(content_digest) = 64
+            AND content_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        preview_json        TEXT NOT NULL CHECK (json_valid(preview_json)),
+        status              TEXT NOT NULL CHECK (
+            status IN ('previewed', 'accepted', 'rejected', 'cancelled')
+        ),
+        decision_principal_id TEXT,
+        decision_reason     TEXT,
+        created_at_ms       INTEGER NOT NULL CHECK (created_at_ms >= 0),
+        decided_at_ms       INTEGER,
+        PRIMARY KEY (plan_id, plan_revision),
+        UNIQUE (request_id, plan_revision),
+        CHECK (
+            (status = 'previewed' AND decided_at_ms IS NULL
+                AND decision_principal_id IS NULL AND decision_reason IS NULL)
+            OR (status = 'accepted' AND decided_at_ms IS NOT NULL
+                AND decision_principal_id IS NOT NULL AND decision_reason IS NULL)
+            OR (status IN ('rejected', 'cancelled')
+                AND decided_at_ms IS NOT NULL
+                AND decision_principal_id IS NOT NULL
+                AND length(trim(decision_reason)) > 0)
+        )
+    );
+
+    CREATE INDEX idx_mission_plan_request
+        ON mission_plan_revisions(request_id, plan_revision);
+
+    CREATE UNIQUE INDEX idx_mission_plan_one_accepted_definition
+        ON mission_plan_revisions(mission_id, mission_revision)
+        WHERE status = 'accepted';
+
+    CREATE TRIGGER trg_mission_plan_content_immutable
+    BEFORE UPDATE ON mission_plan_revisions
+    WHEN OLD.plan_id <> NEW.plan_id
+      OR OLD.plan_revision <> NEW.plan_revision
+      OR OLD.request_id <> NEW.request_id
+      OR OLD.mission_id <> NEW.mission_id
+      OR OLD.mission_revision <> NEW.mission_revision
+      OR OLD.request_digest <> NEW.request_digest
+      OR OLD.content_digest <> NEW.content_digest
+      OR OLD.preview_json <> NEW.preview_json
+      OR OLD.created_at_ms <> NEW.created_at_ms
+    BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_revisions: immutable content');
+    END;
+
+    CREATE TRIGGER trg_mission_plan_terminal_transition
+    BEFORE UPDATE ON mission_plan_revisions
+    WHEN OLD.status <> 'previewed'
+      OR NEW.status NOT IN ('accepted', 'rejected', 'cancelled')
+      OR NEW.status = OLD.status
+    BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_revisions: illegal terminal transition');
+    END;
+
+    CREATE TRIGGER trg_mission_plan_no_delete
+    BEFORE DELETE ON mission_plan_revisions
+    BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_revisions: immutable history');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1050,6 +1128,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V6_SCHEMA)?;
             conn.pragma_update(None, "user_version", 6)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 7 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V7_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 7)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -1454,7 +1548,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 6);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         assert_eq!(
             migrated,
             (
@@ -1521,5 +1615,75 @@ mod tests {
                 "legacy cleanup interrupted".to_string(),
             )
         );
+    }
+
+    #[test]
+    fn mission_plan_v6_to_v7_is_immutable_single_decision_history() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.execute_batch(V4_SCHEMA).unwrap();
+        conn.execute_batch(V5_SCHEMA).unwrap();
+        conn.execute_batch(V6_SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", 6).unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 7);
+
+        let digest = "0".repeat(64);
+        conn.execute(
+            "INSERT INTO mission_plan_revisions (
+                plan_id, plan_revision, request_id, mission_id, mission_revision,
+                request_digest, content_digest, preview_json, status,
+                decision_principal_id, decision_reason, created_at_ms, decided_at_ms
+             ) VALUES ('plan-a',1,'request-a','mission-a',1,?1,?1,'{}','previewed',NULL,NULL,1,NULL)",
+            [&digest],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "UPDATE mission_plan_revisions SET preview_json = '{\"tampered\":true}'",
+                [],
+            )
+            .is_err());
+        conn.execute(
+            "UPDATE mission_plan_revisions
+                SET status='accepted', decision_principal_id='principal-a', decided_at_ms=2
+              WHERE plan_id='plan-a' AND plan_revision=1",
+            [],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "UPDATE mission_plan_revisions
+                    SET status='rejected', decision_reason='changed', decided_at_ms=3
+                  WHERE plan_id='plan-a' AND plan_revision=1",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "DELETE FROM mission_plan_revisions WHERE plan_id='plan-a'",
+                [],
+            )
+            .is_err());
+
+        conn.execute(
+            "INSERT INTO mission_plan_revisions (
+                plan_id, plan_revision, request_id, mission_id, mission_revision,
+                request_digest, content_digest, preview_json, status,
+                decision_principal_id, decision_reason, created_at_ms, decided_at_ms
+             ) VALUES ('plan-b',1,'request-b','mission-a',1,?1,?1,'{}','previewed',NULL,NULL,1,NULL)",
+            [&digest],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "UPDATE mission_plan_revisions
+                    SET status='accepted', decision_principal_id='principal-b', decided_at_ms=2
+                  WHERE plan_id='plan-b' AND plan_revision=1",
+                [],
+            )
+            .is_err());
     }
 }
