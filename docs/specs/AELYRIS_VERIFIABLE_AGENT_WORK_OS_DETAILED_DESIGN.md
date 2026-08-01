@@ -1651,18 +1651,1042 @@ system.
 
 ### A7.0 Core Mission Scope Lock And Owner Inventory
 
-- freeze one local request fixture, its accepted plan, declared tests, independent
-  reviewer, and exact-OID acceptance/merge outcome;
-- inventory only the existing TaskGraph, runtime/PTY, ownership, event/evidence,
-  test, review, merge, and packet-settlement owners used by the fixture;
-- freeze the minimum Mission/work-unit, evidence, review, OID, completion,
-  blocked-settlement, identity, and versioning schemas used by that journey;
-- inventory enabled actions on the journey path. Route them through existing
-  authority seams or declare them unsupported; do not migrate every IPC/MCP/REST/
-  WS/CLI/Proofbook/remote face as a precondition;
-- forbid a second Mission DAG, operation journal, runner, dispatcher, completion
-  barrier/table, or frontend state owner;
-- keep all target runtime claims false and record the deferred product set.
+A7.0 is a design-only scope lock. The accepted structure is to extend the existing
+TaskGraph/runtime/ownership/event/review/merge owners and keep Mission settlement
+inside the TaskManager/TaskRepo responsibility. A separate Mission service plus
+DAG was rejected because it creates a second work owner. A new completion service
+or barrier table was rejected because exact-OID settlement belongs to the same
+TaskManager compare-and-swap that advances the work unit. Pre-emptive all-face
+migration was rejected because the fixed journey needs only one visible IPC/PTY
+path; unused faces receive no A7 Mission authority until their own later gate.
+
+The following JSON block is the single machine-readable A7.0 authority. Its
+`route` values are owner destinations for later A7 slices, not current runtime
+claims. A `compatibility_no_a7_authority` or `no_a7_authority` disposition is only
+an A7 admission/completion classification: existing compatibility IPC/MCP/PTY
+actions may still execute under their current contracts, but they cannot create an
+A7 Mission, mint A7 evidence, or grant A7 completion credit. It does not claim
+that those endpoints return an unsupported error. The Work OS contract verifier
+parses this block fail-closed and proves the section 3.2 catalog is exhaustive.
+
+<!-- A7_CORE_SCOPE_LOCK_V1_BEGIN -->
+```json
+{
+  "schema": "aelyris.a7_core_scope_lock/v1",
+  "contractVersion": 1,
+  "runtimeClaimsImplemented": false,
+  "fixture": {
+    "fixtureId": "a7-core-taskgraph-stable-order-v1",
+    "requestId": "0197c000-0000-7000-8000-000000000001",
+    "request": "Add a Rust regression test named equal_priority_ready_tasks_preserve_insertion_order in src-tauri/src/task/graph.rs. It must insert two Medium root tasks in order, recompute readiness, and prove ready_tasks() preserves insertion order. Change no production behavior unless the new test first demonstrates a defect.",
+    "missionId": "0197c000-0000-7000-8000-000000000002",
+    "missionRevision": 1,
+    "workUnitId": "0197c000-0000-7000-8000-000000000003",
+    "workUnitDefinitionRevision": 1,
+    "acceptedPlan": {
+      "planId": "0197c000-0000-7000-8000-000000000004",
+      "planRevision": 1,
+      "status": "accepted",
+      "canonicalization": "rfc8785_json_utf8",
+      "workUnitIds": [
+        "0197c000-0000-7000-8000-000000000003"
+      ]
+    },
+    "baseOidSource": "accepted_mission_head",
+    "ownedTargets": [
+      "src-tauri/src/task/graph.rs"
+    ],
+    "acceptanceClauses": [
+      "A7-FIX-01: add exactly the named deterministic regression test",
+      "A7-FIX-02: preserve production behavior unless the test first demonstrates a defect",
+      "A7-FIX-03: the declared focused test passes at the exact candidate OID",
+      "A7-FIX-04: the owned diff contains no path outside src-tauri/src/task/graph.rs"
+    ],
+    "declaredTest": {
+      "commandArgv": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "src-tauri/Cargo.toml",
+        "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
+        "--",
+        "--exact"
+      ],
+      "cwd": "mission_worktree",
+      "requiredResult": "passed_exact_oid"
+    },
+    "reviewer": {
+      "role": "independent_reviewer",
+      "policyId": "a7-core-reviewer-independence/v1",
+      "mustDifferFromImplementerBy": [
+        "principal_id",
+        "logical_session_id",
+        "fork_lineage"
+      ],
+      "requiredVerdict": "accepted_exact_oid"
+    },
+    "mergeOutcome": {
+      "result": "merged_exact_oid",
+      "targetBranchRole": "isolated_mission_acceptance_target",
+      "automaticMainMerge": false
+    }
+  },
+  "journey": [
+    "request",
+    "versioned_plan_preview",
+    "visible_implementation",
+    "fresh_tests",
+    "independent_review",
+    "exact_oid_accept_merge",
+    "immutable_completion_packet"
+  ],
+  "ownerInventory": [
+    {
+      "ownerId": "mission_work_settlement",
+      "responsibility": "Mission definition, WorkUnit DAG/projection, execution generation, packet settlement, and completion compare-and-swap",
+      "existingPaths": [
+        "src-tauri/src/task/graph.rs",
+        "src-tauri/src/task/manager.rs",
+        "src-tauri/src/task/execution.rs",
+        "src-tauri/src/persistence/task_repo.rs",
+        "src-tauri/src/persistence/work_execution_repo.rs"
+      ],
+      "a7Gap": "Mission revisions and immutable packet rows are not implemented; A7.1 and A7.4 extend this owner without a completion service or table owner"
+    },
+    {
+      "ownerId": "runtime_visible_pty",
+      "responsibility": "visible implementation dispatch, PTY/process generation, and startup admission",
+      "existingPaths": [
+        "src-tauri/src/control/loop_ports.rs",
+        "src-tauri/src/control/pane_fleet.rs",
+        "src-tauri/src/pty/manager.rs",
+        "src-tauri/src/startup_reconciliation.rs"
+      ],
+      "a7Gap": "bind the accepted Mission, WorkUnit, OID, and ownership scope in A7.2"
+    },
+    {
+      "ownerId": "ownership",
+      "responsibility": "file and symbol write claims for the exact owned diff",
+      "existingPaths": [
+        "src-tauri/src/file_ownership/mod.rs",
+        "src-tauri/src/symbol_ownership/mod.rs",
+        "src-tauri/src/persistence/ownership_repo.rs"
+      ],
+      "a7Gap": "bind claims to Mission revision and execution generation in A7.2"
+    },
+    {
+      "ownerId": "chronicle_event",
+      "responsibility": "durable causal event sequence and audit references without a new journal",
+      "existingPaths": [
+        "src-tauri/src/event_bus/manager.rs",
+        "src-tauri/src/persistence/event_repo.rs",
+        "src-tauri/src/audit.rs"
+      ],
+      "a7Gap": "compose the minimum WorkEvent/Evidence references; do not converge every historical journal in A7 Core"
+    },
+    {
+      "ownerId": "evidence_test",
+      "responsibility": "fresh command result, artifact digest, tested OID, freshness, and A0 provenance reference",
+      "existingPaths": [
+        "src-tauri/src/control/gate_runner.rs",
+        "src-tauri/src/db/queries.rs",
+        "scripts/evidence-provenance.mjs"
+      ],
+      "a7Gap": "visible IPC currently passes no mechanical gate command; A7.2 must route the frozen command through this owner"
+    },
+    {
+      "ownerId": "review",
+      "responsibility": "gate verdict, semantic findings, reviewer lineage, and exact reviewed OID",
+      "existingPaths": [
+        "src-tauri/src/review/mod.rs",
+        "src-tauri/src/review/gates.rs",
+        "src-tauri/src/review/judge.rs",
+        "src-tauri/src/ipc/review_commands.rs"
+      ],
+      "a7Gap": "review_branch performs a hidden preparatory commit and accepts caller identity; it stays unsupported for A7 until A7.3 adds explicit candidate freeze and derived lineage"
+    },
+    {
+      "ownerId": "merge",
+      "responsibility": "immutable source/target OIDs, reviewer evidence, merge CAS, and exact integration receipt",
+      "existingPaths": [
+        "src-tauri/src/merge_intent/mod.rs",
+        "src-tauri/src/merge_intent/store.rs",
+        "src-tauri/src/persistence/merge_repo.rs",
+        "src-tauri/src/control/merge.rs",
+        "src-tauri/src/git/merge.rs"
+      ],
+      "a7Gap": "A7.3 binds the existing merge intent to Mission revision, tested evidence, and computed reviewer independence"
+    },
+    {
+      "ownerId": "capability_policy",
+      "responsibility": "effect admission, terminal-write authority, approval, and resource scope",
+      "existingPaths": [
+        "src-tauri/src/command_risk/authority.rs",
+        "src-tauri/src/command_risk/gate.rs",
+        "src-tauri/src/governance/mod.rs",
+        "src-tauri/src/startup_reconciliation.rs"
+      ],
+      "a7Gap": "bind only the enabled journey actions in A7.1-A7.3; all other faces remain unsupported"
+    },
+    {
+      "ownerId": "frontend_projection",
+      "responsibility": "render backend TaskGraph/Mission projections and issue intents only",
+      "existingPaths": [
+        "src/shared/hooks/useTaskGraph.ts",
+        "src/features/orchestrator/OrchestratorPanel.tsx"
+      ],
+      "a7Gap": "A7 UI may render packet/progress projections but may not own Mission, review, or completion state"
+    }
+  ],
+  "schemaCatalogRef": {
+    "catalogId": "aelyris.a7_core_schema_catalog/v1",
+    "definitionLanguage": "aelyris-field-map/v1",
+    "digestAlgorithm": "sha256",
+    "catalogDigest": "5c6cc8f6dc98a61fd87143ce2d32493793787dd2b593d62623089de042edc1ea"
+  },
+  "schemaCatalog": {
+    "AcceptanceClause": {
+      "schemaId": "aelyris.acceptance_clause/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "clauseId": "uuidv7",
+        "statement": "string",
+        "requiredGateIds": "string[]",
+        "requiredArtifactIds": "string[]",
+        "completionBlocking": "boolean"
+      }
+    },
+    "RiskPolicy": {
+      "schemaId": "aelyris.risk_policy/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "policyId": "string",
+        "policyVersion": "string",
+        "maximumRiskClass": "low|moderate|high|irreversible",
+        "humanApprovalRiskClasses": "string[]",
+        "reconciliationPolicyId": "string"
+      }
+    },
+    "BudgetPolicy": {
+      "schemaId": "aelyris.budget_policy/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "policyId": "string",
+        "policyVersion": "string",
+        "limits": "BudgetLimit[]",
+        "exhaustionResult": "blocked|operator_required"
+      }
+    },
+    "RuntimePolicy": {
+      "schemaId": "aelyris.runtime_policy/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "policyId": "string",
+        "policyVersion": "string",
+        "allowedRuntimeDomainIds": "string[]",
+        "requiredAdapterCapabilities": "AdapterCapability[]",
+        "visiblePtyRequired": "boolean"
+      }
+    },
+    "GateRequirement": {
+      "schemaId": "aelyris.gate_requirement/v1",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "gateId": "string",
+        "contractVersion": "string",
+        "commandArgv": "string[]",
+        "cwdRole": "mission_worktree",
+        "requiredResult": "passed",
+        "freshnessPolicy": "EvidenceFreshnessPolicy"
+      }
+    },
+    "ArtifactRequirement": {
+      "schemaId": "aelyris.artifact_requirement/v1",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "artifactId": "string",
+        "kind": "string",
+        "locatorPolicyId": "string",
+        "digestAlgorithm": "sha256",
+        "freshnessPolicy": "EvidenceFreshnessPolicy"
+      }
+    },
+    "CapabilityTemplate": {
+      "schemaId": "aelyris.capability_template/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "capabilityTemplateId": "string",
+        "version": "string",
+        "action": "string",
+        "scopeKinds": "string[]",
+        "oneUseRequired": "boolean",
+        "approvalPolicyId": "string"
+      }
+    },
+    "CapabilityScope": {
+      "schemaId": "aelyris.capability_scope/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "scopeId": "string",
+        "kind": "filesystem|symbol|network|secret|budget",
+        "resourceRequest": "ResourceRequest",
+        "operations": "string[]"
+      }
+    },
+    "ProofCoverage": {
+      "schemaId": "aelyris.proof_coverage/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "acceptance": "AcceptanceCoverageEntry[]",
+        "requiredClauseCount": "u32",
+        "satisfiedClauseCount": "u32",
+        "blockedClauseCount": "u32",
+        "freshness": "current|stale"
+      }
+    },
+    "RepositoryTruth": {
+      "schemaId": "aelyris.repository_truth/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "baseOid": "git_oid",
+        "headOid": "git_oid",
+        "worktreeClean": "boolean",
+        "diffResources": "RepositoryResourceRef[]",
+        "ownershipComplete": "boolean",
+        "observedAt": "rfc3339",
+        "evidenceRefs": "EvidenceRefV2[]"
+      }
+    },
+    "RedactionRecord": {
+      "schemaId": "aelyris.redaction_record/v1",
+      "ownerId": "chronicle_event",
+      "additionalProperties": false,
+      "fields": {
+        "policyId": "string",
+        "redactedFieldPaths": "string[]",
+        "secretMatchCount": "u32",
+        "redactedContentDigest": "sha256"
+      }
+    },
+    "SymbolIntent": {
+      "schemaId": "aelyris.symbol_intent/v1",
+      "ownerId": "ownership",
+      "additionalProperties": false,
+      "fields": {
+        "resourceRef": "RepositoryResourceRef",
+        "language": "string",
+        "symbolKind": "string",
+        "qualifiedName": "string",
+        "stableLocator": "string",
+        "operation": "read|update|create|delete"
+      }
+    },
+    "ResourceIntent": {
+      "schemaId": "aelyris.resource_intent/v1",
+      "ownerId": "ownership",
+      "additionalProperties": false,
+      "fields": {
+        "resourceRef": "RepositoryResourceRef",
+        "operation": "read|update|create|delete",
+        "expectedBaseDigest": "sha256?"
+      }
+    },
+    "ResourceRequest": {
+      "schemaId": "aelyris.resource_request/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "kind": "filesystem|symbol|network|secret|budget",
+        "locator": "string",
+        "operations": "string[]",
+        "requestedBoundary": "string"
+      }
+    },
+    "CanonicalResourceHandle": {
+      "schemaId": "aelyris.canonical_resource_handle/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "finalResolvedPath": "string",
+        "volumeSerial": "string?",
+        "fileIdentity": "string?",
+        "normalizationPolicyId": "string",
+        "reparseTraversal": "string[]",
+        "pathClass": "local|unc|device",
+        "alternateDataStream": "string?",
+        "approvedRootHandleDigest": "sha256"
+      }
+    },
+    "CanonicalResourceScope": {
+      "schemaId": "aelyris.canonical_resource_scope/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "root": "CanonicalResourceHandle",
+        "operations": "string[]",
+        "recursive": "boolean",
+        "revalidateOnOpenOrRename": "boolean"
+      }
+    },
+    "NetworkScope": {
+      "schemaId": "aelyris.network_scope/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "scheme": "string",
+        "canonicalHost": "string",
+        "allowedResolvedIpCidrs": "string[]",
+        "port": "u16",
+        "maxRedirects": "u16",
+        "redirectPolicyId": "string",
+        "tlsIdentityPolicyId": "string",
+        "privateAddressPolicy": "deny|allow_explicit",
+        "metadataEndpointPolicy": "deny|allow_explicit"
+      }
+    },
+    "BudgetLimit": {
+      "schemaId": "aelyris.budget_limit/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "kind": "currency|tokens|wall_time_ms|cpu_ms|disk_bytes|network_bytes",
+        "unit": "string",
+        "amount": "decimal_string",
+        "currencyIsoCode": "string?",
+        "hard": "boolean"
+      }
+    },
+    "NormalizedPolicyScore": {
+      "schemaId": "aelyris.normalized_policy_score/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "scale": "integer_0_to_100",
+        "value": "integer_0_to_100",
+        "policyVersion": "string",
+        "evidenceRefs": "EvidenceRefV2[]"
+      }
+    },
+    "EvidenceFreshnessPolicy": {
+      "schemaId": "aelyris.evidence_freshness_policy/v1",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "policyId": "string",
+        "maxAgeMs": "decimal_string",
+        "requireSameHeadOid": "boolean",
+        "requireSameContractVersion": "boolean",
+        "requireSameEnvironmentFingerprint": "boolean"
+      }
+    },
+    "IntegrityEnvelope": {
+      "schemaId": "aelyris.integrity_envelope/v1",
+      "ownerId": "chronicle_event",
+      "additionalProperties": false,
+      "fields": {
+        "tier": "content_addressed|local_signed|externally_anchored",
+        "digestAlgorithm": "sha256",
+        "digest": "sha256",
+        "previousDigest": "sha256?",
+        "anchorId": "string",
+        "verificationPolicyId": "string",
+        "signerKeyId": "string?",
+        "signatureRef": "string?",
+        "externalAnchorRef": "string?"
+      }
+    },
+    "EvidenceLocator": {
+      "schemaId": "aelyris.evidence_locator/v1",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "kind": "artifact_path|command_record|event_range|external_receipt",
+        "value": "string",
+        "workspaceRelative": "boolean"
+      }
+    },
+    "AcceptanceCoverageEntry": {
+      "schemaId": "aelyris.acceptance_coverage_entry/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "clauseId": "uuidv7",
+        "requiredGateIds": "string[]",
+        "evidenceRefs": "EvidenceRefV2[]",
+        "freshness": "current|stale",
+        "result": "passed|failed|blocked",
+        "blockerIds": "uuidv7[]"
+      }
+    },
+    "ChronicleRangeProof": {
+      "schemaId": "aelyris.chronicle_range_proof/v1",
+      "ownerId": "chronicle_event",
+      "additionalProperties": false,
+      "fields": {
+        "startSequence": "u64_decimal_string",
+        "endSequence": "u64_decimal_string",
+        "anchorId": "string",
+        "rootDigest": "sha256",
+        "projectionHash": "sha256",
+        "integrity": "IntegrityEnvelope"
+      }
+    },
+    "ReviewerIndependenceProof": {
+      "schemaId": "aelyris.reviewer_independence_proof/v1",
+      "ownerId": "review",
+      "additionalProperties": false,
+      "fields": {
+        "policyVersion": "string",
+        "reviewerPrincipalId": "uuidv7",
+        "builderPrincipalId": "uuidv7",
+        "reviewerLogicalSessionId": "uuidv7",
+        "builderLogicalSessionId": "uuidv7",
+        "reviewerLineageRef": "VersionedRef",
+        "builderLineageRef": "VersionedRef",
+        "sharedAncestorOrFork": "boolean",
+        "disqualifyingRelations": "string[]",
+        "differentProviderRequired": "boolean",
+        "eligible": "boolean",
+        "computedByEventId": "uuidv7",
+        "evidenceRefs": "EvidenceRefV2[]"
+      }
+    },
+    "SafeOperatorCommand": {
+      "schemaId": "aelyris.safe_operator_command/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "argv": "string[]",
+        "cwd": "CanonicalResourceHandle",
+        "expectedResult": "string",
+        "requiredCapabilityTemplateId": "string",
+        "redactionPolicyId": "string"
+      }
+    },
+    "RecoveryInstruction": {
+      "schemaId": "aelyris.recovery_instruction/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "instructionId": "uuidv7",
+        "preconditions": "string[]",
+        "action": "string",
+        "resourceRequest": "ResourceRequest",
+        "requiredCapabilityTemplateId": "string",
+        "expectedState": "string",
+        "evidenceRefs": "EvidenceRefV2[]"
+      }
+    },
+    "ReplayInstruction": {
+      "schemaId": "aelyris.replay_instruction/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "instructionId": "uuidv7",
+        "preconditions": "string[]",
+        "chronicleRange": "ChronicleRangeProof",
+        "action": "string",
+        "requiredCapabilityTemplateId": "string",
+        "expectedResult": "string",
+        "evidenceRefs": "EvidenceRefV2[]"
+      }
+    },
+    "AdapterCapability": {
+      "schemaId": "aelyris.adapter_capability/v1",
+      "ownerId": "runtime_visible_pty",
+      "values": [
+        "prompt",
+        "steer",
+        "interrupt",
+        "resume",
+        "fork",
+        "approve_reject",
+        "tool_event_stream",
+        "diff_stream",
+        "usage_cost",
+        "attention_state",
+        "session_export"
+      ]
+    },
+    "CapabilityUnlock": {
+      "schemaId": "aelyris.capability_unlock/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "unlockId": "uuidv7",
+        "capability": "string",
+        "conditionClauseIds": "uuidv7[]",
+        "availableAfterWorkUnitId": "uuidv7"
+      }
+    },
+    "DissentRecord": {
+      "schemaId": "aelyris.dissent_record/v1",
+      "ownerId": "review",
+      "additionalProperties": false,
+      "fields": {
+        "principal": "PrincipalRef",
+        "rubricId": "string",
+        "summary": "string",
+        "evidenceRefs": "string[]"
+      }
+    },
+    "NonBlockingResidualRisk": {
+      "schemaId": "aelyris.non_blocking_residual_risk/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "riskId": "uuidv7",
+        "summary": "string",
+        "owner": "string",
+        "mitigation": "string",
+        "evidenceRefs": "EvidenceRefV2[]"
+      }
+    },
+    "PrincipalRef": {
+      "schemaId": "aelyris.principal_ref/v1",
+      "ownerId": "capability_policy",
+      "additionalProperties": false,
+      "fields": {
+        "principalId": "uuidv7",
+        "kind": "human_operator|local_agent|remote_principal|extension_driver|system_reconciler",
+        "workspaceId": "uuidv7",
+        "logicalSessionId": "uuidv7?"
+      }
+    },
+    "ProvenanceEnvelopeRef": {
+      "schemaId": "aelyris.evidence-provenance/v1",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "schema": "aelyris.evidence-provenance/v1",
+        "artifactPath": "string",
+        "headOid": "git_oid",
+        "verifierDigest": "sha256",
+        "inputHashes": "Record<string,sha256>",
+        "executionIdentity": "string",
+        "generatedAt": "rfc3339",
+        "freshnessPolicyId": "string",
+        "envelopeDigest": "sha256"
+      }
+    },
+    "RepositoryResourceRef": {
+      "schemaId": "aelyris.repository_resource_ref/v1",
+      "ownerId": "ownership",
+      "additionalProperties": false,
+      "fields": {
+        "repositoryId": "uuidv7",
+        "repoRelativePath": "string",
+        "baseOid": "git_oid",
+        "headOid": "git_oid",
+        "blobOid": "git_oid?"
+      }
+    },
+    "TeamRolePolicy": {
+      "schemaId": "aelyris.team_role_policy/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "roleId": "string",
+        "capabilityProfileIds": "string[]",
+        "budgetProfileId": "string",
+        "proofProfileId": "string",
+        "mayImplement": "boolean",
+        "mayReview": "boolean",
+        "mayAuthorizeCompletion": "boolean"
+      }
+    },
+    "TeamExecutionPolicy": {
+      "schemaId": "aelyris.team_execution_policy/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "roles": "TeamRolePolicy[]",
+        "reviewerIndependencePolicyId": "string",
+        "ownershipPolicyId": "string",
+        "governancePolicyId": "string"
+      }
+    },
+    "TypedBlocker": {
+      "schemaId": "aelyris.typed_blocker/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "blockerId": "uuidv7",
+        "class": "repo|policy|operator|external",
+        "owner": "string",
+        "condition": "string",
+        "exactNextAction": "string",
+        "requiredAuthority": "string",
+        "requiredInputs": "string[]",
+        "exactCommand": "SafeOperatorCommand?",
+        "expectedResult": "string",
+        "expectedArtifacts": "string[]",
+        "acceptanceImpact": "string[]",
+        "evidenceRefs": "EvidenceRefV2[]",
+        "firstObservedAt": "rfc3339",
+        "lastConfirmedAt": "rfc3339",
+        "freshness": "EvidenceFreshnessPolicy"
+      }
+    },
+    "VersionedRef": {
+      "schemaId": "aelyris.versioned_ref/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "id": "string",
+        "contractVersion": "string",
+        "contentDigest": "sha256"
+      }
+    },
+    "MissionDefinitionRevision": {
+      "schemaId": "aelyris.mission_definition/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "schema": "aelyris.mission_definition/v1",
+        "missionId": "uuidv7",
+        "revision": "u64",
+        "workspaceId": "uuidv7",
+        "projectId": "uuidv7",
+        "goal": "string",
+        "desiredOutcome": "string",
+        "capabilityOutcome": "string",
+        "nonGoals": "string[]",
+        "baseOid": "git_oid",
+        "acceptance": "AcceptanceClause[]",
+        "riskPolicy": "RiskPolicy",
+        "budgetPolicy": "BudgetPolicy",
+        "runtimePolicy": "RuntimePolicy",
+        "teamPolicy": "TeamExecutionPolicy",
+        "workGraphDefinitionRevision": "u64",
+        "createdBy": "uuidv7",
+        "approvedBy": "uuidv7?",
+        "createdAt": "rfc3339"
+      }
+    },
+    "WorkUnitDefinition": {
+      "schemaId": "aelyris.work_unit_definition/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "workUnitId": "uuidv7",
+        "missionId": "uuidv7",
+        "definitionRevision": "u64",
+        "title": "string",
+        "objective": "string",
+        "dependsOn": "uuidv7[]",
+        "requiredRole": "string",
+        "completionAuthorityRoleIds": "string[]",
+        "requiredAdapterCapabilities": "AdapterCapability[]",
+        "fileIntents": "ResourceIntent[]",
+        "symbolIntents": "SymbolIntent[]",
+        "requiredCapabilityTemplates": "CapabilityTemplate[]",
+        "requiredGates": "GateRequirement[]",
+        "requiredArtifacts": "ArtifactRequirement[]",
+        "riskClass": "low|moderate|high|irreversible",
+        "capabilityUnlock": "CapabilityUnlock"
+      }
+    },
+    "EvidenceRefV2": {
+      "schemaId": "aelyris.evidence_ref/v2",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "evidenceId": "uuidv7",
+        "kind": "command|artifact|gate|review|approval|merge|operator",
+        "locator": "EvidenceLocator",
+        "contentDigestAlgorithm": "sha256",
+        "contentDigest": "sha256",
+        "producedByEventId": "uuidv7",
+        "environmentFingerprint": "string?",
+        "baseOid": "git_oid?",
+        "headOid": "git_oid?",
+        "generatedAt": "rfc3339",
+        "validUntil": "rfc3339?",
+        "redactionCount": "u32",
+        "provenance": "ProvenanceEnvelopeRef",
+        "integrity": "IntegrityEnvelope"
+      }
+    },
+    "GateExecutionRecord": {
+      "schemaId": "aelyris.gate_execution_record/v1",
+      "ownerId": "evidence_test",
+      "additionalProperties": false,
+      "fields": {
+        "gateId": "string",
+        "contractVersion": "string",
+        "commandFingerprint": "sha256",
+        "runtimeDomainId": "uuidv7",
+        "baseOid": "git_oid",
+        "headOid": "git_oid",
+        "startedAt": "rfc3339",
+        "endedAt": "rfc3339",
+        "result": "passed|failed|blocked|cancelled",
+        "artifactRefs": "EvidenceRefV2[]",
+        "freshness": "current|stale",
+        "blocker": "TypedBlocker?"
+      }
+    },
+    "ReviewRecord": {
+      "schemaId": "aelyris.review_record/v1",
+      "ownerId": "review",
+      "additionalProperties": false,
+      "fields": {
+        "reviewId": "uuidv7",
+        "missionId": "uuidv7",
+        "missionRevision": "u64",
+        "workUnitId": "uuidv7",
+        "reviewedOid": "git_oid",
+        "testedEvidenceRef": "EvidenceRefV2",
+        "reviewer": "PrincipalRef",
+        "reviewerIndependence": "ReviewerIndependenceProof",
+        "verdict": "accepted|changes_requested|blocked",
+        "dissent": "DissentRecord[]",
+        "findings": "string[]"
+      }
+    },
+    "ExactOidSettlement": {
+      "schemaId": "aelyris.exact_oid_settlement/v1",
+      "ownerId": "merge",
+      "additionalProperties": false,
+      "fields": {
+        "baseOid": "git_oid",
+        "candidateOid": "git_oid",
+        "testedOid": "git_oid",
+        "reviewedOid": "git_oid",
+        "mergeIntentSourceOid": "git_oid",
+        "mergeIntentTargetOid": "git_oid",
+        "integratedOid": "git_oid",
+        "mergeResult": "not_required|merged_exact_oid"
+      }
+    },
+    "WorkPacketBase": {
+      "schemaId": "aelyris.work_packet_base/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "packetId": "uuidv7",
+        "missionId": "uuidv7",
+        "missionRevision": "u64",
+        "workUnitId": "uuidv7",
+        "implementer": "PrincipalRef?",
+        "operator": "PrincipalRef?",
+        "adapterDescriptor": "VersionedRef?",
+        "modelRef": "VersionedRef?",
+        "skillRefs": "VersionedRef[]",
+        "environmentFingerprint": "string?",
+        "baseOid": "git_oid",
+        "headOid": "git_oid",
+        "contractProofVersion": "string",
+        "settlementExpectedVersion": "string",
+        "ownedFiles": "RepositoryResourceRef[]",
+        "ownedSymbols": "SymbolIntent[]",
+        "gateRecords": "GateExecutionRecord[]",
+        "evidenceRefs": "EvidenceRefV2[]",
+        "approvalCapabilityLeaseId": "uuidv7?",
+        "acceptanceCoverage": "AcceptanceCoverageEntry[]",
+        "chronicleRange": "ChronicleRangeProof",
+        "rollbackRecipe": "RecoveryInstruction[]",
+        "replayRecipe": "ReplayInstruction[]",
+        "supersedesPacketId": "uuidv7?",
+        "createdAt": "rfc3339",
+        "integrity": "IntegrityEnvelope"
+      }
+    },
+    "CompletedWorkPacket": {
+      "schemaId": "aelyris.completed_work_packet/v1",
+      "ownerId": "mission_work_settlement",
+      "extends": "WorkPacketBase",
+      "additionalProperties": false,
+      "fields": {
+        "schema": "aelyris.completed_work_packet/v1",
+        "implementer": "PrincipalRef",
+        "reviewer": "PrincipalRef",
+        "adapterDescriptor": "VersionedRef",
+        "environmentFingerprint": "string",
+        "reviewerVerdict": "accepted",
+        "reviewerIndependence": "ReviewerIndependenceProof",
+        "dissent": "DissentRecord[]",
+        "outcome": "accepted|merged",
+        "mergeIntentId": "uuidv7?",
+        "mergeResult": "(not_required|merged_exact_oid)?",
+        "integratedOid": "git_oid",
+        "fulfilledObligationRefs": "VersionedRef[]",
+        "residualRisks": "NonBlockingResidualRisk[]",
+        "repoBlockers": "[]",
+        "policyBlockers": "[]",
+        "operatorBlockers": "[]",
+        "externalBlockers": "[]"
+      }
+    },
+    "BlockedWorkPacket": {
+      "schemaId": "aelyris.blocked_work_packet/v1",
+      "ownerId": "mission_work_settlement",
+      "extends": "WorkPacketBase",
+      "additionalProperties": false,
+      "fields": {
+        "schema": "aelyris.blocked_work_packet/v1",
+        "outcome": "blocked_handoff",
+        "repoBlockers": "TypedBlocker[]",
+        "policyBlockers": "TypedBlocker[]",
+        "operatorBlockers": "TypedBlocker[]",
+        "externalBlockers": "TypedBlocker[]",
+        "reviewer": "PrincipalRef?",
+        "reviewerVerdict": "(accepted|changes_requested|blocked)?",
+        "reviewerIndependence": "ReviewerIndependenceProof?",
+        "dissent": "DissentRecord[]",
+        "exactNextAction": "string",
+        "requiredInputs": "string[]",
+        "expectedArtifacts": "string[]"
+      }
+    },
+    "MissionCompletionPacket": {
+      "schemaId": "aelyris.mission_completion_packet/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "schema": "aelyris.mission_completion_packet/v1",
+        "packetId": "uuidv7",
+        "missionId": "uuidv7",
+        "missionRevision": "u64",
+        "requiredWorkUnitPacketIdsByWorkUnit": "Record<uuidv7,uuidv7>",
+        "missionAcceptanceCoverage": "AcceptanceCoverageEntry[]",
+        "missionGateRecords": "GateExecutionRecord[]",
+        "chronicleRange": "ChronicleRangeProof",
+        "finalHeadOid": "git_oid",
+        "integratedOid": "git_oid",
+        "contractProofVersion": "string",
+        "settlementExpectedVersion": "string",
+        "fulfilledObligationRefs": "VersionedRef[]",
+        "mergeResult": "merged_exact_oid",
+        "repoBlockers": "[]",
+        "policyBlockers": "[]",
+        "operatorBlockers": "[]",
+        "externalBlockers": "[]",
+        "createdAt": "rfc3339",
+        "integrity": "IntegrityEnvelope"
+      }
+    },
+    "A7ContractVersions": {
+      "schemaId": "aelyris.a7_contract_versions/v1",
+      "ownerId": "mission_work_settlement",
+      "additionalProperties": false,
+      "fields": {
+        "missionRevision": "u64",
+        "workUnitDefinitionRevision": "u64",
+        "workGraphDefinitionRevision": "u64",
+        "contractProofVersion": "string",
+        "settlementExpectedVersion": "string",
+        "schemaVersions": "Record<string,string>",
+        "invalidationReason": "string?"
+      }
+    }
+  },
+  "minimumContracts": {
+    "mission": { "schemaRef": "MissionDefinitionRevision", "ownerId": "mission_work_settlement" },
+    "workUnit": { "schemaRef": "WorkUnitDefinition", "ownerId": "mission_work_settlement" },
+    "evidence": { "schemaRef": "EvidenceRefV2", "ownerId": "evidence_test" },
+    "review": { "schemaRef": "ReviewRecord", "ownerId": "review" },
+    "exactOid": { "schemaRef": "ExactOidSettlement", "ownerId": "merge" },
+    "completedWork": { "schemaRef": "CompletedWorkPacket", "ownerId": "mission_work_settlement" },
+    "blockedWork": { "schemaRef": "BlockedWorkPacket", "ownerId": "mission_work_settlement" },
+    "missionCompletion": { "schemaRef": "MissionCompletionPacket", "ownerId": "mission_work_settlement" },
+    "versioning": { "schemaRef": "A7ContractVersions", "ownerId": "mission_work_settlement" }
+  },
+  "oidInvariants": [
+    "testedOid equals candidateOid",
+    "reviewedOid equals testedOid",
+    "mergeIntentSourceOid equals reviewedOid",
+    "integratedOid is the exact merge receipt OID for the frozen target",
+    "any OID or contract version change invalidates settlement and requires fresh test and review"
+  ],
+  "faceDisposition": [
+    {
+      "journeyStep": "request",
+      "ipc": { "action": "task_submit_plan", "disposition": "route", "seam": "TaskManager::submit_plan -> TaskRepo", "reason": "extend the existing TaskGraph writer with accepted Mission revision and request digest in A7.1" },
+      "mcp": { "action": "aelyris.task.create", "disposition": "compatibility_no_a7_authority", "seam": "TaskManager", "reason": "the compatibility endpoint still executes, but caller-shaped Task has no accepted Mission revision or fixed-plan digest and grants no A7 authority" },
+      "pty": { "action": "terminal prompt text", "disposition": "no_a7_authority", "seam": "none", "reason": "terminal text may execute as input but is not request or Mission authority" }
+    },
+    {
+      "journeyStep": "versioned_plan_preview",
+      "ipc": { "action": "orchestrator_plan", "disposition": "route", "seam": "TaskManager read projection", "reason": "A7.1 adds the accepted revision and non-effectful preview to the existing read owner" },
+      "mcp": { "action": "aelyris.orchestrator.plan", "disposition": "compatibility_no_a7_authority", "seam": "TaskManager read projection", "reason": "the compatibility read still executes but omits Mission revision, owned targets, proof, risk, and merge policy and grants no A7 authority" },
+      "pty": { "action": "terminal plan text", "disposition": "no_a7_authority", "seam": "none", "reason": "terminal text may be displayed but cannot become an accepted versioned plan" }
+    },
+    {
+      "journeyStep": "visible_implementation",
+      "ipc": { "action": "orchestrator_step", "disposition": "route", "seam": "run_step_visible -> PaneFleet -> PtyManager", "reason": "this is the existing visible TaskGraph-owned dispatch path" },
+      "mcp": { "action": "aelyris.orchestrator.step | aelyris.spawn_agent | aelyris.agent.spawn_visible", "disposition": "compatibility_no_a7_authority", "seam": "run_step or direct spawn", "reason": "the compatibility actions still execute, but the MCP loop is headless and direct spawn is not accepted-plan, Mission, or ownership bound" },
+      "pty": { "action": "PaneFleet initial prompt and process", "disposition": "route", "seam": "PaneFleet -> PtyManager -> TerminalInputAuthority", "reason": "visible execution uses the existing PTY generation and single terminal-write authority" }
+    },
+    {
+      "journeyStep": "fresh_tests",
+      "ipc": { "action": "orchestrator_step test phase", "disposition": "route", "seam": "ProcessGateRunner", "reason": "A7.2 wires the frozen argv into the existing gate runner and binds its result to the candidate OID" },
+      "mcp": { "action": "aelyris.orchestrator.step.gateCommands", "disposition": "compatibility_no_a7_authority", "seam": "ProcessGateRunner", "reason": "the compatibility path still executes but accepts caller-selected gate commands without the fixed Mission contract and grants no A7 evidence authority" },
+      "pty": { "action": "terminal test output", "disposition": "no_a7_authority", "seam": "command evidence projection only", "reason": "raw terminal output may be displayed but cannot prove a fresh gate or tested OID" }
+    },
+    {
+      "journeyStep": "independent_review",
+      "ipc": { "action": "review_branch", "disposition": "compatibility_no_a7_authority", "seam": "review module", "reason": "the compatibility command still executes but performs a hidden preparatory commit and accepts caller reviewer identity; it grants no A7 review authority" },
+      "mcp": { "action": "aelyris.orchestrator.step reviewerId and gates", "disposition": "compatibility_no_a7_authority", "seam": "review module", "reason": "the compatibility action still executes, but caller-supplied reviewer and verdict are not independent-review authority" },
+      "pty": { "action": "agent self-review text", "disposition": "no_a7_authority", "seam": "none", "reason": "implementer text may exist but cannot establish reviewer independence or exact-OID review" }
+    },
+    {
+      "journeyStep": "exact_oid_accept_merge",
+      "ipc": { "action": "request_merge_intent + approve_merge_intent", "disposition": "route", "seam": "MergeIntentStore -> MergeRepo -> control::merge", "reason": "the existing immutable source/target OID and CAS owner is extended with Mission and review evidence in A7.3" },
+      "mcp": { "action": "aelyris.request_merge + aelyris.review.approve", "disposition": "compatibility_no_a7_authority", "seam": "MergeIntentStore", "reason": "the compatibility actions still execute, but the direct face accepts caller authority and lacks accepted Mission/review lineage binding" },
+      "pty": { "action": "git merge command text", "disposition": "no_a7_authority", "seam": "none", "reason": "shell text may execute but is not an exact-OID merge receipt or settlement authority" }
+    },
+    {
+      "journeyStep": "immutable_completion_packet",
+      "ipc": { "action": "packet read projection after internal settlement", "disposition": "route", "seam": "TaskManager compare-and-swap -> TaskRepo", "reason": "A7.4 settles inside the existing Mission/WorkUnit owner and IPC only renders the result" },
+      "mcp": { "action": "tool success or completion text", "disposition": "compatibility_no_a7_authority", "seam": "none", "reason": "compatibility tool success still returns normally but cannot mint CompletedWorkPacket or MissionCompletionPacket" },
+      "pty": { "action": "agent done text or process exit", "disposition": "no_a7_authority", "seam": "none", "reason": "agent self-report and process exit may occur but grant zero completion credit" }
+    }
+  ],
+  "negativeScenario": {
+    "scenarioId": "a7-core-stale-tested-oid-v1",
+    "mutation": "candidate OID changes after the declared test and before independent review",
+    "requiredPacket": "aelyris.blocked_work_packet/v1",
+    "blockerClass": "repo",
+    "exactNextAction": "run the declared focused test and independent review again at the changed OID",
+    "completionCredit": false,
+    "missionState": "blocked"
+  },
+  "deferredDestinations": [
+    "proofbook_product_ui_and_recipes",
+    "fleet_briefing",
+    "broad_budget_and_cost_ux",
+    "remote_continuity",
+    "all_face_control_kernel_beyond_enabled_mission_path",
+    "provider_fabric_expansion",
+    "learning_layers"
+  ],
+  "forbiddenNewOwners": [
+    "second_mission_dag",
+    "second_operation_journal",
+    "second_runner",
+    "second_dispatcher",
+    "completion_barrier_or_table_owner",
+    "frontend_mission_or_completion_state_owner"
+  ]
+}
+```
+<!-- A7_CORE_SCOPE_LOCK_V1_END -->
+
+A7.0 freezes this record only. It implements no Mission schema, runtime action,
+packet settlement, UI state, or completion claim. A7.1 starts from the existing
+`TaskManager`/`TaskRepo` owner and the fixed fixture above.
 
 ### A7.1 Request Contract And Versioned Plan Preview
 
@@ -1681,7 +2705,8 @@ system.
   current OID through existing authority and execution-fence owners;
 - run the declared tests after implementation and persist exact command, result,
   evidence digest, and tested OID;
-- unused adapters and destination surfaces remain disabled or typed unsupported.
+- unused adapters and destination surfaces retain their compatibility behavior but
+  receive no A7 Mission authority or completion credit.
 
 ### A7.3 Independent Review And Exact-OID Acceptance
 

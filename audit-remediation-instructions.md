@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A7`.
-ACTIVE SLICE: `A7.0`.
-LAST COMPLETED SLICE: `A6.8`.
+ACTIVE SLICE: `A7.1`.
+LAST COMPLETED SLICE: `A7.0`.
 NEXT PHASE: `A8` after A7 combined acceptance.
-NEXT IMPLEMENTATION SLICE: `A7.0`.
+NEXT IMPLEMENTATION SLICE: `A7.1`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -47,9 +47,13 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    five jobs, then emitted A6 `phaseComplete=true` and frontier `A7.0`. The
    workflow-level conclusion remains failure only because the separately owned
    release-hardening stack-risk gate is unresolved; it was not promoted into or
-   hidden by A6. A7.0 scope lock and owner inventory is now active. Do not reopen
-   A4 or completed A6 owners without a fresh regression, and do not begin A7.1
-   implementation until A7.0 freezes the canonical fixture and responsibility map.
+   hidden by A6. A7.0 scope lock and owner inventory is complete. The v1 machine
+   record freezes one request, accepted plan, exact test, independent-review and
+   exact-OID outcome, all minimum type/contract owners, enabled-face dispositions,
+   blocked negative case, deferred set, and forbidden second owners. Its focused
+   verifier passed with no runtime/test-source diff. A7.1 request contract and
+   versioned plan preview is now active. Do not reopen A4, completed A6, or A7.0
+   without a fresh regression.
 
 ## Objective
 
@@ -75,7 +79,7 @@ A4.12 complete
   -> A6.3 IPC adapter complete -> A6.4 MCP catalog and dispatch complete
   -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI complete
   -> A6.7 duplicate/unowned infrastructure complete -> A6.8 combined acceptance
-  -> A7.0 scope lock -> one canonical A7 Core Mission
+  -> A7.0 scope lock complete -> A7.1 request/plan -> one canonical A7 Core Mission
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
@@ -100,7 +104,8 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. Enter **A7.0** as a scope-lock gate before A7 runtime work. A7 Core proves only:
+3. **A7.0 is complete; enter A7.1.** The accepted scope lock precedes A7 runtime
+   work. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
    Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote

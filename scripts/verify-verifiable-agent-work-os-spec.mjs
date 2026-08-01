@@ -39,6 +39,75 @@ function missingFrom(text, required) {
   return required.filter((clause) => !normalized.includes(normalize(clause)));
 }
 
+function duplicateJsonKeys(text) {
+  const stack = [];
+  const duplicates = [];
+  let index = 0;
+  const skipWhitespace = () => {
+    while (/\s/.test(text[index] ?? "")) index += 1;
+  };
+  const readString = () => {
+    const start = index;
+    index += 1;
+    while (index < text.length) {
+      if (text[index] === "\\") index += 2;
+      else if (text[index++] === '"') break;
+    }
+    return JSON.parse(text.slice(start, index));
+  };
+  while (index < text.length) {
+    skipWhitespace();
+    const token = text[index];
+    if (token === '"') {
+      const key = readString();
+      const after = index;
+      skipWhitespace();
+      const frame = stack.at(-1);
+      if (text[index] === ":" && frame?.kind === "object" && frame.expectingKey) {
+        if (frame.keys.has(key)) duplicates.push(key);
+        frame.keys.add(key);
+        frame.expectingKey = false;
+      }
+      index = after;
+    } else if (token === "{") {
+      stack.push({ kind: "object", keys: new Set(), expectingKey: true });
+      index += 1;
+    } else if (token === "[") {
+      stack.push({ kind: "array" });
+      index += 1;
+    } else if (token === "}" || token === "]") {
+      stack.pop();
+      index += 1;
+    } else if (token === ",") {
+      const frame = stack.at(-1);
+      if (frame?.kind === "object") frame.expectingKey = true;
+      index += 1;
+    } else {
+      index += 1;
+    }
+  }
+  return duplicates;
+}
+
+function markedJson(text, marker) {
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(
+    new RegExp(
+      `<!-- ${escaped}_BEGIN -->\\s*\\x60\\x60\\x60json\\s*([\\s\\S]*?)\\s*\\x60\\x60\\x60\\s*<!-- ${escaped}_END -->`,
+    ),
+  );
+  if (!match) return { value: null, raw: null, error: `missing ${marker} marked JSON block` };
+  try {
+    const duplicates = duplicateJsonKeys(match[1]);
+    if (duplicates.length > 0) {
+      return { value: null, raw: match[1], error: `${marker} duplicate JSON keys: ${duplicates.join(", ")}` };
+    }
+    return { value: JSON.parse(match[1]), raw: match[1], error: null };
+  } catch (error) {
+    return { value: null, raw: match[1], error: `${marker} JSON parse failed: ${error.message}` };
+  }
+}
+
 function backtickField(text, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.match(new RegExp(`^${escaped}:\\s*\\x60([^\\x60]+)\\x60`, "m"))?.[1] ?? null;
@@ -56,12 +125,62 @@ const currentFrontier = {
   nextImplementationSlice: backtickField(files.workOrder, "NEXT IMPLEMENTATION SLICE"),
 };
 
+const a7ScopeLockParse = markedJson(files.design, "A7_CORE_SCOPE_LOCK_V1");
+const a7ScopeLock = a7ScopeLockParse.value;
+
 function headingIds(text, pattern) {
   return [...text.matchAll(pattern)].map((match) => match[1]);
 }
 
 function exactSequence(actual, expected) {
   return JSON.stringify(actual) === JSON.stringify(expected);
+}
+
+function exactSet(actual, expected) {
+  return (
+    Array.isArray(actual) &&
+    exactSequence([...actual].sort(), [...expected].sort()) &&
+    new Set(actual).size === actual.length
+  );
+}
+
+function keyedBy(items, field) {
+  if (!Array.isArray(items)) return new Map();
+  return new Map(items.map((item) => [item?.[field], item]));
+}
+
+function exactKeys(value, expected) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && exactSet(Object.keys(value), expected);
+}
+
+function uniqueBy(items, field) {
+  return Array.isArray(items) && new Set(items.map((item) => item?.[field])).size === items.length;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function unresolvedCatalogTypeRefs(catalog) {
+  if (catalog === null || typeof catalog !== "object" || Array.isArray(catalog)) return ["<invalid-catalog>"];
+  const known = new Set(Object.keys(catalog));
+  const builtinNamedTypes = new Set(["Record"]);
+  const referenced = new Set();
+  for (const definition of Object.values(catalog)) {
+    if (typeof definition?.extends === "string") referenced.add(definition.extends);
+    for (const expression of Object.values(definition?.fields ?? {})) {
+      if (typeof expression !== "string") continue;
+      for (const token of expression.match(/\b[A-Z][A-Za-z0-9]*\b/g) ?? []) referenced.add(token);
+    }
+  }
+  return [...referenced].filter((name) => !builtinNamedTypes.has(name) && !known.has(name)).sort();
 }
 
 function sha256(text) {
@@ -280,7 +399,6 @@ const requiredRequirementsClauses = [
 const requiredPlanClauses = [
   "A6.2v1",
   "Verifiable Agent Work OS Architecture Review",
-  "A6.2e1 remains the next implementation slice",
   "A7 - Evidence-Backed Core Mission Loop",
   "A7.0 - Core Mission Scope Lock And Owner Inventory",
   "A7.5 - Canonical Core Mission Combined Acceptance",
@@ -294,16 +412,19 @@ const requiredPlanClauses = [
   "V1-R1 structured state authority/explainability",
   "V3a adds addressed typed messages",
   "proof-preserving PB-6",
+  "aelyris.a7_core_scope_lock/v1",
+  "A7.0 scope lock is accepted",
+  "A7.1 is the next implementation slice",
 ];
 
 const requiredWorkOrderClauses = [
-  "CURRENT PHASE: `A4`",
+  "CURRENT PHASE: `A7`",
   "ACTIVE SLICE:",
   "LAST COMPLETED SLICE:",
   "NEXT IMPLEMENTATION SLICE:",
-  "resume at A6.2e1",
-  "do not mix A6/A7 work into A4",
   "Execution Order And Complexity Stop Rules",
+  "A7.0 scope lock and owner inventory is complete",
+  "A7.1 request contract and versioned plan preview is now active",
 ];
 
 const requiredArchitectureClauses = [
@@ -429,9 +550,9 @@ for (const [key, text] of Object.entries({
 
 const expectedA7Ids = ["0", "1", "2", "3", "4", "5"];
 const a7Headings = {
-  design: headingIds(files.design, /^### A7\.(\d+)\b/gm),
-  roadmap: headingIds(files.roadmap, /^### A7\.(\d+)\b/gm),
-  plan: headingIds(files.plan, /^### A7\.(\d+)\b/gm),
+  design: headingIds(files.design, /^### (?:\*\*)?A7\.(\d+)\b/gm),
+  roadmap: headingIds(files.roadmap, /^### (?:\*\*)?A7\.(\d+)\b/gm),
+  plan: headingIds(files.plan, /^### (?:\*\*)?A7\.(\d+)\b/gm),
 };
 const expectedApexIds = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 const apexHeadings = headingIds(files.roadmap, /^### Apex V(\d+)\b/gm);
@@ -490,6 +611,355 @@ const deferredA7ScopeClauses = [
 ];
 const missingCanonicalA7Scope = missingFrom(files.plan, canonicalA7ScopeClauses);
 const missingDeferredA7Scope = missingFrom(files.plan, deferredA7ScopeClauses);
+
+const expectedA7Journey = [
+  "request",
+  "versioned_plan_preview",
+  "visible_implementation",
+  "fresh_tests",
+  "independent_review",
+  "exact_oid_accept_merge",
+  "immutable_completion_packet",
+];
+const expectedA7OwnerIds = [
+  "mission_work_settlement",
+  "runtime_visible_pty",
+  "ownership",
+  "chronicle_event",
+  "evidence_test",
+  "review",
+  "merge",
+  "capability_policy",
+  "frontend_projection",
+];
+const expectedMinimumTypeOwners = {
+  AcceptanceClause: ["aelyris.acceptance_clause/v1", "mission_work_settlement"],
+  RiskPolicy: ["aelyris.risk_policy/v1", "mission_work_settlement"],
+  BudgetPolicy: ["aelyris.budget_policy/v1", "mission_work_settlement"],
+  RuntimePolicy: ["aelyris.runtime_policy/v1", "mission_work_settlement"],
+  GateRequirement: ["aelyris.gate_requirement/v1", "evidence_test"],
+  ArtifactRequirement: ["aelyris.artifact_requirement/v1", "evidence_test"],
+  CapabilityTemplate: ["aelyris.capability_template/v1", "capability_policy"],
+  CapabilityScope: ["aelyris.capability_scope/v1", "capability_policy"],
+  ProofCoverage: ["aelyris.proof_coverage/v1", "mission_work_settlement"],
+  RepositoryTruth: ["aelyris.repository_truth/v1", "mission_work_settlement"],
+  RedactionRecord: ["aelyris.redaction_record/v1", "chronicle_event"],
+  SymbolIntent: ["aelyris.symbol_intent/v1", "ownership"],
+  ResourceIntent: ["aelyris.resource_intent/v1", "ownership"],
+  ResourceRequest: ["aelyris.resource_request/v1", "capability_policy"],
+  CanonicalResourceHandle: ["aelyris.canonical_resource_handle/v1", "capability_policy"],
+  CanonicalResourceScope: ["aelyris.canonical_resource_scope/v1", "capability_policy"],
+  NetworkScope: ["aelyris.network_scope/v1", "capability_policy"],
+  BudgetLimit: ["aelyris.budget_limit/v1", "capability_policy"],
+  NormalizedPolicyScore: ["aelyris.normalized_policy_score/v1", "mission_work_settlement"],
+  EvidenceFreshnessPolicy: ["aelyris.evidence_freshness_policy/v1", "evidence_test"],
+  IntegrityEnvelope: ["aelyris.integrity_envelope/v1", "chronicle_event"],
+  EvidenceLocator: ["aelyris.evidence_locator/v1", "evidence_test"],
+  AcceptanceCoverageEntry: ["aelyris.acceptance_coverage_entry/v1", "mission_work_settlement"],
+  ChronicleRangeProof: ["aelyris.chronicle_range_proof/v1", "chronicle_event"],
+  ReviewerIndependenceProof: ["aelyris.reviewer_independence_proof/v1", "review"],
+  SafeOperatorCommand: ["aelyris.safe_operator_command/v1", "mission_work_settlement"],
+  RecoveryInstruction: ["aelyris.recovery_instruction/v1", "mission_work_settlement"],
+  ReplayInstruction: ["aelyris.replay_instruction/v1", "mission_work_settlement"],
+};
+const expectedMinimumContracts = {
+  mission: ["MissionDefinitionRevision", "mission_work_settlement"],
+  workUnit: ["WorkUnitDefinition", "mission_work_settlement"],
+  evidence: ["EvidenceRefV2", "evidence_test"],
+  review: ["ReviewRecord", "review"],
+  exactOid: ["ExactOidSettlement", "merge"],
+  completedWork: ["CompletedWorkPacket", "mission_work_settlement"],
+  blockedWork: ["BlockedWorkPacket", "mission_work_settlement"],
+  missionCompletion: ["MissionCompletionPacket", "mission_work_settlement"],
+  versioning: ["A7ContractVersions", "mission_work_settlement"],
+};
+const expectedSupportingSchemas = {
+  AdapterCapability: ["aelyris.adapter_capability/v1", "runtime_visible_pty"],
+  CapabilityUnlock: ["aelyris.capability_unlock/v1", "mission_work_settlement"],
+  DissentRecord: ["aelyris.dissent_record/v1", "review"],
+  NonBlockingResidualRisk: ["aelyris.non_blocking_residual_risk/v1", "mission_work_settlement"],
+  PrincipalRef: ["aelyris.principal_ref/v1", "capability_policy"],
+  ProvenanceEnvelopeRef: ["aelyris.evidence-provenance/v1", "evidence_test"],
+  RepositoryResourceRef: ["aelyris.repository_resource_ref/v1", "ownership"],
+  TeamRolePolicy: ["aelyris.team_role_policy/v1", "mission_work_settlement"],
+  TeamExecutionPolicy: ["aelyris.team_execution_policy/v1", "mission_work_settlement"],
+  TypedBlocker: ["aelyris.typed_blocker/v1", "mission_work_settlement"],
+  VersionedRef: ["aelyris.versioned_ref/v1", "mission_work_settlement"],
+  MissionDefinitionRevision: ["aelyris.mission_definition/v1", "mission_work_settlement"],
+  WorkUnitDefinition: ["aelyris.work_unit_definition/v1", "mission_work_settlement"],
+  EvidenceRefV2: ["aelyris.evidence_ref/v2", "evidence_test"],
+  GateExecutionRecord: ["aelyris.gate_execution_record/v1", "evidence_test"],
+  ReviewRecord: ["aelyris.review_record/v1", "review"],
+  ExactOidSettlement: ["aelyris.exact_oid_settlement/v1", "merge"],
+  WorkPacketBase: ["aelyris.work_packet_base/v1", "mission_work_settlement"],
+  CompletedWorkPacket: ["aelyris.completed_work_packet/v1", "mission_work_settlement"],
+  BlockedWorkPacket: ["aelyris.blocked_work_packet/v1", "mission_work_settlement"],
+  MissionCompletionPacket: ["aelyris.mission_completion_packet/v1", "mission_work_settlement"],
+  A7ContractVersions: ["aelyris.a7_contract_versions/v1", "mission_work_settlement"],
+};
+const expectedSchemaCatalog = { ...expectedMinimumTypeOwners, ...expectedSupportingSchemas };
+const expectedA7SchemaCatalogDigest = "5c6cc8f6dc98a61fd87143ce2d32493793787dd2b593d62623089de042edc1ea";
+const expectedA7FaceSteps = expectedA7Journey;
+const expectedDeferredDestinations = [
+  "proofbook_product_ui_and_recipes",
+  "fleet_briefing",
+  "broad_budget_and_cost_ux",
+  "remote_continuity",
+  "all_face_control_kernel_beyond_enabled_mission_path",
+  "provider_fabric_expansion",
+  "learning_layers",
+];
+const expectedForbiddenA7Owners = [
+  "second_mission_dag",
+  "second_operation_journal",
+  "second_runner",
+  "second_dispatcher",
+  "completion_barrier_or_table_owner",
+  "frontend_mission_or_completion_state_owner",
+];
+
+const a7OwnerMap = keyedBy(a7ScopeLock?.ownerInventory, "ownerId");
+const a7FaceMap = keyedBy(a7ScopeLock?.faceDisposition, "journeyStep");
+const a7OwnerPaths = Array.isArray(a7ScopeLock?.ownerInventory)
+  ? a7ScopeLock.ownerInventory.flatMap((owner) => owner.existingPaths ?? [])
+  : [];
+const schemaCatalogDigest = sha256(canonicalJson(a7ScopeLock?.schemaCatalog ?? {}));
+const unresolvedA7CatalogTypes = unresolvedCatalogTypeRefs(a7ScopeLock?.schemaCatalog);
+const a7TypeInventoryValid =
+  exactKeys(a7ScopeLock?.schemaCatalog, Object.keys(expectedSchemaCatalog)) &&
+  Object.entries(expectedSchemaCatalog).every(([type, [schemaId, ownerId]]) => {
+    const definition = a7ScopeLock?.schemaCatalog?.[type];
+    const isEnum = Array.isArray(definition?.values);
+    const expectedDefinitionKeys = isEnum
+      ? ["schemaId", "ownerId", "values"]
+      : definition?.extends
+        ? ["schemaId", "ownerId", "extends", "additionalProperties", "fields"]
+        : ["schemaId", "ownerId", "additionalProperties", "fields"];
+    return (
+      exactKeys(definition, expectedDefinitionKeys) &&
+      definition.schemaId === schemaId &&
+      definition.ownerId === ownerId &&
+      (isEnum
+        ? definition.values.length > 0 &&
+          definition.values.every((value) => typeof value === "string" && value.length > 0) &&
+          new Set(definition.values).size === definition.values.length
+        : definition.additionalProperties === false &&
+          exactKeys(definition.fields, Object.keys(definition.fields ?? {})) &&
+          Object.keys(definition.fields).length > 0 &&
+          Object.values(definition.fields).every(
+            (fieldType) => typeof fieldType === "string" && fieldType.length > 0,
+          )) &&
+      a7OwnerMap.has(ownerId)
+    );
+  }) &&
+  unresolvedA7CatalogTypes.length === 0 &&
+  exactKeys(a7ScopeLock?.schemaCatalogRef, ["catalogId", "definitionLanguage", "digestAlgorithm", "catalogDigest"]) &&
+  a7ScopeLock.schemaCatalogRef.catalogId === "aelyris.a7_core_schema_catalog/v1" &&
+  a7ScopeLock.schemaCatalogRef.definitionLanguage === "aelyris-field-map/v1" &&
+  a7ScopeLock.schemaCatalogRef.digestAlgorithm === "sha256" &&
+  a7ScopeLock.schemaCatalogRef.catalogDigest === expectedA7SchemaCatalogDigest &&
+  schemaCatalogDigest === expectedA7SchemaCatalogDigest;
+const a7MinimumContractsValid =
+  exactSet(Object.keys(a7ScopeLock?.minimumContracts ?? {}), Object.keys(expectedMinimumContracts)) &&
+  Object.entries(expectedMinimumContracts).every(([contract, [schemaRef, ownerId]]) => {
+    const entry = a7ScopeLock?.minimumContracts?.[contract];
+    return (
+      exactKeys(entry, ["schemaRef", "ownerId"]) &&
+      entry?.schemaRef === schemaRef &&
+      entry?.ownerId === ownerId &&
+      a7ScopeLock?.schemaCatalog?.[schemaRef]?.ownerId === ownerId &&
+      a7OwnerMap.has(ownerId)
+    );
+  });
+const a7FaceDispositionValid =
+  exactSet([...a7FaceMap.keys()], expectedA7FaceSteps) &&
+  uniqueBy(a7ScopeLock?.faceDisposition, "journeyStep") &&
+  [...a7FaceMap.values()].every(
+    (entry) =>
+      exactKeys(entry, ["journeyStep", "ipc", "mcp", "pty"]) &&
+      ["ipc", "mcp", "pty"].every((face) => {
+        const disposition = entry?.[face];
+        return (
+          exactKeys(disposition, ["action", "disposition", "seam", "reason"]) &&
+          typeof disposition?.action === "string" &&
+          disposition.action.length > 0 &&
+          ["route", "compatibility_no_a7_authority", "no_a7_authority"].includes(disposition.disposition) &&
+          typeof disposition?.seam === "string" &&
+          disposition.seam.length > 0 &&
+          typeof disposition?.reason === "string" &&
+          disposition.reason.length > 0
+        );
+      }),
+  ) &&
+  a7ScopeLock.faceDisposition.some((entry) =>
+    [entry.ipc, entry.mcp, entry.pty].some(
+      (face) =>
+        face.disposition === "compatibility_no_a7_authority" &&
+        face.reason.includes("still") &&
+        face.reason.includes("execute"),
+    ),
+  );
+
+const expectedA7AcceptanceClauses = [
+  "A7-FIX-01: add exactly the named deterministic regression test",
+  "A7-FIX-02: preserve production behavior unless the test first demonstrates a defect",
+  "A7-FIX-03: the declared focused test passes at the exact candidate OID",
+  "A7-FIX-04: the owned diff contains no path outside src-tauri/src/task/graph.rs",
+];
+const expectedA7TestArgv = [
+  "cargo",
+  "test",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "task::graph::tests::equal_priority_ready_tasks_preserve_insertion_order",
+  "--",
+  "--exact",
+];
+const expectedA7ReviewerDifferences = ["principal_id", "logical_session_id", "fork_lineage"];
+const expectedA7OidInvariants = [
+  "testedOid equals candidateOid",
+  "reviewedOid equals testedOid",
+  "mergeIntentSourceOid equals reviewedOid",
+  "integratedOid is the exact merge receipt OID for the frozen target",
+  "any OID or contract version change invalidates settlement and requires fresh test and review",
+];
+const fixture = a7ScopeLock?.fixture;
+const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const fixturePersistentIds = [
+  fixture?.requestId,
+  fixture?.missionId,
+  fixture?.workUnitId,
+  fixture?.acceptedPlan?.planId,
+];
+const a7FixtureValid =
+  exactKeys(a7ScopeLock, [
+    "schema",
+    "contractVersion",
+    "runtimeClaimsImplemented",
+    "fixture",
+    "journey",
+    "ownerInventory",
+    "schemaCatalogRef",
+    "schemaCatalog",
+    "minimumContracts",
+    "oidInvariants",
+    "faceDisposition",
+    "negativeScenario",
+    "deferredDestinations",
+    "forbiddenNewOwners",
+  ]) &&
+  exactKeys(fixture, [
+    "fixtureId",
+    "requestId",
+    "request",
+    "missionId",
+    "missionRevision",
+    "workUnitId",
+    "workUnitDefinitionRevision",
+    "acceptedPlan",
+    "baseOidSource",
+    "ownedTargets",
+    "acceptanceClauses",
+    "declaredTest",
+    "reviewer",
+    "mergeOutcome",
+  ]) &&
+  fixture?.fixtureId === "a7-core-taskgraph-stable-order-v1" &&
+  fixturePersistentIds.every((id) => typeof id === "string" && uuidV7Pattern.test(id)) &&
+  new Set(fixturePersistentIds).size === fixturePersistentIds.length &&
+  fixture?.requestId === "0197c000-0000-7000-8000-000000000001" &&
+  typeof fixture?.request === "string" &&
+  fixture.request.includes("equal_priority_ready_tasks_preserve_insertion_order") &&
+  fixture.request.includes("src-tauri/src/task/graph.rs") &&
+  fixture?.missionId === "0197c000-0000-7000-8000-000000000002" &&
+  fixture?.missionRevision === 1 &&
+  fixture?.workUnitId === "0197c000-0000-7000-8000-000000000003" &&
+  fixture?.workUnitDefinitionRevision === 1 &&
+  exactKeys(fixture?.acceptedPlan, ["planId", "planRevision", "status", "canonicalization", "workUnitIds"]) &&
+  fixture?.acceptedPlan?.planId === "0197c000-0000-7000-8000-000000000004" &&
+  fixture?.acceptedPlan?.planRevision === 1 &&
+  fixture?.acceptedPlan?.status === "accepted" &&
+  fixture?.acceptedPlan?.canonicalization === "rfc8785_json_utf8" &&
+  exactSequence(fixture?.acceptedPlan?.workUnitIds, [fixture?.workUnitId]) &&
+  fixture?.baseOidSource === "accepted_mission_head" &&
+  exactSequence(fixture?.ownedTargets, ["src-tauri/src/task/graph.rs"]) &&
+  exactSequence(fixture?.acceptanceClauses, expectedA7AcceptanceClauses) &&
+  exactKeys(fixture?.declaredTest, ["commandArgv", "cwd", "requiredResult"]) &&
+  exactSequence(fixture?.declaredTest?.commandArgv, expectedA7TestArgv) &&
+  fixture?.declaredTest?.cwd === "mission_worktree" &&
+  fixture?.declaredTest?.requiredResult === "passed_exact_oid" &&
+  exactKeys(fixture?.reviewer, ["role", "policyId", "mustDifferFromImplementerBy", "requiredVerdict"]) &&
+  fixture?.reviewer?.role === "independent_reviewer" &&
+  fixture?.reviewer?.policyId === "a7-core-reviewer-independence/v1" &&
+  exactSequence(fixture?.reviewer?.mustDifferFromImplementerBy, expectedA7ReviewerDifferences) &&
+  fixture?.reviewer?.requiredVerdict === "accepted_exact_oid" &&
+  exactKeys(fixture?.mergeOutcome, ["result", "targetBranchRole", "automaticMainMerge"]) &&
+  fixture?.mergeOutcome?.result === "merged_exact_oid" &&
+  fixture?.mergeOutcome?.targetBranchRole === "isolated_mission_acceptance_target" &&
+  fixture?.mergeOutcome?.automaticMainMerge === false;
+const missingA7OwnerPaths = [...new Set(a7OwnerPaths)].filter((path) => !existsSync(fullPath(path)));
+const a7OwnerInventoryValid =
+  exactSet([...a7OwnerMap.keys()], expectedA7OwnerIds) &&
+  uniqueBy(a7ScopeLock?.ownerInventory, "ownerId") &&
+  [...a7OwnerMap.values()].every(
+    (owner) =>
+      exactKeys(owner, ["ownerId", "responsibility", "existingPaths", "a7Gap"]) &&
+      typeof owner?.responsibility === "string" &&
+      owner.responsibility.length > 0 &&
+      Array.isArray(owner?.existingPaths) &&
+      owner.existingPaths.length > 0 &&
+      typeof owner?.a7Gap === "string" &&
+      owner.a7Gap.length > 0,
+  ) &&
+  missingA7OwnerPaths.length === 0;
+const a7BoundaryValid =
+  exactSequence(a7ScopeLock?.journey, expectedA7Journey) &&
+  exactSequence(a7ScopeLock?.oidInvariants, expectedA7OidInvariants) &&
+  a7ScopeLock?.negativeScenario?.scenarioId === "a7-core-stale-tested-oid-v1" &&
+  a7ScopeLock?.negativeScenario?.mutation ===
+    "candidate OID changes after the declared test and before independent review" &&
+  a7ScopeLock?.negativeScenario?.requiredPacket === "aelyris.blocked_work_packet/v1" &&
+  a7ScopeLock?.negativeScenario?.blockerClass === "repo" &&
+  a7ScopeLock?.negativeScenario?.exactNextAction ===
+    "run the declared focused test and independent review again at the changed OID" &&
+  a7ScopeLock?.negativeScenario?.completionCredit === false &&
+  a7ScopeLock?.negativeScenario?.missionState === "blocked" &&
+  exactKeys(a7ScopeLock?.negativeScenario, [
+    "scenarioId",
+    "mutation",
+    "requiredPacket",
+    "blockerClass",
+    "exactNextAction",
+    "completionCredit",
+    "missionState",
+  ]) &&
+  exactSet(a7ScopeLock?.deferredDestinations, expectedDeferredDestinations) &&
+  exactSet(a7ScopeLock?.forbiddenNewOwners, expectedForbiddenA7Owners);
+const duplicateKeyMutation = files.design.replace(
+  '"contractVersion": 1,',
+  '"contractVersion": 1,\n  "contractVersion": 1,',
+);
+const duplicateLogicalMutation = structuredClone(a7ScopeLock);
+duplicateLogicalMutation?.ownerInventory?.push(structuredClone(a7ScopeLock?.ownerInventory?.[0]));
+const fieldDriftMutation = structuredClone(a7ScopeLock?.schemaCatalog ?? {});
+delete fieldDriftMutation.MissionDefinitionRevision?.fields?.acceptance;
+const missingTypeMutation = structuredClone(a7ScopeLock?.schemaCatalog ?? {});
+if (missingTypeMutation.MissionDefinitionRevision?.fields) {
+  missingTypeMutation.MissionDefinitionRevision.fields.acceptance = "MissingCatalogType[]";
+}
+const unknownFieldMutation = structuredClone(a7ScopeLock);
+if (unknownFieldMutation) unknownFieldMutation.unknownA7Authority = true;
+const a7VerifierNegativeMutations = {
+  duplicateJsonKeyRejected: markedJson(duplicateKeyMutation, "A7_CORE_SCOPE_LOCK_V1").error?.includes(
+    "duplicate JSON keys",
+  ),
+  duplicateLogicalEntryRejected: !uniqueBy(duplicateLogicalMutation?.ownerInventory, "ownerId"),
+  owningFieldDriftRejected: sha256(canonicalJson(fieldDriftMutation)) !== expectedA7SchemaCatalogDigest,
+  missingCatalogTypeRejected: unresolvedCatalogTypeRefs(missingTypeMutation).includes("MissingCatalogType"),
+  unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
+};
+const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
+const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.1" && currentFrontier.lastCompletedSlice === "A7.0";
 
 const dirty = dirtyPaths();
 const sourcePaths = Object.values(paths);
@@ -638,6 +1108,97 @@ const checks = [
     },
   ),
   check(
+    "a7-scope-lock-machine-record",
+    a7ScopeLockParse.error === null &&
+      a7ScopeLock?.schema === "aelyris.a7_core_scope_lock/v1" &&
+      a7ScopeLock?.contractVersion === 1 &&
+      a7ScopeLock?.runtimeClaimsImplemented === false,
+    "A7.0 has one parseable, versioned, design-only machine record and keeps runtime claims false",
+    {
+      parseError: a7ScopeLockParse.error,
+      schema: a7ScopeLock?.schema,
+      contractVersion: a7ScopeLock?.contractVersion,
+      runtimeClaimsImplemented: a7ScopeLock?.runtimeClaimsImplemented,
+    },
+  ),
+  check(
+    "a7-fixed-request-plan-test-review-merge-fixture",
+    a7FixtureValid,
+    "The fixed fixture names one request, accepted versioned plan, owned path, exact test, independent reviewer policy, and exact-OID isolated merge outcome",
+    {
+      fixtureId: fixture?.fixtureId,
+      requestId: fixture?.requestId,
+      acceptedPlan: fixture?.acceptedPlan,
+      ownedTargets: fixture?.ownedTargets,
+      declaredTest: fixture?.declaredTest,
+      reviewer: fixture?.reviewer,
+      mergeOutcome: fixture?.mergeOutcome,
+    },
+  ),
+  check(
+    "a7-existing-owner-inventory",
+    a7OwnerInventoryValid,
+    "Every A7 Core responsibility maps to an existing owner path with an explicit gap and no completion-specific second owner",
+    {
+      expectedOwnerIds: expectedA7OwnerIds,
+      actualOwnerIds: [...a7OwnerMap.keys()],
+      missingOwnerPaths: missingA7OwnerPaths,
+      completionContractOwners: [
+        a7ScopeLock?.minimumContracts?.completedWork?.ownerId,
+        a7ScopeLock?.minimumContracts?.blockedWork?.ownerId,
+        a7ScopeLock?.minimumContracts?.missionCompletion?.ownerId,
+      ],
+    },
+  ),
+  check(
+    "a7-minimum-type-owner-closure",
+    a7TypeInventoryValid,
+    "The digested A7.0 field catalog exhaustively defines every section 3.2 type and aligned owning contract with one existing owner",
+    {
+      expectedTypes: Object.keys(expectedMinimumTypeOwners),
+      actualTypes: Object.keys(a7ScopeLock?.schemaCatalog ?? {}),
+      expectedCatalogDigest: expectedA7SchemaCatalogDigest,
+      declaredCatalogDigest: a7ScopeLock?.schemaCatalogRef?.catalogDigest,
+      computedCatalogDigest: schemaCatalogDigest,
+      unresolvedCatalogTypes: unresolvedA7CatalogTypes,
+    },
+  ),
+  check(
+    "a7-minimum-contract-closure",
+    a7MinimumContractsValid,
+    "Minimum contracts reference the canonical catalog definitions and their existing owners instead of inventing parallel field lists",
+    {
+      expectedContracts: Object.keys(expectedMinimumContracts),
+      actualContracts: Object.keys(a7ScopeLock?.minimumContracts ?? {}),
+    },
+  ),
+  check(
+    "a7-enabled-face-disposition",
+    a7FaceDispositionValid,
+    "Every journey step classifies IPC, MCP, and PTY only for A7 authority; compatibility actions may still execute while granting no A7 authority or completion",
+    {
+      expectedJourneySteps: expectedA7FaceSteps,
+      actualJourneySteps: [...a7FaceMap.keys()],
+    },
+  ),
+  check(
+    "a7-verifier-negative-mutations",
+    a7VerifierNegativeMutationsValid,
+    "In-process mutations prove duplicate keys/entries, owning-field drift, missing catalog types, and unknown fields fail closed",
+    a7VerifierNegativeMutations,
+  ),
+  check(
+    "a7-exact-oid-blocked-and-deferred-boundary",
+    a7BoundaryValid,
+    "Exact-OID drift fails to BlockedWorkPacket with zero completion credit while deferred destinations and forbidden second owners remain exact",
+    {
+      oidInvariants: a7ScopeLock?.oidInvariants,
+      negativeScenario: a7ScopeLock?.negativeScenario,
+      deferredDestinations: a7ScopeLock?.deferredDestinations,
+      forbiddenNewOwners: a7ScopeLock?.forbiddenNewOwners,
+    },
+  ),
+  check(
     "apex-structure-exact",
     exactSequence(apexHeadings, expectedApexIds) && exactSequence(apexGateRows, expectedApexIds),
     "Roadmap defines Apex V1-V9 exactly once and gives every wave entry, measure, reversibility/data, and claim-boundary fields",
@@ -647,8 +1208,10 @@ const checks = [
     "work-order-frontier",
     missing.workOrder.length === 0 &&
       Object.values(currentFrontier).every(Boolean) &&
-      currentFrontier.activeSlice === currentFrontier.nextImplementationSlice,
-    "Work order exposes one parseable active frontier and preserves the A6.2e1 resume boundary",
+      currentFrontier.phase === "A7" &&
+      currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
+      a7AcceptedFrontierValid,
+    "Work order records A7.0 accepted and exposes exactly one A7.1 implementation frontier",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(
@@ -683,7 +1246,7 @@ const checks = [
   check(
     "design-only-slice-has-no-runtime-diff",
     runtimeDirty.length === 0,
-    "The roadmap/decision contract changes no runtime or product test source",
+    "The A7.0 scope lock changes no runtime or product test source",
     { dirtyPaths: dirty, runtimeDirty },
   ),
 ];
@@ -692,9 +1255,9 @@ const failed = checks.filter((item) => item.status !== "passed");
 const contractPass = failed.length === 0;
 const committedAtHead = contractPass && sourceDirtyPaths.length === 0;
 const report = {
-  schema: "aelyris.verifiable-agent-work-os-spec/v5",
-  contractVersion: "verifiable-agent-work-os-roadmap/v5",
-  version: 5,
+  schema: "aelyris.verifiable-agent-work-os-spec/v6",
+  contractVersion: "verifiable-agent-work-os-roadmap/v6",
+  version: 6,
   ok: contractPass,
   status: !contractPass
     ? "fail-verifiable-agent-work-os-spec"
@@ -702,9 +1265,9 @@ const report = {
       ? "pass-verifiable-agent-work-os-spec-committed"
       : "pass-verifiable-agent-work-os-spec-ready-to-commit",
   phase: currentFrontier.phase,
-  attemptedSlice: "execution-order simplification contract",
+  attemptedSlice: "A7.0",
   lastCompletedSlice: currentFrontier.lastCompletedSlice,
-  completedSlice: committedAtHead ? "execution-order simplification contract" : null,
+  completedSlice: committedAtHead ? "A7.0" : null,
   nextImplementationSlice: currentFrontier.nextImplementationSlice,
   readyToCommit: contractPass && !committedAtHead,
   sliceComplete: committedAtHead,

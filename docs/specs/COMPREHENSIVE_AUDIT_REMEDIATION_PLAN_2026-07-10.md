@@ -1836,7 +1836,22 @@ does not create a second runner or require Proofbook productization.
 
 ### **A7.0 - Core Mission Scope Lock And Owner Inventory**
 
-Status: active.
+Status: focused-gate accepted candidate, pending commit-bound closeout; no A7
+runtime claim is implemented.
+
+Machine authority: the marked `aelyris.a7_core_scope_lock/v1` record in
+`AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md`. It freezes the fixture,
+existing-owner map, minimum contracts, enabled-face dispositions, blocked negative
+scenario, deferred set, and forbidden second owners. All A7 runtime claims remain
+false in this design-only slice.
+
+Acceptance evidence is the current
+`pnpm verify:verifiable-agent-work-os-spec` artifact. Before commit it must report
+`readyToCommit=true`, `completedSlice=null`, and `runtimeDirty=[]`; this is candidate
+acceptance, not completed-slice provenance. Only an unchanged post-commit rerun may
+report `completedSlice=A7.0`. A7.0 scope lock is accepted as the commit candidate.
+A7.1 is the next implementation slice; the work-order change is staged until that
+commit-bound closeout exists.
 
 - freeze one fixed request fixture and the seven-step canonical acceptance journey;
 - inventory only the TaskGraph, runtime/PTY, ownership, event/evidence, test,
@@ -1851,7 +1866,9 @@ Status: active.
 - record the deferred destination set explicitly and keep every target runtime claim
   false until its own future gate passes.
 
-### A7.1 - Request Contract And Versioned Plan Preview
+### **A7.1 - Request Contract And Versioned Plan Preview**
+
+Status: active.
 
 - accept one request into the existing TaskGraph-backed Mission owner;
 - produce a versioned, non-effectful plan preview with work unit, owned targets,
