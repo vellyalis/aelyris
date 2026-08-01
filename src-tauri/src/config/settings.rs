@@ -453,7 +453,7 @@ fn default_ui_font() -> String {
     "Geist, Inter, Source Han Sans JP, sans-serif".to_string()
 }
 fn default_terminal_font() -> String {
-    "Cascadia Code, Cascadia Next JP, monospace".to_string()
+    "HackGen Console NF, Cascadia Code, Cascadia Next JP, monospace".to_string()
 }
 fn default_font_size() -> u32 {
     14

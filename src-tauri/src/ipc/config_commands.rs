@@ -124,13 +124,16 @@ pub fn save_app_config(config: crate::config::AppConfig) -> Result<(), String> {
     crate::config::save_config(&config)
 }
 
-/// Apply the window backdrop (Acrylic/Mica) to the main window live, without a
-/// restart. The frontend calls this right after `save_app_config` so toggling
-/// Settings → Window Effect takes effect immediately instead of only at the next
-/// launch. The same `apply_window_backdrop` helper runs at startup, so behavior
-/// is identical. On non-Windows platforms this is a no-op that succeeds.
+/// Apply the selected window chrome to the main window live, without a restart.
+/// Acrylic uses the supplied appearance opacity to tune its native tint;
+/// transparent and Mica ignore it. The same `apply_window_backdrop` helper runs
+/// at startup, so behavior is identical. On non-Windows this is a no-op.
 #[tauri::command]
-pub fn set_window_effect(app: tauri::AppHandle, effect: String) -> Result<(), String> {
+pub fn set_window_effect(
+    app: tauri::AppHandle,
+    effect: String,
+    opacity: f32,
+) -> Result<(), String> {
     #[cfg(windows)]
     {
         use tauri::Manager;
@@ -148,12 +151,12 @@ pub fn set_window_effect(app: tauri::AppHandle, effect: String) -> Result<(), St
             .hwnd()
             .map_err(|e| format!("hwnd unavailable for window effect: {e}"))?;
         let hwnd = windows::Win32::Foundation::HWND(hwnd_raw.0 as *mut _);
-        crate::apply_window_backdrop(hwnd, &effect)?;
+        crate::apply_window_backdrop(hwnd, &effect, opacity)?;
         Ok(())
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, effect);
+        let _ = (app, effect, opacity);
         Ok(())
     }
 }

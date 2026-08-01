@@ -1,68 +1,78 @@
-# RESOLVED: window see-through to the desktop / windows behind
+# RESOLVED: transparent and Acrylic see-through on Windows
 
-Status: **resolved** (2026-06-30). Real translucency — the desktop and the
-windows stacked behind Aelyris show through the app — now works. The in-app
-wallpaper renders as a translucent layer on top of that see-through.
+Status: **resolved** (updated 2026-08-02). Aelyris now has two distinct
+see-through modes on the Windows 11 Tauri/WebView2 stack:
 
-> This file previously held a **wrong** diagnosis (it blamed only the in-app
-> wallpaper backstop and claimed `DWMSBT_TRANSIENTWINDOW` Acrylic delivered
-> "real desktop translucency"). That was disproved by OS screen capture. The
-> correct root cause and the guards against regressing it are below.
+- `transparent`: crisp per-pixel see-through with no native blur.
+- `acrylic`: blurred see-through using `SetWindowCompositionAttribute` (SWCA)
+  Acrylic over a `DWMSBT_NONE` window.
+- `mica`: opaque Windows Mica, intentionally not see-through.
 
-## True root cause (verified by OS screen capture, not assumption)
+No new public effect or runtime dependency is used.
 
-On a wry per-pixel-transparent window (`transparent: true`, `backgroundColor
-[0,0,0,0]`), applying **any window material** fills the client area and
-**OCCLUDES** the per-pixel transparency — the desktop/windows behind stop
-showing. Two materials were doing this, stacked:
+## Empirical mechanism result
 
-1. **DWM system backdrop** — `lib.rs` applied `DWMWA_SYSTEMBACKDROP_TYPE`
-   (Acrylic `DWMSBT_TRANSIENTWINDOW` / Mica `DWMSBT_MAINWINDOW`). This was
-   *added* in 2026-04 (`ab420e8`) believing Acrylic = see-through. It is the
-   opposite: the material paints over the transparent client area → opaque gray.
-2. **window-vibrancy accent** — `tauri.conf` `windowEffects.effects: ["acrylic"]`
-   applied `ACCENT_ENABLE_ACRYLICBLURBEHIND`, a second occluder.
+OS-level capture, not a DOM/CDP inference, established the mechanism boundary:
 
-Evidence (OS PrintWindow/screen capture, **without** CDP — CDP suppresses the
-backdrop, so never verify transparency with `AELYRIS_ENABLE_WEBVIEW2_CDP=1`):
-
-| Window material | Result |
+| Native mechanism | Observed result |
 | --- | --- |
-| DWMSBT Acrylic (focused) | opaque dark gray, nothing behind |
-| windowEffects accent acrylic | opaque dark gray |
-| **No material** (DWMSBT_NONE + `windowEffects.effects: []`) | **desktop + windows behind show through** ✓ |
+| `DWMSBT_TRANSIENTWINDOW` | opaque dark gray; background hidden |
+| Tauri `windowEffects.effects: ["acrylic"]` | opaque dark gray and a second accent owner |
+| `DWMSBT_NONE` only | crisp desktop/windows see-through |
+| `DWMSBT_NONE` + SWCA `AccentState=4` | blurred desktop/windows see-through |
 
-A CDP DOM probe separately proved the web content was already fully transparent
-(`html/body/#root/.app-container` all `rgba(0,0,0,0)`, no viewport-covering
-opaque layer) — so the occluder was the native material, not CSS.
+The proven SWCA vector used `AccentFlags=0` and dark ABGR tint equivalent to
+RGBA `(3, 10, 22, 120)`. It returned success and produced visible OS-captured
+blur even with CDP enabled. Web content and the terminal renderer must still
+leave enough alpha for the native blur to remain visible; a DOM/CDP observation
+alone is not final glass proof because it cannot establish native composition.
 
-Corollary: frosted "Acrylic glass" and per-pixel see-through are **mutually
-exclusive** on this stack. We chose see-through.
+## Runtime contract
 
-## The fix (shipped)
+`src-tauri/src/lib.rs` is the single Windows composition owner. Static Tauri
+window effects stay empty in both configs.
 
-1. `window_effect = "transparent"` is the default. `backdrop_for_effect`
-   (`src-tauri/src/lib.rs`) maps `transparent` → `DWMSBT_NONE` (no material =
-   see-through); `mica`/`acrylic` remain opt-in **opaque** materials.
-2. `windowEffects.effects: []` in both `tauri.conf.json` and
-   `tauri.dev.conf.json` (no vibrancy accent occluder).
-3. The in-app wallpaper backstop is transparent in see-through mode
-   (`useTheme.ts`, `seeThrough` arg), so the wallpaper image is a translucent
-   layer over the live desktop, tuned by the wallpaper opacity slider.
+1. Before every live switch, clear the prior SWCA `AccentPolicy`. This makes
+   Acrylic → transparent/Mica switching reversible instead of leaving blur
+   attached to the HWND.
+2. `transparent` applies `DWMSBT_NONE` and no AccentPolicy.
+3. `mica` applies `DWMSBT_MAINWINDOW` and no AccentPolicy.
+4. `acrylic` applies `DWMSBT_NONE`, then SWCA
+   `ACCENT_ENABLE_ACRYLICBLURBEHIND` (`AccentState=4`). It never uses the opaque
+   `DWMSBT_TRANSIENTWINDOW` path.
+5. If SWCA Acrylic is refused, DWM NONE has already been applied, so the window
+   degrades to crisp transparent instead of opaque gray. The IPC returns an
+   actionable error and logs the failed native operation.
 
-## Guards against regressing this (so the same mistake can't land silently)
+The appearance opacity slider (0.2–1.0) maps linearly to tint alpha 48–128.
+This keeps the dark tint visibly tied to the user's setting while bounding it
+inside the empirically useful translucent interval. The normal 0.95 setting
+maps to alpha 123, close to the proven alpha 120 vector. RGB remains `(3,10,22)`
+so changing strength does not shift the product palette.
 
-- `backdrop_tests` in `src-tauri/src/lib.rs` — `transparent`/unknown →
-  `DWMSBT_NONE`, `mica`/`acrylic` → their material values.
-- `src/__tests__/window-transparency.test.ts` — both Tauri configs must keep
-  `windowEffects.effects: []`, `transparent: true`, `backgroundColor [0,0,0,0]`,
-  and the default effect must be `transparent`.
-- Comments at each site (`backdrop_for_effect`, the `windowEffects` config
-  `_comment`) state that a material occludes see-through.
+Startup and the live `set_window_effect` IPC call the same helper with the same
+effect and appearance opacity. Changing Acrylic opacity in Settings re-applies
+the native tint immediately; Save persists the already-applied values.
 
-## Notes / OS caveats
+## Regression guards
 
-- See-through is **crisp** (no blur), because the blur came from the material we
-  removed. Panels keep their own semi-opaque glass backgrounds for legibility.
-- Win11 still suppresses materials on inactive windows, but that no longer
-  matters here since see-through uses no material.
+- `backdrop_tests` in `src-tauri/src/lib.rs` prove:
+  - transparent/unknown → DWM NONE + Accent disabled;
+  - Mica → DWM MAINWINDOW + Accent disabled;
+  - Acrylic → DWM NONE + Accent state 4;
+  - opacity clamping/defaulting and exact ABGR tint encoding.
+- `src/__tests__/window-transparency.test.ts` proves:
+  - both Tauri configs remain per-pixel transparent and material-free;
+  - live Settings calls carry opacity;
+  - Acrylic avoids DWM transient-window and uses SWCA;
+  - AccentPolicy is cleared before the DWM mode changes.
+
+## Remaining visual caveats
+
+- Panel and terminal surface alpha can still visually cover correct native
+  Acrylic. Evaluate the native mechanism separately from CSS/canvas opacity.
+- Windows composition behavior can vary by OS build, remote desktop, power
+  policy, and inactive-window state. SWCA failure remains transparent and is
+  not promoted to a Mica or opaque fallback.
+- Final visual acceptance requires an OS-level screenshot with another window
+  behind Aelyris; CDP state must be recorded but is not itself a blocker.

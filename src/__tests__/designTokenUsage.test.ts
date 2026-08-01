@@ -148,6 +148,34 @@ describe("design token usage", () => {
     expect(rootGlowRule).toContain("opacity: calc(var(--mood-root-glow-opacity) * var(--aelyris-window-opacity))");
   });
 
+  it("keeps the selectable workstation style planar even when inspectors are open", () => {
+    const globalSource = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"))?.[1] ?? "";
+    const terminalSource =
+      Object.entries(cssSources).find(([file]) => file.includes("features/terminal/TerminalArea.module.css"))?.[1] ?? "";
+    const paneTreeSource =
+      Object.entries(cssSources).find(([file]) => file.includes("features/terminal/pane-tree/PaneTreeRenderer.module.css"))?.[1] ?? "";
+
+    expect(globalSource).toContain('.app-container[data-interface-style="workstation"]');
+    expect(globalSource).toContain("--terminal-canvas-bg: rgba(3, 10, 22, 0.18)");
+    expect(globalSource).toMatch(/data-interface-style="workstation"\]\s+\.app-main\s*{[\s\S]*?padding:\s*0/);
+    expect(globalSource).toMatch(/data-interface-style="workstation"\]\s+\.center-panel\s*{[\s\S]*?border-radius:\s*0/);
+    expect(globalSource).toMatch(/data-interface-style="workstation"\]\s+\.right-panel\s*{[\s\S]*?border-radius:\s*0/);
+    expect(globalSource).toMatch(/data-interface-style="workstation"\]\s+\.right-panel-widget-frame\s*{[\s\S]*?background:\s*transparent/);
+    expect(terminalSource).toContain(':global(.app-container[data-interface-style="workstation"]) .terminalViewport');
+    expect(paneTreeSource).toContain(':global(.app-container[data-interface-style="workstation"]) .terminalMount');
+  });
+
+  it("keeps both interface styles selectable and the collapsed inspector discoverable", () => {
+    const settings = readFileSync(join(process.cwd(), "src/features/settings/Settings.tsx"), "utf8");
+    const header = readFileSync(join(process.cwd(), "src/features/header/ProjectHeaderBar.tsx"), "utf8");
+    const app = readFileSync(join(process.cwd(), "src/App.tsx"), "utf8");
+
+    expect(settings).toContain('label: "Workstation (planar)"');
+    expect(settings).toContain('label: "Cards (bento)"');
+    expect(header).toContain('rightRailCollapsed ? "Show inspector" : "Hide inspector"');
+    expect(app).toContain("onToggleRightRail={() => setRightRailCollapsed((v) => !v)}");
+  });
+
   it("keeps localhost preview and native Tauri backplanes separated", () => {
     const entry = Object.entries(cssSources).find(([file]) => file.includes("styles/global.css"));
     expect(entry).toBeDefined();

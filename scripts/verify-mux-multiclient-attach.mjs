@@ -29,6 +29,7 @@ const graph = read("src-tauri/src/mux/graph.rs");
 const manager = read("src-tauri/src/mux/manager.rs");
 const store = read("src-tauri/src/mux/store.rs");
 const ptyManager = read("src-tauri/src/pty/manager.rs");
+const ptySidecar = read("src-tauri/src/pty_sidecar.rs");
 const v2bTests = read("src-tauri/tests/test_api_3d1_v2b.rs");
 const broadcastTests = read("src-tauri/tests/test_pty_broadcast.rs");
 
@@ -45,6 +46,13 @@ const subscribeOutput = between(ptyManager, "pub fn subscribe_output(", ["/// Ca
 const captureAndSubscribe = between(ptyManager, "pub fn capture_and_subscribe(", ["/// Capture the recent PTY output"]);
 
 const checks = [
+  check(
+    "sidecar-requests-canonical-read-only-ticket",
+    ptySidecar.includes('const READ_ONLY_STREAM_TICKET_MODE: &str = "read-only"') &&
+      ptySidecar.includes("stream-ticket?mode={READ_ONLY_STREAM_TICKET_MODE}") &&
+      !ptySidecar.includes("stream-ticket?mode=read\""),
+    "The app-side PTY client requests the API's canonical read-only stream ticket instead of an unsupported alias.",
+  ),
   check(
     "stream-mode-contract-is-explicit",
     apiMod.includes("pub enum StreamMode") &&
@@ -150,11 +158,11 @@ const checks = [
   check(
     "read-only-websocket-cannot-write-to-pty",
     handleWs.includes("mut rx: broadcast::Receiver<Vec<u8>>") &&
-      handleWs.includes("mode: StreamMode") &&
+    handleWs.includes("mode: StreamMode") &&
       handleWs.includes("if !mode.can_write()") &&
       handleWs.includes("rejected") &&
-      handleWs.indexOf("if !mode.can_write()") < handleWs.indexOf("gate_command_input") &&
-      handleWs.indexOf("if !mode.can_write()") < handleWs.indexOf("write_state.pty.write"),
+      handleWs.includes("execute_terminal_write(") &&
+      handleWs.indexOf("if !mode.can_write()") < handleWs.indexOf("execute_terminal_write("),
     "Read-only WS streams keep receiving output but reject client bytes before command-risk gating and PTY write.",
   ),
   check(

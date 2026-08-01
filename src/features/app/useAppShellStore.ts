@@ -16,6 +16,7 @@ export function useAppShellStore() {
       setRightPanelWidth: state.setRightPanelWidth,
       rightRailCollapsed: state.rightRailCollapsed,
       setRightRailCollapsed: state.setRightRailCollapsed,
+      interfaceStyle: state.interfaceStyle,
       productMode: state.productMode,
       setProductMode: state.setProductMode,
       rightRailMode: state.rightRailMode,

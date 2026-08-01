@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_TELEMETRY_EVENT, type FallbackTelemetryDetail } from "../shared/lib/fallbackTelemetry";
 import {
   DEFAULT_RIGHT_PANEL_WIDTH,
+  sanitizeInterfaceStyle,
   sanitizeTerminalRendererMode,
   sanitizeThemeOverrides,
   type TerminalRendererMode,
@@ -34,6 +35,9 @@ beforeEach(() => {
     localStorage.removeItem("aelyris:workspaceProfiles");
     localStorage.removeItem("aelyris:terminalRendererMode");
     localStorage.removeItem("aelyris:workspaceNavigation");
+    localStorage.removeItem("aelyris:sidebarCollapsed");
+    localStorage.removeItem("aelyris:rightRailCollapsed");
+    localStorage.removeItem("aelyris:interfaceStyle");
   } catch {
     /* ignore */
   }
@@ -53,6 +57,9 @@ beforeEach(() => {
     fallbackTelemetryEvents: [],
     moodPresetId: DEFAULT_MOOD_PRESET,
     appWindowOpacity: 0.95,
+    sidebarCollapsed: false,
+    rightRailCollapsed: false,
+    interfaceStyle: "workstation",
     zenMode: false,
     workspaceNavigationId: "",
     productMode: "terminal",
@@ -92,6 +99,20 @@ describe("appStore — project", () => {
 });
 
 describe("appStore — UI visibility", () => {
+  it("defaults unknown interface styles to workstation and preserves cards", () => {
+    expect(sanitizeInterfaceStyle("workstation")).toBe("workstation");
+    expect(sanitizeInterfaceStyle("cards")).toBe("cards");
+    expect(sanitizeInterfaceStyle("dashboard-v3")).toBe("workstation");
+  });
+
+  it("persists the selected interface style independently from layout visibility", () => {
+    useAppStore.getState().setInterfaceStyle("cards");
+    expect(localStorage.getItem("aelyris:interfaceStyle")).toBe("cards");
+    expect(useAppStore.getState().rightRailCollapsed).toBe(false);
+    useAppStore.getState().setInterfaceStyle("workstation");
+    expect(localStorage.getItem("aelyris:interfaceStyle")).toBe("workstation");
+  });
+
   it("persists navigation independently per workspace", () => {
     const store = useAppStore.getState();
     store.hydrateWorkspaceNavigation("C:/one");
@@ -144,6 +165,18 @@ describe("appStore — UI visibility", () => {
     setZenMode((prev) => !prev);
     expect(useAppStore.getState().zenMode).toBe(false);
     expect(localStorage.getItem("aelyris:sidebarCollapsed")).toBeNull();
+  });
+
+  it("persists terminal-first rail visibility independently", () => {
+    const { setSidebarCollapsed, setRightRailCollapsed } = useAppStore.getState();
+    setSidebarCollapsed(true);
+    setRightRailCollapsed(true);
+    expect(localStorage.getItem("aelyris:sidebarCollapsed")).toBe("1");
+    expect(localStorage.getItem("aelyris:rightRailCollapsed")).toBe("1");
+
+    useAppStore.getState().setRightRailCollapsed(false);
+    expect(localStorage.getItem("aelyris:rightRailCollapsed")).toBe("0");
+    expect(localStorage.getItem("aelyris:sidebarCollapsed")).toBe("1");
   });
 });
 

@@ -64,7 +64,7 @@ fn resolve_windows_cli_program_on_path(name: &str, path: &std::ffi::OsStr) -> Op
 /// `CreateProcessW` launch, PowerShell can execute an npm `.ps1` shim. Prefer
 /// that shim over `.cmd` because cmd.exe truncates a quoted multiline prompt at
 /// its first newline when npm's batch wrapper expands `%*`.
-fn platform_powershell_cli_program(name: &str) -> String {
+pub(super) fn platform_powershell_cli_program(name: &str) -> String {
     #[cfg(windows)]
     {
         if let Some(path) = std::env::var_os("PATH") {
@@ -291,13 +291,13 @@ pub fn agent_command_spec(
 
 /// Quote a token for a PowerShell single-quoted string literal (doubling any
 /// embedded single quote). Used to build the in-shell command line safely.
-fn ps_single_quote(token: &str) -> String {
+pub(super) fn ps_single_quote(token: &str) -> String {
     format!("'{}'", token.replace('\'', "''"))
 }
 
 /// Launch the agent CLI **inside a visible PowerShell pane**, running its full
 /// INTERACTIVE TUI — the operator's mental model: split pane → a shell starts →
-/// the AI CLI is invoked in it and you watch it work live. Run via `powershell
+/// the AI CLI is invoked in it and you watch it work live. Run via `pwsh
 /// -Command "& <cli> … $env:AELYRIS_AGENT_PROMPT; exit $LASTEXITCODE"`.
 ///
 /// Deliberately **no `-p`**: `-p`/`--print` is headless ("Print response and
@@ -352,7 +352,7 @@ pub fn agent_shell_command_spec(
     env.insert("AELYRIS_AGENT_PROMPT".to_string(), prompt.to_string());
 
     Ok((
-        platform_cli_program("powershell"),
+        platform_cli_program("pwsh"),
         vec![
             "-NoLogo".to_string(),
             "-NoProfile".to_string(),
@@ -1126,7 +1126,7 @@ mod tests {
         // hang on its own write-permission prompt and never produce its outputs.
         let (program, args, env) =
             agent_shell_command_spec("codex-mini", "write the file", true).unwrap();
-        assert_eq!(program, platform_cli_program("powershell"));
+        assert_eq!(program, platform_cli_program("pwsh"));
         let cmd = &args[3];
         assert!(cmd.contains("'codex"), "runs codex: {cmd}");
         assert!(
@@ -1146,7 +1146,7 @@ mod tests {
         let prompt = "write the file\nthen run the exact test";
         let (program, args, env) =
             agent_shell_command_spec("codex-no-hooks", prompt, true).unwrap();
-        assert_eq!(program, platform_cli_program("powershell"));
+        assert_eq!(program, platform_cli_program("pwsh"));
         let cmd = &args[3];
         assert!(cmd.contains("'--disable' 'hooks'"), "hooks disabled: {cmd}");
         assert!(!cmd.contains("'-p'"), "must remain interactive: {cmd}");
@@ -1168,7 +1168,7 @@ mod tests {
         // or the pane would launch but hang on its own permission prompt.
         let (program, args, env) =
             agent_shell_command_spec("gemini-2.5-pro", "write the file", true).unwrap();
-        assert_eq!(program, platform_cli_program("powershell"));
+        assert_eq!(program, platform_cli_program("pwsh"));
         let cmd = &args[3];
         assert!(cmd.contains("'gemini"), "runs gemini: {cmd}");
         assert!(
@@ -1242,7 +1242,7 @@ mod tests {
     fn agent_shell_command_spec_runs_the_interactive_cli_inside_powershell() {
         let (program, args, env) =
             agent_shell_command_spec("impl", "build the 'login' screen", true).unwrap();
-        assert_eq!(program, platform_cli_program("powershell"));
+        assert_eq!(program, platform_cli_program("pwsh"));
         // -Command carries the in-shell invocation; the prompt is NOT inlined.
         assert_eq!(args[0], "-NoLogo");
         assert_eq!(args[1], "-NoProfile");

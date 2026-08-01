@@ -123,3 +123,18 @@
 .content[data-state="closed"] {
   animation: none;
 }
+
+:global(.app-container[data-interface-style="workstation"]) .root {
+  border-radius: 0;
+}
+
+:global(.app-container[data-interface-style="workstation"]) .header {
+  height: 30px;
+  padding-inline: 8px;
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--rail-control-border) 46%, transparent);
+}
+
+:global(.app-container[data-interface-style="workstation"]) .header:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}

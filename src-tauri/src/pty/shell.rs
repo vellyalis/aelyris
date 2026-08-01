@@ -35,19 +35,17 @@ impl ShellType {
     /// Returns extra arguments for the shell
     pub fn args(&self) -> Vec<&str> {
         match self {
+            // Load the user's PowerShell 7 profile so their prompt, Oh My Posh,
+            // aliases, and modules work exactly as they do in Windows Terminal.
             // PSReadLine's inline prediction (enabled by default in PowerShell 7.2+)
             // leaves dim-italic ghost characters on the screen when predictions span
             // multiple rows or the terminal resizes — terminal emulators/ConPTY reproduce exactly
             // what PSReadLine writes, and the feature is not commonly used, so we
             // disable it at startup. Wrapped in try/catch to survive older hosts
             // that lack the -PredictionSource option.
-            ShellType::PowerShell => vec![
-                "-NoLogo",
-                "-NoProfile",
-                "-NoExit",
-                "-Command",
-                POWERSHELL_STARTUP_SCRIPT,
-            ],
+            ShellType::PowerShell => {
+                vec!["-NoLogo", "-NoExit", "-Command", POWERSHELL_STARTUP_SCRIPT]
+            }
             _ => vec![],
         }
     }
@@ -186,11 +184,11 @@ mod tests {
     use super::ShellType;
 
     #[test]
-    fn powershell_startup_args_skip_profile_and_keep_prediction_guard() {
+    fn powershell_startup_args_load_profile_and_keep_prediction_guard() {
         let args = ShellType::PowerShell.args();
 
         assert!(args.contains(&"-NoLogo"));
-        assert!(args.contains(&"-NoProfile"));
+        assert!(!args.contains(&"-NoProfile"));
         assert!(args.contains(&"-NoExit"));
         assert!(args.contains(&"-Command"));
         assert!(args

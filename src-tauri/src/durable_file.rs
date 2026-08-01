@@ -1,6 +1,6 @@
-use std::fs::{self, OpenOptions};
 #[cfg(not(windows))]
 use std::fs::File;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -32,11 +32,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     atomic_write_with_hook(path, bytes, || Ok(()))
 }
 
-fn atomic_write_with_hook<F>(
-    path: &Path,
-    bytes: &[u8],
-    before_replace: F,
-) -> Result<(), String>
+fn atomic_write_with_hook<F>(path: &Path, bytes: &[u8], before_replace: F) -> Result<(), String>
 where
     F: FnOnce() -> Result<(), String>,
 {
@@ -149,10 +145,7 @@ struct RetainedFile {
     recovery: bool,
 }
 
-pub fn enforce_global_retention(
-    roots: &[PathBuf],
-    policy: RetentionPolicy,
-) -> Result<(), String> {
+pub fn enforce_global_retention(roots: &[PathBuf], policy: RetentionPolicy) -> Result<(), String> {
     let mut files = Vec::new();
     for root in normalized_roots(roots) {
         collect_files(&root, &mut files)?;
@@ -258,9 +251,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.json");
         fs::write(&path, b"old").unwrap();
-        let result = atomic_write_with_hook(&path, b"new", || {
-            Err("injected power loss".to_string())
-        });
+        let result =
+            atomic_write_with_hook(&path, b"new", || Err("injected power loss".to_string()));
         assert!(result.unwrap_err().contains("injected power loss"));
         assert_eq!(fs::read(&path).unwrap(), b"old");
     }
@@ -275,7 +267,12 @@ mod tests {
         let recovery = fs::read_dir(dir.path())
             .unwrap()
             .filter_map(Result::ok)
-            .find(|entry| entry.file_name().to_string_lossy().contains("aelyris-recovery"))
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("aelyris-recovery")
+            })
             .unwrap();
         assert_eq!(fs::read(recovery.path()).unwrap(), b"old");
     }
@@ -298,10 +295,7 @@ mod tests {
         )
         .unwrap();
         assert!(dir.path().join("primary.json").exists());
-        assert!(!dir
-            .path()
-            .join(".primary.json.aelyris-recovery-1")
-            .exists());
+        assert!(!dir.path().join(".primary.json.aelyris-recovery-1").exists());
     }
 
     #[test]

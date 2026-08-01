@@ -22,6 +22,10 @@
   overflow: hidden;
 }
 
+:global(.app-container[data-interface-style="workstation"]) .terminalContainer {
+  border-radius: 0;
+}
+
 .workspaceHome {
   flex: 1;
   min-width: 0;

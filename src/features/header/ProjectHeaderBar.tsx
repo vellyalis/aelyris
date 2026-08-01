@@ -1,4 +1,4 @@
-import { PanelLeft, PanelLeftClose, RefreshCw, Settings } from "lucide-react";
+import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, RefreshCw, Settings } from "lucide-react";
 import { useAttenuatedPulse } from "../../shared/hooks/useAttenuatedPulse";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { useAppStore } from "../../shared/store/appStore";
@@ -21,6 +21,10 @@ interface ProjectHeaderBarProps {
    *  reclaims the workspace width. Ctrl+B fires the same toggle. */
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
+  /** The inspector is a primary product surface, so its toggle stays visible
+   *  in the window chrome even while the rail itself is collapsed. */
+  rightRailCollapsed: boolean;
+  onToggleRightRail: () => void;
 }
 
 const STATUS_META: Record<string, { color: string; label: string }> = {
@@ -52,6 +56,8 @@ export function ProjectHeaderBar({
   menus,
   sidebarCollapsed,
   onToggleSidebar,
+  rightRailCollapsed,
+  onToggleRightRail,
 }: ProjectHeaderBarProps) {
   const handleMinimize = async () => {
     try {
@@ -182,6 +188,20 @@ export function ProjectHeaderBar({
       </div>
 
       <div className={styles.right}>
+        <button
+          type="button"
+          className={styles.headerBtn}
+          onClick={onToggleRightRail}
+          aria-label={rightRailCollapsed ? "Show inspector" : "Hide inspector"}
+          aria-pressed={!rightRailCollapsed}
+          title={`${rightRailCollapsed ? "Show" : "Hide"} inspector`}
+        >
+          {rightRailCollapsed ? (
+            <PanelRight size={14} aria-hidden="true" />
+          ) : (
+            <PanelRightClose size={14} aria-hidden="true" />
+          )}
+        </button>
         <button type="button" className={styles.headerBtn} onClick={onRefresh} aria-label="Refresh">
           <RefreshCw size={14} aria-hidden="true" />
         </button>

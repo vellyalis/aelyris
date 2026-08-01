@@ -120,9 +120,7 @@ describe("RightRailShell", () => {
   it("projects the existing zen or collapsed visibility decision without rederiving it", () => {
     const { container } = renderShell({ ...DEFAULT_VIEW_MODEL, hidden: true });
 
-    const inspector = container.querySelector("aside");
-    if (!(inspector instanceof HTMLElement)) throw new Error("Expected hidden right rail");
-    expect(inspector.hidden).toBe(true);
-    expect(inspector.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelector("aside")).toBeNull();
+    expect(screen.queryByText("rail content")).toBeNull();
   });
 });

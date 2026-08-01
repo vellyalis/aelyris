@@ -126,6 +126,13 @@
   opacity: 0.22;
 }
 
+:global(.app-container[data-interface-style="workstation"]) .terminalArea,
+:global(.app-container[data-interface-style="workstation"]) .terminalContainer,
+:global(.app-container[data-interface-style="workstation"]) .terminalViewport,
+:global(.app-container[data-interface-style="workstation"]) .terminalViewport::after {
+  border-radius: 0;
+}
+
 .terminalCanvasSurface {
   position: relative;
   z-index: 4;

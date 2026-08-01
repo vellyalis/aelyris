@@ -64,6 +64,11 @@
     transform var(--duration-fast) var(--ease-silk);
 }
 
+:global(.app-container[data-interface-style="workstation"]) .terminalMount {
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .terminalMount[data-terminal-text-clarity="solid"] {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 2%, transparent), transparent 26%),

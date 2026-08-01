@@ -12,6 +12,12 @@ export interface RightRailShellProps {
 export function RightRailShell({ viewModel, actions, children }: RightRailShellProps) {
   const { hidden, width, activeMode, modeBadges } = viewModel;
 
+  // Do not leave the inspector mounted behind a `hidden` attribute. The
+  // `.right-panel { display: flex }` author rule can override the browser's
+  // user-agent `[hidden]` rule, which made the rail remain visible even though
+  // the terminal-first state was persisted correctly.
+  if (hidden) return null;
+
   const handleModeKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const nextMode = getNextRightRailMode(activeMode, event.key);
     if (!nextMode) return;
@@ -26,8 +32,6 @@ export function RightRailShell({ viewModel, actions, children }: RightRailShellP
     <aside
       className="right-panel"
       aria-label="Contextual inspector"
-      aria-hidden={hidden ? "true" : undefined}
-      hidden={hidden}
       data-workspace-region="right-rail"
       tabIndex={-1}
       style={{ flexBasis: `${width}px`, width: `${width}px` }}

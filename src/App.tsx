@@ -215,6 +215,7 @@ export function App() {
     setRightPanelWidth,
     rightRailCollapsed,
     setRightRailCollapsed,
+    interfaceStyle,
     productMode,
     setProductMode,
     rightRailMode,
@@ -2215,8 +2216,10 @@ export function App() {
           className="app-container"
           data-density={workspaceProfile.visualDensity}
           data-zen-mode={zenMode ? "true" : "false"}
+          data-interface-style={interfaceStyle}
+          data-terminal-first={sidebarCollapsed && rightRailCollapsed ? "true" : "false"}
         >
-          <UpdateBanner disableAutoCheck={!isTauriRuntime()} />
+          <UpdateBanner disableAutoCheck={!isTauriRuntime() || import.meta.env.DEV} />
           {!zenMode && (
             <ProjectHeaderBar
               projectName={projectName}
@@ -2229,12 +2232,14 @@ export function App() {
               menus={menus}
               sidebarCollapsed={sidebarCollapsed}
               onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+              rightRailCollapsed={rightRailCollapsed}
+              onToggleRightRail={() => setRightRailCollapsed((v) => !v)}
             />
           )}
 
           <main className="app-main">
             <ProductModeRail
-              viewModel={{ activeMode: productMode, hidden: zenMode }}
+              viewModel={{ activeMode: productMode, hidden: zenMode || (sidebarCollapsed && rightRailCollapsed) }}
               actions={{ onSelectMode: handleProductModeSelect }}
             />
             <WorkspaceSidebar

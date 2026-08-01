@@ -49,6 +49,7 @@ const THEMES = [
 ];
 
 const FONTS = [
+  "HackGen Console NF",
   "Cascadia Code",
   "Cascadia Mono",
   "Cascadia Next JP",
@@ -80,9 +81,9 @@ const UI_FONTS: { value: string; label: string }[] = [
   { value: 'system-ui, -apple-system, "Segoe UI", sans-serif', label: "System UI" },
 ];
 const WINDOW_EFFECT_OPTIONS: { value: WindowEffect; label: string }[] = [
-  { value: "transparent", label: "Transparent (see-through to desktop)" },
+  { value: "transparent", label: "Transparent (crisp see-through)" },
   { value: "mica", label: "Mica (opaque wallpaper tint)" },
-  { value: "acrylic", label: "Acrylic (opaque frosted)" },
+  { value: "acrylic", label: "Acrylic (blurred see-through)" },
 ];
 
 function uiFontPrimary(stack: string): string {
@@ -103,6 +104,8 @@ function matchUiFontValue(stack: string): string {
   return hit?.value ?? UI_FONTS[0].value;
 }
 const TERMINAL_FONT_FALLBACKS = [
+  "HackGen Console NF",
+  "Cascadia Code",
   "Cascadia Mono",
   "Cascadia Next JP",
   "BIZ UDGothic",
@@ -118,7 +121,7 @@ function terminalPrimaryFont(fontFamily: string): string {
     fontFamily
       .split(",")[0]
       ?.trim()
-      .replace(/^['"]|['"]$/g, "") || "Cascadia Code"
+      .replace(/^['"]|['"]$/g, "") || "HackGen Console NF"
   );
 }
 
@@ -165,7 +168,7 @@ function previewConfig(theme: string, moodPreset: string, shell: string, liveMod
       theme,
       mood_preset: normalizeMoodPreset(moodPreset),
       ui_font_family: "IBM Plex Sans",
-      terminal_font_family: terminalFontStack("Cascadia Code"),
+      terminal_font_family: terminalFontStack("HackGen Console NF"),
       font_size: 14,
       terminal_text_clarity: "solid",
       terminal_surface_opacity: 0.82,
@@ -265,9 +268,11 @@ export function Settings({ visible, onClose }: SettingsProps) {
   const setStoreWindowEffect = useAppStore((s) => s.setWindowEffect);
   const storeUiFontFamily = useAppStore((s) => s.uiFontFamily);
   const storeWindowEffect = useAppStore((s) => s.windowEffect);
+  const interfaceStyle = useAppStore((s) => s.interfaceStyle);
+  const setInterfaceStyle = useAppStore((s) => s.setInterfaceStyle);
   const [theme, setTheme] = useState(storeTheme);
   const [mood, setMood] = useState(storeMood);
-  const [font, setFont] = useState("Cascadia Code");
+  const [font, setFont] = useState("HackGen Console NF");
   const [fontSize, setFontSize] = useState(14);
   const [terminalTextClarity, setTerminalTextClarity] = useState<TerminalTextClarity>(storeTerminalTextClarity);
   const [terminalSurfaceOpacity, setTerminalSurfaceOpacity] = useState(storeTerminalSurfaceOpacity);
@@ -578,9 +583,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
     };
     invoke("save_app_config", { config: merged })
       .then(() => {
-        // Window backdrop is applied live by the dropdown's onValueChange (see
-        // set_window_effect there), so Save only needs to persist the config —
-        // re-applying here would touch the DWM on every unrelated settings save.
+        // Native window chrome is applied live by the effect dropdown and the
+        // Acrylic opacity slider, so Save only needs to persist the config.
         setThemeId(theme);
         setMoodPresetId(mood);
         setGhostDiffLiveMode(liveMode);
@@ -656,6 +660,24 @@ export function Settings({ visible, onClose }: SettingsProps) {
                 />
               </div>
               <div className={styles.field}>
+                <label className={styles.label} htmlFor="settings-interface-style">
+                  Interface style
+                </label>
+                <Select
+                  id="settings-interface-style"
+                  value={interfaceStyle}
+                  onValueChange={(next) => setInterfaceStyle(next === "cards" ? "cards" : "workstation")}
+                  options={[
+                    { value: "workstation", label: "Workstation (planar)" },
+                    { value: "cards", label: "Cards (bento)" },
+                  ]}
+                  ariaLabel="Interface style"
+                />
+                <p className={styles.materialHint}>
+                  Changes the workspace chrome without changing terminal, agent, or inspector data.
+                </p>
+              </div>
+              <div className={styles.field}>
                 <label className={styles.label} htmlFor="settings-mood">
                   Mood
                 </label>
@@ -716,6 +738,14 @@ export function Settings({ visible, onClose }: SettingsProps) {
                       const next = Number(e.target.value);
                       setWindowOpacity(next);
                       setAppWindowOpacity(next);
+                      // Acrylic tint strength is native, not CSS-only. Keep it
+                      // in sync while dragging; transparent and Mica do not use
+                      // this value in their Windows composition mechanism.
+                      if (windowEffect === "acrylic" && isTauriRuntime()) {
+                        invoke("set_window_effect", { effect: windowEffect, opacity: next }).catch((err) => {
+                          toast.error("Failed to update Acrylic tint", String(err));
+                        });
+                      }
                     }}
                   />
                   <span className={styles.materialValue}>{Math.round(windowOpacity * 100)}%</span>
@@ -1088,7 +1118,7 @@ export function Settings({ visible, onClose }: SettingsProps) {
                     // transparent<->mica<->acrylic switches are immediate (no
                     // restart). Persisted on Save via save_app_config. Best-effort:
                     // an OS refusal must not break the dropdown.
-                    invoke("set_window_effect", { effect }).catch((err) => {
+                    invoke("set_window_effect", { effect, opacity: windowOpacity }).catch((err) => {
                       toast.error("Failed to apply window effect", String(err));
                     });
                   }}
@@ -1096,8 +1126,8 @@ export function Settings({ visible, onClose }: SettingsProps) {
                   ariaLabel="Window backdrop"
                 />
                 <p className={styles.hint}>
-                  Transparent shows the desktop and windows behind through the app (see-through). Mica and Acrylic are
-                  opaque Windows materials that cover the desktop. Applies immediately.
+                  Transparent is crisp see-through, Acrylic blurs the desktop and windows behind with a dark tint, and
+                  Mica is an opaque Windows material. Applies immediately.
                 </p>
               </div>
             </section>

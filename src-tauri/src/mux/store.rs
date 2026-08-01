@@ -61,7 +61,7 @@ impl FileMuxSnapshotStore {
         fs::create_dir_all(&self.root).map_err(MuxStoreError::Io)?;
         let path = self.snapshot_path(&graph.active_workspace_id);
         crate::durable_file::atomic_write(&path, snapshot.to_json()?.as_bytes())
-        .map_err(|error| MuxStoreError::Io(io::Error::other(error)))?;
+            .map_err(|error| MuxStoreError::Io(io::Error::other(error)))?;
         Ok(path)
     }
 
@@ -102,7 +102,6 @@ impl FileMuxSnapshotStore {
         self.root
             .join(format!("{}.json", encode_workspace_id(workspace_id)))
     }
-
 }
 
 fn encode_workspace_id(workspace_id: &str) -> String {

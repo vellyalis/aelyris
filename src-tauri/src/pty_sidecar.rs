@@ -21,6 +21,11 @@ const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_millis(750);
 const SIDECAR_READY_TIMEOUT: Duration = Duration::from_secs(2);
 const SIDECAR_READY_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SIDECAR_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(75);
+const READ_ONLY_STREAM_TICKET_MODE: &str = "read-only";
+
+fn stream_ticket_url(base_url: &str, session_id: &str) -> String {
+    format!("{base_url}/sessions/{session_id}/stream-ticket?mode={READ_ONLY_STREAM_TICKET_MODE}")
+}
 
 pub type StreamStateCallback = Arc<dyn Fn(&str, SidecarStreamState) + Send + Sync>;
 
@@ -1114,10 +1119,7 @@ impl PtySidecarClient {
         for attempt in 1..=MAX_TICKET_ATTEMPTS {
             let res = self
                 .http
-                .post(format!(
-                    "{}/sessions/{}/stream-ticket?mode=read",
-                    self.base_url, id
-                ))
+                .post(stream_ticket_url(&self.base_url, id))
                 .bearer_auth(&self.token)
                 .send()
                 .await
@@ -1412,7 +1414,15 @@ fn load_or_create_token() -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::SidecarStreamState;
+    use super::{stream_ticket_url, SidecarStreamState};
+
+    #[test]
+    fn stream_ticket_url_uses_the_api_read_only_mode_contract() {
+        assert_eq!(
+            stream_ticket_url("http://127.0.0.1:9334", "session-1"),
+            "http://127.0.0.1:9334/sessions/session-1/stream-ticket?mode=read-only"
+        );
+    }
 
     #[test]
     fn stream_state_payload_serializes_contract_shape() {

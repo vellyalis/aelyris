@@ -59,6 +59,9 @@ const TERMINAL_PASTE_GUARD_KEY = "aelyris:terminalPasteGuard";
 const DEFAULT_SHELL_KEY = "aelyris:defaultShell";
 const UI_FONT_FAMILY_KEY = "aelyris:uiFontFamily";
 const WINDOW_EFFECT_KEY = "aelyris:windowEffect";
+const INTERFACE_STYLE_KEY = "aelyris:interfaceStyle";
+const SIDEBAR_COLLAPSED_KEY = "aelyris:sidebarCollapsed";
+const RIGHT_RAIL_COLLAPSED_KEY = "aelyris:rightRailCollapsed";
 const WORKSPACE_PROFILES_KEY = "aelyris:workspaceProfiles";
 const WORKSPACE_NAVIGATION_KEY = "aelyris:workspaceNavigation";
 const MAX_FALLBACK_TELEMETRY_EVENTS = 30;
@@ -68,7 +71,7 @@ const DEFAULT_WORKSPACE_NAVIGATION: WorkspaceNavigationState = {
   rightRailFocusWidget: null,
 };
 const DEFAULT_TERMINAL_FONT_FAMILY =
-  "Cascadia Code, Cascadia Mono, Cascadia Next JP, BIZ UDGothic, Yu Gothic UI, Meiryo, Noto Sans Mono CJK JP, IBM Plex Mono, monospace";
+  "HackGen Console NF, Cascadia Code, Cascadia Mono, Cascadia Next JP, BIZ UDGothic, Yu Gothic UI, Meiryo, Noto Sans Mono CJK JP, IBM Plex Mono, monospace";
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
 export type TerminalTextClarity = "glass" | "balanced" | "solid";
 const DEFAULT_TERMINAL_TEXT_CLARITY: TerminalTextClarity = "solid";
@@ -87,12 +90,13 @@ const DEFAULT_UI_FONT_FAMILY = '"IBM Plex Sans", -apple-system, "Segoe UI", sans
 export const MIN_RIGHT_PANEL_WIDTH = 260;
 export const MAX_RIGHT_PANEL_WIDTH = 480;
 export const DEFAULT_RIGHT_PANEL_WIDTH = 320;
-// "transparent" = per-pixel see-through to the desktop/windows behind (no DWM
-// material). "mica"/"acrylic" are opt-in OPAQUE Win11 materials that disable
-// see-through (a material occludes the wry transparent window — see
-// `backdrop_for_effect` in src-tauri/src/lib.rs). Default is see-through.
+// Window composition is independent from the interface layout style below:
+// transparent is crisp see-through, Acrylic is blurred see-through, and Mica
+// is the intentionally opaque Windows material.
 export type WindowEffect = "transparent" | "mica" | "acrylic";
 export const DEFAULT_WINDOW_EFFECT: WindowEffect = "transparent";
+export type InterfaceStyle = "workstation" | "cards";
+export const DEFAULT_INTERFACE_STYLE: InterfaceStyle = "workstation";
 
 export interface WallpaperSettings {
   imagePath: string | null;
@@ -362,6 +366,19 @@ function loadWindowEffect(): WindowEffect {
   }
 }
 
+export function sanitizeInterfaceStyle(value: unknown): InterfaceStyle {
+  return value === "cards" ? "cards" : DEFAULT_INTERFACE_STYLE;
+}
+
+function loadInterfaceStyle(): InterfaceStyle {
+  try {
+    return sanitizeInterfaceStyle(localStorage.getItem(INTERFACE_STYLE_KEY));
+  } catch (err) {
+    reportStorageFailure("load_interface_style", err, "info");
+    return DEFAULT_INTERFACE_STYLE;
+  }
+}
+
 export function sanitizeThemeOverrides(value: unknown): Record<string, AccentOverrides> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const cleaned: Record<string, AccentOverrides> = {};
@@ -616,6 +633,10 @@ interface AppState {
   /** Windows DWM backdrop type. Persisted to config and applied at window setup. */
   windowEffect: WindowEffect;
   setWindowEffect: (effect: WindowEffect) => void;
+  /** Visual treatment only. Workstation is a planar native-style inspector;
+   *  Cards preserves the denser bento presentation without changing owners or data. */
+  interfaceStyle: InterfaceStyle;
+  setInterfaceStyle: (style: InterfaceStyle) => void;
 
   // Project
   rootProjectPath: string | null;
@@ -1216,6 +1237,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       reportStorageFailure("persist_window_effect", err);
     }
   },
+  interfaceStyle: loadInterfaceStyle(),
+  setInterfaceStyle: (style) => {
+    const next = sanitizeInterfaceStyle(style);
+    set({ interfaceStyle: next });
+    try {
+      localStorage.setItem(INTERFACE_STYLE_KEY, next);
+    } catch (err) {
+      reportStorageFailure("persist_interface_style", err);
+    }
+  },
 
   // Project
   rootProjectPath: (() => {
@@ -1238,17 +1269,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   sidebarCollapsed: (() => {
     try {
-      return localStorage.getItem("aelyris:sidebarCollapsed") === "1";
+      const persisted = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      return persisted === null ? true : persisted === "1";
     } catch (err) {
       reportStorageFailure("load_sidebar_collapsed", err, "info");
-      return false;
+      return true;
     }
   })(),
   setSidebarCollapsed: (v) =>
     set((s) => {
       const next = toggleOrSet(v, s.sidebarCollapsed);
       try {
-        localStorage.setItem("aelyris:sidebarCollapsed", next ? "1" : "0");
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
       } catch (err) {
         reportStorageFailure("persist_sidebar_collapsed", err, "info");
       }
@@ -1298,8 +1330,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return { rightPanelWidth: clamped };
     }),
-  rightRailCollapsed: false,
-  setRightRailCollapsed: (v) => set((s) => ({ rightRailCollapsed: toggleOrSet(v, s.rightRailCollapsed) })),
+  rightRailCollapsed: (() => {
+    try {
+      const persisted = localStorage.getItem(RIGHT_RAIL_COLLAPSED_KEY);
+      return persisted === null ? false : persisted === "1";
+    } catch (err) {
+      reportStorageFailure("load_right_rail_collapsed", err, "info");
+      return false;
+    }
+  })(),
+  setRightRailCollapsed: (v) =>
+    set((s) => {
+      const next = toggleOrSet(v, s.rightRailCollapsed);
+      try {
+        localStorage.setItem(RIGHT_RAIL_COLLAPSED_KEY, next ? "1" : "0");
+      } catch (err) {
+        reportStorageFailure("persist_right_rail_collapsed", err, "info");
+      }
+      return { rightRailCollapsed: next };
+    }),
   workspaceNavigationId: "",
   ...DEFAULT_WORKSPACE_NAVIGATION,
   hydrateWorkspaceNavigation: (workspaceNavigationId) =>

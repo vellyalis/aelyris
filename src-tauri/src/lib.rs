@@ -77,21 +77,26 @@ fn apply_windows_app_identity() {
 #[cfg(not(windows))]
 fn apply_windows_app_identity() {}
 
+const ACCENT_DISABLED: i32 = 0;
+const ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND: i32 = 4;
+const ACRYLIC_TINT_MIN_ALPHA: f32 = 48.0;
+const ACRYLIC_TINT_MAX_ALPHA: f32 = 128.0;
+const MIN_APPEARANCE_OPACITY: f32 = 0.2;
+const MAX_APPEARANCE_OPACITY: f32 = 1.0;
+const DEFAULT_APPEARANCE_OPACITY: f32 = 0.95;
+
 /// Resolve a `window_effect` config string to the DWM system-backdrop type to
 /// request (`DWM_SYSTEMBACKDROP_TYPE` value) plus a human-readable label.
 ///
 /// CRITICAL — DO NOT "fix" `transparent` to apply Mica/Acrylic. On a wry
 /// per-pixel-transparent window (`transparent: true` in tauri.conf), applying
-/// ANY DWM system-backdrop MATERIAL (Mica = `DWMSBT_MAINWINDOW`=2, Acrylic =
-/// `DWMSBT_TRANSIENTWINDOW`=3) fills the client area and OCCLUDES the per-pixel
-/// transparency — the desktop and windows behind STOP showing through. This was
-/// the 2026-04 "acrylic see-through" regression: a backdrop was added believing
-/// `DWMSBT_TRANSIENTWINDOW` revealed the desktop, but on a transparent wry
-/// window it HIDES it (verified by OS screen capture: material => opaque gray;
-/// no material => desktop/windows behind show through). See-through therefore
-/// REQUIRES no material, i.e. `DWMSBT_NONE`=1. `mica`/`acrylic` are opt-in
-/// OPAQUE Win11 materials that deliberately trade see-through for the frosted
-/// look. Guarded by the `backdrop_for_effect_*` unit tests below and the
+/// DWM system-backdrop MATERIAL (`DWMSBT_MAINWINDOW` or
+/// `DWMSBT_TRANSIENTWINDOW`) fills the client area and OCCLUDES per-pixel
+/// transparency. `transparent` therefore uses `DWMSBT_NONE`. The Acrylic option
+/// also uses `DWMSBT_NONE`, then applies the older AccentPolicy acrylic blur,
+/// which is the path empirically verified to blur the windows behind this
+/// transparent wry/WebView2 window. Mica remains an intentionally opaque DWM
+/// material. Guarded by the `backdrop_for_effect_*` unit tests below and the
 /// empty-`windowEffects` config test (`window-transparency.test.ts`); the
 /// window must also keep `windowEffects.effects: []` in tauri.conf so the
 /// window-vibrancy accent material is not re-introduced as a second occluder.
@@ -102,8 +107,8 @@ pub(crate) fn backdrop_for_effect(window_effect: &str) -> (i32, &'static str) {
             "Mica via DWMSBT_MAINWINDOW (opaque wallpaper tint, no see-through)",
         ),
         "acrylic" => (
-            3,
-            "Acrylic via DWMSBT_TRANSIENTWINDOW (opaque frosted material, no see-through)",
+            1,
+            "Acrylic via DWMSBT_NONE + SWCA AccentPolicy (blurred see-through)",
         ),
         // "transparent" / "none" / "" / unknown -> no material = per-pixel
         // see-through to the desktop and windows behind.
@@ -111,6 +116,111 @@ pub(crate) fn backdrop_for_effect(window_effect: &str) -> (i32, &'static str) {
             1,
             "Transparent via DWMSBT_NONE (per-pixel see-through to desktop)",
         ),
+    }
+}
+
+/// Map the user-facing appearance opacity onto the conservative tint-alpha
+/// interval verified for the SWCA acrylic path. The Settings slider spans
+/// 0.2..=1.0; mapping that range to 48..=128 keeps the blur readable without
+/// turning the dark tint into another opaque backdrop. A non-finite value is
+/// treated as the persisted default instead of producing a fully clear tint.
+fn acrylic_tint_alpha(opacity: f32) -> u8 {
+    let opacity = if opacity.is_finite() {
+        opacity.clamp(MIN_APPEARANCE_OPACITY, MAX_APPEARANCE_OPACITY)
+    } else {
+        DEFAULT_APPEARANCE_OPACITY
+    };
+    let normalized =
+        (opacity - MIN_APPEARANCE_OPACITY) / (MAX_APPEARANCE_OPACITY - MIN_APPEARANCE_OPACITY);
+    (ACRYLIC_TINT_MIN_ALPHA + normalized * (ACRYLIC_TINT_MAX_ALPHA - ACRYLIC_TINT_MIN_ALPHA))
+        .round() as u8
+}
+
+/// AccentPolicy GradientColor is encoded as `0xAABBGGRR` (ABGR). The dark
+/// blue-black tint is deliberately stable; appearance opacity controls only
+/// its alpha so live changes do not shift the product palette.
+fn acrylic_gradient_color(opacity: f32) -> u32 {
+    let alpha = u32::from(acrylic_tint_alpha(opacity));
+    (alpha << 24) | (22_u32 << 16) | (10_u32 << 8) | 3_u32
+}
+
+fn accent_for_effect(window_effect: &str, opacity: f32) -> (i32, u32) {
+    if window_effect.trim().eq_ignore_ascii_case("acrylic") {
+        (
+            ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND,
+            acrylic_gradient_color(opacity),
+        )
+    } else {
+        (ACCENT_DISABLED, 0)
+    }
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct AccentPolicy {
+    state: i32,
+    flags: i32,
+    gradient_color: u32,
+    animation_id: i32,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct WindowCompositionAttributeData {
+    attribute: i32,
+    data: *mut std::ffi::c_void,
+    size: usize,
+}
+
+#[cfg(windows)]
+fn apply_accent_policy(
+    hwnd: windows::Win32::Foundation::HWND,
+    state: i32,
+    gradient_color: u32,
+) -> Result<(), String> {
+    use windows::core::{s, w};
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+
+    type SetWindowCompositionAttributeFn = unsafe extern "system" fn(
+        windows::Win32::Foundation::HWND,
+        *const WindowCompositionAttributeData,
+    ) -> windows_core::BOOL;
+
+    // Undocumented but stable Windows composition contract used by Windows
+    // Terminal-style acrylic. WCA_ACCENT_POLICY = 19; flags/animation stay 0
+    // because the empirically verified path did not require border flags.
+    const WCA_ACCENT_POLICY: i32 = 19;
+    let mut policy = AccentPolicy {
+        state,
+        flags: 0,
+        gradient_color,
+        animation_id: 0,
+    };
+    let data = WindowCompositionAttributeData {
+        attribute: WCA_ACCENT_POLICY,
+        data: &mut policy as *mut AccentPolicy as *mut std::ffi::c_void,
+        size: std::mem::size_of::<AccentPolicy>(),
+    };
+    // SetWindowCompositionAttribute is exported by user32.dll but deliberately
+    // absent from the Windows SDK import library. Resolve it at runtime; a
+    // static `#[link(name = "user32")]` declaration compiles unit tests but
+    // fails the application DLL link with LNK2019.
+    let user32 = unsafe { GetModuleHandleW(w!("user32.dll")) }
+        .map_err(|error| format!("user32.dll unavailable: {error}"))?;
+    let raw_proc = unsafe { GetProcAddress(user32, s!("SetWindowCompositionAttribute")) }
+        .ok_or_else(|| {
+            "SetWindowCompositionAttribute is not exported by this Windows build".to_string()
+        })?;
+    let set_window_composition_attribute: SetWindowCompositionAttributeFn =
+        unsafe { std::mem::transmute(raw_proc) };
+    let applied = unsafe { set_window_composition_attribute(hwnd, &data) };
+    if applied.as_bool() {
+        Ok(())
+    } else {
+        Err(format!(
+            "SetWindowCompositionAttribute returned FALSE: {}",
+            std::io::Error::last_os_error()
+        ))
     }
 }
 
@@ -123,10 +233,22 @@ pub(crate) fn backdrop_for_effect(window_effect: &str) -> (i32, &'static str) {
 pub(crate) fn apply_window_backdrop(
     hwnd: windows::Win32::Foundation::HWND,
     window_effect: &str,
+    opacity: f32,
 ) -> Result<&'static str, String> {
     use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE};
 
     let (value, label) = backdrop_for_effect(window_effect);
+    let (accent_state, gradient_color) = accent_for_effect(window_effect, opacity);
+
+    // AccentPolicy survives DWM backdrop changes. Always clear it first so
+    // acrylic -> transparent/mica live switching cannot leave blur behind.
+    apply_accent_policy(hwnd, ACCENT_DISABLED, 0).map_err(|error| {
+        log::warn!(
+            "window chrome: failed to clear prior AccentPolicy before applying {window_effect}: {error}"
+        );
+        format!("failed to clear prior Windows accent policy: {error}")
+    })?;
+
     let result = unsafe {
         DwmSetWindowAttribute(
             hwnd,
@@ -136,20 +258,43 @@ pub(crate) fn apply_window_backdrop(
         )
     };
     match result {
-        Ok(()) => {
-            log::info!("window chrome: {label} applied (window_effect={window_effect})");
-            Ok(label)
-        }
+        Ok(()) => {}
         Err(e) => {
             log::warn!("window chrome: {label} refused ({e}); window keeps CSS-only glass");
-            Err(format!("DWM backdrop refused: {e}"))
+            return Err(format!("DWM backdrop refused for {window_effect}: {e}"));
         }
     }
+
+    if accent_state == ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND {
+        if let Err(error) = apply_accent_policy(hwnd, accent_state, gradient_color) {
+            // DWM NONE is already active, so SWCA refusal degrades to the known
+            // working crisp transparent path instead of an opaque gray material.
+            log::warn!(
+                "window chrome: SWCA acrylic refused ({error}); transparent DWM fallback remains active"
+            );
+            return Err(format!(
+                "Windows acrylic blur unavailable; transparent fallback remains active: {error}"
+            ));
+        }
+    }
+
+    log::info!(
+        "window chrome: {label} applied (window_effect={window_effect}, opacity={opacity:.2}, tint_alpha={})",
+        if accent_state == ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND {
+            acrylic_tint_alpha(opacity)
+        } else {
+            0
+        }
+    );
+    Ok(label)
 }
 
 #[cfg(test)]
 mod backdrop_tests {
-    use super::backdrop_for_effect;
+    use super::{
+        accent_for_effect, acrylic_gradient_color, acrylic_tint_alpha, backdrop_for_effect,
+        ACCENT_DISABLED, ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND,
+    };
 
     // DWM_SYSTEMBACKDROP_TYPE: NONE=1, MAINWINDOW(Mica)=2, TRANSIENTWINDOW(Acrylic)=3.
     #[test]
@@ -163,10 +308,25 @@ mod backdrop_tests {
     }
 
     #[test]
-    fn backdrop_for_effect_maps_opaque_materials() {
+    fn backdrop_for_effect_keeps_mica_opaque_and_acrylic_on_dwm_none() {
         assert_eq!(backdrop_for_effect("mica").0, 2);
-        assert_eq!(backdrop_for_effect("acrylic").0, 3);
-        assert_eq!(backdrop_for_effect("Acrylic").0, 3);
+        assert_eq!(backdrop_for_effect("acrylic").0, 1);
+        assert_eq!(backdrop_for_effect("Acrylic").0, 1);
+    }
+
+    #[test]
+    fn acrylic_uses_swca_blur_and_opacity_bound_dark_tint() {
+        assert_eq!(accent_for_effect("transparent", 0.95), (ACCENT_DISABLED, 0));
+        assert_eq!(accent_for_effect("mica", 0.95), (ACCENT_DISABLED, 0));
+        assert_eq!(
+            accent_for_effect("acrylic", 0.95).0,
+            ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND
+        );
+        assert_eq!(acrylic_tint_alpha(0.2), 48);
+        assert_eq!(acrylic_tint_alpha(0.95), 123);
+        assert_eq!(acrylic_tint_alpha(1.0), 128);
+        assert_eq!(acrylic_tint_alpha(f32::NAN), 123);
+        assert_eq!(acrylic_gradient_color(0.95), 0x7B16_0A03);
     }
 }
 
@@ -794,11 +954,9 @@ pub fn run() {
                     );
                 }
             }
-            // Window chrome on Windows: the window is created with
-            // `windowEffects.effects: []` (no material) so it is per-pixel
-            // transparent; this block then sets the DWM system backdrop from
-            // window_effect (transparent => DWMSBT_NONE = see-through). An
-            // explicit dogfood flag (AELYRIS_DISABLE_DWM_CHROME=1) skips it.
+            // Rounded native corners are independent from the live window
+            // composition mechanism applied after the WebView2 controller
+            // background is asserted transparent below.
             #[cfg(windows)]
             {
                 use windows::Win32::Foundation::HWND;
@@ -806,17 +964,6 @@ pub fn run() {
                     DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
                 };
 
-                // Window backdrop follows config.appearance.window_effect via
-                // `apply_window_backdrop` / `backdrop_for_effect`:
-                //   transparent (default) -> DWMSBT_NONE  => per-pixel see-through
-                //   mica                  -> DWMSBT_MAINWINDOW (opaque tint)
-                //   acrylic               -> DWMSBT_TRANSIENTWINDOW (opaque frost)
-                // IMPORTANT: a material (mica/acrylic) OCCLUDES the wry transparent
-                // client area, so see-through uses NO material. The window must
-                // also keep tauri.conf `windowEffects.effects: []` so the
-                // window-vibrancy accent material is not re-added as a second
-                // occluder. Escape hatch AELYRIS_DISABLE_DWM_CHROME=1 skips this
-                // block entirely (leaves the window in its created state).
                 let direct_dwm_disabled =
                     std::env::var("AELYRIS_DISABLE_DWM_CHROME").as_deref() == Ok("1");
                 if direct_dwm_disabled {
@@ -824,16 +971,11 @@ pub fn run() {
                         "window chrome: direct DWM chrome disabled by env (AELYRIS_DISABLE_DWM_CHROME=1)"
                     );
                 } else if let Some(window) = app.get_webview_window("main") {
-                    let window_effect = config::load_config().appearance.window_effect;
                     match window.hwnd() {
                         Ok(hwnd_raw) => {
                             let hwnd = HWND(hwnd_raw.0 as *mut _);
 
-                            // 1. Backdrop via DWMWA_SYSTEMBACKDROP_TYPE. Shared
-                            //    with the live `set_window_effect` command.
-                            let _ = apply_window_backdrop(hwnd, &window_effect);
-
-                            // 2. Rounded outer-window corners.
+                            // Rounded outer-window corners.
                             //    DWMWCP_ROUND is a no-op on Win10 (the
                             //    API returns E_INVALIDARG, tolerated
                             //    silently).
@@ -919,6 +1061,31 @@ pub fn run() {
                     });
                     if let Err(e) = bg_result {
                         log::warn!("with_webview for transparent background failed: {e}");
+                    }
+
+                    // Apply DWM/SWCA only after the controller background is
+                    // transparent. This order is important on newer WebView2
+                    // runtimes: controller initialization can otherwise cover
+                    // or reset the native Acrylic composition established
+                    // earlier in setup. The same helper owns live switching.
+                    let direct_dwm_disabled =
+                        std::env::var("AELYRIS_DISABLE_DWM_CHROME").as_deref() == Ok("1");
+                    if !direct_dwm_disabled {
+                        use windows::Win32::Foundation::HWND;
+                        let appearance = config::load_config().appearance;
+                        match window.hwnd() {
+                            Ok(hwnd_raw) => {
+                                let hwnd = HWND(hwnd_raw.0 as *mut _);
+                                let _ = apply_window_backdrop(
+                                    hwnd,
+                                    &appearance.window_effect,
+                                    appearance.opacity,
+                                );
+                            }
+                            Err(e) => {
+                                log::warn!("hwnd unavailable for window composition setup: {e}")
+                            }
+                        }
                     }
                 }
                 let win_for_handler = window.clone();
