@@ -420,7 +420,7 @@ const requiredPlanClauses = [
 ];
 
 const requiredWorkOrderClauses = [
-  "CURRENT PHASE: `A7`",
+  "CURRENT PHASE: `A8`",
   "ACTIVE SLICE:",
   "LAST COMPLETED SLICE:",
   "NEXT IMPLEMENTATION SLICE:",
@@ -430,8 +430,9 @@ const requiredWorkOrderClauses = [
   "A7.3 independent review and exact-OID acceptance is complete",
   "A7.4 is complete",
   "Independent review reopened A7.4",
-  "A7.5 now has a local combined-acceptance candidate",
-  "exact-SHA hosted evidence and authenticated closeout remain pending",
+  "A7.5 and A7 are complete",
+  "exact-SHA hosted run `30735313688`",
+  "A8.0 is the next decision gate and has not started",
 ];
 
 const requiredArchitectureClauses = [
@@ -985,7 +986,7 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a7AcceptedFrontierValid = currentFrontier.activeSlice === "A7.5" && currentFrontier.lastCompletedSlice === "A7.4";
+const a7ClosedFrontierValid = currentFrontier.activeSlice === "A8.0" && currentFrontier.lastCompletedSlice === "A7.5";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1235,10 +1236,10 @@ const checks = [
     "work-order-frontier",
     missing.workOrder.length === 0 &&
       Object.values(currentFrontier).every(Boolean) &&
-      currentFrontier.phase === "A7" &&
+      currentFrontier.phase === "A8" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
-      a7AcceptedFrontierValid,
-    "Work order records A7.4 complete and keeps A7.5 active for exact-SHA hosted closeout",
+      a7ClosedFrontierValid,
+    "Work order records A7.5 complete and exposes A8.0 as the next unstarted decision gate",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(
@@ -1250,7 +1251,7 @@ const checks = [
       a7CombinedAcceptance?.blockingCi?.jobId === "a7-combined-acceptance" &&
       a7CombinedAcceptance?.phaseComplete === false &&
       a7CombinedAcceptance?.releaseReady === false,
-    "A7.5 exposes one parseable local-candidate contract without claiming phase or release completion",
+    "A7.5 retains one parseable fail-closed candidate contract while tracked closeout evidence owns phase completion",
     {
       parseError: a7CombinedAcceptanceParse.error,
       schema: a7CombinedAcceptance?.schema,

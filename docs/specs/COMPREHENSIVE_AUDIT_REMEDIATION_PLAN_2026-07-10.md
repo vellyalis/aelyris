@@ -1992,8 +1992,8 @@ the frontier to A7.5 without starting its combined-acceptance implementation.
 
 ### **A7.5 - Canonical Core Mission Combined Acceptance**
 
-Status: local candidate implemented; exact-SHA hosted evidence and authenticated
-closeout remain pending. A7.4 remains the last completed slice.
+Status: complete from exact-SHA hosted evidence and authenticated clean-worktree
+closeout. A7.5 is the last completed slice and A8.0 is active.
 
 The fixed request must pass, in order: accepted versioned plan preview, visible
 implementation, fresh tests, independent exact-OID review, successful exact-OID
@@ -2016,11 +2016,25 @@ The local run passes 48 Rust tests and reports `pass-local-awaiting-hosted-ci` w
 until a completed exact-HEAD GitHub run proves the blocking jobs and the clean local
 closeout binds that run to the preserved live evidence.
 
+External closeout (2026-08-02): GitHub Actions run `30735313688` at exact candidate
+`82c69c371bed6a90c9ba01ba8d2614d533b3ff75` completed. The uniquely matched Frontend
+job `91462944863`, Rust job `91462944807`, and A7.5 combined job `91463289810` all
+succeeded on run attempt 1. Authenticated clean-worktree closeout re-executed 48/48 A7
+Rust tests, revalidated the preserved exact-OID evidence, and emitted
+`pass-a7.5-externally-verified`, `completedSlice=A7.5`, `activeSlice=A8.0`, and
+`phaseComplete=true`. The workflow-level conclusion remained failure because the
+separate Rendered UI trust and release-hardening lanes were red, and the historical
+A6.8 hosted candidate consequently failed its Rendered UI dependency check. Those
+remain outside the A7 completion class and keep their own quality/release blocker
+semantics. A7 completion does not imply release readiness.
+
 Do not start marketplace, autonomous main merge, hosted cloud IDE, broad team RBAC,
 or effectful Shadow Missions before the Core Mission Loop and local single-operator
 trust path are proven.
 
-### A8.0 - Native Product Goal And Architecture Decision Gate
+### **A8.0 - Native Product Goal And Architecture Decision Gate**
+
+Status: active decision gate; no product/architecture outcome has been selected.
 
 The full-native Rust migration package under
 `docs/plans/full-native-rust-migration/` is the high-priority queued proposal.

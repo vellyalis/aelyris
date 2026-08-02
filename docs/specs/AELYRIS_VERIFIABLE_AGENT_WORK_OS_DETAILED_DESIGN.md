@@ -3135,14 +3135,13 @@ complete-v11, complete-v10, or invalid-partial shape from raw JSON before valida
 legacy shape always requires the exact old raw digest and then current semantic resealing.
 Negative completed, Mission, and blocked fixtures prove the defaults-expanded digest is
 rejected after the real v11 migration. Final separated independent review passed with
-zero major findings. A7.4 is complete and A7 `phaseComplete=false` remains truthful.
-A7.5 now has a local combined-acceptance candidate, while exact-SHA hosted evidence and
-authenticated closeout remain pending.
+zero major findings. A7.4 is complete. A7.5 subsequently closed the A7 aggregate from
+exact-SHA hosted evidence and authenticated clean-worktree verification.
 
 ### A7.5 Canonical Core Mission Combined Acceptance
 
-Status: local candidate implemented; exact-SHA hosted evidence and authenticated
-closeout pending. A7.4 completion does not itself satisfy combined acceptance.
+Status: complete from exact-SHA hosted evidence and authenticated clean-worktree
+closeout. A7.4 completion alone did not satisfy combined acceptance.
 
 - one useful request passes versioned plan preview, visible implementation, fresh
   tests, independent exact-OID review, exact-OID accept/merge, immutable
@@ -3157,13 +3156,17 @@ closeout pending. A7.4 completion does not itself satisfy combined acceptance.
   structured provider expansion, and learning layers receive no A7 completion
   credit and remain deferred product work.
 
-The local candidate runs every current `a7_` Rust proof (48 tests), validates the
+The combined verifier runs every current `a7_` Rust proof (48 tests), validates the
 preserved A7.2/A7.3 exact-OID evidence chain, and proves that candidate drift after
 test emits one idempotent zero-credit `BlockedWorkPacket` with exact re-proof
 continuation and no `MissionCompletionPacket`. It also installs a blocking hosted CI
-candidate job. The local artifact must remain `pass-local-awaiting-hosted-ci` with
-`completedSlice=A7.4`, `activeSlice=A7.5`, and `phaseComplete=false` until an
-authenticated exact-HEAD hosted run and clean local closeout both pass.
+candidate job. Run `30735313688` at exact candidate `82c69c3` uniquely matched and
+passed Frontend job `91462944863`, Rust job `91462944807`, and A7.5 combined job
+`91463289810`. Authenticated clean-worktree closeout emitted
+`pass-a7.5-externally-verified`, `completedSlice=A7.5`, `activeSlice=A8.0`, and
+`phaseComplete=true`; `releaseReady=false` remains explicit. The machine record below
+retains `phaseComplete=false` as the fail-closed candidate default before the named
+external authority is supplied, not as a denial of the completed closeout artifact.
 
 <!-- A7_5_COMBINED_ACCEPTANCE_CONTRACT_V1_BEGIN -->
 ```json
