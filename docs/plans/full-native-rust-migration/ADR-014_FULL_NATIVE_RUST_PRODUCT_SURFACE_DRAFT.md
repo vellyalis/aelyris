@@ -1,13 +1,11 @@
 # ADR-014 — Full-Native Rust Product Surface
 
-Status: high-priority queued draft / proposed; canonical decision owner is
-`DECISIONS.md` ADR-014; A8.0 owns
-accept-as-written/accept-with-amendments/defer/reject, both accepted results
-enter one branch, and NUI-0.1 only ratifies an accepted decision for activation
-Date: 2026-07-28 JST
-Would supersede if accepted: ADR-001 **for the primary product surface only**
-Would also supersede if accepted: `TERMINAL_CORE_DESIGN.md §3`
-hybrid-primary decision
+Status: accepted with amendments at A8.0; queued for post-A9 activation;
+canonical decision owner is `DECISIONS.md` ADR-014
+Date: 2026-07-28 JST; accepted 2026-08-02 JST
+Supersession on post-A9 activation: ADR-001 **for the primary product surface only**
+Supersession on post-A9 activation: `TERMINAL_CORE_DESIGN.md §3`
+hybrid-primary implementation decision
 Preserves: ADR-002 through ADR-013 unless explicitly amended
 
 ## Context
@@ -32,19 +30,29 @@ The premise “a WebView remains regardless” is no longer accepted as permanen
 
 Aelyris will migrate its primary operator surface to a Rust-native UI。
 
-Target stack:
+Target stack and selection boundary:
 
 - `winit` for window/event loop
 - `windows-rs` for Windows integration
 - `wgpu`/DX12 for GPU rendering
 - DirectWrite for shaping/fallback
-- Taffy for layout
-- AccessKit/UIA for accessibility
-- Aelyris-specific retained UI runtime and specialized terminal/editor surfaces
+- mature layout/accessibility owners through the selected shell framework
+- specialized terminal/editor surfaces that preserve the canonical hot-path contracts
+- shell framework selected in NUI-F0 from a same-vertical Slint versus Aelyris
+  retained-runtime comparison; no framework is preselected by this ADR
 
 Tauri/React remains a compatibility face until N4 promotion gates pass。It is not removed at migration start。
 
 Native UI delegates all capabilities to the same canonical Aelyris Control Kernel and backend-owned projections。It does not create a second runtime、Mission owner、mux、PTY、review、merge、proof、or governance path。
+
+Amendments accepted at A8.0:
+
+1. preserve A8.1 then A9; do not start NUI before the post-A9 activation gate;
+2. keep Tauri/React as Current Best and rollback until surface-promotion gates;
+3. run the Slint/retained-runtime same-vertical comparison before adding a
+   framework dependency;
+4. target Windows 11 x64 first and measure Windows 10 compatibility separately;
+5. grant no current capability, production, or release-readiness claim.
 
 ## Why
 
@@ -66,7 +74,7 @@ Positive:
 - terminal/editor rendering control
 - stronger recovery/diagnostics
 
-Costs:
+Potential costs, depending on the NUI-F0 selection:
 
 - internal UI runtime ownership
 - native editor implementation

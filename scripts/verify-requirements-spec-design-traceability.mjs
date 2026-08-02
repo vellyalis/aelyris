@@ -231,33 +231,35 @@ const checks = [
     includesAll(docs.specsReadme, [
       "AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
       "AELYRIS_NATIVE_UI_REQUIREMENTS.md",
-      "A8.0",
+      "A8.1",
       "priority 1",
       "verify:native-ui:design-package",
     ]) &&
       includesAll(normalizedDocs.requirements, [
         "AELYRIS_NATIVE_UI_REQUIREMENTS.md",
-        "A8.0",
+        "A8.0 accepted N4 with amendments",
         "priority 1 after A9",
         "NUI-F0-F7",
       ]) &&
       includesAll(normalizedDocs.decisions, [
         "ADR-014 Full-Native Rust Product Surface",
-        "Status: **proposed / queued**",
-        "priority 1 after A9",
+        "Status: **accepted with amendments / queued for post-A9 activation**",
+        "preserve the measured A8 then A9 execution order",
+        "NUI-F0 must compare Slint",
       ]) &&
       includesAll(normalizedDocs.auditWorkOrder, [
         "ACTIVE SLICE:",
         "NEXT IMPLEMENTATION SLICE:",
         "NEXT PHASE:",
-        "A8.0",
-        "measured terminal-only native spike",
+        "A8.1",
+        "measured native terminal evidence and disposition",
         "exact current slice is owned only by this root work order",
       ]) &&
       includesAll(normalizedDocs.nativeWorkOrder, [
         "STATUS: QUEUED_HIGH_PRIORITY",
+        "DECISION: ADR-014 accepted with amendments at A8.0",
         "priority 1 after A9",
-        "explicit owner decision",
+        "Pre-A9 takeover was not authorized",
       ]) &&
       includesAll(normalizedDocs.nativeArchitecture, [
         "target contracts, not implemented owners",
@@ -270,7 +272,7 @@ const checks = [
         "every concrete `NUI-*` requirement ID",
         "no wildcard-only coverage",
       ]),
-    "the full-native Rust package is indexed as a high-priority queued proposal without duplicating the active slice or changing A6.2e1, measured A8, or current claims",
+    "the accepted-with-amendments full-native Rust package is queued post-A9 without duplicating A8.1 or changing current claims",
   ),
   check(
     "work-os-authority-composition",
@@ -292,7 +294,7 @@ const checks = [
         "This stable roadmap does not copy the exact current phase or slice",
         "The durable A6 resume slice is `A6.2e1`",
         "Canonical Core Mission Combined Acceptance",
-        "A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate",
+        "A8.1 And A9 Remain Release Gates; A8.0 Decision Is Complete",
       ]) &&
       includesAll(docs.controlApiMcp, [
         "Current Audit Findings At HEAD `3db3932`",

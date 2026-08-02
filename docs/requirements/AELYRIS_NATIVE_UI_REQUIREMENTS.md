@@ -1,13 +1,13 @@
 # Aelyris Native UI Requirements
 
-Status: high-priority queued proposal; not current implementation or product claim
+Status: accepted-with-amendments product target; queued post-A9; not current capability
 Authority layer: Requirements
 Requirement prefix: `NUI-*`
 Claim policy: verifier-backed; prose aloneでshipped扱いしない。
 
-Activation boundary: priority-1 after A9 by default. A8.0 may recommend an
-earlier takeover only through an explicit owner decision and a rebaselined
-tracked program. Current Tauri/React product truth remains authoritative until
+Activation boundary: priority-1 after A9. A8.0 authorized no earlier takeover
+and no shell-framework dependency. NUI-F0 selects Slint or the retained-runtime
+candidate from one same-vertical comparison. Current Tauri/React product truth remains authoritative until
 an N-level aggregate gate promotes a native surface.
 
 ---

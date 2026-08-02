@@ -77,8 +77,8 @@ volatile frontier. The durable position is:
 - finish A6 by owner, dependency, behavior, and concurrency evidence rather than a
   universal line-count target;
 - enter A7 through a scope lock and prove one canonical Core Mission;
-- keep A8.0, measured A8, A9, blocking CI, and external/operator release evidence
-  open until their own gates pass;
+- keep A8.1, A9, blocking CI, and external/operator release evidence open until
+  their own gates pass; A8.0 is complete with accepted-with-amendments outcome;
 - current public status remains alpha and not release-ready.
 
 The durable A6 resume slice is `A6.2e1`; the root work order owns when that
@@ -97,8 +97,8 @@ random feature accumulation. It does not unlock a shipped capability.
 | A6.2f-g | split only proven ownership boundaries and pass blocking frontend acceptance | dependency direction, owner behavior, concurrency, diagnostic non-growth ratchets, and CI green | modular cockpit ready to receive Mission projections |
 | A6.3-A6.8 | IPC/MCP/DB/native owner splits, dead-owner proof, aggregate ratchet | owner-specific and combined blocking gates | backend seams stable enough for one Mission vertical |
 | A7.0-A7.5 | canonical Core Mission Loop | request, versioned plan preview, visible implementation, fresh tests, independent review, exact-OID settlement, and immutable completion packets | one trusted brief-to-proof workflow without destination-feature bundling |
-| A8.0 | native product-goal/architecture decision | current native coverage v2, same-condition evidence, alternatives, ownership cost, rollback, Windows support, and release timing | keep post-A9 priority-1 default or explicitly authorize a versioned pre-A9 rebaseline |
-| A8 | measured native terminal spike | parity/perf/soak decision evidence | evidence-based renderer direction, including a valid no-promote result |
+| A8.0 | native product-goal/architecture decision (complete) | native coverage v2, same-condition evidence, alternatives, ownership cost, rollback, Windows support, and release timing | accepted with amendments; post-A9 N4 direction, no pre-A9 takeover, framework selected in NUI-F0 |
+| A8.1 | measured native terminal spike | parity/perf/soak decision evidence | evidence-based renderer direction, including a valid no-promote result |
 | A9 | blocking CI, signed/update/install/relaunch/rollback, real-host and operator proof | current repo+CI+external completion matrix | release claim only if every existing claim-policy gate passes |
 
 ### 4.1 A6.2v1 documentation-only boundary
@@ -284,25 +284,24 @@ Unlocks:
 
 - Aelyris has one proven end-to-end Verifiable Agent Work OS vertical.
 
-## 6. A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate
+## 6. A8.1 And A9 Remain Release Gates; A8.0 Decision Is Complete
 
 ### A8.0 native product-goal and architecture decision
 
-A8.0 evaluates the high-priority queued full-native Rust migration package after
-A7 without changing the current active frontier or A8 evidence contract. It
-compares the current hybrid, a mature Rust UI framework, and the proposed
-Aelyris-specific retained runtime under the same Goal and evidence.
+A8.0 accepted the high-priority full-native Rust migration direction with
+amendments. It preserved the A8.1/A9 route, authorized no pre-A9 takeover, and
+deferred framework selection to a NUI-F0 same-vertical Slint versus Aelyris
+retained-runtime comparison.
 
 The decision includes current native coverage v2, representative
 input/render/memory/soak, IME, accessibility, recovery, dependency/license and
 maintenance cost, Windows 10/11 support, rollback, and release timing. Historical
 v1 `98%` evidence cannot authorize promotion.
 
-Default sequencing remains A8 -> A9 -> NUI-F0-F7 as the priority-1 next program.
-A pre-A9 takeover requires explicit owner approval and a versioned program
-rebaseline accepting the release delay.
+Sequencing is A8.1 -> A9 -> NUI-F0-F7 as the priority-1 next program. Windows
+11 x64 is primary and Windows 10 compatibility is measured separately.
 
-### A8 measured native terminal decision
+### A8.1 measured native terminal decision
 
 A8 uses representative input/render/memory/soak evidence. Promoting a native
 renderer is conditional; a measured `do_not_promote` decision can be correct.
@@ -324,11 +323,10 @@ No A7 or Apex feature converts an external/operator gate into repo-owned PASS.
 
 ## 7. Apex Roadmap — Post-A9 Product Waves
 
-If A8.0 accepts ADR-014 as written or with amendments, NUI-F0-F7 is the first
-post-A9 portfolio program and these Apex waves begin after NUI closes or is
-retired. If A8.0 defers or rejects ADR-014, Apex V1 begins directly. This
-preserves the internal V1-V9 dependency order while making the native migration
-the explicit priority-1 accepted path.
+A8.0 accepted ADR-014 with amendments, so NUI-F0-F7 is the first post-A9
+portfolio program and these Apex waves begin after NUI closes or is retired.
+This preserves the internal V1-V9 dependency order while making the native
+migration the explicit priority-1 accepted path.
 
 These waves are tracked destination work, not hidden R0-A9 completion criteria.
 Each wave gets its own spec inventory, focused commits, verifiers, CI, and claim.

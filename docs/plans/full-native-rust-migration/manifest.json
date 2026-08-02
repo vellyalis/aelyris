@@ -1,7 +1,7 @@
 {
   "schema": "aelyris.native-ui-design-package.integration.v1",
-  "generatedDate": "2026-07-29",
-  "status": "queued_high_priority_proposal",
+  "generatedDate": "2026-08-02",
+  "status": "accepted_with_amendments_queued_post_a9",
   "sourceArchive": "aelyris-full-native-rust-migration-plan.zip",
   "sourceArchiveSha256": "9024b28dc2cc6c78d6e1d9cd1e244b9b025bb8bd1cb80f406d4c13f4698f73cf",
   "sourceManifestPath": "docs/plans/full-native-rust-migration/source-manifest.json",
@@ -10,67 +10,71 @@
   "canonicalDecision": "DECISIONS.md#adr-014-full-native-rust-product-surface",
   "defaultActivation": "priority-1-post-A9",
   "decisionGate": "A8.0",
+  "decisionOutcome": "accepted-with-amendments",
+  "decisionDate": "2026-08-02",
+  "activationAuthorized": false,
+  "frameworkSelection": "pending-nui-f0-slint-vs-retained-runtime-bakeoff",
   "currentExecutionOwner": "audit-remediation-instructions.md",
   "documents": [
     {
       "path": "docs/plans/full-native-rust-migration/README.md",
-      "bytes": 5580,
-      "sha256": "b820afb257da1406a4b8acc322f6eca2b25fa9a3df237af2e7150b761ec141c8"
+      "bytes": 5728,
+      "sha256": "ecfeaa84f3892bee91dc13f40e9419cbdda283b7a95b600e76c735759550060b"
     },
     {
       "path": "docs/plans/full-native-rust-migration/INTEGRATION.md",
-      "bytes": 5161,
-      "sha256": "bec07c62e11fad02a138e1194be43ea5173bfa3f112976dcb471c59c7129c6ad"
+      "bytes": 5321,
+      "sha256": "d3167100b569ec4c33af11e0d75a8149a4baaf8a5ab06f6e2af3af9fe79e243b"
     },
     {
       "path": "docs/plans/full-native-rust-migration/native-ui-migration-instructions.md",
-      "bytes": 9098,
-      "sha256": "5a85ae1ea10459ac0558fd558a2baef0d1f0b01c8d621b167a71889075e0add3"
+      "bytes": 9013,
+      "sha256": "cfa7650474099afc83f5a78f67e90e69022c342fe511059edf127e566f7a2941"
     },
     {
       "path": "docs/plans/full-native-rust-migration/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md",
-      "bytes": 4732,
-      "sha256": "f5e743e086ffceb31095ac1cab01ca7c5595f4361e0d3b43c34b8c2332a6faa7"
+      "bytes": 5326,
+      "sha256": "1022eea95c3cbfb7df2b689a0652a6ef2394c3239f1dd9775fc880b2b58af9d3"
     },
     {
       "path": "docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
-      "bytes": 22395,
-      "sha256": "dd3cb4d44da0830d3859a46af77cf8d3e169236036c4843c80a0fb8f518c718f"
+      "bytes": 22483,
+      "sha256": "68873e0e6daf03efd6a28df01cd350e0634e1577dfe8072699a789f60f204bf6"
     },
     {
       "path": "docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md",
-      "bytes": 19106,
-      "sha256": "18a0b0e8ddd40a347a9550ae741d0d2730bdb0ef059a94016cc270a1a9c1700c"
+      "bytes": 19147,
+      "sha256": "57ec8e44d509aaa54799652812014bcfa94fb7e72b7a3af83dc62f0f00918f42"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_ARCHITECTURE.md",
-      "bytes": 17814,
-      "sha256": "d2a04000defe3ce93e8b7ca3b93db766de7f05b399246a1a3c821555d56ab935"
+      "bytes": 17891,
+      "sha256": "cd8eead32c86979b3b788ba5c211c8cc92e28e0f76bdae8e34ba8e95b49523ba"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md",
-      "bytes": 13598,
-      "sha256": "36544a87842d2af962d430526694a06e364e8d82fef2212953da0061b004a458"
+      "bytes": 13786,
+      "sha256": "961f8336f6009365d56ffad61488c12ce07e7a42415241d27bb66378297c04c2"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_EDITOR_SPEC.md",
-      "bytes": 7315,
-      "sha256": "7aa34af28492649d559babf6aa95c7b92aff3303e036f77975ef8c0f049b4dbd"
+      "bytes": 7351,
+      "sha256": "32d81c4c2cb20824dc93f85ee4b2196aed46a10e705304af0f18a69016faf09e"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md",
-      "bytes": 12604,
-      "sha256": "dc74065115aca58d93db2df9fe9596f6c35322e9e7d432ad116b81be7e8a178d"
+      "bytes": 13182,
+      "sha256": "1e28e950f56a34a56832195c3724e098d129f2a33ac41091d41d6fdd0a795d2c"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md",
-      "bytes": 9311,
-      "sha256": "f0d77e3df9850d1fcdb2a9bb50a1a4c79f0deacefeeba1eafbf10f668c185cee"
+      "bytes": 9336,
+      "sha256": "d621c3d74a40c6fdb2a885cc9da3d96f758542555626252f9c4f1c15bb70a8fe"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_TRACEABILITY.md",
-      "bytes": 4038,
-      "sha256": "e553ed0841ed586782a32a0e93ca5b447f73555c277ddf93e91e3ce1a5397ce7"
+      "bytes": 4115,
+      "sha256": "30dde7f9c4fa1775e9f122a2a5fb5fef8a0ff7f20e32cbebb384005b4564ee49"
     }
   ]
 }

@@ -350,7 +350,7 @@ const requiredRoadmapClauses = [
   "A7 Core Mission Loop",
   "A7.0 — Core Mission Scope Lock And Owner Inventory",
   "A7.5 — Canonical Core Mission Combined Acceptance",
-  "A8 And A9 Remain Release Gates; A8.0 Adds A Decision Gate",
+  "A8.1 And A9 Remain Release Gates; A8.0 Decision Is Complete",
   "This stable roadmap does not copy the exact current phase or slice",
   "Apex V1 — Universal Agent Fabric Expansion",
   "V1-R0 — OpenCode Candidate Adapter Comparison",
@@ -432,7 +432,8 @@ const requiredWorkOrderClauses = [
   "Independent review reopened A7.4",
   "A7.5 and A7 are complete",
   "exact-SHA hosted run `30735313688`",
-  "A8.0 is the next decision gate and has not started",
+  "A8.0 is complete with owner outcome",
+  "A8.1 is next and has not started",
 ];
 
 const requiredArchitectureClauses = [
@@ -986,7 +987,7 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a7ClosedFrontierValid = currentFrontier.activeSlice === "A8.0" && currentFrontier.lastCompletedSlice === "A7.5";
+const a7ClosedFrontierValid = currentFrontier.activeSlice === "A8.1" && currentFrontier.lastCompletedSlice === "A8.0";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1239,7 +1240,7 @@ const checks = [
       currentFrontier.phase === "A8" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
       a7ClosedFrontierValid,
-    "Work order records A7.5 complete and exposes A8.0 as the next unstarted decision gate",
+    "Work order preserves A7.5, records A8.0 complete, and exposes A8.1 as the next unstarted slice",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

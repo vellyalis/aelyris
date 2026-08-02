@@ -1,16 +1,16 @@
 # Aelyris Native UI Framework Specification
 
-Status: high-priority queued proposal
-Internal name: **Aelyris Native UI Runtime**
+Status: conditional retained-runtime candidate under accepted ADR-014; not selected
+Internal name: **Aelyris Native UI Runtime candidate**
 Crate family: `aelyris-ui-*`
 Scope: internal product framework, not a public general-purpose toolkit.
 
 ---
 
-Activation prerequisite: A8.0 must show why the current hybrid and at least one
-mature Rust UI framework fail the same NUI requirements with higher total cost
-or lower recoverability. Until that comparison and ADR-014 acceptance, this is
-a candidate design, not an authorized new framework dependency surface.
+Selection prerequisite: NUI-F0 must implement one same-vertical Slint and
+Aelyris retained-runtime comparison. Select this candidate only if Slint fails
+the NUI requirements or has higher total ownership/recovery cost. ADR-014
+acceptance alone does not authorize a new framework dependency surface.
 
 ## 1. Design position
 
@@ -18,7 +18,9 @@ Aelyris needs more than `winit + wgpu` but less than a browser。
 
 `winit` gives windows/events, `wgpu` gives GPU access。They do not provide retained identity、layout、focus、text input、accessibility、styling、scrolling、command routing、virtualization、components。
 
-Therefore a product-specific framework is required。
+Therefore specialized terminal/editor surfaces are required, while the shell
+framework remains an evidence-backed selection. The design below is the
+retained-runtime candidate if it wins NUI-F0。
 
 ```text
 Build:

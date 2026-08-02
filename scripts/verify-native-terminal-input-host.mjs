@@ -29,6 +29,7 @@ function check(id, passed, detail) {
 
 const nativeInput = source("src-tauri/src/term/native_input.rs");
 const commands = source("src-tauri/src/ipc/commands.rs");
+const imeCommands = source("src-tauri/src/ipc/ime_commands.rs");
 const lib = source("src-tauri/src/lib.rs");
 const canvasIme = source("src/features/terminal/hooks/useCanvasIME.ts");
 const terminalCanvas = source("src/features/terminal/TerminalCanvas.tsx");
@@ -48,6 +49,7 @@ const nativeClientFresh =
       ...nativeProofSourcePaths.map(mtime),
       mtime("src-tauri/src/term/native_input.rs"),
       mtime("src-tauri/src/ipc/commands.rs"),
+      mtime("src-tauri/src/ipc/ime_commands.rs"),
     );
 const nativePasteGuard = nativeClient?.nativePasteGuard?.pasteGuard;
 const nativePasteGuardFresh =
@@ -72,6 +74,7 @@ const nativeHwndPasteLiveSourceFresh =
     mtime("scripts/verify-native-hwnd-paste-live.mjs"),
     mtime("src-tauri/src/term/native_input.rs"),
     mtime("src-tauri/src/ipc/commands.rs"),
+    mtime("src-tauri/src/ipc/ime_commands.rs"),
   );
 const nativeHwndPasteLiveStrictFresh =
   nativeHwndPasteLive?.ok === true &&
@@ -99,16 +102,17 @@ const checks = [
   check("rust-host", nativeInput.includes("pub struct NativeTerminalInputHost"), "Rust native input host exists"),
   check(
     "commit-command",
-    commands.includes("native_terminal_input_commit") &&
-      commands.includes("commit_native_terminal_input(&app, host, terminal_id, data, source).await") &&
-      commands.includes("terminal_write_async(app, &terminal_id, &bytes)"),
-    "committed input routes through the shared Rust terminal write path",
+    imeCommands.includes("pub async fn native_terminal_input_commit") &&
+      imeCommands.includes("commit_native_terminal_input(&app, host, terminal_id, data, source).await") &&
+      commands.includes("terminal_write_authorized_async(") &&
+      commands.includes("crate::command_risk::authority::WriteActorKind::Human"),
+    "committed input routes through the shared authorized Rust terminal write path",
   ),
   check(
     "surface-drain-shared-commit",
     commands.includes("commit_native_terminal_input(") &&
-      commands.includes("let Some((terminal_id, text, source)) = drained else") &&
-      commands.includes("commit_native_terminal_input(&app, host, terminal_id, text, source).await") &&
+      imeCommands.includes("let Some((terminal_id, text, source)) = drained else") &&
+      imeCommands.includes("commit_native_terminal_input(&app, host, terminal_id, text, source).await") &&
       commands.includes("native_input_rejected") &&
       commands.includes("validate_keys_payload(&data)"),
     "native HWND drain shares validation, audit rejection, command history, and PTY write semantics with explicit commits",
@@ -123,14 +127,14 @@ const checks = [
   ),
   check(
     "status-command",
-    commands.includes("native_terminal_input_status") && lib.includes("ipc::native_terminal_input_status"),
+    imeCommands.includes("pub fn native_terminal_input_status") && lib.includes("ipc::native_terminal_input_status"),
     "native input status IPC is exposed",
   ),
   check(
     "surface-command",
-    commands.includes("native_terminal_input_focus") &&
-      commands.includes("native_terminal_input_drain") &&
-      commands.includes("native_terminal_input_preedit") &&
+    imeCommands.includes("pub async fn native_terminal_input_focus") &&
+      imeCommands.includes("pub async fn native_terminal_input_drain") &&
+      imeCommands.includes("pub fn native_terminal_input_preedit") &&
       lib.includes("ipc::native_terminal_input_focus") &&
       lib.includes("ipc::native_terminal_input_drain") &&
       lib.includes("ipc::native_terminal_input_preedit"),

@@ -1,6 +1,6 @@
 # Aelyris Native UI Migration Roadmap
 
-Status: high-priority queued tracked proposal
+Status: accepted-with-amendments direction; queued post-A9 tracked program
 Execution model: dependency-ordered Work Units
 Rule: phase PASS is not program completion.
 
@@ -13,15 +13,10 @@ frontier owner; this stable roadmap does not duplicate its exact slice.
 
 Execution order:
 
-1. finish the active A4 sequence through A4.12 and resume the already frozen
-   A6.2e1 frontier;
-2. finish A6 owner extraction/modularity, including its existing
-   `aelyris_native.rs` decomposition owner, plus A7 Core Mission/Control
-   ownership;
-3. run A8.0 as an explicit product-goal/architecture decision without changing
-   the existing measured A8 terminal gate;
-4. complete the current A8/A9 release path;
-5. activate NUI-0.1 through NUI-7.8 as the priority-1 next program.
+1. preserve completed A4/A6/A7 owner and durability contracts;
+2. preserve A8.0 `accepted-with-amendments` as the strategic decision;
+3. complete A8.1 measured native terminal disposition and A9;
+4. activate NUI-0.1 through NUI-7.8 as the priority-1 post-A9 program.
 
 The existing A8 terminal decision is not deleted or reassigned. Its
 same-condition Canvas/WebView comparison, input-to-present, IME,
@@ -29,9 +24,7 @@ accessibility, parity, soak, and rollback observations become inputs to later
 NUI-0.3 baseline and NUI-F3 promotion evidence. A measured failure can still
 reject native promotion without shrinking the N4 target or forcing a rewrite.
 
-A8.0 may recommend a pre-A9 takeover only through an explicit owner decision
-and a newly rebaselined execution program. This queued proposal does not itself
-authorize that change.
+A8.0 authorized no pre-A9 takeover and no shell-framework dependency.
 
 ---
 
@@ -79,7 +72,7 @@ Next unlock
   accepted-with-amendments in canonical `DECISIONS.md`; both accepted results
   enter this branch, while deferred or rejected decisions cannot enter NUI-F0
 - ratify the accepted decision in the activation packet without reopening the
-  architecture choice
+  N4 strategic direction
 - verify ADR-001 is marked superseded for the primary surface while preserving
   history
 - verify the Terminal Core hybrid-primary decision is marked superseded
@@ -117,7 +110,22 @@ decomposition owner。Set file-size/command ratchet。
 
 Add requirement→design→verifier registry and `aelyris-verify` skeleton with provenance JSON。
 
-Exit F0: authority conflict closed, baseline current, no behavior change。
+### NUI-0.6 — Shell framework same-vertical bakeoff
+
+Implement one proof-only representative vertical twice: Windows shell and mode
+rail projection, one read-only `NativeRenderFrame` terminal viewport, and the
+shared keyboard/focus/IME seam. Compare Slint with the Aelyris retained-runtime
+candidate under identical Windows 11 x64 fixtures. Record startup/memory/frame,
+IME/focus/UIA/recovery, dependency/license/update surface, owner cost, and
+rollback observations. Measure Windows 10 compatibility separately.
+
+Select at most one. Select Slint when it satisfies the requirements with lower
+total owner cost; select the retained-runtime candidate only when the mature
+framework fails a material requirement or recoverability boundary. The proof
+cannot own PTY writes, change the product default, or promote a capability.
+
+Exit F0: authority conflict closed, baseline current, framework selection
+recorded, no product-default behavior change。
 
 ---
 

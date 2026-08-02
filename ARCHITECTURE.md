@@ -18,7 +18,7 @@ Core rule:
 | --- | --- | --- |
 | Product goal / claim policy | current safe claims, release boundaries | `GOAL.md`, `docs/requirements.md`, `docs/PUBLICATION_READINESS.md` |
 | Verifiable Agent Work OS target | Mission, Now/Next/Unlocks, trust/proof/learning composition | `docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_*` |
-| Queued full-native Rust target | proposed N0-N4 surface migration; not current architecture | `DECISIONS.md` ADR-014, `docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md`, `docs/plans/full-native-rust-migration/` |
+| Queued full-native Rust target | accepted-with-amendments N0-N4 post-A9 direction; not current runtime placement | `DECISIONS.md` ADR-014, `docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md`, `docs/plans/full-native-rust-migration/` |
 | Decision knowledge | placement and tradeoff rules | `AI_GUIDE.md`, `DECISION_FRAMEWORK.md` |
 | Contracts | rigid API/schema/runtime boundaries | `contracts/README.md`, owning specs |
 | Task packets | current volatile work | `tasks/README.md`, root work-order docs |
@@ -66,16 +66,18 @@ separately gated Apex work.
 
 ## Queued Full-Native Rust Target
 
-The imported NUI-F0-F7 package is a high-priority queued architecture proposal,
-not the current placement authority. Current Tauri/React composition remains
-active until ADR-014 is accepted.
+The imported NUI-F0-F7 package is the accepted-with-amendments high-priority
+post-A9 direction, not the current placement authority. Current Tauri/React
+composition remains active through A8.1/A9 and until NUI activation and later
+surface-promotion gates transfer ownership.
 
-The default portfolio order is A8.0 decision, existing measured A8, A9 closeout,
-then NUI-F0-F7 as priority 1. A8.0 compares the current hybrid, a mature Rust UI
-framework, and the proposed Aelyris-specific retained runtime. A pre-A9 takeover
-requires an explicit owner decision and a versioned rebaseline.
+The portfolio order is A8.0 complete, A8.1 measured terminal disposition, A9
+closeout, then NUI-F0-F7 as priority 1. A8.0 authorized no pre-A9 takeover and
+did not preselect a framework. NUI-F0 compares Slint and the Aelyris-specific
+retained-runtime candidate on one same vertical and selects at most one from
+current evidence.
 
-If accepted, native and Tauri faces must share the existing runtime, Control,
+When activated, native and Tauri faces must share the existing runtime, Control,
 Mission, EventBus/DB, persistence, terminal, review, merge, and proof owners.
 `ProjectionHub`, editor recovery, UI snapshots, and native updater/signing are
 target names for adapters over those owners; they are not authorization for a

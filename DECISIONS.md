@@ -251,8 +251,9 @@ Decision owner is authorized.
 
 ## ADR-014 Full-Native Rust Product Surface
 
-Status: **proposed / queued**. This entry reserves the canonical decision ID and
-does not yet supersede ADR-001 or `TERMINAL_CORE_DESIGN.md §3`.
+Status: **accepted with amendments / queued for post-A9 activation**
+(owner decision 2026-08-02). This strategic decision does not itself activate
+NUI-F0-F7 or replace the current Tauri/React implementation.
 
 Proposal: migrate the primary operator surface from Tauri/React/WebView2 to a
 Rust-native Windows surface through the reversible NUI-F0-F7 plan. Reuse the
@@ -269,18 +270,31 @@ Why tracked now:
 - making it a numbered proposal prevents the high-priority direction from being
   lost without presenting it as current architecture.
 
-Decision gate: A8.0 evaluates the product Goal, Windows support boundary,
-current hybrid baseline, mature Rust framework alternatives, custom-framework
-ownership cost, rollback, and release timing. Default execution is priority 1
-after A9. A pre-A9 takeover requires explicit owner approval and a versioned
-rebaseline of the active program. A8.0 records one total result here:
-accepted-as-written, accepted-with-amendments, deferred, or rejected. Both
-accepted results enter the same activation branch. NUI-0.1 may only ratify that
-already accepted decision for implementation activation; it is not a second
-architecture decision gate.
+A8.0 outcome: accept N4 WebView-free distribution as the post-A9 strategic
+product target with these amendments:
 
-Implication: the active audit-remediation slice declared by the root work order
-continues through A4.12 and then resumes A6.2e1; measured A8 terminal decision,
-Tauri/React architecture, and alpha claim remain unchanged. The detailed queued
-draft and source-package integration record live under
+- preserve the measured A8 then A9 execution order; acceptance authorizes no
+  pre-A9 takeover and grants no current capability or release claim;
+- keep the current Tauri/React face as implementation Current Best and rollback
+  compatibility path until the NUI program is activated and its promotion gates
+  transfer ownership;
+- do not preselect a custom retained runtime. NUI-F0 must compare Slint and the
+  Aelyris retained-runtime candidate with one same-vertical prototype and select
+  at most one framework from observed ownership cost, Windows integration,
+  accessibility, IME/focus, recovery, performance, and rollback evidence;
+- treat Windows 11 x64 as the primary target and measure Windows 10
+  compatibility separately instead of assuming one identical setting.
+
+The fresh A8.0 inputs were native coverage v2 `88/120` with
+`shippingShellReady=false`, native input `17/17` PASS, native boundary `10/14`
+with four durability/client/AI-boundary artifacts missing, and renderer
+measurements that were not sufficient to promote a framework. These facts
+support the direction while refuting immediate activation and framework
+preselection.
+
+NUI-0.1 may ratify this already accepted decision for implementation activation
+after A9; it is not a second strategic architecture decision gate. ADR-001 and
+`TERMINAL_CORE_DESIGN.md §3` remain the current implementation placement until
+that activation and later promotion gates. The detailed accepted package and
+source-package integration record live under
 `docs/plans/full-native-rust-migration/`.

@@ -1,6 +1,6 @@
 # Aelyris Full-Native Rust Migration — Master Plan
 
-Status: high-priority queued proposal; not active implementation
+Status: accepted with amendments; queued post-A9; not active implementation
 Decision class: **Critical / high blast radius / reversible staged migration**
 Primary target: Windows 11, Rust-native operator surface
 Final claim level: N4 WebView-free distribution
@@ -16,10 +16,9 @@ slice declared by root `audit-remediation-instructions.md`.
 Dependency order:
 
 ```text
-active A4 runtime-integrity slice -> A4.12 closeout
-  -> A6 owner boundaries + A7 canonical Core Mission
-  -> A8.0 product-goal/architecture decision
-  -> existing measured A8 terminal decision
+completed A4/A6/A7 remediation
+  -> A8.0 product-goal/architecture decision (complete)
+  -> A8.1 measured native terminal evidence and disposition
   -> A9 release and operator-proof closeout
   -> NUI-F0..F7 as the priority-1 next program
 ```
@@ -34,16 +33,15 @@ This sequencing preserves three facts:
    evidence gate and later feeds NUI baseline/promotion evidence without being
    rewritten into an unapproved full-product migration.
 
-ADR-014 is still proposed. A8.0 may accept it as written, accept it with
-amendments, defer it, or reject it from current Goal, inventory, alternatives,
-cost, and baseline evidence. Both accepted results enter the same branch;
-NUI-0.1 may only ratify that already accepted A8.0 decision for activation.
-Until acceptance, current Tauri/React architecture and
-alpha/not-release-ready claims remain authoritative.
+ADR-014 is accepted with amendments. The N4 direction is settled, but NUI-0.1
+may activate it only after A9. A8.0 authorized neither pre-A9 execution nor a
+shell-framework dependency. Current Tauri/React architecture and
+alpha/not-release-ready claims remain authoritative until activation and later
+promotion evidence.
 
-A8.0 may recommend pre-A9 activation only as an explicit product-goal decision
-with a rebaselined tracked program. High priority alone does not authorize that
-schedule change.
+NUI-F0 must compare Slint and the Aelyris retained-runtime candidate on one
+same vertical before selecting at most one. Windows 11 x64 is the primary
+target; Windows 10 compatibility is measured separately.
 
 ## 1. Executive decision
 
@@ -79,9 +77,9 @@ Aelyris の主要製品面を、Tauri + React + WebView2 から **Rust-native op
        Aelyris Control API
 ```
 
-### 1.1 何を独自開発するか
+### 1.1 Retained-runtime candidate を選んだ場合に独自開発するもの
 
-独自開発するのは **Aelyris 固有の UI runtime と renderer integration** であり、OS/API/レイアウト/アクセシビリティの再実装ではない。
+以下は NUI-F0 の比較で retained-runtime candidate が勝った場合の契約である。Slint が同じ要件をより低い総所有コストで満たす場合は、同等 owner を再実装しない。どちらの場合も OS/API/レイアウト/アクセシビリティを二重所有しない。
 
 独自 owner:
 

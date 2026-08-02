@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A8`.
-ACTIVE SLICE: `A8.0` (native product-goal/architecture decision gate; not started).
-LAST COMPLETED SLICE: `A7.5`.
-NEXT PHASE: `A9` after A8.0 and measured A8 disposition.
-NEXT IMPLEMENTATION SLICE: `A8.0`.
+ACTIVE SLICE: `A8.1` (measured native terminal evidence and disposition; not started).
+LAST COMPLETED SLICE: `A8.0`.
+NEXT PHASE: `A9` after A8.1 disposition.
+NEXT IMPLEMENTATION SLICE: `A8.1`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -69,7 +69,11 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     complete. A7.5 and A7 are complete from exact-SHA hosted run `30735313688` at
     `82c69c3`; authenticated clean-worktree closeout accepted the Frontend, Rust, and
     A7.5 combined jobs and emitted `phaseComplete=true`, while `releaseReady=false`
-    remains explicit. A8.0 is the next decision gate and has not started.
+    remains explicit. A8.0 is complete with owner outcome
+    `accepted-with-amendments`: N4 remains the post-A9 direction, the measured
+    A8/A9 order is preserved, and NUI-F0 must select Slint versus the retained-
+    runtime candidate from a same-vertical comparison. A8.1 is next and has not
+    started.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -83,8 +87,9 @@ Completed refactor/hardening orders remain historical preflight only. WU-UQ-1 is
 input to phase A3, not a concurrent active work order. Renderer Stage 2 is deferred to
 conditional phase A8.
 
-The full-native Rust migration package is registered as a high-priority queued
-proposal under `docs/plans/full-native-rust-migration/`. It does not change the
+The full-native Rust migration package is accepted with amendments as the
+high-priority post-A9 direction under
+`docs/plans/full-native-rust-migration/`. It does not change the
 current execution order or create a concurrent phase. The exact current slice is
 owned only by this root work order and the canonical local handoff; stable
 requirements/spec/native-package documents point here instead of copying that
@@ -99,15 +104,17 @@ A4.12 complete
   -> A7.0 scope lock complete -> A7.1 request/plan complete -> A7.2 visible execution complete
   -> A7.3 exact-OID acceptance complete -> A7.4 immutable settlement complete
   -> A7.5 one canonical A7 Core Mission combined acceptance (complete)
-  -> A8.0 product-goal/architecture decision (next; not started)
-  -> measured A8 terminal decision -> A9 closeout
+  -> A8.0 product-goal/architecture decision (complete; accepted with amendments)
+  -> A8.1 measured native terminal evidence and disposition (next; not started)
+  -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
 
-A8.0 may recommend a pre-A9 takeover only through an explicit owner decision and a
-versioned rebaseline that accepts the release delay. Importing the proposal or
-marking it high priority does not authorize that schedule change. The measured A8
-terminal decision, A9 trust owners, and current claim boundary remain unchanged.
+A8.0 did not authorize a pre-A9 takeover. Its accepted-with-amendments outcome
+preserves A8.1, A9 trust owners, and the current alpha claim boundary. NUI-F0 may
+select one shell framework only after the same-vertical Slint versus retained-
+runtime comparison; decision acceptance alone grants no implementation or
+capability credit.
 
 ## Execution Order And Complexity Stop Rules
 
@@ -123,7 +130,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0 is complete; A8.1 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -134,8 +141,8 @@ implementation phase and not a reduction of the product Goal.
    Mission path, and learning layers remain in the full Goal but are deferred from
    the release-blocking A7 Core.
 4. **A6.6** isolated `aelyris_native` behind the optional `native-proof-cli`
-   feature without expanding native functionality. A8.0 remains the only
-   activation decision for further native/full-native work. **A6.7** removed only
+   feature without expanding native functionality. A8.0 accepted the post-A9
+   direction but did not activate further native/full-native work. **A6.7** removed only
    duplicate or unowned infrastructure whose registration, callsites,
    compatibility surfaces, and runtime ownership were disproved directly.
 5. Do not start a verifier-cleanup program. When a touched owner relies on a brittle
@@ -695,7 +702,8 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - A6.8 is the only combined A6 acceptance and is complete. It aggregates current
   A6.2-A6.7 owner/behavior evidence and blocking exact-SHA CI, and only the
   explicit authenticated post-run closeout may emit A6 `phaseComplete=true`.
-  A8.0 remains the sole native activation decision.
+  A8.0 accepted the strategic direction; post-A9 NUI-0.1 remains the sole
+  implementation activation boundary.
 - The completed A6.8 verifier executes the default A6.2-A6.7 aggregate, requires
   exact current provenance, all six frozen owner ceilings, each slice and its
   negative proof, and the A6.3 same-line-count event-registry mutation. Candidate

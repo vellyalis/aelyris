@@ -20,19 +20,20 @@ authoritative requirement, specification, design, and proof sources.
 The active spec index is `docs/specs/README.md`. Start there for the current read
 order and the authoritative specs. Key still-active specs include:
 
-0. High-priority full-native Rust migration proposal:
+0. Accepted-with-amendments full-native Rust migration direction:
    `docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md`
 
-   Owns the queued NUI requirements for the staged N0-N4 move from the current
+   Owns the queued post-A9 NUI requirements for the staged N0-N4 move from the current
    Tauri/React/WebView2 face to a Rust-native Windows operator surface. The
    master plan, architecture, framework/editor specs, roadmap, verification,
    traceability, and integration record are indexed in `docs/specs/README.md`.
    Exact current execution is intentionally not duplicated here; read
    `audit-remediation-instructions.md` and its canonical local handoff. The
-   durable A4.12-to-A6.2e1 frontier and measured A8 terminal gate remain
+   completed remediation history and A8.1 measured terminal gate remain
    unchanged.
-   A8.0 owns the future product/architecture decision, and NUI-F0-F7 is priority
-   1 after A9 by default. No imported document changes the current product or
+   A8.0 accepted N4 with amendments; NUI-F0-F7 remains priority 1 after A9 and
+   NUI-F0 must select Slint versus the retained-runtime candidate from a
+   same-vertical comparison. No imported or accepted document changes the current product or
    release claim. Package placement, canonical hashes, routing, and claim guards
    are checked by `pnpm verify:native-ui:design-package`.
 
@@ -96,7 +97,7 @@ must not be projected as implemented, shipped, production-ready, or
 release-candidate-ready until the matching A7 runtime gates, A8 decision evidence,
 A9 release/external evidence, and current aggregate claim policy all pass.
 
-The high-priority N4 WebView-free direction is likewise a queued target, not a
+The accepted high-priority N4 WebView-free direction is still a queued target, not a
 current capability. Only the N1-N4 aggregate gates defined by the native UI
 verification plan can promote native surface claims; source presence, ADR-014,
 NUI-F0, or a focused native proof cannot.

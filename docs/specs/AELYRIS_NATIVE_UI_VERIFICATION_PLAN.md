@@ -1,6 +1,6 @@
 # Aelyris Native UI Verification Plan
 
-Status: high-priority queued proposal
+Status: accepted program verification contract; queued post-A9
 Principle: native/visual capability claims require runnable evidence; source presence is insufficient.
 
 Baseline rule: use

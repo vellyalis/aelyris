@@ -1,6 +1,6 @@
 # Full-Native Rust Migration Package Integration
 
-Status: integrated as a high-priority queued proposal.
+Status: accepted with amendments at A8.0; queued for post-A9 activation.
 Integrated: 2026-07-28 JST.
 Active implementation remains the exact slice declared by root
 `audit-remediation-instructions.md`.
@@ -20,8 +20,9 @@ separately in [`manifest.json`](./manifest.json).
 
 Observed native baseline snapshot at import: schema
 `aelyris.native-coverage-gap/v2`, generated 2026-07-10, measured coverage 82%,
-`shippingShellReady=false`. This snapshot is explicitly stale and cannot
-authorize promotion; A8.0/NUI-0.3 must regenerate the owner command.
+`shippingShellReady=false`. This snapshot was explicitly stale and did not
+authorize promotion. A8.0 used fresh v2 evidence at `88/120` with
+`shippingShellReady=false`; NUI-0.3 must refresh the owner command again.
 
 ## Canonical placement
 
@@ -45,10 +46,9 @@ The package is not a parallel active work order and is not merged into A4
 implementation. It enters the portfolio in this dependency order:
 
 ```text
-active audit-remediation A4 slice -> A4.12 closeout
-  -> A6.2e1/A6 -> A7 Core
-  -> A8.0 product-goal/architecture decision
-  -> existing measured A8 terminal decision
+completed A4/A6/A7 remediation
+  -> A8.0 product-goal/architecture decision (accepted with amendments)
+  -> A8.1 measured native terminal evidence and disposition
   -> A9 release and operator-proof closeout
   -> NUI-F0..F7 as the priority-1 next program
 ```
@@ -59,13 +59,14 @@ defaults or implement the runtime, renderer, editor, or native distribution.
 A6.6 already owns native proof decomposition, so F0 consumes that output rather
 than becoming a competing owner.
 
-The existing A8 measured terminal decision is preserved unchanged. Its fresh
+The existing A8.1 measured terminal decision is preserved unchanged. Its fresh
 same-condition evidence feeds NUI-0.3 baseline and NUI-F3 promotion later.
 A measured `do_not_promote` remains a valid reversible result.
 
-A8.0 may recommend a pre-A9 migration only through an explicit owner decision
-and a newly rebaselined tracked program. Importing this high-priority proposal
-does not silently expand the current release program.
+A8.0 accepted the N4 direction but did not authorize pre-A9 migration or a
+framework dependency. The current release program remains A8.1 then A9.
+NUI-F0 must compare Slint and the retained-runtime candidate on one same
+vertical before selecting at most one.
 
 ## Conflict adaptations
 
@@ -73,10 +74,9 @@ does not silently expand the current release program.
    `External Team Patterns Extend Existing Owners`; the imported draft is
    renumbered ADR-014 everywhere in the adapted copies, and `DECISIONS.md`
    remains the canonical decision owner.
-2. ADR-014 remains proposed until A8.0 records accepted-as-written or
-   accepted-with-amendments; both results enter one activation branch. NUI-0.1
-   only ratifies that accepted decision for activation; importing the package
-   does not supersede the current Tauri/React architecture by prose alone.
+2. ADR-014 is accepted with amendments. NUI-0.1 only ratifies that accepted
+   direction for post-A9 activation; acceptance does not supersede the current
+   Tauri/React runtime placement or select a framework by prose alone.
 3. N1-N4 and full-native/WebView-free claims remain forbidden until the
    matching aggregate verifier is current and green.
 4. A9 retains signing, updater, clean-machine, real sleep/resume, and operator
@@ -84,12 +84,13 @@ does not silently expand the current release program.
 
 ## Complexity receipt
 
-Proposed complexity includes a retained Rust UI tree, Taffy layout, AccessKit,
-DirectWrite, winit/wgpu/windows-rs integration, specialized terminal/editor
-surfaces, and staged native distribution ownership.
+Candidate complexity includes either Slint shell ownership or a retained Rust
+UI tree, plus DirectWrite/winit/wgpu/windows-rs integration, specialized
+terminal/editor surfaces, and staged native distribution ownership.
 
-This complexity is accepted for evaluation, not yet for implementation.
-NUI-F0 must compare it against the current Tauri/React face and record owner,
+The N4 direction is accepted, but neither framework candidate is accepted for
+implementation. NUI-F0 must compare Slint and the retained runtime on the same
+representative vertical and record owner,
 failure mode, rollback, maintenance cost, and removal/reconsideration
 conditions. Tauri remains the rollback face until N4.
 
@@ -103,7 +104,7 @@ This planning slice is accepted only when:
 - ADR numbering is unambiguous;
 - the active work order remains unchanged and all roadmaps agree on the queued
   insertion order;
-- claim text remains proposal-only;
+- claim text remains queued-target-only and grants no current capability;
 - `pnpm verify:native-ui:design-package` validates canonical hashes, links,
   routing, and claim guards;
 - requirements/spec/design traceability and continuation gates pass.

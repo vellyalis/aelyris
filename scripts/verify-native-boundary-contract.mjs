@@ -57,6 +57,7 @@ const globalStyles = source("src/styles/global.css");
 const cargoToml = source("src-tauri/Cargo.toml");
 const nativeInput = source("src-tauri/src/term/native_input.rs");
 const commands = source("src-tauri/src/ipc/commands.rs");
+const imeCommands = source("src-tauri/src/ipc/ime_commands.rs");
 const lib = source("src-tauri/src/lib.rs");
 const api = source("src-tauri/src/api/mod.rs");
 const aelys = source("src-tauri/src/bin/aelys.rs");
@@ -136,6 +137,7 @@ const nativeInputFresh =
       mtime("scripts/verify-native-terminal-input-host.mjs"),
       mtime("src-tauri/src/term/native_input.rs"),
       mtime("src-tauri/src/ipc/commands.rs"),
+      mtime("src-tauri/src/ipc/ime_commands.rs"),
       mtime("src-tauri/src/lib.rs"),
       mtime("src/features/terminal/TerminalCanvas.tsx"),
       mtime("src/features/terminal/hooks/useCanvasIME.ts"),
@@ -253,10 +255,8 @@ const daemonRestartRestoreProofReady =
     "snapshot-restores-graph-as-restore-pending-with-durable-scrollback" &&
   muxLiveArtifact?.secondContract?.restartRestorePolicy ===
     "snapshot-restores-graph-as-restore-pending-with-durable-scrollback" &&
-  muxLiveArtifact?.firstContract?.attachPolicy ===
-    "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
-  muxLiveArtifact?.secondContract?.attachPolicy ===
-    "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
+  muxLiveArtifact?.firstContract?.attachPolicy === "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
+  muxLiveArtifact?.secondContract?.attachPolicy === "reattach-respawns-only-missing-or-restore-pending-pty-bindings" &&
   muxLiveArtifact?.firstContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
   muxLiveArtifact?.secondContract?.shutdownPolicy === "explicit-workspace-close-terminates-owned-child-ptys" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
@@ -264,8 +264,7 @@ const daemonRestartRestoreProofReady =
   muxLiveArtifact?.aelysContract?.terminalCorePolicy?.nativeInputOwner === "rust-native-input-host" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
-  muxLiveArtifact?.aelysContract?.terminalCorePolicy?.rendererTruthSource ===
-    "rust-term-engine-render-pipeline" &&
+  muxLiveArtifact?.aelysContract?.terminalCorePolicy?.rendererTruthSource === "rust-term-engine-render-pipeline" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderFrameSchema === "aelyris.native.render-frame.v1" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.renderFrameSchema === "aelyris.native.render-frame.v1" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.renderDiffSchema === "aelyris.native.render-diff.v1" &&
@@ -299,8 +298,8 @@ const daemonRestartRestoreProofReady =
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.muxTruthSource === "daemon-api" &&
   muxLiveArtifact?.firstContract?.terminalCorePolicy?.fallbackVisibilityPolicy === "release-blocking-telemetry" &&
   muxLiveArtifact?.secondContract?.terminalCorePolicy?.fallbackVisibilityPolicy === "release-blocking-telemetry" &&
-  ["terminal-core-policy", "native-input-boundary-contract", "native-render-pipeline-contract"].every(
-    (capability) => muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
+  ["terminal-core-policy", "native-input-boundary-contract", "native-render-pipeline-contract"].every((capability) =>
+    muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
   ) &&
   ["mux-live-attach-detach", "mux-snapshot-restore-pending", "mux-export-import", "durable-scrollback"].every(
     (capability) => muxLiveArtifact?.firstContract?.capabilities?.includes?.(capability),
@@ -367,13 +366,13 @@ const checks = [
       nativeInput.includes("WM_PASTE") &&
       nativeInput.includes("classify_native_terminal_paste_input") &&
       nativeInput.includes("native_paste_guard_event_count") &&
-      commands.includes("native_terminal_input_commit") &&
-      commands.includes("commit_native_terminal_input(&app, host, terminal_id, data, source).await") &&
-      commands.includes("let Some((terminal_id, text, source)) = drained else") &&
-      commands.includes("commit_native_terminal_input(&app, host, terminal_id, text, source).await") &&
-      commands.includes('"native-clipboard-paste"') &&
-      commands.includes("GateMode::HoldUntilApproved") &&
-      commands.includes("terminal_write_async(app, &terminal_id, &bytes)") &&
+      imeCommands.includes("pub async fn native_terminal_input_commit") &&
+      imeCommands.includes("commit_native_terminal_input(&app, host, terminal_id, data, source).await") &&
+      imeCommands.includes("let Some((terminal_id, text, source)) = drained else") &&
+      imeCommands.includes("commit_native_terminal_input(&app, host, terminal_id, text, source).await") &&
+      imeCommands.includes('"native-clipboard-paste"') &&
+      commands.includes("WritePayloadMode::HoldUntilApproved") &&
+      commands.includes("terminal_write_authorized_async(") &&
       commands.includes("native_input_rejected") &&
       lib.includes("ipc::native_terminal_input_commit"),
     "Rust owns terminal input commits, native paste guard, and exposes the native composition surface state honestly",
@@ -777,16 +776,14 @@ const checks = [
         "C:\\Images\\aelyris-native-sakura.jpg" &&
       nearlyEqual(nativeClientArtifact?.nativeSettings?.settings?.wallpaperProof?.opacity, 0.31) &&
       nativeClientArtifact?.nativeCommandCenter?.operation === "command-center-proof" &&
-      nativeClientArtifact?.nativeCommandCenter?.commandCenter?.schema ===
-        "aelyris.native.command-center-proof.v1" &&
+      nativeClientArtifact?.nativeCommandCenter?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.nativeCommandCenter === true &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.mode === "data-contract-proof" &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.webviewUsed === false &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.reactUsed === false &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.rightRailDataOwnedByRust === true &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.recoverySurface?.operation === "open-recovery" &&
-      nativeClientArtifact?.nativeCommandCenter?.commandCenter?.aiCliSurface?.operation ===
-        "open-ai-cli-launch-plan" &&
+      nativeClientArtifact?.nativeCommandCenter?.commandCenter?.aiCliSurface?.operation === "open-ai-cli-launch-plan" &&
       nativeClientArtifact?.nativeCommandCenter?.commandCenter?.nextProof === "native-command-center-window-ui" &&
       nativeClientArtifact?.nativeCommandCenterWindow?.operation === "command-center-window-proof" &&
       nativeClientArtifact?.nativeCommandCenterWindow?.commandCenter?.schema ===
@@ -806,10 +803,8 @@ const checks = [
       nativeClientArtifact?.nativeCommandCenterWindow?.window?.nonBlank === true &&
       nativeClientArtifact?.nativeCommandCenterWindow?.window?.rightRailUiStatus ===
         "native-command-center-window-ui-proof" &&
-      nativeClientArtifact?.nativeCommandCenterWindow?.window?.nextProof ===
-        "native-command-center-input-and-scroll" &&
-      nativeClientArtifact?.nativeCommandCenterInputScroll?.operation ===
-        "command-center-input-scroll-proof" &&
+      nativeClientArtifact?.nativeCommandCenterWindow?.window?.nextProof === "native-command-center-input-and-scroll" &&
+      nativeClientArtifact?.nativeCommandCenterInputScroll?.operation === "command-center-input-scroll-proof" &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.commandCenter?.schema ===
         "aelyris.native.command-center-proof.v1" &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.schema ===
@@ -824,14 +819,13 @@ const checks = [
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.actionCount >= 4 &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.visibleActions?.length >= 1 &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.transitions?.length >= 6 &&
-      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails
-        ?.boundsCheckedSelection === true &&
-      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails
-        ?.scrollOffsetWithinActions === true &&
-      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails
-        ?.dispatchDoesNotRequireReact === true &&
-      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails
-        ?.dispatchDoesNotRequireWebView === true &&
+      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails?.boundsCheckedSelection === true &&
+      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails?.scrollOffsetWithinActions ===
+        true &&
+      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails?.dispatchDoesNotRequireReact ===
+        true &&
+      nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.guardrails?.dispatchDoesNotRequireWebView ===
+        true &&
       nativeClientArtifact?.nativeCommandCenterInputScroll?.inputScroll?.nextProof ===
         "react-right-rail-compatibility-demotion" &&
       nativeClientArtifact?.nativeModeShell?.operation === "mode-shell-proof" &&
@@ -891,7 +885,8 @@ const checks = [
       nativeClientArtifact?.nativeModeRailWindow?.window?.hitTargetCount === 8 &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.hitTargets?.length === 8 &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.hitTargets?.every?.(
-        (target, index) => target.id === expectedModeShellIds[index] && target.shortcut === expectedModeShellShortcuts[index],
+        (target, index) =>
+          target.id === expectedModeShellIds[index] && target.shortcut === expectedModeShellShortcuts[index],
       ) &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.keyboardNavigation === true &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.keyboardTransitions?.length >= 5 &&
@@ -899,8 +894,7 @@ const checks = [
       nativeClientArtifact?.nativeModeRailWindow?.window?.readyForReactDemotion === false &&
       nativeClientArtifact?.nativeModeRailWindow?.window?.nextProof === "native-inspector-window-proof" &&
       nativeClientArtifact?.nativeInspectorWindow?.operation === "inspector-window-proof" &&
-      nativeClientArtifact?.nativeInspectorWindow?.commandCenter?.schema ===
-        "aelyris.native.command-center-proof.v1" &&
+      nativeClientArtifact?.nativeInspectorWindow?.commandCenter?.schema === "aelyris.native.command-center-proof.v1" &&
       nativeClientArtifact?.nativeInspectorWindow?.modeShell?.schema === "aelyris.native.mode-shell.v1" &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.schema === "aelyris.native.inspector-window-proof.v1" &&
       nativeClientArtifact?.nativeInspectorWindow?.window?.nativeInspectorWindow === true &&
@@ -965,8 +959,7 @@ const checks = [
           entry.webviewDispatchRequired === false,
       ) &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.nativeReplacementMap?.length >= 4 &&
-      nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.guardrails?.doesNotClaimReactRemoved ===
-        true &&
+      nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.guardrails?.doesNotClaimReactRemoved === true &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.guardrails
         ?.compatibilityOnlyClaimBackedByMarkers === true &&
       nativeClientArtifact?.nativeRightRailDemotion?.rightRailDemotion?.guardrails
@@ -1005,8 +998,7 @@ const checks = [
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.reactUsed === false &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.uiaProviderBound === true &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.elementFromHandle === true &&
-      nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.root?.name ===
-        "Aelyris Native Accessibility Dogfood" &&
+      nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.root?.name === "Aelyris Native Accessibility Dogfood" &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.descendantCount >= 3 &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.dogfoodChecks?.terminalNameReadable === true &&
       nativeClientArtifact?.nativeUiaProvider?.uiaProvider?.dogfoodChecks?.actionNameReadable === true &&

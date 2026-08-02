@@ -1,6 +1,6 @@
 # Aelyris Native UI Architecture
 
-Status: high-priority queued proposal / detailed architecture
+Status: accepted-with-amendments direction / queued post-A9 architecture
 Owner: native UI migration program
 Depends on: `AELYRIS_NATIVE_UI_REQUIREMENTS.md`
 
@@ -22,12 +22,13 @@ owners. Before NUI-F1:
 - native updater, installer, signing, and rollback extend A9's single trust
   owner and evidence DAG.
 
-A8.0 must compare the current hybrid, a mature Rust UI framework, and the
-proposed retained runtime under the same requirements. Custom UI framework
-complexity is not accepted merely because this proposal specifies it.
+A8.0 accepted N4 but did not select the shell framework. NUI-F0 must compare
+Slint and the proposed retained runtime under the same representative vertical
+and requirements. Until that record exists, retained-runtime-specific sections
+below are a candidate contract, not an authorized dependency.
 
-Windows 11 primary support and any reduced Windows 10 support are product
-decisions owned by A8.0/ADR-014, not implicit implementation defaults.
+Windows 11 x64 is primary. Windows 10 compatibility is measured separately and
+must not be inferred from a single identical setting.
 
 ## 1. Architecture goals
 

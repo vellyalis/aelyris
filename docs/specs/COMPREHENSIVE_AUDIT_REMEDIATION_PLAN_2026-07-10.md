@@ -2034,28 +2034,46 @@ trust path are proven.
 
 ### **A8.0 - Native Product Goal And Architecture Decision Gate**
 
-Status: active decision gate; no product/architecture outcome has been selected.
+Status: complete; owner selected `accepted-with-amendments` on 2026-08-02.
 
 The full-native Rust migration package under
 `docs/plans/full-native-rust-migration/` is the high-priority queued proposal.
-Before A8 implementation, A8.0 compares:
+A8.0 compared:
 
 - the current Tauri/React face plus measured native terminal path,
 - a mature Rust UI framework that satisfies the same requirements,
 - the proposed Aelyris-specific retained runtime and specialized surfaces.
 
-The decision must use current native coverage v2, same-condition performance,
+The decision used current native coverage v2, same-condition performance,
 IME/accessibility/recovery evidence, Windows 10/11 product support, dependency and
 license cost, framework maintenance cost, rollback, and release timing. Historical
 v1 `98%` evidence is inadmissible; `shippingShellReady=false` remains blocking until
 fresh evidence changes it.
 
-Default outcome is to preserve the current A8/A9 route and schedule NUI-F0-F7 as the
-priority-1 post-A9 program. Moving the migration before A9 requires an explicit owner
-decision accepting release delay and a versioned rebaseline of this program. Proposal
-import alone cannot supersede ADR-001, `TERMINAL_CORE_DESIGN.md §3`, or current claims.
+Decision: accept N4 WebView-free distribution as the post-A9 strategic target,
+preserve the measured A8/A9 route, keep Tauri as Current Best and rollback until
+promotion, and make Windows 11 x64 primary with Windows 10 measured separately.
+Do not preselect the shell framework: NUI-F0 must compare Slint and the Aelyris
+retained-runtime candidate with one same-vertical prototype before selecting at
+most one.
+
+Fresh inputs were native coverage v2 `88/120` with
+`shippingShellReady=false`, native input `17/17` PASS, native boundary `10/14`
+with four missing artifacts, and non-promoting renderer measurements. Therefore
+A8.0 grants no capability credit, no pre-A9 takeover, and no framework-selection
+credit. ADR-001, `TERMINAL_CORE_DESIGN.md §3`, and current alpha claims remain
+the implementation/claim Current Best until later activation and promotion.
 
 ## A8 - Measured Native Terminal Spike
+
+### **A8.1 - Measured Native Terminal Evidence And Disposition**
+
+Status: next implementation slice; not started.
+
+This granular slice owns the existing measured A8 scope below. It records current
+same-condition terminal evidence, closes or promotes only the measured terminal
+candidate, and leaves the accepted post-A9 NUI direction and NUI-F0 framework
+selection unchanged.
 
 Objective: decide terminal presentation from measured cost, not the existing proof score.
 
@@ -2097,12 +2115,11 @@ current. External limitations must not be counted as implementation completion.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 
-Post-A9 portfolio entry follows the canonical A8.0 decision. If A8.0 accepts
-ADR-014 as written or with amendments, NUI-F0-F7 is the priority-1 program and
-runs before these Apex waves; NUI-0.1 only ratifies that accepted decision for
-activation. If A8.0 defers or rejects ADR-014, the Apex sequence starts
-directly. Closing or retiring the NUI program then resumes the Apex waves in the
-dependency order below:
+The canonical A8.0 decision accepted ADR-014 with amendments. NUI-F0-F7 is the
+priority-1 post-A9 program and runs before these Apex waves; NUI-0.1 only
+ratifies that accepted direction for activation, and NUI-F0 selects the shell
+framework from the same-vertical bakeoff. Closing or retiring the NUI program
+then resumes the Apex waves in the dependency order below:
 
 1. Universal Agent Fabric expansion: keep V1-R0 as the OpenCode comparison, then
    separately gate V1-R1 structured state authority/explainability and V1-R2

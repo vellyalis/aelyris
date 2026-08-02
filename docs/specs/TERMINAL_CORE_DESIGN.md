@@ -67,6 +67,14 @@ Rationale:
 
 Alternatives rejected: **full native UI rewrite** (Warp/Zed path — requires multi-year framework investment and forfeits Monaco, the glass design system, and the existing test estate); **Electron** (strictly worse than Tauri here); **status quo forever** (fails the Ghostty-class bar on latency/throughput/ligatures).
 
+**2026-08-02 strategic update:** ADR-014 is accepted with amendments as the
+post-A9 N4 WebView-free direction. This section remains the current
+implementation/default through A8.1, A9, and explicit NUI activation; it is no
+longer the permanent product destination. Acceptance does not promote a native
+surface or choose a framework. NUI-F0 must select Slint versus the Aelyris
+retained-runtime candidate from one same-vertical comparison, while the current
+Tauri path remains rollback through the N4 gates.
+
 **Falsification criteria — reopen this decision if ANY of these is observed:**
 - F1: after Stage 1 ships, measured input latency / scroll throughput / 24h soak still fail the §8 targets;
 - F2: WebView2 long-session degradation proves unabsorbable by the reload/recycle strategy (documented soak evidence);

@@ -1,6 +1,6 @@
 # Aelyris Native UI Traceability Map
 
-Status: high-priority queued proposal
+Status: accepted program traceability contract; queued post-A9
 Purpose: requirement → design owner → Work Unit → verifier → evidence を一意にする。
 
 Activation blocker: the imported map below is group-level proposal coverage.
@@ -74,8 +74,8 @@ entry, with no wildcard-only coverage.
 
 | Existing decision | New resolution |
 |---|---|
-| ADR-001 Tauri + React primary | proposed ADR-014 may supersede the primary surface only after A8.0 acceptance and NUI-0.1 activation ratification; Tauri remains current until then |
-| Terminal Core §3 rejects full native | superseded due changed product requirement/proof maturity |
+| ADR-001 Tauri + React primary | accepted ADR-014 may supersede the primary surface only after post-A9 NUI-0.1 activation and later promotion; Tauri remains current until then |
+| Terminal Core §3 rejects full native | remains current implementation placement until activation; strategic destination is superseded by accepted ADR-014 |
 | ADR-010 TS shortcut registry | Rust registry becomes authority after native promotion |
 | Cockpit specs say Tauri IPC face | add Native Cockpit direct adapter as primary |
 | README Rust/Tauri current claim | keep until aggregate N-level permits update |

@@ -1,6 +1,6 @@
 # Aelyris Native Editor Specification
 
-Status: high-priority queued proposal
+Status: accepted program contract; queued post-A9; not current capability
 Purpose: Monaco/WebView anchorを段階的に除去する。
 Principle: Monaco全機能クローンではなく、Aelyris core workflowに必要な編集・レビュー能力をnativeで証明する。
 

@@ -1,11 +1,11 @@
 # Aelyris Full-Native Rust Migration Design Package
 
 Source package label: **implementation-ready design package**
-Repository status: **proposal / queued / not activated**
+Repository status: **accepted with amendments / queued post-A9 / not activated**
 Target: `vellyalis/aelyris`
 Purpose: Tauri + React + WebView2 を段階的に互換レイヤーへ降格し、Aelyris の主要製品面を Rust ネイティブ UI へ移行する。
 
-Repository integration: **high-priority queued program**。The exact active
+Repository integration: **accepted high-priority queued post-A9 program**。The exact active
 `audit-remediation` slice is read from root `audit-remediation-instructions.md`;
 this stable package does not duplicate it and does not authorize a concurrent
 implementation lane or a native/full-release claim. The ZIP source
@@ -15,8 +15,8 @@ The adapted canonical package is recorded in
 [`manifest.json`](./manifest.json). Canonical repository
 placement renumbers the draft ADR from the package's conflicting `ADR-013` to
 `ADR-014`; `DECISIONS.md` owns both the existing ADR-013 and the canonical
-proposed ADR-014 pointer. Default activation is priority 1 after A9; A8.0 may
-recommend a pre-A9 rebaseline only through an explicit owner decision. See
+accepted-with-amendments ADR-014. A8.0 preserved the measured A8/A9 route;
+activation remains priority 1 after A9 and does not preselect a UI framework. See
 [`INTEGRATION.md`](./INTEGRATION.md) for the source hash, canonical placement,
 dependency insertion, and complexity receipt.
 
@@ -53,7 +53,7 @@ Aelyris は「ゼロからネイティブ版を作り直す」段階ではない
 |---|---|
 | Requirements | 何が満たされなければならないか |
 | Architecture | 責任境界、データフロー、crate ownership |
-| Framework Spec | 独自 UI ランタイムの内部契約 |
+| Framework Spec | retained-runtime candidate の内部契約。NUI-F0 で Slint と比較して採否を決める |
 | Editor Spec | Monaco 撤去を成立させる段階的な native editor |
 | Roadmap | Work Unit と依存順、昇格・撤退条件 |
 | Verification | verifier、artifact、manual gate、性能基準 |
@@ -79,7 +79,7 @@ Aelyris は「ゼロからネイティブ版を作り直す」段階ではない
 - Accessibility semantic tree: `accesskit` + Windows/UIA bridge
 - Windows text authority: DirectWrite
 - Terminal model: 既存 `alacritty_terminal` + `GridSnapshot`
-- General UI rendering: Aelyris 専用の小さな wgpu primitive renderer
+- General UI rendering: NUI-F0 の同一縦切り比較で選ぶ Slint または Aelyris 専用 retained-runtime candidate
 - Terminal/editor rendering: 汎用 widget renderer を迂回できる専用 high-throughput surface
 - Tauri/React: N4 までは compatibility face
 

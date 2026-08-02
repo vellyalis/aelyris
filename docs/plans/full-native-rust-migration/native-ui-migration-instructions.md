@@ -2,8 +2,8 @@
 
 STATUS: QUEUED_HIGH_PRIORITY
 PROGRAM: `native-ui-migration`
-PORTFOLIO PRIORITY: priority 1 after A9 by default. A pre-A9 takeover requires
-an explicit owner decision at A8.0 and a rebaselined tracked program.
+DECISION: ADR-014 accepted with amendments at A8.0; this is direction, not activation.
+PORTFOLIO PRIORITY: priority 1 after A9. Pre-A9 takeover was not authorized.
 CURRENT EXECUTION OWNER: root `audit-remediation-instructions.md`; read its exact
 active slice at execution time. No native migration implementation is active.
 
@@ -21,11 +21,9 @@ contract and must not displace the active audit-remediation slice.
 The package is integrated in this default dependency order:
 
 ```text
-active audit-remediation A4 slice -> A4.12 closeout
-  -> A6.2e1 and the remaining A6 owner/modularity work
-  -> A7 canonical Core Mission vertical
-  -> A8.0 native product-goal/architecture decision
-  -> existing measured A8 terminal decision
+completed A4/A6/A7 remediation
+  -> A8.0 native product-goal/architecture decision (complete)
+  -> A8.1 measured native terminal evidence and disposition
   -> A9 release and external-proof closeout
   -> NUI-F0..F7 as the priority-1 next program
 ```
@@ -33,25 +31,20 @@ active audit-remediation A4 slice -> A4.12 closeout
 Rules:
 
 - the root audit-remediation work order remains the only active implementation
-  frontier owner now.
-- After A4.12 completes, execution resumes directly at the frozen A6.2e1
-  frontier. This imported plan does not change that accepted dependency.
+  frontier owner now, at its exact A8.1 slice.
 - A6.6 already owns decomposition of `aelyris_native.rs`; NUI-F0 must consume
   that result instead of creating a competing decomposition owner.
-- A8.0 evaluates the product Goal, ADR-014, current baseline, total ownership
-  cost, rollback, and whether a pre-A9 rebaseline is justified. Proposal import
-  is not that decision.
+- A8.0 accepted the N4 direction with amendments, preserved A8.1/A9, and
+  deferred shell-framework selection to a NUI-F0 same-vertical comparison.
 - The existing measured A8 terminal decision remains unchanged and provides
   baseline/promotion evidence for later NUI-0.3/NUI-F3.
-- Default activation is after A9 as the priority-1 next program. A pre-A9
-  activation requires explicit owner approval plus a new/rebaselined execution
-  plan; it cannot be inferred from "high priority."
+- Activation is after A9 as the priority-1 next program. No pre-A9 activation
+  or framework dependency is authorized.
 - A9 signing, updater, clean-machine, real sleep/resume, and operator evidence
   remain current release gates. NUI focused PASS cannot satisfy them.
-- ADR-014 remains proposed until A8.0 records accepted-as-written or
-  accepted-with-amendments; both results enter one activation branch. NUI-0.1
-  only ratifies that accepted decision for activation. Importing this package
-  does not supersede current architecture or authorize an N1-N4 claim.
+- ADR-014 is accepted with amendments. NUI-0.1 only ratifies that accepted
+  direction for activation. Acceptance does not supersede current runtime
+  placement or authorize an N1-N4 claim.
 
 ## 2. Mandatory read order
 
@@ -85,7 +78,9 @@ Read current generated evidence before making capability claims。Do not regener
 - native UI calls canonical control capabilities
 - Tauri is compatibility until promotion gates
 - terminal/editor hot paths are specialized surfaces
-- Taffy/AccessKit/winit/wgpu/windows-rs/DirectWrite are reused
+- the selected framework must reuse mature Windows/text/accessibility/layout
+  owners and must not create a second owner; exact dependencies follow NUI-F0
+- Windows 11 x64 is primary; Windows 10 compatibility is measured separately
 - no public general-purpose GUI framework
 - no completion claim from source presence or focused proof
 - docs/spec/design/gate updated in same WU
@@ -122,13 +117,15 @@ Do not jump to renderer/editor implementation before F0 is complete。
 6. Consume the A6.6-owned decomposition map for proof commands in
    `aelyris_native.rs`; fill only verified gaps without creating a second owner。
 7. Traceability verifier skeleton。
-8. No behavior/default change。
+8. One same-vertical Slint versus Aelyris retained-runtime comparison and a
+   single evidence-backed framework selection record。
+9. No behavior/default change。
 
 ### F0 forbidden
 
 - deleting Tauri
 - moving all modules
-- choosing a public UI framework
+- choosing either framework before the NUI-0.6 same-vertical record
 - adding editor implementation
 - changing product claim
 - flipping native default

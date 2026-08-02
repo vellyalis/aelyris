@@ -1,12 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import process from "node:process";
 
@@ -14,8 +7,7 @@ const ROOT = resolve(process.cwd());
 const PACKAGE_DIR = "docs/plans/full-native-rust-migration";
 const SOURCE_TREE = `${PACKAGE_DIR}/source`;
 const OUT = join(ROOT, ".codex-auto", "quality", "native-ui-design-package.json");
-const SOURCE_ARCHIVE_SHA256 =
-  "9024b28dc2cc6c78d6e1d9cd1e244b9b025bb8bd1cb80f406d4c13f4698f73cf";
+const SOURCE_ARCHIVE_SHA256 = "9024b28dc2cc6c78d6e1d9cd1e244b9b025bb8bd1cb80f406d4c13f4698f73cf";
 
 const CANONICAL_DOCUMENTS = [
   `${PACKAGE_DIR}/README.md`,
@@ -79,7 +71,9 @@ function mtime(path) {
 }
 
 function sha256(path) {
-  return createHash("sha256").update(readFileSync(pathOf(path))).digest("hex");
+  return createHash("sha256")
+    .update(readFileSync(pathOf(path)))
+    .digest("hex");
 }
 
 function includesAll(text, needles) {
@@ -116,14 +110,9 @@ function localMarkdownLinkFailures(path) {
   const text = source(path);
   const failures = [];
   const pattern = /\[[^\]]*]\(([^)]+)\)/g;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
+  for (const match of text.matchAll(pattern)) {
     const rawTarget = match[1].trim();
-    if (
-      rawTarget === "" ||
-      rawTarget.startsWith("#") ||
-      /^[a-z][a-z0-9+.-]*:/i.test(rawTarget)
-    ) {
+    if (rawTarget === "" || rawTarget.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(rawTarget)) {
       continue;
     }
     const withoutAnchor = rawTarget.split("#", 1)[0];
@@ -143,25 +132,16 @@ function localMarkdownLinkFailures(path) {
   return failures;
 }
 
-const texts = Object.fromEntries(
-  [...CANONICAL_DOCUMENTS, ...ROUTING_DOCUMENTS].map((path) => [path, source(path)]),
-);
+const texts = Object.fromEntries([...CANONICAL_DOCUMENTS, ...ROUTING_DOCUMENTS].map((path) => [path, source(path)]));
 const packageJson = readJson("package.json");
 const sourceManifest = readJson(`${PACKAGE_DIR}/source-manifest.json`);
 const canonicalManifest = readJson(`${PACKAGE_DIR}/manifest.json`);
 const nativeCoverage = readJson(".codex-auto/quality/native-coverage-gap-audit.json");
 
 const missingPaths = SUPPORTING_PATHS.filter((path) => !exists(path));
-const sourceManifestDocuments = Array.isArray(sourceManifest?.documents)
-  ? sourceManifest.documents
-  : [];
+const sourceManifestDocuments = Array.isArray(sourceManifest?.documents) ? sourceManifest.documents : [];
 const sourceDocumentPath = (path) => {
-  if (
-    typeof path !== "string" ||
-    path.startsWith("/") ||
-    /^[a-z]:/i.test(path) ||
-    path.split(/[\\/]/).includes("..")
-  ) {
+  if (typeof path !== "string" || path.startsWith("/") || /^[a-z]:/i.test(path) || path.split(/[\\/]/).includes("..")) {
     return null;
   }
   return `${SOURCE_TREE}/${path.replaceAll("\\", "/")}`;
@@ -193,9 +173,7 @@ const sourceManifestMirrorMatches =
   exists(`${PACKAGE_DIR}/source-manifest.json`) &&
   exists(`${SOURCE_TREE}/manifest.json`) &&
   sha256(`${PACKAGE_DIR}/source-manifest.json`) === sha256(`${SOURCE_TREE}/manifest.json`);
-const canonicalManifestDocuments = Array.isArray(canonicalManifest?.documents)
-  ? canonicalManifest.documents
-  : [];
+const canonicalManifestDocuments = Array.isArray(canonicalManifest?.documents) ? canonicalManifest.documents : [];
 const canonicalByPath = new Map(canonicalManifestDocuments.map((item) => [item?.path, item]));
 const manifestFailures = CANONICAL_DOCUMENTS.flatMap((path) => {
   const item = canonicalByPath.get(path);
@@ -218,9 +196,7 @@ const manifestFailures = CANONICAL_DOCUMENTS.flatMap((path) => {
 const unexpectedManifestPaths = canonicalManifestDocuments
   .map((item) => item?.path)
   .filter((path) => typeof path !== "string" || !CANONICAL_DOCUMENTS.includes(path));
-const linkFailures = [...CANONICAL_DOCUMENTS, ...ROUTING_DOCUMENTS].flatMap(
-  localMarkdownLinkFailures,
-);
+const linkFailures = [...CANONICAL_DOCUMENTS, ...ROUTING_DOCUMENTS].flatMap(localMarkdownLinkFailures);
 
 const workOrder = texts["audit-remediation-instructions.md"];
 const currentExecution = {
@@ -232,15 +208,11 @@ const currentExecution = {
   resumePhase: backtickField(workOrder, "NEXT PHASE"),
   resumeSlice: workOrder.match(/\bresume at (A\d+(?:\.\d+\w*)?)\b/)?.[1] ?? null,
 };
-const trackedPlan =
-  texts["docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md"];
-const workOsRoadmap =
-  texts["docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md"];
-const queuedWorkOrder =
-  texts[`${PACKAGE_DIR}/native-ui-migration-instructions.md`];
+const trackedPlan = texts["docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md"];
+const workOsRoadmap = texts["docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md"];
+const queuedWorkOrder = texts[`${PACKAGE_DIR}/native-ui-migration-instructions.md`];
 const decisions = texts["DECISIONS.md"];
-const adrDraft =
-  texts[`${PACKAGE_DIR}/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md`];
+const adrDraft = texts[`${PACKAGE_DIR}/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md`];
 const architecture = texts["ARCHITECTURE.md"];
 const nativeArchitecture = texts["docs/specs/AELYRIS_NATIVE_UI_ARCHITECTURE.md"];
 const nativeFramework = texts["docs/specs/AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md"];
@@ -260,9 +232,7 @@ const checks = [
       rawSourcePaths.length === sourceManifestDocuments.length &&
       sourceManifestDocuments.every(
         (item) =>
-          typeof item?.path === "string" &&
-          Number.isInteger(item?.bytes) &&
-          /^[a-f0-9]{64}$/.test(item?.sha256 ?? ""),
+          typeof item?.path === "string" && Number.isInteger(item?.bytes) && /^[a-f0-9]{64}$/.test(item?.sha256 ?? ""),
       ) &&
       sourceTreeFailures.length === 0 &&
       sourceManifestMirrorMatches &&
@@ -280,7 +250,10 @@ const checks = [
     "canonical-manifest-current",
     canonicalManifest?.schema === "aelyris.native-ui-design-package.integration.v1" &&
       canonicalManifest?.sourceArchiveSha256 === SOURCE_ARCHIVE_SHA256 &&
-      canonicalManifest?.status === "queued_high_priority_proposal" &&
+      canonicalManifest?.status === "accepted_with_amendments_queued_post_a9" &&
+      canonicalManifest?.decisionOutcome === "accepted-with-amendments" &&
+      canonicalManifest?.activationAuthorized === false &&
+      canonicalManifest?.frameworkSelection === "pending-nui-f0-slint-vs-retained-runtime-bakeoff" &&
       canonicalManifestDocuments.length === CANONICAL_DOCUMENTS.length &&
       manifestFailures.length === 0 &&
       unexpectedManifestPaths.length === 0,
@@ -291,85 +264,92 @@ const checks = [
     "queued-not-active-routing",
     includesAll(queuedWorkOrder, [
       "STATUS: QUEUED_HIGH_PRIORITY",
+      "DECISION: ADR-014 accepted with amendments at A8.0",
       "priority 1 after A9",
       "CURRENT EXECUTION OWNER: root `audit-remediation-instructions.md`",
       "read its exact",
-      "explicit owner decision",
+      "Pre-A9 takeover was not authorized",
       "A6.6 already owns",
     ]) &&
       !exists("native-ui-migration-instructions.md") &&
       includesAll(workOrder, [
-        "CURRENT PHASE: `A4`",
+        "STATUS: ACTIVE",
+        "PROGRAM: `audit-remediation`",
+        "CURRENT PHASE:",
         "ACTIVE SLICE:",
+        "LAST COMPLETED SLICE:",
         "NEXT IMPLEMENTATION SLICE:",
-        "NEXT PHASE: `A6`",
-        "resume at A6.2e1",
-        "A8.0",
-        "measured terminal-only native spike",
+        "NEXT PHASE:",
+        "A8.1",
+        "measured native terminal evidence and disposition",
       ]) &&
-      Object.values(currentExecution).every(Boolean) &&
+      currentExecution.program === "audit-remediation" &&
+      currentExecution.phase !== null &&
+      currentExecution.activeSlice !== null &&
+      currentExecution.lastCompletedSlice !== null &&
+      currentExecution.nextImplementationSlice !== null &&
+      currentExecution.resumePhase !== null &&
       currentExecution.activeSlice === currentExecution.nextImplementationSlice &&
       canonicalManifest?.currentExecutionOwner === "audit-remediation-instructions.md" &&
       includesAll(trackedPlan, [
-        "After it passes, resume the already",
-        "frozen A6 frontier at A6.2e1",
         "A8.0 - Native Product Goal And Architecture Decision Gate",
+        "A8.1 - Measured Native Terminal Evidence And Disposition",
         "## A8 - Measured Native Terminal Spike",
       ]),
-    "the imported package is priority-1 queued after A9, reads the active frontier from its owner, and does not rewrite A6.2e1 or measured A8",
+    "the imported package is priority-1 queued after A9, reads the active frontier from its owner, and does not rewrite measured A8",
     { currentExecution },
   ),
   check(
-    "unique-proposed-adr-owner",
+    "canonical-accepted-adr-owner",
     includesAll(normalizeText(decisions), [
       "## ADR-013 External Team Patterns Extend Existing Owners",
       "## ADR-014 Full-Native Rust Product Surface",
-      "Status: **proposed / queued**",
-      "does not yet supersede ADR-001",
-      "priority 1 after A9",
+      "Status: **accepted with amendments / queued for post-A9 activation**",
+      "owner decision 2026-08-02",
+      "accept N4 WebView-free distribution",
+      "NUI-F0 must compare Slint",
     ]) &&
-      normalizeText(
-        source(`${PACKAGE_DIR}/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md`),
-      ).includes(
+      normalizeText(source(`${PACKAGE_DIR}/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md`)).includes(
         "canonical decision owner is",
       ) &&
       !exists("docs/adr/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md"),
-    "DECISIONS.md uniquely owns proposed ADR-014 while the package keeps subordinate detail",
+    "DECISIONS.md uniquely owns accepted-with-amendments ADR-014 while the package keeps subordinate detail",
   ),
   check(
     "portfolio-order-and-adr-lifecycle",
     includesAll(normalizeText(trackedPlan), [
-      "accepts ADR-014 as written or with amendments",
-      "NUI-F0-F7 is the priority-1 program",
+      "accepted ADR-014 with amendments",
+      "NUI-F0-F7 is the priority-1 post-A9 program",
       "runs before these Apex waves",
-      "If A8.0 defers or rejects ADR-014, the Apex sequence starts directly",
+      "NUI-F0 selects the shell framework",
     ]) &&
       includesAll(normalizeText(workOsRoadmap), [
-        "accepts ADR-014 as written or with amendments",
+        "accepted ADR-014 with amendments",
         "NUI-F0-F7 is the first post-A9 portfolio program",
-        "If A8.0 defers or rejects ADR-014, Apex V1 begins directly",
+        "after NUI closes or is retired",
       ]) &&
       includesAll(normalizeText(decisions), [
-        "accepted-as-written, accepted-with-amendments, deferred, or rejected",
-        "Both accepted results enter the same activation branch",
-        "NUI-0.1 may only ratify that already accepted decision",
+        "accepted with amendments / queued for post-A9 activation",
+        "preserve the measured A8 then A9 execution order",
+        "NUI-0.1 may ratify this already accepted decision",
       ]) &&
       includesAll(normalizeText(nativeRoadmap), [
         "NUI-0.1 — Ratify accepted ADR-014 for activation",
         "accepted-as-written or accepted-with-amendments",
         "both accepted results enter this branch",
         "deferred or rejected decisions cannot enter NUI-F0",
-        "without reopening the architecture choice",
+        "without reopening the N4 strategic direction",
+        "NUI-0.6 — Shell framework same-vertical bakeoff",
       ]) &&
       includesAll(normalizeText(adrDraft), [
-        "accept-as-written/accept-with-amendments/defer/reject",
-        "both accepted results enter one branch",
-        "Would supersede if accepted: ADR-001",
-        "Would also supersede if accepted",
+        "accepted with amendments at A8.0",
+        "Supersession on post-A9 activation: ADR-001",
+        "Slint versus Aelyris",
+        "no framework is preselected",
       ]) &&
       !nativeRoadmap.includes("accept, amend, or reject proposed ADR-014") &&
       !/^\s*Supersedes:/m.test(adrDraft),
-    "A8.0 uniquely owns the ADR decision and an accepted NUI program precedes Apex after A9",
+    "A8.0's accepted decision is canonical and the queued NUI program precedes Apex after A9",
   ),
   check(
     "architecture-and-complexity-guards",
@@ -384,14 +364,13 @@ const checks = [
         "second durable event stream",
         "existing persistence/migration",
         "A9's single trust",
-        "current hybrid",
-        "mature Rust UI framework",
+        "NUI-F0 must compare",
+        "Slint",
       ]) &&
       includesAll(normalizeText(nativeFramework), [
-        "Activation prerequisite",
-        "current hybrid",
-        "mature Rust UI framework",
-        "not an authorized new framework dependency surface",
+        "Selection prerequisite",
+        "same-vertical Slint",
+        "not authorize a new framework dependency surface",
       ]),
     "target-only names map to existing owners and custom-framework complexity has an alternatives gate",
   ),
@@ -406,11 +385,11 @@ const checks = [
       nativeCoverage?.schema === "aelyris.native-coverage-gap/v2" &&
       nativeCoverage?.fullNativeReady === undefined &&
       nativeCoverage?.percent === undefined &&
-      includesAll(source(`${PACKAGE_DIR}/INTEGRATION.md`), [
+      includesAll(normalizeText(source(`${PACKAGE_DIR}/INTEGRATION.md`)), [
         "explicitly stale",
         "`shippingShellReady=false`",
-        "cannot",
-        "A8.0/NUI-0.3 must regenerate",
+        "did not authorize promotion",
+        "NUI-0.3 must refresh",
       ]),
     "only native coverage v2 is admissible and the observed stale snapshot cannot promote claims",
     {
@@ -438,8 +417,7 @@ const checks = [
   ),
   check(
     "package-command-present",
-    packageJson?.scripts?.["verify:native-ui:design-package"] ===
-      "node scripts/verify-native-ui-design-package.mjs",
+    packageJson?.scripts?.["verify:native-ui:design-package"] === "node scripts/verify-native-ui-design-package.mjs",
     "package.json exposes the focused native UI design-package verifier",
   ),
 ];
@@ -450,9 +428,7 @@ const report = {
   version: 1,
   ok: failed.length === 0,
   status:
-    failed.length === 0
-      ? "pass-queued-high-priority-proposal-integrated"
-      : "fail-native-ui-design-package-integration",
+    failed.length === 0 ? "pass-accepted-with-amendments-queued-post-a9" : "fail-native-ui-design-package-integration",
   generatedAt: new Date().toISOString(),
   sourceCutoffMs: Math.max(...[...SUPPORTING_PATHS, ...rawSourcePaths].map(mtime)),
   sourcePaths: [...SUPPORTING_PATHS, ...rawSourcePaths],
@@ -461,12 +437,14 @@ const report = {
     program: "native-ui-migration",
     priority: "priority-1-post-A9",
     decisionGate: "A8.0",
+    decisionOutcome: "accepted-with-amendments",
     activationAuthorized: false,
+    frameworkSelectionAuthorized: false,
     claimLevelAuthorized: null,
   },
   summary:
     failed.length === 0
-      ? "full-native Rust design package is integrity-checked, canonically routed, and queued without changing current execution or claims"
+      ? "accepted-with-amendments native UI package is integrity-checked and queued post-A9 without changing current execution or claims"
       : `${failed.length} native UI design-package integration checks failed`,
   checks,
 };
