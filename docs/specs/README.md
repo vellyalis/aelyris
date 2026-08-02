@@ -98,7 +98,9 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 full-native Rust migration は accepted-with-amendments の high-priority queued
 post-A9 program だが、active phase と並行しない。A8.1 measured terminal
 disposition は `do_not_promote` で完了し、Canvas2D を default/rollback に保持した。
-current frontier は root work order が所有する A9 release closeout。A8.0 は N4 direction を承認したが
+current frontier は root work order が所有する A9.1 no-token release evidence
+refresh and fresh owner split。A9.0 inventory は `refresh_before_fix` で完了し、
+expired snapshot を実装欠陥へ昇格していない。A8.0 は N4 direction を承認したが
 pre-A9 takeover と framework preselection は承認していない。A9 後に
 NUI-F0-F7 を priority 1 で開始し、NUI-F0 の同一縦切り比較で framework を選ぶ。
 下の Batch A-F は既存 cockpit program の設計履歴であり、現在の next Work Unit

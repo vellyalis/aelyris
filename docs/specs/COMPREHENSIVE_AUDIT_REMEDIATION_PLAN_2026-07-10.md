@@ -2125,7 +2125,7 @@ current. External limitations must not be counted as implementation completion.
 
 ### **A9.0 - Release Evidence Inventory And Owner Split**
 
-Status: next implementation slice; not started.
+Status: complete with `refresh_before_fix` disposition on 2026-08-02.
 
 Inventory the current release-quality/final-goal artifacts and map every remaining
 gate to exactly one of repo-owned implementation, stale evidence, policy, operator,
@@ -2133,6 +2133,26 @@ or external responsibility. Preserve direct versus derived blocker identity, nam
 the refresh or operator command, and select the first executable repo-owned A9 slice.
 Do not run token-spending, signing, real sleep/power-loss, publication, push, or other
 operator/external actions merely to make the inventory green.
+
+The inventory found that the observed release score, final-goal audit,
+current-readiness source, and release-readiness aggregate predate the current HEAD.
+The score and final audit have expired provenance bound to older commits, so their
+numeric counts cannot select an implementation target. Observed direct blockers remain
+historical `stale_evidence`; aggregate and derived rows remain non-duplicating views.
+Stable claim policy, signing/updater, sleep/power-loss, token-prompt, rendered-host,
+and upstream gates are recorded separately without execution.
+
+### **A9.1 - No-Token Release Evidence Refresh And Fresh Owner Split**
+
+Status: next implementation slice; not started.
+
+Run the existing descriptor-first `pnpm verify:goal:safe:no-token` chain. It may end
+BLOCK, but it must record `tokenSpendingPromptExecutedByThisRun=false` and must not
+invoke real sleep, signing, publication, or provider-selected token prompts. Regenerate
+the release score and downstream final-goal audit through their owner commands, then
+classify only fresh direct blockers. Preserve aggregate/derived identity and select
+the first executable repo-owned A9 defect, or an exact operator/external handoff if
+no repo-owned defect remains.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 
