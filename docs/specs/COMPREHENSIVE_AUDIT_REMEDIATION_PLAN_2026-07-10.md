@@ -2068,7 +2068,7 @@ the implementation/claim Current Best until later activation and promotion.
 
 ### **A8.1 - Measured Native Terminal Evidence And Disposition**
 
-Status: next implementation slice; not started.
+Status: complete with `do_not_promote` disposition on 2026-08-02.
 
 This granular slice owns the existing measured A8 scope below. It records current
 same-condition terminal evidence, closes or promotes only the measured terminal
@@ -2095,6 +2095,16 @@ Promotion requires better representative-hardware evidence than Canvas. Failure 
 the spike without forcing a rewrite. Full-native reconsideration requires a documented
 falsification condition from `TERMINAL_CORE_DESIGN.md`.
 
+A8.1 disposition: `do_not_promote`. Fresh Canvas2D/WebGL2 evidence preserved
+Canvas2D as the default and rollback. The WebGL2 48x12 same-grid sample was materially
+slower than Canvas2D, while native winit/wgpu proof covered only two 100x24 frames and
+was not a same-condition performance candidate. Parity, transparent alpha, and the
+10,000-frame short soak passed; key-to-paint p99, event-queue lag, process-memory
+delta, 24-hour soak, DWM signoff, and native 120x40/1000-frame plus scroll-flood
+evidence remain promotion-only debt. `pnpm verify:a8:native-terminal-disposition`
+records the fail-closed decision without activating NUI, selecting a framework, or
+granting release credit.
+
 ## A9 - Release Lane and External Proof Closeout
 
 Objective: make green CI equivalent to the intended release claim.
@@ -2112,6 +2122,17 @@ Required work:
 
 Release remains BLOCK until repo-owned phases A0-A8 are complete and external proof is
 current. External limitations must not be counted as implementation completion.
+
+### **A9.0 - Release Evidence Inventory And Owner Split**
+
+Status: next implementation slice; not started.
+
+Inventory the current release-quality/final-goal artifacts and map every remaining
+gate to exactly one of repo-owned implementation, stale evidence, policy, operator,
+or external responsibility. Preserve direct versus derived blocker identity, name
+the refresh or operator command, and select the first executable repo-owned A9 slice.
+Do not run token-spending, signing, real sleep/power-loss, publication, push, or other
+operator/external actions merely to make the inventory green.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

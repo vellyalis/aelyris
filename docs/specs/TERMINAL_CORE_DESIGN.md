@@ -133,6 +133,15 @@ Gate wiring: `pnpm verify:renderer:parity` (pixel-diff fixtures), `pnpm verify:r
 
 R6 decision note: Stage 1 remains opt-in. The current WebGL2 path passes parity/contract/transparency/short-soak gates, but the performance artifact records only a 48x12 sampled WebGL2 comparison because the current full-grid WebGL2 path does not complete inside the verifier budget. The artifact therefore proposes `canvas2d` as the default until a later optimization run produces owner-approved evidence to flip it.
 
+A8.1 disposition (2026-08-02): `do_not_promote`. Fresh measurement preserved
+Canvas2D as default/rollback. The WebGL2 48x12 same-grid sample was about 99.75x
+slower at full-grid p95 and 106.577x slower at scroll-flood p95. Fresh native
+winit/wgpu proof presented two 100x24 frames, so it was not relabeled as the required
+same-condition 120x40/1000-frame comparison. Missing key-to-paint p99, event-queue
+lag, process-memory delta, 24-hour soak, DWM signoff, and native same-condition
+evidence prohibit promotion. The decision closes A8.1 without starting Stage 2,
+activating NUI, or weakening F1-F3.
+
 ## 9. Work-unit map
 
 | WU | content | work order |

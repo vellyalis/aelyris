@@ -8,6 +8,8 @@ const OUT = join(ROOT, ".codex-auto", "quality", "terminal-font-render-contract.
 const SOURCE_PATHS = [
   "package.json",
   "src/App.tsx",
+  "src/features/app/useBootstrapAppConfig.ts",
+  "src/features/right-rail/bootstrapAppConfig.ts",
   "src/features/right-rail/rightRailModel.tsx",
   "src/features/settings/Settings.tsx",
   "src/features/terminal/NativeTerminalArea.tsx",
@@ -69,6 +71,8 @@ function writeJsonAtomic(path, value) {
 
 const packageJson = source("package.json");
 const app = source("src/App.tsx");
+const bootstrapAppConfig = source("src/features/app/useBootstrapAppConfig.ts");
+const bootstrapAppConfigTypes = source("src/features/right-rail/bootstrapAppConfig.ts");
 const rightRailModel = source("src/features/right-rail/rightRailModel.tsx");
 const settings = source("src/features/settings/Settings.tsx");
 const nativeTerminalArea = source("src/features/terminal/NativeTerminalArea.tsx");
@@ -91,7 +95,7 @@ const nativeTerminalAreaTest = source("src/__tests__/NativeTerminalArea.test.tsx
 const terminalCanvasTest = source("src/__tests__/TerminalCanvas.test.tsx");
 const sourceContractTest = source("src/__tests__/TerminalFontSettingsContract.test.ts");
 const terminalColorsTest = source("src/__tests__/terminalColors.test.ts");
-const appConfigSurface = `${app}\n${rightRailModel}`;
+const appConfigSurface = `${app}\n${bootstrapAppConfig}\n${bootstrapAppConfigTypes}\n${rightRailModel}`;
 
 const sourceCutoffMs = Math.max(mtime("scripts/verify-terminal-font-render-contract.mjs"), ...SOURCE_PATHS.map(mtime));
 
@@ -137,7 +141,7 @@ const checks = [
       "localStorage.setItem(TERMINAL_TEXT_CLARITY_KEY",
       "localStorage.setItem(TERMINAL_SURFACE_OPACITY_KEY",
     ]),
-    "runtime store persists Cascadia-first terminal font settings and text clarity before panes render",
+    "runtime store persists the HackGen/Cascadia/Japanese fallback stack and text clarity before panes render",
   ),
   check(
     "config-bootstrap",
@@ -163,7 +167,7 @@ const checks = [
       "Noto Sans Mono CJK JP",
       "function terminalPrimaryFont",
       "function terminalFontStack(primaryFont: string)",
-      'terminalFontStack("Cascadia Code")',
+      'terminalFontStack("HackGen Console NF")',
     ]),
     "settings keep Japanese fallback fonts attached to the selected primary terminal font",
   ),
@@ -306,7 +310,7 @@ const checks = [
       "fonts.ready",
       "loadingdone",
     ]),
-    "terminal metrics use the same Cascadia-first stack and refresh after browser font readiness changes",
+    "terminal metrics use the same HackGen/Cascadia/Japanese fallback stack and refresh after browser font readiness changes",
   ),
   check(
     "browser-preview-renderer",

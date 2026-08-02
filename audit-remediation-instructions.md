@@ -2,11 +2,11 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
-CURRENT PHASE: `A8`.
-ACTIVE SLICE: `A8.1` (measured native terminal evidence and disposition; not started).
-LAST COMPLETED SLICE: `A8.0`.
-NEXT PHASE: `A9` after A8.1 disposition.
-NEXT IMPLEMENTATION SLICE: `A8.1`.
+CURRENT PHASE: `A9`.
+ACTIVE SLICE: `A9.0` (release evidence inventory and owner split; not started).
+LAST COMPLETED SLICE: `A8.1`.
+NEXT PHASE: `A9`.
+NEXT IMPLEMENTATION SLICE: `A9.0`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -72,8 +72,10 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     remains explicit. A8.0 is complete with owner outcome
     `accepted-with-amendments`: N4 remains the post-A9 direction, the measured
     A8/A9 order is preserved, and NUI-F0 must select Slint versus the retained-
-    runtime candidate from a same-vertical comparison. A8.1 is next and has not
-    started.
+    runtime candidate from a same-vertical comparison. A8.1 measured the current
+    Canvas2D, WebGL2, and native proof candidates and closed with `do_not_promote`:
+    Canvas2D remains the default/rollback, no native or WebGL renderer was promoted,
+    and no NUI implementation or framework selection was activated. A9.0 is next.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -105,7 +107,8 @@ A4.12 complete
   -> A7.3 exact-OID acceptance complete -> A7.4 immutable settlement complete
   -> A7.5 one canonical A7 Core Mission combined acceptance (complete)
   -> A8.0 product-goal/architecture decision (complete; accepted with amendments)
-  -> A8.1 measured native terminal evidence and disposition (next; not started)
+  -> A8.1 measured native terminal evidence and disposition (complete; do_not_promote)
+  -> A9.0 release evidence inventory and owner split (next; not started)
   -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
@@ -130,12 +133,16 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0 is complete; A8.1 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0 and A8.1 are complete; A9.0 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
    request -> versioned plan preview -> visible implementation agent -> fresh tests
    -> independent review -> exact-OID accept/merge -> immutable completion packet.
+   A8.1 preserved Canvas2D as Current Best after the WebGL2 same-grid sample was
+   materially slower and the native winit/wgpu proof lacked same-condition promotion
+   evidence. Missing key-to-paint, memory, 24-hour soak, DWM signoff, and native
+   120x40 comparison evidence forbids promotion; it is not implementation credit.
    Proofbook product UI/recipes, Fleet Briefing, broad budget/cost UX, Remote
    Continuity, universal all-face Control Kernel migration beyond the enabled
    Mission path, and learning layers remain in the full Goal but are deferred from
@@ -192,6 +199,7 @@ continuation_contract:
 | A7 | one canonical Mission path from request and plan preview through visible execution, fresh tests, independent review, exact-OID settlement, and immutable completion packets | A6 complete and A7.0 scope lock accepted | successful commit-bound Core Mission scenario plus blocked-settlement negative scenario PASS |
 | A8.0 | native product-goal/architecture decision; current hybrid vs mature Rust framework vs custom retained runtime | A7 complete | accepted-as-written/accepted-with-amendments/deferred/rejected ADR-014 decision; both accepted results use one activation branch; no capability credit |
 | A8 | measured terminal-only native spike | A7 complete and metrics justify | parity/perf/soak decision artifact |
+| A9.0 | release evidence inventory and owner split | A8.1 complete | current repo-owned, stale, policy, operator, and external gates mapped without executing or hiding operator-only work |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
 Do not skip to a later phase because it is easier to score. Do not parallelize phases
@@ -785,6 +793,30 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.
+
+## A8.1 Complete - Measured Native Terminal Disposition
+
+A8.1 disposition is `do_not_promote`. Fresh same-run renderer evidence kept
+Canvas2D as the product default and rollback: the 120x40 Canvas baseline recorded
+1000 frames, while the comparable 48x12 WebGL2 sample was about 99.75x slower at
+full-grid p95 and 106.577x slower for scroll-flood p95. WebGL2 parity, transparent
+alpha, and the 10,000-frame short soak passed, but none substitutes for performance
+or long-soak promotion evidence.
+
+Fresh `aelyris-native` proof passed its existing 88 checks, including the winit/wgpu
+surface, dirty rectangles, font atlas, cursor, IME, UIA, and daemon attach/detach.
+It presented only two 100x24 proof frames and therefore is not the required
+same-condition 120x40/1000-frame plus scroll-flood comparison. Key-to-paint p99,
+event-queue lag, process-memory delta, 24-hour soak, DWM/WebView2 signoff, and the
+native same-condition run remain promotion-only evidence debt. The native boundary
+also remains honestly BLOCK at 11/14 from separately owned mux durability and AI CLI
+preflight evidence.
+
+`pnpm verify:a8:native-terminal-disposition` is the canonical decision artifact.
+It fails closed on stale inputs, a non-Canvas default, hidden native-boundary debt,
+NUI/framework activation, or an unowned dirty path. This completion adds no NUI
+implementation, selects no framework, grants no capability/release credit, and
+advances only to A9.0 release evidence inventory and owner split.
 
 ## Work and Session Rules
 

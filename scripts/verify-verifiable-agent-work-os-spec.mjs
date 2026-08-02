@@ -420,7 +420,7 @@ const requiredPlanClauses = [
 ];
 
 const requiredWorkOrderClauses = [
-  "CURRENT PHASE: `A8`",
+  "CURRENT PHASE: `A9`",
   "ACTIVE SLICE:",
   "LAST COMPLETED SLICE:",
   "NEXT IMPLEMENTATION SLICE:",
@@ -433,7 +433,8 @@ const requiredWorkOrderClauses = [
   "A7.5 and A7 are complete",
   "exact-SHA hosted run `30735313688`",
   "A8.0 is complete with owner outcome",
-  "A8.1 is next and has not started",
+  "A8.1 measured the current",
+  "A9.0 is next",
 ];
 
 const requiredArchitectureClauses = [
@@ -987,7 +988,7 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a7ClosedFrontierValid = currentFrontier.activeSlice === "A8.1" && currentFrontier.lastCompletedSlice === "A8.0";
+const postA8FrontierValid = currentFrontier.activeSlice === "A9.0" && currentFrontier.lastCompletedSlice === "A8.1";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1237,10 +1238,10 @@ const checks = [
     "work-order-frontier",
     missing.workOrder.length === 0 &&
       Object.values(currentFrontier).every(Boolean) &&
-      currentFrontier.phase === "A8" &&
+      currentFrontier.phase === "A9" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
-      a7ClosedFrontierValid,
-    "Work order preserves A7.5, records A8.0 complete, and exposes A8.1 as the next unstarted slice",
+      postA8FrontierValid,
+    "Work order preserves A7.5, records A8.0/A8.1 complete, and exposes A9.0 as the next unstarted slice",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

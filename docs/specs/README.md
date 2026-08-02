@@ -96,8 +96,9 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 `audit-remediation-instructions.md` だけが所有する。詳細な依存順は
 `COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` の R0-A9 を正とする。
 full-native Rust migration は accepted-with-amendments の high-priority queued
-post-A9 program だが、active phase と並行せず、root work order が所有する
-A8.1 measured terminal disposition を変更しない。A8.0 は N4 direction を承認したが
+post-A9 program だが、active phase と並行しない。A8.1 measured terminal
+disposition は `do_not_promote` で完了し、Canvas2D を default/rollback に保持した。
+current frontier は root work order が所有する A9 release closeout。A8.0 は N4 direction を承認したが
 pre-A9 takeover と framework preselection は承認していない。A9 後に
 NUI-F0-F7 を priority 1 で開始し、NUI-F0 の同一縦切り比較で framework を選ぶ。
 下の Batch A-F は既存 cockpit program の設計履歴であり、現在の next Work Unit
