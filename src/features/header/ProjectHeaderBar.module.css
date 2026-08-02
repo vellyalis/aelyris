@@ -13,6 +13,14 @@
   -webkit-app-region: drag;
 }
 
+/* The workstation rail is a fixed optical axis. Keep the first chrome
+ * control centered over it, and let native window controls reach the right
+ * edge instead of leaving an accidental title-bar gutter. */
+:global(.app-container[data-interface-style="workstation"]) .header {
+  padding-left: calc((var(--workstation-mode-rail-width) - var(--workstation-mode-button-size)) / 2);
+  padding-right: 0;
+}
+
 /* Left group: chrome cluster (hamburger + sidebar toggle) +
  * project info (2 rows). Chrome cluster sits flush
  * against the window edge — VS Code / Claude Code Desktop /

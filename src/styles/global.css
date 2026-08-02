@@ -1008,6 +1008,9 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
  * inspectors are open or closed. Card style intentionally falls through to
  * the earlier bento/material rules as an alternate user-selected theme. */
 .app-container[data-interface-style="workstation"] {
+  --workstation-column-inset: 8px;
+  --workstation-mode-rail-width: 42px;
+  --workstation-mode-button-size: 36px;
   --terminal-canvas-bg: rgba(3, 10, 22, 0.18);
   --terminal-raster-bg: rgba(3, 10, 22, 0.18);
   --terminal-well-bg: rgba(3, 10, 22, 0.08);
@@ -5056,11 +5059,11 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
  * floating dashboard cards. Keep every existing capability and DOM contract;
  * this user-selectable style changes only the visual hierarchy. */
 .app-container[data-interface-style="workstation"] .mode-rail {
-  width: 42px;
-  min-width: 42px;
-  max-width: 42px;
+  width: var(--workstation-mode-rail-width);
+  min-width: var(--workstation-mode-rail-width);
+  max-width: var(--workstation-mode-rail-width);
   gap: 2px;
-  padding: 4px 3px;
+  padding: 4px calc((var(--workstation-mode-rail-width) - var(--workstation-mode-button-size)) / 2);
   border-radius: 0;
   background: rgba(3, 10, 22, 0.16);
   backdrop-filter: none;
@@ -5069,7 +5072,9 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .app-container[data-interface-style="workstation"] .mode-rail-brand {
+  width: var(--workstation-mode-button-size);
   height: 28px;
+  align-self: center;
   border-radius: 3px;
   background: transparent;
   box-shadow: none;
@@ -5080,7 +5085,9 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .app-container[data-interface-style="workstation"] .mode-rail-button {
+  width: var(--workstation-mode-button-size);
   min-height: 34px;
+  justify-self: center;
   border: 0;
   border-radius: 3px;
 }
@@ -5124,7 +5131,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   z-index: 4;
   grid-auto-rows: 34px;
   gap: 0;
-  padding: 3px 6px 0;
+  padding: 3px var(--workstation-column-inset) 0;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--rail-control-border) 74%, transparent);
   border-radius: 0;
@@ -5145,7 +5152,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 
 .app-container[data-interface-style="workstation"] .right-panel-content > [id="right-rail-purpose"] {
   min-height: 28px;
-  padding: 6px 8px;
+  padding: 6px var(--workstation-column-inset);
   border-bottom: 1px solid color-mix(in srgb, var(--rail-control-border) 52%, transparent);
 }
 
@@ -5169,7 +5176,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 
 .app-container[data-interface-style="workstation"] .right-panel-run-loop {
   gap: 6px;
-  padding: 8px;
+  padding: 8px var(--workstation-column-inset);
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--rail-control-border) 58%, transparent);
   border-radius: 0;
@@ -5282,7 +5289,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   grid-template-columns: 62px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 4px var(--workstation-column-inset);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -5336,7 +5343,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   )
   > summary {
   min-height: 34px;
-  padding: 6px 10px;
+  padding: 6px var(--workstation-column-inset);
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--rail-control-border) 54%, transparent);
   border-radius: 0;
@@ -5376,7 +5383,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 
 .app-container[data-interface-style="workstation"] .right-panel-widget-frame-header {
   min-height: 34px;
-  padding: 6px 9px;
+  padding: 6px var(--workstation-column-inset);
   background: transparent;
 }
 

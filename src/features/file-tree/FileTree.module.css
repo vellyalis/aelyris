@@ -186,6 +186,30 @@
   font-size: var(--text-md);
   color: var(--text-muted);
 }
+
+/* Workstation columns share one inset and integer row geometry. Explicit
+ * heights avoid half-device-pixel baselines at 125%/150% Windows scaling. */
+:global(.app-container[data-interface-style="workstation"]) .breadcrumb {
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 var(--workstation-column-inset);
+}
+
+:global(.app-container[data-interface-style="workstation"]) .rootHeader {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 var(--workstation-column-inset);
+}
+
+:global(.app-container[data-interface-style="workstation"]) .searchBox {
+  padding: var(--space-2) var(--workstation-column-inset);
+}
+
+:global(.app-container[data-interface-style="workstation"]) .searchInput {
+  box-sizing: border-box;
+  height: 28px;
+  padding-block: 0;
+}
 /* Context menu (Radix) */
 .ctxMenu {
   min-width: 160px;
