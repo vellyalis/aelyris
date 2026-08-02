@@ -2166,9 +2166,9 @@ required guard has a no-token command and fallback artifact registration, but it
 absent from the descriptor sequence that runs matrix, consent, planner, and native-
 boundary consumers.
 
-### **A9.2 - No-Token Provider-Guard Dependency Closure**
+### **A9.2 - No-Token Provider-Guard Boundary Correction**
 
-Status: next implementation slice; not started.
+Status: complete with `reject_direct_descriptor` disposition on 2026-08-02.
 
 Insert the existing authenticated provider-required guard into the descriptor-first
 no-token sequence before all consumers. Preserve pre-spawn token-free validation and
@@ -2176,6 +2176,24 @@ the no-token/no-sleep claim. Verify the focused guard -> matrix -> consent depen
 path, then rerun the aggregate exactly once. Keep the independent A4 timeout,
 right-rail information-density drift, and anti-stall progress-artifact failure as
 separate later root causes.
+
+The direct-insertion candidate was rejected before any child spawn because the guard
+deliberately reaches the token-bearing prompt-smoke script. The strict allowlist was
+not weakened and the existing 23-step no-token graph remains unchanged. Standalone
+focused proof removed the stale provider-guard blocker from the matrix while preserving
+three independent sidecar/chaos blockers, and the consent packet remained blocked
+without token execution. Provider-guard behavior is policy/operator proof outside the
+no-token aggregate, not a repo-owned descriptor defect.
+
+### **A9.3 - A4 Acceptance Timeout Budget Closure**
+
+Status: next implementation slice; not started.
+
+The A4 acceptance child continued completing focused Rust scenarios when the generic
+180-second outer step budget terminated it. Assign only this descriptor a bounded
+timeout sufficient for the existing scenario portfolio. Do not delete scenarios,
+lower minimum pass counts, or treat timeout removal as A4 capability credit. Run the
+focused acceptance once and the no-token aggregate once before the next owner split.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

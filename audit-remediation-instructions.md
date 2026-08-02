@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.2` (no-token provider-guard dependency closure; not started).
-LAST COMPLETED SLICE: `A9.1`.
+ACTIVE SLICE: `A9.3` (A4 acceptance timeout budget closure; not started).
+LAST COMPLETED SLICE: `A9.2`.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.2`.
+NEXT IMPLEMENTATION SLICE: `A9.3`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -79,7 +79,10 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     the current release evidence without executing an operator gate and closed with
     `refresh_before_fix`. A9.1 then executed the descriptor-first no-token chain,
     preserved its BLOCK result, and selected the missing provider-guard descriptor
-    as the first repo-owned dependency defect. A9.2 is next.
+    as the first apparent repo-owned dependency defect. A9.2 falsified that selection:
+    the provider guard is intentionally token-bearing and the pre-spawn authority
+    rejected direct insertion before any child started. The 23-step no-token graph
+    remains unchanged and A9.3 is next.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -114,7 +117,8 @@ A4.12 complete
   -> A8.1 measured native terminal evidence and disposition (complete; do_not_promote)
   -> A9.0 release evidence inventory and owner split (complete; refresh_before_fix)
   -> A9.1 no-token release evidence refresh and fresh owner split (complete; repair_dependency_graph)
-  -> A9.2 no-token provider-guard dependency closure (next; not started)
+  -> A9.2 no-token provider-guard boundary correction (complete; reject_direct_descriptor)
+  -> A9.3 A4 acceptance timeout budget closure (next; not started)
   -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
@@ -139,7 +143,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, and A9.1 are complete; A9.2 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, and A9.2 are complete; A9.3 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -207,7 +211,8 @@ continuation_contract:
 | A8 | measured terminal-only native spike | A7 complete and metrics justify | parity/perf/soak decision artifact |
 | A9.0 | release evidence inventory and owner split | A8.1 complete | current repo-owned, stale, policy, operator, and external gates mapped without executing or hiding operator-only work |
 | A9.1 | no-token release evidence refresh and fresh owner split | A9.0 complete | current score/final-audit chain regenerated without token/sleep/signing actions; first fresh repo-owned defect or external/operator frontier selected |
-| A9.2 | no-token provider-guard dependency closure | A9.1 complete | provider-required guard executes before matrix/consent/planner consumers; descriptor graph remains token-free and fail-closed |
+| A9.2 | no-token provider-guard boundary correction | A9.1 complete | direct insertion is rejected before spawn; standalone guard proof stays outside the unchanged token-free descriptor graph |
+| A9.3 | A4 acceptance timeout budget closure | A9.2 complete | aggregate grants the existing A4 acceptance verifier enough bounded time to complete; timeout remains explicit and no tests are weakened |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
 Do not skip to a later phase because it is easier to score. Do not parallelize phases
@@ -872,6 +877,29 @@ A9.2 is the exact next slice. Add the existing provider-required guard verifier 
 descriptor graph before its consumers, keep the graph token-free, run the focused
 guard -> matrix -> consent sequence, and then rerun the aggregate once. Do not execute
 a provider prompt or treat policy/operator BLOCK as a repo implementation failure.
+
+## A9.2 Complete - Provider-Guard No-Token Boundary Correction
+
+A9.2 closed with `reject_direct_descriptor`. A causal candidate inserted
+`verify-authenticated-ai-cli-provider-guard.mjs` before its consumers, but
+`assertNoTokenStepGraph` rejected the complete manifest before any child process could
+start: the guard deliberately reaches the token-bearing prompt-smoke script and is not
+in the strict no-token allowlist. The allowlist and authority were not weakened, the
+candidate was removed, and the 23-step descriptor graph remains the Current Best.
+
+The standalone focused guard still proved missing-provider rejection, no prompt sent,
+and no agent session spawned. A following matrix run no longer listed `providerGuard`;
+its remaining blockers are the independent interactive sidecar boundary, live Tauri
+chaos, and native sidecar chaos proofs. The consent packet remained fail-closed with
+`tokenSpendingPromptExecuted=false`. This is policy/operator behavioral proof, not a
+repo-owned no-token aggregate descriptor. No provider prompt, signing, sleep,
+publication, or external transmission ran.
+
+A9.3 is the exact next slice. The A9.1 aggregate showed that the A4 acceptance verifier
+was still running successful focused Rust scenarios when the outer 180-second step
+budget killed it. Give only that existing descriptor a bounded phase-specific timeout
+large enough for its current scenario portfolio, rerun the A4 acceptance once, and
+then rerun the aggregate once. Do not remove scenarios or weaken minimum-pass checks.
 
 ## Work and Session Rules
 
