@@ -1942,7 +1942,7 @@ Status: complete.
 
 ### **A7.4 - Immutable Completion And Blocked Settlement**
 
-Status: active.
+Status: complete.
 
 - create an immutable `CompletedWorkPacket` only from the accepted Mission revision,
   tested and reviewed exact OID, owned diff, fresh test evidence, independent
@@ -1958,7 +1958,19 @@ Status: active.
 - test PASS, review approval, merge intent, agent self-report, or durable blocked
   handoff alone cannot render trusted Done.
 
+Executed A7.4 closeout (2026-08-02): immutable `CompletedWorkPacket`,
+`BlockedWorkPacket`, and `MissionCompletionPacket` schemas now settle through the
+existing `TaskManager`/`TaskRepo` owner. SQLite schema v10 stores append-only packet
+facts, while one transaction validates the frozen authority CAS, inserts the exact
+packet set, and persists the existing TaskGraph `Done`/`Blocked` projection.
+Completed packets require zero blockers and exact tested/reviewed/integrated OID;
+blocked packets require typed repo/policy/operator/external blockers and grant zero
+completion credit. Focused proof is `pnpm verify:a7:completion-settlement` (5 tests).
+A7 remains incomplete and A7.5 is next but not started.
+
 ### A7.5 - Canonical Core Mission Combined Acceptance
+
+Status: next; not started.
 
 The fixed request must pass, in order: accepted versioned plan preview, visible
 implementation, fresh tests, independent exact-OID review, successful exact-OID

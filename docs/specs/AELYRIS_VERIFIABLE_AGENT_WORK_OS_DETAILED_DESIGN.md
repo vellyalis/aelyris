@@ -3106,6 +3106,15 @@ the work unit remains `Review` and no completion packet or A7 completion is clai
 - only a valid `CompletedWorkPacket` may render trusted work-unit Done, and only a
   valid `MissionCompletionPacket` may render trusted Mission Done.
 
+Executed A7.4 closeout (2026-08-02): packet schemas and typed blocker/recovery data
+live with the existing Mission contract, `TaskRepo` owns immutable SQLite v10 packet
+persistence and settlement CAS, and `TaskManager` derives review/merge lineage and
+the exact owned candidate before atomically publishing trusted `Done` or `Blocked`.
+Same sealed retries are idempotent; OID/proof/status drift conflicts and requires
+re-proof. Policy/operator/external blockers remain separate typed arrays with zero
+completion credit. `pnpm verify:a7:completion-settlement` passes 5 focused tests.
+This completes only A7.4, keeps `phaseComplete=false`, and does not start A7.5.
+
 ### A7.5 Canonical Core Mission Combined Acceptance
 
 - one useful request passes versioned plan preview, visible implementation, fresh

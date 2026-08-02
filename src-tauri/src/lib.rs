@@ -1439,6 +1439,7 @@ pub fn run() {
             ipc::orchestrator_step,
             ipc::mission_plan_run,
             ipc::mission_plan_review_accept,
+            ipc::mission_plan_settle,
             ipc::review_branch,
             ipc::context_set,
             ipc::context_get,

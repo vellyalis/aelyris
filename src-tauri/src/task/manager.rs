@@ -2,10 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
+use sha2::{Digest, Sha256};
+
 use super::graph::{Task, TaskGraph, TaskGraphError};
 use super::mission::{
-    activation_from_accepted_plan, decision_unix_ms, MissionGateEvidence, MissionPlanActivation,
+    activation_from_accepted_plan, decision_unix_ms, AcceptanceCoverageEntry, BlockedWorkPacket,
+    CompletedWorkPacket, MissionCompletionPacket, MissionGateEvidence, MissionPlanActivation,
     MissionPlanError, MissionPlanPreview, MissionPlanPreviewInput, MissionPlanStatus,
+    MissionSettlementOutcome, SettlementBlocker, SettlementBlockerKind, SettlementNextAction,
+    SettlementNextActionKind, A7_SETTLEMENT_PROOF_VERSION, BLOCKED_WORK_PACKET_SCHEMA,
+    COMPLETED_WORK_PACKET_SCHEMA, MISSION_COMPLETION_PACKET_SCHEMA,
 };
 use super::planner::validate_plan;
 use super::status::TaskStatus;
@@ -728,6 +734,369 @@ impl TaskManager {
         db.try_with(|database| TaskRepo::insert_mission_gate_evidence(database, evidence))
     }
 
+    /// Settle the accepted A7 Mission through the existing TaskManager/TaskRepo
+    /// owner. Review/Merge repositories are lineage inputs only; TaskRepo performs
+    /// the packet insert plus trusted Done/Blocked graph projection in one tx.
+    pub fn settle_mission_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+        classified_blockers: Vec<SettlementBlocker>,
+    ) -> Result<MissionSettlementOutcome, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        let _writer = self.persistence_lock();
+        let now = decision_unix_ms()?;
+        let preview = db
+            .try_with(|database| TaskRepo::load_mission_plan(database, plan_id, plan_revision))?
+            .ok_or_else(|| MissionPlanError::NotFound {
+                plan_id: plan_id.to_string(),
+                plan_revision,
+            })?;
+        preview.verify_integrity()?;
+        if preview.status != MissionPlanStatus::Accepted {
+            return Err(MissionPlanError::Validation(
+                "only an accepted immutable Mission revision may settle".into(),
+            ));
+        }
+        let activation = db
+            .try_with(|database| {
+                TaskRepo::load_mission_activation(database, plan_id, plan_revision)
+            })?
+            .ok_or_else(|| {
+                MissionPlanError::Validation("accepted Mission has no activation".into())
+            })?;
+        if let Some((work_packet, mission_packet)) = db.try_with(|database| {
+            TaskRepo::load_completed_settlement(database, &activation.activation_id)
+        })? {
+            if self.read(|graph| graph.get(&activation.task_id).map(|task| task.status))
+                != Some(TaskStatus::Done)
+            {
+                return Err(MissionPlanError::ContentConflict(
+                    "durable completion packet and task projection disagree".into(),
+                ));
+            }
+            return Ok(MissionSettlementOutcome::Completed {
+                work_packet,
+                mission_packet,
+            });
+        }
+        if let Some(blocked_packet) = db.try_with(|database| {
+            TaskRepo::load_blocked_settlement(database, &activation.activation_id)
+        })? {
+            if self.read(|graph| graph.get(&activation.task_id).map(|task| task.status))
+                != Some(TaskStatus::Blocked)
+            {
+                return Err(MissionPlanError::ContentConflict(
+                    "durable blocked packet and task projection disagree".into(),
+                ));
+            }
+            return Ok(MissionSettlementOutcome::Blocked { blocked_packet });
+        }
+        let expected_version = db.try_with(|database| {
+            TaskRepo::settlement_expected_version(database, &activation.activation_id)
+        })?;
+        let evidence = db.try_with(|database| {
+            TaskRepo::load_mission_gate_evidence(database, &activation.activation_id)
+        })?;
+        let review = db
+            .with(|database| {
+                crate::persistence::ReviewRepo::latest_for_activation(
+                    database,
+                    &activation.activation_id,
+                )
+            })
+            .map_err(MissionPlanError::Persistence)?;
+        let binding = db
+            .with(|database| {
+                crate::persistence::MergeRepo::mission_binding_for_activation(
+                    database,
+                    &activation.activation_id,
+                )
+            })
+            .map_err(MissionPlanError::Persistence)?;
+        let receipt = match &binding {
+            Some(value) => db
+                .with(|database| {
+                    crate::persistence::MergeRepo::mission_receipt(database, &value.intent_id)
+                })
+                .map_err(MissionPlanError::Persistence)?,
+            None => None,
+        };
+
+        let mut blockers = classified_blockers;
+        for blocker in &blockers {
+            blocker.validate()?;
+        }
+        let task_status = self.read(|graph| graph.get(&activation.task_id).map(|task| task.status));
+        if task_status != Some(TaskStatus::Review) {
+            blockers.push(settlement_repo_blocker(
+                "task-not-review",
+                "TASK_NOT_REVIEW",
+                "work unit is not at the trusted Review settlement fence",
+            ));
+        }
+        let valid_until = review
+            .as_ref()
+            .map(|value| value.created_at_unix_ms.saturating_add(86_400_000));
+        if evidence
+            .as_ref()
+            .is_none_or(|value| value.result != "passed")
+        {
+            blockers.push(settlement_repo_blocker(
+                "missing-fresh-evidence",
+                "MISSING_FRESH_EVIDENCE",
+                "fresh passed gate evidence is missing",
+            ));
+        }
+        if review.as_ref().is_none_or(|value| {
+            value.verdict != crate::review::MissionReviewVerdict::AcceptedExactOid
+                || !value.reviewer_independence.eligible
+                || value.reviewer_independence.shared_ancestor_or_fork
+                || !value
+                    .reviewer_independence
+                    .disqualifying_relations
+                    .is_empty()
+        }) {
+            blockers.push(settlement_repo_blocker(
+                "invalid-independent-review",
+                "INVALID_INDEPENDENT_REVIEW",
+                "accepted computed-independent review is missing",
+            ));
+        }
+        if valid_until.is_none_or(|until| now > until) {
+            blockers.push(settlement_repo_blocker(
+                "stale-review-evidence",
+                "STALE_REVIEW_EVIDENCE",
+                "accepted review/evidence settlement window expired",
+            ));
+        }
+        if let (Some(evidence), Some(review)) = (&evidence, &review) {
+            if evidence.evidence_id != review.tested_evidence_id
+                || evidence.tested_oid != review.reviewed_oid
+                || evidence.plan_content_digest != activation.plan_content_digest
+                || evidence.ended_at_unix_ms > review.created_at_unix_ms
+            {
+                blockers.push(settlement_repo_blocker(
+                    "oid-evidence-lineage-drift",
+                    "OID_EVIDENCE_LINEAGE_DRIFT",
+                    "tested/reviewed evidence lineage changed",
+                ));
+            }
+        }
+        if let (Some(review), Some(binding), Some(receipt)) = (&review, &binding, &receipt) {
+            if binding.review_id != review.review_id
+                || binding.source_oid != review.reviewed_oid
+                || binding.reviewer_independence_digest != review.reviewer_independence.digest
+                || receipt.intent_id != binding.intent_id
+                || receipt.integrated_oid != binding.source_oid
+                || receipt.merge_result != "merged_exact_oid"
+            {
+                blockers.push(settlement_repo_blocker(
+                    "merge-lineage-drift",
+                    "MERGE_LINEAGE_DRIFT",
+                    "exact-OID merge receipt lineage changed",
+                ));
+            }
+        } else {
+            blockers.push(settlement_repo_blocker(
+                "missing-merge-receipt",
+                "MISSING_MERGE_RECEIPT",
+                "exact-OID merge binding or receipt is missing",
+            ));
+        }
+
+        let snapshot = match (&evidence, &receipt) {
+            (Some(evidence), Some(_receipt)) => crate::git::inspect_exact_owned_candidate(
+                &activation.repository_root,
+                &activation.source_branch,
+                &activation.accepted_base_oid,
+                &evidence.tested_oid,
+                &activation.owned_targets,
+                1_048_576,
+            ),
+            _ => Err("candidate lineage is incomplete".into()),
+        };
+        if let (Ok(snapshot), Some(receipt)) = (&snapshot, &receipt) {
+            if snapshot.candidate_oid != receipt.integrated_oid {
+                blockers.push(settlement_repo_blocker(
+                    "integrated-oid-drift",
+                    "INTEGRATED_OID_DRIFT",
+                    "candidate and integrated OID differ",
+                ));
+            }
+            match git2::Repository::open(&activation.repository_root).and_then(|repo| {
+                repo.revparse_single(&activation.target_branch)
+                    .map(|object| object.id().to_string())
+            }) {
+                Ok(target_oid) if target_oid == receipt.integrated_oid => {}
+                Ok(_) => blockers.push(settlement_repo_blocker(
+                    "settlement-target-drift",
+                    "SETTLEMENT_TARGET_DRIFT",
+                    "isolated acceptance target moved or does not contain the exact integrated OID",
+                )),
+                Err(error) => blockers.push(settlement_repo_blocker(
+                    "settlement-target-unavailable",
+                    "SETTLEMENT_TARGET_UNAVAILABLE",
+                    &format!("isolated acceptance target cannot be resolved: {error}"),
+                )),
+            }
+        } else if let Err(error) = &snapshot {
+            blockers.push(settlement_repo_blocker(
+                "candidate-ownership-drift",
+                "CANDIDATE_OWNERSHIP_DRIFT",
+                error,
+            ));
+        }
+
+        let coverage =
+            build_settlement_coverage(&preview, evidence.as_ref(), review.as_ref(), &mut blockers);
+        let mut state = self.lock();
+        Self::require_mutation_available(&state)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        let mut staging = state.graph.clone();
+        if !blockers.is_empty() {
+            match staging.get(&activation.task_id).map(|task| task.status) {
+                Some(TaskStatus::Blocked) => {}
+                Some(TaskStatus::Failed) => {
+                    staging
+                        .transition(&activation.task_id, TaskStatus::Pending)
+                        .and_then(|_| staging.transition(&activation.task_id, TaskStatus::Blocked))
+                        .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+                }
+                Some(status) if status.can_transition(TaskStatus::Blocked) => {
+                    staging
+                        .transition(&activation.task_id, TaskStatus::Blocked)
+                        .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+                }
+                Some(TaskStatus::Done) => {
+                    return Err(MissionPlanError::ContentConflict(
+                        "Done task without an immutable completion packet cannot be resettled"
+                            .into(),
+                    ));
+                }
+                Some(_) => unreachable!("all TaskStatus values are classified"),
+                None => {
+                    return Err(MissionPlanError::Persistence(
+                        "accepted Mission settlement task is missing".into(),
+                    ));
+                }
+            }
+            let packet = blocked_packet(
+                &preview,
+                &activation,
+                &expected_version,
+                evidence.as_ref(),
+                review.as_ref(),
+                binding.as_ref(),
+                coverage,
+                blockers,
+                now,
+            )?
+            .seal()?;
+            db.try_with(|database| {
+                TaskRepo::persist_blocked_settlement(database, &staging, &packet)
+            })?;
+            Self::publish_mutation(&mut state, staging);
+            return Ok(MissionSettlementOutcome::Blocked {
+                blocked_packet: packet,
+            });
+        }
+
+        let evidence = evidence.expect("zero blockers requires evidence");
+        let review = review.expect("zero blockers requires review");
+        let binding = binding.expect("zero blockers requires binding");
+        let receipt = receipt.expect("zero blockers requires receipt");
+        let snapshot = snapshot.expect("zero blockers requires candidate snapshot");
+        let diff_digest = format!("{:x}", Sha256::digest(snapshot.diff.as_bytes()));
+        let packet_id = uuid::Uuid::now_v7().to_string();
+        let work_packet = CompletedWorkPacket {
+            schema: COMPLETED_WORK_PACKET_SCHEMA.into(),
+            packet_id: packet_id.clone(),
+            activation_id: activation.activation_id.clone(),
+            plan_id: activation.plan_id.clone(),
+            plan_revision: activation.plan_revision,
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            work_unit_id: activation.work_unit_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
+            settlement_expected_version: expected_version.clone(),
+            base_oid: activation.accepted_base_oid.clone(),
+            tested_oid: evidence.tested_oid.clone(),
+            reviewed_oid: review.reviewed_oid.clone(),
+            integrated_oid: receipt.integrated_oid.clone(),
+            owned_paths: snapshot.changed_paths,
+            owned_diff_digest: diff_digest,
+            gate_evidence_id: evidence.evidence_id.clone(),
+            gate_evidence_digest: evidence.evidence_digest.clone(),
+            review_id: review.review_id.clone(),
+            review_digest: review.review_digest.clone(),
+            reviewer_principal_id: review.reviewer_independence.reviewer_principal_id.clone(),
+            reviewer_independence: review.reviewer_independence.clone(),
+            merge_intent_id: binding.intent_id.clone(),
+            merge_receipt_id: receipt.receipt_id.clone(),
+            merge_result: receipt.merge_result.clone(),
+            acceptance_coverage: coverage.clone(),
+            repo_blockers: vec![],
+            policy_blockers: vec![],
+            operator_blockers: vec![],
+            external_blockers: vec![],
+            created_at_unix_ms: now,
+            packet_digest: String::new(),
+        }
+        .seal()?;
+        let required: std::collections::BTreeMap<String, String> =
+            [(activation.work_unit_id.clone(), packet_id)]
+                .into_iter()
+                .collect();
+        let required_ids = preview
+            .work_units
+            .iter()
+            .map(|work| work.work_unit_id.clone())
+            .collect::<HashSet<_>>();
+        if required_ids != required.keys().cloned().collect::<HashSet<_>>() {
+            return Err(MissionPlanError::Validation(
+                "Mission completion packet must equal the full accepted work-unit set".into(),
+            ));
+        }
+        let mission_packet = MissionCompletionPacket {
+            schema: MISSION_COMPLETION_PACKET_SCHEMA.into(),
+            packet_id: uuid::Uuid::now_v7().to_string(),
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            required_work_unit_packet_ids_by_work_unit: required,
+            mission_acceptance_coverage: coverage,
+            final_head_oid: receipt.integrated_oid.clone(),
+            integrated_oid: receipt.integrated_oid,
+            contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
+            settlement_expected_version: expected_version,
+            merge_result: "merged_exact_oid".into(),
+            repo_blockers: vec![],
+            policy_blockers: vec![],
+            operator_blockers: vec![],
+            external_blockers: vec![],
+            created_at_unix_ms: now,
+            packet_digest: String::new(),
+        }
+        .seal()?;
+        staging
+            .transition(&activation.task_id, TaskStatus::Done)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        db.try_with(|database| {
+            TaskRepo::persist_completed_settlement(
+                database,
+                &staging,
+                &work_packet,
+                &mission_packet,
+            )
+        })?;
+        Self::publish_mutation(&mut state, staging);
+        Ok(MissionSettlementOutcome::Completed {
+            work_packet,
+            mission_packet,
+        })
+    }
+
     pub fn accept_mission_plan(
         &self,
         plan_id: &str,
@@ -970,6 +1339,132 @@ fn resolve_a7_repository_head(repo_path: &str) -> Result<(String, String), Missi
         MissionPlanError::Validation(format!(
             "authoritative repository HEAD unavailable: {error}"
         ))
+    })
+}
+
+fn settlement_repo_blocker(id: &str, code: &str, message: &str) -> SettlementBlocker {
+    SettlementBlocker {
+        blocker_id: id.into(),
+        kind: SettlementBlockerKind::Repo,
+        authority: "TaskManager/TaskRepo".into(),
+        code: code.into(),
+        message: message.into(),
+        required_inputs: vec!["accepted Mission revision and fresh exact-OID lineage".into()],
+        command_argv: Vec::new(),
+        command_result: Some(message.into()),
+        artifact_refs: vec!["TaskRepo settlement authority".into()],
+        next_action: SettlementNextAction {
+            kind: SettlementNextActionKind::Reprove,
+            owner: "TaskManager".into(),
+            input_refs: vec!["mission settlement authority facts".into()],
+        },
+    }
+}
+
+fn build_settlement_coverage(
+    preview: &MissionPlanPreview,
+    evidence: Option<&MissionGateEvidence>,
+    review: Option<&crate::review::MissionReviewRecord>,
+    blockers: &mut Vec<SettlementBlocker>,
+) -> Vec<AcceptanceCoverageEntry> {
+    let review_by_id = review
+        .map(|record| {
+            record
+                .clause_coverage
+                .iter()
+                .map(|entry| (entry.clause_id.as_str(), entry.accepted))
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let mut seen = HashSet::new();
+    let coverage = preview
+        .mission_definition
+        .acceptance
+        .iter()
+        .map(|clause| {
+            let accepted = evidence.is_some_and(|item| {
+                item.result == "passed"
+                    && clause
+                        .required_gate_ids
+                        .iter()
+                        .all(|id| id == &item.gate_id)
+            }) && review_by_id.get(clause.clause_id.as_str()) == Some(&true)
+                && seen.insert(clause.clause_id.clone());
+            AcceptanceCoverageEntry {
+                clause_id: clause.clause_id.clone(),
+                required_gate_ids: clause.required_gate_ids.clone(),
+                evidence_ids: evidence
+                    .map(|item| vec![item.evidence_id.clone()])
+                    .unwrap_or_default(),
+                accepted,
+            }
+        })
+        .collect::<Vec<_>>();
+    if coverage.len() != preview.mission_definition.acceptance.len()
+        || coverage.iter().any(|entry| !entry.accepted)
+        || review.is_some_and(|record| record.clause_coverage.len() != coverage.len())
+    {
+        blockers.push(settlement_repo_blocker(
+            "acceptance-coverage-gap",
+            "ACCEPTANCE_COVERAGE_GAP",
+            "Mission acceptance clauses are missing, duplicated, or lack exact fresh coverage",
+        ));
+    }
+    coverage
+}
+
+#[allow(clippy::too_many_arguments)]
+fn blocked_packet(
+    preview: &MissionPlanPreview,
+    activation: &MissionPlanActivation,
+    expected_version: &str,
+    evidence: Option<&MissionGateEvidence>,
+    review: Option<&crate::review::MissionReviewRecord>,
+    binding: Option<&crate::merge_intent::MissionMergeBinding>,
+    coverage: Vec<AcceptanceCoverageEntry>,
+    blockers: Vec<SettlementBlocker>,
+    now: u64,
+) -> Result<BlockedWorkPacket, MissionPlanError> {
+    let (mut repo_blockers, mut policy_blockers, mut operator_blockers, mut external_blockers) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for blocker in blockers {
+        match blocker.kind {
+            SettlementBlockerKind::Repo => repo_blockers.push(blocker),
+            SettlementBlockerKind::Policy => policy_blockers.push(blocker),
+            SettlementBlockerKind::Operator => operator_blockers.push(blocker),
+            SettlementBlockerKind::External => external_blockers.push(blocker),
+        }
+    }
+    Ok(BlockedWorkPacket {
+        schema: BLOCKED_WORK_PACKET_SCHEMA.into(),
+        packet_id: uuid::Uuid::now_v7().to_string(),
+        activation_id: activation.activation_id.clone(),
+        plan_id: preview.plan_id.clone(),
+        plan_revision: preview.plan_revision,
+        mission_id: activation.mission_id.clone(),
+        mission_revision: activation.mission_revision,
+        work_unit_id: activation.work_unit_id.clone(),
+        plan_content_digest: activation.plan_content_digest.clone(),
+        contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
+        settlement_expected_version: expected_version.into(),
+        base_oid: activation.accepted_base_oid.clone(),
+        candidate_oid: evidence.map(|item| item.candidate_oid.clone()),
+        tested_oid: evidence.map(|item| item.tested_oid.clone()),
+        reviewed_oid: review.map(|item| item.reviewed_oid.clone()),
+        integrated_oid: None,
+        evidence_ids: evidence
+            .map(|item| vec![item.evidence_id.clone()])
+            .unwrap_or_default(),
+        review_id: review.map(|item| item.review_id.clone()),
+        merge_intent_id: binding.map(|item| item.intent_id.clone()),
+        acceptance_coverage: coverage,
+        repo_blockers,
+        policy_blockers,
+        operator_blockers,
+        external_blockers,
+        completion_credit: 0,
+        created_at_unix_ms: now,
+        packet_digest: String::new(),
     })
 }
 
@@ -1925,7 +2420,7 @@ mod tests {
     }
 
     #[test]
-    fn a7_3_appends_fresh_gate_evidence_for_the_same_frozen_generation() {
+    fn a7_4_completed_settlement_consumes_latest_a7_3_evidence_atomically() {
         let (_repository, repo_path, input) = a7_repo_input();
         let actor = input.mission_definition.created_by.clone();
         let plan_id = input.plan_id.clone();
@@ -2111,6 +2606,222 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(loaded.integrated_oid, second.tested_oid);
+
+        manager
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Review)
+            .unwrap();
+        let expected = db
+            .try_with(|database| {
+                TaskRepo::settlement_expected_version(database, &activation.activation_id)
+            })
+            .unwrap();
+        let acceptance_coverage = preview
+            .mission_definition
+            .acceptance
+            .iter()
+            .map(|clause| AcceptanceCoverageEntry {
+                clause_id: clause.clause_id.clone(),
+                required_gate_ids: clause.required_gate_ids.clone(),
+                evidence_ids: vec![second.evidence_id.clone()],
+                accepted: true,
+            })
+            .collect::<Vec<_>>();
+        let work_packet = CompletedWorkPacket {
+            schema: COMPLETED_WORK_PACKET_SCHEMA.into(),
+            packet_id: "0197c000-0000-7000-8000-000000000030".into(),
+            activation_id: activation.activation_id.clone(),
+            plan_id: activation.plan_id.clone(),
+            plan_revision: 1,
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            work_unit_id: activation.work_unit_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
+            settlement_expected_version: expected.clone(),
+            base_oid: activation.accepted_base_oid.clone(),
+            tested_oid: second.tested_oid.clone(),
+            reviewed_oid: review.reviewed_oid.clone(),
+            integrated_oid: loaded.integrated_oid.clone(),
+            owned_paths: activation.owned_targets.clone(),
+            owned_diff_digest: "d".repeat(64),
+            gate_evidence_id: second.evidence_id.clone(),
+            gate_evidence_digest: second.evidence_digest.clone(),
+            review_id: review.review_id.clone(),
+            review_digest: review.review_digest.clone(),
+            reviewer_principal_id: review.reviewer_independence.reviewer_principal_id.clone(),
+            reviewer_independence: review.reviewer_independence.clone(),
+            merge_intent_id: intent.intent_id.clone(),
+            merge_receipt_id: loaded.receipt_id.clone(),
+            merge_result: loaded.merge_result.clone(),
+            acceptance_coverage: acceptance_coverage.clone(),
+            repo_blockers: vec![],
+            policy_blockers: vec![],
+            operator_blockers: vec![],
+            external_blockers: vec![],
+            created_at_unix_ms: 205,
+            packet_digest: String::new(),
+        }
+        .seal()
+        .unwrap();
+        let mission_packet = MissionCompletionPacket {
+            schema: MISSION_COMPLETION_PACKET_SCHEMA.into(),
+            packet_id: "0197c000-0000-7000-8000-000000000031".into(),
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            required_work_unit_packet_ids_by_work_unit: [(
+                activation.work_unit_id.clone(),
+                work_packet.packet_id.clone(),
+            )]
+            .into_iter()
+            .collect(),
+            mission_acceptance_coverage: acceptance_coverage,
+            final_head_oid: loaded.integrated_oid.clone(),
+            integrated_oid: loaded.integrated_oid.clone(),
+            contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
+            settlement_expected_version: expected,
+            merge_result: loaded.merge_result.clone(),
+            repo_blockers: vec![],
+            policy_blockers: vec![],
+            operator_blockers: vec![],
+            external_blockers: vec![],
+            created_at_unix_ms: 205,
+            packet_digest: String::new(),
+        }
+        .seal()
+        .unwrap();
+        let mut staging = manager.read(Clone::clone);
+        staging
+            .transition(&activation.task_id, TaskStatus::Done)
+            .unwrap();
+
+        let mut tampered = work_packet.clone();
+        tampered.gate_evidence_digest = "0".repeat(64);
+        assert!(tampered.validate().is_err());
+        let mut duplicate_coverage = work_packet.clone();
+        duplicate_coverage
+            .acceptance_coverage
+            .push(duplicate_coverage.acceptance_coverage[0].clone());
+        assert!(duplicate_coverage.seal().is_err());
+        let mut self_review = work_packet.clone();
+        self_review.reviewer_independence.builder_principal_id = self_review
+            .reviewer_independence
+            .reviewer_principal_id
+            .clone();
+        assert!(self_review.seal().is_err());
+        let mut coverage_gap = mission_packet.clone();
+        coverage_gap
+            .required_work_unit_packet_ids_by_work_unit
+            .clear();
+        assert!(coverage_gap.seal().is_err());
+        let mut reused_child_packet = mission_packet.clone();
+        reused_child_packet
+            .required_work_unit_packet_ids_by_work_unit
+            .insert(
+                "0197c000-0000-7000-8000-000000000099".into(),
+                work_packet.packet_id.clone(),
+            );
+        assert!(reused_child_packet.seal().is_err());
+
+        assert!(matches!(
+            db.try_with(|database| TaskRepo::persist_completed_settlement(
+                database,
+                &manager.read(Clone::clone),
+                &work_packet,
+                &mission_packet,
+            )),
+            Err(MissionPlanError::Validation(message)) if message.contains("Done task projection")
+        ));
+
+        db.with(|database| {
+            database
+                .conn()
+                .execute(
+                    "UPDATE tasks SET status='running' WHERE id=?1",
+                    [&activation.task_id],
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(
+            matches!(db.try_with(|database| TaskRepo::persist_completed_settlement(database,&staging,&work_packet,&mission_packet)),
+            Err(MissionPlanError::ContentConflict(message)) if message.contains("compare-and-swap"))
+        );
+        db.with(|database| {
+            database
+                .conn()
+                .execute(
+                    "UPDATE tasks SET status='review' WHERE id=?1",
+                    [&activation.task_id],
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        db.with(|database| database.conn().execute_batch(
+            "CREATE TRIGGER test_deny_a7_4_done BEFORE UPDATE OF status ON tasks WHEN NEW.status='done'
+             BEGIN SELECT RAISE(ABORT, 'injected settlement projection failure'); END;")
+            .map_err(|error| error.to_string())).unwrap();
+        assert!(db
+            .try_with(|database| TaskRepo::persist_completed_settlement(
+                database,
+                &staging,
+                &work_packet,
+                &mission_packet
+            ))
+            .is_err());
+        let rolled_back: i64 = db
+            .with(|database| {
+                database
+                    .conn()
+                    .query_row(
+                        "SELECT COUNT(*) FROM mission_settlement_packets",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(rolled_back, 0);
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch("DROP TRIGGER test_deny_a7_4_done")
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        db.try_with(|database| {
+            TaskRepo::persist_completed_settlement(
+                database,
+                &staging,
+                &work_packet,
+                &mission_packet,
+            )
+        })
+        .unwrap();
+        db.try_with(|database| {
+            TaskRepo::persist_completed_settlement(
+                database,
+                &staging,
+                &work_packet,
+                &mission_packet,
+            )
+        })
+        .unwrap();
+        let settled = db
+            .try_with(|database| {
+                TaskRepo::load_completed_settlement(database, &activation.activation_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(settled, (work_packet, mission_packet));
+        assert!(matches!(
+            manager.settle_mission_plan(&plan_id, 1, vec![]),
+            Err(MissionPlanError::ContentConflict(message)) if message.contains("task projection disagree")
+        ));
     }
 
     #[test]
@@ -2156,5 +2867,47 @@ mod tests {
         ));
         assert_eq!(mgr.get("stable").unwrap().status, TaskStatus::Ready);
         assert_eq!(mgr.lock().active_autonomy_lease, None);
+    }
+
+    #[test]
+    fn a7_4_missing_lineage_atomically_persists_zero_credit_blocked_packet() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        let activation = manager.activate_mission_plan(&plan_id, 1).unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+
+        let first = manager.settle_mission_plan(&plan_id, 1, vec![]).unwrap();
+        let MissionSettlementOutcome::Blocked { blocked_packet } = first else {
+            panic!("missing exact lineage must fail closed")
+        };
+        assert_eq!(blocked_packet.completion_credit, 0);
+        assert!(!blocked_packet.repo_blockers.is_empty());
+        assert_eq!(
+            manager.get(&activation.task_id).unwrap().status,
+            TaskStatus::Blocked
+        );
+        let counts = db.with(|database| database.conn().query_row(
+            "SELECT COUNT(*),SUM(packet_kind='mission_completion') FROM mission_settlement_packets WHERE activation_id=?1",
+            [&activation.activation_id], |row| Ok((row.get::<_, i64>(0)?,row.get::<_, i64>(1)?)))
+            .map_err(|error| error.to_string())).unwrap();
+        assert_eq!(counts, (1, 0));
+
+        let retry = manager.settle_mission_plan(&plan_id, 1, vec![]).unwrap();
+        assert_eq!(retry, MissionSettlementOutcome::Blocked { blocked_packet });
+        manager
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+        assert!(matches!(
+            manager.settle_mission_plan(&plan_id, 1, vec![]),
+            Err(MissionPlanError::ContentConflict(message)) if message.contains("task projection disagree")
+        ));
     }
 }

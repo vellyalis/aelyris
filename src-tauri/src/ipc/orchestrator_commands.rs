@@ -930,6 +930,25 @@ pub async fn mission_plan_review_accept(
     .map_err(|error| format!("Mission reviewer task join error: {error}"))?
 }
 
+/// A7.4 trusted settlement projection. The caller supplies only the immutable
+/// Mission identity; all completion facts and blockers are derived by TaskManager
+/// from its existing TaskRepo/ReviewRepo/MergeRepo authority chain.
+#[tauri::command]
+pub async fn mission_plan_settle(
+    tasks: State<'_, Arc<TaskManager>>,
+    plan_id: String,
+    plan_revision: u64,
+) -> Result<crate::task::MissionSettlementOutcome, String> {
+    let tasks = tasks.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        tasks
+            .settle_mission_plan(&plan_id, plan_revision, Vec::new())
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Mission settlement task join error: {error}"))?
+}
+
 #[cfg(test)]
 mod a7_3_ipc_tests {
     use super::*;

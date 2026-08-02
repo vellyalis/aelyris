@@ -28,10 +28,13 @@ pub use execution::{
 pub use graph::{Task, TaskGraph, TaskGraphError, TaskPriority};
 pub use manager::TaskManager;
 pub use mission::{
-    IndependentReviewRequirement, MergePolicy, MissionDefinitionRevision, MissionGateEvidence,
+    AcceptanceCoverageEntry, BlockedWorkPacket, CompletedWorkPacket, IndependentReviewRequirement,
+    MergePolicy, MissionCompletionPacket, MissionDefinitionRevision, MissionGateEvidence,
     MissionPlanActivation, MissionPlanError, MissionPlanPreview, MissionPlanPreviewInput,
-    MissionPlanStatus, WorkUnitDefinition, A7_FIXTURE_GATE_ID, A7_FIXTURE_OWNED_TARGET,
-    A7_FIXTURE_REQUEST,
+    MissionPlanStatus, MissionSettlementOutcome, SettlementBlocker, SettlementBlockerKind,
+    SettlementNextAction, SettlementNextActionKind, WorkUnitDefinition, A7_FIXTURE_GATE_ID,
+    A7_FIXTURE_OWNED_TARGET, A7_FIXTURE_REQUEST, A7_SETTLEMENT_PROOF_VERSION,
+    BLOCKED_WORK_PACKET_SCHEMA, COMPLETED_WORK_PACKET_SCHEMA, MISSION_COMPLETION_PACKET_SCHEMA,
 };
 pub use planner::validate_plan;
 pub use replan::{replan_into, ReplanOutcome};

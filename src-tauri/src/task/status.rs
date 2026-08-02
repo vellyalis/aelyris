@@ -71,6 +71,7 @@ impl TaskStatus {
                 | (Blocked, Running)
                 | (Blocked, Failed)
                 | (Review, Done)
+                | (Review, Blocked)
                 | (Review, Running)
                 | (Review, Failed)
                 | (Failed, Pending)

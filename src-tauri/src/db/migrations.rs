@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 9;
+pub const CURRENT_SCHEMA_VERSION: i64 = 10;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1359,6 +1359,80 @@ const V9_SCHEMA: &str = "
     END;
 ";
 
+// A7.4: immutable work/Mission settlement packets owned by TaskRepo. This is an
+// append-only packet store, not a mutable completion barrier or a second Task owner.
+// TaskRepo inserts packets and updates the existing TaskGraph snapshot in one tx.
+const V10_SCHEMA: &str = "
+    CREATE TABLE mission_settlement_packets (
+        packet_id              TEXT PRIMARY KEY NOT NULL,
+        activation_id          TEXT NOT NULL REFERENCES mission_plan_activations(activation_id) ON DELETE RESTRICT,
+        mission_id             TEXT NOT NULL,
+        mission_revision       INTEGER NOT NULL CHECK (mission_revision > 0),
+        work_unit_id           TEXT,
+        packet_kind            TEXT NOT NULL CHECK (packet_kind IN ('completed_work','blocked_work','mission_completion')),
+        settlement_expected_version TEXT NOT NULL CHECK (
+            length(settlement_expected_version) = 64
+            AND settlement_expected_version NOT GLOB '*[^0-9a-f]*'
+        ),
+        packet_json            TEXT NOT NULL CHECK (json_valid(packet_json)),
+        packet_digest          TEXT NOT NULL UNIQUE CHECK (
+            length(packet_digest) = 64 AND packet_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at_ms          INTEGER NOT NULL CHECK (created_at_ms >= 0),
+        supersedes_packet_id   TEXT REFERENCES mission_settlement_packets(packet_id) ON DELETE RESTRICT,
+        CHECK (
+            (packet_kind IN ('completed_work','blocked_work') AND work_unit_id IS NOT NULL)
+            OR (packet_kind = 'mission_completion' AND work_unit_id IS NULL)
+        )
+    );
+    CREATE UNIQUE INDEX idx_mission_settlement_one_packet_kind
+        ON mission_settlement_packets(activation_id, packet_kind);
+
+    CREATE TRIGGER trg_mission_settlement_binding
+    BEFORE INSERT ON mission_settlement_packets
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1 FROM mission_plan_activations AS activation
+         WHERE activation.activation_id = NEW.activation_id
+           AND activation.mission_id = NEW.mission_id
+           AND activation.mission_revision = NEW.mission_revision
+           AND (NEW.work_unit_id IS NULL OR activation.work_unit_id = NEW.work_unit_id)
+           AND json_extract(NEW.packet_json, '$.packetId') = NEW.packet_id
+           AND (NEW.packet_kind = 'mission_completion'
+                OR json_extract(NEW.packet_json, '$.activationId') = NEW.activation_id)
+           AND json_extract(NEW.packet_json, '$.missionId') = NEW.mission_id
+           AND json_extract(NEW.packet_json, '$.missionRevision') = NEW.mission_revision
+           AND json_extract(NEW.packet_json, '$.settlementExpectedVersion') = NEW.settlement_expected_version
+           AND json_extract(NEW.packet_json, '$.packetDigest') = NEW.packet_digest
+           AND (
+                (NEW.packet_kind = 'completed_work'
+                 AND json_extract(NEW.packet_json, '$.schema') = 'aelyris.completed_work_packet/v1'
+                 AND json_array_length(json_extract(NEW.packet_json, '$.repoBlockers')) = 0
+                 AND json_array_length(json_extract(NEW.packet_json, '$.policyBlockers')) = 0
+                 AND json_array_length(json_extract(NEW.packet_json, '$.operatorBlockers')) = 0
+                 AND json_array_length(json_extract(NEW.packet_json, '$.externalBlockers')) = 0)
+             OR (NEW.packet_kind = 'blocked_work'
+                 AND json_extract(NEW.packet_json, '$.schema') = 'aelyris.blocked_work_packet/v1'
+                 AND json_extract(NEW.packet_json, '$.completionCredit') = 0)
+             OR (NEW.packet_kind = 'mission_completion'
+                 AND json_extract(NEW.packet_json, '$.schema') = 'aelyris.mission_completion_packet/v1'
+                 AND json_array_length(json_extract(NEW.packet_json, '$.repoBlockers')) = 0
+                 AND json_array_length(json_extract(NEW.packet_json, '$.policyBlockers')) = 0
+                 AND json_array_length(json_extract(NEW.packet_json, '$.operatorBlockers')) = 0
+                 AND json_array_length(json_extract(NEW.packet_json, '$.externalBlockers')) = 0)
+           )
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_settlement_packets: packet/activation binding mismatch');
+    END;
+    CREATE TRIGGER trg_mission_settlement_immutable
+    BEFORE UPDATE ON mission_settlement_packets BEGIN
+        SELECT RAISE(ABORT, 'mission_settlement_packets: immutable');
+    END;
+    CREATE TRIGGER trg_mission_settlement_no_delete
+    BEFORE DELETE ON mission_settlement_packets BEGIN
+        SELECT RAISE(ABORT, 'mission_settlement_packets: immutable history');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1521,6 +1595,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V9_SCHEMA)?;
             conn.pragma_update(None, "user_version", 9)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 10 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V10_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 10)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -2113,7 +2203,7 @@ mod tests {
     fn a7_3_v9_adds_repeatable_gate_review_binding_and_receipt_guards() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 9);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         for table in [
             "mission_review_records",
             "mission_merge_bindings",
@@ -2157,6 +2247,32 @@ mod tests {
                 .optional()
                 .unwrap();
             assert_eq!(present.as_deref(), Some(trigger));
+        }
+    }
+
+    #[test]
+    fn a7_4_v10_adds_taskrepo_owned_immutable_settlement_packets() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
+        let table: Option<String> = conn.query_row(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='mission_settlement_packets'",
+            [], |row| row.get(0)).optional().unwrap();
+        assert_eq!(table.as_deref(), Some("mission_settlement_packets"));
+        for trigger in [
+            "trg_mission_settlement_binding",
+            "trg_mission_settlement_immutable",
+            "trg_mission_settlement_no_delete",
+        ] {
+            let found: Option<String> = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?1",
+                    [trigger],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(found.as_deref(), Some(trigger));
         }
     }
 }

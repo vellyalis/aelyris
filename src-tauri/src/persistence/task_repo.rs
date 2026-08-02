@@ -13,12 +13,15 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::db::Database;
 use crate::task::graph::{Task, TaskGraph, TaskPriority};
 use crate::task::mission::{
-    decision_unix_ms, validate_decision_principal, MissionGateEvidence, MissionPlanActivation,
-    MissionPlanError, MissionPlanPreview, MissionPlanStatus,
+    decision_unix_ms, validate_decision_principal, BlockedWorkPacket, CompletedWorkPacket,
+    MissionCompletionPacket, MissionGateEvidence, MissionPlanActivation, MissionPlanError,
+    MissionPlanPreview, MissionPlanStatus, A7_SETTLEMENT_PROOF_VERSION,
 };
 use crate::task::status::TaskStatus;
 
@@ -57,9 +60,479 @@ struct RawMissionPlan {
     decided_at_ms: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
+struct SettlementCasFacts {
+    plan_content_digest: String,
+    mission_revision: i64,
+    accepted_base_oid: String,
+    work_unit_id: String,
+    task_status: String,
+    evidence_id: Option<String>,
+    evidence_digest: Option<String>,
+    tested_oid: Option<String>,
+    evidence_result: Option<String>,
+    evidence_ended_at_ms: Option<i64>,
+    review_id: Option<String>,
+    review_digest: Option<String>,
+    reviewed_oid: Option<String>,
+    independence_digest: Option<String>,
+    independence_eligible: Option<i64>,
+    review_verdict: Option<String>,
+    intent_id: Option<String>,
+    source_oid: Option<String>,
+    receipt_id: Option<String>,
+    integrated_oid: Option<String>,
+    merge_result: Option<String>,
+}
+
 pub struct TaskRepo;
 
 impl TaskRepo {
+    fn settlement_expected_version_conn(
+        conn: &rusqlite::Connection,
+        activation_id: &str,
+    ) -> Result<String, MissionPlanError> {
+        let facts = conn
+            .query_row(
+                "SELECT activation.plan_content_digest,activation.mission_revision,
+                        activation.accepted_base_oid,activation.work_unit_id,task.status,
+                        evidence.evidence_id,evidence.evidence_digest,evidence.tested_oid,
+                        evidence.result,evidence.ended_at_ms,
+                        review.review_id,review.review_digest,review.reviewed_oid,
+                        review.independence_digest,review.independence_eligible,review.verdict,
+                        binding.intent_id,binding.source_oid,
+                        receipt.receipt_id,receipt.integrated_oid,receipt.merge_result
+                   FROM mission_plan_activations AS activation
+                   JOIN tasks AS task ON task.id=activation.task_id
+              LEFT JOIN mission_gate_evidence AS evidence
+                     ON evidence.evidence_id=(SELECT evidence_id FROM mission_gate_evidence
+                                               WHERE activation_id=activation.activation_id
+                                               ORDER BY ended_at_ms DESC, evidence_id DESC LIMIT 1)
+              LEFT JOIN mission_review_records AS review
+                     ON review.review_id=(SELECT review_id FROM mission_review_records
+                                           WHERE activation_id=activation.activation_id
+                                           ORDER BY created_at_ms DESC, review_id DESC LIMIT 1)
+              LEFT JOIN mission_merge_bindings AS binding ON binding.review_id=review.review_id
+              LEFT JOIN mission_merge_receipts AS receipt ON receipt.intent_id=binding.intent_id
+                  WHERE activation.activation_id=?1",
+                [activation_id],
+                |row| {
+                    Ok(SettlementCasFacts {
+                        plan_content_digest: row.get(0)?,
+                        mission_revision: row.get(1)?,
+                        accepted_base_oid: row.get(2)?,
+                        work_unit_id: row.get(3)?,
+                        task_status: row.get(4)?,
+                        evidence_id: row.get(5)?,
+                        evidence_digest: row.get(6)?,
+                        tested_oid: row.get(7)?,
+                        evidence_result: row.get(8)?,
+                        evidence_ended_at_ms: row.get(9)?,
+                        review_id: row.get(10)?,
+                        review_digest: row.get(11)?,
+                        reviewed_oid: row.get(12)?,
+                        independence_digest: row.get(13)?,
+                        independence_eligible: row.get(14)?,
+                        review_verdict: row.get(15)?,
+                        intent_id: row.get(16)?,
+                        source_oid: row.get(17)?,
+                        receipt_id: row.get(18)?,
+                        integrated_oid: row.get(19)?,
+                        merge_result: row.get(20)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| {
+                MissionPlanError::Persistence(format!("load settlement CAS facts: {error}"))
+            })?
+            .ok_or_else(|| MissionPlanError::NotFound {
+                plan_id: activation_id.to_string(),
+                plan_revision: 0,
+            })?;
+        let canonical =
+            serde_json::to_vec(&(A7_SETTLEMENT_PROOF_VERSION, facts)).map_err(|error| {
+                MissionPlanError::Persistence(format!("encode settlement CAS: {error}"))
+            })?;
+        Ok(format!("{:x}", Sha256::digest(canonical)))
+    }
+
+    pub fn settlement_expected_version(
+        db: &Database,
+        activation_id: &str,
+    ) -> Result<String, MissionPlanError> {
+        Self::settlement_expected_version_conn(db.conn(), activation_id)
+    }
+
+    fn load_settlement_json(
+        db: &Database,
+        activation_id: &str,
+        packet_kind: &str,
+    ) -> Result<Option<String>, MissionPlanError> {
+        db.conn().query_row(
+            "SELECT packet_json FROM mission_settlement_packets WHERE activation_id=?1 AND packet_kind=?2",
+            params![activation_id, packet_kind],
+            |row| row.get(0),
+        ).optional().map_err(|error| MissionPlanError::Persistence(format!("load settlement packet: {error}")))
+    }
+
+    pub fn load_completed_settlement(
+        db: &Database,
+        activation_id: &str,
+    ) -> Result<Option<(CompletedWorkPacket, MissionCompletionPacket)>, MissionPlanError> {
+        let work = Self::load_settlement_json(db, activation_id, "completed_work")?;
+        let mission = Self::load_settlement_json(db, activation_id, "mission_completion")?;
+        match (work, mission) {
+            (None, None) => Ok(None),
+            (Some(work), Some(mission)) => {
+                let work: CompletedWorkPacket = serde_json::from_str(&work).map_err(|error| {
+                    MissionPlanError::Persistence(format!("decode completed packet: {error}"))
+                })?;
+                let mission: MissionCompletionPacket =
+                    serde_json::from_str(&mission).map_err(|error| {
+                        MissionPlanError::Persistence(format!("decode Mission packet: {error}"))
+                    })?;
+                work.validate()?;
+                mission.validate()?;
+                if mission.mission_id != work.mission_id
+                    || mission.mission_revision != work.mission_revision
+                    || mission.settlement_expected_version != work.settlement_expected_version
+                    || mission.integrated_oid != work.integrated_oid
+                    || mission
+                        .required_work_unit_packet_ids_by_work_unit
+                        .get(&work.work_unit_id)
+                        != Some(&work.packet_id)
+                {
+                    return Err(MissionPlanError::ContentConflict(
+                        "durable Mission completion does not aggregate the exact work packet"
+                            .into(),
+                    ));
+                }
+                Ok(Some((work, mission)))
+            }
+            _ => Err(MissionPlanError::Persistence(
+                "durable completion settlement is missing one atomic packet".into(),
+            )),
+        }
+    }
+
+    pub fn load_blocked_settlement(
+        db: &Database,
+        activation_id: &str,
+    ) -> Result<Option<BlockedWorkPacket>, MissionPlanError> {
+        Self::load_settlement_json(db, activation_id, "blocked_work")?
+            .map(|json| {
+                let packet: BlockedWorkPacket = serde_json::from_str(&json).map_err(|error| {
+                    MissionPlanError::Persistence(format!("decode blocked packet: {error}"))
+                })?;
+                packet.validate()?;
+                Ok(packet)
+            })
+            .transpose()
+    }
+
+    fn insert_settlement_packet(
+        tx: &rusqlite::Transaction<'_>,
+        activation_id: &str,
+        mission_id: &str,
+        mission_revision: u64,
+        work_unit_id: Option<&str>,
+        packet_kind: &str,
+        expected_version: &str,
+        packet_id: &str,
+        packet_digest: &str,
+        packet_json: &str,
+        created_at_unix_ms: u64,
+    ) -> Result<(), MissionPlanError> {
+        let revision = i64::try_from(mission_revision).map_err(|_| {
+            MissionPlanError::Validation("missionRevision exceeds SQLite i64".into())
+        })?;
+        let created_at = i64::try_from(created_at_unix_ms)
+            .map_err(|_| MissionPlanError::Validation("packet time exceeds SQLite i64".into()))?;
+        tx.execute(
+            "INSERT INTO mission_settlement_packets (
+                packet_id,activation_id,mission_id,mission_revision,work_unit_id,packet_kind,
+                settlement_expected_version,packet_json,packet_digest,created_at_ms
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+             ON CONFLICT(activation_id,packet_kind) DO NOTHING",
+            params![
+                packet_id,
+                activation_id,
+                mission_id,
+                revision,
+                work_unit_id,
+                packet_kind,
+                expected_version,
+                packet_json,
+                packet_digest,
+                created_at
+            ],
+        )
+        .map_err(|error| {
+            MissionPlanError::Persistence(format!("insert settlement packet: {error}"))
+        })?;
+        let stored = tx
+            .query_row(
+                "SELECT packet_id,settlement_expected_version,packet_digest,packet_json
+                   FROM mission_settlement_packets WHERE activation_id=?1 AND packet_kind=?2",
+                params![activation_id, packet_kind],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .map_err(|error| {
+                MissionPlanError::Persistence(format!("reload settlement packet: {error}"))
+            })?;
+        if stored
+            != (
+                packet_id.to_string(),
+                expected_version.to_string(),
+                packet_digest.to_string(),
+                packet_json.to_string(),
+            )
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "immutable settlement retry conflicts with durable packet".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn stored_packet_matches(
+        conn: &rusqlite::Connection,
+        activation_id: &str,
+        packet_kind: &str,
+        packet_id: &str,
+        packet_digest: &str,
+        packet_json: &str,
+    ) -> Result<Option<bool>, MissionPlanError> {
+        conn.query_row(
+            "SELECT packet_id,packet_digest,packet_json FROM mission_settlement_packets
+              WHERE activation_id=?1 AND packet_kind=?2",
+            params![activation_id, packet_kind],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map(|value| {
+            value.map(|stored| {
+                stored
+                    == (
+                        packet_id.to_string(),
+                        packet_digest.to_string(),
+                        packet_json.to_string(),
+                    )
+            })
+        })
+        .map_err(|error| {
+            MissionPlanError::Persistence(format!("load idempotent settlement packet: {error}"))
+        })
+    }
+
+    pub fn persist_completed_settlement(
+        db: &Database,
+        graph: &TaskGraph,
+        work: &CompletedWorkPacket,
+        mission: &MissionCompletionPacket,
+    ) -> Result<(), MissionPlanError> {
+        work.validate()?;
+        mission.validate()?;
+        if graph.get(&work.work_unit_id).map(|task| task.status) != Some(TaskStatus::Done) {
+            return Err(MissionPlanError::Validation(
+                "completed settlement requires an atomically Done task projection".into(),
+            ));
+        }
+        if mission.mission_id != work.mission_id
+            || mission.mission_revision != work.mission_revision
+            || mission.settlement_expected_version != work.settlement_expected_version
+            || mission.integrated_oid != work.integrated_oid
+            || mission
+                .required_work_unit_packet_ids_by_work_unit
+                .get(&work.work_unit_id)
+                != Some(&work.packet_id)
+        {
+            return Err(MissionPlanError::Validation(
+                "Mission completion does not aggregate the exact work packet".into(),
+            ));
+        }
+        let tx = db.conn().unchecked_transaction().map_err(|error| {
+            MissionPlanError::Persistence(format!("begin completed settlement tx: {error}"))
+        })?;
+        let work_json = serde_json::to_string(work).map_err(|error| {
+            MissionPlanError::Persistence(format!("encode completed packet: {error}"))
+        })?;
+        let mission_json = serde_json::to_string(mission).map_err(|error| {
+            MissionPlanError::Persistence(format!("encode Mission packet: {error}"))
+        })?;
+        let existing_work = Self::stored_packet_matches(
+            &tx,
+            &work.activation_id,
+            "completed_work",
+            &work.packet_id,
+            &work.packet_digest,
+            &work_json,
+        )?;
+        let existing_mission = Self::stored_packet_matches(
+            &tx,
+            &work.activation_id,
+            "mission_completion",
+            &mission.packet_id,
+            &mission.packet_digest,
+            &mission_json,
+        )?;
+        if existing_work == Some(true) && existing_mission == Some(true) {
+            let durable_status: String = tx
+                .query_row(
+                    "SELECT status FROM tasks WHERE id=?1",
+                    [&work.work_unit_id],
+                    |row| row.get(0),
+                )
+                .map_err(|error| {
+                    MissionPlanError::Persistence(format!(
+                        "load completed task projection: {error}"
+                    ))
+                })?;
+            if durable_status != TaskStatus::Done.as_str() {
+                return Err(MissionPlanError::ContentConflict(
+                    "durable completion packet and task projection disagree".into(),
+                ));
+            }
+            return tx.commit().map_err(|error| {
+                MissionPlanError::Persistence(format!("finish idempotent settlement read: {error}"))
+            });
+        }
+        if existing_work.is_some() || existing_mission.is_some() {
+            return Err(MissionPlanError::ContentConflict(
+                "durable completion packet set conflicts with retry".into(),
+            ));
+        }
+        let current = Self::settlement_expected_version_conn(&tx, &work.activation_id)?;
+        if current != work.settlement_expected_version {
+            return Err(MissionPlanError::ContentConflict(
+                "settlement compare-and-swap drift requires re-proof".into(),
+            ));
+        }
+        Self::insert_settlement_packet(
+            &tx,
+            &work.activation_id,
+            &work.mission_id,
+            work.mission_revision,
+            Some(&work.work_unit_id),
+            "completed_work",
+            &work.settlement_expected_version,
+            &work.packet_id,
+            &work.packet_digest,
+            &work_json,
+            work.created_at_unix_ms,
+        )?;
+        Self::insert_settlement_packet(
+            &tx,
+            &work.activation_id,
+            &mission.mission_id,
+            mission.mission_revision,
+            None,
+            "mission_completion",
+            &mission.settlement_expected_version,
+            &mission.packet_id,
+            &mission.packet_digest,
+            &mission_json,
+            mission.created_at_unix_ms,
+        )?;
+        Self::save_graph_tx(&tx, graph).map_err(MissionPlanError::Persistence)?;
+        tx.commit().map_err(|error| {
+            MissionPlanError::Persistence(format!("commit completed settlement tx: {error}"))
+        })
+    }
+
+    pub fn persist_blocked_settlement(
+        db: &Database,
+        graph: &TaskGraph,
+        packet: &BlockedWorkPacket,
+    ) -> Result<(), MissionPlanError> {
+        packet.validate()?;
+        if graph.get(&packet.work_unit_id).map(|task| task.status) != Some(TaskStatus::Blocked) {
+            return Err(MissionPlanError::Validation(
+                "blocked settlement requires an atomically Blocked task projection".into(),
+            ));
+        }
+        let tx = db.conn().unchecked_transaction().map_err(|error| {
+            MissionPlanError::Persistence(format!("begin blocked settlement tx: {error}"))
+        })?;
+        let json = serde_json::to_string(packet).map_err(|error| {
+            MissionPlanError::Persistence(format!("encode blocked packet: {error}"))
+        })?;
+        match Self::stored_packet_matches(
+            &tx,
+            &packet.activation_id,
+            "blocked_work",
+            &packet.packet_id,
+            &packet.packet_digest,
+            &json,
+        )? {
+            Some(true) => {
+                let durable_status: String = tx
+                    .query_row(
+                        "SELECT status FROM tasks WHERE id=?1",
+                        [&packet.work_unit_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| {
+                        MissionPlanError::Persistence(format!(
+                            "load blocked task projection: {error}"
+                        ))
+                    })?;
+                if durable_status != TaskStatus::Blocked.as_str() {
+                    return Err(MissionPlanError::ContentConflict(
+                        "durable blocked packet and task projection disagree".into(),
+                    ));
+                }
+                return tx.commit().map_err(|error| {
+                    MissionPlanError::Persistence(format!(
+                        "finish idempotent blocked settlement read: {error}"
+                    ))
+                });
+            }
+            Some(false) => {
+                return Err(MissionPlanError::ContentConflict(
+                    "durable blocked packet conflicts with retry".into(),
+                ))
+            }
+            None => {}
+        }
+        let current = Self::settlement_expected_version_conn(&tx, &packet.activation_id)?;
+        if current != packet.settlement_expected_version {
+            return Err(MissionPlanError::ContentConflict(
+                "blocked settlement compare-and-swap drift requires reclassification".into(),
+            ));
+        }
+        Self::insert_settlement_packet(
+            &tx,
+            &packet.activation_id,
+            &packet.mission_id,
+            packet.mission_revision,
+            Some(&packet.work_unit_id),
+            "blocked_work",
+            &packet.settlement_expected_version,
+            &packet.packet_id,
+            &packet.packet_digest,
+            &json,
+            packet.created_at_unix_ms,
+        )?;
+        Self::save_graph_tx(&tx, graph).map_err(MissionPlanError::Persistence)?;
+        tx.commit().map_err(|error| {
+            MissionPlanError::Persistence(format!("commit blocked settlement tx: {error}"))
+        })
+    }
     /// Persist the entire graph atomically (full snapshot, write-through).
     pub fn save_graph(db: &Database, graph: &TaskGraph) -> Result<(), String> {
         let conn = db.conn();
@@ -675,7 +1148,7 @@ impl TaskRepo {
                         command_argv_json,command_fingerprint,environment_fingerprint,result,
                         evidence_digest,base_oid,candidate_oid,tested_oid,started_at_ms,ended_at_ms
                    FROM mission_gate_evidence WHERE activation_id=?1
-                  ORDER BY ended_at_ms DESC LIMIT 1",
+                  ORDER BY ended_at_ms DESC, evidence_id DESC LIMIT 1",
                 [activation_id],
                 |row| {
                     Ok((

@@ -5,7 +5,7 @@
 //! spawn an agent, run a gate, review, or merge. A7.2 owns later activation.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,10 @@ const A7_FIXTURE_REPOSITORY_ID: &str = "0197c000-0000-7000-8000-000000000008";
 const A7_FIXTURE_UNLOCK_ID: &str = "0197c000-0000-7000-8000-00000000000d";
 pub const A7_FIXTURE_OWNED_TARGET: &str = "src-tauri/src/task/graph.rs";
 pub const A7_FIXTURE_GATE_ID: &str = "a7-fixed-test";
+pub const COMPLETED_WORK_PACKET_SCHEMA: &str = "aelyris.completed_work_packet/v1";
+pub const BLOCKED_WORK_PACKET_SCHEMA: &str = "aelyris.blocked_work_packet/v1";
+pub const MISSION_COMPLETION_PACKET_SCHEMA: &str = "aelyris.mission_completion_packet/v1";
+pub const A7_SETTLEMENT_PROOF_VERSION: &str = "aelyris.a7-settlement-proof/v1";
 pub const A7_FIXTURE_REQUEST: &str = "Add a Rust regression test named equal_priority_ready_tasks_preserve_insertion_order in src-tauri/src/task/graph.rs. It must insert two Medium root tasks in order, recompute readiness, and prove ready_tasks() preserves insertion order. Change no production behavior unless the new test first demonstrates a defect.";
 pub const A7_FIXTURE_TEST_ARGV: [&str; 8] = [
     "cargo",
@@ -511,6 +515,502 @@ pub struct MissionGateEvidence {
     pub tested_oid: String,
     pub started_at_unix_ms: u64,
     pub ended_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementBlockerKind {
+    Repo,
+    Policy,
+    Operator,
+    External,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementNextActionKind {
+    Reprove,
+    ResolveRepo,
+    ResolvePolicy,
+    OperatorAction,
+    ExternalAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettlementNextAction {
+    pub kind: SettlementNextActionKind,
+    pub owner: String,
+    pub input_refs: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettlementBlocker {
+    pub blocker_id: String,
+    pub kind: SettlementBlockerKind,
+    pub authority: String,
+    pub code: String,
+    pub message: String,
+    pub required_inputs: Vec<String>,
+    pub command_argv: Vec<String>,
+    pub command_result: Option<String>,
+    pub artifact_refs: Vec<String>,
+    pub next_action: SettlementNextAction,
+}
+
+impl SettlementBlocker {
+    pub fn validate(&self) -> Result<(), MissionPlanError> {
+        let action_matches = matches!(
+            (self.kind, self.next_action.kind),
+            (
+                SettlementBlockerKind::Repo,
+                SettlementNextActionKind::Reprove | SettlementNextActionKind::ResolveRepo
+            ) | (
+                SettlementBlockerKind::Policy,
+                SettlementNextActionKind::ResolvePolicy
+            ) | (
+                SettlementBlockerKind::Operator,
+                SettlementNextActionKind::OperatorAction
+            ) | (
+                SettlementBlockerKind::External,
+                SettlementNextActionKind::ExternalAction
+            )
+        );
+        let unsafe_data = self
+            .command_argv
+            .iter()
+            .chain(self.required_inputs.iter())
+            .chain(self.artifact_refs.iter())
+            .chain(self.next_action.input_refs.iter())
+            .chain(self.command_result.iter())
+            .any(|value| value.contains('\0') || value.contains('\n') || value.contains('\r'));
+        if self.blocker_id.trim().is_empty()
+            || self.authority.trim().is_empty()
+            || self.code.trim().is_empty()
+            || self.message.trim().is_empty()
+            || self.required_inputs.is_empty()
+            || self
+                .required_inputs
+                .iter()
+                .any(|value| value.trim().is_empty())
+            || self
+                .command_result
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+            || self.artifact_refs.is_empty()
+            || self
+                .artifact_refs
+                .iter()
+                .any(|value| value.trim().is_empty())
+            || self.next_action.owner.trim().is_empty()
+            || self.next_action.input_refs.is_empty()
+            || self
+                .next_action
+                .input_refs
+                .iter()
+                .any(|value| value.trim().is_empty())
+            || !action_matches
+            || unsafe_data
+        {
+            return validation(
+                "settlement blocker must be typed, bounded, category-compatible data",
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptanceCoverageEntry {
+    pub clause_id: String,
+    pub required_gate_ids: Vec<String>,
+    pub evidence_ids: Vec<String>,
+    pub accepted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CompletedWorkPacket {
+    pub schema: String,
+    pub packet_id: String,
+    pub activation_id: String,
+    pub plan_id: String,
+    pub plan_revision: u64,
+    pub mission_id: String,
+    pub mission_revision: u64,
+    pub work_unit_id: String,
+    pub plan_content_digest: String,
+    pub contract_proof_version: String,
+    pub settlement_expected_version: String,
+    pub base_oid: String,
+    pub tested_oid: String,
+    pub reviewed_oid: String,
+    pub integrated_oid: String,
+    pub owned_paths: Vec<String>,
+    pub owned_diff_digest: String,
+    pub gate_evidence_id: String,
+    pub gate_evidence_digest: String,
+    pub review_id: String,
+    pub review_digest: String,
+    pub reviewer_principal_id: String,
+    pub reviewer_independence: crate::review::ReviewerIndependenceProof,
+    pub merge_intent_id: String,
+    pub merge_receipt_id: String,
+    pub merge_result: String,
+    pub acceptance_coverage: Vec<AcceptanceCoverageEntry>,
+    pub repo_blockers: Vec<SettlementBlocker>,
+    pub policy_blockers: Vec<SettlementBlocker>,
+    pub operator_blockers: Vec<SettlementBlocker>,
+    pub external_blockers: Vec<SettlementBlocker>,
+    pub created_at_unix_ms: u64,
+    pub packet_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BlockedWorkPacket {
+    pub schema: String,
+    pub packet_id: String,
+    pub activation_id: String,
+    pub plan_id: String,
+    pub plan_revision: u64,
+    pub mission_id: String,
+    pub mission_revision: u64,
+    pub work_unit_id: String,
+    pub plan_content_digest: String,
+    pub contract_proof_version: String,
+    pub settlement_expected_version: String,
+    pub base_oid: String,
+    pub candidate_oid: Option<String>,
+    pub tested_oid: Option<String>,
+    pub reviewed_oid: Option<String>,
+    pub integrated_oid: Option<String>,
+    pub evidence_ids: Vec<String>,
+    pub review_id: Option<String>,
+    pub merge_intent_id: Option<String>,
+    pub acceptance_coverage: Vec<AcceptanceCoverageEntry>,
+    pub repo_blockers: Vec<SettlementBlocker>,
+    pub policy_blockers: Vec<SettlementBlocker>,
+    pub operator_blockers: Vec<SettlementBlocker>,
+    pub external_blockers: Vec<SettlementBlocker>,
+    pub completion_credit: u8,
+    pub created_at_unix_ms: u64,
+    pub packet_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MissionCompletionPacket {
+    pub schema: String,
+    pub packet_id: String,
+    pub mission_id: String,
+    pub mission_revision: u64,
+    pub required_work_unit_packet_ids_by_work_unit: BTreeMap<String, String>,
+    pub mission_acceptance_coverage: Vec<AcceptanceCoverageEntry>,
+    pub final_head_oid: String,
+    pub integrated_oid: String,
+    pub contract_proof_version: String,
+    pub settlement_expected_version: String,
+    pub merge_result: String,
+    pub repo_blockers: Vec<SettlementBlocker>,
+    pub policy_blockers: Vec<SettlementBlocker>,
+    pub operator_blockers: Vec<SettlementBlocker>,
+    pub external_blockers: Vec<SettlementBlocker>,
+    pub created_at_unix_ms: u64,
+    pub packet_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum MissionSettlementOutcome {
+    Completed {
+        work_packet: CompletedWorkPacket,
+        mission_packet: MissionCompletionPacket,
+    },
+    Blocked {
+        blocked_packet: BlockedWorkPacket,
+    },
+}
+
+fn packet_digest<T: Serialize>(packet: &T) -> Result<String, MissionPlanError> {
+    let bytes = serde_json::to_vec(packet).map_err(|error| {
+        MissionPlanError::Validation(format!("serialize settlement packet: {error}"))
+    })?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+impl CompletedWorkPacket {
+    pub fn seal(mut self) -> Result<Self, MissionPlanError> {
+        self.packet_digest.clear();
+        self.packet_digest = packet_digest(&self)?;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn validate(&self) -> Result<(), MissionPlanError> {
+        let mut canonical = self.clone();
+        let digest = std::mem::take(&mut canonical.packet_digest);
+        validate_sha256("planContentDigest", &self.plan_content_digest)?;
+        validate_sha256(
+            "settlementExpectedVersion",
+            &self.settlement_expected_version,
+        )?;
+        validate_git_oid("baseOid", &self.base_oid)?;
+        validate_git_oid("testedOid", &self.tested_oid)?;
+        validate_git_oid("reviewedOid", &self.reviewed_oid)?;
+        validate_git_oid("integratedOid", &self.integrated_oid)?;
+        validate_sha256("ownedDiffDigest", &self.owned_diff_digest)?;
+        validate_sha256("gateEvidenceDigest", &self.gate_evidence_digest)?;
+        validate_sha256("reviewDigest", &self.review_digest)?;
+        crate::review::mission::validate_independence_proof(&self.reviewer_independence)
+            .map_err(MissionPlanError::Validation)?;
+        let mut clause_ids = HashSet::new();
+        let exact_acceptance_coverage = self.acceptance_coverage.iter().all(|entry| {
+            let gate_ids = entry.required_gate_ids.iter().collect::<HashSet<_>>();
+            let evidence_ids = entry.evidence_ids.iter().collect::<HashSet<_>>();
+            !entry.clause_id.trim().is_empty()
+                && clause_ids.insert(entry.clause_id.as_str())
+                && gate_ids.len() == entry.required_gate_ids.len()
+                && entry
+                    .required_gate_ids
+                    .iter()
+                    .all(|gate_id| !gate_id.trim().is_empty())
+                && !entry.evidence_ids.is_empty()
+                && evidence_ids.len() == entry.evidence_ids.len()
+                && entry
+                    .evidence_ids
+                    .iter()
+                    .all(|evidence_id| !evidence_id.trim().is_empty())
+                && entry.accepted
+        });
+        let independence = &self.reviewer_independence;
+        if self.schema != COMPLETED_WORK_PACKET_SCHEMA
+            || self.contract_proof_version != A7_SETTLEMENT_PROOF_VERSION
+            || self.packet_id.trim().is_empty()
+            || self.activation_id.trim().is_empty()
+            || self.plan_id.trim().is_empty()
+            || self.plan_revision == 0
+            || self.mission_id.trim().is_empty()
+            || self.mission_revision == 0
+            || self.work_unit_id.trim().is_empty()
+            || self.owned_paths.is_empty()
+            || self.owned_paths.iter().collect::<HashSet<_>>().len() != self.owned_paths.len()
+            || self.owned_paths.iter().any(|path| path.trim().is_empty())
+            || self.gate_evidence_id.trim().is_empty()
+            || self.review_id.trim().is_empty()
+            || self.merge_intent_id.trim().is_empty()
+            || self.merge_receipt_id.trim().is_empty()
+            || self.created_at_unix_ms == 0
+            || self.acceptance_coverage.is_empty()
+            || !exact_acceptance_coverage
+            || !self.repo_blockers.is_empty()
+            || !self.policy_blockers.is_empty()
+            || !self.operator_blockers.is_empty()
+            || !self.external_blockers.is_empty()
+            || self.tested_oid != self.reviewed_oid
+            || self.reviewed_oid != self.integrated_oid
+            || self.reviewer_principal_id != independence.reviewer_principal_id
+            || independence.reviewer_principal_id == independence.builder_principal_id
+            || independence.reviewer_logical_session_id == independence.builder_logical_session_id
+            || independence.reviewer_lineage_ref.id == independence.builder_lineage_ref.id
+            || !independence.eligible
+            || independence.shared_ancestor_or_fork
+            || !independence.disqualifying_relations.is_empty()
+            || self.merge_result != "merged_exact_oid"
+            || digest != packet_digest(&canonical)?
+        {
+            return validation("CompletedWorkPacket integrity or zero-blocker contract failed");
+        }
+        Ok(())
+    }
+}
+
+impl BlockedWorkPacket {
+    pub fn seal(mut self) -> Result<Self, MissionPlanError> {
+        self.packet_digest.clear();
+        self.packet_digest = packet_digest(&self)?;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn validate(&self) -> Result<(), MissionPlanError> {
+        let mut canonical = self.clone();
+        let digest = std::mem::take(&mut canonical.packet_digest);
+        validate_sha256("planContentDigest", &self.plan_content_digest)?;
+        validate_sha256(
+            "settlementExpectedVersion",
+            &self.settlement_expected_version,
+        )?;
+        validate_git_oid("baseOid", &self.base_oid)?;
+        for (name, oid) in [
+            ("candidateOid", &self.candidate_oid),
+            ("testedOid", &self.tested_oid),
+            ("reviewedOid", &self.reviewed_oid),
+            ("integratedOid", &self.integrated_oid),
+        ] {
+            if let Some(oid) = oid {
+                validate_git_oid(name, oid)?;
+            }
+        }
+        let blockers = self.repo_blockers.len()
+            + self.policy_blockers.len()
+            + self.operator_blockers.len()
+            + self.external_blockers.len();
+        let typed = self
+            .repo_blockers
+            .iter()
+            .all(|b| b.kind == SettlementBlockerKind::Repo)
+            && self
+                .policy_blockers
+                .iter()
+                .all(|b| b.kind == SettlementBlockerKind::Policy)
+            && self
+                .operator_blockers
+                .iter()
+                .all(|b| b.kind == SettlementBlockerKind::Operator)
+            && self
+                .external_blockers
+                .iter()
+                .all(|b| b.kind == SettlementBlockerKind::External);
+        let valid_blockers = self
+            .repo_blockers
+            .iter()
+            .chain(self.policy_blockers.iter())
+            .chain(self.operator_blockers.iter())
+            .chain(self.external_blockers.iter())
+            .all(|blocker| blocker.validate().is_ok());
+        let blocker_ids = self
+            .repo_blockers
+            .iter()
+            .chain(self.policy_blockers.iter())
+            .chain(self.operator_blockers.iter())
+            .chain(self.external_blockers.iter())
+            .map(|blocker| blocker.blocker_id.as_str())
+            .collect::<HashSet<_>>();
+        let mut clause_ids = HashSet::new();
+        let valid_coverage = self.acceptance_coverage.iter().all(|entry| {
+            let gate_ids = entry.required_gate_ids.iter().collect::<HashSet<_>>();
+            let evidence_ids = entry.evidence_ids.iter().collect::<HashSet<_>>();
+            !entry.clause_id.trim().is_empty()
+                && clause_ids.insert(entry.clause_id.as_str())
+                && gate_ids.len() == entry.required_gate_ids.len()
+                && entry
+                    .required_gate_ids
+                    .iter()
+                    .all(|gate_id| !gate_id.trim().is_empty())
+                && evidence_ids.len() == entry.evidence_ids.len()
+                && entry
+                    .evidence_ids
+                    .iter()
+                    .all(|evidence_id| !evidence_id.trim().is_empty())
+        });
+        let evidence_ids = self.evidence_ids.iter().collect::<HashSet<_>>();
+        if self.schema != BLOCKED_WORK_PACKET_SCHEMA
+            || self.contract_proof_version != A7_SETTLEMENT_PROOF_VERSION
+            || self.packet_id.trim().is_empty()
+            || self.activation_id.trim().is_empty()
+            || self.plan_id.trim().is_empty()
+            || self.plan_revision == 0
+            || self.mission_id.trim().is_empty()
+            || self.mission_revision == 0
+            || self.work_unit_id.trim().is_empty()
+            || self.created_at_unix_ms == 0
+            || evidence_ids.len() != self.evidence_ids.len()
+            || self
+                .evidence_ids
+                .iter()
+                .any(|evidence_id| evidence_id.trim().is_empty())
+            || self
+                .review_id
+                .as_ref()
+                .is_some_and(|review_id| review_id.trim().is_empty())
+            || self
+                .merge_intent_id
+                .as_ref()
+                .is_some_and(|intent_id| intent_id.trim().is_empty())
+            || self.completion_credit != 0
+            || blockers == 0
+            || blocker_ids.len() != blockers
+            || !typed
+            || !valid_blockers
+            || !valid_coverage
+            || digest != packet_digest(&canonical)?
+        {
+            return validation("BlockedWorkPacket integrity or zero-credit contract failed");
+        }
+        Ok(())
+    }
+}
+
+impl MissionCompletionPacket {
+    pub fn seal(mut self) -> Result<Self, MissionPlanError> {
+        self.packet_digest.clear();
+        self.packet_digest = packet_digest(&self)?;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn validate(&self) -> Result<(), MissionPlanError> {
+        let mut canonical = self.clone();
+        let digest = std::mem::take(&mut canonical.packet_digest);
+        validate_git_oid("finalHeadOid", &self.final_head_oid)?;
+        validate_git_oid("integratedOid", &self.integrated_oid)?;
+        validate_sha256(
+            "settlementExpectedVersion",
+            &self.settlement_expected_version,
+        )?;
+        let mut clause_ids = HashSet::new();
+        let exact_mission_coverage = self.mission_acceptance_coverage.iter().all(|entry| {
+            let gate_ids = entry.required_gate_ids.iter().collect::<HashSet<_>>();
+            let evidence_ids = entry.evidence_ids.iter().collect::<HashSet<_>>();
+            !entry.clause_id.trim().is_empty()
+                && clause_ids.insert(entry.clause_id.as_str())
+                && gate_ids.len() == entry.required_gate_ids.len()
+                && entry
+                    .required_gate_ids
+                    .iter()
+                    .all(|gate_id| !gate_id.trim().is_empty())
+                && !entry.evidence_ids.is_empty()
+                && evidence_ids.len() == entry.evidence_ids.len()
+                && entry
+                    .evidence_ids
+                    .iter()
+                    .all(|evidence_id| !evidence_id.trim().is_empty())
+                && entry.accepted
+        });
+        let packet_ids = self
+            .required_work_unit_packet_ids_by_work_unit
+            .values()
+            .collect::<HashSet<_>>();
+        if self.schema != MISSION_COMPLETION_PACKET_SCHEMA
+            || self.contract_proof_version != A7_SETTLEMENT_PROOF_VERSION
+            || self.packet_id.trim().is_empty()
+            || self.mission_id.trim().is_empty()
+            || self.mission_revision == 0
+            || self.created_at_unix_ms == 0
+            || self.required_work_unit_packet_ids_by_work_unit.is_empty()
+            || self.required_work_unit_packet_ids_by_work_unit.iter().any(
+                |(work_unit_id, packet_id)| {
+                    work_unit_id.trim().is_empty() || packet_id.trim().is_empty()
+                },
+            )
+            || packet_ids.len() != self.required_work_unit_packet_ids_by_work_unit.len()
+            || self.mission_acceptance_coverage.is_empty()
+            || !exact_mission_coverage
+            || !self.repo_blockers.is_empty()
+            || !self.policy_blockers.is_empty()
+            || !self.operator_blockers.is_empty()
+            || !self.external_blockers.is_empty()
+            || self.final_head_oid != self.integrated_oid
+            || self.merge_result != "merged_exact_oid"
+            || digest != packet_digest(&canonical)?
+        {
+            return validation("MissionCompletionPacket aggregate integrity failed");
+        }
+        Ok(())
+    }
 }
 
 /// Derive the only executable A7.2 authority from a durable accepted preview.
@@ -2072,5 +2572,98 @@ pub(crate) mod tests {
             .condition_clause_ids
             .pop();
         assert!(fixed_preview(bad).is_err());
+    }
+
+    fn typed_blocker(kind: SettlementBlockerKind) -> SettlementBlocker {
+        let action = match kind {
+            SettlementBlockerKind::Repo => SettlementNextActionKind::Reprove,
+            SettlementBlockerKind::Policy => SettlementNextActionKind::ResolvePolicy,
+            SettlementBlockerKind::Operator => SettlementNextActionKind::OperatorAction,
+            SettlementBlockerKind::External => SettlementNextActionKind::ExternalAction,
+        };
+        SettlementBlocker {
+            blocker_id: format!("{kind:?}-blocker"),
+            kind,
+            authority: "typed-authority".into(),
+            code: "BLOCKED".into(),
+            message: "exact acceptance blocker".into(),
+            required_inputs: vec!["typed-input-ref".into()],
+            command_argv: vec!["verifier".into(), "--check".into()],
+            command_result: Some("blocked".into()),
+            artifact_refs: vec!["artifact/ref".into()],
+            next_action: SettlementNextAction {
+                kind: action,
+                owner: "typed-owner".into(),
+                input_refs: vec!["typed-input-ref".into()],
+            },
+        }
+    }
+
+    fn blocked_packet_with(blocker: SettlementBlocker) -> BlockedWorkPacket {
+        let mut packet = BlockedWorkPacket {
+            schema: BLOCKED_WORK_PACKET_SCHEMA.into(),
+            packet_id: "packet-blocked".into(),
+            activation_id: "activation".into(),
+            plan_id: "plan".into(),
+            plan_revision: 1,
+            mission_id: "mission".into(),
+            mission_revision: 1,
+            work_unit_id: "work".into(),
+            plan_content_digest: "a".repeat(64),
+            contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
+            settlement_expected_version: "b".repeat(64),
+            base_oid: "c".repeat(40),
+            candidate_oid: None,
+            tested_oid: None,
+            reviewed_oid: None,
+            integrated_oid: None,
+            evidence_ids: vec![],
+            review_id: None,
+            merge_intent_id: None,
+            acceptance_coverage: vec![],
+            repo_blockers: vec![],
+            policy_blockers: vec![],
+            operator_blockers: vec![],
+            external_blockers: vec![],
+            completion_credit: 0,
+            created_at_unix_ms: 1,
+            packet_digest: String::new(),
+        };
+        match blocker.kind {
+            SettlementBlockerKind::Repo => packet.repo_blockers.push(blocker),
+            SettlementBlockerKind::Policy => packet.policy_blockers.push(blocker),
+            SettlementBlockerKind::Operator => packet.operator_blockers.push(blocker),
+            SettlementBlockerKind::External => packet.external_blockers.push(blocker),
+        }
+        packet
+    }
+
+    #[test]
+    fn a7_4_blocked_packets_keep_all_blocker_categories_typed_and_zero_credit() {
+        for kind in [
+            SettlementBlockerKind::Repo,
+            SettlementBlockerKind::Policy,
+            SettlementBlockerKind::Operator,
+            SettlementBlockerKind::External,
+        ] {
+            let packet = blocked_packet_with(typed_blocker(kind)).seal().unwrap();
+            assert_eq!(packet.completion_credit, 0);
+            packet.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn a7_4_rejects_tamper_wrong_bucket_and_raw_recovery_data() {
+        let mut packet = blocked_packet_with(typed_blocker(SettlementBlockerKind::Policy))
+            .seal()
+            .unwrap();
+        packet.completion_credit = 1;
+        assert!(packet.validate().is_err());
+        let mut wrong = typed_blocker(SettlementBlockerKind::External);
+        wrong.next_action.kind = SettlementNextActionKind::OperatorAction;
+        assert!(blocked_packet_with(wrong).seal().is_err());
+        let mut raw = typed_blocker(SettlementBlockerKind::Operator);
+        raw.next_action.input_refs = vec!["powershell\nRemove-Item -Recurse".into()];
+        assert!(blocked_packet_with(raw).seal().is_err());
     }
 }
