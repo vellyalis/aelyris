@@ -2222,7 +2222,7 @@ bearing prompt or real OS sleep, and remained release-blocked on other owners.
 
 ### **A9.5 - Operator-Progress Resume-Artifact Freshness Reconciliation**
 
-Status: next implementation slice; not started.
+Status: complete with `refresh_owner_artifact` disposition on 2026-08-02.
 
 The anti-stall contract now has one failed check: the existing
 `.codex-auto/quality/goal-operator-progress.json` is parseable and structurally safe but
@@ -2231,6 +2231,25 @@ finish owner without opt-in token or sleep inputs, require a current local-date,
 heartbeat-bearing, explicit-user-action resume packet, and rerun the anti-stall
 contract. Preserve current-date and heartbeat requirements; change source only if the
 existing owner cannot emit its specified resume-ready shape.
+
+The existing readiness-only operator-finish owner emitted a current local-date,
+heartbeat-bearing, explicit-user-action handoff without requesting or executing a token
+prompt or real OS sleep. The anti-stall contract passed with zero failed checks. The
+single following no-token aggregate executed all 23 descriptors, recorded anti-stall
+as `pass`, retained zero token-bearing steps, and remained release-blocked on other
+owners.
+
+### **A9.6 - Repo-Owned Release-Lane Closeout And Exact Operator Handoff**
+
+Status: next implementation slice; not started.
+
+Classify the remaining fresh direct descriptor failures once without duplicating
+derived views. Stale native-boundary live evidence remains stale evidence; authenticated
+preflight/consent remains policy/operator work; signing and real sleep remain operator
+gates; external readiness remains external; final audit and completion matrix remain
+downstream views. If no executable repo-owned defect remains, close repo-owned A9 with
+exact refresh/operator commands and no release or capability credit. Do not execute
+token prompts, signing, real sleep, or stale live-host proofs merely to force green.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.5` (operator-progress resume-artifact freshness reconciliation; not started).
-LAST COMPLETED SLICE: `A9.4`.
+ACTIVE SLICE: `A9.6` (repo-owned release-lane closeout and exact operator handoff; not started).
+LAST COMPLETED SLICE: `A9.5`.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.5`.
+NEXT IMPLEMENTATION SLICE: `A9.6`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -85,7 +85,9 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     remains unchanged. A9.3 then removed only the aggregate outer-timeout failure for
     the unchanged A4 acceptance portfolio. A9.4 reconciled the density verifier with
     the existing `App` / `RightRailShell` / `RightRailCommandMode` owner split without
-    moving product JSX or weakening the first-view budget. A9.5 is next.
+    moving product JSX or weakening the first-view budget. A9.5 refreshed the existing
+    readiness-only operator-progress owner and closed the sole anti-stall failure
+    without token prompt or real OS sleep. A9.6 is next.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -123,7 +125,8 @@ A4.12 complete
   -> A9.2 no-token provider-guard boundary correction (complete; reject_direct_descriptor)
   -> A9.3 A4 acceptance timeout budget closure (complete; close_outer_timeout)
   -> A9.4 right-rail information-density verifier ownership reconciliation (complete; close_verifier_drift)
-  -> A9.5 operator-progress resume-artifact freshness reconciliation (next; not started)
+  -> A9.5 operator-progress resume-artifact freshness reconciliation (complete; refresh_owner_artifact)
+  -> A9.6 repo-owned release-lane closeout and exact operator handoff (next; not started)
   -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
@@ -148,7 +151,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, A9.2, A9.3, and A9.4 are complete; A9.5 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, A9.2, A9.3, A9.4, and A9.5 are complete; A9.6 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -220,6 +223,7 @@ continuation_contract:
 | A9.3 | A4 acceptance timeout budget closure | A9.2 complete | aggregate grants the existing A4 acceptance verifier enough bounded time to complete; timeout remains explicit and no tests are weakened |
 | A9.4 | right-rail information-density verifier ownership reconciliation | A9.3 complete | verifier follows the current App/RightRailShell owner split and distinguishes source-contract drift from an actual first-view density regression |
 | A9.5 | operator-progress resume-artifact freshness reconciliation | A9.4 complete | readiness-only owner refresh emits a current, parseable, resume-ready operator handoff without token prompt or real OS sleep; anti-stall is rerun without weakening freshness |
+| A9.6 | repo-owned release-lane closeout and exact operator handoff | A9.5 complete | fresh direct failures are classified once; no executable repo-owned defect remains; stale, policy, operator, external, and derived gates receive exact owner commands without release credit |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
 Do not skip to a later phase because it is easier to score. Do not parallelize phases
@@ -931,13 +935,29 @@ product JSX movement. The focused contract passes with `visiblePrimaryCount=2`,
 aggregate executed all 23 descriptors, reported right-rail density `pass`, executed no
 token-bearing prompt or real OS sleep, and retained the broader release BLOCK.
 
-A9.5 is the exact next slice. The anti-stall contract's only failed check is
+A9.5 targeted the anti-stall contract's only failed check,
 `operatorProgressArtifactIsResumeReady`: its current owner artifact is a parseable but
 stale 2026-07-11 readiness handoff. Use the existing readiness-only
 `pnpm verify:goal:operator-finish` path to regenerate a current safe handoff without
 provider prompt or real OS sleep, then rerun `pnpm verify:goal:anti-stall`. Change
 source only if the owner refresh cannot produce the already-specified resume-ready
 shape; do not weaken current-date, heartbeat, or explicit-user-action requirements.
+
+A9.5 closed with `refresh_owner_artifact`. The readiness-only operator-finish owner
+regenerated `goal-operator-progress.json` for the current local date with a heartbeat,
+explicit external-gate handoff, `requiresUserAction=true`, and no raw terminal output.
+No token prompt or real OS sleep was requested or executed. The focused anti-stall
+contract passed with zero failed checks. The single following no-token aggregate again
+executed all 23 descriptors, recorded both right-rail density and anti-stall as `pass`,
+kept token-bearing steps at zero, and remained release-blocked.
+
+A9.6 is the exact next slice. Reconcile the remaining direct failed descriptors once:
+native-boundary live artifacts remain stale, authenticated preflight/consent remain
+policy/operator-bound, signing and real sleep remain operator gates, external readiness
+remains external, and final-audit/completion-matrix remain downstream views. If current
+artifacts confirm no executable repo-owned defect, close repo-owned A9 with an exact
+operator/external handoff and no release credit. Do not rerun token prompts, signing,
+real sleep, or stale live-host proofs merely to force green.
 
 ## Work and Session Rules
 
