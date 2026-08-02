@@ -435,7 +435,8 @@ const requiredWorkOrderClauses = [
   "A8.0 is complete with owner outcome",
   "A8.1 measured the current",
   "A9.0 inventoried the current",
-  "A9.1 is next",
+  "A9.1 then executed the descriptor-first no-token chain",
+  "A9.2 is next",
 ];
 
 const requiredArchitectureClauses = [
@@ -989,8 +990,8 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a9InventoryClosedFrontierValid =
-  currentFrontier.activeSlice === "A9.1" && currentFrontier.lastCompletedSlice === "A9.0";
+const a9RefreshClosedFrontierValid =
+  currentFrontier.activeSlice === "A9.2" && currentFrontier.lastCompletedSlice === "A9.1";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1242,8 +1243,8 @@ const checks = [
       Object.values(currentFrontier).every(Boolean) &&
       currentFrontier.phase === "A9" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
-      a9InventoryClosedFrontierValid,
-    "Work order preserves A7.5 and A8, records A9.0 complete, and exposes A9.1 as the next unstarted slice",
+      a9RefreshClosedFrontierValid,
+    "Work order preserves A7.5 and A8, records A9.0/A9.1 complete, and exposes A9.2 as the next unstarted slice",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

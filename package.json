@@ -103,6 +103,7 @@
     "verify:renderer:soak": "node scripts/verify-renderer-soak.mjs",
     "verify:a8:native-terminal-disposition": "node scripts/verify-a8-native-terminal-disposition.mjs",
     "verify:a9:release-evidence-inventory": "node scripts/verify-a9-release-evidence-inventory.mjs",
+    "verify:a9:no-token-refresh-split": "node scripts/verify-a9-no-token-refresh-split.mjs",
     "verify:terminal:native-input": "node scripts/verify-native-terminal-input-host.mjs",
     "verify:terminal:command-evidence": "node scripts/verify-live-command-evidence.mjs",
     "verify:terminal:multipane-command-evidence": "node scripts/verify-multipane-command-evidence.mjs",

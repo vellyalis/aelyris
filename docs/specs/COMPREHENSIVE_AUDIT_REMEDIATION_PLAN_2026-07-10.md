@@ -2144,7 +2144,7 @@ and upstream gates are recorded separately without execution.
 
 ### **A9.1 - No-Token Release Evidence Refresh And Fresh Owner Split**
 
-Status: next implementation slice; not started.
+Status: complete with `repair_dependency_graph` disposition on 2026-08-02.
 
 Run the existing descriptor-first `pnpm verify:goal:safe:no-token` chain. It may end
 BLOCK, but it must record `tokenSpendingPromptExecutedByThisRun=false` and must not
@@ -2153,6 +2153,29 @@ the release score and downstream final-goal audit through their owner commands, 
 classify only fresh direct blockers. Preserve aggregate/derived identity and select
 the first executable repo-owned A9 defect, or an exact operator/external handoff if
 no repo-owned defect remains.
+
+The run executed all 23 declared descriptors without token spending or real sleep and
+regenerated the release score/final audit at evidence HEAD `3ff5b09`. It remained
+BLOCK. Fresh direct failures were separated from policy/operator/external gates and
+from the downstream final-audit/completion-matrix views. The score's 58 rejected
+inputs remain stale evidence; the final audit's 69 provenance rejections are a
+separate downstream view rather than current source defects.
+
+The selected first repo-owned defect is dependency closure: the existing provider-
+required guard has a no-token command and fallback artifact registration, but it is
+absent from the descriptor sequence that runs matrix, consent, planner, and native-
+boundary consumers.
+
+### **A9.2 - No-Token Provider-Guard Dependency Closure**
+
+Status: next implementation slice; not started.
+
+Insert the existing authenticated provider-required guard into the descriptor-first
+no-token sequence before all consumers. Preserve pre-spawn token-free validation and
+the no-token/no-sleep claim. Verify the focused guard -> matrix -> consent dependency
+path, then rerun the aggregate exactly once. Keep the independent A4 timeout,
+right-rail information-density drift, and anti-stall progress-artifact failure as
+separate later root causes.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

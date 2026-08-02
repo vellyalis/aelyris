@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.1` (no-token release evidence refresh and fresh owner split; not started).
-LAST COMPLETED SLICE: `A9.0`.
+ACTIVE SLICE: `A9.2` (no-token provider-guard dependency closure; not started).
+LAST COMPLETED SLICE: `A9.1`.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.1`.
+NEXT IMPLEMENTATION SLICE: `A9.2`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -77,7 +77,9 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     Canvas2D remains the default/rollback, no native or WebGL renderer was promoted,
     and no NUI implementation or framework selection was activated. A9.0 inventoried
     the current release evidence without executing an operator gate and closed with
-    `refresh_before_fix`; A9.1 is next.
+    `refresh_before_fix`. A9.1 then executed the descriptor-first no-token chain,
+    preserved its BLOCK result, and selected the missing provider-guard descriptor
+    as the first repo-owned dependency defect. A9.2 is next.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -111,7 +113,8 @@ A4.12 complete
   -> A8.0 product-goal/architecture decision (complete; accepted with amendments)
   -> A8.1 measured native terminal evidence and disposition (complete; do_not_promote)
   -> A9.0 release evidence inventory and owner split (complete; refresh_before_fix)
-  -> A9.1 no-token release evidence refresh and fresh owner split (next; not started)
+  -> A9.1 no-token release evidence refresh and fresh owner split (complete; repair_dependency_graph)
+  -> A9.2 no-token provider-guard dependency closure (next; not started)
   -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
@@ -136,7 +139,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, and A9.0 are complete; A9.1 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, and A9.1 are complete; A9.2 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -204,6 +207,7 @@ continuation_contract:
 | A8 | measured terminal-only native spike | A7 complete and metrics justify | parity/perf/soak decision artifact |
 | A9.0 | release evidence inventory and owner split | A8.1 complete | current repo-owned, stale, policy, operator, and external gates mapped without executing or hiding operator-only work |
 | A9.1 | no-token release evidence refresh and fresh owner split | A9.0 complete | current score/final-audit chain regenerated without token/sleep/signing actions; first fresh repo-owned defect or external/operator frontier selected |
+| A9.2 | no-token provider-guard dependency closure | A9.1 complete | provider-required guard executes before matrix/consent/planner consumers; descriptor graph remains token-free and fail-closed |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
 Do not skip to a later phase because it is easier to score. Do not parallelize phases
@@ -836,11 +840,38 @@ the stable policy/operator/external gates independently. It does not run child
 verifiers, token prompts, signing, sleep/power-loss, publication, or other operator
 actions. No fresh repo-owned implementation defect is selected from expired evidence.
 
-A9.1 is the exact next slice. It runs only the existing descriptor-first
-`pnpm verify:goal:safe:no-token` chain, regenerates current score/final-audit evidence,
-and then reclassifies fresh direct blockers before any implementation or operator
-slice is selected. A blocked aggregate or derived row cannot be counted as a second
-direct defect.
+A9.1 was the exact next slice after A9.0. It ran only the existing descriptor-first
+`pnpm verify:goal:safe:no-token` chain, regenerated score/final-audit evidence at the
+evidence HEAD, and reclassified fresh direct blockers before selecting implementation
+work. A blocked aggregate or derived row was not counted as a second direct defect.
+
+## A9.1 Complete - No-Token Refresh And Fresh Owner Split
+
+A9.1 closed with `repair_dependency_graph`. The descriptor-first chain executed all
+23 declared steps against `3ff5b09` and ended BLOCK while preserving
+`tokenSpendingPromptExecutedByThisRun=false`, `runtimeTokenBearingStepCount=0`, and
+`realOsSleepInvoked=false`. The release score and downstream final-goal audit were
+regenerated at that evidence HEAD; release readiness remains false.
+
+The fresh run exposed five actionable repo-owned direct failures, three
+policy/operator gates, one external gate, and two non-actionable downstream views.
+The score's 58 rejected input artifacts remain `stale_evidence`; the downstream final
+audit separately records 69 provenance rejections. Their dependent rows do not become
+source defects merely because the score wrapper itself is fresh.
+`final-goal-audit` and `goal-completion-matrix` remain derived/aggregate consumers and
+are not counted again as direct failures.
+
+The first causal repo-owned defect is the no-token dependency graph itself:
+`STEP_FALLBACK_ARTIFACTS` already names `authenticated-provider-guard`, and the fresh
+preflight matrix names its no-token refresh command, but the 23-step descriptor graph
+does not execute that provider guard before matrix, consent, planner, and native-
+boundary consumers. A4 acceptance timeout, right-rail source-contract drift, and the
+anti-stall progress-artifact failure remain separate later root causes.
+
+A9.2 is the exact next slice. Add the existing provider-required guard verifier to the
+descriptor graph before its consumers, keep the graph token-free, run the focused
+guard -> matrix -> consent sequence, and then rerun the aggregate once. Do not execute
+a provider prompt or treat policy/operator BLOCK as a repo implementation failure.
 
 ## Work and Session Rules
 
