@@ -211,6 +211,40 @@ jobs:
             .codex-auto/quality/a6-modularity-inventory.json
           if-no-files-found: error
 
+  a7-combined-acceptance:
+    name: A7.5 Core Mission combined hosted candidate
+    needs: [frontend, rust]
+    if: always()
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: src-tauri
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Hosted A7.5 candidate validation
+        env:
+          AELYRIS_A7_COMBINED_CI_CONTEXT: "1"
+          AELYRIS_A7_COMBINED_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: pnpm verify:a7:combined-acceptance
+      - name: Upload exact-SHA A7.5 candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: a7-combined-acceptance-${{ github.sha }}
+          path: .codex-auto/quality/a7-combined-acceptance.json
+          if-no-files-found: error
+
   release-hardening:
     name: Release hardening gates
     runs-on: windows-latest

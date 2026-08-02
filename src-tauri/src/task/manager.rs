@@ -923,10 +923,16 @@ impl TaskManager {
                 &observed_git_fingerprint,
             )
         });
+        let preserve_existing_task_fence_blocker = !retry_authority_changed
+            && current_blocked.as_ref().is_some_and(|packet| {
+                packet
+                    .repo_blockers
+                    .iter()
+                    .any(|blocker| blocker.code == "TASK_NOT_REVIEW")
+            });
+        let blocked_retry = task_status == Some(TaskStatus::Blocked) && current_blocked.is_some();
         if task_status != Some(TaskStatus::Review)
-            && !(task_status == Some(TaskStatus::Blocked)
-                && current_blocked.is_some()
-                && retry_authority_changed)
+            && (!blocked_retry || preserve_existing_task_fence_blocker)
         {
             blockers.push(settlement_repo_blocker(
                 "task-not-review",
@@ -4051,5 +4057,145 @@ mod tests {
             manager.settle_mission_plan(&plan_id, 1),
             Err(MissionPlanError::ContentConflict(message)) if message.contains("task projection disagree")
         ));
+    }
+
+    #[test]
+    fn a7_5_changed_candidate_after_test_emits_zero_credit_blocked_continuation() {
+        let (repository_directory, repo_path, input) = a7_repo_input();
+        let repository = git2::Repository::open(repository_directory.path()).unwrap();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        let activation = manager.activate_mission_plan(&plan_id, 1).unwrap();
+
+        let base = activation.accepted_base_oid.parse::<git2::Oid>().unwrap();
+        repository
+            .branch(
+                &activation.source_branch,
+                &repository.find_commit(base).unwrap(),
+                false,
+            )
+            .unwrap();
+        crate::git::create_worktree(&repo_path, &activation.source_branch).unwrap();
+        let candidate_worktree =
+            crate::git::predict_worktree_path(&repo_path, &activation.source_branch);
+        let owned_path = candidate_worktree.join(&activation.owned_targets[0]);
+        std::fs::create_dir_all(owned_path.parent().unwrap()).unwrap();
+        std::fs::write(&owned_path, "pub fn stable_order_fixture() {}\n").unwrap();
+        let candidate_repository = git2::Repository::open(&candidate_worktree).unwrap();
+        let mut index = candidate_repository.index().unwrap();
+        index
+            .add_path(std::path::Path::new(&activation.owned_targets[0]))
+            .unwrap();
+        index.write().unwrap();
+        let tested_oid = commit_a7_test_repo(&candidate_worktree);
+
+        let attempt = manager
+            .reserve_execution(ExecutionReservation {
+                task_id: activation.task_id.clone(),
+                repo_path: activation.repository_root.clone(),
+                runtime: crate::task::ExecutionRuntime::VisiblePty,
+                ownership_claim_ids: vec!["claim-a7".to_string()],
+                now: 10,
+            })
+            .unwrap();
+        let mut now = 11;
+        manager
+            .commit_execution_reservation(&attempt.token(), now)
+            .unwrap();
+        for effect in [ExecutionEffect::FirstEffect, ExecutionEffect::Spawn] {
+            commit_effect(&manager, &attempt, effect, &mut now);
+        }
+        now += 1;
+        manager
+            .reserve_execution_effect(&attempt.token(), ExecutionEffect::Review, None, now)
+            .unwrap();
+        let current = manager.current_execution(&activation.task_id).unwrap();
+        let evidence = MissionGateEvidence {
+            schema: "aelyris.mission_gate_evidence/v1".into(),
+            evidence_id: "0197c000-0000-7000-8000-000000000090".into(),
+            activation_id: activation.activation_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            attempt_id: current.identity.attempt_id.clone(),
+            execution_generation: current.identity.execution_generation,
+            agent_run_id: current.identity.agent_run_id.clone(),
+            runtime_domain_id: "visible_pty".into(),
+            pty_session_id: current.identity.pty_session_id.clone().unwrap(),
+            gate_id: crate::task::A7_FIXTURE_GATE_ID.into(),
+            contract_version: "1".into(),
+            command_argv: activation.test_argv.clone(),
+            command_fingerprint: "1".repeat(64),
+            environment_fingerprint: "2".repeat(64),
+            result: "passed".into(),
+            evidence_digest: "3".repeat(64),
+            base_oid: activation.accepted_base_oid.clone(),
+            candidate_oid: tested_oid.clone(),
+            tested_oid: tested_oid.clone(),
+            started_at_unix_ms: 100,
+            ended_at_unix_ms: 101,
+        };
+        manager
+            .persist_mission_gate_evidence(&activation, &evidence)
+            .unwrap();
+
+        std::fs::write(
+            &owned_path,
+            "pub fn stable_order_fixture() {}\npub fn changed_after_test() {}\n",
+        )
+        .unwrap();
+        let mut index = candidate_repository.index().unwrap();
+        index
+            .add_path(std::path::Path::new(&activation.owned_targets[0]))
+            .unwrap();
+        index.write().unwrap();
+        let changed_oid = commit_a7_test_repo(&candidate_worktree);
+        assert_ne!(changed_oid, tested_oid);
+
+        manager
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Review)
+            .unwrap();
+        let outcome = manager.settle_mission_plan(&plan_id, 1).unwrap();
+        let MissionSettlementOutcome::Blocked { blocked_packet } = outcome else {
+            panic!("post-test candidate drift must emit a blocked continuation")
+        };
+        assert_eq!(blocked_packet.completion_credit, 0);
+        let drift = blocked_packet
+            .repo_blockers
+            .iter()
+            .find(|blocker| blocker.code == "CANDIDATE_OWNERSHIP_DRIFT")
+            .expect("candidate drift must remain a typed repository blocker");
+        assert_eq!(drift.next_action.kind, SettlementNextActionKind::Reprove);
+        assert_eq!(drift.next_action.owner, "task-manager");
+        assert_eq!(
+            drift.next_action.input_refs,
+            ["settlement-recovery:candidate-ownership-drift"]
+        );
+        assert_eq!(
+            manager.get(&activation.task_id).unwrap().status,
+            TaskStatus::Blocked
+        );
+        let counts = db.with(|database| {
+            database
+                .conn()
+                .query_row(
+                    "SELECT COUNT(*),SUM(packet_kind='mission_completion') FROM mission_settlement_packets WHERE activation_id=?1",
+                    [&activation.activation_id],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert_eq!(counts, (1, 0));
+        assert_eq!(
+            manager.settle_mission_plan(&plan_id, 1).unwrap(),
+            MissionSettlementOutcome::Blocked { blocked_packet }
+        );
     }
 }

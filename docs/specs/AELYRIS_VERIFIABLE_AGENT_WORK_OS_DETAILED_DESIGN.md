@@ -3135,12 +3135,14 @@ complete-v11, complete-v10, or invalid-partial shape from raw JSON before valida
 legacy shape always requires the exact old raw digest and then current semantic resealing.
 Negative completed, Mission, and blocked fixtures prove the defaults-expanded digest is
 rejected after the real v11 migration. Final separated independent review passed with
-zero major findings. A7.4 is complete; A7.5 is the next slice, remains unstarted until
-the closeout commit, and A7 `phaseComplete=false` remains truthful.
+zero major findings. A7.4 is complete and A7 `phaseComplete=false` remains truthful.
+A7.5 now has a local combined-acceptance candidate, while exact-SHA hosted evidence and
+authenticated closeout remain pending.
 
 ### A7.5 Canonical Core Mission Combined Acceptance
 
-Status: next; not started. A7.4 completion does not itself satisfy combined acceptance.
+Status: local candidate implemented; exact-SHA hosted evidence and authenticated
+closeout pending. A7.4 completion does not itself satisfy combined acceptance.
 
 - one useful request passes versioned plan preview, visible implementation, fresh
   tests, independent exact-OID review, exact-OID accept/merge, immutable
@@ -3154,6 +3156,82 @@ Status: next; not started. A7.4 completion does not itself satisfy combined acce
   Continuity, all-face Control Kernel migration beyond the enabled journey,
   structured provider expansion, and learning layers receive no A7 completion
   credit and remain deferred product work.
+
+The local candidate runs every current `a7_` Rust proof (48 tests), validates the
+preserved A7.2/A7.3 exact-OID evidence chain, and proves that candidate drift after
+test emits one idempotent zero-credit `BlockedWorkPacket` with exact re-proof
+continuation and no `MissionCompletionPacket`. It also installs a blocking hosted CI
+candidate job. The local artifact must remain `pass-local-awaiting-hosted-ci` with
+`completedSlice=A7.4`, `activeSlice=A7.5`, and `phaseComplete=false` until an
+authenticated exact-HEAD hosted run and clean local closeout both pass.
+
+<!-- A7_5_COMBINED_ACCEPTANCE_CONTRACT_V1_BEGIN -->
+```json
+{
+  "schema": "aelyris.a7_5_combined_acceptance_contract/v1",
+  "contractVersion": 1,
+  "proofCommand": "pnpm verify:a7:combined-acceptance",
+  "requiredSequence": [
+    "accepted_versioned_plan_preview",
+    "visible_pty_implementation",
+    "fresh_exact_oid_test",
+    "independent_exact_oid_review",
+    "isolated_exact_oid_accept_merge",
+    "immutable_completed_work_packet",
+    "exact_mission_completion_packet"
+  ],
+  "currentSourceProof": {
+    "commandArgv": [
+      "cargo",
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--lib",
+      "a7_",
+      "--",
+      "--nocapture"
+    ],
+    "minimumExecutedTests": 35,
+    "positiveTest": "task::manager::tests::a7_4_completed_settlement_consumes_latest_a7_3_evidence_atomically",
+    "negativeTest": "task::manager::tests::a7_5_changed_candidate_after_test_emits_zero_credit_blocked_continuation"
+  },
+  "historicalLiveEvidence": {
+    "visibleArtifact": ".codex-auto/quality/a7-visible-implementation-live.json",
+    "visibleAggregateArtifact": ".codex-auto/quality/a7-visible-implementation.json",
+    "reviewArtifact": ".codex-auto/quality/a7-review-acceptance-live.json",
+    "requiredOidEquality": [
+      "candidateOid",
+      "testedOid",
+      "reviewedOid",
+      "integratedOid"
+    ],
+    "localEvidenceRequiredForAuthoritativeCloseout": true
+  },
+  "blockingCi": {
+    "workflow": "CI",
+    "jobId": "a7-combined-acceptance",
+    "jobDisplayName": "A7.5 Core Mission combined hosted candidate",
+    "requiredDependencyJobs": ["frontend", "rust"],
+    "exactShaArtifact": "a7-combined-acceptance-${{ github.sha }}",
+    "authoritativeCompletionRequiresExternalCloseout": true
+  },
+  "negativeScenario": {
+    "scenarioId": "a7-core-stale-tested-oid-v1",
+    "mutation": "candidate OID changes after the declared test and before independent review",
+    "requiredPacket": "aelyris.blocked_work_packet/v1",
+    "blockerClass": "repo",
+    "exactNextActionKind": "reprove",
+    "exactNextActionOwner": "task-manager",
+    "completionCredit": false,
+    "missionState": "blocked",
+    "a7PhaseComplete": false
+  },
+  "phaseCompleteAuthority": "clean local exact-HEAD closeout over current source proof, preserved local live evidence, and a verified completed blocking CI run",
+  "phaseComplete": false,
+  "releaseReady": false
+}
+```
+<!-- A7_5_COMBINED_ACCEPTANCE_CONTRACT_V1_END -->
 
 ## 18. Apex Design Gates
 

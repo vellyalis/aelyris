@@ -127,6 +127,8 @@ const currentFrontier = {
 
 const a7ScopeLockParse = markedJson(files.design, "A7_CORE_SCOPE_LOCK_V1");
 const a7ScopeLock = a7ScopeLockParse.value;
+const a7CombinedAcceptanceParse = markedJson(files.design, "A7_5_COMBINED_ACCEPTANCE_CONTRACT_V1");
+const a7CombinedAcceptance = a7CombinedAcceptanceParse.value;
 
 function headingIds(text, pattern) {
   return [...text.matchAll(pattern)].map((match) => match[1]);
@@ -428,7 +430,8 @@ const requiredWorkOrderClauses = [
   "A7.3 independent review and exact-OID acceptance is complete",
   "A7.4 is complete",
   "Independent review reopened A7.4",
-  "A7.5 is the next slice and remains unstarted",
+  "A7.5 now has a local combined-acceptance candidate",
+  "exact-SHA hosted evidence and authenticated closeout remain pending",
 ];
 
 const requiredArchitectureClauses = [
@@ -1235,15 +1238,33 @@ const checks = [
       currentFrontier.phase === "A7" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
       a7AcceptedFrontierValid,
-    "Work order records A7.4 complete and exposes A7.5 as the next unstarted slice",
+    "Work order records A7.4 complete and keeps A7.5 active for exact-SHA hosted closeout",
     { missingClauses: missing.workOrder, currentFrontier },
+  ),
+  check(
+    "a7-combined-acceptance-machine-contract",
+    a7CombinedAcceptanceParse.error === null &&
+      a7CombinedAcceptance?.schema === "aelyris.a7_5_combined_acceptance_contract/v1" &&
+      a7CombinedAcceptance?.contractVersion === 1 &&
+      a7CombinedAcceptance?.proofCommand === "pnpm verify:a7:combined-acceptance" &&
+      a7CombinedAcceptance?.blockingCi?.jobId === "a7-combined-acceptance" &&
+      a7CombinedAcceptance?.phaseComplete === false &&
+      a7CombinedAcceptance?.releaseReady === false,
+    "A7.5 exposes one parseable local-candidate contract without claiming phase or release completion",
+    {
+      parseError: a7CombinedAcceptanceParse.error,
+      schema: a7CombinedAcceptance?.schema,
+      phaseComplete: a7CombinedAcceptance?.phaseComplete,
+      releaseReady: a7CombinedAcceptance?.releaseReady,
+    },
   ),
   check(
     "package-script-present",
     files.packageJson.includes(
       '"verify:verifiable-agent-work-os-spec": "node scripts/verify-verifiable-agent-work-os-spec.mjs"',
-    ),
-    "package.json exposes pnpm verify:verifiable-agent-work-os-spec",
+    ) &&
+      files.packageJson.includes('"verify:a7:combined-acceptance": "node scripts/verify-a7-combined-acceptance.mjs"'),
+    "package.json exposes the design and A7.5 combined-acceptance verifiers",
   ),
   check(
     "no-positive-shipped-claim",

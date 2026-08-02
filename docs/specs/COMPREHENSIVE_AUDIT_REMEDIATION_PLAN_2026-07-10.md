@@ -1992,7 +1992,8 @@ the frontier to A7.5 without starting its combined-acceptance implementation.
 
 ### **A7.5 - Canonical Core Mission Combined Acceptance**
 
-Status: next; not started until the A7.4 closeout commit.
+Status: local candidate implemented; exact-SHA hosted evidence and authenticated
+closeout remain pending. A7.4 remains the last completed slice.
 
 The fixed request must pass, in order: accepted versioned plan preview, visible
 implementation, fresh tests, independent exact-OID review, successful exact-OID
@@ -2005,6 +2006,15 @@ alternative success path. The combined gate runs in blocking CI and rejects any
 missing/stale evidence, acceptance blocker, unclassified failure, inferred
 completion, or false phase/release claim. A7 completion alone does not imply A8,
 A9, external/operator, deferred product features, or release completion.
+
+Local candidate implementation (2026-08-02): `pnpm verify:a7:combined-acceptance`
+executes the current `a7_` source-proof family, validates the preserved A7.2 visible
+implementation and A7.3 exact-OID acceptance chain, exercises changed-candidate
+zero-credit blocked continuation, and validates a blocking hosted CI job contract.
+The local run passes 48 Rust tests and reports `pass-local-awaiting-hosted-ci` with
+`completedSlice=A7.4`, `activeSlice=A7.5`, and `phaseComplete=false`. A7.5 cannot close
+until a completed exact-HEAD GitHub run proves the blocking jobs and the clean local
+closeout binds that run to the preserved live evidence.
 
 Do not start marketplace, autonomous main merge, hosted cloud IDE, broad team RBAC,
 or effectful Shadow Missions before the Core Mission Loop and local single-operator

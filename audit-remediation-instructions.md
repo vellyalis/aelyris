@@ -3,7 +3,7 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A7`.
-ACTIVE SLICE: `A7.5` (next; not started).
+ACTIVE SLICE: `A7.5` (local candidate implemented; exact-SHA hosted closeout pending).
 LAST COMPLETED SLICE: `A7.4`.
 NEXT PHASE: `A8` after A7 combined acceptance.
 NEXT IMPLEMENTATION SLICE: `A7.5`.
@@ -66,7 +66,8 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     ordering gap. All five findings are repaired. Final separated independent review
     passed with zero major findings, focused proof covers 8 Rust tests and 14 source
     checks, and A7.3/migration/format/check/spec/traceability regressions pass. A7.4 is
-    complete. A7.5 is the next slice and remains unstarted until this closeout commit.
+    complete. A7.5 now has a local combined-acceptance candidate; exact-SHA hosted
+    evidence and authenticated closeout remain pending.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -95,7 +96,7 @@ A4.12 complete
   -> A6.7 duplicate/unowned infrastructure complete -> A6.8 combined acceptance
   -> A7.0 scope lock complete -> A7.1 request/plan complete -> A7.2 visible execution complete
   -> A7.3 exact-OID acceptance complete -> A7.4 immutable settlement complete
-  -> A7.5 one canonical A7 Core Mission combined acceptance (next; not started)
+  -> A7.5 one canonical A7 Core Mission combined acceptance (local candidate; hosted closeout pending)
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
@@ -120,7 +121,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.4 is complete; A7.5 is next and not started.** The accepted scope lock, durable inert
+3. **A7.4 is complete; A7.5 has a local candidate and remains active.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -760,8 +761,12 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   partial v11 field sets, and requires the exact v10 raw digest for every legacy-shaped
   packet. Final separated independent review passed with zero major findings.
   `pnpm verify:a7:completion-settlement` covers 8 focused tests and 14 source checks,
-  reports `completedSlice=A7.4`, advances the frontier to unstarted A7.5, and keeps
-  `phaseComplete=false`.
+  reports `completedSlice=A7.4` and keeps `phaseComplete=false`. The A7.5 local
+  candidate adds `pnpm verify:a7:combined-acceptance`, a blocking hosted CI job, and
+  a changed-candidate negative fixture. Local proof executes all 48 `a7_` Rust tests,
+  validates preserved A7.2/A7.3 exact-OID evidence, and reports
+  `status=pass-local-awaiting-hosted-ci`; exact-SHA hosted evidence plus authenticated
+  closeout are still required before A7.5 or A7 may complete.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.
