@@ -3,7 +3,7 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A7`.
-ACTIVE SLICE: `A7.5`.
+ACTIVE SLICE: `A7.5` (next; not started).
 LAST COMPLETED SLICE: `A7.4`.
 NEXT PHASE: `A8` after A7 combined acceptance.
 NEXT IMPLEMENTATION SLICE: `A7.5`.
@@ -61,10 +61,13 @@ one router/readiness/client ownership split, exact command/schema preservation, 
    pre-review state. A7.3 independent review and exact-OID acceptance is complete:
    the fixed independent reviewer accepted all 4 clauses with zero findings, the
    tested/reviewed/integrated OID remained exact, and only the isolated
-   `a7-acceptance` target moved. A7.4 immutable completion and blocked settlement is complete;
-   A7.5 canonical combined acceptance is the next implementation slice and has not started.
-   Do not reopen A4, completed A6, A7.0, A7.1, A7.2, A7.3, or A7.4
-   without a fresh regression.
+    `a7-acceptance` target moved. Independent review reopened A7.4 after finding four
+    settlement contract regressions, and a later re-review found one raw legacy decode-
+    ordering gap. All five findings are repaired. Final separated independent review
+    passed with zero major findings, focused proof covers 8 Rust tests and 14 source
+    checks, and A7.3/migration/format/check/spec/traceability regressions pass. A7.4 is
+    complete. A7.5 is the next slice and remains unstarted until this closeout commit.
+    Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
 
@@ -91,8 +94,8 @@ A4.12 complete
   -> A6.5 SQLite domain repositories complete -> A6.6 native proof CLI complete
   -> A6.7 duplicate/unowned infrastructure complete -> A6.8 combined acceptance
   -> A7.0 scope lock complete -> A7.1 request/plan complete -> A7.2 visible execution complete
-  -> A7.3 exact-OID acceptance complete -> A7.4 immutable completion/blocked settlement complete
-  -> A7.5 one canonical A7 Core Mission combined acceptance
+  -> A7.3 exact-OID acceptance complete -> A7.4 immutable settlement complete
+  -> A7.5 one canonical A7 Core Mission combined acceptance (next; not started)
   -> A8.0 product-goal/architecture decision
   -> measured A8 terminal decision -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
@@ -744,15 +747,21 @@ an older out-of-scope `tests/test_agent.rs` reference to the removed `agent::par
   unchanged main/origin refs, and an isolated `a7-acceptance` target. The work unit
   intentionally remains `Review`; A7.4 owns completion/blocked packets and trusted
   Done settlement.
-- A7.4 immutable completion and blocked settlement is complete. The existing
-  `TaskManager`/`TaskRepo` owner now derives accepted-revision, exact tested/reviewed/
+- A7.4 immutable settlement and its regression repair are complete. The existing
+  `TaskManager`/`TaskRepo` owner derives accepted-revision, exact tested/reviewed/
   integrated OID, owned diff, fresh gate, computed reviewer independence, and merge
-  receipt facts; persists immutable completed/blocked/Mission packets under SQLite
-  schema v10; and commits the packet set plus trusted `Done`/`Blocked` projection in
-  one CAS transaction. Blocked packets retain zero completion credit, typed
+  receipt facts; persists immutable superseding completed/blocked/Mission packets under
+  SQLite schema v11; and commits the packet set plus trusted `Done`/`Blocked` projection
+  in one CAS transaction. Blocked packets retain zero completion credit, typed
   repo/policy/operator/external authority and next action, and cannot mint Mission
-  completion. `pnpm verify:a7:completion-settlement` passes 5 focused tests and keeps
-  `phaseComplete=false`. A7.5 combined acceptance is next and remains unstarted.
+  completion. The first review found four contract regressions and a later re-review
+  found one remaining legacy decode ordering gap;
+  decoder shape selection now occurs from raw JSON before current validation, rejects
+  partial v11 field sets, and requires the exact v10 raw digest for every legacy-shaped
+  packet. Final separated independent review passed with zero major findings.
+  `pnpm verify:a7:completion-settlement` covers 8 focused tests and 14 source checks,
+  reports `completedSlice=A7.4`, advances the frontier to unstarted A7.5, and keeps
+  `phaseComplete=false`.
 - real OS sleep/resume and abrupt host power-loss evidence is not claimed by the
   deterministic matrix. It remains an A9 operator gate at
   `.codex-auto/operator-evidence/real-sleep-power-loss-durability.json`.

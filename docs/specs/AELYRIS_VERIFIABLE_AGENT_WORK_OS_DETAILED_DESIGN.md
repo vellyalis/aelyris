@@ -3106,16 +3106,41 @@ the work unit remains `Review` and no completion packet or A7 completion is clai
 - only a valid `CompletedWorkPacket` may render trusted work-unit Done, and only a
   valid `MissionCompletionPacket` may render trusted Mission Done.
 
-Executed A7.4 closeout (2026-08-02): packet schemas and typed blocker/recovery data
+Initial A7.4 implementation (2026-08-02): packet schemas and typed blocker/recovery data
 live with the existing Mission contract, `TaskRepo` owns immutable SQLite v10 packet
 persistence and settlement CAS, and `TaskManager` derives review/merge lineage and
 the exact owned candidate before atomically publishing trusted `Done` or `Blocked`.
 Same sealed retries are idempotent; OID/proof/status drift conflicts and requires
 re-proof. Policy/operator/external blockers remain separate typed arrays with zero
 completion credit. `pnpm verify:a7:completion-settlement` passes 5 focused tests.
-This completes only A7.4, keeps `phaseComplete=false`, and does not start A7.5.
+Independent review reopened A7.4 for exact freshness authority, closed blocker-source
+classification, superseding immutable settlement generations, and a Git witness bound
+to the commit CAS. A7.5 remains frozen; `phaseComplete=false`.
+
+A7.4 regression-repair closeout (2026-08-02): settlement derives the accepted
+five-minute freshness contract and closed typed blockers without caller-authored facts;
+SQLite v11 retains superseding generations with one current leaf; and the observed
+candidate/target/worktree witness is revalidated after the state lock, inside
+`BEGIN IMMEDIATE`, after serialization/idempotent reads and immediately before the
+settlement-expected-version CAS. Git mutation before or during that final witness changes
+the fingerprint and rolls back with no Done; mutation after the witness returns is
+post-linearization drift and requires a later generation/re-proof rather than
+retroactively changing the committed snapshot. The focused proof now covers eight Rust
+tests, including a real two-connection successor race, exact freshness boundaries,
+receipt-only recovery through `TaskManager`, populated v10 packet migration for all three
+packet kinds, Git-ref drift rollback, blocked-to-completed re-proof, and immutable history.
+A later separated review found one legacy decode-order gap: a v10-shaped raw packet could
+carry the digest of its defaults-expanded current struct. The repaired decoder now selects
+complete-v11, complete-v10, or invalid-partial shape from raw JSON before validation;
+legacy shape always requires the exact old raw digest and then current semantic resealing.
+Negative completed, Mission, and blocked fixtures prove the defaults-expanded digest is
+rejected after the real v11 migration. Final separated independent review passed with
+zero major findings. A7.4 is complete; A7.5 is the next slice, remains unstarted until
+the closeout commit, and A7 `phaseComplete=false` remains truthful.
 
 ### A7.5 Canonical Core Mission Combined Acceptance
+
+Status: next; not started. A7.4 completion does not itself satisfy combined acceptance.
 
 - one useful request passes versioned plan preview, visible implementation, fresh
   tests, independent exact-OID review, exact-OID accept/merge, immutable

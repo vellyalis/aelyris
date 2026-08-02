@@ -741,7 +741,6 @@ impl TaskManager {
         &self,
         plan_id: &str,
         plan_revision: u64,
-        classified_blockers: Vec<SettlementBlocker>,
     ) -> Result<MissionSettlementOutcome, MissionPlanError> {
         let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
         let _writer = self.persistence_lock();
@@ -780,20 +779,8 @@ impl TaskManager {
                 mission_packet,
             });
         }
-        if let Some(blocked_packet) = db.try_with(|database| {
+        let current_blocked = db.try_with(|database| {
             TaskRepo::load_blocked_settlement(database, &activation.activation_id)
-        })? {
-            if self.read(|graph| graph.get(&activation.task_id).map(|task| task.status))
-                != Some(TaskStatus::Blocked)
-            {
-                return Err(MissionPlanError::ContentConflict(
-                    "durable blocked packet and task projection disagree".into(),
-                ));
-            }
-            return Ok(MissionSettlementOutcome::Blocked { blocked_packet });
-        }
-        let expected_version = db.try_with(|database| {
-            TaskRepo::settlement_expected_version(database, &activation.activation_id)
         })?;
         let evidence = db.try_with(|database| {
             TaskRepo::load_mission_gate_evidence(database, &activation.activation_id)
@@ -823,31 +810,15 @@ impl TaskManager {
             None => None,
         };
 
-        let mut blockers = classified_blockers;
-        for blocker in &blockers {
-            blocker.validate()?;
-        }
+        let mut blockers = derive_declared_authority_blockers(&preview);
         let task_status = self.read(|graph| graph.get(&activation.task_id).map(|task| task.status));
-        if task_status != Some(TaskStatus::Review) {
-            blockers.push(settlement_repo_blocker(
-                "task-not-review",
-                "TASK_NOT_REVIEW",
-                "work unit is not at the trusted Review settlement fence",
-            ));
-        }
-        let valid_until = review
-            .as_ref()
-            .map(|value| value.created_at_unix_ms.saturating_add(86_400_000));
-        if evidence
-            .as_ref()
-            .is_none_or(|value| value.result != "passed")
-        {
-            blockers.push(settlement_repo_blocker(
-                "missing-fresh-evidence",
-                "MISSING_FRESH_EVIDENCE",
-                "fresh passed gate evidence is missing",
-            ));
-        }
+        blockers.extend(evaluate_settlement_freshness(
+            &preview,
+            &activation,
+            evidence.as_ref(),
+            review.as_ref(),
+            now,
+        ));
         if review.as_ref().is_none_or(|value| {
             value.verdict != crate::review::MissionReviewVerdict::AcceptedExactOid
                 || !value.reviewer_independence.eligible
@@ -857,17 +828,11 @@ impl TaskManager {
                     .disqualifying_relations
                     .is_empty()
         }) {
-            blockers.push(settlement_repo_blocker(
+            blockers.push(settlement_blocker(
+                SettlementBlockerKind::Policy,
                 "invalid-independent-review",
                 "INVALID_INDEPENDENT_REVIEW",
                 "accepted computed-independent review is missing",
-            ));
-        }
-        if valid_until.is_none_or(|until| now > until) {
-            blockers.push(settlement_repo_blocker(
-                "stale-review-evidence",
-                "STALE_REVIEW_EVIDENCE",
-                "accepted review/evidence settlement window expired",
             ));
         }
         if let (Some(evidence), Some(review)) = (&evidence, &review) {
@@ -905,55 +870,106 @@ impl TaskManager {
             ));
         }
 
-        let snapshot = match (&evidence, &receipt) {
-            (Some(evidence), Some(_receipt)) => crate::git::inspect_exact_owned_candidate(
-                &activation.repository_root,
-                &activation.source_branch,
-                &activation.accepted_base_oid,
-                &evidence.tested_oid,
-                &activation.owned_targets,
-                1_048_576,
-            ),
-            _ => Err("candidate lineage is incomplete".into()),
-        };
-        if let (Ok(snapshot), Some(receipt)) = (&snapshot, &receipt) {
-            if snapshot.candidate_oid != receipt.integrated_oid {
+        let git_observation = observe_settlement_git(
+            &activation,
+            evidence.as_ref().map(|item| item.tested_oid.as_str()),
+        );
+        if let Some(receipt) = &receipt {
+            if git_observation.candidate_oid.as_deref() != Some(receipt.integrated_oid.as_str()) {
                 blockers.push(settlement_repo_blocker(
                     "integrated-oid-drift",
                     "INTEGRATED_OID_DRIFT",
                     "candidate and integrated OID differ",
                 ));
             }
-            match git2::Repository::open(&activation.repository_root).and_then(|repo| {
-                repo.revparse_single(&activation.target_branch)
-                    .map(|object| object.id().to_string())
-            }) {
-                Ok(target_oid) if target_oid == receipt.integrated_oid => {}
-                Ok(_) => blockers.push(settlement_repo_blocker(
+            match git_observation.target_oid.as_deref() {
+                Some(target_oid) if target_oid == receipt.integrated_oid => {}
+                Some(_) => blockers.push(settlement_repo_blocker(
                     "settlement-target-drift",
                     "SETTLEMENT_TARGET_DRIFT",
                     "isolated acceptance target moved or does not contain the exact integrated OID",
                 )),
-                Err(error) => blockers.push(settlement_repo_blocker(
+                None => blockers.push(settlement_repo_blocker(
                     "settlement-target-unavailable",
                     "SETTLEMENT_TARGET_UNAVAILABLE",
-                    &format!("isolated acceptance target cannot be resolved: {error}"),
+                    "isolated acceptance target cannot be resolved",
                 )),
             }
-        } else if let Err(error) = &snapshot {
+        }
+        if git_observation.candidate_state != "exact-owned-clean" {
             blockers.push(settlement_repo_blocker(
                 "candidate-ownership-drift",
                 "CANDIDATE_OWNERSHIP_DRIFT",
-                error,
+                "candidate source ref, worktree cleanliness, binding, or owned diff changed",
+            ));
+        }
+        let observed_git_fingerprint = git_observation.fingerprint()?;
+        let expected_version = db.try_with(|database| {
+            TaskRepo::settlement_expected_version(
+                database,
+                &activation.activation_id,
+                &observed_git_fingerprint,
+            )
+        })?;
+        let coverage =
+            build_settlement_coverage(&preview, evidence.as_ref(), review.as_ref(), &mut blockers);
+        let retry_authority_changed = current_blocked.as_ref().is_some_and(|packet| {
+            !blocked_retry_authority_matches(
+                packet,
+                &blockers,
+                evidence.as_ref(),
+                review.as_ref(),
+                binding.as_ref(),
+                &observed_git_fingerprint,
+            )
+        });
+        if task_status != Some(TaskStatus::Review)
+            && !(task_status == Some(TaskStatus::Blocked)
+                && current_blocked.is_some()
+                && retry_authority_changed)
+        {
+            blockers.push(settlement_repo_blocker(
+                "task-not-review",
+                "TASK_NOT_REVIEW",
+                "work unit is not at the trusted Review settlement fence",
             ));
         }
 
-        let coverage =
-            build_settlement_coverage(&preview, evidence.as_ref(), review.as_ref(), &mut blockers);
+        if let Some(packet) = &current_blocked {
+            if task_status != Some(TaskStatus::Blocked) {
+                return Err(MissionPlanError::ContentConflict(
+                    "current blocked packet and task projection disagree".into(),
+                ));
+            }
+            if blocked_authority_matches(
+                packet,
+                &blockers,
+                evidence.as_ref(),
+                review.as_ref(),
+                binding.as_ref(),
+                &observed_git_fingerprint,
+            ) {
+                return Ok(MissionSettlementOutcome::Blocked {
+                    blocked_packet: packet.clone(),
+                });
+            }
+        }
+        let settlement_generation = current_blocked
+            .as_ref()
+            .map_or(1, |packet| packet.settlement_generation.saturating_add(1));
+        let supersedes_packet_id = current_blocked
+            .as_ref()
+            .map(|packet| packet.packet_id.clone());
         let mut state = self.lock();
         Self::require_mutation_available(&state)
             .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
         let mut staging = state.graph.clone();
+        if current_blocked.is_some() && blockers.is_empty() {
+            staging
+                .transition(&activation.task_id, TaskStatus::Running)
+                .and_then(|_| staging.transition(&activation.task_id, TaskStatus::Review))
+                .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        }
         if !blockers.is_empty() {
             match staging.get(&activation.task_id).map(|task| task.status) {
                 Some(TaskStatus::Blocked) => {}
@@ -985,6 +1001,9 @@ impl TaskManager {
                 &preview,
                 &activation,
                 &expected_version,
+                settlement_generation,
+                supersedes_packet_id.clone(),
+                &observed_git_fingerprint,
                 evidence.as_ref(),
                 review.as_ref(),
                 binding.as_ref(),
@@ -993,8 +1012,13 @@ impl TaskManager {
                 now,
             )?
             .seal()?;
+            let final_activation = activation.clone();
+            let final_tested_oid = evidence.as_ref().map(|item| item.tested_oid.clone());
             db.try_with(|database| {
-                TaskRepo::persist_blocked_settlement(database, &staging, &packet)
+                TaskRepo::persist_blocked_settlement(database, &staging, &packet, || {
+                    observe_settlement_git(&final_activation, final_tested_oid.as_deref())
+                        .fingerprint()
+                })
             })?;
             Self::publish_mutation(&mut state, staging);
             return Ok(MissionSettlementOutcome::Blocked {
@@ -1006,8 +1030,10 @@ impl TaskManager {
         let review = review.expect("zero blockers requires review");
         let binding = binding.expect("zero blockers requires binding");
         let receipt = receipt.expect("zero blockers requires receipt");
-        let snapshot = snapshot.expect("zero blockers requires candidate snapshot");
-        let diff_digest = format!("{:x}", Sha256::digest(snapshot.diff.as_bytes()));
+        let diff_digest = git_observation
+            .owned_diff_digest
+            .clone()
+            .expect("zero blockers requires exact owned diff");
         let packet_id = uuid::Uuid::now_v7().to_string();
         let work_packet = CompletedWorkPacket {
             schema: COMPLETED_WORK_PACKET_SCHEMA.into(),
@@ -1021,11 +1047,14 @@ impl TaskManager {
             plan_content_digest: activation.plan_content_digest.clone(),
             contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
             settlement_expected_version: expected_version.clone(),
+            settlement_generation,
+            supersedes_packet_id,
+            observed_git_fingerprint: observed_git_fingerprint.clone(),
             base_oid: activation.accepted_base_oid.clone(),
             tested_oid: evidence.tested_oid.clone(),
             reviewed_oid: review.reviewed_oid.clone(),
             integrated_oid: receipt.integrated_oid.clone(),
-            owned_paths: snapshot.changed_paths,
+            owned_paths: git_observation.changed_paths.clone(),
             owned_diff_digest: diff_digest,
             gate_evidence_id: evidence.evidence_id.clone(),
             gate_evidence_digest: evidence.evidence_digest.clone(),
@@ -1070,6 +1099,8 @@ impl TaskManager {
             integrated_oid: receipt.integrated_oid,
             contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
             settlement_expected_version: expected_version,
+            settlement_generation,
+            observed_git_fingerprint: observed_git_fingerprint.clone(),
             merge_result: "merged_exact_oid".into(),
             repo_blockers: vec![],
             policy_blockers: vec![],
@@ -1082,12 +1113,18 @@ impl TaskManager {
         staging
             .transition(&activation.task_id, TaskStatus::Done)
             .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        let final_activation = activation.clone();
+        let final_tested_oid = Some(evidence.tested_oid.clone());
         db.try_with(|database| {
             TaskRepo::persist_completed_settlement(
                 database,
                 &staging,
                 &work_packet,
                 &mission_packet,
+                || {
+                    observe_settlement_git(&final_activation, final_tested_oid.as_deref())
+                        .fingerprint()
+                },
             )
         })?;
         Self::publish_mutation(&mut state, staging);
@@ -1342,23 +1379,273 @@ fn resolve_a7_repository_head(repo_path: &str) -> Result<(String, String), Missi
     })
 }
 
-fn settlement_repo_blocker(id: &str, code: &str, message: &str) -> SettlementBlocker {
-    SettlementBlocker {
-        blocker_id: id.into(),
-        kind: SettlementBlockerKind::Repo,
-        authority: "TaskManager/TaskRepo".into(),
-        code: code.into(),
-        message: message.into(),
-        required_inputs: vec!["accepted Mission revision and fresh exact-OID lineage".into()],
-        command_argv: Vec::new(),
-        command_result: Some(message.into()),
-        artifact_refs: vec!["TaskRepo settlement authority".into()],
-        next_action: SettlementNextAction {
-            kind: SettlementNextActionKind::Reprove,
-            owner: "TaskManager".into(),
-            input_refs: vec!["mission settlement authority facts".into()],
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SettlementGitObservation {
+    candidate_oid: Option<String>,
+    target_oid: Option<String>,
+    changed_paths: Vec<String>,
+    owned_diff_digest: Option<String>,
+    candidate_state: String,
+    target_state: String,
+}
+
+impl SettlementGitObservation {
+    fn fingerprint(&self) -> Result<String, MissionPlanError> {
+        let bytes = serde_json::to_vec(self).map_err(|error| {
+            MissionPlanError::Persistence(format!("encode Git settlement witness: {error}"))
+        })?;
+        Ok(format!("{:x}", Sha256::digest(bytes)))
+    }
+}
+
+fn observe_settlement_git(
+    activation: &MissionPlanActivation,
+    tested_oid: Option<&str>,
+) -> SettlementGitObservation {
+    let candidate = tested_oid
+        .ok_or_else(|| "candidate-lineage-incomplete".to_string())
+        .and_then(|tested_oid| {
+            crate::git::inspect_exact_owned_candidate(
+                &activation.repository_root,
+                &activation.source_branch,
+                &activation.accepted_base_oid,
+                tested_oid,
+                &activation.owned_targets,
+                1_048_576,
+            )
+        });
+    let target = git2::Repository::open(&activation.repository_root).and_then(|repo| {
+        repo.revparse_single(&activation.target_branch)
+            .map(|object| object.id().to_string())
+    });
+    let target_state = if target.is_ok() {
+        "resolved"
+    } else {
+        "unavailable"
+    };
+    let target_oid = target.ok();
+    match candidate {
+        Ok(snapshot) => SettlementGitObservation {
+            candidate_oid: Some(snapshot.candidate_oid),
+            target_oid,
+            changed_paths: snapshot.changed_paths,
+            owned_diff_digest: Some(format!("{:x}", Sha256::digest(snapshot.diff.as_bytes()))),
+            candidate_state: "exact-owned-clean".into(),
+            target_state: target_state.into(),
+        },
+        Err(error) => SettlementGitObservation {
+            candidate_oid: None,
+            target_oid,
+            changed_paths: Vec::new(),
+            owned_diff_digest: None,
+            candidate_state: match error.as_str() {
+                "Mission source branch moved after testing" => "source-ref-drift",
+                "Mission candidate worktree is dirty" => "worktree-dirty",
+                "Mission candidate worktree branch/OID binding changed" => "worktree-binding-drift",
+                "candidate-lineage-incomplete" => "lineage-incomplete",
+                _ => "candidate-unavailable",
+            }
+            .into(),
+            target_state: target_state.into(),
         },
     }
+}
+
+fn settlement_blocker(
+    kind: SettlementBlockerKind,
+    id: &str,
+    code: &str,
+    message: &str,
+) -> SettlementBlocker {
+    let (action, owner, authority) = match kind {
+        SettlementBlockerKind::Repo => (
+            SettlementNextActionKind::Reprove,
+            "task-manager",
+            "task-repo",
+        ),
+        SettlementBlockerKind::Policy => (
+            SettlementNextActionKind::ResolvePolicy,
+            "mission-policy",
+            "accepted-mission-plan",
+        ),
+        SettlementBlockerKind::Operator => (
+            SettlementNextActionKind::OperatorAction,
+            "mission-operator",
+            "accepted-capability-requirement",
+        ),
+        SettlementBlockerKind::External => (
+            SettlementNextActionKind::ExternalAction,
+            "external-authority",
+            "accepted-artifact-requirement",
+        ),
+    };
+    SettlementBlocker {
+        blocker_id: id.into(),
+        kind,
+        authority: authority.into(),
+        code: code.into(),
+        message: message.into(),
+        required_inputs: vec![format!("settlement-input:{id}")],
+        command_argv: Vec::new(),
+        command_result: Some(message.into()),
+        artifact_refs: vec![format!("settlement-authority:{code}")],
+        next_action: SettlementNextAction {
+            kind: action,
+            owner: owner.into(),
+            input_refs: vec![format!("settlement-recovery:{id}")],
+        },
+    }
+}
+
+fn settlement_repo_blocker(id: &str, code: &str, message: &str) -> SettlementBlocker {
+    settlement_blocker(SettlementBlockerKind::Repo, id, code, message)
+}
+
+fn derive_declared_authority_blockers(preview: &MissionPlanPreview) -> Vec<SettlementBlocker> {
+    let mut blockers = Vec::new();
+    for work in &preview.work_units {
+        for capability in &work.required_capability_templates {
+            blockers.push(settlement_blocker(
+                SettlementBlockerKind::Operator,
+                &format!(
+                    "operator-authority-unavailable-{}",
+                    capability.capability_template_id
+                ),
+                "OPERATOR_AUTHORITY_UNAVAILABLE",
+                "accepted Mission requires operator capability evidence unavailable to settlement",
+            ));
+        }
+        for artifact in &work.required_artifacts {
+            blockers.push(settlement_blocker(
+                SettlementBlockerKind::External,
+                &format!("external-authority-unavailable-{}", artifact.artifact_id),
+                "EXTERNAL_AUTHORITY_UNAVAILABLE",
+                "accepted Mission requires external artifact evidence unavailable to settlement",
+            ));
+        }
+    }
+    blockers
+}
+
+fn evaluate_settlement_freshness(
+    preview: &MissionPlanPreview,
+    activation: &MissionPlanActivation,
+    evidence: Option<&MissionGateEvidence>,
+    review: Option<&crate::review::MissionReviewRecord>,
+    now: u64,
+) -> Vec<SettlementBlocker> {
+    let Some(evidence) = evidence else {
+        return vec![settlement_repo_blocker(
+            "missing-fresh-evidence",
+            "MISSING_FRESH_EVIDENCE",
+            "fresh passed exact-OID gate evidence is missing",
+        )];
+    };
+    let Some(expected) = preview
+        .expected_tests
+        .iter()
+        .find(|expected| expected.gate_id == evidence.gate_id)
+    else {
+        return vec![settlement_repo_blocker(
+            "unexpected-gate-evidence",
+            "UNEXPECTED_GATE_EVIDENCE",
+            "latest evidence does not belong to an accepted expected test",
+        )];
+    };
+    let Some(requirement) = preview
+        .work_units
+        .iter()
+        .flat_map(|work| work.required_gates.iter())
+        .find(|gate| gate.gate_id == expected.gate_id)
+    else {
+        return vec![settlement_blocker(
+            SettlementBlockerKind::Policy,
+            "gate-policy-unavailable",
+            "POLICY_AUTHORITY_UNAVAILABLE",
+            "accepted expected test has no gate policy authority",
+        )];
+    };
+    let mut blockers = Vec::new();
+    let max_age_ms = expected
+        .freshness_policy
+        .max_age_ms
+        .parse::<u64>()
+        .unwrap_or_default();
+    if evidence.started_at_unix_ms > evidence.ended_at_unix_ms || evidence.ended_at_unix_ms > now {
+        blockers.push(settlement_repo_blocker(
+            "evidence-clock-skew",
+            "EVIDENCE_CLOCK_SKEW",
+            "gate evidence timestamps are future-dated or inverted",
+        ));
+    } else if now - evidence.ended_at_unix_ms > max_age_ms {
+        blockers.push(settlement_repo_blocker(
+            "stale-gate-evidence",
+            "STALE_GATE_EVIDENCE",
+            "gate evidence exceeds the accepted freshness maxAgeMs",
+        ));
+    }
+    if evidence.result != "passed"
+        || expected.required_result != "passed_exact_oid"
+        || evidence.plan_content_digest != activation.plan_content_digest
+        || evidence.gate_id != requirement.gate_id
+        || evidence.command_argv != requirement.command_argv
+    {
+        blockers.push(settlement_repo_blocker(
+            "gate-contract-drift",
+            "GATE_CONTRACT_DRIFT",
+            "gate result, command, or accepted plan contract changed",
+        ));
+    }
+    if expected.freshness_policy.require_same_contract_version
+        && evidence.contract_version != requirement.contract_version
+    {
+        blockers.push(settlement_repo_blocker(
+            "gate-contract-version-drift",
+            "GATE_CONTRACT_VERSION_DRIFT",
+            "evidence contract version differs from the accepted gate contract",
+        ));
+    }
+    if expected.freshness_policy.require_same_head_oid
+        && evidence.tested_oid != evidence.candidate_oid
+    {
+        blockers.push(settlement_repo_blocker(
+            "tested-current-oid-drift",
+            "TESTED_CURRENT_OID_DRIFT",
+            "tested OID differs from the evidence candidate OID",
+        ));
+    }
+    if expected
+        .freshness_policy
+        .require_same_environment_fingerprint
+    {
+        let review_environment = review.and_then(|record| {
+            record
+                .reviewer_independence
+                .evidence_refs
+                .iter()
+                .find(|item| item.evidence_id == evidence.evidence_id)
+                .and_then(|item| item.environment_fingerprint.as_deref())
+        });
+        if review_environment != Some(evidence.environment_fingerprint.as_str()) {
+            blockers.push(settlement_repo_blocker(
+                "environment-fingerprint-drift",
+                "ENVIRONMENT_FINGERPRINT_DRIFT",
+                "review lineage does not preserve the tested environment fingerprint",
+            ));
+        }
+    }
+    if review.is_some_and(|record| {
+        record.created_at_unix_ms < evidence.ended_at_unix_ms || record.created_at_unix_ms > now
+    }) {
+        blockers.push(settlement_blocker(
+            SettlementBlockerKind::Policy,
+            "review-clock-skew",
+            "REVIEW_POLICY_CLOCK_SKEW",
+            "review timestamp is outside the accepted evidence-to-settlement order",
+        ));
+    }
+    blockers
 }
 
 fn build_settlement_coverage(
@@ -1413,11 +1700,83 @@ fn build_settlement_coverage(
     coverage
 }
 
+fn blocked_authority_matches(
+    packet: &BlockedWorkPacket,
+    blockers: &[SettlementBlocker],
+    evidence: Option<&MissionGateEvidence>,
+    review: Option<&crate::review::MissionReviewRecord>,
+    binding: Option<&crate::merge_intent::MissionMergeBinding>,
+    observed_git_fingerprint: &str,
+) -> bool {
+    let mut expected = blockers
+        .iter()
+        .map(|blocker| (blocker.kind, blocker.code.as_str()))
+        .collect::<Vec<_>>();
+    expected.sort_by_key(|(kind, code)| (format!("{kind:?}"), *code));
+    let mut durable = packet
+        .repo_blockers
+        .iter()
+        .chain(packet.policy_blockers.iter())
+        .chain(packet.operator_blockers.iter())
+        .chain(packet.external_blockers.iter())
+        .map(|blocker| (blocker.kind, blocker.code.as_str()))
+        .collect::<Vec<_>>();
+    durable.sort_by_key(|(kind, code)| (format!("{kind:?}"), *code));
+    durable == expected
+        && !blocked_inputs_changed(packet, evidence, review, binding, observed_git_fingerprint)
+}
+
+fn blocked_retry_authority_matches(
+    packet: &BlockedWorkPacket,
+    blockers_before_task_fence: &[SettlementBlocker],
+    evidence: Option<&MissionGateEvidence>,
+    review: Option<&crate::review::MissionReviewRecord>,
+    binding: Option<&crate::merge_intent::MissionMergeBinding>,
+    observed_git_fingerprint: &str,
+) -> bool {
+    let mut expected = blockers_before_task_fence
+        .iter()
+        .map(|blocker| (blocker.kind, blocker.code.as_str()))
+        .collect::<Vec<_>>();
+    expected.sort_by_key(|(kind, code)| (format!("{kind:?}"), *code));
+    let mut durable = packet
+        .repo_blockers
+        .iter()
+        .chain(packet.policy_blockers.iter())
+        .chain(packet.operator_blockers.iter())
+        .chain(packet.external_blockers.iter())
+        .filter(|blocker| blocker.code != "TASK_NOT_REVIEW")
+        .map(|blocker| (blocker.kind, blocker.code.as_str()))
+        .collect::<Vec<_>>();
+    durable.sort_by_key(|(kind, code)| (format!("{kind:?}"), *code));
+    durable == expected
+        && !blocked_inputs_changed(packet, evidence, review, binding, observed_git_fingerprint)
+}
+
+fn blocked_inputs_changed(
+    packet: &BlockedWorkPacket,
+    evidence: Option<&MissionGateEvidence>,
+    review: Option<&crate::review::MissionReviewRecord>,
+    binding: Option<&crate::merge_intent::MissionMergeBinding>,
+    observed_git_fingerprint: &str,
+) -> bool {
+    packet.observed_git_fingerprint != observed_git_fingerprint
+        || packet.evidence_ids
+            != evidence
+                .map(|item| vec![item.evidence_id.clone()])
+                .unwrap_or_default()
+        || packet.review_id.as_deref() != review.map(|item| item.review_id.as_str())
+        || packet.merge_intent_id.as_deref() != binding.map(|item| item.intent_id.as_str())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn blocked_packet(
     preview: &MissionPlanPreview,
     activation: &MissionPlanActivation,
     expected_version: &str,
+    settlement_generation: u64,
+    supersedes_packet_id: Option<String>,
+    observed_git_fingerprint: &str,
     evidence: Option<&MissionGateEvidence>,
     review: Option<&crate::review::MissionReviewRecord>,
     binding: Option<&crate::merge_intent::MissionMergeBinding>,
@@ -1447,6 +1806,9 @@ fn blocked_packet(
         plan_content_digest: activation.plan_content_digest.clone(),
         contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
         settlement_expected_version: expected_version.into(),
+        settlement_generation,
+        supersedes_packet_id,
+        observed_git_fingerprint: observed_git_fingerprint.into(),
         base_oid: activation.accepted_base_oid.clone(),
         candidate_oid: evidence.map(|item| item.candidate_oid.clone()),
         tested_oid: evidence.map(|item| item.tested_oid.clone()),
@@ -1738,6 +2100,83 @@ mod tests {
         bind_a7_input_revision(&mut input, 1, &head_oid);
         let repo_path = directory.path().to_string_lossy().into_owned();
         (directory, repo_path, input)
+    }
+
+    fn v10_shape_packet_json<T: serde::Serialize>(packet: &T) -> (String, String) {
+        let mut raw = serde_json::to_string(packet).unwrap();
+        let value = serde_json::to_value(packet).unwrap();
+        for field in [
+            "settlementGeneration",
+            "supersedesPacketId",
+            "observedGitFingerprint",
+        ] {
+            if let Some(field_value) = value.get(field) {
+                let encoded = serde_json::to_string(field_value).unwrap();
+                let needle = format!(",\"{field}\":{encoded}");
+                assert_eq!(raw.match_indices(&needle).count(), 1);
+                raw = raw.replacen(&needle, "", 1);
+            }
+        }
+        let current_digest = value
+            .get("packetDigest")
+            .and_then(serde_json::Value::as_str)
+            .unwrap()
+            .to_string();
+        (raw, current_digest)
+    }
+
+    fn legacy_v10_packet_json<T: serde::Serialize>(packet: &T) -> (String, String) {
+        let (raw, current_digest) = v10_shape_packet_json(packet);
+        let signed = format!("\"packetDigest\":\"{current_digest}\"");
+        assert_eq!(raw.match_indices(&signed).count(), 1);
+        let unsigned = raw.replacen(&signed, "\"packetDigest\":\"\"", 1);
+        let legacy_digest = format!("{:x}", sha2::Sha256::digest(unsigned.as_bytes()));
+        let legacy_json = unsigned.replacen(
+            "\"packetDigest\":\"\"",
+            &format!("\"packetDigest\":\"{legacy_digest}\""),
+            1,
+        );
+        (legacy_json, legacy_digest)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn migrate_v10_settlement_rows(
+        db: &Arc<ManagedDb>,
+        activation: &MissionPlanActivation,
+        rows: &[(&str, Option<&str>, &str, &str, &str, &str, u64)],
+    ) {
+        db.with(|database| {
+            crate::db::migrations::reset_settlement_store_to_v10_for_test(database.conn())
+                .map_err(|error| error.to_string())?;
+            for (packet_id, work_unit_id, kind, expected, json, digest, created_at) in rows {
+                database
+                    .conn()
+                    .execute(
+                        "INSERT INTO mission_settlement_packets (
+                         packet_id,activation_id,mission_id,mission_revision,work_unit_id,
+                         packet_kind,settlement_expected_version,packet_json,packet_digest,
+                         created_at_ms,supersedes_packet_id
+                     ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,NULL)",
+                        rusqlite::params![
+                            packet_id,
+                            activation.activation_id,
+                            activation.mission_id,
+                            activation.mission_revision,
+                            work_unit_id,
+                            kind,
+                            expected,
+                            json,
+                            digest,
+                            created_at
+                        ],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+            crate::db::migrations::run_migrations(database.conn())
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        })
+        .unwrap();
     }
 
     fn bind_a7_input_revision(
@@ -2424,7 +2863,9 @@ mod tests {
         let (_repository, repo_path, input) = a7_repo_input();
         let actor = input.mission_definition.created_by.clone();
         let plan_id = input.plan_id.clone();
-        let db = mem_db();
+        let db_directory = tempfile::tempdir().unwrap();
+        let db_path = db_directory.path().join("settlement-successor-race.db");
+        let db = Arc::new(ManagedDb::new(crate::db::Database::open(&db_path).unwrap()));
         let manager = TaskManager::new_durable();
         manager.attach_db(db.clone()).unwrap();
         manager.preview_mission_plan(input, &repo_path).unwrap();
@@ -2539,6 +2980,56 @@ mod tests {
             &invocation,
         )
         .unwrap();
+        assert!(evaluate_settlement_freshness(
+            &preview,
+            &activation,
+            Some(&second),
+            Some(&review),
+            second.ended_at_unix_ms + 300_000,
+        )
+        .is_empty());
+        let stale = evaluate_settlement_freshness(
+            &preview,
+            &activation,
+            Some(&second),
+            Some(&review),
+            second.ended_at_unix_ms + 300_001,
+        );
+        assert!(stale
+            .iter()
+            .any(|blocker| blocker.code == "STALE_GATE_EVIDENCE"));
+        let skew = evaluate_settlement_freshness(
+            &preview,
+            &activation,
+            Some(&second),
+            Some(&review),
+            second.ended_at_unix_ms - 1,
+        );
+        assert!(skew
+            .iter()
+            .any(|blocker| blocker.code == "EVIDENCE_CLOCK_SKEW"));
+        let mut contract_drift = second.clone();
+        contract_drift.contract_version = "2".into();
+        assert!(evaluate_settlement_freshness(
+            &preview,
+            &activation,
+            Some(&contract_drift),
+            Some(&review),
+            300,
+        )
+        .iter()
+        .any(|blocker| blocker.code == "GATE_CONTRACT_VERSION_DRIFT"));
+        let mut environment_drift = second.clone();
+        environment_drift.environment_fingerprint = "8".repeat(64);
+        assert!(evaluate_settlement_freshness(
+            &preview,
+            &activation,
+            Some(&environment_drift),
+            Some(&review),
+            300,
+        )
+        .iter()
+        .any(|blocker| blocker.code == "ENVIRONMENT_FINGERPRINT_DRIFT"));
         db.with(|database| {
             crate::persistence::ReviewRepo::insert_mission_review(database, &review).map(|_| ())
         })
@@ -2613,9 +3104,14 @@ mod tests {
         manager
             .transition(&activation.task_id, TaskStatus::Review)
             .unwrap();
+        let observed_git_fingerprint = "9".repeat(64);
         let expected = db
             .try_with(|database| {
-                TaskRepo::settlement_expected_version(database, &activation.activation_id)
+                TaskRepo::settlement_expected_version(
+                    database,
+                    &activation.activation_id,
+                    &observed_git_fingerprint,
+                )
             })
             .unwrap();
         let acceptance_coverage = preview
@@ -2629,7 +3125,7 @@ mod tests {
                 accepted: true,
             })
             .collect::<Vec<_>>();
-        let work_packet = CompletedWorkPacket {
+        let mut work_packet = CompletedWorkPacket {
             schema: COMPLETED_WORK_PACKET_SCHEMA.into(),
             packet_id: "0197c000-0000-7000-8000-000000000030".into(),
             activation_id: activation.activation_id.clone(),
@@ -2641,6 +3137,9 @@ mod tests {
             plan_content_digest: activation.plan_content_digest.clone(),
             contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
             settlement_expected_version: expected.clone(),
+            settlement_generation: 1,
+            supersedes_packet_id: None,
+            observed_git_fingerprint: observed_git_fingerprint.clone(),
             base_oid: activation.accepted_base_oid.clone(),
             tested_oid: second.tested_oid.clone(),
             reviewed_oid: review.reviewed_oid.clone(),
@@ -2666,7 +3165,7 @@ mod tests {
         }
         .seal()
         .unwrap();
-        let mission_packet = MissionCompletionPacket {
+        let mut mission_packet = MissionCompletionPacket {
             schema: MISSION_COMPLETION_PACKET_SCHEMA.into(),
             packet_id: "0197c000-0000-7000-8000-000000000031".into(),
             mission_id: activation.mission_id.clone(),
@@ -2677,11 +3176,13 @@ mod tests {
             )]
             .into_iter()
             .collect(),
-            mission_acceptance_coverage: acceptance_coverage,
+            mission_acceptance_coverage: acceptance_coverage.clone(),
             final_head_oid: loaded.integrated_oid.clone(),
             integrated_oid: loaded.integrated_oid.clone(),
             contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
-            settlement_expected_version: expected,
+            settlement_expected_version: expected.clone(),
+            settlement_generation: 1,
+            observed_git_fingerprint: observed_git_fingerprint.clone(),
             merge_result: loaded.merge_result.clone(),
             repo_blockers: vec![],
             policy_blockers: vec![],
@@ -2731,6 +3232,7 @@ mod tests {
                 &manager.read(Clone::clone),
                 &work_packet,
                 &mission_packet,
+                || Ok(observed_git_fingerprint.clone()),
             )),
             Err(MissionPlanError::Validation(message)) if message.contains("Done task projection")
         ));
@@ -2747,7 +3249,7 @@ mod tests {
         })
         .unwrap();
         assert!(
-            matches!(db.try_with(|database| TaskRepo::persist_completed_settlement(database,&staging,&work_packet,&mission_packet)),
+            matches!(db.try_with(|database| TaskRepo::persist_completed_settlement(database,&staging,&work_packet,&mission_packet, || Ok(observed_git_fingerprint.clone()))),
             Err(MissionPlanError::ContentConflict(message)) if message.contains("compare-and-swap"))
         );
         db.with(|database| {
@@ -2770,7 +3272,8 @@ mod tests {
                 database,
                 &staging,
                 &work_packet,
-                &mission_packet
+                &mission_packet,
+                || Ok(observed_git_fingerprint.clone()),
             ))
             .is_err());
         let rolled_back: i64 = db
@@ -2793,21 +3296,179 @@ mod tests {
                 .map_err(|error| error.to_string())
         })
         .unwrap();
-        db.try_with(|database| {
+        let mutation_root = activation.repository_root.clone();
+        let mutation_target = activation.target_branch.clone();
+        let mutation_oid = activation.accepted_base_oid.clone();
+        let git_drift = db.try_with(|database| {
             TaskRepo::persist_completed_settlement(
                 database,
                 &staging,
                 &work_packet,
                 &mission_packet,
+                || {
+                    let repository = git2::Repository::open(&mutation_root).map_err(|error| {
+                        MissionPlanError::Persistence(format!("open mutation repository: {error}"))
+                    })?;
+                    let oid = mutation_oid.parse::<git2::Oid>().map_err(|error| {
+                        MissionPlanError::Persistence(format!("parse mutation OID: {error}"))
+                    })?;
+                    repository
+                        .reference(
+                            &format!("refs/heads/{mutation_target}"),
+                            oid,
+                            true,
+                            "A7.4 linearization mutation test",
+                        )
+                        .map_err(|error| {
+                            MissionPlanError::Persistence(format!("move mutation target: {error}"))
+                        })?;
+                    Ok("8".repeat(64))
+                },
             )
+        });
+        assert!(matches!(
+            git_drift,
+            Err(MissionPlanError::ContentConflict(message))
+                if message.contains("linearization point")
+        ));
+        let after_git_drift: (i64, String) = db
+            .with(|database| {
+                database
+                    .conn()
+                    .query_row(
+                        "SELECT (SELECT COUNT(*) FROM mission_settlement_packets),status
+                           FROM tasks WHERE id=?1",
+                        [&activation.task_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(after_git_drift, (0, "review".into()));
+        let blocked = blocked_packet(
+            &preview,
+            &activation,
+            &expected,
+            1,
+            None,
+            &observed_git_fingerprint,
+            Some(&second),
+            Some(&review),
+            Some(&binding),
+            acceptance_coverage.clone(),
+            vec![settlement_repo_blocker(
+                "repair-required",
+                "REPAIR_REQUIRED",
+                "independent repair requires a new settlement generation",
+            )],
+            205,
+        )
+        .unwrap()
+        .seal()
+        .unwrap();
+        let mut blocked_staging = manager.read(Clone::clone);
+        blocked_staging
+            .transition(&activation.task_id, TaskStatus::Blocked)
+            .unwrap();
+        db.try_with(|database| {
+            TaskRepo::persist_blocked_settlement(database, &blocked_staging, &blocked, || {
+                Ok(observed_git_fingerprint.clone())
+            })
         })
         .unwrap();
+        let repaired_expected = db
+            .try_with(|database| {
+                TaskRepo::settlement_expected_version(
+                    database,
+                    &activation.activation_id,
+                    &observed_git_fingerprint,
+                )
+            })
+            .unwrap();
+        work_packet.settlement_expected_version = repaired_expected.clone();
+        work_packet.settlement_generation = 2;
+        work_packet.supersedes_packet_id = Some(blocked.packet_id.clone());
+        work_packet = work_packet.seal().unwrap();
+        mission_packet.settlement_expected_version = repaired_expected;
+        mission_packet.settlement_generation = 2;
+        mission_packet.observed_git_fingerprint = observed_git_fingerprint.clone();
+        mission_packet = mission_packet.seal().unwrap();
+
+        let mut competing_work_packet = work_packet.clone();
+        competing_work_packet.packet_id = "0197c000-0000-7000-8000-000000000032".into();
+        competing_work_packet = competing_work_packet.seal().unwrap();
+        let mut competing_mission_packet = mission_packet.clone();
+        competing_mission_packet.packet_id = "0197c000-0000-7000-8000-000000000033".into();
+        competing_mission_packet
+            .required_work_unit_packet_ids_by_work_unit
+            .insert(
+                activation.task_id.clone(),
+                competing_work_packet.packet_id.clone(),
+            );
+        competing_mission_packet = competing_mission_packet.seal().unwrap();
+
+        let left_database = crate::db::Database::open(&db_path).unwrap();
+        let right_database = crate::db::Database::open(&db_path).unwrap();
+        let race_barrier = Arc::new(std::sync::Barrier::new(3));
+        let left_barrier = race_barrier.clone();
+        let left_graph = staging.clone();
+        let left_work = work_packet.clone();
+        let left_mission = mission_packet.clone();
+        let left_fingerprint = observed_git_fingerprint.clone();
+        let left = std::thread::spawn(move || {
+            left_barrier.wait();
+            let result = TaskRepo::persist_completed_settlement(
+                &left_database,
+                &left_graph,
+                &left_work,
+                &left_mission,
+                || Ok(left_fingerprint.clone()),
+            );
+            (result, left_work, left_mission)
+        });
+        let right_barrier = race_barrier.clone();
+        let right_graph = staging.clone();
+        let right_work = competing_work_packet;
+        let right_mission = competing_mission_packet;
+        let right_fingerprint = observed_git_fingerprint.clone();
+        let right = std::thread::spawn(move || {
+            right_barrier.wait();
+            let result = TaskRepo::persist_completed_settlement(
+                &right_database,
+                &right_graph,
+                &right_work,
+                &right_mission,
+                || Ok(right_fingerprint.clone()),
+            );
+            (result, right_work, right_mission)
+        });
+        race_barrier.wait();
+        let race_results = [left.join().unwrap(), right.join().unwrap()];
+        assert_eq!(
+            race_results
+                .iter()
+                .filter(|(result, _, _)| result.is_ok())
+                .count(),
+            1,
+            "exactly one concurrent successor may claim a blocked predecessor"
+        );
+        assert!(race_results
+            .iter()
+            .any(|(result, _, _)| { matches!(result, Err(MissionPlanError::ContentConflict(_))) }));
+        let (_, winning_work_packet, winning_mission_packet) = race_results
+            .into_iter()
+            .find(|(result, _, _)| result.is_ok())
+            .unwrap();
+        work_packet = winning_work_packet;
+        mission_packet = winning_mission_packet;
+
         db.try_with(|database| {
             TaskRepo::persist_completed_settlement(
                 database,
                 &staging,
                 &work_packet,
                 &mission_packet,
+                || Ok(observed_git_fingerprint.clone()),
             )
         })
         .unwrap();
@@ -2817,9 +3478,45 @@ mod tests {
             })
             .unwrap()
             .unwrap();
-        assert_eq!(settled, (work_packet, mission_packet));
+        assert_eq!(settled, (work_packet.clone(), mission_packet.clone()));
+        let history: Vec<(String, i64, Option<String>)> = db
+            .with(|database| {
+                let mut statement = database
+                    .conn()
+                    .prepare(
+                        "SELECT packet_kind,settlement_generation,supersedes_packet_id
+                           FROM mission_settlement_packets WHERE activation_id=?1
+                           ORDER BY settlement_generation,packet_kind",
+                    )
+                    .map_err(|error| error.to_string())?;
+                let rows = statement
+                    .query_map([&activation.activation_id], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                    })
+                    .map_err(|error| error.to_string())?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|error| error.to_string())?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(history.len(), 3);
+        assert!(history.iter().any(|(kind, generation, supersedes)| {
+            kind == "blocked_work" && *generation == 1 && supersedes.is_none()
+        }));
+        assert!(history.iter().any(|(kind, generation, supersedes)| {
+            kind == "completed_work"
+                && *generation == 2
+                && supersedes.as_deref() == Some(blocked.packet_id.as_str())
+        }));
+        let still_current = db
+            .try_with(|database| {
+                TaskRepo::load_completed_settlement(database, &activation.activation_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(still_current, (work_packet.clone(), mission_packet.clone()));
         assert!(matches!(
-            manager.settle_mission_plan(&plan_id, 1, vec![]),
+            manager.settle_mission_plan(&plan_id, 1),
             Err(MissionPlanError::ContentConflict(message)) if message.contains("task projection disagree")
         ));
     }
@@ -2870,6 +3567,451 @@ mod tests {
     }
 
     #[test]
+    fn a7_4_blocker_authority_is_closed_over_the_accepted_plan() {
+        let (_repository, repo_path, input) = a7_repo_input();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(mem_db()).unwrap();
+        let mut preview = manager.preview_mission_plan(input, &repo_path).unwrap();
+        assert!(derive_declared_authority_blockers(&preview).is_empty());
+
+        preview.work_units[0].required_capability_templates.push(
+            crate::task::mission::CapabilityTemplate {
+                capability_template_id: "operator-approval".into(),
+                version: "1".into(),
+                action: "approve".into(),
+                scope_kinds: vec!["mission".into()],
+                one_use_required: true,
+                approval_policy_id: "operator-policy/v1".into(),
+            },
+        );
+        preview.work_units[0]
+            .required_artifacts
+            .push(crate::task::mission::ArtifactRequirement {
+                artifact_id: "hosted-proof".into(),
+                kind: "external-proof".into(),
+                locator_policy_id: "external-artifact/v1".into(),
+                digest_algorithm: "sha256".into(),
+                freshness_policy: preview.expected_tests[0].freshness_policy.clone(),
+            });
+        let blockers = derive_declared_authority_blockers(&preview);
+        assert!(blockers.iter().any(|blocker| {
+            blocker.kind == SettlementBlockerKind::Operator
+                && blocker.code == "OPERATOR_AUTHORITY_UNAVAILABLE"
+        }));
+        assert!(blockers.iter().any(|blocker| {
+            blocker.kind == SettlementBlockerKind::External
+                && blocker.code == "EXTERNAL_AUTHORITY_UNAVAILABLE"
+        }));
+        assert!(blockers.iter().all(|blocker| {
+            blocker.command_argv.is_empty()
+                && blocker
+                    .next_action
+                    .input_refs
+                    .iter()
+                    .all(|reference| !reference.contains(' ') && !reference.contains('\n'))
+        }));
+    }
+
+    #[test]
+    fn a7_4_receipt_only_recovery_and_populated_v10_packets_reach_current_validation() {
+        let (repository_directory, repo_path, input) = a7_repo_input();
+        let repository = git2::Repository::open(repository_directory.path()).unwrap();
+        let actor = input.mission_definition.created_by.clone();
+        let plan_id = input.plan_id.clone();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        manager.preview_mission_plan(input, &repo_path).unwrap();
+        manager.accept_mission_plan(&plan_id, 1, &actor).unwrap();
+        let activation = manager.activate_mission_plan(&plan_id, 1).unwrap();
+
+        let base = activation.accepted_base_oid.parse::<git2::Oid>().unwrap();
+        repository
+            .branch(
+                &activation.source_branch,
+                &repository.find_commit(base).unwrap(),
+                false,
+            )
+            .unwrap();
+        crate::git::create_worktree(&repo_path, &activation.source_branch).unwrap();
+        let candidate_worktree =
+            crate::git::predict_worktree_path(&repo_path, &activation.source_branch);
+        let owned_path = candidate_worktree.join(&activation.owned_targets[0]);
+        std::fs::create_dir_all(owned_path.parent().unwrap()).unwrap();
+        std::fs::write(&owned_path, "pub fn stable_order_fixture() {}\n").unwrap();
+        let candidate_repository = git2::Repository::open(&candidate_worktree).unwrap();
+        let mut index = candidate_repository.index().unwrap();
+        index
+            .add_path(std::path::Path::new(&activation.owned_targets[0]))
+            .unwrap();
+        index.write().unwrap();
+        let candidate_oid = commit_a7_test_repo(&candidate_worktree);
+        crate::git::ensure_isolated_branch_at_oid(
+            &repo_path,
+            &activation.target_branch,
+            &candidate_oid,
+        )
+        .unwrap();
+        let snapshot = crate::git::inspect_exact_owned_candidate(
+            &repo_path,
+            &activation.source_branch,
+            &activation.accepted_base_oid,
+            &candidate_oid,
+            &activation.owned_targets,
+            256 * 1024,
+        )
+        .unwrap();
+
+        let attempt = manager
+            .reserve_execution(ExecutionReservation {
+                task_id: activation.task_id.clone(),
+                repo_path: activation.repository_root.clone(),
+                runtime: crate::task::ExecutionRuntime::VisiblePty,
+                ownership_claim_ids: vec!["claim-a7-receipt-recovery".into()],
+                now: 10,
+            })
+            .unwrap();
+        let mut effect_now = 11;
+        manager
+            .commit_execution_reservation(&attempt.token(), effect_now)
+            .unwrap();
+        for effect in [ExecutionEffect::FirstEffect, ExecutionEffect::Spawn] {
+            commit_effect(&manager, &attempt, effect, &mut effect_now);
+        }
+        effect_now += 1;
+        manager
+            .reserve_execution_effect(&attempt.token(), ExecutionEffect::Review, None, effect_now)
+            .unwrap();
+        let current = manager.current_execution(&activation.task_id).unwrap();
+        let wall_now = decision_unix_ms().unwrap();
+        let merge_now = i64::try_from(wall_now).unwrap();
+        let evidence = MissionGateEvidence {
+            schema: "aelyris.mission_gate_evidence/v1".into(),
+            evidence_id: "0197c000-0000-7000-8000-000000000040".into(),
+            activation_id: activation.activation_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            attempt_id: current.identity.attempt_id.clone(),
+            execution_generation: current.identity.execution_generation,
+            agent_run_id: current.identity.agent_run_id.clone(),
+            runtime_domain_id: "visible_pty".into(),
+            pty_session_id: current.identity.pty_session_id.clone().unwrap(),
+            gate_id: crate::task::A7_FIXTURE_GATE_ID.into(),
+            contract_version: "1".into(),
+            command_argv: activation.test_argv.clone(),
+            command_fingerprint: "1".repeat(64),
+            environment_fingerprint: "2".repeat(64),
+            result: "passed".into(),
+            evidence_digest: "3".repeat(64),
+            base_oid: activation.accepted_base_oid.clone(),
+            candidate_oid: candidate_oid.clone(),
+            tested_oid: candidate_oid.clone(),
+            started_at_unix_ms: wall_now - 1_001,
+            ended_at_unix_ms: wall_now - 1_000,
+        };
+        manager
+            .persist_mission_gate_evidence(&activation, &evidence)
+            .unwrap();
+        let preview = manager.mission_plan(&plan_id, 1).unwrap();
+        let builder =
+            crate::review::mission::builder_runtime_attestation(&evidence, "codex-no-hooks")
+                .unwrap();
+        let model = serde_json::json!({
+            "clauseCoverage": preview.mission_definition.acceptance.iter().map(|clause| {
+                serde_json::json!({
+                    "clauseId": clause.clause_id,
+                    "accepted": true,
+                    "reason": "exact receipt recovery fixture"
+                })
+            }).collect::<Vec<_>>(),
+            "findings": []
+        })
+        .to_string();
+        let invocation = crate::review::ReviewerInvocation::test_only(&model);
+        db.with(|database| {
+            crate::persistence::ReviewRepo::insert_reviewer_invocation_receipt(
+                database,
+                invocation.receipt(),
+            )
+            .map(|_| ())
+        })
+        .unwrap();
+        let review = crate::review::review_exact_candidate(
+            &preview,
+            &activation,
+            &evidence,
+            &snapshot.changed_paths,
+            &snapshot.diff,
+            wall_now - 500,
+            &builder,
+            false,
+            &invocation,
+        )
+        .unwrap();
+        db.with(|database| {
+            crate::persistence::ReviewRepo::insert_mission_review(database, &review).map(|_| ())
+        })
+        .unwrap();
+        let intent = crate::merge_intent::MergeIntent {
+            intent_id: "merge-a7-4-receipt-recovery".into(),
+            repo_path: activation.repository_root.clone(),
+            source_branch: activation.source_branch.clone(),
+            target_branch: activation.target_branch.clone(),
+            source_oid: candidate_oid.clone(),
+            target_oid: activation.accepted_base_oid.clone(),
+            merge_base_oid: Some(activation.accepted_base_oid.clone()),
+            task_id: activation.work_unit_id.clone(),
+            created_at: merge_now - 400,
+            state: crate::merge_intent::MergeIntentState::Queued,
+            updated_at: merge_now - 400,
+            session_id: Some(
+                review
+                    .reviewer_independence
+                    .reviewer_logical_session_id
+                    .clone(),
+            ),
+            reviewer_id: None,
+            gates_digest: None,
+        };
+        let binding = crate::merge_intent::MissionMergeBinding {
+            intent_id: intent.intent_id.clone(),
+            activation_id: activation.activation_id.clone(),
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            work_unit_id: activation.work_unit_id.clone(),
+            tested_evidence_id: evidence.evidence_id.clone(),
+            review_id: review.review_id.clone(),
+            reviewer_independence_digest: review.reviewer_independence.digest.clone(),
+            source_oid: candidate_oid.clone(),
+            target_oid: activation.accepted_base_oid.clone(),
+            created_at_unix_ms: wall_now - 400,
+        };
+        db.with(|database| {
+            crate::persistence::MergeRepo::insert_or_get(database, &intent)?;
+            crate::persistence::MergeRepo::insert_mission_binding(database, &binding)?;
+            crate::persistence::MergeRepo::set_state(
+                database,
+                &intent.intent_id,
+                crate::merge_intent::MergeIntentState::Merged,
+                merge_now - 300,
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Running)
+            .unwrap();
+        manager
+            .transition(&activation.task_id, TaskStatus::Review)
+            .unwrap();
+
+        let first = manager.settle_mission_plan(&plan_id, 1).unwrap();
+        let MissionSettlementOutcome::Blocked { blocked_packet } = first else {
+            panic!("missing receipt must create a durable Blocked generation")
+        };
+        assert!(blocked_packet
+            .repo_blockers
+            .iter()
+            .any(|blocker| blocker.code == "MISSING_MERGE_RECEIPT"));
+        assert!(!blocked_packet
+            .repo_blockers
+            .iter()
+            .any(|blocker| blocker.code == "TASK_NOT_REVIEW"));
+
+        db.with(|database| {
+            crate::persistence::MergeRepo::insert_mission_receipt(
+                database,
+                &crate::merge_intent::MissionMergeReceipt {
+                    receipt_id: "0197c000-0000-7000-8000-000000000041".into(),
+                    intent_id: intent.intent_id.clone(),
+                    integrated_oid: candidate_oid.clone(),
+                    merge_result: "merged_exact_oid".into(),
+                    created_at_unix_ms: wall_now - 200,
+                },
+            )
+            .map(|_| ())
+        })
+        .unwrap();
+        let second = manager.settle_mission_plan(&plan_id, 1).unwrap();
+        let MissionSettlementOutcome::Completed {
+            mut work_packet,
+            mut mission_packet,
+        } = second
+        else {
+            panic!("the exact receipt alone must recover through the public settlement owner")
+        };
+        assert_eq!(work_packet.settlement_generation, 2);
+        assert_eq!(
+            work_packet.supersedes_packet_id.as_deref(),
+            Some(blocked_packet.packet_id.as_str())
+        );
+        assert_eq!(
+            manager.get(&activation.task_id).unwrap().status,
+            TaskStatus::Done
+        );
+
+        work_packet.settlement_generation = 1;
+        work_packet.supersedes_packet_id = None;
+        work_packet = work_packet.seal().unwrap();
+        mission_packet.settlement_generation = 1;
+        mission_packet = mission_packet.seal().unwrap();
+        let (legacy_work_json, legacy_work_digest) = legacy_v10_packet_json(&work_packet);
+        let (legacy_mission_json, legacy_mission_digest) = legacy_v10_packet_json(&mission_packet);
+        migrate_v10_settlement_rows(
+            &db,
+            &activation,
+            &[
+                (
+                    work_packet.packet_id.as_str(),
+                    Some(work_packet.work_unit_id.as_str()),
+                    "completed_work",
+                    work_packet.settlement_expected_version.as_str(),
+                    legacy_work_json.as_str(),
+                    legacy_work_digest.as_str(),
+                    work_packet.created_at_unix_ms,
+                ),
+                (
+                    mission_packet.packet_id.as_str(),
+                    None,
+                    "mission_completion",
+                    mission_packet.settlement_expected_version.as_str(),
+                    legacy_mission_json.as_str(),
+                    legacy_mission_digest.as_str(),
+                    mission_packet.created_at_unix_ms,
+                ),
+            ],
+        );
+        let migrated_completion = db
+            .try_with(|database| {
+                TaskRepo::load_completed_settlement(database, &activation.activation_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(migrated_completion.0.packet_digest, legacy_work_digest);
+        assert_eq!(migrated_completion.1.packet_digest, legacy_mission_digest);
+
+        let (legacy_blocked_json, legacy_blocked_digest) = legacy_v10_packet_json(&blocked_packet);
+        migrate_v10_settlement_rows(
+            &db,
+            &activation,
+            &[((
+                blocked_packet.packet_id.as_str(),
+                Some(blocked_packet.work_unit_id.as_str()),
+                "blocked_work",
+                blocked_packet.settlement_expected_version.as_str(),
+                legacy_blocked_json.as_str(),
+                legacy_blocked_digest.as_str(),
+                blocked_packet.created_at_unix_ms,
+            ))],
+        );
+        let migrated_blocked = db
+            .try_with(|database| {
+                TaskRepo::load_blocked_settlement(database, &activation.activation_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(migrated_blocked.packet_digest, legacy_blocked_digest);
+        assert_eq!(migrated_blocked.settlement_generation, 1);
+        assert_eq!(migrated_blocked.observed_git_fingerprint, "0".repeat(64));
+
+        let (forged_work_json, forged_work_digest) = v10_shape_packet_json(&work_packet);
+        assert_eq!(forged_work_digest, work_packet.packet_digest);
+        migrate_v10_settlement_rows(
+            &db,
+            &activation,
+            &[
+                (
+                    work_packet.packet_id.as_str(),
+                    Some(work_packet.work_unit_id.as_str()),
+                    "completed_work",
+                    work_packet.settlement_expected_version.as_str(),
+                    forged_work_json.as_str(),
+                    forged_work_digest.as_str(),
+                    work_packet.created_at_unix_ms,
+                ),
+                (
+                    mission_packet.packet_id.as_str(),
+                    None,
+                    "mission_completion",
+                    mission_packet.settlement_expected_version.as_str(),
+                    legacy_mission_json.as_str(),
+                    legacy_mission_digest.as_str(),
+                    mission_packet.created_at_unix_ms,
+                ),
+            ],
+        );
+        let forged_work_error = db
+            .try_with(|database| {
+                TaskRepo::load_completed_settlement(database, &activation.activation_id)
+            })
+            .unwrap_err();
+        assert!(matches!(
+            forged_work_error,
+            MissionPlanError::ContentConflict(_) | MissionPlanError::Validation(_)
+        ));
+
+        let (forged_mission_json, forged_mission_digest) = v10_shape_packet_json(&mission_packet);
+        assert_eq!(forged_mission_digest, mission_packet.packet_digest);
+        migrate_v10_settlement_rows(
+            &db,
+            &activation,
+            &[
+                (
+                    work_packet.packet_id.as_str(),
+                    Some(work_packet.work_unit_id.as_str()),
+                    "completed_work",
+                    work_packet.settlement_expected_version.as_str(),
+                    legacy_work_json.as_str(),
+                    legacy_work_digest.as_str(),
+                    work_packet.created_at_unix_ms,
+                ),
+                (
+                    mission_packet.packet_id.as_str(),
+                    None,
+                    "mission_completion",
+                    mission_packet.settlement_expected_version.as_str(),
+                    forged_mission_json.as_str(),
+                    forged_mission_digest.as_str(),
+                    mission_packet.created_at_unix_ms,
+                ),
+            ],
+        );
+        let forged_mission_error = db
+            .try_with(|database| {
+                TaskRepo::load_completed_settlement(database, &activation.activation_id)
+            })
+            .unwrap_err();
+        assert!(matches!(
+            forged_mission_error,
+            MissionPlanError::ContentConflict(_) | MissionPlanError::Validation(_)
+        ));
+
+        let (forged_blocked_json, forged_blocked_digest) = v10_shape_packet_json(&blocked_packet);
+        assert_eq!(forged_blocked_digest, blocked_packet.packet_digest);
+        migrate_v10_settlement_rows(
+            &db,
+            &activation,
+            &[((
+                blocked_packet.packet_id.as_str(),
+                Some(blocked_packet.work_unit_id.as_str()),
+                "blocked_work",
+                blocked_packet.settlement_expected_version.as_str(),
+                forged_blocked_json.as_str(),
+                forged_blocked_digest.as_str(),
+                blocked_packet.created_at_unix_ms,
+            ))],
+        );
+        let forged_blocked_error = db
+            .try_with(|database| {
+                TaskRepo::load_blocked_settlement(database, &activation.activation_id)
+            })
+            .unwrap_err();
+        assert!(matches!(
+            forged_blocked_error,
+            MissionPlanError::ContentConflict(_) | MissionPlanError::Validation(_)
+        ));
+    }
+
+    #[test]
     fn a7_4_missing_lineage_atomically_persists_zero_credit_blocked_packet() {
         let (_repository, repo_path, input) = a7_repo_input();
         let actor = input.mission_definition.created_by.clone();
@@ -2884,7 +4026,7 @@ mod tests {
             .transition(&activation.task_id, TaskStatus::Running)
             .unwrap();
 
-        let first = manager.settle_mission_plan(&plan_id, 1, vec![]).unwrap();
+        let first = manager.settle_mission_plan(&plan_id, 1).unwrap();
         let MissionSettlementOutcome::Blocked { blocked_packet } = first else {
             panic!("missing exact lineage must fail closed")
         };
@@ -2900,13 +4042,13 @@ mod tests {
             .map_err(|error| error.to_string())).unwrap();
         assert_eq!(counts, (1, 0));
 
-        let retry = manager.settle_mission_plan(&plan_id, 1, vec![]).unwrap();
+        let retry = manager.settle_mission_plan(&plan_id, 1).unwrap();
         assert_eq!(retry, MissionSettlementOutcome::Blocked { blocked_packet });
         manager
             .transition(&activation.task_id, TaskStatus::Running)
             .unwrap();
         assert!(matches!(
-            manager.settle_mission_plan(&plan_id, 1, vec![]),
+            manager.settle_mission_plan(&plan_id, 1),
             Err(MissionPlanError::ContentConflict(message)) if message.contains("task projection disagree")
         ));
     }

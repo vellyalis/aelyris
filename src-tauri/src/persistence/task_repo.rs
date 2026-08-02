@@ -44,6 +44,23 @@ struct RawTask {
     timeout_attempts: i64,
 }
 
+#[derive(Debug)]
+struct StoredSettlementPacketRow {
+    packet_id: String,
+    activation_id: String,
+    mission_id: String,
+    mission_revision: i64,
+    work_unit_id: Option<String>,
+    packet_kind: String,
+    settlement_expected_version: String,
+    packet_json: String,
+    packet_digest: String,
+    created_at_ms: i64,
+    supersedes_packet_id: Option<String>,
+    settlement_generation: i64,
+    observed_git_fingerprint: String,
+}
+
 struct RawMissionPlan {
     plan_id: String,
     plan_revision: i64,
@@ -83,6 +100,7 @@ struct SettlementCasFacts {
     receipt_id: Option<String>,
     integrated_oid: Option<String>,
     merge_result: Option<String>,
+    observed_git_fingerprint: String,
 }
 
 pub struct TaskRepo;
@@ -91,6 +109,7 @@ impl TaskRepo {
     fn settlement_expected_version_conn(
         conn: &rusqlite::Connection,
         activation_id: &str,
+        observed_git_fingerprint: &str,
     ) -> Result<String, MissionPlanError> {
         let facts = conn
             .query_row(
@@ -139,6 +158,7 @@ impl TaskRepo {
                         receipt_id: row.get(18)?,
                         integrated_oid: row.get(19)?,
                         merge_result: row.get(20)?,
+                        observed_git_fingerprint: observed_git_fingerprint.to_string(),
                     })
                 },
             )
@@ -160,43 +180,300 @@ impl TaskRepo {
     pub fn settlement_expected_version(
         db: &Database,
         activation_id: &str,
+        observed_git_fingerprint: &str,
     ) -> Result<String, MissionPlanError> {
-        Self::settlement_expected_version_conn(db.conn(), activation_id)
+        Self::settlement_expected_version_conn(db.conn(), activation_id, observed_git_fingerprint)
     }
 
-    fn load_settlement_json(
+    fn settlement_row_from_sql(
+        row: &rusqlite::Row<'_>,
+    ) -> rusqlite::Result<StoredSettlementPacketRow> {
+        Ok(StoredSettlementPacketRow {
+            packet_id: row.get(0)?,
+            activation_id: row.get(1)?,
+            mission_id: row.get(2)?,
+            mission_revision: row.get(3)?,
+            work_unit_id: row.get(4)?,
+            packet_kind: row.get(5)?,
+            settlement_expected_version: row.get(6)?,
+            packet_json: row.get(7)?,
+            packet_digest: row.get(8)?,
+            created_at_ms: row.get(9)?,
+            supersedes_packet_id: row.get(10)?,
+            settlement_generation: row.get(11)?,
+            observed_git_fingerprint: row.get(12)?,
+        })
+    }
+
+    fn load_current_decision(
+        db: &Database,
+        activation_id: &str,
+    ) -> Result<Option<StoredSettlementPacketRow>, MissionPlanError> {
+        db.conn()
+            .query_row(
+                "SELECT packet_id,activation_id,mission_id,mission_revision,work_unit_id,
+                        packet_kind,settlement_expected_version,packet_json,packet_digest,
+                        created_at_ms,supersedes_packet_id,settlement_generation,
+                        observed_git_fingerprint
+                   FROM mission_settlement_packets
+                  WHERE activation_id=?1 AND packet_kind IN ('completed_work','blocked_work')
+                  ORDER BY settlement_generation DESC LIMIT 1",
+                [activation_id],
+                Self::settlement_row_from_sql,
+            )
+            .optional()
+            .map_err(|error| {
+                MissionPlanError::Persistence(format!("load current settlement decision: {error}"))
+            })
+    }
+
+    fn load_settlement_kind(
         db: &Database,
         activation_id: &str,
         packet_kind: &str,
-    ) -> Result<Option<String>, MissionPlanError> {
-        db.conn().query_row(
-            "SELECT packet_json FROM mission_settlement_packets WHERE activation_id=?1 AND packet_kind=?2",
-            params![activation_id, packet_kind],
-            |row| row.get(0),
-        ).optional().map_err(|error| MissionPlanError::Persistence(format!("load settlement packet: {error}")))
+        settlement_generation: i64,
+    ) -> Result<Option<StoredSettlementPacketRow>, MissionPlanError> {
+        db.conn()
+            .query_row(
+                "SELECT packet_id,activation_id,mission_id,mission_revision,work_unit_id,
+                        packet_kind,settlement_expected_version,packet_json,packet_digest,
+                        created_at_ms,supersedes_packet_id,settlement_generation,
+                        observed_git_fingerprint
+                   FROM mission_settlement_packets
+                  WHERE activation_id=?1 AND packet_kind=?2 AND settlement_generation=?3",
+                params![activation_id, packet_kind, settlement_generation],
+                Self::settlement_row_from_sql,
+            )
+            .optional()
+            .map_err(|error| {
+                MissionPlanError::Persistence(format!("load {packet_kind} packet: {error}"))
+            })
+    }
+
+    fn settlement_json_value(
+        row: &StoredSettlementPacketRow,
+        expected_schema: &str,
+    ) -> Result<serde_json::Value, MissionPlanError> {
+        let value: serde_json::Value = serde_json::from_str(&row.packet_json).map_err(|error| {
+            MissionPlanError::Persistence(format!(
+                "decode {} packet JSON: {error}",
+                row.packet_kind
+            ))
+        })?;
+        let mission_revision = u64::try_from(row.mission_revision)
+            .map_err(|_| MissionPlanError::Persistence("negative mission revision".into()))?;
+        let created_at = u64::try_from(row.created_at_ms)
+            .map_err(|_| MissionPlanError::Persistence("negative settlement time".into()))?;
+        let string = |key: &str| value.get(key).and_then(serde_json::Value::as_str);
+        let number = |key: &str| value.get(key).and_then(serde_json::Value::as_u64);
+        if string("schema") != Some(expected_schema)
+            || string("packetId") != Some(row.packet_id.as_str())
+            || string("missionId") != Some(row.mission_id.as_str())
+            || number("missionRevision") != Some(mission_revision)
+            || string("settlementExpectedVersion") != Some(row.settlement_expected_version.as_str())
+            || string("packetDigest") != Some(row.packet_digest.as_str())
+            || number("createdAtUnixMs") != Some(created_at)
+            || row.work_unit_id.as_deref()
+                != value.get("workUnitId").and_then(serde_json::Value::as_str)
+            || row.work_unit_id.is_some()
+                && string("activationId") != Some(row.activation_id.as_str())
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "settlement packet typed columns do not match immutable JSON".into(),
+            ));
+        }
+        Ok(value)
+    }
+
+    fn verify_legacy_settlement_digest(
+        row: &StoredSettlementPacketRow,
+        value: &serde_json::Value,
+        mission_packet: bool,
+    ) -> Result<(), MissionPlanError> {
+        let missing_v11_fields = value.get("settlementGeneration").is_none()
+            && value.get("observedGitFingerprint").is_none()
+            && (mission_packet || value.get("supersedesPacketId").is_none());
+        if !missing_v11_fields
+            || row.settlement_generation != 1
+            || row.supersedes_packet_id.is_some()
+            || row.observed_git_fingerprint != "0".repeat(64)
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "settlement packet failed current validation and is not an eligible v10 row".into(),
+            ));
+        }
+        let signed = format!("\"packetDigest\":\"{}\"", row.packet_digest);
+        if row.packet_json.match_indices(&signed).count() != 1 {
+            return Err(MissionPlanError::ContentConflict(
+                "legacy settlement packet digest field is not canonical compact JSON".into(),
+            ));
+        }
+        let unsigned = row
+            .packet_json
+            .replacen(&signed, "\"packetDigest\":\"\"", 1);
+        let digest = format!("{:x}", Sha256::digest(unsigned.as_bytes()));
+        if digest != row.packet_digest {
+            return Err(MissionPlanError::ContentConflict(
+                "legacy settlement packet digest does not match immutable v10 JSON".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn settlement_packet_uses_v11_shape(
+        value: &serde_json::Value,
+        mission_packet: bool,
+    ) -> Result<bool, MissionPlanError> {
+        let v11_fields: &[&str] = if mission_packet {
+            &["settlementGeneration", "observedGitFingerprint"]
+        } else {
+            &[
+                "settlementGeneration",
+                "supersedesPacketId",
+                "observedGitFingerprint",
+            ]
+        };
+        let present = v11_fields
+            .iter()
+            .filter(|field| value.get(**field).is_some())
+            .count();
+        if present == v11_fields.len() {
+            Ok(true)
+        } else if present == 0 {
+            Ok(false)
+        } else {
+            Err(MissionPlanError::ContentConflict(
+                "settlement packet contains a partial v11 field set".into(),
+            ))
+        }
+    }
+
+    fn decode_completed_settlement(
+        row: &StoredSettlementPacketRow,
+    ) -> Result<CompletedWorkPacket, MissionPlanError> {
+        let value =
+            Self::settlement_json_value(row, crate::task::mission::COMPLETED_WORK_PACKET_SCHEMA)?;
+        let current_shape = Self::settlement_packet_uses_v11_shape(&value, false)?;
+        let packet: CompletedWorkPacket =
+            serde_json::from_str(&row.packet_json).map_err(|error| {
+                MissionPlanError::Persistence(format!("decode completed packet: {error}"))
+            })?;
+        if packet.settlement_generation as i64 != row.settlement_generation
+            || packet.supersedes_packet_id != row.supersedes_packet_id
+            || packet.observed_git_fingerprint != row.observed_git_fingerprint
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "completed settlement generation columns disagree with packet".into(),
+            ));
+        }
+        if current_shape {
+            packet.validate()?;
+        } else {
+            Self::verify_legacy_settlement_digest(row, &value, false)?;
+            let mut semantic = packet.clone();
+            semantic.packet_digest.clear();
+            semantic.seal().map_err(|error| {
+                MissionPlanError::Validation(format!(
+                    "legacy completed settlement semantic validation failed after v11 defaults: {error}"
+                ))
+            })?;
+        }
+        Ok(packet)
+    }
+
+    fn decode_blocked_settlement(
+        row: &StoredSettlementPacketRow,
+    ) -> Result<BlockedWorkPacket, MissionPlanError> {
+        let value =
+            Self::settlement_json_value(row, crate::task::mission::BLOCKED_WORK_PACKET_SCHEMA)?;
+        let current_shape = Self::settlement_packet_uses_v11_shape(&value, false)?;
+        let packet: BlockedWorkPacket =
+            serde_json::from_str(&row.packet_json).map_err(|error| {
+                MissionPlanError::Persistence(format!("decode blocked packet: {error}"))
+            })?;
+        if packet.settlement_generation as i64 != row.settlement_generation
+            || packet.supersedes_packet_id != row.supersedes_packet_id
+            || packet.observed_git_fingerprint != row.observed_git_fingerprint
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "blocked settlement generation columns disagree with packet".into(),
+            ));
+        }
+        if current_shape {
+            packet.validate()?;
+        } else {
+            Self::verify_legacy_settlement_digest(row, &value, false)?;
+            let mut semantic = packet.clone();
+            semantic.packet_digest.clear();
+            semantic.seal().map_err(|error| {
+                MissionPlanError::Validation(format!(
+                    "legacy blocked settlement semantic validation failed after v11 defaults: {error}"
+                ))
+            })?;
+        }
+        Ok(packet)
+    }
+
+    fn decode_mission_completion(
+        row: &StoredSettlementPacketRow,
+    ) -> Result<MissionCompletionPacket, MissionPlanError> {
+        let value = Self::settlement_json_value(
+            row,
+            crate::task::mission::MISSION_COMPLETION_PACKET_SCHEMA,
+        )?;
+        let current_shape = Self::settlement_packet_uses_v11_shape(&value, true)?;
+        let packet: MissionCompletionPacket =
+            serde_json::from_str(&row.packet_json).map_err(|error| {
+                MissionPlanError::Persistence(format!("decode Mission packet: {error}"))
+            })?;
+        if packet.settlement_generation as i64 != row.settlement_generation
+            || row.supersedes_packet_id.is_some()
+            || packet.observed_git_fingerprint != row.observed_git_fingerprint
+        {
+            return Err(MissionPlanError::ContentConflict(
+                "Mission settlement generation columns disagree with packet".into(),
+            ));
+        }
+        if current_shape {
+            packet.validate()?;
+        } else {
+            Self::verify_legacy_settlement_digest(row, &value, true)?;
+            let mut semantic = packet.clone();
+            semantic.packet_digest.clear();
+            semantic.seal().map_err(|error| {
+                MissionPlanError::Validation(format!(
+                    "legacy Mission settlement semantic validation failed after v11 defaults: {error}"
+                ))
+            })?;
+        }
+        Ok(packet)
     }
 
     pub fn load_completed_settlement(
         db: &Database,
         activation_id: &str,
     ) -> Result<Option<(CompletedWorkPacket, MissionCompletionPacket)>, MissionPlanError> {
-        let work = Self::load_settlement_json(db, activation_id, "completed_work")?;
-        let mission = Self::load_settlement_json(db, activation_id, "mission_completion")?;
-        match (work, mission) {
-            (None, None) => Ok(None),
-            (Some(work), Some(mission)) => {
-                let work: CompletedWorkPacket = serde_json::from_str(&work).map_err(|error| {
-                    MissionPlanError::Persistence(format!("decode completed packet: {error}"))
-                })?;
-                let mission: MissionCompletionPacket =
-                    serde_json::from_str(&mission).map_err(|error| {
-                        MissionPlanError::Persistence(format!("decode Mission packet: {error}"))
-                    })?;
-                work.validate()?;
-                mission.validate()?;
+        let Some(work_row) = Self::load_current_decision(db, activation_id)? else {
+            return Ok(None);
+        };
+        if work_row.packet_kind != "completed_work" {
+            return Ok(None);
+        }
+        let mission_row = Self::load_settlement_kind(
+            db,
+            activation_id,
+            "mission_completion",
+            work_row.settlement_generation,
+        )?;
+        match mission_row {
+            Some(mission_row) => {
+                let work = Self::decode_completed_settlement(&work_row)?;
+                let mission = Self::decode_mission_completion(&mission_row)?;
                 if mission.mission_id != work.mission_id
                     || mission.mission_revision != work.mission_revision
                     || mission.settlement_expected_version != work.settlement_expected_version
+                    || mission.settlement_generation != work.settlement_generation
+                    || mission.observed_git_fingerprint != work.observed_git_fingerprint
                     || mission.integrated_oid != work.integrated_oid
                     || mission
                         .required_work_unit_packet_ids_by_work_unit
@@ -210,7 +487,7 @@ impl TaskRepo {
                 }
                 Ok(Some((work, mission)))
             }
-            _ => Err(MissionPlanError::Persistence(
+            None => Err(MissionPlanError::Persistence(
                 "durable completion settlement is missing one atomic packet".into(),
             )),
         }
@@ -220,14 +497,9 @@ impl TaskRepo {
         db: &Database,
         activation_id: &str,
     ) -> Result<Option<BlockedWorkPacket>, MissionPlanError> {
-        Self::load_settlement_json(db, activation_id, "blocked_work")?
-            .map(|json| {
-                let packet: BlockedWorkPacket = serde_json::from_str(&json).map_err(|error| {
-                    MissionPlanError::Persistence(format!("decode blocked packet: {error}"))
-                })?;
-                packet.validate()?;
-                Ok(packet)
-            })
+        Self::load_current_decision(db, activation_id)?
+            .filter(|row| row.packet_kind == "blocked_work")
+            .map(|row| Self::decode_blocked_settlement(&row))
             .transpose()
     }
 
@@ -239,6 +511,9 @@ impl TaskRepo {
         work_unit_id: Option<&str>,
         packet_kind: &str,
         expected_version: &str,
+        settlement_generation: u64,
+        supersedes_packet_id: Option<&str>,
+        observed_git_fingerprint: &str,
         packet_id: &str,
         packet_digest: &str,
         packet_json: &str,
@@ -249,12 +524,16 @@ impl TaskRepo {
         })?;
         let created_at = i64::try_from(created_at_unix_ms)
             .map_err(|_| MissionPlanError::Validation("packet time exceeds SQLite i64".into()))?;
+        let generation = i64::try_from(settlement_generation).map_err(|_| {
+            MissionPlanError::Validation("settlement generation exceeds SQLite i64".into())
+        })?;
         tx.execute(
             "INSERT INTO mission_settlement_packets (
                 packet_id,activation_id,mission_id,mission_revision,work_unit_id,packet_kind,
-                settlement_expected_version,packet_json,packet_digest,created_at_ms
-             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
-             ON CONFLICT(activation_id,packet_kind) DO NOTHING",
+                settlement_expected_version,packet_json,packet_digest,created_at_ms,
+                supersedes_packet_id,settlement_generation,observed_git_fingerprint
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+             ON CONFLICT(activation_id,packet_kind,settlement_generation) DO NOTHING",
             params![
                 packet_id,
                 activation_id,
@@ -265,7 +544,10 @@ impl TaskRepo {
                 expected_version,
                 packet_json,
                 packet_digest,
-                created_at
+                created_at,
+                supersedes_packet_id,
+                generation,
+                observed_git_fingerprint,
             ],
         )
         .map_err(|error| {
@@ -274,8 +556,9 @@ impl TaskRepo {
         let stored = tx
             .query_row(
                 "SELECT packet_id,settlement_expected_version,packet_digest,packet_json
-                   FROM mission_settlement_packets WHERE activation_id=?1 AND packet_kind=?2",
-                params![activation_id, packet_kind],
+                   FROM mission_settlement_packets
+                  WHERE activation_id=?1 AND packet_kind=?2 AND settlement_generation=?3",
+                params![activation_id, packet_kind, generation],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -307,14 +590,21 @@ impl TaskRepo {
         conn: &rusqlite::Connection,
         activation_id: &str,
         packet_kind: &str,
+        settlement_generation: u64,
         packet_id: &str,
         packet_digest: &str,
         packet_json: &str,
     ) -> Result<Option<bool>, MissionPlanError> {
         conn.query_row(
             "SELECT packet_id,packet_digest,packet_json FROM mission_settlement_packets
-              WHERE activation_id=?1 AND packet_kind=?2",
-            params![activation_id, packet_kind],
+              WHERE activation_id=?1 AND packet_kind=?2 AND settlement_generation=?3",
+            params![
+                activation_id,
+                packet_kind,
+                i64::try_from(settlement_generation).map_err(|_| MissionPlanError::Validation(
+                    "settlement generation exceeds SQLite i64".into()
+                ))?
+            ],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -339,12 +629,16 @@ impl TaskRepo {
         })
     }
 
-    pub fn persist_completed_settlement(
+    pub fn persist_completed_settlement<F>(
         db: &Database,
         graph: &TaskGraph,
         work: &CompletedWorkPacket,
         mission: &MissionCompletionPacket,
-    ) -> Result<(), MissionPlanError> {
+        revalidate_git: F,
+    ) -> Result<(), MissionPlanError>
+    where
+        F: FnOnce() -> Result<String, MissionPlanError>,
+    {
         work.validate()?;
         mission.validate()?;
         if graph.get(&work.work_unit_id).map(|task| task.status) != Some(TaskStatus::Done) {
@@ -355,6 +649,8 @@ impl TaskRepo {
         if mission.mission_id != work.mission_id
             || mission.mission_revision != work.mission_revision
             || mission.settlement_expected_version != work.settlement_expected_version
+            || mission.settlement_generation != work.settlement_generation
+            || mission.observed_git_fingerprint != work.observed_git_fingerprint
             || mission.integrated_oid != work.integrated_oid
             || mission
                 .required_work_unit_packet_ids_by_work_unit
@@ -365,7 +661,11 @@ impl TaskRepo {
                 "Mission completion does not aggregate the exact work packet".into(),
             ));
         }
-        let tx = db.conn().unchecked_transaction().map_err(|error| {
+        let tx = rusqlite::Transaction::new_unchecked(
+            db.conn(),
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(|error| {
             MissionPlanError::Persistence(format!("begin completed settlement tx: {error}"))
         })?;
         let work_json = serde_json::to_string(work).map_err(|error| {
@@ -378,6 +678,7 @@ impl TaskRepo {
             &tx,
             &work.activation_id,
             "completed_work",
+            work.settlement_generation,
             &work.packet_id,
             &work.packet_digest,
             &work_json,
@@ -386,6 +687,7 @@ impl TaskRepo {
             &tx,
             &work.activation_id,
             "mission_completion",
+            mission.settlement_generation,
             &mission.packet_id,
             &mission.packet_digest,
             &mission_json,
@@ -416,7 +718,17 @@ impl TaskRepo {
                 "durable completion packet set conflicts with retry".into(),
             ));
         }
-        let current = Self::settlement_expected_version_conn(&tx, &work.activation_id)?;
+        let final_git_fingerprint = revalidate_git()?;
+        if final_git_fingerprint != work.observed_git_fingerprint {
+            return Err(MissionPlanError::ContentConflict(
+                "Git settlement witness drifted at the commit linearization point".into(),
+            ));
+        }
+        let current = Self::settlement_expected_version_conn(
+            &tx,
+            &work.activation_id,
+            &final_git_fingerprint,
+        )?;
         if current != work.settlement_expected_version {
             return Err(MissionPlanError::ContentConflict(
                 "settlement compare-and-swap drift requires re-proof".into(),
@@ -430,6 +742,9 @@ impl TaskRepo {
             Some(&work.work_unit_id),
             "completed_work",
             &work.settlement_expected_version,
+            work.settlement_generation,
+            work.supersedes_packet_id.as_deref(),
+            &work.observed_git_fingerprint,
             &work.packet_id,
             &work.packet_digest,
             &work_json,
@@ -443,6 +758,9 @@ impl TaskRepo {
             None,
             "mission_completion",
             &mission.settlement_expected_version,
+            mission.settlement_generation,
+            None,
+            &mission.observed_git_fingerprint,
             &mission.packet_id,
             &mission.packet_digest,
             &mission_json,
@@ -454,18 +772,26 @@ impl TaskRepo {
         })
     }
 
-    pub fn persist_blocked_settlement(
+    pub fn persist_blocked_settlement<F>(
         db: &Database,
         graph: &TaskGraph,
         packet: &BlockedWorkPacket,
-    ) -> Result<(), MissionPlanError> {
+        revalidate_git: F,
+    ) -> Result<(), MissionPlanError>
+    where
+        F: FnOnce() -> Result<String, MissionPlanError>,
+    {
         packet.validate()?;
         if graph.get(&packet.work_unit_id).map(|task| task.status) != Some(TaskStatus::Blocked) {
             return Err(MissionPlanError::Validation(
                 "blocked settlement requires an atomically Blocked task projection".into(),
             ));
         }
-        let tx = db.conn().unchecked_transaction().map_err(|error| {
+        let tx = rusqlite::Transaction::new_unchecked(
+            db.conn(),
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(|error| {
             MissionPlanError::Persistence(format!("begin blocked settlement tx: {error}"))
         })?;
         let json = serde_json::to_string(packet).map_err(|error| {
@@ -475,6 +801,7 @@ impl TaskRepo {
             &tx,
             &packet.activation_id,
             "blocked_work",
+            packet.settlement_generation,
             &packet.packet_id,
             &packet.packet_digest,
             &json,
@@ -509,7 +836,17 @@ impl TaskRepo {
             }
             None => {}
         }
-        let current = Self::settlement_expected_version_conn(&tx, &packet.activation_id)?;
+        let final_git_fingerprint = revalidate_git()?;
+        if final_git_fingerprint != packet.observed_git_fingerprint {
+            return Err(MissionPlanError::ContentConflict(
+                "Git settlement witness drifted at the commit linearization point".into(),
+            ));
+        }
+        let current = Self::settlement_expected_version_conn(
+            &tx,
+            &packet.activation_id,
+            &final_git_fingerprint,
+        )?;
         if current != packet.settlement_expected_version {
             return Err(MissionPlanError::ContentConflict(
                 "blocked settlement compare-and-swap drift requires reclassification".into(),
@@ -523,6 +860,9 @@ impl TaskRepo {
             Some(&packet.work_unit_id),
             "blocked_work",
             &packet.settlement_expected_version,
+            packet.settlement_generation,
+            packet.supersedes_packet_id.as_deref(),
+            &packet.observed_git_fingerprint,
             &packet.packet_id,
             &packet.packet_digest,
             &json,

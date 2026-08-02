@@ -426,8 +426,9 @@ const requiredWorkOrderClauses = [
   "A7.0 scope lock and owner inventory is complete",
   "A7.1 request contract and versioned plan preview is complete",
   "A7.3 independent review and exact-OID acceptance is complete",
-  "A7.4 immutable completion and blocked settlement is complete",
-  "A7.5 canonical combined acceptance is the next implementation slice and has not started",
+  "A7.4 is complete",
+  "Independent review reopened A7.4",
+  "A7.5 is the next slice and remains unstarted",
 ];
 
 const requiredArchitectureClauses = [
@@ -1234,7 +1235,7 @@ const checks = [
       currentFrontier.phase === "A7" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
       a7AcceptedFrontierValid,
-    "Work order records A7.4 complete and exposes exactly one unstarted A7.5 implementation frontier",
+    "Work order records A7.4 complete and exposes A7.5 as the next unstarted slice",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

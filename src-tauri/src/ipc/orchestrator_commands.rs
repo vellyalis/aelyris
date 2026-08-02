@@ -942,7 +942,7 @@ pub async fn mission_plan_settle(
     let tasks = tasks.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         tasks
-            .settle_mission_plan(&plan_id, plan_revision, Vec::new())
+            .settle_mission_plan(&plan_id, plan_revision)
             .map_err(|error| error.to_string())
     })
     .await

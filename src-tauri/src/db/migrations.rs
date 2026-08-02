@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 10;
+pub const CURRENT_SCHEMA_VERSION: i64 = 11;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1433,6 +1433,68 @@ const V10_SCHEMA: &str = "
     END;
 ";
 
+// A7.4 independent-review repair: immutable settlement decisions advance through
+// an append-only generation chain. A predecessor may have only one successor, and
+// the current decision is the unique leaf with the greatest generation.
+const V11_SCHEMA: &str = "
+    DROP INDEX idx_mission_settlement_one_packet_kind;
+    ALTER TABLE mission_settlement_packets
+        ADD COLUMN settlement_generation INTEGER NOT NULL DEFAULT 1
+        CHECK (settlement_generation > 0);
+    ALTER TABLE mission_settlement_packets
+        ADD COLUMN observed_git_fingerprint TEXT NOT NULL
+        DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'
+        CHECK (length(observed_git_fingerprint) = 64
+               AND observed_git_fingerprint NOT GLOB '*[^0-9a-f]*');
+    CREATE UNIQUE INDEX idx_mission_settlement_generation_kind
+        ON mission_settlement_packets(activation_id, packet_kind, settlement_generation);
+    CREATE UNIQUE INDEX idx_mission_settlement_single_successor
+        ON mission_settlement_packets(supersedes_packet_id)
+        WHERE supersedes_packet_id IS NOT NULL;
+    CREATE INDEX idx_mission_settlement_current_decision
+        ON mission_settlement_packets(activation_id, settlement_generation DESC, packet_kind);
+
+    CREATE TRIGGER trg_mission_settlement_generation_binding
+    BEFORE INSERT ON mission_settlement_packets
+    FOR EACH ROW WHEN
+        json_extract(NEW.packet_json, '$.settlementGeneration') IS NOT NEW.settlement_generation
+        OR json_extract(NEW.packet_json, '$.observedGitFingerprint') IS NOT NEW.observed_git_fingerprint
+        OR json_extract(NEW.packet_json, '$.supersedesPacketId') IS NOT NEW.supersedes_packet_id
+        OR (
+            NEW.packet_kind IN ('completed_work','blocked_work')
+            AND (
+                (NEW.supersedes_packet_id IS NULL AND (
+                    NEW.settlement_generation != 1 OR EXISTS (
+                        SELECT 1 FROM mission_settlement_packets AS prior
+                         WHERE prior.activation_id=NEW.activation_id
+                           AND prior.packet_kind IN ('completed_work','blocked_work')
+                    )
+                ))
+                OR (NEW.supersedes_packet_id IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM mission_settlement_packets AS prior
+                     WHERE prior.packet_id=NEW.supersedes_packet_id
+                       AND prior.activation_id=NEW.activation_id
+                       AND prior.packet_kind='blocked_work'
+                       AND prior.settlement_generation + 1=NEW.settlement_generation
+                ))
+            )
+        )
+        OR (
+            NEW.packet_kind='mission_completion'
+            AND (
+                NEW.supersedes_packet_id IS NOT NULL OR NOT EXISTS (
+                    SELECT 1 FROM mission_settlement_packets AS work
+                     WHERE work.activation_id=NEW.activation_id
+                       AND work.packet_kind='completed_work'
+                       AND work.settlement_generation=NEW.settlement_generation
+                )
+            )
+        )
+    BEGIN
+        SELECT RAISE(ABORT, 'mission_settlement_packets: invalid settlement generation chain');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1622,7 +1684,38 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         }
     }
 
+    if version < 11 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V11_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 11)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_settlement_store_to_v10_for_test(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    let result = conn
+        .execute_batch(
+            "DROP TABLE mission_settlement_packets;
+         PRAGMA user_version = 10;",
+        )
+        .and_then(|_| conn.execute_batch(V10_SCHEMA));
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    result
 }
 
 #[cfg(test)]
@@ -2273,6 +2366,38 @@ mod tests {
                 .optional()
                 .unwrap();
             assert_eq!(found.as_deref(), Some(trigger));
+        }
+    }
+
+    #[test]
+    fn a7_4_v11_adds_generation_leaf_and_single_successor_guards() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(schema_version(&conn).unwrap(), 11);
+        let columns = conn
+            .prepare("PRAGMA table_info(mission_settlement_packets)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(columns.contains(&"settlement_generation".to_string()));
+        assert!(columns.contains(&"observed_git_fingerprint".to_string()));
+        for object in [
+            "idx_mission_settlement_generation_kind",
+            "idx_mission_settlement_single_successor",
+            "idx_mission_settlement_current_decision",
+            "trg_mission_settlement_generation_binding",
+        ] {
+            let found: Option<String> = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE name=?1",
+                    [object],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(found.as_deref(), Some(object));
         }
     }
 }

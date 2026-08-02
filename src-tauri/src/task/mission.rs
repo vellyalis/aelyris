@@ -577,41 +577,40 @@ impl SettlementBlocker {
                 SettlementNextActionKind::ExternalAction
             )
         );
-        let unsafe_data = self
-            .command_argv
+        fn bounded_identifier_ref(value: &str) -> bool {
+            !value.is_empty()
+                && value.len() <= 160
+                && value.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
+                })
+        }
+        let bounded_refs = self
+            .required_inputs
             .iter()
-            .chain(self.required_inputs.iter())
             .chain(self.artifact_refs.iter())
             .chain(self.next_action.input_refs.iter())
-            .chain(self.command_result.iter())
-            .any(|value| value.contains('\0') || value.contains('\n') || value.contains('\r'));
+            .all(|value| bounded_identifier_ref(value));
         if self.blocker_id.trim().is_empty()
             || self.authority.trim().is_empty()
             || self.code.trim().is_empty()
             || self.message.trim().is_empty()
             || self.required_inputs.is_empty()
-            || self
-                .required_inputs
-                .iter()
-                .any(|value| value.trim().is_empty())
+            || !bounded_refs
+            || !self.command_argv.is_empty()
             || self
                 .command_result
                 .as_ref()
                 .is_none_or(|value| value.trim().is_empty())
             || self.artifact_refs.is_empty()
-            || self
-                .artifact_refs
-                .iter()
-                .any(|value| value.trim().is_empty())
             || self.next_action.owner.trim().is_empty()
             || self.next_action.input_refs.is_empty()
-            || self
-                .next_action
-                .input_refs
-                .iter()
-                .any(|value| value.trim().is_empty())
             || !action_matches
-            || unsafe_data
+            || self.command_result.as_ref().is_some_and(|value| {
+                value.len() > 160
+                    || value.contains('\0')
+                    || value.contains('\n')
+                    || value.contains('\r')
+            })
         {
             return validation(
                 "settlement blocker must be typed, bounded, category-compatible data",
@@ -644,6 +643,12 @@ pub struct CompletedWorkPacket {
     pub plan_content_digest: String,
     pub contract_proof_version: String,
     pub settlement_expected_version: String,
+    #[serde(default = "default_settlement_generation")]
+    pub settlement_generation: u64,
+    #[serde(default)]
+    pub supersedes_packet_id: Option<String>,
+    #[serde(default = "legacy_git_fingerprint")]
+    pub observed_git_fingerprint: String,
     pub base_oid: String,
     pub tested_oid: String,
     pub reviewed_oid: String,
@@ -682,6 +687,12 @@ pub struct BlockedWorkPacket {
     pub plan_content_digest: String,
     pub contract_proof_version: String,
     pub settlement_expected_version: String,
+    #[serde(default = "default_settlement_generation")]
+    pub settlement_generation: u64,
+    #[serde(default)]
+    pub supersedes_packet_id: Option<String>,
+    #[serde(default = "legacy_git_fingerprint")]
+    pub observed_git_fingerprint: String,
     pub base_oid: String,
     pub candidate_oid: Option<String>,
     pub tested_oid: Option<String>,
@@ -713,6 +724,10 @@ pub struct MissionCompletionPacket {
     pub integrated_oid: String,
     pub contract_proof_version: String,
     pub settlement_expected_version: String,
+    #[serde(default = "default_settlement_generation")]
+    pub settlement_generation: u64,
+    #[serde(default = "legacy_git_fingerprint")]
+    pub observed_git_fingerprint: String,
     pub merge_result: String,
     pub repo_blockers: Vec<SettlementBlocker>,
     pub policy_blockers: Vec<SettlementBlocker>,
@@ -741,6 +756,14 @@ fn packet_digest<T: Serialize>(packet: &T) -> Result<String, MissionPlanError> {
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
+const fn default_settlement_generation() -> u64 {
+    1
+}
+
+fn legacy_git_fingerprint() -> String {
+    "0".repeat(64)
+}
+
 impl CompletedWorkPacket {
     pub fn seal(mut self) -> Result<Self, MissionPlanError> {
         self.packet_digest.clear();
@@ -757,6 +780,7 @@ impl CompletedWorkPacket {
             "settlementExpectedVersion",
             &self.settlement_expected_version,
         )?;
+        validate_sha256("observedGitFingerprint", &self.observed_git_fingerprint)?;
         validate_git_oid("baseOid", &self.base_oid)?;
         validate_git_oid("testedOid", &self.tested_oid)?;
         validate_git_oid("reviewedOid", &self.reviewed_oid)?;
@@ -792,6 +816,11 @@ impl CompletedWorkPacket {
             || self.activation_id.trim().is_empty()
             || self.plan_id.trim().is_empty()
             || self.plan_revision == 0
+            || self.settlement_generation == 0
+            || self
+                .supersedes_packet_id
+                .as_ref()
+                .is_some_and(|packet_id| packet_id.trim().is_empty())
             || self.mission_id.trim().is_empty()
             || self.mission_revision == 0
             || self.work_unit_id.trim().is_empty()
@@ -843,6 +872,7 @@ impl BlockedWorkPacket {
             "settlementExpectedVersion",
             &self.settlement_expected_version,
         )?;
+        validate_sha256("observedGitFingerprint", &self.observed_git_fingerprint)?;
         validate_git_oid("baseOid", &self.base_oid)?;
         for (name, oid) in [
             ("candidateOid", &self.candidate_oid),
@@ -913,6 +943,11 @@ impl BlockedWorkPacket {
             || self.activation_id.trim().is_empty()
             || self.plan_id.trim().is_empty()
             || self.plan_revision == 0
+            || self.settlement_generation == 0
+            || self
+                .supersedes_packet_id
+                .as_ref()
+                .is_some_and(|packet_id| packet_id.trim().is_empty())
             || self.mission_id.trim().is_empty()
             || self.mission_revision == 0
             || self.work_unit_id.trim().is_empty()
@@ -961,6 +996,7 @@ impl MissionCompletionPacket {
             "settlementExpectedVersion",
             &self.settlement_expected_version,
         )?;
+        validate_sha256("observedGitFingerprint", &self.observed_git_fingerprint)?;
         let mut clause_ids = HashSet::new();
         let exact_mission_coverage = self.mission_acceptance_coverage.iter().all(|entry| {
             let gate_ids = entry.required_gate_ids.iter().collect::<HashSet<_>>();
@@ -989,6 +1025,7 @@ impl MissionCompletionPacket {
             || self.packet_id.trim().is_empty()
             || self.mission_id.trim().is_empty()
             || self.mission_revision == 0
+            || self.settlement_generation == 0
             || self.created_at_unix_ms == 0
             || self.required_work_unit_packet_ids_by_work_unit.is_empty()
             || self.required_work_unit_packet_ids_by_work_unit.iter().any(
@@ -2588,7 +2625,7 @@ pub(crate) mod tests {
             code: "BLOCKED".into(),
             message: "exact acceptance blocker".into(),
             required_inputs: vec!["typed-input-ref".into()],
-            command_argv: vec!["verifier".into(), "--check".into()],
+            command_argv: vec![],
             command_result: Some("blocked".into()),
             artifact_refs: vec!["artifact/ref".into()],
             next_action: SettlementNextAction {
@@ -2612,6 +2649,9 @@ pub(crate) mod tests {
             plan_content_digest: "a".repeat(64),
             contract_proof_version: A7_SETTLEMENT_PROOF_VERSION.into(),
             settlement_expected_version: "b".repeat(64),
+            settlement_generation: 1,
+            supersedes_packet_id: None,
+            observed_git_fingerprint: "d".repeat(64),
             base_oid: "c".repeat(40),
             candidate_oid: None,
             tested_oid: None,
