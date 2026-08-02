@@ -7,6 +7,8 @@ const LOCAL_TIME_ZONE = "Asia/Tokyo";
 
 const sourcePaths = {
   app: "src/App.tsx",
+  rightRailShell: "src/features/right-rail/RightRailShell.tsx",
+  rightRailCommandMode: "src/features/right-rail/RightRailCommandMode.tsx",
   styles: "src/styles/global.css",
   packageJson: "package.json",
   suite: "scripts/verify-right-rail-suite.mjs",
@@ -54,6 +56,8 @@ function add(checks, id, ok, detail, evidence = {}) {
 }
 
 const app = read(sourcePaths.app);
+const rightRailShell = read(sourcePaths.rightRailShell);
+const rightRailCommandMode = read(sourcePaths.rightRailCommandMode);
 const styles = read(sourcePaths.styles);
 const packageJson = read(sourcePaths.packageJson);
 const suite = read(sourcePaths.suite);
@@ -63,35 +67,35 @@ const toolkit = read(sourcePaths.toolkit);
 const orchestraHook = read(sourcePaths.orchestraHook);
 
 const checks = [];
-const rightRailStart = app.indexOf('<div className="right-panel-content">');
-const advancedDrawer = app.indexOf('className="right-panel-advanced-drawer"', rightRailStart);
-const orchestraCommand = app.indexOf('className="right-panel-run-loop right-panel-orchestra-command"', rightRailStart);
-const decisionFocusGate = app.indexOf("rightRailHasBlockingDecision && (", rightRailStart);
-const decisionFocus = app.indexOf('className="right-panel-decision-focus"', rightRailStart);
-const nowCard = app.indexOf('className="right-panel-now"', rightRailStart);
-const essentialGrid = app.indexOf('className="right-panel-essential-grid"', rightRailStart);
-const evidenceDrawer = app.indexOf('className="right-panel-evidence-drawer"', rightRailStart);
-const healthDrawer = app.indexOf('className="right-panel-health-drawer"', rightRailStart);
-const queueDrawer = app.indexOf('className="right-panel-queue-drawer"', rightRailStart);
-const goalTrack = app.indexOf('className="right-panel-goal-track"', rightRailStart);
-const edgeScore = app.indexOf('className="right-panel-edge-score"', rightRailStart);
-const workforce = app.indexOf('className="right-panel-workforce"', rightRailStart);
-const advisor = app.indexOf('className="right-panel-advisor"', rightRailStart);
-const commandStack = app.indexOf('rightRailMode === "command"', rightRailStart);
-const commandToolkit = app.indexOf('data-widget="toolkit"', commandStack);
-const commandDecisionGate = app.indexOf(
-  '(rightRailHasBlockingDecision || rightRailFocusWidget === "decision-inbox") &&',
-  commandStack,
-);
-const commandDecisionFrame = app.indexOf('widget="decision-inbox"', commandStack);
-const commandSessionsFrame = app.indexOf('widget="sessions"', commandStack);
-const commandWorkflowFrame = app.indexOf('widget="workflow"', commandStack);
-const commandContextFrame = app.indexOf('widget="context"', commandStack);
+const rightRailStart = rightRailShell.indexOf('<div className="right-panel-content">');
+const rightRailChildren = rightRailShell.indexOf("{children}", rightRailStart);
+const appShellStart = app.indexOf("<RightRailShell");
+const advancedDrawer = app.indexOf('className="right-panel-advanced-drawer"', appShellStart);
+const orchestraCommand = app.indexOf('className="right-panel-run-loop right-panel-orchestra-command"', appShellStart);
+const decisionFocusGate = app.indexOf("rightRailHasBlockingDecision && (", appShellStart);
+const decisionFocus = app.indexOf('className="right-panel-decision-focus"', appShellStart);
+const nowCard = app.indexOf('className="right-panel-now"', appShellStart);
+const essentialGrid = app.indexOf('className="right-panel-essential-grid"', appShellStart);
+const evidenceDrawer = app.indexOf('className="right-panel-evidence-drawer"', appShellStart);
+const healthDrawer = app.indexOf('className="right-panel-health-drawer"', appShellStart);
+const queueDrawer = app.indexOf('className="right-panel-queue-drawer"', appShellStart);
+const goalTrack = app.indexOf('className="right-panel-goal-track"', appShellStart);
+const edgeScore = app.indexOf('className="right-panel-edge-score"', appShellStart);
+const workforce = app.indexOf('className="right-panel-workforce"', appShellStart);
+const advisor = app.indexOf('className="right-panel-advisor"', appShellStart);
+const commandStack = app.indexOf('rightRailMode === "command"', appShellStart);
+const commandModeMount = app.indexOf("<RightRailCommandMode", commandStack);
+const commandToolkit = rightRailCommandMode.indexOf('data-widget="toolkit"');
+const commandDecisionGate = rightRailCommandMode.indexOf("decisionInbox.visible && (", commandToolkit);
+const commandDecisionFrame = rightRailCommandMode.indexOf('widget="decision-inbox"', commandDecisionGate);
+const commandSessionsFrame = rightRailCommandMode.indexOf('widget="sessions"', commandDecisionFrame);
+const commandWorkflowFrame = rightRailCommandMode.indexOf('widget="workflow"', commandSessionsFrame);
+const commandContextFrame = rightRailCommandMode.indexOf('widget="context"', commandWorkflowFrame);
 const decisionFocusIsConditional =
   decisionFocusGate > orchestraCommand && decisionFocus > decisionFocusGate && decisionFocus < essentialGrid;
 const visiblePrimaryCount =
-  [orchestraCommand, essentialGrid].filter((index) => index > rightRailStart).length +
-  (decisionFocus > rightRailStart && !decisionFocusIsConditional ? 1 : 0);
+  [orchestraCommand, essentialGrid].filter((index) => index > appShellStart).length +
+  (decisionFocus > appShellStart && !decisionFocusIsConditional ? 1 : 0);
 const conditionalPrimaryMax = visiblePrimaryCount + (decisionFocusIsConditional ? 1 : 0);
 const defaultDrawers = [
   "right-panel-advanced-drawer",
@@ -120,7 +124,9 @@ add(
   checks,
   "orchestra-spine-first",
   rightRailStart >= 0 &&
-    advancedDrawer > rightRailStart &&
+    rightRailChildren > rightRailStart &&
+    appShellStart >= 0 &&
+    advancedDrawer > appShellStart &&
     orchestraCommand > advancedDrawer &&
     decisionFocusIsConditional &&
     essentialGrid > orchestraCommand &&
@@ -130,6 +136,8 @@ add(
   "default orchestra command keeps dispatch lanes and action essentials before deferred evidence, health, and queue details",
   {
     rightRailStart,
+    rightRailChildren,
+    appShellStart,
     advancedDrawer,
     orchestraCommand,
     decisionFocusGate,
@@ -184,8 +192,9 @@ add(
 add(
   checks,
   "command-stack-toolkit-first",
-  commandStack > rightRailStart &&
-    commandToolkit > commandStack &&
+  commandStack > appShellStart &&
+    commandModeMount > commandStack &&
+    commandToolkit >= 0 &&
     commandDecisionGate > commandToolkit &&
     commandDecisionFrame > commandDecisionGate &&
     commandSessionsFrame > commandDecisionFrame &&
@@ -194,6 +203,7 @@ add(
   "Command mode defaults to Toolkit, then conditional decisions, then collapsed agents/workflow/context drawers",
   {
     commandStack,
+    commandModeMount,
     commandToolkit,
     commandDecisionGate,
     commandDecisionFrame,

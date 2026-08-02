@@ -2203,7 +2203,7 @@ executed no token-bearing prompt or real OS sleep, and retained its overall BLOC
 
 ### **A9.4 - Right-Rail Information-Density Verifier Ownership Reconciliation**
 
-Status: next implementation slice; not started.
+Status: complete with `close_verifier_drift` disposition on 2026-08-02.
 
 The current density verifier searches for the `right-panel-content` root only inside
 `src/App.tsx`, although that shell owner now lives in
@@ -2211,6 +2211,26 @@ The current density verifier searches for the `right-panel-content` root only in
 owner split and determine whether the two missing-index findings are verifier drift or
 real first-view ordering defects. Preserve the current two-primary/three-with-decision
 budget and do not move product JSX solely to satisfy source-string ordering.
+
+The verifier now evaluates the shell root/children boundary in `RightRailShell.tsx`,
+the default command-center spine in `App.tsx`, and the Command-mode widget ordering in
+`RightRailCommandMode.tsx`. Both missing-index findings were verifier drift. The
+focused contract passes with two default primary surfaces, three only when a blocking
+decision is present, and no product JSX movement. The post-change no-token aggregate
+executed all 23 descriptors, recorded the right-rail step as `pass`, executed no token-
+bearing prompt or real OS sleep, and remained release-blocked on other owners.
+
+### **A9.5 - Operator-Progress Resume-Artifact Freshness Reconciliation**
+
+Status: next implementation slice; not started.
+
+The anti-stall contract now has one failed check: the existing
+`.codex-auto/quality/goal-operator-progress.json` is parseable and structurally safe but
+is a stale 2026-07-11 readiness handoff. Run the existing readiness-only operator-
+finish owner without opt-in token or sleep inputs, require a current local-date,
+heartbeat-bearing, explicit-user-action resume packet, and rerun the anti-stall
+contract. Preserve current-date and heartbeat requirements; change source only if the
+existing owner cannot emit its specified resume-ready shape.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

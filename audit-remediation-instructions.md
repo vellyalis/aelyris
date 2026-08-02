@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.4` (right-rail information-density verifier ownership reconciliation; not started).
-LAST COMPLETED SLICE: `A9.3`.
+ACTIVE SLICE: `A9.5` (operator-progress resume-artifact freshness reconciliation; not started).
+LAST COMPLETED SLICE: `A9.4`.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.4`.
+NEXT IMPLEMENTATION SLICE: `A9.5`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -83,7 +83,9 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     the provider guard is intentionally token-bearing and the pre-spawn authority
     rejected direct insertion before any child started. The 23-step no-token graph
     remains unchanged. A9.3 then removed only the aggregate outer-timeout failure for
-    the unchanged A4 acceptance portfolio. A9.4 is next.
+    the unchanged A4 acceptance portfolio. A9.4 reconciled the density verifier with
+    the existing `App` / `RightRailShell` / `RightRailCommandMode` owner split without
+    moving product JSX or weakening the first-view budget. A9.5 is next.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -120,7 +122,8 @@ A4.12 complete
   -> A9.1 no-token release evidence refresh and fresh owner split (complete; repair_dependency_graph)
   -> A9.2 no-token provider-guard boundary correction (complete; reject_direct_descriptor)
   -> A9.3 A4 acceptance timeout budget closure (complete; close_outer_timeout)
-  -> A9.4 right-rail information-density verifier ownership reconciliation (next; not started)
+  -> A9.4 right-rail information-density verifier ownership reconciliation (complete; close_verifier_drift)
+  -> A9.5 operator-progress resume-artifact freshness reconciliation (next; not started)
   -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
@@ -145,7 +148,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, A9.2, and A9.3 are complete; A9.4 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, A9.2, A9.3, and A9.4 are complete; A9.5 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -216,6 +219,7 @@ continuation_contract:
 | A9.2 | no-token provider-guard boundary correction | A9.1 complete | direct insertion is rejected before spawn; standalone guard proof stays outside the unchanged token-free descriptor graph |
 | A9.3 | A4 acceptance timeout budget closure | A9.2 complete | aggregate grants the existing A4 acceptance verifier enough bounded time to complete; timeout remains explicit and no tests are weakened |
 | A9.4 | right-rail information-density verifier ownership reconciliation | A9.3 complete | verifier follows the current App/RightRailShell owner split and distinguishes source-contract drift from an actual first-view density regression |
+| A9.5 | operator-progress resume-artifact freshness reconciliation | A9.4 complete | readiness-only owner refresh emits a current, parseable, resume-ready operator handoff without token prompt or real OS sleep; anti-stall is rerun without weakening freshness |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
 Do not skip to a later phase because it is easier to score. Do not parallelize phases
@@ -918,12 +922,22 @@ steps remained zero, no provider prompt or real OS sleep ran, and the aggregate 
 BLOCK with the other ten failed steps preserved. This is verifier budget closure, not
 new A4 capability or release credit.
 
-A9.4 is the exact next slice. The right-rail density verifier still roots all JSX
-searches in `src/App.tsx`, while the `right-panel-content` owner moved to
-`src/features/right-rail/RightRailShell.tsx`. Reconcile the verifier with that existing
-owner split, then determine whether its two `-1` findings are stale search boundaries
-or real visible-order regressions. Do not move product JSX merely to satisfy string
-positions and do not weaken the first-view budget.
+A9.4 closed with `close_verifier_drift`. The density verifier now binds the shell root
+and child projection to `RightRailShell.tsx`, the default command-center spine to
+`App.tsx`, and Command-mode Toolkit/Decision/Agents/Workflow/Context ordering to
+`RightRailCommandMode.tsx`. The two historical `-1` findings disappeared without any
+product JSX movement. The focused contract passes with `visiblePrimaryCount=2`,
+`conditionalPrimaryMax=3`, and no failed checks. The single post-change no-token
+aggregate executed all 23 descriptors, reported right-rail density `pass`, executed no
+token-bearing prompt or real OS sleep, and retained the broader release BLOCK.
+
+A9.5 is the exact next slice. The anti-stall contract's only failed check is
+`operatorProgressArtifactIsResumeReady`: its current owner artifact is a parseable but
+stale 2026-07-11 readiness handoff. Use the existing readiness-only
+`pnpm verify:goal:operator-finish` path to regenerate a current safe handoff without
+provider prompt or real OS sleep, then rerun `pnpm verify:goal:anti-stall`. Change
+source only if the owner refresh cannot produce the already-specified resume-ready
+shape; do not weaken current-date, heartbeat, or explicit-user-action requirements.
 
 ## Work and Session Rules
 

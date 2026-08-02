@@ -438,7 +438,8 @@ const requiredWorkOrderClauses = [
   "A9.1 then executed the descriptor-first no-token chain",
   "A9.2 falsified that selection",
   "A9.3 then removed only the aggregate outer-timeout failure",
-  "A9.4 is next",
+  "A9.4 reconciled the density verifier",
+  "A9.5 is next",
 ];
 
 const requiredArchitectureClauses = [
@@ -992,8 +993,8 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a9A4TimeoutClosedFrontierValid =
-  currentFrontier.activeSlice === "A9.4" && currentFrontier.lastCompletedSlice === "A9.3";
+const a9RightRailDriftClosedFrontierValid =
+  currentFrontier.activeSlice === "A9.5" && currentFrontier.lastCompletedSlice === "A9.4";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1245,8 +1246,8 @@ const checks = [
       Object.values(currentFrontier).every(Boolean) &&
       currentFrontier.phase === "A9" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
-      a9A4TimeoutClosedFrontierValid,
-    "Work order preserves A7.5 and A8, records A9.0-A9.3 complete, and exposes A9.4 as the next unstarted slice",
+      a9RightRailDriftClosedFrontierValid,
+    "Work order preserves A7.5 and A8, records A9.0-A9.4 complete, and exposes A9.5 as the next unstarted slice",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(
