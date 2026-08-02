@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.6` (repo-owned release-lane closeout and exact operator handoff; not started).
-LAST COMPLETED SLICE: `A9.5`.
+ACTIVE SLICE: `A9.6` (repo-owned closeout complete; exact operator/external continuation remains active).
+LAST COMPLETED SLICE: `A9.6`.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.6`.
+NEXT IMPLEMENTATION SLICE: `A9.6` (operator/external continuation only; no executable repo-owned defect remains).
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -87,7 +87,8 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     the existing `App` / `RightRailShell` / `RightRailCommandMode` owner split without
     moving product JSX or weakening the first-view budget. A9.5 refreshed the existing
     readiness-only operator-progress owner and closed the sole anti-stall failure
-    without token prompt or real OS sleep. A9.6 is next.
+    without token prompt or real OS sleep. A9.6 closes the repo-owned release lane
+    while preserving the exact operator/external continuation.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -126,8 +127,8 @@ A4.12 complete
   -> A9.3 A4 acceptance timeout budget closure (complete; close_outer_timeout)
   -> A9.4 right-rail information-density verifier ownership reconciliation (complete; close_verifier_drift)
   -> A9.5 operator-progress resume-artifact freshness reconciliation (complete; refresh_owner_artifact)
-  -> A9.6 repo-owned release-lane closeout and exact operator handoff (next; not started)
-  -> A9 closeout
+  -> A9.6 repo-owned release-lane closeout and exact operator handoff (repo-owned complete; close_repo_owned_release_lane)
+  -> A9 operator/external continuation (active; no duplicate repo implementation)
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
 
@@ -151,7 +152,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, A9.2, A9.3, A9.4, and A9.5 are complete; A9.6 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0, A8.1, and repo-owned A9.0-A9.6 are complete; A9.6 remains the operator/external continuation boundary.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -951,13 +952,31 @@ contract passed with zero failed checks. The single following no-token aggregate
 executed all 23 descriptors, recorded both right-rail density and anti-stall as `pass`,
 kept token-bearing steps at zero, and remained release-blocked.
 
-A9.6 is the exact next slice. Reconcile the remaining direct failed descriptors once:
-native-boundary live artifacts remain stale, authenticated preflight/consent remain
-policy/operator-bound, signing and real sleep remain operator gates, external readiness
-remains external, and final-audit/completion-matrix remain downstream views. If current
-artifacts confirm no executable repo-owned defect, close repo-owned A9 with an exact
-operator/external handoff and no release credit. Do not rerun token prompts, signing,
-real sleep, or stale live-host proofs merely to force green.
+A9.6 closed with `close_repo_owned_release_lane`. The focused classifier consumes the
+current descriptor-first no-token artifact and fails closed on every unknown failed
+descriptor. Its exact current split is two stale-evidence descriptors, one policy
+descriptor with an operator action owner, two operator descriptors, one external
+descriptor, and two downstream views. The classifier reports
+`repoOwnedExecutableDefectCount=0`, while the no-token aggregate and final views remain
+BLOCK with `releaseReady=false` and no capability credit.
+
+A9.6 closes repo-owned R0-A9; release readiness remains false. `A9.6` stays in both
+the active and next fields only as the exact operator/external continuation boundary;
+the same-slice state is not duplicate implementation and does not authorize NUI or
+post-A9 activation. Refresh stale live evidence only on the appropriate host with
+`pnpm verify:mux-live`, `pnpm verify:mux-live-process-preservation`,
+`pnpm verify:terminal:ai-cli-boundary`,
+`pnpm verify:terminal:ai-cli-post-launch-chaos`, and
+`pnpm verify:terminal:native-ai-cli-post-launch-chaos`. The authenticated operator uses
+`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` with
+`pnpm verify:goal:operator:token-smoke`. The release operator first refreshes
+`pnpm verify:goal:release-signing-handoff` or `pnpm verify:goal:sleep-handoff`, then
+performs the secure signed distribution path or the physical
+`pnpm verify:production:suspend:native-user-cycle` respectively. External readiness
+refreshes with `pnpm verify:goal:external-gates`; only after owner evidence changes do
+the derived `pnpm verify:final-goal-audit` and
+`pnpm verify:goal:completion-matrix` views refresh. No token prompt, signing, real
+sleep, stale live-host proof, publication, or external transmission ran in A9.6.
 
 ## Work and Session Rules
 

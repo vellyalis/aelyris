@@ -440,7 +440,7 @@ const requiredWorkOrderClauses = [
   "A9.3 then removed only the aggregate outer-timeout failure",
   "A9.4 reconciled the density verifier",
   "A9.5 refreshed the existing",
-  "A9.6 is next",
+  "A9.6 closes repo-owned R0-A9",
 ];
 
 const requiredArchitectureClauses = [
@@ -994,8 +994,10 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a9OperatorProgressFreshFrontierValid =
-  currentFrontier.activeSlice === "A9.6" && currentFrontier.lastCompletedSlice === "A9.5";
+const a9ReleaseLaneCloseoutFrontierValid =
+  currentFrontier.activeSlice === "A9.6" &&
+  currentFrontier.lastCompletedSlice === "A9.6" &&
+  currentFrontier.nextImplementationSlice === "A9.6";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1247,8 +1249,8 @@ const checks = [
       Object.values(currentFrontier).every(Boolean) &&
       currentFrontier.phase === "A9" &&
       currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
-      a9OperatorProgressFreshFrontierValid,
-    "Work order preserves A7.5 and A8, records A9.0-A9.5 complete, and exposes A9.6 as the next unstarted slice",
+      a9ReleaseLaneCloseoutFrontierValid,
+    "Work order preserves A7.5 and A8, records A9.0-A9.6 complete, and keeps A9.6 only as the operator/external continuation boundary",
     { missingClauses: missing.workOrder, currentFrontier },
   ),
   check(

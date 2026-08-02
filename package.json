@@ -106,6 +106,7 @@
     "verify:a9:no-token-refresh-split": "node scripts/verify-a9-no-token-refresh-split.mjs",
     "verify:a9:no-token-provider-guard": "node scripts/verify-a9-no-token-provider-guard.mjs",
     "verify:a9:a4-timeout-budget": "node scripts/verify-a9-a4-timeout-budget.mjs",
+    "verify:a9:release-lane-closeout": "node scripts/verify-a9-release-lane-closeout.mjs",
     "verify:terminal:native-input": "node scripts/verify-native-terminal-input-host.mjs",
     "verify:terminal:command-evidence": "node scripts/verify-live-command-evidence.mjs",
     "verify:terminal:multipane-command-evidence": "node scripts/verify-multipane-command-evidence.mjs",

@@ -2241,7 +2241,7 @@ owners.
 
 ### **A9.6 - Repo-Owned Release-Lane Closeout And Exact Operator Handoff**
 
-Status: next implementation slice; not started.
+Status: complete with `close_repo_owned_release_lane` disposition on 2026-08-02.
 
 Classify the remaining fresh direct descriptor failures once without duplicating
 derived views. Stale native-boundary live evidence remains stale evidence; authenticated
@@ -2250,6 +2250,30 @@ gates; external readiness remains external; final audit and completion matrix re
 downstream views. If no executable repo-owned defect remains, close repo-owned A9 with
 exact refresh/operator commands and no release or capability credit. Do not execute
 token prompts, signing, real sleep, or stale live-host proofs merely to force green.
+
+The focused closeout classifies all eight current failed descriptors exactly once:
+two stale-evidence descriptors (`native-boundary` and authenticated preflight), one
+policy descriptor with an operator action owner (authenticated consent), two operator
+descriptors (signing and real sleep), one external descriptor, and two downstream
+views (final audit and completion matrix). Unknown failed descriptors fail closed as
+repo-owned defects. Current evidence yields `repoOwnedExecutableDefectCount=0`, while
+`releaseReady=false`, `phaseComplete=false`, and `postA9Activated=false` remain
+machine-explicit.
+
+The exact handoff is owner-bound. Stale native/sidecar evidence refreshes with
+`pnpm verify:mux-live`, `pnpm verify:mux-live-process-preservation`,
+`pnpm verify:terminal:ai-cli-boundary`,
+`pnpm verify:terminal:ai-cli-post-launch-chaos`, and
+`pnpm verify:terminal:native-ai-cli-post-launch-chaos`. Authenticated execution uses
+`pnpm verify:goal:operator:token-smoke` only with an exact
+`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini` selection. Signing and sleep retain
+their `pnpm verify:goal:release-signing-handoff` and
+`pnpm verify:goal:sleep-handoff` owner packets; the physical user-cycle command is
+`pnpm verify:production:suspend:native-user-cycle`. External readiness refreshes with
+`pnpm verify:goal:external-gates`. Final audit and completion matrix remain derived
+refreshes after direct owner evidence changes. The active/next A9.6 same-slice frontier
+therefore means operator/external continuation, not duplicate repo implementation,
+release credit, NUI activation, or a new A9.7.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

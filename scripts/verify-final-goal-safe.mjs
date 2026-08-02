@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { validateEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "final-goal-safe-summary.json");
@@ -879,21 +880,52 @@ function uiTrustContractVerdict(data) {
 
 function a4DurabilityAcceptanceVerdict(data) {
   const scenarios = Array.isArray(data?.scenarios) ? data.scenarios : [];
+  const matrix = data?.combinedRuntimeIntegrityMatrix;
+  const guarantees = matrix?.guarantees ?? {};
+  const provenanceValid = validateEvidenceProvenance({ root: ROOT, artifact: data }).ok;
   const ok =
-    data?.status === "pass-repo-owned-a4-durability" &&
+    data?.schema === "aelyris.a4-durability-acceptance/v8" &&
+    data?.status === "pass-current-a4-durability-evidence" &&
+    data?.completedThrough === "A4.12" &&
     data?.repoOwnedComplete === true &&
     data?.phaseComplete === true &&
-    scenarios.length === 12 &&
+    Array.isArray(data?.remainingSlices) &&
+    data.remainingSlices.length === 0 &&
+    scenarios.length === 25 &&
     scenarios.every((scenario) => scenario?.status === "pass") &&
+    matrix?.schema === "aelyris.a4-runtime-integrity-matrix/v1" &&
+    matrix?.status === "pass" &&
+    Array.isArray(matrix?.dimensions) &&
+    matrix.dimensions.length === 6 &&
+    matrix.dimensions.every(
+      (dimension) =>
+        dimension?.status === "pass" &&
+        Array.isArray(dimension?.scenarioIds) &&
+        dimension.scenarioIds.length > 0 &&
+        dimension.scenarioIds.every((id) =>
+          scenarios.some((scenario) => scenario?.id === id && scenario?.status === "pass"),
+        ),
+    ) &&
+    [
+      "noAcknowledgedStateOrEffectSilentlyLost",
+      "noStaleGenerationCanCommit",
+      "uncertaintyIsBlockedOrExplicitlyDegraded",
+      "beginAndProcessSpawnAreSerialized",
+      "allProofbookEffectContinuationsAreAdmissionGated",
+      "liveSidecarHttpAdmissionIsFailClosed",
+    ].every((guarantee) => guarantees[guarantee] === true) &&
+    data?.externalProof?.realOsSleepResumeExecuted === false &&
+    data?.externalProof?.abruptHostPowerLossExecuted === false &&
+    provenanceValid &&
     data?.externalProof?.status === "deferred-to-a9-operator-proof";
   return {
     ok,
-    status: ok ? "pass-current-repo-owned-a4-durability" : (data?.status ?? "stale-or-incomplete"),
+    status: ok ? "pass-current-a4-durability-evidence" : (data?.status ?? "stale-or-incomplete"),
     expectation:
       "A4 restart, upgrade, locked/corrupt DB, power-loss injection, quota, and multi-connection acceptance is fresh while real-host proof remains explicit",
     reason: ok
-      ? "all twelve repo-owned A4 durability scenarios passed and external proof remains separately classified"
-      : "A4 durability acceptance is missing, stale, incomplete, or hides external proof debt",
+      ? "all current v8 A4 scenarios, combined integrity dimensions, and guarantees passed while external proof remains separately classified"
+      : "A4 v8 durability acceptance is missing, stale, provenance-invalid, incomplete, or hides external proof debt",
     strictProof: ok,
     semanticFreshness: ok ? "current-a4-durability-acceptance" : "stale-or-incomplete",
   };
@@ -1363,7 +1395,7 @@ function supplyChainAuditVerdict(data) {
         ? "environment-blocked-current-contract"
         : classifiedUpstreamBound
           ? "classified-upstream-bound-current-contract"
-        : "pass-current-supply-chain-contract"
+          : "pass-current-supply-chain-contract"
       : (data?.status ?? "stale-or-incomplete"),
     expectation:
       "npm and Rust dependency audit is current with zero repo-owned release blockers and zero runtime critical Rust warnings; external host blocks or classified upstream-bound dependency blockers are explicit non-release states",
@@ -1372,7 +1404,7 @@ function supplyChainAuditVerdict(data) {
         ? "supply-chain audit is current; npm audit child process is host-blocked while Rust audit reports zero known vulnerabilities and zero runtime critical warnings"
         : classifiedUpstreamBound
           ? "supply-chain audit is current; known Rust dependency blockers remain, but stack-risk classifies all of them as upstream-bound with releaseBlockers=0 and unclassified=0"
-        : "supply-chain audit is source-fresh, reports zero known npm/cargo vulnerabilities, and isolates remaining maintenance warnings as tracked upstream debt"
+          : "supply-chain audit is source-fresh, reports zero known npm/cargo vulnerabilities, and isolates remaining maintenance warnings as tracked upstream debt"
       : "supply-chain audit is stale, incomplete, failing, has repo-owned/unclassified known vulnerabilities, or has runtime critical Rust warnings",
   };
 }
@@ -1545,12 +1577,10 @@ function nativeHwndPasteLiveVerdict(data) {
       ? "native HWND paste live proof is source-fresh and covers the WebView2/CDP WM_PASTE path plus allowed single-line, destructive, and multiline paste paths"
       : degradedOk
         ? "native HWND paste proof is source-fresh but degraded: WebView2/CDP WM_PASTE was not exercised, only the Rust native no-CDP proof ran"
-      : "native HWND paste live proof is missing, stale, incomplete, or does not prove every guard path",
+        : "native HWND paste live proof is missing, stale, incomplete, or does not prove every guard path",
     strictProof: strictOk,
     degradedProof: degradedOk,
-    warning: degradedOk
-      ? "WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only."
-      : undefined,
+    warning: degradedOk ? "WebView2/CDP WM_PASTE path unexercised; degraded no-CDP Rust proof only." : undefined,
     semanticFreshness: ok ? "current-native-hwnd-paste-live-contract" : "stale-or-incomplete",
     cycleBoundary: "native-input-real-wm-paste-proof",
   };
@@ -1893,11 +1923,7 @@ const steps = [
   ),
   runStep("glass-legibility", "Glass legibility and opaque text contract", "verify-glass-legibility-contract.mjs"),
   runStep("ui-trust-contract", "Enforced UI trust contract", "verify-ui-trust-contract.mjs", ["--enforce"]),
-  runStep(
-    "a4-durability-acceptance",
-    "A4 repo-owned durability acceptance",
-    "verify-a4-durability-acceptance.mjs",
-  ),
+  runStep("a4-durability-acceptance", "A4 repo-owned durability acceptance", "verify-a4-durability-acceptance.mjs"),
   runStep(
     "right-rail-information-density",
     "Right rail essential-first information density contract",

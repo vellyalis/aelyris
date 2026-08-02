@@ -1,14 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
-import { shouldFailReleaseEnforcement } from "./release-evidence-truth.mjs";
 import {
   createEvidenceProvenance,
   deduplicateRootCauses,
   validateEvidenceDependencyGraph,
   validateEvidenceProvenance,
 } from "./evidence-provenance.mjs";
+import { acquireFinalGoalArtifactLock } from "./final-goal-artifact-lock.mjs";
+import { shouldFailReleaseEnforcement } from "./release-evidence-truth.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "release-quality-score.json");
@@ -500,10 +500,7 @@ const uiTrustContract = readJson(uiTrustContractPath);
 const uiTrustContractSource = readFileSync(join(ROOT, "scripts", "verify-ui-trust-contract.mjs"), "utf8");
 const a4DurabilityAcceptancePath = join(ROOT, ".codex-auto", "quality", "a4-durability-acceptance.json");
 const a4DurabilityAcceptance = readJson(a4DurabilityAcceptancePath);
-const a4DurabilityAcceptanceSource = readFileSync(
-  join(ROOT, "scripts", "verify-a4-durability-acceptance.mjs"),
-  "utf8",
-);
+const a4DurabilityAcceptanceSource = readFileSync(join(ROOT, "scripts", "verify-a4-durability-acceptance.mjs"), "utf8");
 const goalAntiStallContractPath = join(ROOT, ".codex-auto", "quality", "goal-anti-stall-contract.json");
 const goalAntiStallContract = readJson(goalAntiStallContractPath);
 const goalAntiStallContractSource = readFileSync(join(ROOT, "scripts", "verify-goal-anti-stall-contract.mjs"), "utf8");
@@ -626,26 +623,26 @@ add(
       } runtime maintenance warnings tracked`
     : supplyChainClassifiedUpstreamBound
       ? `classified-upstream-bound; npm 0, cargo ${supplyChainAudit?.cargo?.knownVulnerabilities ?? "?"} known vulnerabilities; stack-risk releaseBlockers=0 upstreamBound=${supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? "?"} unclassified=0`
-    : supplyChainEnvironmentBlocked
-      ? `environment-blocked; npm audit unavailable (${supplyChainAudit?.npm?.unavailableReason ?? "unknown"}); cargo 0 vulnerabilities, 0 runtime critical Rust warnings`
-      : supplyChainAudit?.status
-        ? `${supplyChainAudit.status} (stale or incomplete)`
-        : "missing",
+      : supplyChainEnvironmentBlocked
+        ? `environment-blocked; npm audit unavailable (${supplyChainAudit?.npm?.unavailableReason ?? "unknown"}); cargo 0 vulnerabilities, 0 runtime critical Rust warnings`
+        : supplyChainAudit?.status
+          ? `${supplyChainAudit.status} (stale or incomplete)`
+          : "missing",
   supplyChainPass
     ? []
     : supplyChainClassifiedUpstreamBound
       ? [
           `supply-chain-audit upstream-bound dependency BLOCK: stack-risk releaseBlockers=0 unclassified=0 upstreamBound=${supplyChainAudit?.stackRiskClassification?.upstreamBoundBlockerCount ?? "?"}; release waits on upstream dependency graph movement, not repo-owned implementation.`,
         ]
-    : supplyChainEnvironmentBlocked
-      ? [
-          `npm supply-chain audit is environment-blocked: ${
-            supplyChainAudit?.npm?.unavailableReason ?? "npm audit unavailable"
-          }`,
-        ]
-      : [
-          "supply-chain audit is missing, stale, failing, reports known vulnerabilities, or has runtime critical Rust warnings",
-        ],
+      : supplyChainEnvironmentBlocked
+        ? [
+            `npm supply-chain audit is environment-blocked: ${
+              supplyChainAudit?.npm?.unavailableReason ?? "npm audit unavailable"
+            }`,
+          ]
+        : [
+            "supply-chain audit is missing, stale, failing, reports known vulnerabilities, or has runtime critical Rust warnings",
+          ],
 );
 
 const releaseDoctorSigning = releaseDoctor?.checks?.find?.((check) => check?.id === "signing-state");
@@ -668,7 +665,9 @@ add(
   artifactsReady ? "authenticode-and-updater-lifecycle-proved" : "missing/stale/untrusted",
   artifactsReady
     ? []
-    : ["Authenticode timestamp chains, updater signatures, reachable metadata, and install/relaunch/rollback proof are incomplete"],
+    : [
+        "Authenticode timestamp chains, updater signatures, reachable metadata, and install/relaunch/rollback proof are incomplete",
+      ],
 );
 
 const muxSummary = muxPerf?.summary ?? muxPerf;
@@ -1015,7 +1014,9 @@ const terminalFontRenderContractSourcePass =
   settingsSource.includes("surfaceOpacity: terminalSurfaceOpacity") &&
   nativeTerminalAreaSource.includes("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)") &&
   nativeTerminalAreaSource.includes("textClarity={terminalTextClarity}") &&
-  nativeTerminalAreaSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)") &&
+  nativeTerminalAreaSource.includes(
+    "useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)",
+  ) &&
   agentTerminalSource.includes("terminalTextClarity = useAppStore((s) => s.terminalTextClarity)") &&
   agentTerminalSource.includes("textClarity={terminalTextClarity}") &&
   agentTerminalSource.includes("useTerminalCellMetrics(terminalFontSize, terminalFontFamily, terminalLineHeight)") &&
@@ -1430,7 +1431,9 @@ const releaseReadinessArtifactCurrent =
       mtimeMs(join(ROOT, "docs", "specs", "VISIBLE_AGENT_PANE_RUNTIME_SPEC.md")),
     );
 const releaseReadinessFresh =
-  releaseReadinessArtifactCurrent && releaseReadinessTerminalAiOs?.ok === true && releaseReadinessTerminalAiOs?.status === "pass";
+  releaseReadinessArtifactCurrent &&
+  releaseReadinessTerminalAiOs?.ok === true &&
+  releaseReadinessTerminalAiOs?.status === "pass";
 const releaseReadinessClaims = releaseReadinessTerminalAiOs?.claims ?? {};
 const releaseReadinessSourcePass =
   packageJsonSource.includes('"verify:release-readiness-aggregate"') &&
@@ -1441,7 +1444,9 @@ const releaseReadinessSourcePass =
   releaseReadinessTerminalAiOsScriptSource.includes("muxLiveRestore") &&
   releaseReadinessTerminalAiOsScriptSource.includes("sharedBrainRestart");
 const releaseReadinessPass =
-  releaseReadinessFresh && releaseReadinessSourcePass && releaseReadinessClaimIds.every((id) => releaseReadinessClaims[id] === "pass");
+  releaseReadinessFresh &&
+  releaseReadinessSourcePass &&
+  releaseReadinessClaimIds.every((id) => releaseReadinessClaims[id] === "pass");
 add(
   scores,
   "release-readiness-aggregate",
@@ -3058,8 +3063,7 @@ const authenticatedAiCliConsentPacketPass =
   authenticatedAiCliConsentPacket?.checks?.sourceArtifactsFresh === true &&
   authenticatedAiCliConsentPacket?.checks?.noRawPromptTextPersisted === true &&
   authenticatedAiCliConsentPacket?.packet?.command === "pnpm verify:goal:operator:token-smoke" &&
-  authenticatedAiCliConsentPacket?.packet?.requiredEnv ===
-    "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
+  authenticatedAiCliConsentPacket?.packet?.requiredEnv === "AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini" &&
   authenticatedAiCliConsentPacket?.packet?.tokenGate ===
     "per-execution one-use packet under standing repo authorization" &&
   authenticatedAiCliConsentPacket?.packet?.wouldSpendTokens === true &&
@@ -3693,7 +3697,9 @@ const commandRecoverySourcePass =
   agentFileChangesSource.includes('kind: "parser_error"') &&
   agentFileChangesSource.includes("malformed-agent-structured-output-is-auditable") &&
   agentFileChangesTestSource.includes("surfaces malformed structured agent output as auditable parser_error") &&
-  agentFileChangesTestSource.includes("keeps parser errors separate from normal text so provenance degradation is visible");
+  agentFileChangesTestSource.includes(
+    "keeps parser errors separate from normal text so provenance degradation is visible",
+  );
 const commandRecoveryPass =
   commandRecoveryFresh &&
   commandRecoverySourcePass &&
@@ -3830,8 +3836,7 @@ const tauriGoalTrackSmokePass =
   tauriGoalTrackSmoke?.checks?.goalTrack?.qualitySource?.status === "fresh" &&
   tauriGoalTrackExpectedQualityCurrent &&
   tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.status === "ready" &&
-  tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.command ===
-    "pnpm verify:goal:operator:token-smoke" &&
+  tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.command === "pnpm verify:goal:operator:token-smoke" &&
   String(tauriGoalTrackSmoke?.checks?.goalTrack?.consentPacket?.requiredEnv ?? "").includes(
     "AELYRIS_AUTH_PROMPT_PROVIDER=",
   ) &&
@@ -4379,17 +4384,45 @@ add(
       ],
 );
 
+const a4DurabilityMatrix = a4DurabilityAcceptance?.combinedRuntimeIntegrityMatrix;
+const a4DurabilityGuarantees = a4DurabilityMatrix?.guarantees ?? {};
 const a4DurabilityAcceptancePass =
-  packageJsonSource.includes(
-    '"verify:a4:durability:acceptance": "node scripts/verify-a4-durability-acceptance.mjs"',
-  ) &&
-  a4DurabilityAcceptanceSource.includes("pass-repo-owned-a4-durability") &&
-  a4DurabilityAcceptance?.status === "pass-repo-owned-a4-durability" &&
+  packageJsonSource.includes('"verify:a4:durability:acceptance": "node scripts/verify-a4-durability-acceptance.mjs"') &&
+  a4DurabilityAcceptanceSource.includes('schema: "aelyris.a4-durability-acceptance/v8"') &&
+  a4DurabilityAcceptanceSource.includes('"pass-current-a4-durability-evidence"') &&
+  a4DurabilityAcceptance?.schema === "aelyris.a4-durability-acceptance/v8" &&
+  a4DurabilityAcceptance?.status === "pass-current-a4-durability-evidence" &&
+  a4DurabilityAcceptance?.completedThrough === "A4.12" &&
   a4DurabilityAcceptance?.repoOwnedComplete === true &&
   a4DurabilityAcceptance?.phaseComplete === true &&
+  Array.isArray(a4DurabilityAcceptance?.remainingSlices) &&
+  a4DurabilityAcceptance.remainingSlices.length === 0 &&
   Array.isArray(a4DurabilityAcceptance?.scenarios) &&
-  a4DurabilityAcceptance.scenarios.length >= 13 &&
+  a4DurabilityAcceptance.scenarios.length === 25 &&
   a4DurabilityAcceptance.scenarios.every((scenario) => scenario?.status === "pass") &&
+  a4DurabilityMatrix?.schema === "aelyris.a4-runtime-integrity-matrix/v1" &&
+  a4DurabilityMatrix?.status === "pass" &&
+  Array.isArray(a4DurabilityMatrix?.dimensions) &&
+  a4DurabilityMatrix.dimensions.length === 6 &&
+  a4DurabilityMatrix.dimensions.every(
+    (dimension) =>
+      dimension?.status === "pass" &&
+      Array.isArray(dimension?.scenarioIds) &&
+      dimension.scenarioIds.length > 0 &&
+      dimension.scenarioIds.every((id) =>
+        a4DurabilityAcceptance.scenarios.some((scenario) => scenario?.id === id && scenario?.status === "pass"),
+      ),
+  ) &&
+  [
+    "noAcknowledgedStateOrEffectSilentlyLost",
+    "noStaleGenerationCanCommit",
+    "uncertaintyIsBlockedOrExplicitlyDegraded",
+    "beginAndProcessSpawnAreSerialized",
+    "allProofbookEffectContinuationsAreAdmissionGated",
+    "liveSidecarHttpAdmissionIsFailClosed",
+  ].every((guarantee) => a4DurabilityGuarantees[guarantee] === true) &&
+  a4DurabilityAcceptance?.externalProof?.realOsSleepResumeExecuted === false &&
+  a4DurabilityAcceptance?.externalProof?.abruptHostPowerLossExecuted === false &&
   a4DurabilityAcceptance?.externalProof?.status === "deferred-to-a9-operator-proof";
 add(
   scores,
@@ -4965,7 +4998,9 @@ const finalGoalAuditSourcePass =
   finalGoalSafeVerifierSource.includes("localDate") &&
   finalGoalSafeVerifierSource.includes("timeZone") &&
   finalGoalSafeVerifierSource.includes("const tokenSpendingPromptExecuted =") &&
-  finalGoalSafeVerifierSource.includes("expectedSafeGate.tokenSpendingPromptExecuted === tokenSpendingPromptExecuted") &&
+  finalGoalSafeVerifierSource.includes(
+    "expectedSafeGate.tokenSpendingPromptExecuted === tokenSpendingPromptExecuted",
+  ) &&
   finalGoalSafeVerifierSource.includes("operatorFinishHandoffPassed") &&
   finalGoalSafeVerifierSource.includes("goalAntiStallContractPassed") &&
   finalGoalSafeVerifierSource.includes("antiStallContractVerdict") &&
@@ -5270,7 +5305,8 @@ if (finalGoalEvidenceRow) {
   finalGoalEvidenceRow.points = 0;
   finalGoalEvidenceRow.max = 0;
   finalGoalEvidenceRow.blockers = [];
-  finalGoalEvidenceRow.detail = "downstream derived view; verify-final-goal-audit consumes this score without feeding it back";
+  finalGoalEvidenceRow.detail =
+    "downstream derived view; verify-final-goal-audit consumes this score without feeding it back";
 }
 const countedScores = scores.filter((item) => item.kind === "direct");
 const total = countedScores.reduce((sum, item) => sum + item.points, 0);
@@ -5307,7 +5343,9 @@ const report = {
   max,
   grade: gradeForPercent(percent),
   releaseCandidateReady:
-    percent >= 92 && blockers.length === 0 && scores.filter((item) => item.kind === "aggregate").every((item) => item.points === item.max),
+    percent >= 92 &&
+    blockers.length === 0 &&
+    scores.filter((item) => item.kind === "aggregate").every((item) => item.points === item.max),
   scores,
   blockers,
   allBlockers,

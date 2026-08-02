@@ -98,11 +98,14 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 full-native Rust migration は accepted-with-amendments の high-priority queued
 post-A9 program だが、active phase と並行しない。A8.1 measured terminal
 disposition は `do_not_promote` で完了し、Canvas2D を default/rollback に保持した。
-current frontier は root work order が所有する A9.6 repo-owned release-lane closeout
-and exact operator handoff。A9.0 inventory は `refresh_before_fix`、A9.1 fresh owner split は
+current frontier は root work order が所有する A9.6 exact operator/external
+continuation。A9.0 inventory は `refresh_before_fix`、A9.1 fresh owner split は
 `repair_dependency_graph`、A9.2 provider-guard boundary correction は
-`reject_direct_descriptor`、A9.3 A4 timeout closure は `close_outer_timeout`、A9.4 right-rail verifier reconciliation は `close_verifier_drift`、A9.5 operator-progress refresh は `refresh_owner_artifact` で完了し、token-bearing guard を no-token graph へ
-昇格せず、stale snapshot と downstream view も直接の実装欠陥へ昇格していない。
+`reject_direct_descriptor`、A9.3 A4 timeout closure は `close_outer_timeout`、A9.4 right-rail verifier reconciliation は `close_verifier_drift`、A9.5 operator-progress refresh は `refresh_owner_artifact` で完了した。A9.6 repo-owned release-lane closeout is complete with
+`close_repo_owned_release_lane`: executable repo-owned defect は0件で、同一A9.6の
+active/next frontier はoperator/external continuationだけを表す。releaseReadyはfalse、
+post-A9/NUIは未activationであり、token-bearing guard、stale snapshot、downstream viewを
+直接の実装欠陥やrelease creditへ昇格していない。
 A8.0 は N4 direction を承認したが
 pre-A9 takeover と framework preselection は承認していない。A9 後に
 NUI-F0-F7 を priority 1 で開始し、NUI-F0 の同一縦切り比較で framework を選ぶ。
