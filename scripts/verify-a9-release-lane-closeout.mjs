@@ -236,6 +236,8 @@ const allowedDirtyPaths = new Set([
   "scripts/verify-verifiable-agent-work-os-spec.mjs",
 ]);
 const A9_6_OWNED_PATHS = [...allowedDirtyPaths];
+const ORIGINAL_EVIDENCE_HEAD = "42d6eae1a65e45f442e92d3239834102cbff83b9";
+const CLOSEOUT_COMMIT = "a1db7c3d940e429dfb23baf9307afbfd2634fe90";
 
 function fullPath(path) {
   return join(ROOT, path);
@@ -415,22 +417,61 @@ const commitDeltaPaths = changedPathsBetween(evidenceHead, head);
 const unexpectedCommitDeltaPaths = commitDeltaPaths.filter((path) => !allowedDirtyPaths.has(path));
 const commitCount = commitCountBetween(evidenceHead, head);
 const commitSubjects = commitSubjectsBetween(evidenceHead, head);
+const headParent = git(["rev-parse", `${head}^`]);
+const headSubject = git(["show", "-s", "--format=%s", head]);
+const headCommitPaths = changedPathsBetween(headParent, head);
+const headParentParent = git(["rev-parse", `${headParent}^`]);
+const headParentSubject = git(["show", "-s", "--format=%s", headParent]);
+const headParentCommitPaths = changedPathsBetween(headParentParent, headParent);
+const closeoutCommitValid =
+  head === CLOSEOUT_COMMIT &&
+  headParent === ORIGINAL_EVIDENCE_HEAD &&
+  headSubject === "feat(a9): close repo-owned release lane" &&
+  exactStringSet(headCommitPaths, A9_6_OWNED_PATHS);
+const correctiveCommitSequenceValid =
+  headParent === CLOSEOUT_COMMIT &&
+  headSubject === "fix(a9): stabilize postcommit evidence refresh" &&
+  exactStringSet(headCommitPaths, ["scripts/verify-a9-release-lane-closeout.mjs"]) &&
+  headParentSubject === "feat(a9): close repo-owned release lane" &&
+  exactStringSet(headParentCommitPaths, A9_6_OWNED_PATHS);
 const freshPrecommitState =
+  head === ORIGINAL_EVIDENCE_HEAD &&
   evidenceHead === head &&
   commitCount === 0 &&
   commitDeltaPaths.length === 0 &&
   exactStringSet(dirty, A9_6_OWNED_PATHS);
 const freshPostcommitState =
+  head === CLOSEOUT_COMMIT &&
+  evidenceHead === ORIGINAL_EVIDENCE_HEAD &&
   commitCount === 1 &&
   commitSubjects.length === 1 &&
   commitSubjects[0] === "feat(a9): close repo-owned release lane" &&
   exactStringSet(commitDeltaPaths, A9_6_OWNED_PATHS) &&
+  closeoutCommitValid &&
+  dirty.length === 0;
+const correctivePostcommitState =
+  evidenceHead === CLOSEOUT_COMMIT &&
+  commitCount === 1 &&
+  commitSubjects.length === 1 &&
+  commitSubjects[0] === "fix(a9): stabilize postcommit evidence refresh" &&
+  exactStringSet(commitDeltaPaths, ["scripts/verify-a9-release-lane-closeout.mjs"]) &&
+  correctiveCommitSequenceValid &&
+  dirty.length === 0;
+const refreshedCorrectivePostcommitState =
+  evidenceHead === head &&
+  commitCount === 0 &&
+  commitDeltaPaths.length === 0 &&
+  correctiveCommitSequenceValid &&
   dirty.length === 0;
 const evidenceCommitState = freshPrecommitState
   ? "a9_6_precommit"
   : freshPostcommitState
     ? "a9_6_postcommit"
-    : "invalid";
+    : correctivePostcommitState
+      ? "a9_6_corrective_postcommit"
+      : refreshedCorrectivePostcommitState
+        ? "a9_6_refreshed_corrective_postcommit"
+        : "invalid";
 const evidenceHeadAllowed =
   isGitAncestor(evidenceHead, head) && unexpectedCommitDeltaPaths.length === 0 && evidenceCommitState !== "invalid";
 const frontier = {
@@ -1277,6 +1318,14 @@ const checks = [
       commitCount,
       commitSubjects,
       evidenceCommitState,
+      headCommit: {
+        subject: headSubject,
+        paths: headCommitPaths,
+      },
+      parentCommit: {
+        subject: headParentSubject,
+        paths: headParentCommitPaths,
+      },
     },
   ),
   check(
