@@ -5081,7 +5081,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .app-container[data-interface-style="workstation"] .mode-rail-list {
-  gap: 1px;
+  gap: 4px;
 }
 
 .app-container[data-interface-style="workstation"] .mode-rail-button {
@@ -5129,7 +5129,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
   position: sticky;
   top: 0;
   z-index: 4;
-  grid-auto-rows: 34px;
+  grid-auto-rows: 32px;
   gap: 0;
   padding: 3px var(--workstation-column-inset) 0;
   border: 0;
@@ -5140,7 +5140,7 @@ html[data-mood="aelyris-sakura"] body[data-window-focused="false"] {
 }
 
 .app-container[data-interface-style="workstation"] .right-panel-mode-tab {
-  height: 31px;
+  height: 32px;
   border: 0;
   border-radius: 3px 3px 0 0;
 }

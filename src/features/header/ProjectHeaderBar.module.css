@@ -149,6 +149,15 @@
   outline-offset: -2px;
 }
 
+/* The hamburger already owns a 36px square. Keep its adjacent sidebar
+ * toggle in the same optical/control class instead of inheriting the 48px
+ * window-chrome hit area used by the actions on the opposite edge. */
+.chromeCluster > .headerBtn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
 /* 1px vertical separator between the app-action cluster (Refresh/Settings)
    and the platform window controls — keeps them from reading as one row. */
 .controlsSeparator {

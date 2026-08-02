@@ -130,7 +130,7 @@
 
 :global(.app-container[data-interface-style="workstation"]) .header {
   box-sizing: border-box;
-  height: 30px;
+  height: 32px;
   padding-inline: var(--workstation-column-inset);
   background: transparent;
   border-bottom: 1px solid color-mix(in srgb, var(--rail-control-border) 46%, transparent);

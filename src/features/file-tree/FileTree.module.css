@@ -191,7 +191,7 @@
  * heights avoid half-device-pixel baselines at 125%/150% Windows scaling. */
 :global(.app-container[data-interface-style="workstation"]) .breadcrumb {
   box-sizing: border-box;
-  height: 30px;
+  height: 32px;
   padding: 0 var(--workstation-column-inset);
 }
 
