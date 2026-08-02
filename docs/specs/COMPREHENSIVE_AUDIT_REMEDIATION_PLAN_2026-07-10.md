@@ -1968,7 +1968,7 @@ blocked packets require typed repo/policy/operator/external blockers and grant z
 completion credit. Focused proof is `pnpm verify:a7:completion-settlement` (5 tests).
 A7 remains incomplete and A7.5 is next but not started.
 
-### A7.5 - Canonical Core Mission Combined Acceptance
+### **A7.5 - Canonical Core Mission Combined Acceptance**
 
 Status: next; not started.
 
