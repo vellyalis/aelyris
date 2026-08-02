@@ -3,10 +3,10 @@
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.3` (A4 acceptance timeout budget closure; not started).
-LAST COMPLETED SLICE: `A9.2`.
+ACTIVE SLICE: `A9.4` (right-rail information-density verifier ownership reconciliation; not started).
+LAST COMPLETED SLICE: `A9.3`.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.3`.
+NEXT IMPLEMENTATION SLICE: `A9.4`.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -82,7 +82,8 @@ one router/readiness/client ownership split, exact command/schema preservation, 
     as the first apparent repo-owned dependency defect. A9.2 falsified that selection:
     the provider guard is intentionally token-bearing and the pre-spawn authority
     rejected direct insertion before any child started. The 23-step no-token graph
-    remains unchanged and A9.3 is next.
+    remains unchanged. A9.3 then removed only the aggregate outer-timeout failure for
+    the unchanged A4 acceptance portfolio. A9.4 is next.
     Do not reopen A4, completed A6, A7.0, A7.1, A7.2, or A7.3 without a fresh regression.
 
 ## Objective
@@ -118,7 +119,8 @@ A4.12 complete
   -> A9.0 release evidence inventory and owner split (complete; refresh_before_fix)
   -> A9.1 no-token release evidence refresh and fresh owner split (complete; repair_dependency_graph)
   -> A9.2 no-token provider-guard boundary correction (complete; reject_direct_descriptor)
-  -> A9.3 A4 acceptance timeout budget closure (next; not started)
+  -> A9.3 A4 acceptance timeout budget closure (complete; close_outer_timeout)
+  -> A9.4 right-rail information-density verifier ownership reconciliation (next; not started)
   -> A9 closeout
   -> NUI-F0..F7 as the priority-1 post-A9 program
 ```
@@ -143,7 +145,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, and A9.2 are complete; A9.3 is next and not started.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0, A8.1, A9.0, A9.1, A9.2, and A9.3 are complete; A9.4 is next and not started.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -213,6 +215,7 @@ continuation_contract:
 | A9.1 | no-token release evidence refresh and fresh owner split | A9.0 complete | current score/final-audit chain regenerated without token/sleep/signing actions; first fresh repo-owned defect or external/operator frontier selected |
 | A9.2 | no-token provider-guard boundary correction | A9.1 complete | direct insertion is rejected before spawn; standalone guard proof stays outside the unchanged token-free descriptor graph |
 | A9.3 | A4 acceptance timeout budget closure | A9.2 complete | aggregate grants the existing A4 acceptance verifier enough bounded time to complete; timeout remains explicit and no tests are weakened |
+| A9.4 | right-rail information-density verifier ownership reconciliation | A9.3 complete | verifier follows the current App/RightRailShell owner split and distinguishes source-contract drift from an actual first-view density regression |
 | A9 | CI/release/external proof closeout | A0-A8 complete/deferred by evidence | enforced release lane + operator proof |
 
 Do not skip to a later phase because it is easier to score. Do not parallelize phases
@@ -900,6 +903,27 @@ was still running successful focused Rust scenarios when the outer 180-second st
 budget killed it. Give only that existing descriptor a bounded phase-specific timeout
 large enough for its current scenario portfolio, rerun the A4 acceptance once, and
 then rerun the aggregate once. Do not remove scenarios or weaken minimum-pass checks.
+
+## A9.3 Complete - A4 Acceptance Timeout Budget Closure
+
+A9.3 closed with `close_outer_timeout`. The unchanged A4 acceptance verifier executed
+all 25 scenarios in 176.8 seconds standalone, proving that the generic 180-second
+aggregate budget had only about three seconds of scheduling/build margin. Only the A4
+descriptor now has a bounded 600-second outer timeout; every scenario retains its
+240-second internal timeout, minimum pass counts, output markers, and serial order.
+
+The single post-change no-token aggregate executed all 23 descriptors. A4 changed from
+`timed-out` at 180000 ms to `pass` at 43514 ms with `timeoutMs=600000`; token-bearing
+steps remained zero, no provider prompt or real OS sleep ran, and the aggregate stayed
+BLOCK with the other ten failed steps preserved. This is verifier budget closure, not
+new A4 capability or release credit.
+
+A9.4 is the exact next slice. The right-rail density verifier still roots all JSX
+searches in `src/App.tsx`, while the `right-panel-content` owner moved to
+`src/features/right-rail/RightRailShell.tsx`. Reconcile the verifier with that existing
+owner split, then determine whether its two `-1` findings are stale search boundaries
+or real visible-order regressions. Do not move product JSX merely to satisfy string
+positions and do not weaken the first-view budget.
 
 ## Work and Session Rules
 

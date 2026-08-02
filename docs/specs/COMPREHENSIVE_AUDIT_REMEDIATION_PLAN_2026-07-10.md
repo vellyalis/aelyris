@@ -2187,13 +2187,30 @@ no-token aggregate, not a repo-owned descriptor defect.
 
 ### **A9.3 - A4 Acceptance Timeout Budget Closure**
 
-Status: next implementation slice; not started.
+Status: complete with `close_outer_timeout` disposition on 2026-08-02.
 
 The A4 acceptance child continued completing focused Rust scenarios when the generic
 180-second outer step budget terminated it. Assign only this descriptor a bounded
 timeout sufficient for the existing scenario portfolio. Do not delete scenarios,
 lower minimum pass counts, or treat timeout removal as A4 capability credit. Run the
 focused acceptance once and the no-token aggregate once before the next owner split.
+
+The unchanged 25-scenario acceptance took 176.8 seconds standalone. The aggregate now
+assigns only this descriptor a 600-second outer budget; the scenario-local 240-second
+timeouts, minimum pass counts, output markers, and serial execution remain unchanged.
+The post-change aggregate completed all 23 descriptors, reported A4 `pass` in 43514 ms,
+executed no token-bearing prompt or real OS sleep, and retained its overall BLOCK.
+
+### **A9.4 - Right-Rail Information-Density Verifier Ownership Reconciliation**
+
+Status: next implementation slice; not started.
+
+The current density verifier searches for the `right-panel-content` root only inside
+`src/App.tsx`, although that shell owner now lives in
+`src/features/right-rail/RightRailShell.tsx`. Reconcile evaluation with the existing
+owner split and determine whether the two missing-index findings are verifier drift or
+real first-view ordering defects. Preserve the current two-primary/three-with-decision
+budget and do not move product JSX solely to satisfy source-string ordering.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 

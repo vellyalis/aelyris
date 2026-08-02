@@ -368,6 +368,7 @@ const stepDescriptors = [
     label: "A4 repo-owned durability acceptance",
     script: "verify-a4-durability-acceptance.mjs",
     costClass: "no-token",
+    options: { timeoutMs: 600_000 },
   },
   { id: "right-rail-information-density", label: "Right rail essential-first information density contract", script: "verify-right-rail-information-density.mjs", costClass: "no-token" },
   { id: "anti-stall-contract", label: "Anti-stall and operator self-check contract", script: "verify-goal-anti-stall-contract.mjs", costClass: "no-token" },
