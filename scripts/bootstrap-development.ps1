@@ -32,9 +32,10 @@ function Require-Command {
 }
 
 $git = Require-Command "git.exe" "Install Git for Windows, then reopen PowerShell."
-$repoRoot = (& $git rev-parse --show-toplevel).Trim()
+$scriptRepository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = (& $git -C $scriptRepository rev-parse --show-toplevel).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
-  throw "Run this script from inside an Aelyris Git clone."
+  throw "The bootstrap script must be stored inside an Aelyris Git clone."
 }
 Set-Location -LiteralPath $repoRoot
 
