@@ -37,7 +37,8 @@ $repoRoot = (& $git -C $scriptRepository rev-parse --show-toplevel).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
   throw "The bootstrap script must be stored inside an Aelyris Git clone."
 }
-Set-Location -LiteralPath $repoRoot
+Push-Location -LiteralPath $repoRoot
+try {
 
 $node = Require-Command "node.exe" "Install Node.js 24.x. The tracked version is in .node-version."
 $pnpm = Require-Command "pnpm.cmd" "Install pnpm 10.x (for example: npm install --global pnpm@10.33.0)."
@@ -94,4 +95,7 @@ if ($VerifyBuild) {
   Invoke-Checked -FilePath $cargo -Arguments @("check", "--manifest-path", "src-tauri/Cargo.toml", "--lib")
 }
 
-Write-Host "Fresh-clone bootstrap PASS. Start development with: pnpm tauri dev"
+  Write-Host "Fresh-clone bootstrap PASS. Start development with: pnpm tauri dev"
+} finally {
+  Pop-Location
+}
