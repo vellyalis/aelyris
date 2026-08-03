@@ -1,6 +1,6 @@
 # Aelyris Full-Native Rust Migration — Master Plan
 
-Status: accepted with amendments; queued post-A9; not active implementation
+Status: accepted with amendments; ADR-015 activation-blocked; not active implementation
 Decision class: **Critical / high blast radius / reversible staged migration**
 Primary target: Windows 11, Rust-native operator surface
 Final claim level: N4 WebView-free distribution
@@ -9,7 +9,7 @@ Final claim level: N4 WebView-free distribution
 
 ## 0. Repository integration decision
 
-This package is adopted as the high-priority native UI migration contract, but
+This package is adopted as the strategic native UI migration contract, but
 it does not create a concurrent work order. Current execution remains the exact
 slice declared by root `audit-remediation-instructions.md`.
 
@@ -19,8 +19,10 @@ Dependency order:
 completed A4/A6/A7 remediation
   -> A8.0 product-goal/architecture decision (complete)
   -> A8.1 measured native terminal evidence and disposition
-  -> A9 release and operator-proof closeout
-  -> NUI-F0..F7 as the priority-1 next program
+  -> A9 repo repair and continuing operator/external certification
+  -> general Mission vertical becomes Product-Accessible
+  -> ADR-015 measured-necessity gate
+  -> NUI-F0..F7 only if that gate passes
 ```
 
 This sequencing preserves three facts:
@@ -33,9 +35,10 @@ This sequencing preserves three facts:
    evidence gate and later feeds NUI baseline/promotion evidence without being
    rewritten into an unapproved full-product migration.
 
-ADR-014 is accepted with amendments. The N4 direction is settled, but NUI-0.1
-may activate it only after A9. A8.0 authorized neither pre-A9 execution nor a
-shell-framework dependency. Current Tauri/React architecture and
+ADR-014 is accepted with amendments. The N4 direction is settled, but ADR-015
+requires general Mission product access and measured necessity before NUI-0.1 may
+activate it. A8.0 authorized neither pre-A9 execution nor a shell-framework
+dependency. Current Tauri/React architecture and
 alpha/not-release-ready claims remain authoritative until activation and later
 promotion evidence.
 

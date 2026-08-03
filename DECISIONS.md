@@ -298,3 +298,48 @@ after A9; it is not a second strategic architecture decision gate. ADR-001 and
 that activation and later promotion gates. The detailed accepted package and
 source-package integration record live under
 `docs/plans/full-native-rust-migration/`.
+
+## ADR-015 Product Delivery Before Surface Migration
+
+Status: **accepted** (owner direction 2026-08-03).
+
+Decision:
+
+- current required CI at the current `HEAD` is authoritative and reopens the
+  responsible repo lane even when an earlier exact-SHA closeout reported zero
+  executable defects;
+- an A9 lane containing only signing, real sleep, authenticated operator prompts, or
+  external-service evidence continues to block release readiness but does not hold the
+  exclusive repository mutation lock;
+- after the current required-CI repair, the next repo-mutating product program is the
+  general Mission vertical in `product-delivery-instructions.md`, connecting the
+  existing request, worktree, visible PTY, ownership, test, review, merge, and
+  settlement owners into one supported user path;
+- ADR-014 remains the accepted strategic native direction, but NUI activation now has
+  a product-delivery prerequisite and a measured necessity gate. It may start only
+  after the general Mission path is Product-Accessible and current evidence shows that
+  the existing surface blocks at least two named core user journeys, or one
+  release-blocking defect has no simpler local repair.
+
+Reason:
+
+The repository already contains substantial Mission and Proofbook Internal Capability,
+while the general user-facing brief-to-proof path remains disconnected. Continuing
+certification prose, verifier expansion, or shell migration before connecting those
+owners would increase substrate cost without resolving the current product bottleneck.
+
+Implication:
+
+Capability completion is reported as `Internal Capability`, `Product-Accessible`, or
+`Claim-Eligible`. Product work is not complete because backend code or a focused fixture
+passes. Certification and product delivery have separate lanes, while only one lane may
+mutate repository files at a time. ADR-014 is not rejected; its activation order and
+entry evidence are amended by this decision.
+
+Reconsider when:
+
+- the general Mission vertical is Product-Accessible and its measured operation exposes
+  current-surface limits;
+- WebView2/Tauri causes a current release-blocking defect without a simpler repair;
+- two named core journeys fail defined latency, reliability, IME, accessibility, or
+  recovery budgets because of the current surface.

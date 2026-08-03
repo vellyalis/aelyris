@@ -1,22 +1,24 @@
 # Aelyris Full-Native Rust Migration Design Package
 
 Source package label: **implementation-ready design package**
-Repository status: **accepted with amendments / queued post-A9 / not activated**
+Repository status: **accepted strategic direction / ADR-015 activation-blocked / not activated**
 Target: `vellyalis/aelyris`
 Purpose: Tauri + React + WebView2 を段階的に互換レイヤーへ降格し、Aelyris の主要製品面を Rust ネイティブ UI へ移行する。
 
-Repository integration: **accepted high-priority queued post-A9 program**。The exact active
-`audit-remediation` slice is read from root `audit-remediation-instructions.md`;
-this stable package does not duplicate it and does not authorize a concurrent
-implementation lane or a native/full-release claim. The ZIP source
+Repository integration: **accepted strategic migration package, not an active work order**。
+The exact repo-mutating slice is read from root `audit-remediation-instructions.md`
+or `product-delivery-instructions.md` as routed by `AGENTS.md`; this stable package
+does not duplicate it and does not authorize a concurrent implementation lane or a
+native/full-release claim. The ZIP source
 tree is preserved byte-for-byte under [`source/`](./source/), with the original
 manifest mirrored as [`source-manifest.json`](./source-manifest.json).
 The adapted canonical package is recorded in
 [`manifest.json`](./manifest.json). Canonical repository
 placement renumbers the draft ADR from the package's conflicting `ADR-013` to
 `ADR-014`; `DECISIONS.md` owns both the existing ADR-013 and the canonical
-accepted-with-amendments ADR-014. A8.0 preserved the measured A8/A9 route;
-activation remains priority 1 after A9 and does not preselect a UI framework. See
+accepted-with-amendments ADR-014. ADR-015 preserves that strategic direction but
+blocks activation until the general Mission path is Product-Accessible and current
+evidence proves measured necessity. No UI framework is preselected. See
 [`INTEGRATION.md`](./INTEGRATION.md) for the source hash, canonical placement,
 dependency insertion, and complexity receipt.
 

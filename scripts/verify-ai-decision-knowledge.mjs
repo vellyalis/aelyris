@@ -19,6 +19,7 @@ const paths = {
   style: "STYLE.md",
   docsReadme: "docs/README.md",
   agentWorkflows: "docs/AGENT_WORKFLOWS.md",
+  productDelivery: "product-delivery-instructions.md",
   packageJson: "package.json",
 };
 
@@ -96,6 +97,10 @@ const requiredAiGuideClauses = [
   "Task Router",
   "cannot skip",
   "selected_spec_or_work_unit_only",
+  "Product Delivery",
+  "Internal Capability",
+  "Product-Accessible",
+  "Claim-Eligible",
 ];
 
 const requiredDecisionFrameworkClauses = [
@@ -116,6 +121,10 @@ const requiredDecisionFrameworkClauses = [
   "Never infer file contents.",
   "Placement Algorithm",
   "Tie Breakers",
+  "Product Delivery And Capability Maturity",
+  "Internal Capability",
+  "Product-Accessible",
+  "certification lane",
 ];
 
 const requiredDelegationFrameworkClauses = [
@@ -179,11 +188,15 @@ const requiredTasksClauses = [
   "Goal:",
   "Scope:",
   "Owner Contract:",
+  "Capability Maturity:",
   "Done:",
   "Forbidden:",
   "Gates:",
   "Handoff:",
   "One work unit at a time.",
+  "Internal Capability",
+  "Product-Accessible",
+  "certification-only",
   "Done Report Minimum",
   "Handoff Minimum",
 ];
@@ -202,6 +215,7 @@ const requiredDecisionsClauses = [
   "SSH attach is a transport",
   "ADR-008 No Premature Abstraction",
   "ADR-009 Verifier-Backed Claims",
+  "ADR-015 Product Delivery Before Surface Migration",
 ];
 
 const requiredStyleClauses = [
@@ -226,6 +240,7 @@ const requiredAgentsClauses = [
   "tasks/README.md",
   "DECISIONS.md",
   "STYLE.md",
+  "product-delivery-instructions.md",
 ];
 
 const requiredClaudeClauses = [
@@ -252,6 +267,8 @@ const requiredDocsReadmeClauses = [
   "../ARCHITECTURE.md",
   "../contracts/README.md",
   "../tasks/README.md",
+  "../audit-remediation-instructions.md",
+  "../product-delivery-instructions.md",
   "../DECISIONS.md",
   "../STYLE.md",
   "AI Decision Knowledge",
@@ -265,6 +282,24 @@ const requiredDocsReadmeClauses = [
 ];
 
 const requiredAgentWorkflowsClauses = ["GOAL.md", "AI_GUIDE.md", "Task Router", "relevant knowledge docs"];
+
+const requiredProductDeliveryClauses = [
+  "Aelyris Product Delivery Work Order",
+  "General Mission Vertical",
+  "Internal Capability",
+  "Product-Accessible",
+  "Claim-Eligible",
+  "existing Orchestra",
+  "Forbidden second owners",
+  "GMV-0",
+  "GMV-1",
+  "GMV-2",
+  "GMV-3",
+  "Deferred After GMV",
+  "Proofbook product access",
+  "current required CI",
+  "certification-only lane",
+];
 
 // Volatile machine-truth literals (scores, grades) belong to generated
 // artifacts and the freshness-gated current-state docs
@@ -344,6 +379,7 @@ const missing = {
   claude: missingFrom(sourceTexts.claude, requiredClaudeClauses),
   docsReadme: missingFrom(sourceTexts.docsReadme, requiredDocsReadmeClauses),
   agentWorkflows: missingFrom(sourceTexts.agentWorkflows, requiredAgentWorkflowsClauses),
+  productDelivery: missingFrom(sourceTexts.productDelivery, requiredProductDeliveryClauses),
 };
 
 const volatileScoreHits = volatileScoreScope
@@ -447,6 +483,12 @@ const checks = [
     { missingAgentWorkflowsClauses: missing.agentWorkflows },
   ),
   check(
+    "product-delivery-contract",
+    missing.productDelivery.length === 0,
+    "Product delivery is routed through a finite general Mission vertical with capability maturity and lane separation",
+    { missingProductDeliveryClauses: missing.productDelivery },
+  ),
+  check(
     "task-router-consistent",
     routerConsistencyProblems.length === 0,
     "Entry files preserve mandatory preflight while routing knowledge through AI_GUIDE.md section 0",
@@ -481,8 +523,8 @@ const failed = checks.filter((item) => item.status !== "passed");
 const sourcePaths = [...Object.values(paths), "scripts/verify-ai-decision-knowledge.mjs"];
 
 const report = {
-  schema: "aelyris.ai-decision-knowledge/v3",
-  version: 3,
+  schema: "aelyris.ai-decision-knowledge/v4",
+  version: 4,
   ok: failed.length === 0,
   status: failed.length === 0 ? "pass-ai-decision-knowledge" : "fail-ai-decision-knowledge",
   generatedAt: new Date().toISOString(),
@@ -490,7 +532,7 @@ const report = {
   sourceCutoffMs: Math.max(...sourcePaths.map((path) => mtime(path))),
   summary:
     failed.length === 0
-      ? "AI principles, goal, decision framework, delegation framework, architecture, contract index, task layer, decisions, style, and workflow routing are present, task-routed, claim-safe, and wired to mandatory preflight."
+      ? "AI principles, goal, decision framework, delegation framework, architecture, contract index, task layer, decisions, style, product delivery, and workflow routing are present, task-routed, claim-safe, and wired to mandatory preflight."
       : `${failed.length} AI decision knowledge checks failed`,
   warnings: {
     duplicateClauses: duplicateClauseWarnings,

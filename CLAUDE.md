@@ -15,11 +15,13 @@ Read it first, then use this file only for Claude-specific operating notes.
 8. `contracts/README.md`
 9. `docs/AGENT_WORKFLOWS.md`
 10. `docs/specs/README.md`
-11. `tasks/README.md`
-12. The Work Unit spec section for the task at hand
-13. `DECISIONS.md`
-14. `STYLE.md`
-15. This Claude-specific note
+11. The active or queued root work order selected by `AGENTS.md`, including
+    `product-delivery-instructions.md` when its entry gate is green
+12. `tasks/README.md`
+13. The Work Unit spec section for the task at hand
+14. `DECISIONS.md`
+15. `STYLE.md`
+16. This Claude-specific note
 
 If this file conflicts with `AGENTS.md` or the current claim policy, follow
 `AGENTS.md` and update this file in the same change.
@@ -42,6 +44,9 @@ If this file conflicts with `AGENTS.md` or the current claim policy, follow
 - Token-spending authenticated AI CLI prompt/probe verifiers have standing owner consent for this repo/WU. Use the documented provider/consent env vars when required, record provider/model/command/artifact evidence, and never persist secrets, token files, signing material, or secret-bearing transcripts.
 - Do not run `cargo test` and `pnpm test` in parallel on Windows.
 - Treat `.claude/skills` as Aelyris-specific workflow helpers, not product capability proof. Use verifier commands for claims.
+- Treat backend-only Mission, Proofbook, MCP, or verifier completion as Internal
+  Capability until one supported product path exposes it. Certification-only external
+  work may block release claims without blocking the next safe repo-owned product slice.
 
 ## Extra Quality Bar
 

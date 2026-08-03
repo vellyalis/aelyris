@@ -1,12 +1,14 @@
 # Aelyris Native UI Requirements
 
-Status: accepted-with-amendments product target; queued post-A9; not current capability
+Status: accepted-with-amendments product target; ADR-015 activation-blocked; not current capability
 Authority layer: Requirements
 Requirement prefix: `NUI-*`
 Claim policy: verifier-backed; prose aloneでshipped扱いしない。
 
-Activation boundary: priority-1 after A9. A8.0 authorized no earlier takeover
-and no shell-framework dependency. NUI-F0 selects Slint or the retained-runtime
+Activation boundary: ADR-015 requires a Product-Accessible general Mission path and
+current measured evidence that the existing surface blocks two named core journeys,
+or one release-blocking defect with no simpler repair. A8.0 authorized no earlier
+takeover and no shell-framework dependency. NUI-F0 selects Slint or the retained-runtime
 candidate from one same-vertical comparison. Current Tauri/React product truth remains authoritative until
 an N-level aggregate gate promotes a native surface.
 

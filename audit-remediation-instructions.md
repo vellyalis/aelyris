@@ -2,11 +2,37 @@
 
 STATUS: ACTIVE  
 PROGRAM: `audit-remediation`  
+REPO LANE: `REOPENED_BY_LATEST_REQUIRED_CI`.
+CERTIFICATION LANE: `PENDING_OPERATOR_EXTERNAL`.
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.6` (repo-owned closeout complete; exact operator/external continuation remains active).
-LAST COMPLETED SLICE: `A9.6`.
+ACTIVE SLICE: `A9.6r1` (latest required-CI regression repair; not a new A9.7).
+LAST COMPLETED SLICE: `A9.6` at its accepted evidence HEAD; current repo completion is stale.
 NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.6` (operator/external continuation only; no executable repo-owned defect remains).
+NEXT IMPLEMENTATION SLICE: `A9.6r1`.
+
+## Latest Required-CI Completion Invalidation — 2026-08-03
+
+GitHub Actions run `30786063813` at the latest required-CI product baseline
+`d2b1f00e89d6600ded0cd9658b9056c7f220076a` invalidated the prior
+`repoOwnedExecutableDefectCount=0` posture:
+
+- rendered UI trust failed `keeps production-width desktop chrome balanced`
+  (`left rail >= 200`, observed `0`);
+- `supports keyboard traversal across right rail tabs and command dialogs` was flaky
+  because Escape left one dialog open;
+- stack-risk reported two npm known vulnerabilities and one release blocker;
+- A6.8 then rejected its failed required dependency.
+
+The governance-only changes that route this repair do not alter the rendered-UI or
+dependency owners, so these failures remain unresolved across the policy commit. Only
+causal repair followed by fresh required CI at the resulting HEAD can close A9.6r1.
+
+`A9.6r1` owns only causal repair or correct classification of these current
+repo-owned failures. Do not weaken thresholds, convert current failures into stale or
+external rows, or restart completed A6/A7 implementation. After current required CI is
+green, the repo repair lane closes again, operator/external certification remains
+pending, and `product-delivery-instructions.md` becomes the sole repo-mutating work
+order. Certification-only work continues to block release claims but not product work.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -97,15 +123,18 @@ Execute the comprehensive 2026-07-10 remediation program without losing scope,
 creating duplicate state owners, or relying on stale evidence. The detailed plan is
 `docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md`.
 
-This work order supersedes generic renderer/release continuation while it is ACTIVE.
+This work order supersedes generic renderer/release continuation while its repo repair
+lane is ACTIVE. After current required CI is green, its certification-only lane does
+not supersede the queued product-delivery work order.
 Completed refactor/hardening orders remain historical preflight only. WU-UQ-1 is an
 input to phase A3, not a concurrent active work order. Renderer Stage 2 is deferred to
 conditional phase A8.
 
-The full-native Rust migration package is accepted with amendments as the
-high-priority post-A9 direction under
+The full-native Rust migration package remains an accepted-with-amendments strategic
+direction under
 `docs/plans/full-native-rust-migration/`. It does not change the
-current execution order or create a concurrent phase. The exact current slice is
+current repair order or create a concurrent repo mutation. Activation is additionally
+gated by ADR-015 and the measured migration gate in `AGENTS.md`. The exact current slice is
 owned only by this root work order and the canonical local handoff; stable
 requirements/spec/native-package documents point here instead of copying that
 volatile value.
@@ -128,8 +157,10 @@ A4.12 complete
   -> A9.4 right-rail information-density verifier ownership reconciliation (complete; close_verifier_drift)
   -> A9.5 operator-progress resume-artifact freshness reconciliation (complete; refresh_owner_artifact)
   -> A9.6 repo-owned release-lane closeout and exact operator handoff (repo-owned complete; close_repo_owned_release_lane)
-  -> A9 operator/external continuation (active; no duplicate repo implementation)
-  -> NUI-F0..F7 as the priority-1 post-A9 program
+  -> A9.6r1 latest required-CI regression repair (active; not A9.7)
+  -> product-delivery GMV after current required CI is green
+  -> A9 operator/external certification continues non-exclusively
+  -> NUI-F0..F7 only after ADR-015 activation evidence
 ```
 
 A8.0 did not authorize a pre-A9 takeover. Its accepted-with-amendments outcome
@@ -152,7 +183,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0, A8.1, and repo-owned A9.0-A9.6 are complete; A9.6 remains the operator/external continuation boundary.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0 and A8.1 remain complete; the earlier A9.6 repo closeout is stale at current HEAD until A9.6r1 is green.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -175,6 +206,10 @@ implementation phase and not a reduction of the product Goal.
    source-string check, replace or supplement that check with the smallest executed
    behavior proof needed for the changed risk. Add a new verifier only for a unique
    failure mode that no existing gate can decide.
+6. Once A9.6r1 is green, certification-only A9 work may remain active without
+   holding the repository mutation lock. Activate `product-delivery-instructions.md`;
+   do not substitute NUI scaffolding, further audit prose, or another verifier wave for
+   the general Mission user journey.
 
 The tracked plan owns the detailed scope and acceptance language for these steps.
 The product spec/design/roadmap retain deferred destination requirements without
@@ -998,4 +1033,6 @@ host evidence portable.
   PR, merge, rebase, reset, amend, history rewrite, and force push remain separately
   authorized. If dirty work crosses session clear, list every intended path and the
   exact next action in the local handoff.
-- At most one phase can be ACTIVE. Completed phases reopen only for a fresh regression.
+- At most one repo-mutating phase can be ACTIVE. A certification-only operator/external
+  lane may coexist only when it changes no repository file. Completed repo phases reopen
+  on a fresh required-gate regression, as A9.6r1 does here.

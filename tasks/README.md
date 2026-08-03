@@ -23,7 +23,8 @@ Current task instructions may live in:
 
 - root work-order files such as `refactor-instructions.md`,
   `hardening-instructions.md`, `renderer-instructions.md`,
-  `fleet-api-instructions.md`, and `ui-density-instructions.md`,
+  `fleet-api-instructions.md`, `ui-density-instructions.md`, and
+  `product-delivery-instructions.md`,
 - continuation docs under `docs/specs/*_CONTINUATION.md`,
 - handoff files under local-only ignored directories when explicitly marked,
 - a user-provided `/goal` packet.
@@ -43,6 +44,9 @@ Scope:
 
 Owner Contract:
   Which contract/spec owns the behavior?
+
+Capability Maturity:
+  Is the result Internal Capability, Product-Accessible, or Claim-Eligible?
 
 Done:
   What observable behavior or artifact proves completion?
@@ -67,6 +71,11 @@ Handoff:
   separately authorized actions.
 - Do not mix docs-only design gates with runtime implementation unless the task
   explicitly selects that slice.
+- After two consecutive work units without a user-visible behavior change, run
+  Portfolio Selection before a third. Required-CI repair and Critical risk are the
+  explicit exceptions.
+- A certification-only operator/external lane may block release readiness without
+  owning the next repo implementation action.
 - Do not broaden a PR branch without noting the scope change.
 - Report skipped checks as implementation gaps, stale evidence, or
   operator/environment gates.
@@ -77,6 +86,7 @@ A closeout must name:
 
 - files or modules touched,
 - contract owner,
+- capability maturity and the supported user path or named immediate consumer,
 - commands run and pass/fail result,
 - generated artifact paths,
 - skipped checks and exact blocker,

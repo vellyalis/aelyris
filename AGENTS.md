@@ -8,10 +8,11 @@ Windows向けプロジェクトファーストAI開発ワークスペース。
 Claude Code 固有の補足は `CLAUDE.md` に置きますが、矛盾した場合はこの
 `AGENTS.md` と `docs/requirements.md` の current claim policy を優先します。
 
-Operating-policy version: `2.0.0-aelyris.2` (2026-07-28). This is an
+Operating-policy version: `2.1.0-aelyris.1` (2026-08-03). This is an
 Aelyris-specific adaptation of `AGENTS.gpt56.md`: its Goal/R-PDCA discipline is
-adopted, its fixed verification-volume cap is rejected, and the project claim,
-continuation, and work-order contracts below remain mandatory.
+adopted, its fixed verification-volume cap is adapted into the risk-aware default
+budget below rather than an absolute cap, and the project claim, continuation,
+product-delivery, and work-order contracts below remain mandatory.
 
 ## Goal Quality And Task Mode
 
@@ -49,6 +50,42 @@ continuation, and work-order contracts below remain mandatory.
 - security、data integrity、concurrency、release claim では実装より大きい検証も
   許容するが、具体的な failure mode と因果的に結びつく範囲に限り、未実装の機能を
   検証量で補ったことにはしない。
+- 通常の product/runtime Work Unit では、新規 test・verifier・review-only source・
+  safety-only source の合計を、新規 product/runtime source のおおむね 1/3 以下にする。
+  これは行数を目的化する hard cap ではなく、実装不足を検証量で隠していないかを
+  判定する default budget である。security、data integrity、concurrency、release
+  claim で超える場合は、固有 failure mode、既存 gate で判定不能な理由、終了条件を
+  Work Unit に明記する。
+- 新しい top-level verifier、runner、report、fixture family を追加する前に、検出する
+  固有 failure mode、変更する material decision、既存 gate が不足する直接証拠、
+  consolidation または removal condition を示す。既存 gate の拡張または置換で足りる
+  場合は純増させない。
+
+### Product Delivery, Capability Maturity, And Lane Separation
+
+- Capability は `Internal Capability`、`Product-Accessible`、`Claim-Eligible` に分類する。
+  backend、IPC、MCP、schema、verifier が存在するだけのものは `Internal Capability` で
+  あり、ユーザーが正式な UI または public face の一経路から使えるまで shipped feature
+  または product-delivery 完了として数えない。公開 claim はさらに current proof を要する。
+- Product Goal の Work Unit は、ユーザー導線へ検証可能な挙動差を残すか、次の一つの
+  product-accessible slice が直ちに消費する bounded internal slice でなければ完了扱い
+  しない。後者は consumer、接続点、終了条件を同じ work order に固定する。
+- ユーザー可視挙動を変えない docs-only、verifier-only、review-only、state-only Work Unit
+  が二つ連続した場合、三つ目を開始せず Portfolio Selection をやり直す。current HEAD の
+  required CI 修復、Critical risk、外部契約の必須変更だけを例外とし、例外理由を記録する。
+- current HEAD の required CI または必須 gate が失敗した場合、同じ owner の古い
+  `complete`、`repoOwnedExecutableDefectCount=0`、clean closeout は自動的に stale となり、
+  repo-owned repair lane を再開する。過去の exact-SHA PASS は履歴証拠として残すが、
+  現在の完了状態を維持しない。
+- signing、real sleep、operator prompt、外部 service など repo から実行不能な
+  certification lane は release claim を BLOCK し続けるが、repo-owned executable action
+  が無い間は product-delivery lane の repository mutation lock を独占しない。
+  同時に mutation できる work order は常に一つだけとし、certification-only lane は
+  shared file を変更しない read/execute handoff としてのみ併存できる。
+- 全面 surface/runtime migration は、現行 stack が少なくとも二つの named core user
+  journey を阻害する測定証拠、または simpler local repair が存在しない一つの
+  release-blocking defect がある場合だけ activation 候補にする。戦略方向、技術嗜好、
+  設計packageの完成だけでは、未接続の general Mission product path より先行させない。
 
 ### Autonomy And Questions
 
@@ -330,20 +367,25 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
 2. `hardening-instructions.md` - H1-H8 repo-owned completion audit is complete
    on this branch; broader remaining blockers must be read from the current
    final-goal audit before choosing implementation vs external/operator work.
-3. `audit-remediation-instructions.md` - **ACTIVE**. Read its exact current phase,
-   active slice, and next implementation slice; do not copy volatile frontier truth
-   into this stable guide.
-4. `ui-quality-instructions.md` - scheduled work is owned by audit-remediation
+3. `audit-remediation-instructions.md` - **ACTIVE REPO REPAIR + CERTIFICATION**.
+   The latest required-CI product baseline has reopened the repo lane; read its exact repair
+   slice and keep operator/external certification separate.
+4. `product-delivery-instructions.md` - **QUEUED**. It becomes the sole repo-mutating
+   product work order after the current required-CI repair is green. Its first product
+   program is the general Mission vertical over existing owners.
+5. `ui-quality-instructions.md` - scheduled work is owned by audit-remediation
    phase A3. Do not execute it as a concurrent work order.
-5. `renderer-instructions.md` - deferred to conditional audit-remediation phase
+6. `renderer-instructions.md` - deferred to conditional audit-remediation phase
    A8. Do not reopen from the old generic route.
 現行実行順は `refactor (complete) -> hardening (complete) -> audit remediation
-R0..A9`。full-native Rust migration is the priority-1 queued post-A9 program by
-default; A8.0 is only a decision gate, not activation. audit remediation 内の完了済み
-phase は fresh verifier/review regression
-が出た場合だけ同じ tracked program 内で再開し、exact frontier は root work order と
+R0..A9 -> latest required-CI repair -> product delivery`。A9 certification は
+release claim を BLOCK したまま operator/external lane で継続できるが、repo mutation を
+独占しない。full-native Rust migration は ADR-014 の戦略方向として保持し、ADR-015 と
+上記 migration activation gate を満たすまで自動的な next implementation program に
+しない。audit remediation 内の完了済み phase は fresh verifier/review regression が
+出た場合だけ同じ tracked program 内で再開し、exact frontier は root work order と
 canonical local handoff を正とする。
-同時実行は禁止。work order 群は
+repo mutation の同時実行は禁止。work order 群は
 `package.json`、`scripts/`、`src/features/terminal/` などを共有しうるため、
 1つの work order/phase だけを選び、対象ファイルを明示して進める。
 

@@ -1,6 +1,6 @@
 # Aelyris Native UI Migration Roadmap
 
-Status: accepted-with-amendments direction; queued post-A9 tracked program
+Status: accepted-with-amendments direction; ADR-015 activation-blocked tracked program
 Execution model: dependency-ordered Work Units
 Rule: phase PASS is not program completion.
 
@@ -8,15 +8,17 @@ Rule: phase PASS is not program completion.
 
 ## 0. Portfolio insertion
 
-Root `audit-remediation-instructions.md` remains the only active implementation
-frontier owner; this stable roadmap does not duplicate its exact slice.
+The root work order selected by `AGENTS.md` remains the only repo-mutating frontier;
+this stable roadmap does not duplicate its exact slice or activate itself.
 
 Execution order:
 
 1. preserve completed A4/A6/A7 owner and durability contracts;
 2. preserve A8.0 `accepted-with-amendments` as the strategic decision;
-3. complete A8.1 measured native terminal disposition and A9;
-4. activate NUI-0.1 through NUI-7.8 as the priority-1 post-A9 program.
+3. repair latest required CI and preserve continuing A9 certification ownership;
+4. make the general Mission vertical Product-Accessible;
+5. satisfy the ADR-015 measured-necessity gate;
+6. activate NUI-0.1 through NUI-7.8 only if that gate passes.
 
 The existing A8 terminal decision is not deleted or reassigned. Its
 same-condition Canvas/WebView comparison, input-to-present, IME,
@@ -71,6 +73,8 @@ Next unlock
 - require A8.0 to have recorded ADR-014 as accepted-as-written or
   accepted-with-amendments in canonical `DECISIONS.md`; both accepted results
   enter this branch, while deferred or rejected decisions cannot enter NUI-F0
+- require ADR-015 evidence that the general Mission path is Product-Accessible and
+  that the current surface satisfies the measured-necessity threshold
 - ratify the accepted decision in the activation packet without reopening the
   N4 strategic direction
 - verify ADR-001 is marked superseded for the primary surface while preserving

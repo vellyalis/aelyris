@@ -28,6 +28,32 @@ When priorities conflict, choose in this order:
 6. Measured performance.
 7. UX polish and speed of delivery.
 
+## 1.1 Product Delivery And Capability Maturity
+
+Classify each result before calling it progress:
+
+- `Internal Capability`: backend, adapter, schema, or proof exists, but a user cannot
+  reach it through one supported product path.
+- `Product-Accessible`: the supported cockpit or public control face exposes the
+  behavior without manually stitching internal calls together.
+- `Claim-Eligible`: Product-Accessible plus current proof and honest claim text.
+
+For product work, Product-Accessible value outranks further accumulation of unrelated
+Internal Capability once contract and safety correctness are satisfied. A bounded
+internal slice may precede UI only when the next named slice consumes it directly.
+
+A certification lane containing only operator, real-machine, signing, or external
+actions can continue blocking release readiness without monopolizing repository
+mutation. A current required-CI failure is repo work and invalidates an older clean
+closeout until repaired or correctly classified.
+
+Two consecutive Work Units without a user-visible behavior change force Portfolio
+Selection before a third. Required-CI repair and Critical risk are explicit exceptions.
+
+Do not activate a full surface/runtime migration from preference, novelty, or design
+completeness. Require measured evidence that the current stack blocks at least two
+named core user journeys, or one release-blocking defect with no simpler local repair.
+
 ## 2. Architecture Decisions
 
 - Maintainability over short-term implementation speed.
@@ -88,14 +114,17 @@ Before editing:
 
 1. Classify the change: contract, runtime behavior, adapter, UI projection,
    verifier, docs claim, or task packet.
-2. Find the owner in `ARCHITECTURE.md` and `contracts/README.md`.
-3. Inspect the current owner source. Never infer file contents.
-4. Preserve existing architecture unless the selected task explicitly changes
+2. Classify the intended result as Internal Capability, Product-Accessible, or
+   Claim-Eligible.
+3. Find the owner in `ARCHITECTURE.md` and `contracts/README.md`.
+4. Inspect the current owner source. Never infer file contents.
+5. Preserve existing architecture unless the selected task explicitly changes
    it.
-5. Choose the smallest module that can own the behavior without duplicate
+6. Choose the smallest module that can own the behavior without duplicate
    truth.
-6. Add or update a verifier when the change creates a claim.
-7. Report the contract owner and proof command.
+7. Add or update a verifier when the change creates a claim and existing proof cannot
+   decide its named failure mode.
+8. Report the contract owner, capability maturity, and proof command.
 
 ## 8. Tie Breakers
 

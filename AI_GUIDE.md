@@ -35,14 +35,16 @@ task_router:
       - DECISIONS.md
   full_native_rust_migration:
     read:
+      - product-delivery-instructions.md
       - docs/plans/full-native-rust-migration/INTEGRATION.md
       - docs/plans/full-native-rust-migration/native-ui-migration-instructions.md
       - docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md
       - docs/specs/AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md
     current_boundary:
-      - queued_high_priority
-      - default_priority_1_after_A9
+      - accepted_strategic_direction
       - A8_0_decision_does_not_activate_by_itself
+      - ADR_015_requires_general_Mission_product_access
+      - measured_necessity_gate_required
   contract_or_schema:
     read:
       - contracts/README.md
@@ -71,6 +73,19 @@ task_router:
     avoid:
       - unrelated_work_orders
       - whole_repo_doc_sweeps
+  product_delivery:
+    read:
+      - product-delivery-instructions.md
+      - docs/specs/AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md
+      - selected_owner_source_files_only
+    maturity:
+      - Internal Capability
+      - Product-Accessible
+      - Claim-Eligible
+    current_boundary:
+      - current required CI repair first
+      - certification-only external gates do not monopolize repo mutation
+      - general Mission vertical before surface migration activation
   style_or_naming:
     read:
       - STYLE.md
@@ -178,6 +193,9 @@ section 1. Product-level additions layered on top of that stack:
 - Visible, inspectable agent execution over hidden background work.
 - Local-first operator control and auditability.
 - UX clarity, but never by faking backend state.
+- Product-Accessible user journeys over accumulation of disconnected Internal Capability.
+- A certification-only external/operator lane may block release claims without blocking
+  the next safe repo-owned product Work Unit.
 
 ## 5. Placement Decision Matrix
 
@@ -203,6 +221,7 @@ Use this table before creating or editing files.
 | Shared frontend types/helpers | `src/shared/*` | feature-specific logic in shared code |
 | Verifier / evidence artifact | `scripts/verify-*.mjs`, `.codex-auto/quality/*.json` | unchecked prose-only claims |
 | Current task packet | `tasks/README.md`, root `*-instructions.md`, scoped continuation docs | stale chat-only instructions |
+| Product delivery frontier | `product-delivery-instructions.md`, owning Mission/Proofbook spec and source | backend-only capability counted as shipped, second engine |
 
 ## 6. Architecture Rules
 
@@ -292,16 +311,18 @@ When asked to implement a change:
 
 1. Classify the change: UI projection, runtime behavior, contract, verifier,
    task/workflow, or product claim.
-2. Read the owning contract and owner module before editing.
-3. Inspect current file contents. Never infer.
-4. Choose the smallest owner module that can hold the change without creating a
+2. Classify the result as Internal Capability, Product-Accessible, or Claim-Eligible.
+3. Read the owning contract and owner module before editing.
+4. Inspect current file contents. Never infer.
+5. Choose the smallest owner module that can hold the change without creating a
    second source of truth.
-5. Add or update a focused verifier only when the existing verification surface
+6. Add or update a focused verifier only when the existing verification surface
    cannot falsify the changed claim or its named risk boundary.
-6. Run the narrowest sufficient gate first and stop when it provides fresh
+7. Run the narrowest sufficient gate first and stop when it provides fresh
    evidence; run broader gates only when semantic risk or a regression signal
    requires them.
-7. Report what changed, which contract owns it, and which proof passed.
+8. Report what changed, which contract owns it, its capability maturity, and which
+   proof passed.
 
 ## 11. When To Stop
 

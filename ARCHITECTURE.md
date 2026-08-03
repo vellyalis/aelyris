@@ -71,11 +71,14 @@ post-A9 direction, not the current placement authority. Current Tauri/React
 composition remains active through A8.1/A9 and until NUI activation and later
 surface-promotion gates transfer ownership.
 
-The portfolio order is A8.0 complete, A8.1 measured terminal disposition, A9
-closeout, then NUI-F0-F7 as priority 1. A8.0 authorized no pre-A9 takeover and
-did not preselect a framework. NUI-F0 compares Slint and the Aelyris-specific
-retained-runtime candidate on one same vertical and selects at most one from
-current evidence.
+ADR-015 adds a product-delivery and measured-necessity gate before activation.
+The current repo order is latest required-CI repair, then the general Mission
+product vertical while A9 operator/external certification may remain pending.
+NUI-F0-F7 remains the accepted strategic native program, but it is not the automatic
+next repo mutation: NUI-F0 starts only after the general Mission path is
+Product-Accessible and current evidence satisfies the migration gate. It still compares
+Slint and the Aelyris-specific retained-runtime candidate on one same vertical and
+selects at most one from current evidence.
 
 When activated, native and Tauri faces must share the existing runtime, Control,
 Mission, EventBus/DB, persistence, terminal, review, merge, and proof owners.

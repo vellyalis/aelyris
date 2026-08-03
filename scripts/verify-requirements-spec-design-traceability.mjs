@@ -10,6 +10,7 @@ const DOCS = {
   architecture: "ARCHITECTURE.md",
   decisions: "DECISIONS.md",
   auditWorkOrder: "audit-remediation-instructions.md",
+  productDelivery: "product-delivery-instructions.md",
   publicationReadiness: "docs/PUBLICATION_READINESS.md",
   requirements: "docs/requirements.md",
   specsReadme: "docs/specs/README.md",
@@ -232,20 +233,24 @@ const checks = [
       "AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
       "AELYRIS_NATIVE_UI_REQUIREMENTS.md",
       "A8.1",
-      "priority 1",
+      "ADR-015",
+      "Product-Accessible",
       "verify:native-ui:design-package",
     ]) &&
       includesAll(normalizedDocs.requirements, [
         "AELYRIS_NATIVE_UI_REQUIREMENTS.md",
         "A8.0 accepted N4 with amendments",
-        "priority 1 after A9",
-        "NUI-F0-F7",
+        "ADR-015 retains that strategic direction",
+        "Product-Accessible",
+        "NUI-F0",
       ]) &&
       includesAll(normalizedDocs.decisions, [
         "ADR-014 Full-Native Rust Product Surface",
         "Status: **accepted with amendments / queued for post-A9 activation**",
         "preserve the measured A8 then A9 execution order",
         "NUI-F0 must compare Slint",
+        "ADR-015 Product Delivery Before Surface Migration",
+        "product-delivery prerequisite",
       ]) &&
       includesAll(normalizedDocs.auditWorkOrder, [
         "ACTIVE SLICE:",
@@ -254,12 +259,21 @@ const checks = [
         "A8.1",
         "measured native terminal evidence and disposition",
         "exact current slice is owned only by this root work order",
+        "gated by ADR-015",
+      ]) &&
+      includesAll(normalizedDocs.productDelivery, [
+        "Aelyris Product Delivery Work Order",
+        "General Mission Vertical",
+        "Product-Accessible",
+        "Do not start full-native surface migration",
       ]) &&
       includesAll(normalizedDocs.nativeWorkOrder, [
-        "STATUS: QUEUED_HIGH_PRIORITY",
+        "STATUS: QUEUED_STRATEGIC_BLOCKED",
         "DECISION: ADR-014 accepted with amendments at A8.0",
-        "priority 1 after A9",
-        "Pre-A9 takeover was not authorized",
+        "ACTIVATION GATE: ADR-015",
+        "Product-Accessible",
+        "product-delivery-instructions.md",
+        "No native migration implementation is active",
       ]) &&
       includesAll(normalizedDocs.nativeArchitecture, [
         "target contracts, not implemented owners",
@@ -272,7 +286,7 @@ const checks = [
         "every concrete `NUI-*` requirement ID",
         "no wildcard-only coverage",
       ]),
-    "the accepted-with-amendments full-native Rust package is queued post-A9 without duplicating A8.1 or changing current claims",
+    "the accepted-with-amendments full-native Rust package remains strategic while ADR-015 gates activation behind product access and measured necessity",
   ),
   check(
     "work-os-authority-composition",

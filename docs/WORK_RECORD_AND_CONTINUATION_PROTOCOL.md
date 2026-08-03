@@ -194,7 +194,9 @@ claim boundaries.
 
 ## Status and Commit Discipline
 
-- One active phase at a time.
+- One repo-mutating active phase at a time. A certification-only lane containing
+  operator, real-machine, signing, or external actions may coexist when it changes no
+  repository file and does not own the next repo implementation action.
 - One phase equals one commit. The owner has granted standing authorization to
   create a focused phase/Work Unit commit after its required gates pass; do not
   pause for per-commit approval.

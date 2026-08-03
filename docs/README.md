@@ -95,6 +95,8 @@ These files are active entrypoints:
 - `../ARCHITECTURE.md`
 - `../contracts/README.md`
 - `../tasks/README.md`
+- `../audit-remediation-instructions.md`
+- `../product-delivery-instructions.md`
 - `../DECISIONS.md`
 - `../STYLE.md`
 - `GITHUB_INTRODUCTION.md`

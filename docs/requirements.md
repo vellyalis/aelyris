@@ -1,8 +1,8 @@
 # Aelyris Requirements Index
 
 Status: active implementation index
-Last updated: 2026-07-29 JST
-Last reviewed: 2026-07-29 JST
+Last updated: 2026-08-03 JST
+Last reviewed: 2026-08-03 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
@@ -23,17 +23,19 @@ order and the authoritative specs. Key still-active specs include:
 0. Accepted-with-amendments full-native Rust migration direction:
    `docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md`
 
-   Owns the queued post-A9 NUI requirements for the staged N0-N4 move from the current
+   Owns the accepted strategic NUI requirements for the staged N0-N4 move from the current
    Tauri/React/WebView2 face to a Rust-native Windows operator surface. The
    master plan, architecture, framework/editor specs, roadmap, verification,
    traceability, and integration record are indexed in `docs/specs/README.md`.
    Exact current execution is intentionally not duplicated here; read
-   `audit-remediation-instructions.md` and its canonical local handoff. The
+   `audit-remediation-instructions.md`, `product-delivery-instructions.md`, and the
+   selected canonical local handoff. The
    completed remediation history and A8.1 measured terminal gate remain
    unchanged.
-   A8.0 accepted N4 with amendments; NUI-F0-F7 remains priority 1 after A9 and
-   NUI-F0 must select Slint versus the retained-runtime candidate from a
-   same-vertical comparison. No imported or accepted document changes the current product or
+   A8.0 accepted N4 with amendments. ADR-015 retains that strategic direction but
+   requires the general Mission path to become Product-Accessible and current measured
+   necessity evidence before NUI activation. NUI-F0 must still select Slint versus the
+   retained-runtime candidate from a same-vertical comparison. No imported or accepted document changes the current product or
    release claim. Package placement, canonical hashes, routing, and claim guards
    are checked by `pnpm verify:native-ui:design-package`.
 
@@ -45,7 +47,9 @@ order and the authoritative specs. Key still-active specs include:
    immutable work-unit packets and `MissionCompletionPacket`, reversible autonomy, governed learning,
    Attention Compiler, and post-release Apex direction. Its detailed design and
    roadmap are adjacent. These are target authorities, not shipped-capability or
-   release-readiness claims; the active R0-A9 plan still owns execution order.
+   release-readiness claims. The active A9 repo repair owns current required CI;
+   product delivery becomes the sole repo-mutating lane after that repair while
+   operator/external certification may remain pending.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal

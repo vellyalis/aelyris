@@ -2285,13 +2285,37 @@ current `HEAD` is actually advertised by its configured upstream; an unpushed lo
 commit cannot satisfy the cross-PC claim. This is an A9.6 portability repair, not a
 new A9.7 or a release-readiness transition.
 
+### **A9.6r1 — Latest Required-CI Regression Repair**
+
+Status: active on 2026-08-03. This is a fresh regression repair inside the A9 repo
+lane, not a new A9.7 and not a reopening of completed A6/A7 implementation.
+
+GitHub Actions run `30786063813` at the latest required-CI product baseline
+`d2b1f00e89d6600ded0cd9658b9056c7f220076a` invalidated the prior A9.6
+zero-executable-defect posture. Rendered UI trust failed the desktop-chrome width
+contract, its command-dialog Escape scenario was flaky, stack-risk reported two npm
+known vulnerabilities and one release blocker, and A6.8 rejected the failed required
+dependency.
+
+Required work is bounded to causal repair or correct repo-owned classification of those
+current failures, followed by fresh exact-HEAD required CI. The policy-only routing
+commit does not change the affected rendered-UI or dependency owners and therefore
+cannot close this slice. Threshold weakening,
+historical-PASS substitution, and external/stale reclassification are forbidden. When
+the current repo lane is green again, operator/external certification remains pending
+and release readiness stays false, but certification does not monopolize repository
+mutation. `product-delivery-instructions.md` then becomes the sole repo-mutating work
+order under ADR-015.
+
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 
-The canonical A8.0 decision accepted ADR-014 with amendments. NUI-F0-F7 is the
-priority-1 post-A9 program and runs before these Apex waves; NUI-0.1 only
-ratifies that accepted direction for activation, and NUI-F0 selects the shell
-framework from the same-vertical bakeoff. Closing or retiring the NUI program
-then resumes the Apex waves in the dependency order below:
+The canonical A8.0 decision accepted ADR-014 with amendments. ADR-015 adds a general
+Mission product-access prerequisite and a measured-necessity gate before NUI activation.
+NUI-F0-F7 therefore remains the accepted strategic native program rather than the
+automatic next repo mutation; NUI-0.1 only ratifies that accepted direction after the
+new entry conditions pass, and NUI-F0 selects the shell framework from the
+same-vertical bakeoff. Closing or retiring the NUI program then resumes the Apex waves
+in the dependency order below:
 
 1. Universal Agent Fabric expansion: keep V1-R0 as the OpenCode comparison, then
    separately gate V1-R1 structured state authority/explainability and V1-R2

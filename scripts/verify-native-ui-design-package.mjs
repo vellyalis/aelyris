@@ -30,6 +30,7 @@ const ROUTING_DOCUMENTS = [
   "ARCHITECTURE.md",
   "DECISIONS.md",
   "audit-remediation-instructions.md",
+  "product-delivery-instructions.md",
   "docs/requirements.md",
   "docs/specs/README.md",
   "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md",
@@ -250,9 +251,12 @@ const checks = [
     "canonical-manifest-current",
     canonicalManifest?.schema === "aelyris.native-ui-design-package.integration.v1" &&
       canonicalManifest?.sourceArchiveSha256 === SOURCE_ARCHIVE_SHA256 &&
-      canonicalManifest?.status === "accepted_with_amendments_queued_post_a9" &&
+      canonicalManifest?.status === "accepted_with_amendments_blocked_on_adr_015" &&
       canonicalManifest?.decisionOutcome === "accepted-with-amendments" &&
       canonicalManifest?.activationAuthorized === false &&
+      canonicalManifest?.activationDecision === "ADR-015" &&
+      canonicalManifest?.defaultActivation === "after-product-access-and-measured-necessity" &&
+      canonicalManifest?.preActivationWorkOrder === "product-delivery-instructions.md" &&
       canonicalManifest?.frameworkSelection === "pending-nui-f0-slint-vs-retained-runtime-bakeoff" &&
       canonicalManifestDocuments.length === CANONICAL_DOCUMENTS.length &&
       manifestFailures.length === 0 &&
@@ -262,17 +266,18 @@ const checks = [
   ),
   check(
     "queued-not-active-routing",
-    includesAll(queuedWorkOrder, [
-      "STATUS: QUEUED_HIGH_PRIORITY",
+    includesAll(normalizeText(queuedWorkOrder), [
+      "STATUS: QUEUED_STRATEGIC_BLOCKED",
       "DECISION: ADR-014 accepted with amendments at A8.0",
-      "priority 1 after A9",
-      "CURRENT EXECUTION OWNER: root `audit-remediation-instructions.md`",
-      "read its exact",
-      "Pre-A9 takeover was not authorized",
+      "ACTIVATION GATE: ADR-015",
+      "Product-Accessible",
+      "CURRENT EXECUTION OWNER: read `AGENTS.md`",
+      "product-delivery-instructions.md",
+      "No native migration implementation is active",
       "A6.6 already owns",
     ]) &&
       !exists("native-ui-migration-instructions.md") &&
-      includesAll(workOrder, [
+      includesAll(normalizeText(workOrder), [
         "STATUS: ACTIVE",
         "PROGRAM: `audit-remediation`",
         "CURRENT PHASE:",
@@ -290,13 +295,13 @@ const checks = [
       currentExecution.nextImplementationSlice !== null &&
       currentExecution.resumePhase !== null &&
       currentExecution.activeSlice === currentExecution.nextImplementationSlice &&
-      canonicalManifest?.currentExecutionOwner === "audit-remediation-instructions.md" &&
+      canonicalManifest?.currentExecutionOwner === "AGENTS.md" &&
       includesAll(trackedPlan, [
         "A8.0 - Native Product Goal And Architecture Decision Gate",
         "A8.1 - Measured Native Terminal Evidence And Disposition",
         "## A8 - Measured Native Terminal Spike",
       ]),
-    "the imported package is priority-1 queued after A9, reads the active frontier from its owner, and does not rewrite measured A8",
+    "the imported package remains strategically accepted but cannot activate before ADR-015 product-access and measured-necessity gates",
     { currentExecution },
   ),
   check(
@@ -319,19 +324,23 @@ const checks = [
     "portfolio-order-and-adr-lifecycle",
     includesAll(normalizeText(trackedPlan), [
       "accepted ADR-014 with amendments",
-      "NUI-F0-F7 is the priority-1 post-A9 program",
-      "runs before these Apex waves",
+      "ADR-015 adds a general Mission product-access prerequisite",
+      "rather than the automatic next repo mutation",
       "NUI-F0 selects the shell framework",
     ]) &&
       includesAll(normalizeText(workOsRoadmap), [
         "accepted ADR-014 with amendments",
-        "NUI-F0-F7 is the first post-A9 portfolio program",
+        "ADR-015 retained that strategic direction",
+        "general Mission vertical",
+        "no longer the automatic first repo mutation",
         "after NUI closes or is retired",
       ]) &&
       includesAll(normalizeText(decisions), [
         "accepted with amendments / queued for post-A9 activation",
         "preserve the measured A8 then A9 execution order",
         "NUI-0.1 may ratify this already accepted decision",
+        "ADR-015 Product Delivery Before Surface Migration",
+        "product-delivery prerequisite",
       ]) &&
       includesAll(normalizeText(nativeRoadmap), [
         "NUI-0.1 — Ratify accepted ADR-014 for activation",
@@ -349,7 +358,7 @@ const checks = [
       ]) &&
       !nativeRoadmap.includes("accept, amend, or reject proposed ADR-014") &&
       !/^\s*Supersedes:/m.test(adrDraft),
-    "A8.0's accepted decision is canonical and the queued NUI program precedes Apex after A9",
+    "A8.0's accepted decision remains canonical while ADR-015 gates NUI activation behind general Mission product access and measured necessity",
   ),
   check(
     "architecture-and-complexity-guards",
@@ -428,23 +437,25 @@ const report = {
   version: 1,
   ok: failed.length === 0,
   status:
-    failed.length === 0 ? "pass-accepted-with-amendments-queued-post-a9" : "fail-native-ui-design-package-integration",
+    failed.length === 0 ? "pass-accepted-with-amendments-blocked-on-adr-015" : "fail-native-ui-design-package-integration",
   generatedAt: new Date().toISOString(),
   sourceCutoffMs: Math.max(...[...SUPPORTING_PATHS, ...rawSourcePaths].map(mtime)),
   sourcePaths: [...SUPPORTING_PATHS, ...rawSourcePaths],
   currentExecution,
   queuedProgram: {
     program: "native-ui-migration",
-    priority: "priority-1-post-A9",
+    priority: "strategic-activation-blocked",
     decisionGate: "A8.0",
     decisionOutcome: "accepted-with-amendments",
+    activationDecision: "ADR-015",
+    preActivationWorkOrder: "product-delivery-instructions.md",
     activationAuthorized: false,
     frameworkSelectionAuthorized: false,
     claimLevelAuthorized: null,
   },
   summary:
     failed.length === 0
-      ? "accepted-with-amendments native UI package is integrity-checked and queued post-A9 without changing current execution or claims"
+      ? "accepted-with-amendments native UI package is integrity-checked and blocked from activation until ADR-015 product-access and measured-necessity gates pass"
       : `${failed.length} native UI design-package integration checks failed`,
   checks,
 };

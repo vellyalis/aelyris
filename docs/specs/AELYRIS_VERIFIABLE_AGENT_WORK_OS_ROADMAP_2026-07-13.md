@@ -298,8 +298,13 @@ input/render/memory/soak, IME, accessibility, recovery, dependency/license and
 maintenance cost, Windows 10/11 support, rollback, and release timing. Historical
 v1 `98%` evidence cannot authorize promotion.
 
-Sequencing is A8.1 -> A9 -> NUI-F0-F7 as the priority-1 next program. Windows
-11 x64 is primary and Windows 10 compatibility is measured separately.
+ADR-015 amends activation sequencing: latest required-CI repair comes first,
+then the general Mission product-access vertical may proceed while A9
+operator/external certification remains pending. NUI-F0-F7 remains the accepted
+strategic native program, but activation requires that Product-Accessible Mission path
+plus measured evidence that the current surface blocks two named core journeys or one
+release-blocking defect without a simpler repair. Windows 11 x64 is primary and
+Windows 10 compatibility is measured separately when that gate is reached.
 
 ### A8.1 measured native terminal decision
 
@@ -323,10 +328,12 @@ No A7 or Apex feature converts an external/operator gate into repo-owned PASS.
 
 ## 7. Apex Roadmap — Post-A9 Product Waves
 
-A8.0 accepted ADR-014 with amendments, so NUI-F0-F7 is the first post-A9
-portfolio program and these Apex waves begin after NUI closes or is retired.
-This preserves the internal V1-V9 dependency order while making the native
-migration the explicit priority-1 accepted path.
+A8.0 accepted ADR-014 with amendments, and ADR-015 retained that strategic direction
+while adding product-delivery and measured-necessity entry gates. NUI-F0-F7 is no
+longer the automatic first repo mutation after A9; the general Mission vertical in
+`product-delivery-instructions.md` precedes activation. These Apex waves still begin
+after NUI closes or is retired once NUI is actually activated, preserving the internal
+V1-V9 dependency order without turning an unactivated migration into current work.
 
 These waves are tracked destination work, not hidden R0-A9 completion criteria.
 Each wave gets its own spec inventory, focused commits, verifiers, CI, and claim.

@@ -15,7 +15,8 @@ skill, verifier, or review gate should drive a task.
    `AI_GUIDE.md` (decision framework, delegation framework, architecture,
    contracts).
 5. Root work orders - read `refactor-instructions.md`,
-   `hardening-instructions.md`, and `renderer-instructions.md` explicitly when
+   `hardening-instructions.md`, `audit-remediation-instructions.md`,
+   `product-delivery-instructions.md`, and `renderer-instructions.md` explicitly when
    `AGENTS.md` requires the work-order safety preflight; do not restart
    completed orders unless a current verifier shows a regression.
 6. `docs/specs/README.md` - active spec index and current Work Unit routing.
@@ -43,7 +44,8 @@ optional, and git is not required for product/safe/finalize evidence.
 | Public readiness or release claim check | `aelyris-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
 | Current proof and gate classification | `aelyris-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
 | Previous-turn Claude stop gate | `aelyris-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
-| Root work-order status | `audit-remediation-instructions.md` is ACTIVE; refactor/hardening are complete, UI quality belongs to phase A3, renderer is deferred to conditional A8 | one phase at a time, one commit per phase, no concurrent execution |
+| Root work-order status | `audit-remediation-instructions.md` owns current required-CI repair plus certification; `product-delivery-instructions.md` is queued behind the repo repair | one repo-mutating phase at a time; certification-only external work may coexist without repository edits |
+| Product delivery and maturity | `product-delivery-instructions.md` plus the owning Mission/Proofbook sources | classify Internal Capability / Product-Accessible / Claim-Eligible and connect one supported user path |
 | One scoped Work Unit or vertical slice | `docs/specs/README.md` plus the relevant phase/spec section and owner module verifier | implementation plan and focused checks |
 | Large drift-prone implementation | `codex-guided-implementation` | increment plan, read-only review gates, explicit boundaries |
 | MCP runtime orchestration | `aelyris-orchestrate` | local-only runtime loop; no public release claim |
@@ -79,6 +81,7 @@ optional, and git is not required for product/safe/finalize evidence.
 Before calling work done, report:
 
 - owner module or doc set touched,
+- capability maturity and the supported user path or named immediate consumer,
 - verifier commands run,
 - generated artifact paths when applicable,
 - skipped checks and whether they are code gaps, stale evidence, or operator/environment gates,

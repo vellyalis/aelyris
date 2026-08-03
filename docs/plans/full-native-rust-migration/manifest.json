@@ -1,80 +1,82 @@
 {
   "schema": "aelyris.native-ui-design-package.integration.v1",
-  "generatedDate": "2026-08-02",
-  "status": "accepted_with_amendments_queued_post_a9",
+  "generatedDate": "2026-08-03",
+  "status": "accepted_with_amendments_blocked_on_adr_015",
   "sourceArchive": "aelyris-full-native-rust-migration-plan.zip",
   "sourceArchiveSha256": "9024b28dc2cc6c78d6e1d9cd1e244b9b025bb8bd1cb80f406d4c13f4698f73cf",
   "sourceManifestPath": "docs/plans/full-native-rust-migration/source-manifest.json",
   "sourceTreePath": "docs/plans/full-native-rust-migration/source",
   "sourceDocumentCount": 11,
   "canonicalDecision": "DECISIONS.md#adr-014-full-native-rust-product-surface",
-  "defaultActivation": "priority-1-post-A9",
+  "defaultActivation": "after-product-access-and-measured-necessity",
   "decisionGate": "A8.0",
   "decisionOutcome": "accepted-with-amendments",
   "decisionDate": "2026-08-02",
   "activationAuthorized": false,
   "frameworkSelection": "pending-nui-f0-slint-vs-retained-runtime-bakeoff",
-  "currentExecutionOwner": "audit-remediation-instructions.md",
+  "currentExecutionOwner": "AGENTS.md",
   "documents": [
     {
       "path": "docs/plans/full-native-rust-migration/README.md",
-      "bytes": 5728,
-      "sha256": "ecfeaa84f3892bee91dc13f40e9419cbdda283b7a95b600e76c735759550060b"
+      "bytes": 6002,
+      "sha256": "cd1b246d27f45a678b5f7ee98c69afbc66b9cda4deefb30cdefcd976b75e5f15"
     },
     {
       "path": "docs/plans/full-native-rust-migration/INTEGRATION.md",
-      "bytes": 5321,
-      "sha256": "d3167100b569ec4c33af11e0d75a8149a4baaf8a5ab06f6e2af3af9fe79e243b"
+      "bytes": 5874,
+      "sha256": "f4f3a0fd7a88020a09e65f5753e6ee8304f89f3984b1bd0b4c8e7d4f7baf87e4"
     },
     {
       "path": "docs/plans/full-native-rust-migration/native-ui-migration-instructions.md",
-      "bytes": 9013,
-      "sha256": "cfa7650474099afc83f5a78f67e90e69022c342fe511059edf127e566f7a2941"
+      "bytes": 9636,
+      "sha256": "dd5e67bf1ec2ab98664c38a9fe7aa2b71a1d891441247a61f3082f28d587254a"
     },
     {
       "path": "docs/plans/full-native-rust-migration/ADR-014_FULL_NATIVE_RUST_PRODUCT_SURFACE_DRAFT.md",
-      "bytes": 5326,
-      "sha256": "1022eea95c3cbfb7df2b689a0652a6ef2394c3239f1dd9775fc880b2b58af9d3"
+      "bytes": 5445,
+      "sha256": "84dde2fe550f486f379f781296c8b995df37ecd04c8ffd38628fc103b4c9b7c5"
     },
     {
       "path": "docs/specs/AELYRIS_FULL_NATIVE_RUST_MIGRATION_MASTER_PLAN.md",
-      "bytes": 22483,
-      "sha256": "68873e0e6daf03efd6a28df01cd350e0634e1577dfe8072699a789f60f204bf6"
+      "bytes": 23304,
+      "sha256": "5b725be250db79c2ab928cb335cd5433646e7fdd8deef487ffbcd7beaa3d0b0e"
     },
     {
       "path": "docs/requirements/AELYRIS_NATIVE_UI_REQUIREMENTS.md",
-      "bytes": 19147,
-      "sha256": "57ec8e44d509aaa54799652812014bcfa94fb7e72b7a3af83dc62f0f00918f42"
+      "bytes": 20172,
+      "sha256": "168e7bc762a429fa52d3b1dbc2c1801e97f281874a90adc531e0b87c46ed45de"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_ARCHITECTURE.md",
-      "bytes": 17891,
-      "sha256": "cd8eead32c86979b3b788ba5c211c8cc92e28e0f76bdae8e34ba8e95b49523ba"
+      "bytes": 18681,
+      "sha256": "f2d869d375c2edce8f179745f0556ac8a8ca77040d85ef2c765d53bf41f971c8"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_FRAMEWORK_SPEC.md",
-      "bytes": 13786,
-      "sha256": "961f8336f6009365d56ffad61488c12ce07e7a42415241d27bb66378297c04c2"
+      "bytes": 14492,
+      "sha256": "8d32f981c697e55f25ca026c3003753dae4a2808584cdeb941de7b9cb56bde6e"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_EDITOR_SPEC.md",
-      "bytes": 7351,
-      "sha256": "32d81c4c2cb20824dc93f85ee4b2196aed46a10e705304af0f18a69016faf09e"
+      "bytes": 7721,
+      "sha256": "e10026ee9464f67b9637360a931b06f846c9c26c7fae48cff22c0572de2e8540"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_MIGRATION_ROADMAP.md",
-      "bytes": 13182,
-      "sha256": "1e28e950f56a34a56832195c3724e098d129f2a33ac41091d41d6fdd0a795d2c"
+      "bytes": 13967,
+      "sha256": "29fa95dd192a622c7923229ea64e74cb9201302080616da6692df1f01a6eed80"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_VERIFICATION_PLAN.md",
-      "bytes": 9336,
-      "sha256": "d621c3d74a40c6fdb2a885cc9da3d96f758542555626252f9c4f1c15bb70a8fe"
+      "bytes": 9808,
+      "sha256": "a8538d058d9339f6b66749486507f2fde36da7e7a84b0ea890258f19df16c157"
     },
     {
       "path": "docs/specs/AELYRIS_NATIVE_UI_TRACEABILITY.md",
-      "bytes": 4115,
-      "sha256": "30dde7f9c4fa1775e9f122a2a5fb5fef8a0ff7f20e32cbebb384005b4564ee49"
+      "bytes": 4210,
+      "sha256": "6dbd790f3de7009402d65530833bb05cb9b485a77f9e2e15d3ede4cb28d511c5"
     }
-  ]
+  ],
+  "activationDecision": "ADR-015",
+  "preActivationWorkOrder": "product-delivery-instructions.md"
 }
