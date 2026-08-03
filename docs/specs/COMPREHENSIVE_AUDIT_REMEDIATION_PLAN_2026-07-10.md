@@ -2275,6 +2275,16 @@ refreshes after direct owner evidence changes. The active/next A9.6 same-slice f
 therefore means operator/external continuation, not duplicate repo implementation,
 release credit, NUI activation, or a new A9.7.
 
+The A9.6 closeout also retains a cross-PC continuation invariant. A fresh Windows
+clone must be able to run `scripts/bootstrap-development.ps1`, install the frozen
+dependency graph, reconstruct a new ignored local handoff/worklog from the tracked
+work order and current Git truth, and pass `pnpm verify:fresh-clone`. Portable truth
+does not include `.codex-auto`, credentials, signing material, or host-specific live
+evidence. `pnpm verify:cross-pc-continuation` is the separate fail-closed proof that
+current `HEAD` is actually advertised by its configured upstream; an unpushed local
+commit cannot satisfy the cross-PC claim. This is an A9.6 portability repair, not a
+new A9.7 or a release-readiness transition.
+
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 
 The canonical A8.0 decision accepted ADR-014 with amendments. NUI-F0-F7 is the

@@ -105,7 +105,10 @@ continuation。A9.0 inventory は `refresh_before_fix`、A9.1 fresh owner split 
 `close_repo_owned_release_lane`: executable repo-owned defect は0件で、同一A9.6の
 active/next frontier はoperator/external continuationだけを表す。releaseReadyはfalse、
 post-A9/NUIは未activationであり、token-bearing guard、stale snapshot、downstream viewを
-直接の実装欠陥やrelease creditへ昇格していない。
+直接の実装欠陥やrelease creditへ昇格していない。A9.6 portability repair は
+`scripts/bootstrap-development.ps1` と `pnpm verify:fresh-clone` で各PCの local-only
+continuation を tracked Git truth から再構築し、`pnpm verify:cross-pc-continuation` で
+current HEAD の upstream 可用性を別に fail-closed 証明する。
 A8.0 は N4 direction を承認したが
 pre-A9 takeover と framework preselection は承認していない。A9 後に
 NUI-F0-F7 を priority 1 で開始し、NUI-F0 の同一縦切り比較で framework を選ぶ。

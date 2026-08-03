@@ -44,6 +44,9 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Fresh-clone continuation bootstrap
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1 -SkipInstall
       - name: Typecheck
         run: pnpm exec tsc --noEmit
       - name: Unit tests (vitest, forks pool for CI stability)

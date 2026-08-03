@@ -18,6 +18,8 @@ uses three separate records with one owner each:
 
 The tracked contract is durable team knowledge. The worklog is evidence. The resume
 pointer is routing guidance. None of them replaces fresh Git or verifier truth.
+On a different PC, the tracked contract is the portable authority; the worklog and
+resume pointer are regenerated locally and are never copied through Git.
 
 ## Canonical Paths
 
@@ -42,6 +44,32 @@ Rules:
 - Create a new worklog per session. Do not rewrite earlier worklogs.
 - Stable decisions and completed phase status belong in the tracked plan/work order,
   not only in local notes.
+
+## Fresh Clone And Cross-PC Continuation
+
+Cross-PC continuation is a required repository invariant, not an informal transfer of
+one machine's ignored files.
+
+1. Clone the configured upstream and enter the repository.
+2. Install the tracked prerequisite versions, then run:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1
+   ```
+
+3. The bootstrap performs the frozen dependency install, creates a new ignored
+   worklog and canonical local handoff from the tracked work order plus current Git
+   state, and runs `pnpm verify:fresh-clone`.
+4. Refresh only the focused owner artifacts required by the selected next action.
+   Historical `.codex-auto` evidence from another machine is not portable proof.
+5. Before claiming that the current frontier is available from any PC, run
+   `pnpm verify:cross-pc-continuation`. It must prove that local `HEAD`, the tracking
+   ref, and the remote advertised ref are identical.
+
+The local fresh-clone gate may PASS while the cross-PC gate remains BLOCK because a
+verified commit has not been pushed. That distinction is mandatory. A missing or
+stale remote commit cannot be repaired by committing ignored evidence, weakening the
+gate, or copying secrets. Push remains a separate authorization boundary.
 
 ## Worklog Minimum
 
@@ -137,6 +165,9 @@ Session close is an explicit workflow, not an informal final message.
 8. Re-run `git status --short --branch` and confirm local evidence remains ignored.
 9. Report whether the branch is clean, dirty-but-recorded, ahead/behind, and whether
    commit or push was performed. Never imply either happened when it did not.
+10. When the handoff is intended to be usable from another PC, run
+    `pnpm verify:cross-pc-continuation`; if it BLOCKs on remote sync, record the exact
+    pending push and do not claim cross-PC readiness.
 
 A session is **clear-safe** only when steps 2-8 are complete. Product/release gates
 may still be BLOCK; clear-safe means continuation evidence is complete, not that the

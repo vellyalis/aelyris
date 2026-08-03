@@ -350,6 +350,32 @@ canonical local handoff を正とする。
 実装を始める前に `docs/specs/README.md` を読み、Work Unit を1つ選び、その WU が指定する spec 節と対象ファイルだけを開く。設計/doc routing のみの変更では、該当
 Work Unit がないことを明示し、アプリ実装 WU に拡張しない。
 
+## Cross-PC Git Continuity Invariant
+
+Aelyris の継続可能性は、単一PCの local handoff ではなく、Git の tracked truth
+から任意の Windows 開発PCで再構築できる状態を正とする。検証済み phase / Work Unit
+を current frontier として扱うには、次の条件をすべて満たす。
+
+- current frontier に必要な source、lockfile、work order、plan、spec、bootstrap、
+  verifier は tracked であり、configured upstream から取得可能であること。
+- `.codex-auto/*`、`.claude/agent-memory-local/*`、`.env*`、credentials、token、
+  signing material、secret-bearing transcript、host固有の live evidence は commit しない。
+  local handoff / worklog は clone 後に tracked work order と current Git truth から
+  `scripts/bootstrap-development.ps1` で再生成する。
+- 新しいPCでは clone 後に `scripts/bootstrap-development.ps1` を実行し、依存導入、
+  local continuation 再構築、`pnpm verify:fresh-clone` を一経路で完了させる。
+- `pnpm verify:cross-pc-continuation` が current `HEAD`、tracking ref、remote advertised
+  ref の一致を確認するまで、「いつでも別PCから継続可能」と主張しない。
+- verified commit が local-only、branch が ahead、upstream がない、remote advertised
+  ref が違う、または bootstrap が失敗する場合、cross-PC continuity は `BLOCK` とする。
+  handoff には exact pending push または repair action を残す。
+- この invariant は push の承認境界を自動で解除しない。push が未承認なら local commit
+  まで進め、cross-PC gate を BLOCK のまま報告して明示許可を求める。push 後は同 gate
+  を再実行して remote から取得可能な commit hash を確認する。
+
+通常の session close / clear-safe は local continuation proof で判定できるが、別PCへの
+移動または「どのPCからでも継続可能」という claim には cross-PC gate を追加で必須とする。
+
 ## Work Rules
 
 - current machine truth は verifier artifact と生成コマンドを優先する。古い docs の

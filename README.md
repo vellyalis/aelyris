@@ -316,10 +316,24 @@ These are deliberate publication-readiness boundaries, not hidden footnotes:
 
 ## Development
 
+For a new Windows development machine, clone the configured upstream and run the
+tracked bootstrap from the repository root:
+
 ```powershell
-pnpm install
-pnpm tauri dev
+git clone https://github.com/vellyalis/aelyris.git
+cd aelyris
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1
 ```
+
+The bootstrap checks Node.js 24, pnpm 10, Rust/Cargo, performs
+`pnpm install --frozen-lockfile`, reconstructs the ignored local continuation handoff
+from tracked Git truth, and runs `pnpm verify:fresh-clone`. It does not copy secrets,
+signing material, or another machine's generated evidence. Start the app afterward
+with `pnpm tauri dev`.
+
+Before claiming that the current frontier can be resumed from any PC, run
+`pnpm verify:cross-pc-continuation`. The gate fails closed unless local `HEAD`, its
+tracking ref, and the remote advertised ref are identical.
 
 The first Rust/Tauri build can be slow, especially after cleaning Cargo
 `target` directories.

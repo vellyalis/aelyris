@@ -978,6 +978,15 @@ the derived `pnpm verify:final-goal-audit` and
 `pnpm verify:goal:completion-matrix` views refresh. No token prompt, signing, real
 sleep, stale live-host proof, publication, or external transmission ran in A9.6.
 
+A post-closeout A9.6 portability repair treats inability to reconstruct the current
+frontier from a fresh Git clone as a repo-owned continuation defect. The tracked
+`scripts/bootstrap-development.ps1` path now owns prerequisite diagnosis, frozen
+dependency installation, local-only handoff/worklog reconstruction, and the focused
+fresh-clone verifier. `pnpm verify:cross-pc-continuation` separately fails closed until
+current `HEAD`, its tracking ref, and the remote advertised ref match. This repair
+does not create A9.7, grant release credit, activate post-A9/NUI work, or make ignored
+host evidence portable.
+
 ## Work and Session Rules
 
 - Follow `docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md` before every session clear.

@@ -47,6 +47,7 @@ src-tauri/target/
 
 # Local Codex handoff state
 AGENT_STATE.md
+.claude/agent-memory-local/
 
 # Playwright
 test-results/

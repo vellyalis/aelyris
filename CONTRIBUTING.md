@@ -19,10 +19,19 @@ requires them.
 
 ## Development Setup
 
+On a fresh Windows clone, use the tracked bootstrap:
+
 ```powershell
-pnpm install
-pnpm tauri dev
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1
 ```
+
+It installs the frozen JavaScript dependency graph, rebuilds machine-local
+continuation state from tracked Git truth, and runs the fresh-clone gate. Then start
+development with `pnpm tauri dev`.
+
+Run `pnpm verify:cross-pc-continuation` before claiming a handoff is available from
+another PC. An unpushed commit is a cross-PC continuation BLOCK even when local tests
+and the local continuation verifier pass.
 
 If Cargo `target` directories were cleaned, the first build will take longer.
 

@@ -297,10 +297,23 @@ verifier の後ろにゲートし、いま出荷されているものとこの�
 
 ## 開発
 
+新しい Windows 開発PCでは、configured upstream を clone し、repository root で
+tracked bootstrap を実行します。
+
 ```powershell
-pnpm install
-pnpm tauri dev
+git clone https://github.com/vellyalis/aelyris.git
+cd aelyris
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1
 ```
+
+bootstrap は Node.js 24、pnpm 10、Rust/Cargo を確認し、
+`pnpm install --frozen-lockfile`、Git の tracked truth から ignored local handoff の
+再構築、`pnpm verify:fresh-clone` を一経路で実行します。秘密、署名素材、別PCの
+generated evidence はコピーしません。その後 `pnpm tauri dev` で起動します。
+
+current frontier をどのPCからでも再開可能と主張する前に、
+`pnpm verify:cross-pc-continuation` を実行します。local `HEAD`、tracking ref、remote
+advertised ref が一致しない場合、この gate は fail-closed で BLOCK します。
 
 最初の Rust/Tauri ビルドは、特に Cargo の `target` ディレクトリをクリーンした
 後は時間がかかることがあります。

@@ -99,6 +99,11 @@ Every active implementation/audit program must follow
 - Session clear is `clear-safe` only after the program continuation verifier
   passes and a final `git status --short --branch` confirms the recorded state.
 - A clear-safe handoff is not a release PASS; it only proves restartability.
+- Cross-PC continuation is stronger than local clear-safe. A new machine rebuilds
+  its ignored handoff/worklog with `scripts/bootstrap-development.ps1`; before a
+  handoff is called available from any PC, `pnpm verify:cross-pc-continuation` must
+  prove local HEAD equals both the tracking ref and remote advertised ref. Unpushed
+  commits remain an explicit cross-PC BLOCK.
 
 For the current comprehensive audit program, use:
 

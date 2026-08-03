@@ -108,7 +108,6 @@ const requiredFiles = [
   "workflows",
   "tasks",
   "packageJson",
-  "report",
   "handoff",
 ];
 
@@ -350,10 +349,19 @@ checks.push(
   ),
 );
 
-const localPaths = [paths.report, paths.handoff, paths.worklogDir];
+checks.push(
+  check(
+    "historical-report-portable-boundary",
+    !existsSync(fullPath(paths.report)) || isIgnored(paths.report),
+    "the historical generated audit report is optional on a fresh clone and ignored when present",
+    { path: paths.report, exists: existsSync(fullPath(paths.report)) },
+  ),
+);
+
+const localPaths = [paths.handoff, paths.worklogDir];
 const notIgnored = localPaths.filter((path) => !isIgnored(path));
 checks.push(
-  check("local-evidence-ignored", notIgnored.length === 0, "report, worklogs, and handoff are ignored", {
+  check("local-evidence-ignored", notIgnored.length === 0, "worklogs and handoff are ignored", {
     paths: localPaths,
     notIgnored,
   }),
