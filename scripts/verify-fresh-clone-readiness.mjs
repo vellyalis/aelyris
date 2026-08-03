@@ -41,6 +41,13 @@ function major(version) {
   return Number.parseInt(String(version).match(/\d+/)?.[0] ?? "", 10);
 }
 
+function canonicalStatus(value) {
+  return String(value ?? "")
+    .replace(/\r?\n/g, "; ")
+    .replace(/\s*;\s*/g, "; ")
+    .trim();
+}
+
 const checks = [];
 const requiredTrackedPaths = [
   ".gitignore",
@@ -191,6 +198,7 @@ checks.push(
 
 const head = run("git", ["rev-parse", "HEAD"]);
 const branch = run("git", ["branch", "--show-current"]);
+const gitStatus = run("git", ["status", "--short", "--branch", "--untracked-files=all"]);
 const continuation = readJson(".codex-auto/quality/audit-remediation-continuation.json");
 const bootstrap = readJson(".codex-auto/quality/fresh-clone-bootstrap.json");
 checks.push(
@@ -202,7 +210,9 @@ checks.push(
       bootstrap?.status === "pass-fresh-clone-continuation-bootstrap" &&
       continuation?.head === head.value.slice(0, 7) &&
       bootstrap?.head === head.value.slice(0, 7) &&
-      continuation?.branch === branch.value,
+      continuation?.branch === branch.value &&
+      canonicalStatus(continuation?.gitStatus) === canonicalStatus(gitStatus.value) &&
+      canonicalStatus(bootstrap?.gitStatus) === canonicalStatus(gitStatus.value),
     "current-machine handoff and worklog were reconstructed from this checkout",
     {
       continuationStatus: continuation?.status ?? null,
@@ -211,6 +221,7 @@ checks.push(
       bootstrapHead: bootstrap?.head ?? null,
       head: head.value,
       branch: branch.value,
+      gitStatus: gitStatus.value,
     },
   ),
 );
@@ -252,18 +263,20 @@ checks.push(
 );
 
 const failed = checks.filter((entry) => entry.status === "failed");
-const localReady = failed.length === 0;
-const crossPcReady = localReady && remoteSync;
+const localFailed = failed.filter((entry) => entry.id !== "remote-head-current");
+const freshCloneReady = localFailed.length === 0;
+const crossPcReady = freshCloneReady && remoteSync;
+const gateOk = freshCloneReady && (!requireRemoteSync || remoteSync);
 const result = {
   version: 1,
   generatedAt: new Date().toISOString(),
-  status: localReady
+  status: gateOk
     ? crossPcReady
       ? "pass-cross-pc-development-continuation"
       : "pass-fresh-clone-local-awaiting-remote-sync"
     : "failed",
-  ok: localReady,
-  freshCloneReady: localReady,
+  ok: gateOk,
+  freshCloneReady,
   crossPcReady,
   requireRemoteSync,
   branch: branch.value || null,
