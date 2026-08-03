@@ -107,6 +107,9 @@ const protocol = readFileSync(join(ROOT, "docs", "WORK_RECORD_AND_CONTINUATION_P
 const readme = readFileSync(join(ROOT, "README.md"), "utf8");
 const contributing = readFileSync(join(ROOT, "CONTRIBUTING.md"), "utf8");
 const workflow = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
+const pnpmSetupCount = workflow.match(/uses:\s*pnpm\/action-setup@/g)?.length ?? 0;
+const explicitPnpmSetupVersionCount =
+  workflow.match(/pnpm\/action-setup@[^\r\n]+\r?\n\s+with:\r?\n\s+version:/g)?.length ?? 0;
 checks.push(
   check(
     "cross-pc-policy",
@@ -123,8 +126,11 @@ checks.push(
   check(
     "hosted-fresh-checkout-proof",
     workflow.includes("Fresh-clone continuation bootstrap") &&
-      workflow.includes("scripts/bootstrap-development.ps1 -SkipInstall"),
-    "Windows CI executes the same tracked bootstrap from a hosted checkout",
+      workflow.includes("scripts/bootstrap-development.ps1 -SkipInstall") &&
+      pnpmSetupCount > 0 &&
+      explicitPnpmSetupVersionCount === 0,
+    "Windows CI executes the tracked bootstrap and takes pnpm version only from packageManager",
+    { pnpmSetupCount, explicitPnpmSetupVersionCount },
   ),
 );
 
