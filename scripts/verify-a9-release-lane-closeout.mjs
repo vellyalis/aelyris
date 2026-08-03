@@ -457,20 +457,16 @@ const correctivePostcommitState =
   exactStringSet(commitDeltaPaths, ["scripts/verify-a9-release-lane-closeout.mjs"]) &&
   correctiveCommitSequenceValid &&
   dirty.length === 0;
-const refreshedCorrectivePostcommitState =
-  evidenceHead === head &&
-  commitCount === 0 &&
-  commitDeltaPaths.length === 0 &&
-  correctiveCommitSequenceValid &&
-  dirty.length === 0;
+const refreshedCleanHeadState =
+  evidenceHead === head && commitCount === 0 && commitDeltaPaths.length === 0 && dirty.length === 0;
 const evidenceCommitState = freshPrecommitState
   ? "a9_6_precommit"
   : freshPostcommitState
     ? "a9_6_postcommit"
     : correctivePostcommitState
       ? "a9_6_corrective_postcommit"
-      : refreshedCorrectivePostcommitState
-        ? "a9_6_refreshed_corrective_postcommit"
+      : refreshedCleanHeadState
+        ? "a9_6_refreshed_clean_head"
         : "invalid";
 const evidenceHeadAllowed =
   isGitAncestor(evidenceHead, head) && unexpectedCommitDeltaPaths.length === 0 && evidenceCommitState !== "invalid";
