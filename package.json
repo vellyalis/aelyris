@@ -228,14 +228,14 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@xyflow/react": "^12.10.2",
     "cmdk": "^1.1.1",
-    "dompurify": "^3.4.11",
+    "dompurify": "^3.4.13",
     "lucide-react": "^1.8.0",
     "marked": "^18.0.3",
     "match-sorter": "^8.2.0",
     "monaco-editor": "^0.55.1",
     "monaco-vim": "^0.4.4",
     "motion": "^12.38.0",
-    "postcss": "^8.5.14",
+    "postcss": "^8.5.25",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.12"
@@ -256,10 +256,11 @@
   },
   "pnpm": {
     "overrides": {
-      "dompurify": "^3.4.11",
+      "dompurify": "^3.4.13",
       "esbuild": "0.28.1",
       "marked": "^18.0.3",
-      "postcss": "^8.5.14"
+      "postcss": "^8.5.25",
+      "undici": "^7.29.0"
     },
     "onlyBuiltDependencies": [
       "esbuild"

@@ -51,12 +51,14 @@ function groupByCategory(items: CommandItem[]): Array<{ category: CommandCategor
 
 export function CommandPalette({ visible, onClose, commands }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeRequestedRef = useRef(false);
   const [query, setQuery] = useState("");
   const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentCommands());
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (visible) {
+      closeRequestedRef.current = false;
       setQuery("");
       setRecentIds(loadRecentCommands());
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -71,17 +73,23 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
   );
   const showRecent = query.trim().length === 0 && recentCommands.length > 0;
 
+  const requestClose = () => {
+    if (closeRequestedRef.current) return;
+    closeRequestedRef.current = true;
+    onClose();
+  };
+
   const runCommand = (cmd: CommandItem) => {
     setRecentIds(recordRecentCommand(cmd.id));
     cmd.action();
-    onClose();
+    requestClose();
   };
 
   return (
     <Dialog.Root
       open={visible}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) requestClose();
       }}
     >
       <AnimatePresence>
@@ -99,6 +107,13 @@ export function CommandPalette({ visible, onClose, commands }: CommandPalettePro
             <Dialog.Content asChild>
               <motion.div
                 className={styles.palette}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestClose();
+                  }
+                }}
                 initial={reduceMotion ? false : { opacity: 0, x: "-50%", y: -20, scale: 0.97 }}
                 animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }}
                 exit={

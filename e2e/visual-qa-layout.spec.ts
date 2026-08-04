@@ -12,14 +12,21 @@ const visualQaArtifactDir = ".codex-auto/visual-qa/p2-05";
 type RailMode = (typeof railModes)[number];
 type DensityMode = (typeof densityModes)[number];
 
-async function seedVisualQaStorage(page: Page, density: DensityMode = "balanced") {
+async function seedVisualQaStorage(
+  page: Page,
+  density: DensityMode = "balanced",
+  sidebarCollapsed?: boolean,
+) {
   await page.evaluate(
-    ({ density, projectPath, workspaceProfileStorageKey }) => {
+    ({ density, projectPath, sidebarCollapsed, workspaceProfileStorageKey }) => {
       const workspaceKey = projectPath.toLowerCase();
       localStorage.setItem("aelyris:visualQa", "1");
       localStorage.setItem("aelyris:visualQaProject", projectPath);
       localStorage.setItem("aelyris:lastProject", projectPath);
       localStorage.setItem("aelyris:onboarding-done", "true");
+      if (sidebarCollapsed !== undefined) {
+        localStorage.setItem("aelyris:sidebarCollapsed", sidebarCollapsed ? "1" : "0");
+      }
       localStorage.setItem(
         workspaceProfileStorageKey,
         JSON.stringify({
@@ -34,7 +41,7 @@ async function seedVisualQaStorage(page: Page, density: DensityMode = "balanced"
         }),
       );
     },
-    { density, projectPath, workspaceProfileStorageKey },
+    { density, projectPath, sidebarCollapsed, workspaceProfileStorageKey },
   );
 }
 
@@ -46,6 +53,7 @@ async function openVisualQaApp(
     diagnostics?: boolean;
     incidents?: boolean;
     attachFixture?: boolean;
+    sidebarCollapsed?: boolean;
     railState?: "idle" | "review" | "blocked" | "unhealthy" | "conductor";
   } = {},
 ) {
@@ -60,7 +68,7 @@ async function openVisualQaApp(
   if (options.railState) params.set("railState", options.railState);
 
   await page.goto(`/?${params.toString()}`, { waitUntil: "domcontentloaded" });
-  await seedVisualQaStorage(page, options.density ?? "balanced");
+  await seedVisualQaStorage(page, options.density ?? "balanced", options.sidebarCollapsed);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".app-main")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".app-container")).toHaveAttribute("data-density", options.density ?? "balanced");
@@ -268,7 +276,7 @@ test.describe("Visual QA layout guard", () => {
 
   test("keeps production-width desktop chrome balanced", async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 800 });
-    await openVisualQaApp(page, { rail: "observe", density: "balanced" });
+    await openVisualQaApp(page, { rail: "observe", density: "balanced", sidebarCollapsed: false });
 
     const center = await page.locator(".center-panel").boundingBox();
     const right = await page.locator(".right-panel").boundingBox();

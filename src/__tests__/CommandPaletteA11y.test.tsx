@@ -63,4 +63,14 @@ describe("CommandPalette accessibility", () => {
     expect(switchPane).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("closes from the focused command surface when Escape is pressed", () => {
+    const onClose = vi.fn();
+
+    render(<CommandPalette visible onClose={onClose} commands={[]} />);
+
+    fireEvent.keyDown(screen.getByLabelText("Search commands"), { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
