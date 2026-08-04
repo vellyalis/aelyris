@@ -51,7 +51,7 @@ jobs:
         run: |
           if ($env:EVENT_NAME -eq "workflow_dispatch") {
             $base = git rev-parse HEAD^
-            $files = @(git ls-files)
+            $files = @(git diff --name-only $base $env:HEAD_SHA)
           } elseif ($env:EVENT_NAME -eq "pull_request") {
             $base = $env:PR_BASE_SHA
             $files = @(git diff --name-only $base $env:HEAD_SHA)
@@ -74,8 +74,10 @@ jobs:
           $rust = $workflow -or (Has-Path '^(src-tauri/|.*Cargo\.(toml|lock)$)')
           $rustUnit = Has-Path '^(src-tauri/(src/|vendor/|build\.rs$|Cargo\.(toml|lock)$))'
           $rustIntegration = Has-Path '^src-tauri/tests/'
-          $rustExamples = Has-Path '^src-tauri/examples/'
-          $rustBenches = Has-Path '^src-tauri/benches/'
+          # Root Cargo manifest/lock changes can alter target declarations and
+          # dev-dependencies used by examples/benches, so compile both families.
+          $rustExamples = Has-Path '^src-tauri/(examples/|Cargo\.(toml|lock)$)'
+          $rustBenches = Has-Path '^src-tauri/(benches/|Cargo\.(toml|lock)$)'
           $pty = Has-Path '^(src-tauri/(pty-server/|vendor/|Cargo\.(toml|lock)$|src/(lib\.rs$|startup_reconciliation\.rs$|api/|command_risk/|db/|logging/|pty/)))'
           $dependencies = Has-Path '(^|/)(package\.json|pnpm-lock\.yaml|Cargo\.toml|Cargo\.lock)$'
           $policy = $workflow -or (Has-Path '^(README\.md|CONTRIBUTING\.md|AGENTS\.md|AI_GUIDE\.md|GOAL\.md|DECISION_FRAMEWORK\.md|DELEGATION_FRAMEWORK\.md|DECISIONS\.md|ARCHITECTURE\.md|product-delivery-instructions\.md|tasks/README\.md|contracts/README\.md|docs/(README\.md|requirements\.md|PUBLICATION_READINESS\.md|AGENT_WORKFLOWS\.md)|scripts/(verify-ai-decision-knowledge|verify-release-hygiene-contract)\.mjs)$')
@@ -235,12 +237,54 @@ jobs:
         if: needs.changes.outputs.rust_integration == 'true'
         shell: pwsh
         run: |
-          $tests = @(
+          $changedTestPaths = @(
             git diff --name-only "${{ needs.changes.outputs.base }}" "${{ github.sha }}" |
-              Where-Object { $_ -match '^src-tauri/tests/[^/]+\.rs$' }
+              Where-Object { $_ -match '^src-tauri/tests/' }
           )
-          foreach ($test in $tests) {
-            $name = [System.IO.Path]::GetFileNameWithoutExtension($test)
+          $changedIntegrationPaths = @(
+            $changedTestPaths | Where-Object { $_ -match '^src-tauri/tests/[^/]+\.rs$' }
+          )
+          $sharedOrFixturePaths = @(
+            $changedTestPaths | Where-Object { $_ -notmatch '^src-tauri/tests/[^/]+\.rs$' }
+          )
+
+          if ($sharedOrFixturePaths.Count -gt 0) {
+            Write-Host "A nested integration helper or fixture changed; running the complete integration suite."
+            $sharedOrFixturePaths | ForEach-Object { Write-Host " - $_" }
+            cargo test --manifest-path src-tauri/Cargo.toml --tests
+            exit $LASTEXITCODE
+          }
+
+          $deletedIntegrationSources = @($changedIntegrationPaths | Where-Object { -not (Test-Path $_) })
+          if ($deletedIntegrationSources.Count -gt 0) {
+            Write-Host "Integration sources were deleted or renamed; running the complete integration suite."
+            $deletedIntegrationSources | ForEach-Object { Write-Host " - $_" }
+            cargo test --manifest-path src-tauri/Cargo.toml --tests
+            exit $LASTEXITCODE
+          }
+
+          $testNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+          $integrationSources = @(Get-ChildItem "src-tauri/tests" -File -Filter "*.rs")
+          foreach ($testPath in $changedIntegrationPaths) {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($testPath)
+            $modulePattern = "^mod $([regex]::Escape($name));"
+            $importers = @(
+              $integrationSources |
+                Where-Object { $_.FullName -ne (Resolve-Path $testPath).Path } |
+                Select-String -Pattern $modulePattern |
+                ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_.Path) } |
+                Sort-Object -Unique
+            )
+
+            if ($importers.Count -gt 0) {
+              Write-Host "Shared integration module $name changed; importer targets: $($importers -join ', ')"
+              foreach ($importer in $importers) { [void]$testNames.Add($importer) }
+            } else {
+              [void]$testNames.Add($name)
+            }
+          }
+
+          foreach ($name in @($testNames | Sort-Object)) {
             Write-Host "Running changed Rust integration test: $name"
             cargo test --manifest-path src-tauri/Cargo.toml --test $name
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
