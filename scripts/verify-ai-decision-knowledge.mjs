@@ -297,7 +297,7 @@ const requiredProductDeliveryClauses = [
   "GMV-3",
   "Deferred After GMV",
   "Proofbook product access",
-  "current required CI",
+  "hosted-fast required CI",
   "certification-only lane",
 ];
 

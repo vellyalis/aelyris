@@ -1,12 +1,8 @@
 name: CI
 
-# v2 policy (docs/specs/QUALITY_REMEDIATION_PLAN_2026-07-02.md S2):
-# blocking = tsc + vitest + cargo test --lib + release hygiene + stack-risk
-# classification; informational = biome/fmt/clippy/raw audits. The stack-risk
-# CI gate accepts verified upstream-bound Tauri/urlpattern debt, but still
-# fails on implementation-fixable release blockers or unclassified risks.
-# Everything runs on windows-latest: pnpm scripts use cmd `set` syntax and the
-# product (ConPTY, webview2-com, Win32 job objects) is Windows-targeted.
+# Path-aware required feedback for normal product work. Full frontend,
+# rendered-UI, Rust, historical A6/A7, and release evidence remain available
+# in full-confidence.yml without blocking every bounded Work Unit.
 
 on:
   push:
@@ -14,12 +10,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      release_candidate:
-        description: Run the fail-closed release evidence lane
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -29,12 +19,85 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend (tsc + vitest)
+  changes:
+    name: Classify changed owners
     runs-on: windows-latest
-    timeout-minutes: 40
+    outputs:
+      base: ${{ steps.classify.outputs.base }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+      frontend_full: ${{ steps.classify.outputs.frontend_full }}
+      ui: ${{ steps.classify.outputs.ui }}
+      rust: ${{ steps.classify.outputs.rust }}
+      rust_full: ${{ steps.classify.outputs.rust_full }}
+      pty: ${{ steps.classify.outputs.pty }}
+      dependencies: ${{ steps.classify.outputs.dependencies }}
+      policy: ${{ steps.classify.outputs.policy }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Classify owner paths
+        id: classify
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $base = git rev-parse HEAD^
+            $files = @(git ls-files)
+          } elseif ($env:EVENT_NAME -eq "pull_request") {
+            $base = $env:PR_BASE_SHA
+            $files = @(git diff --name-only $base $env:HEAD_SHA)
+          } elseif ($env:BEFORE_SHA -and $env:BEFORE_SHA -notmatch '^0+$') {
+            $base = $env:BEFORE_SHA
+            $files = @(git diff --name-only $base $env:HEAD_SHA)
+          } else {
+            $base = git rev-parse HEAD^
+            $files = @(git diff --name-only $base $env:HEAD_SHA)
+          }
+
+          function Has-Path([string]$pattern) {
+            return [bool]($files | Where-Object { $_ -match $pattern } | Select-Object -First 1)
+          }
+
+          $workflow = Has-Path '^\.github/workflows/'
+          $frontend = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|scripts/run-frontend-tests\.mjs$|package\.json$|pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|playwright)')
+          $frontendFull = $workflow -or (Has-Path '^(pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|src/(App\.tsx$|main\.tsx$|features/app/|shared/(store|types)/))')
+          $ui = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|package\.json$|pnpm-lock\.yaml$|playwright\.config\.ts$)')
+          $rust = $workflow -or (Has-Path '^(src-tauri/|.*Cargo\.(toml|lock)$)')
+          $rustFull = $workflow -or (Has-Path '^(src-tauri/(src/|tests/|vendor/|build\.rs$|Cargo\.(toml|lock)$|pty-server/(src/|tests/|build\.rs$|Cargo\.(toml|lock)$)))')
+          $pty = $workflow -or (Has-Path '^(src-tauri/(pty-server/|vendor/|Cargo\.(toml|lock)$|src/(lib\.rs$|startup_reconciliation\.rs$|api/|command_risk/|db/|logging/|pty/)))')
+          $dependencies = $workflow -or (Has-Path '(^|/)(package\.json|pnpm-lock\.yaml|Cargo\.toml|Cargo\.lock)$')
+          $policy = $workflow -or (Has-Path '^(README\.md|CONTRIBUTING\.md|AGENTS\.md|AI_GUIDE\.md|GOAL\.md|DECISION_FRAMEWORK\.md|DELEGATION_FRAMEWORK\.md|DECISIONS\.md|ARCHITECTURE\.md|product-delivery-instructions\.md|tasks/README\.md|contracts/README\.md|docs/(README\.md|requirements\.md|PUBLICATION_READINESS\.md|AGENT_WORKFLOWS\.md)|scripts/(verify-ai-decision-knowledge|verify-release-hygiene-contract)\.mjs)$')
+
+          "base=$base" >> $env:GITHUB_OUTPUT
+          "frontend=$($frontend.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "frontend_full=$($frontendFull.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "ui=$($ui.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "rust=$($rust.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "rust_full=$($rustFull.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "pty=$($pty.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "dependencies=$($dependencies.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "policy=$($policy.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+          Write-Host "Base: $base"
+          Write-Host "Changed files: $($files.Count)"
+          $files | ForEach-Object { Write-Host " - $_" }
+          Write-Host "frontend=$frontend frontendFull=$frontendFull ui=$ui rust=$rust rustFull=$rustFull pty=$pty dependencies=$dependencies policy=$policy"
+
+  frontend-fast:
+    name: Frontend fast (tsc + changed Vitest)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -42,23 +105,28 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Fresh-clone continuation bootstrap
-        shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1 -SkipInstall
       - name: Typecheck
         run: pnpm exec tsc --noEmit
-      - name: Unit tests (vitest, forks pool for CI stability)
-        run: pnpm test --pool=forks
-      - name: Biome lint (informational until repo-wide CRLF drift is settled)
+      - name: Tests affected by this change
+        if: needs.changes.outputs.frontend_full != 'true'
+        run: node scripts/run-frontend-tests.mjs --base "${{ needs.changes.outputs.base }}" --pool=forks
+      - name: Full frontend tests for broad or high-risk owner changes
+        if: needs.changes.outputs.frontend_full == 'true'
+        run: pnpm test:full --pool=forks
+      - name: Biome lint (informational while CRLF formatting is separate)
         continue-on-error: true
         run: pnpm exec biome lint src
 
-  rendered-ui-trust:
-    name: Rendered UI trust (Playwright)
+  ui-smoke:
+    name: UI smoke (source contract + critical journeys)
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -70,7 +138,7 @@ jobs:
         run: pnpm exec playwright install chromium
       - name: Enforced UI trust source contract
         run: pnpm verify:ui:trust
-      - name: Rendered layout Playwright spec
+      - name: Critical rendered journeys
         shell: pwsh
         env:
           AELYRIS_E2E_PROJECT_PATH: ${{ github.workspace }}
@@ -79,11 +147,10 @@ jobs:
         run: |
           $ciDir = Join-Path $env:GITHUB_WORKSPACE ".codex-auto\ci"
           New-Item -ItemType Directory -Force -Path $ciDir | Out-Null
-          $stdout = Join-Path $ciDir "vite-rendered-ui-trust.out.log"
-          $stderr = Join-Path $ciDir "vite-rendered-ui-trust.err.log"
+          $stdout = Join-Path $ciDir "vite-ui-smoke.out.log"
+          $stderr = Join-Path $ciDir "vite-ui-smoke.err.log"
           $server = Start-Process -WindowStyle Hidden -FilePath "pnpm.cmd" -ArgumentList @("dev", "--host", "127.0.0.1", "--port", "1420") -WorkingDirectory $env:GITHUB_WORKSPACE -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-          $server.Id | Set-Content -Path (Join-Path $ciDir "vite-rendered-ui-trust.pid")
-          $playwrightExitCode = 0
+          $exitCode = 0
           try {
             $ready = $false
             for ($attempt = 0; $attempt -lt 60; $attempt++) {
@@ -102,80 +169,60 @@ jobs:
               Get-Content -Path $stderr -ErrorAction SilentlyContinue
               throw "Vite server did not become ready on port 1420"
             }
-            pnpm exec playwright test e2e/visual-qa-layout.spec.ts --project=frontend
-            $playwrightExitCode = $LASTEXITCODE
+            $changedSpecs = @(git diff --name-only "${{ needs.changes.outputs.base }}" "${{ github.sha }}" -- "e2e/*.spec.ts")
+            if ($changedSpecs.Count -gt 0) {
+              Write-Host "Running directly changed Playwright specs: $($changedSpecs -join ', ')"
+              pnpm exec playwright test @changedSpecs --project=frontend
+            } else {
+              pnpm test:e2e:smoke
+            }
+            $exitCode = $LASTEXITCODE
           } finally {
             Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
           }
-          exit $playwrightExitCode
-      - name: Upload rendered UI trust artifacts
+          exit $exitCode
+      - name: Upload UI smoke artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: rendered-ui-trust-${{ github.sha }}
+          name: ui-smoke-${{ github.sha }}
           path: |
             .codex-auto/quality/ui-trust-contract.json
-            .codex-auto/visual-qa/**
             .codex-auto/ci/**
             test-results/**
-            playwright-report/**
           if-no-files-found: warn
 
-  a6-frontend-acceptance:
-    name: A6.2 combined frontend acceptance
-    needs: [frontend, rendered-ui-trust]
+  rust-fast:
+    name: Rust fast (cargo check)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Combined A6.2 frontend acceptance
-        env:
-          AELYRIS_A6_BLOCKING_CI_CONTEXT: "1"
-        run: pnpm verify:a6:frontend-acceptance
-      - name: Upload A6.2 frontend acceptance evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: a6-frontend-acceptance-${{ github.sha }}
-          path: |
-            .codex-auto/quality/a6-frontend-acceptance.json
-            .codex-auto/quality/a6-frontend-ratchet.json
-            .codex-auto/quality/a6-modularity-inventory.json
-            .codex-auto/quality/ui-trust-contract.json
-          if-no-files-found: error
-
-  rust:
-    name: Rust (cargo test --lib)
-    runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-        with:
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
-          workspaces: src-tauri
-      - name: Lib tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
-      - name: rustfmt check (informational)
-        continue-on-error: true
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-      - name: Clippy (informational until proven green on a clean branch)
-        continue-on-error: true
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          workspaces: |
+            src-tauri -> target
+            src-tauri/pty-server -> target
+      - name: App library check
+        if: needs.changes.outputs.rust_full != 'true'
+        run: cargo check --manifest-path src-tauri/Cargo.toml --lib
+      - name: PTY sidecar check
+        if: needs.changes.outputs.pty == 'true' && needs.changes.outputs.rust_full != 'true'
+        run: cargo check --manifest-path src-tauri/pty-server/Cargo.toml
+      - name: Full Rust app owner tests
+        if: needs.changes.outputs.rust_full == 'true'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - name: Full PTY sidecar tests
+        if: needs.changes.outputs.pty == 'true' && needs.changes.outputs.rust_full == 'true'
+        run: cargo test --manifest-path src-tauri/pty-server/Cargo.toml
 
-  a6-combined-acceptance:
-    name: A6.8 combined hosted candidate
-    needs: [frontend, rendered-ui-trust, a6-frontend-acceptance, rust]
-    if: always()
+  dependency-risk:
+    name: Dependency risk (only when manifests change)
+    needs: changes
+    if: needs.changes.outputs.dependencies == 'true'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -186,160 +233,72 @@ jobs:
           node-version: 24
           cache: pnpm
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          workspaces: src-tauri
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Hosted A6.8 candidate validation
-        env:
-          AELYRIS_A6_COMBINED_CI_CONTEXT: "1"
-          AELYRIS_A6_COMBINED_NEEDS_JSON: ${{ toJSON(needs) }}
-        run: pnpm verify:a6:combined-acceptance
-      - name: Upload exact-SHA A6.8 candidate evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: a6-combined-acceptance-${{ github.sha }}
-          path: |
-            .codex-auto/quality/a6-combined-acceptance.json
-            .codex-auto/quality/a6-modularity-inventory.json
-          if-no-files-found: error
-
-  a7-combined-acceptance:
-    name: A7.5 Core Mission combined hosted candidate
-    needs: [frontend, rust]
-    if: always()
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          workspaces: src-tauri
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Hosted A7.5 candidate validation
-        env:
-          AELYRIS_A7_COMBINED_CI_CONTEXT: "1"
-          AELYRIS_A7_COMBINED_NEEDS_JSON: ${{ toJSON(needs) }}
-        run: pnpm verify:a7:combined-acceptance
-      - name: Upload exact-SHA A7.5 candidate evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: a7-combined-acceptance-${{ github.sha }}
-          path: .codex-auto/quality/a7-combined-acceptance.json
-          if-no-files-found: error
-
-  release-hardening:
-    name: Release hardening gates
-    runs-on: windows-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          workspaces: src-tauri
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install cargo-audit
         uses: taiki-e/install-action@2ca9b94c269419b7b0c711c09d0b21c4e1d51145 # v2
         with:
           tool: cargo-audit
-      - name: Release hygiene
-        run: pnpm verify:release:hygiene
+      - name: Stack-risk classification
+        run: pnpm verify:stack-risk
+
+  policy-fast:
+    name: Workflow policy consistency
+    needs: changes
+    if: needs.changes.outputs.policy == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: AI decision knowledge gate
         run: pnpm verify:ai-decision-knowledge
-      - name: Differentiation polish spec gate
-        run: pnpm verify:differentiation-polish-spec
-      - name: Stack-risk classification gate
-        run: node scripts\verify-stack-risk.mjs --allow-upstream-bound
-      - name: Release quality score artifact
-        run: pnpm verify:quality-score
-      - name: Upload quality artifacts
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: quality-artifacts
-          path: .codex-auto/quality/*.json
-          if-no-files-found: warn
+      - name: Public and release hygiene gate
+        run: pnpm verify:release:hygiene
 
-  audit:
-    name: Dependency audits (informational)
+  required-fast-ci:
+    name: Required fast CI
+    needs: [changes, frontend-fast, ui-smoke, rust-fast, dependency-risk, policy-fast]
+    if: always()
     runs-on: windows-latest
-    timeout-minutes: 20
-    continue-on-error: true
+    timeout-minutes: 5
+    env:
+      NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-      - name: pnpm audit (prod)
-        continue-on-error: true
-        run: pnpm audit --prod
-      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-      - name: Install cargo-audit
-        uses: taiki-e/install-action@2ca9b94c269419b7b0c711c09d0b21c4e1d51145 # v2
-        with:
-          tool: cargo-audit
-      - name: cargo audit
-        continue-on-error: true
-        working-directory: src-tauri
-        run: cargo audit
-
-  release-evidence:
-    name: Release evidence (SBOM + provenance + enforce)
-    if: github.event_name == 'workflow_dispatch' && inputs.release_candidate
-    runs-on: windows-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Create release evidence directory
-        run: New-Item -ItemType Directory -Force .codex-auto/release-evidence | Out-Null
-      - name: Generate source and dependency SBOM
-        uses: anchore/sbom-action@43a17d6e7add2b5535efe4dcae9952337c479a93 # v0.20.11
-        with:
-          path: .
-          format: spdx-json
-          output-file: .codex-auto/release-evidence/aelyris.spdx.json
-          upload-artifact: false
-      - name: Attest SBOM provenance
-        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
-        with:
-          subject-path: .codex-auto/release-evidence/aelyris.spdx.json
-      - name: Enforce release quality
-        run: pnpm verify:quality-score:enforce
-      - name: Upload immutable release evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: release-evidence-${{ github.sha }}
-          path: |
-            .codex-auto/release-evidence/aelyris.spdx.json
-            .codex-auto/quality/*.json
-          if-no-files-found: error
+      - name: Require every selected owner lane to pass
+        shell: pwsh
+        run: |
+          $needs = $env:NEEDS_JSON | ConvertFrom-Json
+          $selected = @{
+            "frontend-fast" = $needs.changes.outputs.frontend
+            "ui-smoke" = $needs.changes.outputs.ui
+            "rust-fast" = $needs.changes.outputs.rust
+            "dependency-risk" = $needs.changes.outputs.dependencies
+            "policy-fast" = $needs.changes.outputs.policy
+          }
+          $bad = @()
+          if ($needs.changes.result -ne "success") {
+            $bad += "changes=$($needs.changes.result)"
+          }
+          foreach ($entry in $selected.GetEnumerator()) {
+            $result = $needs.PSObject.Properties[$entry.Key].Value.result
+            if ($entry.Value -eq "true" -and $result -ne "success") {
+              $bad += "$($entry.Key)=$result (selected)"
+            }
+            if ($result -in @("failure", "cancelled")) {
+              $bad += "$($entry.Key)=$result"
+            }
+          }
+          if ($bad.Count -gt 0) {
+            $bad | Sort-Object -Unique | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+          $needs.PSObject.Properties | ForEach-Object {
+            Write-Host "$($_.Name)=$($_.Value.result)"
+          }

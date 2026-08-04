@@ -343,3 +343,45 @@ Reconsider when:
 - WebView2/Tauri causes a current release-blocking defect without a simpler repair;
 - two named core journeys fail defined latency, reliability, IME, accessibility, or
   recovery budgets because of the current surface.
+
+## ADR-016 Path-Aware Fast Feedback And Deferred Full Confidence
+
+Status: **accepted** (owner direction 2026-08-04).
+
+Decision:
+
+- normal product Work Units use changed/related frontend tests, typecheck, and the
+  directly touched owner gate as their local completion surface;
+- push/PR CI is path-aware and requires only the selected frontend, UI-smoke, Rust,
+  dependency-risk, and policy lanes;
+- complete frontend/rendered-UI/Rust confidence runs nightly or by manual dispatch;
+  completed A6/A7 aggregate evidence remains bound to its accepted exact SHA and is
+  absent from current-main workflows unless that phase is explicitly reopened;
+- full-confidence failures remain authoritative and reopen the responsible owner before
+  the next mutation checkpoint, but an unrelated historical verifier cannot make every
+  product Work Unit wait idle or erase green direct-owner evidence;
+- release and public claims still require the applicable full/release/certification lane.
+
+Reason:
+
+The previous workflow ran the full Vitest suite, complete rendered UI matrix, full Rust
+tests, historical A6/A7 aggregates, and release hardening on every push. At
+`65829f5e`, direct frontend, rendered UI, Rust, and stack-risk owners were green while a
+completed A6 aggregate remained capable of making the whole run red. That coupling
+optimized evidence volume rather than current product delivery.
+
+Implication:
+
+`pnpm test:changed` and `pnpm verify:fast` are local fast-feedback commands. Existing
+deterministic branch review retains full `pnpm test`; `pnpm test:full`, the
+`Full Confidence` workflow, historical phase aggregates, and release evidence are
+explicit higher lanes. Skipping an unrelated lane is not a PASS for that lane; it is a
+scope decision. A direct fresh failure is never ignored or reclassified merely to keep
+development moving.
+
+Reconsider when:
+
+- path selection misses a reproducible cross-owner regression;
+- fast feedback does not materially reduce local or hosted cycle time;
+- repository ownership becomes too dynamic for changed/related test selection to remain
+  trustworthy.

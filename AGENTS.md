@@ -87,6 +87,26 @@ product-delivery, and work-order contracts below remain mandatory.
   release-blocking defect がある場合だけ activation 候補にする。戦略方向、技術嗜好、
   設計packageの完成だけでは、未接続の general Mission product path より先行させない。
 
+### Verification Lanes And Forward Progress
+
+- 通常の product/runtime Work Unit は `pnpm verify:fast`、変更ownerの focused test、
+  必要なら `pnpm test:related -- <owner files>` を既定laneにする。
+  `pnpm test:changed` は uncommitted/staged changeに影響されるVitestだけを実行する。
+  既存review/merge safety contractが使う `pnpm test` は全frontend suiteのまま維持し、
+  `pnpm test:full`を同じconfidence laneの明示aliasとする。
+- full Vitest、全Playwright、全Rust、A6/A7 historical aggregate、quality score、
+  release evidenceはconfidence/release laneであり、無関係なRoutine Work Unitの
+  ローカル完了条件へ自動追加しない。owner、contract、failure boundaryが変わらない
+  historical verifierを「念のため」で再実行しない。完了済みA6/A7の証拠はaccepted
+  exact-SHAに固定し、phaseを明示再開しない限りcurrent mainのworkflowへ戻さない。
+- focused proofがgreenで、意図した差分だけをcommit/pushし、fast hosted CIがgreenなら、
+  nightly/manual full-confidence laneの完了を待って停止せず次のbounded Work Unitへ進める。
+  full laneでfreshな直接回帰が観測された場合は、次のmutation checkpointより前に
+  responsible ownerを再開する。release/public claimはfull/release laneがgreenになるまでBLOCKする。
+- persistence、security/auth、concurrency、schema/public contract、dependency/lockfile、
+  release path、広いshared ownerを変更した場合は、該当ownerのfull gateを同じWork Unitで
+  実行する。リスクが局所的である証拠なしに全suiteへ拡張しない。
+
 ### Autonomy And Questions
 
 - 確認、説明、レビュー、診断、計画の依頼では read-only に調査して報告し、変更を
@@ -463,7 +483,16 @@ Aelyris の継続可能性は、単一PCの local handoff ではなく、Git の
 | `pnpm build` | production frontend build |
 | `pnpm tauri dev` | Tauri dev mode |
 | `pnpm tauri:build:dist` | distribution build wrapper |
-| `pnpm test` | frontend tests |
+| `pnpm test` | full frontend Vitest suite (review compatibility) |
+| `pnpm test:changed` | changed-file related frontend tests (local fast lane) |
+| `pnpm test:related -- <files...>` | tests related to explicit owner/source files |
+| `pnpm test:full` | full frontend Vitest suite (confidence lane) |
+| `pnpm verify:fast` | typecheck + changed-file related tests |
+| `pnpm verify:full` | typecheck + full frontend suite |
+| `pnpm verify:rust:fast` | Rust app library cargo check |
+| `pnpm verify:rust:pty` | PTY sidecar cargo check when its boundary changes |
+| `pnpm verify:rust:full` | full Rust app library, binary, and integration targets |
+| `pnpm verify:rust:pty:full` | full PTY sidecar tests |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust tests |
 | `pnpm verify:release:hygiene` | public/release hygiene gate |
 | `pnpm verify:requirements-spec-design-traceability` | requirements/spec/design trace gate |
@@ -472,7 +501,7 @@ Aelyris の継続可能性は、単一PCの local handoff ではなく、Git の
 | `pnpm verify:goal:operator:token-smoke` | explicit provider-selected token-spending smoke with one-use execution packet |
 | `pnpm verify:goal:safe` | legacy ordered aggregate; historical token evidence is not current-run no-token proof |
 
-Do not run `cargo test` and `pnpm test` in parallel on Windows; `link.exe` can fail under resource contention.
+Do not run `cargo test` and `pnpm test` / `pnpm test:full` in parallel on Windows; `link.exe` can fail under resource contention.
 
 ## Architecture
 

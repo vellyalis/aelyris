@@ -2,7 +2,7 @@
 
 STATUS: QUEUED
 PROGRAM: `product-delivery`
-ENTRY GATE: current `HEAD` required CI and repo-owned release-hardening gates are green.
+ENTRY GATE: current `HEAD` hosted-fast required CI and the directly touched repo-owned gates are green.
 CURRENT PHASE: `GMV` (General Mission Vertical).
 NEXT IMPLEMENTATION SLICE: `GMV-0` after the entry gate.
 
@@ -29,7 +29,10 @@ path that the product Goal already requires.
 - `audit-remediation-instructions.md` owns the current exact-HEAD CI repair and the
   continuing operator/external certification handoff.
 - This work order becomes the sole repo-mutating product lane only after the current
-  required CI is green at the current `HEAD`.
+  hosted-fast required CI is green at the current `HEAD`.
+- Nightly/manual full-confidence verification and certification remain authoritative
+  for release/public claims, but they do not make every bounded GMV slice wait idle.
+  A fresh direct failure reopens its responsible owner before the next mutation checkpoint.
 - Signing, real sleep, authenticated operator prompts, and external-service evidence
   may remain pending and continue to block release readiness without blocking this
   product lane. That certification-only lane changes no repository file.
@@ -129,9 +132,13 @@ GMV or bypassing an owning product decision.
 ## Verification
 
 Use the narrowest existing proof that covers the changed contract and failure boundary.
-Run broader frontend/Rust/rendered gates only when the touched owner or regression risk
-requires them. Do not add a parallel product-delivery verifier merely to restate this
-work order; `pnpm verify:ai-decision-knowledge` owns routing and governance consistency.
+The default local lane is `pnpm verify:fast` plus the focused Mission/owner test. Use
+`pnpm test:related -- <files...>` when the relation is clearer than the Git diff.
+Run `pnpm test:full`, full rendered UI, full Rust, or historical A6/A7 aggregates only
+when the touched owner, shared contract, or named regression risk requires them.
+Historical A6/A7 evidence is reopened only on its accepted exact-SHA checkout/worktree,
+not injected back into current-main CI. Do not add a parallel product-delivery verifier merely to restate this work order;
+`pnpm verify:ai-decision-knowledge` owns routing and governance consistency.
 
 ## Commit And Publication
 

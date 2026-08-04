@@ -37,14 +37,31 @@ If Cargo `target` directories were cleaned, the first build will take longer.
 
 ## Verification
 
-Run focused checks for the area you changed. Useful general checks:
+Run the smallest lane that can decide the behavior and risk you changed:
 
 ```powershell
-pnpm verify:release:hygiene
-pnpm verify:requirements-spec-design-traceability
-pnpm verify:quality-score
-pnpm verify:goal:safe
+pnpm verify:fast
+pnpm test:related -- src/path/to/owner.ts
+pnpm verify:rust:fast
 ```
+
+Add `pnpm verify:rust:pty` only when the PTY sidecar or one of its imported
+`aelyris_lib` boundaries changes.
+
+`pnpm test:changed` runs tests related to changed frontend modules. Existing
+branch-review automation keeps full `pnpm test`. Use `pnpm test:full` directly only
+for a broad shared-owner change, a named regression that
+crosses owner boundaries, or an explicit full-confidence refresh. UI changes should
+run the focused Playwright scenario locally when practical; the hosted fast lane also
+runs four critical rendered journeys. Complete frontend, rendered UI, Rust, and
+release-hardening confidence is nightly/manual rather than a prerequisite for every
+bounded Work Unit.
+
+Release/public claim work still uses the applicable wider gates, including
+`pnpm verify:release:hygiene`, `pnpm verify:quality-score`, and
+`pnpm verify:goal:safe:no-token`. Completed A6/A7 aggregate verifiers are historical
+exact-SHA evidence, not general-purpose checks for unrelated product changes. Reopen
+them only in an explicit historical checkout/worktree rather than current-main CI.
 
 Do not treat host-blocked external gates as implementation success. If a gate is
 blocked by WebView2/CDP, Windows sleep/resume, process policy, signing material,

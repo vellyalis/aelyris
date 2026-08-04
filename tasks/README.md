@@ -55,7 +55,8 @@ Forbidden:
   What must not be changed or claimed?
 
 Gates:
-  Which commands/verifiers must run?
+  Which lane applies (local-fast / owner-full / release), and which smallest
+  commands can decide the changed behavior and named risk?
 
 Handoff:
   What should the next agent read or run if interrupted?

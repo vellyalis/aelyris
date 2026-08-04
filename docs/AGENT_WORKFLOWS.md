@@ -51,6 +51,34 @@ optional, and git is not required for product/safe/finalize evidence.
 | MCP runtime orchestration | `aelyris-orchestrate` | local-only runtime loop; no public release claim |
 | Legacy worktree dispatch path | older fleet scripts | fallback/manual workflow only; prefer MCP runtime when available |
 
+## Verification Lanes
+
+Verification is selected by the decision it can change, not by the number of
+available scripts.
+
+| Lane | Default use | Commands / evidence | Blocks |
+| --- | --- | --- | --- |
+| Local fast | every bounded product/runtime Work Unit | `pnpm verify:fast`, plus one focused owner test or `pnpm test:related -- <files...>` | local commit when red |
+| Hosted fast | every push / PR, path-aware | changed frontend tests + typecheck, relevant Rust check/test, dependency audit only when manifests/lockfiles change | next repo mutation when red |
+| Full confidence | nightly, manual dispatch, broad shared-owner change | `pnpm verify:full`, full rendered UI, full Rust, current cross-owner gates | release/public claim; a fresh direct defect reopens its owner |
+| Historical phase | explicit phase reopen on its accepted exact-SHA checkout/worktree | owning aggregate verifier outside current-main CI | only that historical claim |
+| Release / certification | release candidate or operator/external action | quality score, SBOM/provenance, signing, real sleep, authenticated prompt | release readiness |
+
+Rules:
+
+- `pnpm test:changed` is the changed-file local fast command. Existing deterministic
+  branch review continues to use full `pnpm test`; use `pnpm test:full` as the
+  explicit confidence-lane alias.
+- Do not rerun A6/A7 aggregate verifiers for an unrelated GMV or Routine change.
+  Completed phase evidence stays bound to its accepted exact SHA and returns only when
+  the phase is explicitly reopened; current-main fast/full workflows do not carry it.
+- After focused local proof and a green hosted-fast lane, continue to the next
+  bounded Work Unit instead of waiting idle for nightly/manual full confidence.
+  A fresh full-lane defect preempts the next mutation checkpoint; it does not grant
+  permission to weaken or ignore the failing gate.
+- A test-only, verifier-only, or report-only loop must identify the implementation
+  decision it changes. Otherwise close it and return to product delivery.
+
 ## Public Hygiene Rules
 
 - Do not import external skill packs, hooks, slash commands, or personas wholesale.
