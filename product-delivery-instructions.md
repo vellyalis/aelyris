@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `GMV` (General Mission Vertical).
-ACTIVE SLICE: `GMV-0`.
-LAST COMPLETED SLICE: `none` in this program.
-NEXT IMPLEMENTATION SLICE: `GMV-0`.
+ACTIVE SLICE: `GMV-2`.
+LAST COMPLETED SLICE: `GMV-1`.
+NEXT IMPLEMENTATION SLICE: `GMV-2`.
 
 ## Goal
 
@@ -18,11 +18,12 @@ plain-language goal in the cockpit
   -> generated TaskGraph plan visible in the cockpit
   -> explicit Run next step
   -> visible PTY implementation in isolated worktrees
-  -> live task and blocker status
+  -> real project gates and independent review
+  -> merge of only declared task outputs
 ```
 
-The later Mission, proof, review, and exact-OID layers extend this working path.
-They do not precede it. This is not a new orchestration engine: `plan_build`,
+The later Mission durability and exact-OID settlement layers extend this working
+path. They do not precede it. This is not a new orchestration engine: `plan_build`,
 `orchestrator_step`, TaskGraph, PaneFleet, worktree, PTY, review, and settlement
 remain the existing owners.
 
@@ -39,9 +40,9 @@ Current portfolio classification:
 
 | Workstream | Decision | Reason |
 | --- | --- | --- |
-| Cockpit goal -> plan -> visible run | **NOW** | Direct user value; existing backend owners already exist |
-| Durable Mission binding and restart | **NEXT** | Valuable after the runnable path exists |
-| Proof, independent review, exact-OID settlement | **AFTER USAGE** | Trust layer over a usable flow, not a prerequisite to first use |
+| Cockpit goal -> plan -> visible run -> review -> merge | **COMPLETE** | Live exercised through the supported cockpit path on 2026-08-04 |
+| Durable Mission binding and restart | **NOW** | The usable path exists; bind only the fields it actually consumed |
+| Exact-OID Mission settlement | **NEXT** | Add Mission-level proof after restart durability, not another generic merge engine |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Remote Continuity | **PARKED** | Local core journey is not yet complete |
 | Proofbook product UI, Fleet Briefing, broad budget UX | **PARKED** | Adjacent value with lower current contribution |
@@ -52,7 +53,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `GMV-0` is active.
+- This work order is the sole repo-mutating product lane. `GMV-2` is active.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
   for release/public claims, but they do not make every bounded GMV slice wait idle.
@@ -100,6 +101,7 @@ authority, completion table, frontend execution truth, or provider-specific Miss
 ### GMV-0 — Cockpit Goal To Visible Work
 
 Capability target: `Product-Accessible`.
+Status: **COMPLETE**.
 
 - Add a plain-language goal composer to the existing Orchestrator widget.
 - Build the plan through the existing `plan_build` IPC command. Do not add another
@@ -115,7 +117,22 @@ Capability target: `Product-Accessible`.
   generated tasks, and start visible implementation without MCP calls, CLI commands,
   hand-authored JSON, or a second execution engine.
 
-### GMV-1 — Durable Mission Binding And Resume
+### GMV-1 — Cockpit Review And Merge
+
+Capability target: `Product-Accessible` completion of the generic TaskGraph path.
+Status: **COMPLETE**.
+
+- When implementation reaches `Review`, run the existing project gate detector and
+  independent semantic reviewer from the same Orchestrator surface.
+- Feed a real green verdict into the existing `orchestrator_step` merge owner.
+- Commit and merge only backend-declared `Task.outputs`; runtime markers, build
+  caches, and undeclared files never become candidate content.
+- Keep a red review actionable in the cockpit instead of silently re-dispatching on
+  an empty verdict map.
+- Done: the live cockpit path reaches `Done`, the declared output is on the target
+  branch, and the isolated worktree is reclaimed.
+
+### GMV-2 — Durable Mission Binding And Resume
 
 Capability target: `Product-Accessible` persistence over the GMV-0 journey.
 
@@ -126,15 +143,6 @@ Capability target: `Product-Accessible` persistence over the GMV-0 journey.
 - Restore the same accepted request, plan, and active work after restart.
 - No new Mission engine, TaskGraph, journal, persistence table, or frontend state owner.
 - Done: the GMV-0 journey survives restart without manual reconstruction.
-
-### GMV-2 — Proof And Independent Review
-
-Capability target: `Product-Accessible` proof and review for work started by GMV-0.
-
-- Run the declared focused tests and bind evidence to the candidate OID.
-- Invoke the existing independent review owner only when implementation reaches review.
-- Project `NOW`, `NEXT`, and `BLOCKED` from backend truth.
-- Do not require release, signing, native, Remote, or historical aggregate evidence.
 
 ### GMV-3 — Exact-OID Settlement And Completion
 
@@ -157,7 +165,7 @@ GMV or bypassing an owning product decision.
 
 - No new top-level verifier unless an existing gate cannot detect a named new failure
   mode; extend or replace an existing gate first.
-- Until GMV-0 is Product-Accessible, no standalone docs-, verifier-, review-, state-,
+- Until GMV-2 is Product-Accessible, no standalone docs-, verifier-, review-, state-,
   or architecture-only commit is allowed. Such edits may accompany the product diff
   that consumes them in the same slice.
 - The next two completed slices must change product/runtime behavior. A Critical

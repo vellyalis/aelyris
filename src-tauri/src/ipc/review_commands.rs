@@ -13,6 +13,7 @@ use tauri::State;
 
 use crate::context_store::ContextStoreManager;
 use crate::review::{self, GateResults, ReviewVerdict};
+use crate::task::{TaskManager, TaskStatus};
 
 /// Cap on the diff text handed to the semantic judge — keeps a huge branch from
 /// blowing the model's context. Whole lines; truncation is marked. Shares the
@@ -61,15 +62,35 @@ fn format_decisions(decisions: &BTreeMap<String, String>) -> String {
 #[tauri::command]
 pub async fn review_branch(
     context: State<'_, Arc<ContextStoreManager>>,
+    tasks: State<'_, Arc<TaskManager>>,
     repo_path: String,
-    source_branch: String,
-    target_branch: String,
-    task_title: String,
+    task_id: String,
     reviewer_id: String,
-    implementer_id: String,
     model: Option<String>,
 ) -> Result<BranchReviewReport, String> {
-    let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    let task = tasks
+        .get(&task_id)
+        .ok_or_else(|| format!("cannot review unknown task '{task_id}'"))?;
+    if task.status != TaskStatus::Review {
+        return Err(format!(
+            "cannot review task '{task_id}' while it is '{}'",
+            task.status.as_str()
+        ));
+    }
+    let source_branch = task
+        .source_branch
+        .ok_or_else(|| format!("task '{task_id}' has no source branch"))?;
+    let target_branch = task
+        .target_branch
+        .ok_or_else(|| format!("task '{task_id}' has no target branch"))?;
+    let task_title = task.title;
+    let implementer_id = task
+        .owner
+        .ok_or_else(|| format!("task '{task_id}' has no implementer identity"))?;
+    let owned_paths = task.outputs;
+    let mdl = model
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "codex".to_string());
     let adr = format_decisions(&context.all());
 
     let result = tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
@@ -85,18 +106,16 @@ pub async fn review_branch(
                 worktree.display()
             ));
         }
-        // Snapshot the worker's output onto its branch (idempotent) BEFORE diffing,
+        // Snapshot only the worker's declared outputs onto its branch BEFORE diffing,
         // so the judge sees the real change. The loop commits each worktree at merge
-        // time, but review runs first; without this the source tip hasn't moved and
-        // the three-dot diff would be empty (judge -> spurious context_aligned fail).
-        // Best-effort: a commit hiccup leaves an empty diff the judge handles safely
-        // (it never produces a false green), and the deterministic gates run on the
-        // worktree's files regardless.
-        let _ = crate::control::worktree::commit_for_branch(
+        // time too; this idempotent call moves the source tip without ever staging
+        // build caches, completion markers, or undeclared worker files.
+        crate::control::worktree::commit_owned_for_branch(
             &repo_path,
             &source_branch,
+            &owned_paths,
             &format!("aelyris: review {source_branch}"),
-        );
+        )?;
         let diff = crate::git::diff_three_dot(
             &repo_path,
             &target_branch,
@@ -114,7 +133,7 @@ pub async fn review_branch(
             commands: &commands,
         };
         Ok(review::review_branch(&input, review::spawn_run, |prompt| {
-            crate::agent::claude_oneshot(prompt, &mdl)
+            crate::agent::reviewer_oneshot(prompt, &mdl, &worktree)
         }))
     })
     .await

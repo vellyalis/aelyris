@@ -64,6 +64,17 @@ pub fn commit_for_branch(
     git::commit_worktree(repo_path, branch, message)
 }
 
+/// Commit only backend-declared task outputs. Incidental runtime/build files
+/// remain outside the candidate and are removed with the isolated worktree.
+pub fn commit_owned_for_branch(
+    repo_path: &str,
+    branch: &str,
+    owned_paths: &[String],
+    message: &str,
+) -> ControlResult<Option<String>> {
+    git::commit_owned_worktree(repo_path, branch, owned_paths, message)
+}
+
 /// Remove a task's worktree by its BRANCH (resolves to the predicted path, which
 /// `git worktree remove` accepts) after its work has merged — loop cleanup. See
 /// [`git::remove_worktree_for_branch`].

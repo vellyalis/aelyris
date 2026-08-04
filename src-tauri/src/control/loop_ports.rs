@@ -128,6 +128,9 @@ pub trait Dispatcher {
 pub trait TaskInfo {
     fn branches(&self, task_id: &str) -> Option<(String, String)>;
     fn implementer(&self, task_id: &str) -> String;
+    fn outputs(&self, _task_id: &str) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Concrete `TaskInfo` over a point-in-time snapshot of the Task Graph.
@@ -141,6 +144,7 @@ pub trait TaskInfo {
 pub struct TaskBranchSnapshot {
     branches: std::collections::HashMap<String, (String, String)>,
     owners: std::collections::HashMap<String, String>,
+    outputs: std::collections::HashMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Copy)]
@@ -161,6 +165,7 @@ impl TaskBranchSnapshot {
     pub fn from_graph(graph: &crate::task::TaskGraph) -> Self {
         let mut branches = std::collections::HashMap::new();
         let mut owners = std::collections::HashMap::new();
+        let mut outputs = std::collections::HashMap::new();
         for task in graph.list() {
             if let (Some(source), Some(target)) = (&task.source_branch, &task.target_branch) {
                 branches.insert(task.id.clone(), (source.clone(), target.clone()));
@@ -168,8 +173,13 @@ impl TaskBranchSnapshot {
             if let Some(owner) = &task.owner {
                 owners.insert(task.id.clone(), owner.clone());
             }
+            outputs.insert(task.id.clone(), task.outputs.clone());
         }
-        Self { branches, owners }
+        Self {
+            branches,
+            owners,
+            outputs,
+        }
     }
 }
 
@@ -180,6 +190,10 @@ impl TaskInfo for TaskBranchSnapshot {
 
     fn implementer(&self, task_id: &str) -> String {
         self.owners.get(task_id).cloned().unwrap_or_default()
+    }
+
+    fn outputs(&self, task_id: &str) -> Vec<String> {
+        self.outputs.get(task_id).cloned().unwrap_or_default()
     }
 }
 
@@ -710,9 +724,10 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                     quarantine_fence_error(context, &token, "candidate-freeze start failed", error)
                 })?;
             if worktree.is_dir() {
-                if let Err(error) = crate::control::worktree::commit_for_branch(
+                if let Err(error) = crate::control::worktree::commit_owned_for_branch(
                     &self.repo_path,
                     &source,
+                    &self.task_info.outputs(task_id),
                     &format!("aelyris: {task_id}"),
                 ) {
                     let _ = context.tasks.mark_execution_needs_reconcile(
@@ -948,9 +963,10 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             // commits the worker's isolated worktree so the stored source OID is
             // the reviewed output, then creates/claims the intent in SQLite.
             if worktree.is_dir() {
-                crate::control::worktree::commit_for_branch(
+                crate::control::worktree::commit_owned_for_branch(
                     &self.repo_path,
                     &source,
+                    &self.task_info.outputs(task_id),
                     &format!("aelyris: {task_id}"),
                 )
                 .map_err(|e| format!("commit worktree for {source} failed: {e}"))?;
@@ -1018,9 +1034,10 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             // the intent as Rejected (audit evidence) and fails the merge -> the loop
             // requeues for rework (never strands); Ok(None) (empty diff) is fine.
             if worktree.is_dir() {
-                if let Err(e) = crate::control::worktree::commit_for_branch(
+                if let Err(e) = crate::control::worktree::commit_owned_for_branch(
                     &self.repo_path,
                     &source,
+                    &self.task_info.outputs(task_id),
                     &format!("aelyris: {task_id}"),
                 ) {
                     self.queue
@@ -2764,6 +2781,7 @@ mod tests {
         let mut graph = TaskGraph::new();
         let mut bound = Task::new("t", "T").with_branches("feature", "main");
         bound.owner = Some("impl-agent".to_string());
+        bound.outputs = vec!["src/owned.rs".to_string()];
         graph.add(bound).unwrap();
         graph.add(Task::new("u", "U")).unwrap(); // no branches, no owner
 
@@ -2774,6 +2792,7 @@ mod tests {
             Some(("feature".to_string(), "main".to_string()))
         );
         assert_eq!(snap.implementer("t"), "impl-agent");
+        assert_eq!(snap.outputs("t"), ["src/owned.rs"]);
         // Unbound task: no branch pair (the merge port errors on this) and an
         // empty implementer (distinct from any real reviewer id).
         assert_eq!(snap.branches("u"), None);
@@ -3323,26 +3342,20 @@ mod tests {
         assert!(wt.is_dir());
 
         let mut graph = TaskGraph::new();
-        graph
-            .add(Task::new("t", "T").with_branches("agent/feat", "main"))
-            .unwrap();
+        let mut task = Task::new("t", "T").with_branches("agent/feat", "main");
+        task.owner = Some("implementer".to_string());
+        task.outputs = vec!["GREETING.md".to_string()];
+        graph.add(task).unwrap();
         graph.recompute_ready();
         graph.transition("t", TaskStatus::Running).unwrap();
         graph.transition("t", TaskStatus::Review).unwrap();
-        let mut branches = HashMap::new();
-        branches.insert(
-            "t".to_string(),
-            ("agent/feat".to_string(), "main".to_string()),
-        );
+        let snapshot = TaskBranchSnapshot::from_graph(&graph);
         let mut ports = LoopPortsAdapter::new(
             repo_path.clone(),
             "reviewer",
             FakeGate(GREEN),
             RecordingDispatcher::default(),
-            MapInfo {
-                branches,
-                implementer: "implementer".to_string(),
-            },
+            snapshot,
             None,
         )
         .with_legacy_merge_queue_for_tests();

@@ -44,7 +44,7 @@ optional, and git is not required for product/safe/finalize evidence.
 | Public readiness or release claim check | `aelyris-release-review` | `PASS / REVIEW / BLOCK` with current verifier evidence |
 | Current proof and gate classification | `aelyris-evidence-review` | local verifier commands, artifacts, stale/unknown/external gate split |
 | Previous-turn Claude stop gate | `aelyris-stop-gate-review` | `ALLOW` or evidence-backed `BLOCK` |
-| Root work-order status | `product-delivery-instructions.md` owns active `GMV-0`; `audit-remediation-instructions.md` is certification-only after A9.6r1 closed at `f72a61b3` | one repo-mutating phase at a time; certification-only external work may coexist without repository edits |
+| Root work-order status | `product-delivery-instructions.md` owns active `GMV-2`; GMV-0/1 are product-accessible and `audit-remediation-instructions.md` is certification-only after A9.6r1 | one repo-mutating phase at a time; certification-only external work may coexist without repository edits |
 | Product delivery and maturity | `product-delivery-instructions.md` plus the owning Mission/Proofbook sources | classify Internal Capability / Product-Accessible / Claim-Eligible and connect one supported user path |
 | One scoped Work Unit or vertical slice | `docs/specs/README.md` plus the relevant phase/spec section and owner module verifier | implementation plan and focused checks |
 | Large drift-prone implementation | `codex-guided-implementation` | increment plan, read-only review gates, explicit boundaries |

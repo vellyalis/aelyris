@@ -48,17 +48,17 @@ order and the authoritative specs. Key still-active specs include:
    Attention Compiler, and post-release Apex direction. Its detailed design and
    roadmap are adjacent. These are target authorities, not shipped-capability or
    release-readiness claims. A9.6r1 repo repair completed at `f72a61b3`; product
-   delivery is now the sole repo-mutating lane at `GMV-0`, while operator/external
-   certification remains pending without repository mutation.
+   delivery is now the sole repo-mutating lane at `GMV-2`. The supported cockpit
+   goal -> visible implementation -> independent review -> merge path is live,
+   while operator/external certification remains pending without repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal
    without becoming prerequisites of that first vertical.
 
-   Current delivery order is value-first: connect the existing `plan_build` and
-   `orchestrator_step` owners to one supported cockpit path before further Mission
-   generalization, native migration, Remote Continuity, Proofbook product UI, or
-   release-certification work.
+   Current delivery order is value-first: bind the exercised cockpit path to the
+   existing Mission durability/restart owners before native migration, Remote
+   Continuity, Proofbook product UI, or release-certification work.
 
    Cross-face API/MCP security, identity, versioning, idempotency, cancellation,
    backpressure, evidence, migration, and adversarial acceptance are owned by

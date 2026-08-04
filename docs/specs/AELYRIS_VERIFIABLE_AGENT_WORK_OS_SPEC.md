@@ -1,7 +1,7 @@
 # Aelyris Verifiable Agent Work OS Specification
 
-Status: approved design authority; active implementation is the bounded `GMV-0`
-general Mission contract while A9 certification remains external/operator-gated
+Status: approved design authority; exact active implementation is owned only by
+`product-delivery-instructions.md` while A9 certification remains external/operator-gated
 
 Version: 1.1
 
@@ -17,7 +17,7 @@ implemented or release-ready.
 Authority order:
 
 1. `docs/requirements.md` owns current public and release claim policy.
-2. `product-delivery-instructions.md` owns the active `GMV-0` repo slice.
+2. `product-delivery-instructions.md` owns the exact active repo slice.
 3. `audit-remediation-instructions.md` and
    `COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` own completed R0-A9 history
    and the continuing certification boundary.

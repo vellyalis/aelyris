@@ -1,7 +1,7 @@
 # Aelyris Verifiable Agent Work OS Roadmap — 2026-07-13
 
-Status: tracked product roadmap; active execution is product-delivery `GMV-0` while
-A9 operator/external certification remains non-exclusive
+Status: tracked product roadmap; exact active execution is owned only by
+`product-delivery-instructions.md` while A9 certification remains non-exclusive
 
 Last reviewed: 2026-08-04 JST
 
@@ -10,9 +10,9 @@ Last reviewed: 2026-08-04 JST
 This roadmap integrates the 2026-07-13 product/architecture audit without
 shrinking or indefinitely expanding the Comprehensive Audit Remediation goal.
 
-- **Now**: execute `GMV-0`, separating the general Mission contract from the frozen
-  A7 conformance fixture through existing owners.
-- **Next**: expose the approved general plan preview in `GMV-1` after `GMV-0` proof.
+- **Now**: execute the active slice named by `product-delivery-instructions.md`.
+- **Next**: follow its named next implementation slice; do not duplicate volatile
+  frontier state in this strategic roadmap.
 - **Destination**: build the Apex capabilities after release trust is established
   or through later explicitly gated programs.
 

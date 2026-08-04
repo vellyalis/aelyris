@@ -24,20 +24,20 @@ function task(partial: Partial<Task> & { id: string }): Task {
     title: partial.title ?? partial.id,
     description: "",
     status: partial.status ?? "pending",
-    owner: null,
+    owner: partial.owner ?? null,
     priority: partial.priority ?? "medium",
     estimate: null,
-    dependencies: [],
-    outputs: [],
-    source_branch: null,
-    target_branch: null,
+    dependencies: partial.dependencies ?? [],
+    outputs: partial.outputs ?? [],
+    source_branch: partial.source_branch ?? null,
+    target_branch: partial.target_branch ?? null,
   };
 }
 
 const CAPS = { max_agents: 4, max_tokens: null, max_cost_usd: null, max_runtime_secs: null };
 
 function mockInvoke(tasks: Task[], plan: unknown, decisions: Record<string, string> = {}) {
-  tauriMocks.invoke.mockImplementation((cmd: string) => {
+  tauriMocks.invoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
       case "task_list":
         return Promise.resolve(tasks);
@@ -51,7 +51,30 @@ function mockInvoke(tasks: Task[], plan: unknown, decisions: Record<string, stri
         return Promise.resolve(plan);
       case "plan_build":
         return Promise.resolve(["t1"]);
+      case "review_branch":
+        return Promise.resolve({
+          gates: {
+            tests_pass: true,
+            lint_pass: true,
+            types_pass: true,
+            design_consistent: true,
+            context_aligned: true,
+          },
+          verdict: { verdict: "merge" },
+          mergeOk: true,
+          reasons: [],
+        });
       case "orchestrator_step":
+        if (args?.gates && Object.keys(args.gates as object).length > 0) {
+          return Promise.resolve({
+            dispatched: [],
+            merged: ["t1"],
+            rejected: [],
+            recovered: [],
+            escalations: [],
+            state: "complete",
+          });
+        }
         return Promise.resolve({
           dispatched: ["t1"],
           merged: [],
@@ -193,8 +216,8 @@ describe("OrchestratorPanel", () => {
     await waitFor(() => expect(screen.getByText("1 dispatched")).toBeTruthy());
   });
 
-  it("waits for a real review verdict instead of offering an empty-gate step", async () => {
-    mockInvoke([task({ id: "t1", title: "Ready for review", status: "review" })], {
+  it("runs real review gates and feeds their verdict into the merge step", async () => {
+    mockInvoke([task({ id: "t1", title: "Ready for review", status: "review", owner: "worker-a" })], {
       to_dispatch: [],
       state: "active",
     });
@@ -202,8 +225,37 @@ describe("OrchestratorPanel", () => {
     render(<OrchestratorPanel projectPath="C:/repo" />);
 
     await waitFor(() => expect(screen.getByText("Ready for review")).toBeTruthy());
-    const button = screen.getByRole("button", { name: "Await review" }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(screen.getByText("1 task finished implementation and now wait for review.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Review & merge" }));
+
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("review_branch", {
+        repoPath: "C:/repo",
+        taskId: "t1",
+        reviewerId: "cockpit-reviewer",
+        model: "codex",
+      }),
+    );
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("orchestrator_step", {
+        usage: {
+          active_agents: 0,
+          tokens_used: 0,
+          cost_usd: 0,
+          runtime_secs: 0,
+        },
+        repoPath: "C:/repo",
+        reviewerId: "cockpit-reviewer",
+        gates: {
+          t1: {
+            tests_pass: true,
+            lint_pass: true,
+            types_pass: true,
+            design_consistent: true,
+            context_aligned: true,
+          },
+        },
+      }),
+    );
+    await waitFor(() => expect(screen.getByText("Ready for review reviewed and merged.")).toBeTruthy());
   });
 });

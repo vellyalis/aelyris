@@ -224,6 +224,13 @@ pub fn planner_oneshot(prompt: &str, model: &str, repo_root: &Path) -> Result<St
     }
 }
 
+/// Provider-selected read-only adapter for semantic branch review. Planning and
+/// review deliberately share the same one-shot process boundary; the prompt
+/// contract and parser remain owned by their respective domain modules.
+pub fn reviewer_oneshot(prompt: &str, model: &str, repo_root: &Path) -> Result<String, String> {
+    planner_oneshot(prompt, model, repo_root)
+}
+
 /// Fixed A7.3 reviewer adapter. The caller supplies only the prompt: provider,
 /// model, config isolation, sandbox, and ephemeral-session policy are backend
 /// constants. The attestation is minted only after the real process exits

@@ -69,7 +69,7 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md) | architecture / detailed design | 既存 owner を拡張する bounded context、Mission/WorkEvent/capability/evidence/packet/learning schemas、state machine、atomicity/reconciliation、failure semantics、A7 Core vertical、Apex gatesを定義。OpenCode候補はPTY/ACP/HTTP-SSEを同条件比較する`V1-R0`だけを先に置き、second TaskGraph/journal/runner/dispatcherを禁止 |
 | [AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md](./AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md) | security-critical cross-face detailed design | Tauri IPC/MCP/REST/WS/CLI/PTY/Proofbook/review/merge を一つの Rust-authoritative command registry/kernel に閉じる target contract。principal/capability、schema/version、idempotency/cancellation/backpressure、evidence、migration、bypass inventory、adversarial gates を所有し、実装済みclaimではない |
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md) | tracked product roadmap | 常時 Now/Next/Unlocks、A6.2v1設計checkpoint、request→plan preview→visible implementation→fresh tests→independent review→exact-OID settlement→immutable packet に限定した有限なA7 Core Mission、A8/A9 release gates、deferred product work、post-A9 Apex V1-V9を分離。Apex V1-R0ではOpenCodeを最初のstructured-runtime候補としてPTY/ACP/HTTP-SSEで比較し、合格した1経路だけを昇格 |
-| [../../product-delivery-instructions.md](../../product-delivery-instructions.md) | **active product-delivery work order / GMV-0** | A9.6r1 repo repairは`f72a61b3`で完了。既存Mission／Orchestra／worktree／visible PTY／test／review／merge／settlement ownerを一つの一般ユーザー導線へ接続する。Internal Capability、Product-Accessible、Claim-Eligibleを分離し、第二engineを禁止 |
+| [../../product-delivery-instructions.md](../../product-delivery-instructions.md) | **active product-delivery work order / GMV-2** | GMV-0/1でcockpit goal→visible work→review→mergeを実機完走。次はその導線を既存Mission durability/restart ownerへ結び、第二engineを作らない |
 | [../WORK_RECORD_AND_CONTINUATION_PROTOCOL.md](../WORK_RECORD_AND_CONTINUATION_PROTOCOL.md) | cross-cutting workflow contract | tracked plan + ignored per-session worklog + canonical local-only handoff の三層で、session close と `続き` の再開手順、必須記録、clear-safe 条件を固定 |
 | [AELYRIS_REMOTE_CONTINUITY_SPEC.md](./AELYRIS_REMOTE_CONTINUITY_SPEC.md) | D2R / remote continuity requirements | 外出先からの tab/pane state sync、read-only remote fleet monitor、fingerprint-checked remote approval、SSH attach、attach lease、scoped principal、not release-ready claim boundary を定義する仕様書 |
 | [AELYRIS_REMOTE_CONTINUITY_DESIGN.md](./AELYRIS_REMOTE_CONTINUITY_DESIGN.md) | D2R / remote architecture design | daemon-owned state projection、remote event stream、private-network web monitor、SSH/TUI attach、attach leases、principal/scope model の設計。SSH は state owner ではなく transport として扱う |
@@ -96,7 +96,7 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 `A9.6r1` repo repairは`f72a61b3`／Required fast CI run `30876300708`で完了した。
 `audit-remediation-instructions.md` はoperator/external certification-onlyとなり、
 releaseReady=falseを維持するがrepo mutationを所有しない。現在のexact repo frontierは
-root `product-delivery-instructions.md` のactive `GMV-0`であり、general Mission verticalが
+root `product-delivery-instructions.md` のactive `GMV-2`であり、general Mission verticalが
 sole repo-mutating product work orderである。full-native Rust migration は accepted-with-amendments の
 strategic program だが、ADR-015 の product-delivery／measured-necessity gate 前には
 activationしない。A8.1 measured terminal disposition は `do_not_promote` で完了し、

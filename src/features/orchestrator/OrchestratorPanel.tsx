@@ -69,6 +69,20 @@ interface OrchestratorStepReport {
   state: LoopState;
 }
 
+interface ReviewGateResults {
+  tests_pass: boolean;
+  lint_pass: boolean;
+  types_pass: boolean;
+  design_consistent: boolean;
+  context_aligned: boolean;
+}
+
+interface BranchReviewReport {
+  gates: ReviewGateResults;
+  mergeOk: boolean;
+  reasons: { gate: string; reason: string }[];
+}
+
 interface ActionStatus {
   kind: "success" | "error";
   message: string;
@@ -100,6 +114,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
   const [goal, setGoal] = useState("");
   const [planning, setPlanning] = useState(false);
   const [stepping, setStepping] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
 
   const runningCount = useMemo(() => tasks.filter((task) => task.status === "running").length, [tasks]);
@@ -108,6 +123,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     () => tasks.some((task) => task.status === "ready" || task.status === "running"),
     [tasks],
   );
+  const reviewTask = useMemo(() => tasks.find((task) => task.status === "review") ?? null, [tasks]);
 
   // Re-read the scheduling decision whenever the graph changes (a merge can
   // unblock dependents; a dispatch fills a slot). Read-only — never dispatches.
@@ -153,7 +169,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
 
   const handleBuildPlan = useCallback(async () => {
     const trimmed = goal.trim();
-    if (!trimmed || !projectPath || planning || stepping) return;
+    if (!trimmed || !projectPath || planning || stepping || reviewing) return;
     setPlanning(true);
     setActionStatus(null);
     try {
@@ -175,10 +191,10 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     } finally {
       setPlanning(false);
     }
-  }, [goal, plannerContext, planning, projectPath, stepping]);
+  }, [goal, plannerContext, planning, projectPath, reviewing, stepping]);
 
   const handleRunNextStep = useCallback(async () => {
-    if (!projectPath || tasks.length === 0 || plan?.state !== "active" || planning || stepping) return;
+    if (!projectPath || tasks.length === 0 || plan?.state !== "active" || planning || stepping || reviewing) return;
     setStepping(true);
     setActionStatus(null);
     try {
@@ -211,17 +227,72 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     } finally {
       setStepping(false);
     }
-  }, [plan?.state, planning, projectPath, runningCount, stepping, tasks.length]);
+  }, [plan?.state, planning, projectPath, reviewing, runningCount, stepping, tasks.length]);
 
-  const canBuild = goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping;
+  const handleReviewAndMerge = useCallback(async () => {
+    if (!projectPath || !reviewTask || planning || stepping || reviewing) return;
+    setReviewing(true);
+    setActionStatus(null);
+    try {
+      const review = await invoke<BranchReviewReport>("review_branch", {
+        repoPath: projectPath,
+        taskId: reviewTask.id,
+        reviewerId: "cockpit-reviewer",
+        model: "codex",
+      });
+      if (!review.mergeOk) {
+        const reasons = review.reasons.map(({ gate, reason }) => `${gate}: ${reason}`).join(" · ");
+        setActionStatus({
+          kind: "error",
+          message: reasons || "Review rejected the candidate without a reason.",
+        });
+        return;
+      }
+
+      const report = await invoke<OrchestratorStepReport>("orchestrator_step", {
+        usage: {
+          active_agents: runningCount,
+          tokens_used: 0,
+          cost_usd: 0,
+          runtime_secs: 0,
+        },
+        repoPath: projectPath,
+        reviewerId: "cockpit-reviewer",
+        gates: { [reviewTask.id]: review.gates },
+      });
+      if (!report.merged.includes(reviewTask.id)) {
+        throw new Error(`Review passed, but ${reviewTask.id} did not merge.`);
+      }
+      setActionStatus({ kind: "success", message: `${reviewTask.title} reviewed and merged.` });
+    } catch (error) {
+      setActionStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setReviewing(false);
+    }
+  }, [planning, projectPath, reviewTask, reviewing, runningCount, stepping]);
+
+  const canBuild =
+    goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping && !reviewing;
   const canRun =
     projectPath.length > 0 &&
     tasks.length > 0 &&
     hasRunnableWork &&
     plan?.state === "active" &&
     !planning &&
-    !stepping;
-  const runLabel = stepping ? "Starting…" : reviewCount > 0 && !hasRunnableWork ? "Await review" : "Run next step";
+    !stepping &&
+    !reviewing;
+  const reviewOnly = reviewTask != null && !hasRunnableWork;
+  const canReview = reviewOnly && projectPath.length > 0 && !planning && !stepping && !reviewing;
+  const runLabel = reviewing
+    ? "Reviewing…"
+    : reviewOnly
+      ? "Review & merge"
+      : stepping
+        ? "Starting…"
+        : "Run next step";
 
   return (
     <div className={styles.panel}>
@@ -243,7 +314,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
           onChange={(event) => setGoal(event.target.value)}
           placeholder="Describe the next development outcome…"
           rows={3}
-          disabled={planning || stepping}
+          disabled={planning || stepping || reviewing}
         />
         <div className={styles.composerActions}>
           <button type="submit" className={styles.primaryAction} disabled={!canBuild}>
@@ -252,15 +323,15 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
           <button
             type="button"
             className={styles.secondaryAction}
-            disabled={!canRun}
-            onClick={() => void handleRunNextStep()}
+            disabled={reviewOnly ? !canReview : !canRun}
+            onClick={() => void (reviewOnly ? handleReviewAndMerge() : handleRunNextStep())}
           >
             {runLabel}
           </button>
         </div>
         <p className={styles.composerHint}>
-          {reviewCount > 0 && !hasRunnableWork
-            ? `${reviewCount} task${reviewCount === 1 ? "" : "s"} finished implementation and now wait for review.`
+          {reviewOnly
+            ? `${reviewCount} task${reviewCount === 1 ? "" : "s"} finished implementation. Run real gates and independent review before merge.`
             : "Build first, inspect the TaskGraph, then start visible agent work."}
         </p>
         {actionStatus ? (

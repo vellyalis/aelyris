@@ -16,7 +16,7 @@ parallel runtime.
 Read in this order:
 
 1. `docs/requirements.md` for claim policy.
-2. `product-delivery-instructions.md` for active `GMV-0` scope and stop conditions.
+2. `product-delivery-instructions.md` for the exact active scope and stop conditions.
 3. `audit-remediation-instructions.md` for certification-only boundaries and the
    completed R0-A9/A9.6r1 history.
 4. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md` for requirements.

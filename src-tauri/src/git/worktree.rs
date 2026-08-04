@@ -675,6 +675,81 @@ pub fn commit_worktree(
     Ok(Some(oid.to_string()))
 }
 
+/// Commit only a task's backend-declared output pathspecs from its isolated
+/// worktree. Runtime/build noise beside those outputs stays outside the
+/// candidate commit and is discarded with the worktree after merge.
+pub fn commit_owned_worktree(
+    repo_path: &str,
+    branch: &str,
+    owned_paths: &[String],
+    message: &str,
+) -> Result<Option<String>, String> {
+    validate_branch_name(branch)?;
+    if owned_paths.is_empty() {
+        return Err("owned worktree commit requires a declared output".to_string());
+    }
+    for path in owned_paths {
+        validate_owned_path(path)?;
+    }
+
+    let worktree_dir = predict_worktree_path(repo_path, branch);
+    let repo = Repository::open(&worktree_dir)
+        .map_err(|error| format!("open owned worktree {}: {error}", worktree_dir.display()))?;
+    let head = repo
+        .head()
+        .map_err(|error| format!("read owned worktree HEAD: {error}"))?;
+    if !head.is_branch() || head.shorthand().ok() != Some(branch) {
+        return Err(format!("owned worktree is not on branch {branch}"));
+    }
+    let parent = head
+        .peel_to_commit()
+        .map_err(|error| format!("read owned worktree parent: {error}"))?;
+    let parent_tree = parent
+        .tree()
+        .map_err(|error| format!("read owned worktree parent tree: {error}"))?;
+
+    let mut index = repo
+        .index()
+        .map_err(|error| format!("open owned worktree index: {error}"))?;
+    index
+        .read_tree(&parent_tree)
+        .map_err(|error| format!("reset owned worktree index: {error}"))?;
+    index
+        .add_all(owned_paths.iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|error| format!("stage owned outputs: {error}"))?;
+    index
+        .update_all(owned_paths.iter(), None)
+        .map_err(|error| format!("stage owned output deletions: {error}"))?;
+    index
+        .write()
+        .map_err(|error| format!("write owned worktree index: {error}"))?;
+
+    let tree_oid = index
+        .write_tree()
+        .map_err(|error| format!("write owned worktree tree: {error}"))?;
+    if tree_oid == parent.tree_id() {
+        return Ok(None);
+    }
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|error| format!("load owned worktree tree: {error}"))?;
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("Aelyris", "aelyris@local"))
+        .map_err(|error| format!("owned worktree signature: {error}"))?;
+    let oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &[&parent],
+        )
+        .map_err(|error| format!("commit owned worktree outputs: {error}"))?;
+    Ok(Some(oid.to_string()))
+}
+
 /// Create the worktree for `branch` if it is not already on disk; a no-op when it
 /// is (idempotent — a task re-dispatched after rework reuses its worktree). This
 /// is what lets the autonomy loop OWN worktree creation at dispatch instead of
