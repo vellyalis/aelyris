@@ -55,6 +55,16 @@ pub fn mission_plan_list(
 }
 
 #[tauri::command]
+pub fn cockpit_mission_current(
+    manager: State<'_, Arc<TaskManager>>,
+    repo_path: String,
+) -> Result<Option<MissionPlanPreview>, String> {
+    manager
+        .current_cockpit_mission(&repo_path)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn mission_plan_accept(
     manager: State<'_, Arc<TaskManager>>,
     plan_id: String,
@@ -144,6 +154,13 @@ pub fn task_create(
 /// if it still can't produce a valid plan, this fails loudly — there is no
 /// hand-canned fallback. On success the task graph is populated + broadcast and a
 /// `TaskCreated` event is published per task; the autonomy loop can then run it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanBuildReport {
+    pub readied: Vec<String>,
+    pub mission: MissionPlanPreview,
+}
+
 #[tauri::command]
 pub async fn plan_build(
     app: AppHandle,
@@ -153,25 +170,27 @@ pub async fn plan_build(
     context: Option<String>,
     repo_path: String,
     model: Option<String>,
-) -> Result<Vec<String>, String> {
+) -> Result<PlanBuildReport, String> {
     let ctx = context.unwrap_or_default();
     let mdl = model
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_PLANNER_MODEL.to_string());
     // The repo root anchors symbol-target verification (the planner's declared symbols are
     // parsed from the REAL source there); see task::symbol_enrich.
-    let repo = std::path::PathBuf::from(repo_path);
+    let repo = std::path::PathBuf::from(&repo_path);
+    let planner_goal = goal.clone();
+    let planner_model = mdl.clone();
     // The decomposition is a blocking subprocess + validation loop; run it off
     // the async runtime.
     let ordered = tauri::async_runtime::spawn_blocking(move || {
         let mut ordered = crate::task::decompose_to_plan(
-            &goal,
+            &planner_goal,
             &ctx,
             &repo,
-            |prompt| crate::agent::planner_oneshot(prompt, &mdl, &repo),
+            |prompt| crate::agent::planner_oneshot(prompt, &planner_model, &repo),
             3,
         )?;
-        bind_planner_model(&mut ordered, &mdl);
+        bind_planner_model(&mut ordered, &planner_model);
         Ok::<_, String>(ordered)
     })
     .await
@@ -181,9 +200,14 @@ pub async fn plan_build(
         .iter()
         .map(|t| (t.id.clone(), t.title.clone()))
         .collect();
-    let changed = manager
-        .submit_plan(ordered)
-        .map_err(|errs| errs.join("; "))?;
+    let (changed, mission) = manager
+        .submit_cockpit_plan(
+            &goal,
+            ordered,
+            &repo_path,
+            &uuid::Uuid::now_v7().to_string(),
+        )
+        .map_err(|error| error.to_string())?;
     emit_task_graph(&app, &manager);
     for (id, title) in created {
         publish_and_emit(
@@ -195,7 +219,10 @@ pub async fn plan_build(
             ),
         )?;
     }
-    Ok(changed)
+    Ok(PlanBuildReport {
+        readied: changed,
+        mission,
+    })
 }
 
 /// What a mid-run re-plan did, for the conductor + the cockpit.

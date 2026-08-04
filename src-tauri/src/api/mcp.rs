@@ -110,7 +110,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity> (reviewer must differ from it to merge), model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, reviewerId(!=owner), activeAgents, gates}: finished agents -> review, all-green verdict -> real git merge, ready tasks -> spawned; agents run between calls, so pace them. (5) Coordinate between steps via event.recent / agent.activity (who edits what), knowledge.impact (blast radius), intent.propose/list (pre-fact proposals), ownership.conflicts, blocker_raised. You are the reviewer; supply each task's gates from your own inspection. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity>, model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, activeAgents}: finished agents move to Review, failed agents recover within bounded budgets, and ready tasks spawn; this tool never accepts review verdicts and never merges. (5) Generic MCP orchestration intentionally stops at Review: aelyris.request_merge and aelyris.review.approve are retired and cannot bypass exact-candidate gates. Use the cockpit backend-owned review-and-merge action or the typed Mission acceptance path for integration. (6) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
 
 /// Native MCP JSON-RPC endpoint. Handles initialize / tools.list / tools.call /
 /// ping; everything else is method-not-found.
@@ -2016,282 +2016,16 @@ settlement:
         assert!(matches!(result, Err(ApiError::NotFound(_))), "{result:?}");
     }
 
-    /// P0-3 inc3: `aelyris.request_merge` binds the repo/branch/OIDs into a durable
-    /// intent at request time, and is idempotent per (taskId, source_oid,
-    /// target_oid) — a duplicate request returns the ORIGINAL intent, not a new one.
+    /// GMV-1 hard boundary: the legacy generic MCP request/approve verbs remain
+    /// cataloged only to return a clear compatibility error. Neither call may
+    /// create, claim, or merge a durable intent.
     #[test]
-    fn request_merge_is_idempotent_and_binds_immutable_fields() {
+    fn raw_merge_request_and_approval_are_retired_without_mutation() {
         use crate::db::{Database, ManagedDb};
         use crate::merge_intent::store::MergeIntentStore;
         use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
-        use std::path::Path;
         use std::sync::Arc;
 
-        // temp repo: main, then a `feature` branch one commit ahead of main.
-        let dir = tempfile::tempdir().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
-        repo.set_head("refs/heads/main").unwrap();
-        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
-            let wd = repo.workdir().unwrap().to_path_buf();
-            std::fs::write(wd.join(file), content).unwrap();
-            let mut idx = repo.index().unwrap();
-            idx.add_path(Path::new(file)).unwrap();
-            idx.write().unwrap();
-            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-            let sig = git2::Signature::now("T", "t@t").unwrap();
-            let pcs: Vec<git2::Commit> = parents
-                .iter()
-                .map(|o| repo.find_commit(*o).unwrap())
-                .collect();
-            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
-            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
-                .unwrap()
-        };
-        let base = commit("a.txt", "base", &[]);
-        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
-            .unwrap();
-        repo.set_head("refs/heads/feature").unwrap();
-        repo.checkout_head(Some(CheckoutBuilder::new().force()))
-            .unwrap();
-        commit("b.txt", "feat", &[base]);
-        repo.set_head("refs/heads/main").unwrap();
-        repo.checkout_head(Some(CheckoutBuilder::new().force()))
-            .unwrap();
-        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
-
-        let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
-            Database::open_memory().unwrap(),
-        ))));
-        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_merge_store(Some(store));
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let call = |args: serde_json::Value| -> serde_json::Value {
-            let body = ToolCallBody {
-                name: "aelyris.request_merge".to_string(),
-                arguments: args,
-            };
-            let Json(v) = rt
-                .block_on(tools_call(State(state.clone()), Json(body)))
-                .expect("request_merge ok");
-            v
-        };
-
-        let args = serde_json::json!({
-            "taskId": "task-1",
-            "repoPath": repo_path,
-            "sourceBranch": "feature",
-            "targetBranch": "main",
-        });
-        let first = call(args.clone());
-        let id1 = first["result"]["intentId"].as_str().unwrap().to_string();
-        assert!(id1.starts_with("merge:task-1:"));
-        assert_eq!(first["result"]["status"], "queued");
-        // The intent bound the real branch + a concrete OID at request time.
-        assert_eq!(first["result"]["intent"]["sourceBranch"], "feature");
-        assert!(
-            first["result"]["intent"]["sourceOid"]
-                .as_str()
-                .unwrap()
-                .len()
-                >= 7
-        );
-
-        // A DUPLICATE request (same task + same source/target commits) returns the
-        // SAME intent id — no second row, no second merge.
-        let second = call(args);
-        assert_eq!(second["result"]["intentId"].as_str().unwrap(), id1);
-
-        // Fail closed: with no store attached, the verb errors (no RAM fallback) —
-        // and specifically an Internal error (persistence missing), not a
-        // request-shape error.
-        let no_store = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"));
-        let body = ToolCallBody {
-            name: "aelyris.request_merge".to_string(),
-            arguments: serde_json::json!({
-                "taskId": "t", "repoPath": repo_path, "sourceBranch": "feature", "targetBranch": "main"
-            }),
-        };
-        let err = rt
-            .block_on(tools_call(State(no_store), Json(body)))
-            .expect_err("fail closed without a merge store");
-        assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
-    }
-
-    /// P0-3 inc4/5 (the security headline): `aelyris.review.approve` binds ONLY to a
-    /// stored intent. It must REJECT caller-supplied repo/source/target and any
-    /// unknown field BEFORE merging (boundaries #1+#2), merge using ONLY the stored
-    /// branches (boundary #4), and not be re-claimable once merged.
-    #[test]
-    fn review_approve_rejects_overrides_and_merges_only_the_stored_intent() {
-        use crate::db::{Database, ManagedDb};
-        use crate::merge_intent::store::MergeIntentStore;
-        use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
-        use std::path::Path;
-        use std::sync::Arc;
-
-        // temp repo: main at base; `feature` one commit ahead (fast-forwardable).
-        let dir = tempfile::tempdir().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
-        repo.set_head("refs/heads/main").unwrap();
-        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
-            let wd = repo.workdir().unwrap().to_path_buf();
-            std::fs::write(wd.join(file), content).unwrap();
-            let mut idx = repo.index().unwrap();
-            idx.add_path(Path::new(file)).unwrap();
-            idx.write().unwrap();
-            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-            let sig = git2::Signature::now("T", "t@t").unwrap();
-            let pcs: Vec<git2::Commit> = parents
-                .iter()
-                .map(|o| repo.find_commit(*o).unwrap())
-                .collect();
-            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
-            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
-                .unwrap()
-        };
-        let base = commit("a.txt", "base", &[]);
-        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
-            .unwrap();
-        repo.set_head("refs/heads/feature").unwrap();
-        repo.checkout_head(Some(CheckoutBuilder::new().force()))
-            .unwrap();
-        let feat = commit("b.txt", "feat", &[base]);
-        repo.set_head("refs/heads/main").unwrap();
-        repo.checkout_head(Some(CheckoutBuilder::new().force()))
-            .unwrap();
-        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
-
-        let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
-            Database::open_memory().unwrap(),
-        ))));
-        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_merge_store(Some(store));
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let call = |name: &str, args: serde_json::Value| {
-            let body = ToolCallBody {
-                name: name.to_string(),
-                arguments: args,
-            };
-            rt.block_on(tools_call(State(state.clone()), Json(body)))
-        };
-
-        // Request a durable intent for feature -> main.
-        let Json(req) = call(
-            "aelyris.request_merge",
-            serde_json::json!({
-                "taskId": "task-1", "repoPath": repo_path,
-                "sourceBranch": "feature", "targetBranch": "main",
-            }),
-        )
-        .expect("request ok");
-        let intent_id = req["result"]["intentId"].as_str().unwrap().to_string();
-
-        // BOUNDARY #1: a caller-supplied repo/source/target is rejected (it tries to
-        // re-point the merge) — BEFORE any merge, so the intent stays claimable.
-        let Json(override_err) = call(
-            "aelyris.review.approve",
-            serde_json::json!({
-                "intentId": intent_id, "repoPath": "C:/evil",
-                "sourceBranch": "evil", "targetBranch": "main",
-            }),
-        )
-        .expect("override rejected as a structured schema violation");
-        assert_eq!(override_err["ok"], serde_json::json!(false));
-        assert_eq!(
-            override_err["error"]["schema_violation"]["unknown"],
-            serde_json::json!(["repoPath", "sourceBranch", "targetBranch"])
-        );
-
-        // BOUNDARY #2: any OTHER unknown field is rejected too.
-        let Json(unknown_err) = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": intent_id, "smuggle": 1 }),
-        )
-        .expect("unknown field rejected as a structured schema violation");
-        assert_eq!(unknown_err["ok"], serde_json::json!(false));
-        assert_eq!(
-            unknown_err["error"]["schema_violation"]["unknown"],
-            serde_json::json!(["smuggle"])
-        );
-
-        // The real approve (intentId only) merges using the STORED branches.
-        let Json(ok) = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": intent_id, "verdict": "approve" }),
-        )
-        .expect("approve ok");
-        assert_eq!(ok["result"]["status"], "merged");
-        // main now actually contains the feature commit (the merge really happened).
-        assert!(crate::git::branch_contains_commit(&repo_path, "main", &feat.to_string()).unwrap());
-
-        // A merged intent is no longer claimable — a re-approve loses the CAS.
-        let reapprove = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": intent_id }),
-        )
-        .expect_err("re-approve of a merged intent must fail");
-        assert!(
-            matches!(reapprove, ApiError::BadRequest(_)),
-            "{reapprove:?}"
-        );
-
-        // An unknown intent id is NotFound.
-        let missing = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": "ghost" }),
-        )
-        .expect_err("unknown intent");
-        assert!(matches!(missing, ApiError::NotFound(_)), "{missing:?}");
-    }
-
-    /// P0-3 inc4/5 robustness (Codex headline review): a non-string `verdict` /
-    /// `gatesDigest` must be REJECTED, not silently treated as absent (type-
-    /// confusion bypass); and if a branch tip moved since the request, the
-    /// OID-bound merge must mark the intent needs_reconcile rather than merge an
-    /// unreviewed commit.
-    #[test]
-    fn review_approve_rejects_nonstring_fields_and_flags_stale_tips() {
-        use crate::db::{Database, ManagedDb};
-        use crate::merge_intent::{store::MergeIntentStore, MergeIntentState};
-        use crate::pty::PtyManager;
-        use git2::{build::CheckoutBuilder, Repository};
-        use std::path::Path;
-        use std::sync::Arc;
-
-        let dir = tempfile::tempdir().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
-        repo.set_head("refs/heads/main").unwrap();
-        let commit = |file: &str, content: &str, parents: &[git2::Oid]| -> git2::Oid {
-            let wd = repo.workdir().unwrap().to_path_buf();
-            std::fs::write(wd.join(file), content).unwrap();
-            let mut idx = repo.index().unwrap();
-            idx.add_path(Path::new(file)).unwrap();
-            idx.write().unwrap();
-            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-            let sig = git2::Signature::now("T", "t@t").unwrap();
-            let pcs: Vec<git2::Commit> = parents
-                .iter()
-                .map(|o| repo.find_commit(*o).unwrap())
-                .collect();
-            let prefs: Vec<&git2::Commit> = pcs.iter().collect();
-            repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &prefs)
-                .unwrap()
-        };
-        let base = commit("a.txt", "base", &[]);
-        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
-            .unwrap();
-        repo.set_head("refs/heads/feature").unwrap();
-        repo.checkout_head(Some(CheckoutBuilder::new().force()))
-            .unwrap();
-        commit("b.txt", "feat", &[base]);
-        repo.set_head("refs/heads/main").unwrap();
-        repo.checkout_head(Some(CheckoutBuilder::new().force()))
-            .unwrap();
-        let repo_path = repo.workdir().unwrap().to_str().unwrap().to_string();
-
-        // Keep a handle to the store so we can assert the persisted state directly.
         let store = Arc::new(MergeIntentStore::new(Arc::new(ManagedDb::new(
             Database::open_memory().unwrap(),
         ))));
@@ -2306,60 +2040,28 @@ settlement:
             rt.block_on(tools_call(State(state.clone()), Json(body)))
         };
 
-        let Json(req) = call(
-            "aelyris.request_merge",
-            serde_json::json!({
-                "taskId": "task-1", "repoPath": repo_path,
-                "sourceBranch": "feature", "targetBranch": "main",
-            }),
-        )
-        .expect("request ok");
-        let intent_id = req["result"]["intentId"].as_str().unwrap().to_string();
-
-        // Type confusion: a NON-string verdict / gatesDigest is rejected, not
-        // treated as absent (the intent stays claimable).
-        let Json(bad_verdict) = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": intent_id, "verdict": { "repoPath": "evil" } }),
-        )
-        .expect("object verdict rejected as a structured schema violation");
-        assert_eq!(bad_verdict["ok"], serde_json::json!(false));
-        assert_eq!(
-            bad_verdict["error"]["schema_violation"]["wrong_type"][0]["field"],
-            "verdict"
-        );
-        let Json(bad_digest) = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": intent_id, "gatesDigest": 5 }),
-        )
-        .expect("non-string gatesDigest rejected as a structured schema violation");
-        assert_eq!(bad_digest["ok"], serde_json::json!(false));
-        assert_eq!(
-            bad_digest["error"]["schema_violation"]["wrong_type"][0]["field"],
-            "gatesDigest"
-        );
-        // Still claimable (the bad calls did not consume it).
-        assert_eq!(
-            store.get(&intent_id).unwrap().unwrap().state,
-            MergeIntentState::Queued
-        );
-
-        // Move the target tip AFTER the request: main diverges from the reviewed base.
-        commit("c.txt", "main-moved", &[base]);
-
-        // The OID-bound approve must NOT merge an unreviewed state — it flags
-        // needs_reconcile.
-        let stale = call(
-            "aelyris.review.approve",
-            serde_json::json!({ "intentId": intent_id }),
-        )
-        .expect_err("stale tips rejected");
-        assert!(matches!(stale, ApiError::BadRequest(_)), "{stale:?}");
-        assert_eq!(
-            store.get(&intent_id).unwrap().unwrap().state,
-            MergeIntentState::NeedsReconcile,
-            "a moved tip leaves the intent needs_reconcile, never merged"
-        );
+        for (name, args) in [
+            (
+                "aelyris.request_merge",
+                serde_json::json!({
+                    "taskId": "task-1",
+                    "repoPath": "C:/repo",
+                    "sourceBranch": "feature",
+                    "targetBranch": "main"
+                }),
+            ),
+            (
+                "aelyris.review.approve",
+                serde_json::json!({ "intentId": "merge:ghost" }),
+            ),
+        ] {
+            let error = call(name, args).expect_err("retired merge authority must fail closed");
+            assert!(
+                matches!(error, ApiError::BadRequest(ref message) if message.contains("retired")),
+                "{error:?}"
+            );
+        }
+        assert!(store.list_unresolved().unwrap().is_empty());
     }
 
     /// P0-3 inc6: `aelyris.review.reject` is a durable, store-backed transition, and
@@ -2419,15 +2121,11 @@ settlement:
             rt.block_on(tools_call(State(state.clone()), Json(body)))
         };
 
-        let Json(req) = call(
-            "aelyris.request_merge",
-            serde_json::json!({
-                "taskId": "task-1", "repoPath": repo_path,
-                "sourceBranch": "feature", "targetBranch": "main",
-            }),
+        let intent = crate::control::merge::request_durable_intent(
+            &store, &repo_path, "task-1", None, "feature", "main", 1,
         )
-        .expect("request ok");
-        let intent_id = req["result"]["intentId"].as_str().unwrap().to_string();
+        .unwrap();
+        let intent_id = intent.intent_id;
 
         // The pending view comes from the store and shows the queued intent.
         let Json(view) =

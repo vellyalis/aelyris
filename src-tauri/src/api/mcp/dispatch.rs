@@ -1434,61 +1434,9 @@ pub(super) async fn dispatch_authorized(
             }
         },
         "aelyris.request_merge" => {
-            // Fail closed: a merge intent MUST be durable. Without the store we do
-            // not fall back to a RAM queue a restart would lose (P0-3).
-            let store = state.merge_store.as_ref().ok_or_else(|| {
-                ApiError::Internal("merge persistence is not attached to this process".to_string())
-            })?;
-            let task_id = arg_string(&args, "taskId")?;
-            let source_branch = arg_string(&args, "sourceBranch")?;
-            let target_branch = arg_string(&args, "targetBranch")?;
-            let session_id = arg_optional_string(&args, "sessionId");
-            // Canonicalize the repo at REQUEST time: the intent is bound to a
-            // normalized absolute path the approver can never re-point later.
-            let repo_path = {
-                let raw = arg_string(&args, "repoPath")?;
-                let canonical = std::fs::canonicalize(&raw).map_err(|_| {
-                    ApiError::BadRequest("repoPath must exist and be accessible".to_string())
-                })?;
-                if !canonical.is_dir() {
-                    return Err(ApiError::BadRequest(
-                        "repoPath must be a directory".to_string(),
-                    ));
-                }
-                super::super::session_common::strip_local_verbatim_prefix(
-                    &canonical.to_string_lossy(),
-                )
-            };
-            // Resolve the branch tips NOW (also validates names + source!=target):
-            // the immutable intent is bound to these exact commits.
-            let readiness =
-                crate::control::merge::inspect(&repo_path, &source_branch, &target_branch)
-                    .map_err(ApiError::BadRequest)?;
-            let now = now_secs() as i64;
-            let intent = crate::merge_intent::MergeIntent {
-                intent_id: format!("merge:{task_id}:{}", uuid::Uuid::new_v4()),
-                repo_path,
-                source_branch,
-                target_branch,
-                source_oid: readiness.source_oid,
-                target_oid: readiness.target_oid,
-                merge_base_oid: readiness.merge_base_oid,
-                task_id,
-                created_at: now,
-                state: crate::merge_intent::MergeIntentState::Queued,
-                updated_at: now,
-                session_id,
-                reviewer_id: None,
-                gates_digest: None,
-            };
-            // Idempotent: a duplicate (taskId, source_oid, target_oid) resolves to
-            // the original intent — no second row, no second merge.
-            let stored = store.create_or_get(&intent).map_err(ApiError::Internal)?;
-            serde_json::json!({
-                "intentId": stored.intent_id,
-                "status": stored.state.as_str(),
-                "intent": stored,
-            })
+            return Err(ApiError::BadRequest(
+                "aelyris.request_merge is retired: generic merge intents are backend-owned by exact-candidate review".to_string(),
+            ));
         }
         "aelyris.spawn_agent" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
@@ -1539,66 +1487,9 @@ pub(super) async fn dispatch_authorized(
             serde_json::json!({ "sessionId": session_id, "stopped": true })
         }
         "aelyris.review.approve" => {
-            let store = state.merge_store.as_ref().ok_or_else(|| {
-                ApiError::Internal("merge persistence is not attached to this process".to_string())
-            })?;
-            // HARD BOUNDARIES #1 + #2: approve binds ONLY to a stored intent. The MCP
-            // dispatcher does NOT enforce the declared input schema (it hands the
-            // handler the raw args), so repo/source/target — and EVERY other unknown
-            // field — are rejected EXPLICITLY here, before any merge work. A caller
-            // can never re-point the merge.
-            const APPROVE_ALLOWED: &[&str] = &["intentId", "verdict", "gatesDigest"];
-            if let Some(bad) = args.keys().find(|k| !APPROVE_ALLOWED.contains(&k.as_str())) {
-                return Err(ApiError::BadRequest(format!(
-                    "aelyris.review.approve does not accept `{bad}`: it approves a stored intent by \
-                     intentId only — repo/source/target come from the immutable intent, never the caller"
-                )));
-            }
-            let intent_id = arg_string(&args, "intentId")?;
-            // STRICT shape (close the type-confusion bypass): a present `verdict`
-            // must be EXACTLY the string "approve", and a present `gatesDigest` must
-            // be a string. A non-string value (object/array/null/number) is a
-            // rejected shape, NOT "absent" — `arg_optional_string` would silently
-            // treat `{"verdict":{...}}` as absent and let a malformed call through.
-            if let Some(v) = args.get("verdict") {
-                if v.as_str() != Some("approve") {
-                    return Err(ApiError::BadRequest(
-                        "verdict must be the string \"approve\"; use aelyris.review.reject to reject"
-                            .to_string(),
-                    ));
-                }
-            }
-            let gates_digest = match args.get("gatesDigest") {
-                None => None,
-                Some(serde_json::Value::String(s)) => Some(s.clone()),
-                Some(_) => {
-                    return Err(ApiError::BadRequest(
-                        "gatesDigest must be a string".to_string(),
-                    ));
-                }
-            };
-
-            let execution = crate::control::merge::approve_durable_intent(
-                store,
-                &intent_id,
-                actor,
-                gates_digest.as_deref(),
-                now_secs() as i64,
-            )
-            .map_err(|err| {
-                use crate::control::merge::DurableMergeError;
-                match err {
-                    DurableMergeError::NotFound(_) => ApiError::NotFound(intent_id.clone()),
-                    DurableMergeError::InvalidRequest(message) => ApiError::BadRequest(message),
-                    DurableMergeError::Persistence(message) => ApiError::Internal(message),
-                }
-            })?;
-
-            serde_json::json!({
-                "intentId": execution.intent_id,
-                "status": execution.status,
-                "outcome": execution.outcome,
-            })
+            return Err(ApiError::BadRequest(
+                "aelyris.review.approve is retired: raw intent approval cannot substitute for backend-bound review".to_string(),
+            ));
         }
         "aelyris.review.reject" => {
             // Fail closed: rejection is a durable state transition on the stored
@@ -1791,27 +1682,10 @@ pub(super) async fn dispatch_authorized(
                 ApiError::Internal("context store is not attached to this process".to_string())
             })?;
             let repo_path = arg_string(&args, "repoPath")?;
-            let reviewer_id = arg_string(&args, "reviewerId")?;
             let usage = crate::cost::CostUsage {
                 active_agents: arg_usize(&args, "activeAgents", 0)?,
                 ..Default::default()
             };
-            let gates: std::collections::HashMap<String, crate::review::GateResults> =
-                match args.get("gates") {
-                    Some(value) => serde_json::from_value(value.clone())
-                        .map_err(|err| ApiError::BadRequest(format!("invalid gates: {err}")))?,
-                    None => std::collections::HashMap::new(),
-                };
-            // Optional mechanical gate commands: when supplied, the objective
-            // gates (tests/lint/types) are run in each task's worktree and decide
-            // merge-eligibility for real, so a red branch cannot merge (⑧).
-            let gate_commands: Option<crate::control::gate_runner::GateCommands> =
-                match args.get("gateCommands") {
-                    Some(value) => Some(serde_json::from_value(value.clone()).map_err(|err| {
-                        ApiError::BadRequest(format!("invalid gateCommands: {err}"))
-                    })?),
-                    None => None,
-                };
             let report = crate::control::loop_ports::run_step(
                 startup,
                 tasks,
@@ -1823,9 +1697,10 @@ pub(super) async fn dispatch_authorized(
                 context,
                 &usage,
                 repo_path,
-                reviewer_id,
-                gates,
-                gate_commands,
+                "mcp-dispatch-only".to_string(),
+                std::collections::HashMap::new(),
+                std::collections::HashMap::new(),
+                None,
                 state.merge_store.clone(),
                 // P4: the autonomous (MCP) face persists give-ups too — the path
                 // that most needs unattended-safe durability.

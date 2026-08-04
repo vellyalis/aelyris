@@ -81,6 +81,34 @@ interface BranchReviewReport {
   gates: ReviewGateResults;
   mergeOk: boolean;
   reasons: { gate: string; reason: string }[];
+  candidateSourceOid: string;
+  candidateTargetOid: string;
+  reviewerModel: string;
+}
+
+interface OrchestratorReviewAndMergeReport {
+  review: BranchReviewReport;
+  step: OrchestratorStepReport | null;
+  merged: boolean;
+}
+
+interface CockpitMissionPreview {
+  planId: string;
+  planRevision: number;
+  status: "previewed" | "accepted" | "rejected" | "cancelled";
+  request: string;
+  repositoryRoot: string;
+  persistedAtUnixMs: number;
+  missionDefinition: {
+    teamPolicy: {
+      governancePolicyId: string;
+    };
+  };
+}
+
+interface PlanBuildReport {
+  readied: string[];
+  mission: CockpitMissionPreview;
 }
 
 interface ActionStatus {
@@ -115,6 +143,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
   const [planning, setPlanning] = useState(false);
   const [stepping, setStepping] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [mission, setMission] = useState<CockpitMissionPreview | null>(null);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
 
   const runningCount = useMemo(() => tasks.filter((task) => task.status === "running").length, [tasks]);
@@ -142,6 +171,28 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
       cancelled = true;
     };
   }, [fetchPlan, tasks]);
+
+  // Mission persistence owns the accepted Goal/plan identity; TaskGraph remains
+  // the execution truth. Restore only the latest cockpit Mission for this repo.
+  useEffect(() => {
+    let cancelled = false;
+    setMission(null);
+    if (!projectPath) return;
+    void invoke<CockpitMissionPreview | null>("cockpit_mission_current", { repoPath: projectPath })
+      .then((latest) => {
+        if (cancelled) return;
+        if (!latest) return;
+        setMission(latest);
+        setGoal((current) => (current.trim().length > 0 ? current : latest.request));
+      })
+      .catch(() => {
+        // The TaskGraph is still usable if legacy/ephemeral environments have no
+        // Mission store; planning errors remain surfaced by the explicit action.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
 
   const ordered = useMemo(() => {
     const rank = (status: TaskStatus) => {
@@ -173,15 +224,16 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     setPlanning(true);
     setActionStatus(null);
     try {
-      const readied = await invoke<string[]>("plan_build", {
+      const report = await invoke<PlanBuildReport>("plan_build", {
         goal: trimmed,
         context: plannerContext,
         repoPath: projectPath,
         model: null,
       });
+      setMission(report.mission);
       setActionStatus({
         kind: "success",
-        message: `Plan created${readied.length > 0 ? ` · ${readied.length} task${readied.length === 1 ? "" : "s"} ready` : ""}. Review it below, then run the next step.`,
+        message: `Plan accepted${report.readied.length > 0 ? ` · ${report.readied.length} task${report.readied.length === 1 ? "" : "s"} ready` : ""}. Review it below, then run the next step.`,
       });
     } catch (error) {
       setActionStatus({
@@ -206,8 +258,6 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
           runtime_secs: 0,
         },
         repoPath: projectPath,
-        reviewerId: "operator",
-        gates: {},
       });
       const changes = [
         report.dispatched.length > 0 ? `${report.dispatched.length} dispatched` : null,
@@ -234,34 +284,17 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     setReviewing(true);
     setActionStatus(null);
     try {
-      const review = await invoke<BranchReviewReport>("review_branch", {
+      const result = await invoke<OrchestratorReviewAndMergeReport>("orchestrator_review_and_merge", {
         repoPath: projectPath,
         taskId: reviewTask.id,
-        reviewerId: "cockpit-reviewer",
-        model: "codex",
       });
-      if (!review.mergeOk) {
-        const reasons = review.reasons.map(({ gate, reason }) => `${gate}: ${reason}`).join(" · ");
+      if (!result.merged) {
+        const reasons = result.review.reasons.map(({ gate, reason }) => `${gate}: ${reason}`).join(" · ");
         setActionStatus({
           kind: "error",
           message: reasons || "Review rejected the candidate without a reason.",
         });
         return;
-      }
-
-      const report = await invoke<OrchestratorStepReport>("orchestrator_step", {
-        usage: {
-          active_agents: runningCount,
-          tokens_used: 0,
-          cost_usd: 0,
-          runtime_secs: 0,
-        },
-        repoPath: projectPath,
-        reviewerId: "cockpit-reviewer",
-        gates: { [reviewTask.id]: review.gates },
-      });
-      if (!report.merged.includes(reviewTask.id)) {
-        throw new Error(`Review passed, but ${reviewTask.id} did not merge.`);
       }
       setActionStatus({ kind: "success", message: `${reviewTask.title} reviewed and merged.` });
     } catch (error) {
@@ -272,7 +305,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     } finally {
       setReviewing(false);
     }
-  }, [planning, projectPath, reviewTask, reviewing, runningCount, stepping]);
+  }, [planning, projectPath, reviewTask, reviewing, stepping]);
 
   const canBuild =
     goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping && !reviewing;
@@ -330,6 +363,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
           </button>
         </div>
         <p className={styles.composerHint}>
+          {mission ? `Mission ${mission.planId.slice(0, 8)} · ${mission.status}. ` : ""}
           {reviewOnly
             ? `${reviewCount} task${reviewCount === 1 ? "" : "s"} finished implementation. Run real gates and independent review before merge.`
             : "Build first, inspect the TaskGraph, then start visible agent work."}

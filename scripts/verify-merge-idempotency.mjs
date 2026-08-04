@@ -1,20 +1,14 @@
-// LIVE verification of P0-3 merge idempotency against a running Aelyris MCP server.
-// Proves, end-to-end over /mcp, that:
-//   (A) a duplicate aelyris.request_merge (same task + same source/target commits)
-//       returns the ORIGINAL intent id — no second row, no second merge; and
-//   (B) approving an intent whose target ALREADY contains the reviewed source
-//       commit is idempotent (status "merged", not an error).
+// LIVE compatibility verification against a running Aelyris MCP server.
 //
-// Operator-run (it needs a live server + creates a temp git repo it can reach):
+// Generic merge idempotency is now owned internally by the backend-created,
+// exact-candidate MergeIntent path. The legacy MCP request/approve names remain
+// cataloged only to fail closed. This live check proves those compatibility
+// calls cannot create an unresolved intent or merge anything.
+//
+// Operator-run:
 //   pnpm tauri:dev   # in another terminal; export AELYRIS_API_TOKEN
 //   node scripts/verify-merge-idempotency.mjs
-//
-// The headless regression guard for the same invariants is the STATIC
-// scripts/verify-security-mcp-merge-intent-binding.mjs plus the cargo tests.
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import process from "node:process";
 
 const BASE = process.env.AELYRIS_API_URL ?? "http://127.0.0.1:9333";
 const TOKEN = process.env.AELYRIS_API_TOKEN;
@@ -23,16 +17,9 @@ if (!TOKEN) {
   process.exit(2);
 }
 
-const git = (cwd, ...args) =>
-  execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
-
 let rpcId = 0;
-// POST a JSON-RPC tools/call to /mcp and return the tool's STRUCTURED output.
-// The /mcp transport wraps the handler JSON under result.structuredContent (with
-// a sibling result.isError) — see src-tauri/src/api/mcp.rs — so we unwrap that,
-// not result.result.
-async function toolCall(name, args) {
-  const res = await fetch(`${BASE}/mcp`, {
+async function rawToolCall(name, args) {
+  const response = await fetch(`${BASE}/mcp`, {
     method: "POST",
     headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -42,95 +29,65 @@ async function toolCall(name, args) {
       params: { name, arguments: args },
     }),
   });
-  const body = await res.json();
-  if (body.error) throw new Error(`${name} JSON-RPC error: ${JSON.stringify(body.error)}`);
-  return { ok: body.result?.isError === false, data: body.result?.structuredContent };
+  return response.json();
+}
+
+function toolSucceeded(body) {
+  return body.error == null && body.result?.isError === false;
+}
+
+function toolPayload(body) {
+  return body.result?.structuredContent;
+}
+
+function errorText(body) {
+  return JSON.stringify(body.error ?? body.result?.structuredContent ?? body);
 }
 
 const failures = [];
-const ok = (cond, msg) => {
-  if (!cond) failures.push(msg);
-  console.log(`${cond ? "PASS" : "FAIL"}  ${msg}`);
-};
+function assert(condition, message) {
+  if (!condition) failures.push(message);
+  console.log(`${condition ? "PASS" : "FAIL"}  ${message}`);
+}
 
-// Build a throwaway repo: main at base; feature one commit ahead.
-function makeRepo() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aelyris-merge-idem-"));
-  git(dir, "init", "-b", "main");
-  git(dir, "config", "user.email", "t@test");
-  git(dir, "config", "user.name", "Test");
-  fs.writeFileSync(path.join(dir, "a.txt"), "base");
-  git(dir, "add", "a.txt");
-  git(dir, "commit", "-m", "base");
-  git(dir, "branch", "feature");
-  git(dir, "switch", "feature");
-  fs.writeFileSync(path.join(dir, "b.txt"), "feature");
-  git(dir, "add", "b.txt");
-  git(dir, "commit", "-m", "feat");
-  git(dir, "switch", "main");
-  return dir;
+async function pendingIntentIds() {
+  const body = await rawToolCall("aelyris.list_pending_approvals", {});
+  if (!toolSucceeded(body)) throw new Error(`pending list failed: ${errorText(body)}`);
+  return (toolPayload(body)?.mergeIntents ?? []).map((intent) => intent.intentId).sort();
 }
 
 async function main() {
-  // (A) duplicate request_merge is idempotent.
-  const repoA = makeRepo();
-  try {
-    const reqArgs = {
-      taskId: `idem-${rpcId}`,
-      repoPath: repoA,
-      sourceBranch: "feature",
-      targetBranch: "main",
-    };
-    const first = await toolCall("aelyris.request_merge", reqArgs);
-    const id1 = first.data?.intentId;
-    ok(first.ok && typeof id1 === "string" && id1.length > 0, "request_merge returns an intent id");
-    const second = await toolCall("aelyris.request_merge", reqArgs);
-    ok(
-      second.data?.intentId === id1,
-      "a duplicate request_merge returns the SAME intent id (no second row)",
-    );
-  } finally {
-    fs.rmSync(repoA, { recursive: true, force: true });
-  }
+  const before = await pendingIntentIds();
 
-  // (B) approving an intent whose target ALREADY contains the reviewed source
-  // commit reports "merged" (idempotent), not an error — and the SAME intent
-  // cannot then be re-approved (no double-merge). Pre-merge feature into main.
-  const repoB = makeRepo();
-  try {
-    git(repoB, "merge", "--ff-only", "feature"); // main now contains feature
-    const reqArgs = {
-      taskId: `already-${rpcId}`,
-      repoPath: repoB,
-      sourceBranch: "feature",
-      targetBranch: "main",
-    };
-    const intent = await toolCall("aelyris.request_merge", reqArgs);
-    const id = intent.data?.intentId;
-    ok(typeof id === "string", "request_merge on an already-merged pair still queues an intent");
-    const approved = await toolCall("aelyris.review.approve", { intentId: id });
-    ok(
-      approved.ok && approved.data?.status === "merged",
-      "approving an intent whose target already contains the reviewed commit is idempotent (status: merged)",
-    );
-    // A second approve on the now-merged intent is rejected (no double-merge).
-    const reapprove = await toolCall("aelyris.review.approve", { intentId: id });
-    ok(
-      reapprove.ok === false,
-      "a merged intent cannot be re-approved (the claim is single-winner)",
-    );
-  } finally {
-    fs.rmSync(repoB, { recursive: true, force: true });
-  }
+  const request = await rawToolCall("aelyris.request_merge", {
+    taskId: `retired-${Date.now()}`,
+    repoPath: "C:/does-not-need-to-exist",
+    sourceBranch: "feature",
+    targetBranch: "main",
+  });
+  assert(!toolSucceeded(request), "retired request_merge fails closed");
+  assert(errorText(request).includes("retired"), "request_merge explains that the authority is retired");
 
-  if (failures.length) {
-    console.error(`\n${failures.length} merge-idempotency assertion(s) FAILED`);
+  const approve = await rawToolCall("aelyris.review.approve", {
+    intentId: `merge:retired:${Date.now()}`,
+  });
+  assert(!toolSucceeded(approve), "retired review.approve fails closed");
+  assert(errorText(approve).includes("retired"), "review.approve explains that raw approval is retired");
+
+  const after = await pendingIntentIds();
+  assert(
+    JSON.stringify(after) === JSON.stringify(before),
+    "retired request/approve calls create no durable unresolved merge intent",
+  );
+
+  if (failures.length > 0) {
+    console.error(`\n${failures.length} retired-merge compatibility assertion(s) FAILED`);
     process.exit(1);
   }
-  console.log("\nAll P0-3 merge-idempotency live assertions PASSED");
+  console.log("\nAll retired raw-merge compatibility assertions PASSED");
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
 });

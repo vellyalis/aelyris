@@ -1,4 +1,4 @@
-use git2::{Delta, ObjectType, Oid, Repository, Status};
+use git2::{Delta, ObjectType, Oid, Pathspec, PathspecFlags, Repository, Status};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Component, Path};
@@ -38,6 +38,71 @@ pub struct ScopedCandidateFreeze {
     pub base_oid: String,
     pub candidate_oid: String,
     pub changed_paths: Vec<String>,
+}
+
+/// Generic cockpit candidate frozen from one task's isolated worktree. Unlike
+/// the historical A7 fixture, the source branch may already contain several
+/// owned commits; the full merge-base-to-source history is nevertheless proven
+/// to touch only the backend-declared output pathspecs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnedCandidateSnapshot {
+    pub source_oid: String,
+    pub target_oid: String,
+    pub merge_base_oid: String,
+    pub changed_paths: Vec<String>,
+}
+
+/// Clean detached checkout used only while running gates and semantic review at
+/// one exact candidate OID. Dropping it removes the registered worktree and its
+/// temporary directory; no branch or source worktree is moved.
+pub struct DetachedReviewWorktree {
+    repo_path: String,
+    path: std::path::PathBuf,
+}
+
+impl DetachedReviewWorktree {
+    pub fn create(repo_path: &str, candidate_oid: &str) -> Result<Self, String> {
+        Oid::from_str(candidate_oid)
+            .map_err(|error| format!("invalid review candidate OID: {error}"))?;
+        let path = std::env::temp_dir().join(format!("aelyris-review-{}", uuid::Uuid::now_v7()));
+        let path_text = path.to_string_lossy().into_owned();
+        let output = crate::process::hidden_command("git")
+            .args(["worktree", "add", "--detach", &path_text, candidate_oid])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|error| format!("create detached review worktree: {error}"))?;
+        if !output.status.success() {
+            let _ = std::fs::remove_dir_all(&path);
+            return Err(format!(
+                "create detached review worktree: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        Ok(Self {
+            repo_path: repo_path.to_string(),
+            path,
+        })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for DetachedReviewWorktree {
+    fn drop(&mut self) {
+        let path = self.path.to_string_lossy().into_owned();
+        let _ = crate::process::hidden_command("git")
+            .args(["worktree", "remove", "--force", &path])
+            .current_dir(&self.repo_path)
+            .output();
+        let _ = crate::process::hidden_command("git")
+            .args(["worktree", "prune"])
+            .current_dir(&self.repo_path)
+            .output();
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 fn validate_owned_path(path: &str) -> Result<(), String> {
@@ -750,6 +815,363 @@ pub fn commit_owned_worktree(
     Ok(Some(oid.to_string()))
 }
 
+fn owned_pathspec(owned_paths: &[String]) -> Result<Pathspec, String> {
+    if owned_paths.is_empty() {
+        return Err("candidate requires at least one declared output pathspec".to_string());
+    }
+    for path in owned_paths {
+        validate_owned_path(path)?;
+    }
+    Pathspec::new(owned_paths.iter().map(String::as_str))
+        .map_err(|error| format!("compile declared output pathspecs: {error}"))
+}
+
+fn path_is_owned(pathspec: &Pathspec, path: &str) -> bool {
+    pathspec.matches_path(Path::new(path), PathspecFlags::DEFAULT)
+}
+
+fn remove_backend_done_markers(worktree_dir: &Path) -> Result<(), String> {
+    let done = worktree_dir.join(".aelyris").join("done");
+    if done.exists() {
+        std::fs::remove_dir_all(&done)
+            .map_err(|error| format!("remove consumed backend completion markers: {error}"))?;
+    }
+    Ok(())
+}
+
+fn ensure_worktree_changes_are_owned(
+    repo: &Repository,
+    worktree_dir: &Path,
+    pathspec: &Pathspec,
+) -> Result<(), String> {
+    let mut options = git2::StatusOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    let statuses = repo
+        .statuses(Some(&mut options))
+        .map_err(|error| format!("read candidate worktree status: {error}"))?;
+    for entry in statuses.iter() {
+        let path = entry
+            .path()
+            .map_err(|error| format!("read candidate changed path: {error}"))?
+            .replace('\\', "/");
+        if entry.status().contains(Status::CONFLICTED) {
+            return Err(format!("candidate worktree contains a conflict at {path}"));
+        }
+        if !path_is_owned(pathspec, &path) {
+            return Err(format!(
+                "candidate worktree contains undeclared change '{path}'; add it to Task.outputs or remove it before review"
+            ));
+        }
+        if std::fs::symlink_metadata(worktree_dir.join(&path))
+            .ok()
+            .is_some_and(|metadata| metadata.file_type().is_symlink())
+        {
+            return Err(format!("candidate output cannot be a symlink: {path}"));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_worktree_clean(repo: &Repository) -> Result<(), String> {
+    let mut options = git2::StatusOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    if repo
+        .statuses(Some(&mut options))
+        .map_err(|error| format!("verify candidate worktree status: {error}"))?
+        .is_empty()
+    {
+        Ok(())
+    } else {
+        Err("candidate worktree is not clean after freeze".to_string())
+    }
+}
+
+fn require_fast_forward_candidate(
+    repo: &Repository,
+    source: Oid,
+    target: Oid,
+) -> Result<(), String> {
+    let (_source_ahead, source_behind) = repo
+        .graph_ahead_behind(source, target)
+        .map_err(|error| format!("inspect candidate ahead/behind: {error}"))?;
+    if source_behind != 0 {
+        return Err(
+            "candidate source is behind the target; rebase onto the current target and run fresh review"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn inspect_owned_history(
+    repo: &Repository,
+    source: Oid,
+    target: Oid,
+    pathspec: &Pathspec,
+) -> Result<(Oid, Vec<String>), String> {
+    validate_owned_commit_history(repo, source, target, pathspec)?;
+    let merge_base = repo
+        .merge_base(source, target)
+        .map_err(|error| format!("find candidate merge base: {error}"))?;
+    let base_tree = repo
+        .find_commit(merge_base)
+        .and_then(|commit| commit.tree())
+        .map_err(|error| format!("load candidate merge-base tree: {error}"))?;
+    let source_tree = repo
+        .find_commit(source)
+        .and_then(|commit| commit.tree())
+        .map_err(|error| format!("load candidate source tree: {error}"))?;
+    let diff = repo
+        .diff_tree_to_tree(Some(&base_tree), Some(&source_tree), None)
+        .map_err(|error| format!("inspect candidate history: {error}"))?;
+    let mut changed = HashSet::new();
+    let mut conflict = false;
+    diff.foreach(
+        &mut |delta, _| {
+            conflict |= matches!(delta.status(), Delta::Conflicted);
+            for file in [delta.old_file(), delta.new_file()] {
+                if let Some(path) = file.path().and_then(Path::to_str) {
+                    changed.insert(path.replace('\\', "/"));
+                }
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )
+    .map_err(|error| format!("walk candidate history: {error}"))?;
+    if conflict || changed.is_empty() {
+        return Err("candidate history is conflicted or empty".to_string());
+    }
+    for path in &changed {
+        if !path_is_owned(pathspec, path) {
+            return Err(format!(
+                "candidate branch history contains undeclared path '{path}'"
+            ));
+        }
+        if tree_entry_is_symlink(repo, merge_base, path)
+            || tree_entry_is_symlink(repo, source, path)
+        {
+            return Err(format!("candidate history contains a symlink: {path}"));
+        }
+    }
+    let mut changed = changed.into_iter().collect::<Vec<_>>();
+    changed.sort();
+    Ok((merge_base, changed))
+}
+
+/// Validate every commit that the source branch would introduce to the target,
+/// not merely the source-tip net tree. A secret or undeclared path that is added
+/// and later deleted is still present in target history after a fast-forward and
+/// must therefore fail the Task.outputs boundary.
+fn validate_owned_commit_history(
+    repo: &Repository,
+    source: Oid,
+    target: Oid,
+    pathspec: &Pathspec,
+) -> Result<(), String> {
+    let mut walk = repo
+        .revwalk()
+        .map_err(|error| format!("create candidate history walk: {error}"))?;
+    walk.push(source)
+        .map_err(|error| format!("start candidate history walk: {error}"))?;
+    walk.hide(target)
+        .map_err(|error| format!("bound candidate history to target: {error}"))?;
+
+    for oid in walk {
+        let oid = oid.map_err(|error| format!("walk candidate commit: {error}"))?;
+        let commit = repo
+            .find_commit(oid)
+            .map_err(|error| format!("load candidate commit {oid}: {error}"))?;
+        let commit_tree = commit
+            .tree()
+            .map_err(|error| format!("load candidate commit tree {oid}: {error}"))?;
+        let parents = if commit.parent_count() == 0 {
+            vec![None]
+        } else {
+            commit
+                .parents()
+                .map(Some)
+                .collect::<Vec<Option<git2::Commit<'_>>>>()
+        };
+        for parent in parents {
+            let parent_oid = parent.as_ref().map(git2::Commit::id);
+            let parent_tree = parent
+                .as_ref()
+                .map(git2::Commit::tree)
+                .transpose()
+                .map_err(|error| format!("load candidate parent tree for {oid}: {error}"))?;
+            let diff = repo
+                .diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), None)
+                .map_err(|error| format!("inspect candidate commit {oid}: {error}"))?;
+            for delta in diff.deltas() {
+                if matches!(delta.status(), Delta::Conflicted) {
+                    return Err(format!(
+                        "candidate commit {oid} contains a conflicted delta"
+                    ));
+                }
+                for file in [delta.old_file(), delta.new_file()] {
+                    let Some(path) = file.path().and_then(Path::to_str) else {
+                        continue;
+                    };
+                    let path = path.replace('\\', "/");
+                    if !path_is_owned(pathspec, &path) {
+                        return Err(format!(
+                            "candidate commit history contains undeclared path '{path}' in {oid}"
+                        ));
+                    }
+                    if parent_oid.is_some_and(|parent| tree_entry_is_symlink(repo, parent, &path))
+                        || tree_entry_is_symlink(repo, oid, &path)
+                    {
+                        return Err(format!(
+                            "candidate commit history contains a symlink at '{path}' in {oid}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn inspect_owned_candidate(
+    repo_path: &str,
+    source_branch: &str,
+    target_branch: &str,
+    owned_paths: &[String],
+    expected_source_oid: Option<&str>,
+    expected_target_oid: Option<&str>,
+) -> Result<OwnedCandidateSnapshot, String> {
+    validate_branch_name(source_branch)?;
+    validate_branch_name(target_branch)?;
+    if source_branch == target_branch {
+        return Err("candidate source and target branches must differ".to_string());
+    }
+    let pathspec = owned_pathspec(owned_paths)?;
+    let repo = Repository::open(repo_path)
+        .map_err(|error| format!("open candidate repository: {error}"))?;
+    let source_oid = Oid::from_str(&crate::git::resolve_branch_oid(repo_path, source_branch)?)
+        .map_err(|error| format!("decode candidate source OID: {error}"))?;
+    let target_oid = Oid::from_str(&crate::git::resolve_branch_oid(repo_path, target_branch)?)
+        .map_err(|error| format!("decode candidate target OID: {error}"))?;
+    if expected_source_oid.is_some_and(|value| value != source_oid.to_string())
+        || expected_target_oid.is_some_and(|value| value != target_oid.to_string())
+    {
+        return Err("candidate source or target OID moved after review".to_string());
+    }
+    require_fast_forward_candidate(&repo, source_oid, target_oid)?;
+
+    let worktree_dir = predict_worktree_path(repo_path, source_branch);
+    let worktree = Repository::open(&worktree_dir).map_err(|error| {
+        format!(
+            "open candidate worktree {}: {error}",
+            worktree_dir.display()
+        )
+    })?;
+    let head = worktree
+        .head()
+        .map_err(|error| format!("read candidate worktree HEAD: {error}"))?;
+    if !head.is_branch()
+        || head.shorthand().ok() != Some(source_branch)
+        || head
+            .peel_to_commit()
+            .map_err(|error| format!("peel candidate worktree HEAD: {error}"))?
+            .id()
+            != source_oid
+    {
+        return Err("candidate worktree branch/OID binding changed".to_string());
+    }
+    ensure_worktree_clean(&worktree)?;
+    let (merge_base, changed_paths) =
+        inspect_owned_history(&repo, source_oid, target_oid, &pathspec)?;
+    Ok(OwnedCandidateSnapshot {
+        source_oid: source_oid.to_string(),
+        target_oid: target_oid.to_string(),
+        merge_base_oid: merge_base.to_string(),
+        changed_paths,
+    })
+}
+
+/// Freeze the worker's declared outputs, reject every non-ignored undeclared
+/// change and every undeclared path already committed on the source branch,
+/// then return the exact source/target OIDs that review must bind.
+pub fn freeze_owned_worktree_candidate(
+    repo_path: &str,
+    source_branch: &str,
+    target_branch: &str,
+    owned_paths: &[String],
+    message: &str,
+) -> Result<OwnedCandidateSnapshot, String> {
+    validate_branch_name(source_branch)?;
+    validate_branch_name(target_branch)?;
+    if source_branch == target_branch {
+        return Err("candidate source and target branches must differ".to_string());
+    }
+    let pathspec = owned_pathspec(owned_paths)?;
+    let worktree_dir = predict_worktree_path(repo_path, source_branch);
+    remove_backend_done_markers(&worktree_dir)?;
+    let worktree = Repository::open(&worktree_dir).map_err(|error| {
+        format!(
+            "open candidate worktree {}: {error}",
+            worktree_dir.display()
+        )
+    })?;
+    let head = worktree
+        .head()
+        .map_err(|error| format!("read candidate worktree HEAD: {error}"))?;
+    if !head.is_branch() || head.shorthand().ok() != Some(source_branch) {
+        return Err(format!(
+            "candidate worktree is not on branch {source_branch}"
+        ));
+    }
+    ensure_worktree_changes_are_owned(&worktree, &worktree_dir, &pathspec)?;
+    let authority = Repository::open(repo_path)
+        .map_err(|error| format!("open candidate repository: {error}"))?;
+    let source_oid = Oid::from_str(&crate::git::resolve_branch_oid(repo_path, source_branch)?)
+        .map_err(|error| format!("decode pre-freeze source OID: {error}"))?;
+    let target_oid = Oid::from_str(&crate::git::resolve_branch_oid(repo_path, target_branch)?)
+        .map_err(|error| format!("decode pre-freeze target OID: {error}"))?;
+    require_fast_forward_candidate(&authority, source_oid, target_oid)?;
+    validate_owned_commit_history(&authority, source_oid, target_oid, &pathspec)?;
+    commit_owned_worktree(repo_path, source_branch, owned_paths, message)?;
+    inspect_owned_candidate(
+        repo_path,
+        source_branch,
+        target_branch,
+        owned_paths,
+        None,
+        None,
+    )
+}
+
+/// Re-check the exact candidate immediately before the OID-bound merge. This is
+/// read-only and fails closed if either branch tip, worktree cleanliness, or the
+/// full source history changed after review.
+pub fn inspect_owned_candidate_at_oids(
+    repo_path: &str,
+    source_branch: &str,
+    target_branch: &str,
+    owned_paths: &[String],
+    expected_source_oid: &str,
+    expected_target_oid: &str,
+) -> Result<OwnedCandidateSnapshot, String> {
+    inspect_owned_candidate(
+        repo_path,
+        source_branch,
+        target_branch,
+        owned_paths,
+        Some(expected_source_oid),
+        Some(expected_target_oid),
+    )
+}
+
 /// Create the worktree for `branch` if it is not already on disk; a no-op when it
 /// is (idempotent — a task re-dispatched after rework reuses its worktree). This
 /// is what lets the autonomy loop OWN worktree creation at dispatch instead of
@@ -1117,6 +1539,190 @@ mod tests {
             frozen,
             "a crash after commit but before evidence must reuse the same candidate"
         );
+    }
+
+    #[test]
+    fn cockpit_candidate_rejects_an_undeclared_dirty_dependency() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/dirty-review").unwrap();
+        let worktree = predict_worktree_path(&repo_str, "agent/dirty-review");
+        std::fs::write(worktree.join("owned.txt"), "declared").unwrap();
+        std::fs::write(worktree.join("helper.txt"), "undeclared dependency").unwrap();
+
+        let error = freeze_owned_worktree_candidate(
+            &repo_str,
+            "agent/dirty-review",
+            "main",
+            &["owned.txt".to_string()],
+            "candidate",
+        )
+        .unwrap_err();
+
+        assert!(error.contains("undeclared change 'helper.txt'"), "{error}");
+    }
+
+    #[test]
+    fn cockpit_candidate_requires_source_to_be_rebased_onto_target() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/behind-target").unwrap();
+        let worktree = predict_worktree_path(&repo_str, "agent/behind-target");
+        std::fs::write(worktree.join("owned.txt"), "declared candidate").unwrap();
+        let source_before =
+            crate::git::resolve_branch_oid(&repo_str, "agent/behind-target").unwrap();
+
+        std::fs::write(Path::new(&repo_str).join("target-only.txt"), "target moved").unwrap();
+        let run = |args: &[&str]| {
+            let output = crate::process::hidden_command("git")
+                .args(args)
+                .current_dir(&repo_str)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {:?}: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run(&["add", "target-only.txt"]);
+        run(&["commit", "-qm", "target advanced"]);
+
+        let error = freeze_owned_worktree_candidate(
+            &repo_str,
+            "agent/behind-target",
+            "main",
+            &["owned.txt".to_string()],
+            "candidate",
+        )
+        .unwrap_err();
+
+        assert!(error.contains("rebase onto the current target"), "{error}");
+        assert_eq!(
+            crate::git::resolve_branch_oid(&repo_str, "agent/behind-target").unwrap(),
+            source_before,
+            "a behind candidate must be rejected before Aelyris creates a commit"
+        );
+    }
+
+    #[test]
+    fn cockpit_candidate_rejects_undeclared_paths_already_in_source_history() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/history-review").unwrap();
+        let worktree = predict_worktree_path(&repo_str, "agent/history-review");
+        std::fs::write(worktree.join("secret.txt"), "committed outside authority").unwrap();
+        let output = crate::process::hidden_command("git")
+            .args(["add", "secret.txt"])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let output = crate::process::hidden_command("git")
+            .args(["commit", "-qm", "undeclared history"])
+            .current_dir(&worktree)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        std::fs::write(worktree.join("owned.txt"), "declared").unwrap();
+
+        let error = freeze_owned_worktree_candidate(
+            &repo_str,
+            "agent/history-review",
+            "main",
+            &["owned.txt".to_string()],
+            "candidate",
+        )
+        .unwrap_err();
+
+        assert!(
+            error.contains("commit history contains undeclared path 'secret.txt'"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn cockpit_candidate_rejects_undeclared_paths_added_then_deleted_in_history() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/transient-secret").unwrap();
+        let worktree = predict_worktree_path(&repo_str, "agent/transient-secret");
+        let run = |args: &[&str]| {
+            let output = crate::process::hidden_command("git")
+                .args(args)
+                .current_dir(&worktree)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {:?}: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        std::fs::write(worktree.join("secret.env"), "temporary secret").unwrap();
+        run(&["add", "secret.env"]);
+        run(&["commit", "-qm", "add undeclared secret"]);
+        std::fs::remove_file(worktree.join("secret.env")).unwrap();
+        std::fs::write(worktree.join("owned.txt"), "declared output").unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-qm", "remove secret and add output"]);
+        let source_before =
+            crate::git::resolve_branch_oid(&repo_str, "agent/transient-secret").unwrap();
+
+        let error = freeze_owned_worktree_candidate(
+            &repo_str,
+            "agent/transient-secret",
+            "main",
+            &["owned.txt".to_string()],
+            "candidate",
+        )
+        .unwrap_err();
+
+        assert!(
+            error.contains("commit history contains undeclared path 'secret.env'"),
+            "{error}"
+        );
+        assert_eq!(
+            crate::git::resolve_branch_oid(&repo_str, "agent/transient-secret").unwrap(),
+            source_before,
+            "the rejected history must be detected before Aelyris adds another commit"
+        );
+    }
+
+    #[test]
+    fn reviewed_candidate_binding_rejects_a_source_tip_that_moves_after_review() {
+        let (_tmp, repo_str) = base_repo();
+        create_worktree(&repo_str, "agent/stale-review").unwrap();
+        let worktree = predict_worktree_path(&repo_str, "agent/stale-review");
+        let owned = vec!["owned.txt".to_string()];
+        std::fs::write(worktree.join("owned.txt"), "reviewed").unwrap();
+        let reviewed = freeze_owned_worktree_candidate(
+            &repo_str,
+            "agent/stale-review",
+            "main",
+            &owned,
+            "reviewed candidate",
+        )
+        .unwrap();
+
+        std::fs::write(worktree.join("owned.txt"), "changed after review").unwrap();
+        commit_owned_worktree(
+            &repo_str,
+            "agent/stale-review",
+            &owned,
+            "unreviewed candidate",
+        )
+        .unwrap();
+
+        let error = inspect_owned_candidate_at_oids(
+            &repo_str,
+            "agent/stale-review",
+            "main",
+            &owned,
+            &reviewed.source_oid,
+            &reviewed.target_oid,
+        )
+        .unwrap_err();
+        assert!(error.contains("moved after review"), "{error}");
     }
 
     #[test]

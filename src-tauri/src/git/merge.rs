@@ -338,7 +338,7 @@ pub fn perform_merge(
 /// the merge performed — against those exact commits, with no second name
 /// re-resolution. A tip that moved since review yields `StaleTips` instead of
 /// silently merging an unreviewed commit. This is what makes
-/// `aelyris.review.approve` merge only the reviewed change (hard boundary #4).
+/// backend-owned exact-candidate review merge only the reviewed change.
 pub fn perform_merge_bound(
     repo_path: &str,
     source_branch: &str,
@@ -499,12 +499,40 @@ pub fn diff_three_dot(
     // shows, not commits the target gained meanwhile.
     let from_oid = repo.merge_base(base_oid, branch_oid).unwrap_or(base_oid);
 
+    render_diff_between_oids(&repo, from_oid, branch_oid, max_bytes, true)
+}
+
+/// Render a review diff from two immutable commit OIDs. Generic cockpit review
+/// uses this after candidate freeze so a branch ref that moves away and back
+/// cannot make the semantic reviewer inspect a different tree than the gate and
+/// OID-bound merge consume.
+pub fn diff_between_oids(
+    repo_path: &str,
+    from_oid: &str,
+    to_oid: &str,
+    max_bytes: usize,
+) -> Result<String, String> {
+    let repo = git2::Repository::open(repo_path).map_err(|err| format!("open repo: {err}"))?;
+    let from_oid =
+        git2::Oid::from_str(from_oid).map_err(|err| format!("invalid review base OID: {err}"))?;
+    let to_oid = git2::Oid::from_str(to_oid)
+        .map_err(|err| format!("invalid review candidate OID: {err}"))?;
+    render_diff_between_oids(&repo, from_oid, to_oid, max_bytes, false)
+}
+
+fn render_diff_between_oids(
+    repo: &git2::Repository,
+    from_oid: git2::Oid,
+    to_oid: git2::Oid,
+    max_bytes: usize,
+    allow_truncation: bool,
+) -> Result<String, String> {
     let from_tree = repo
         .find_commit(from_oid)
         .and_then(|c| c.tree())
         .map_err(|err| format!("base tree: {err}"))?;
     let branch_tree = repo
-        .find_commit(branch_oid)
+        .find_commit(to_oid)
         .and_then(|c| c.tree())
         .map_err(|err| format!("branch tree: {err}"))?;
 
@@ -534,7 +562,12 @@ pub fn diff_three_dot(
     })
     .map_err(|err| format!("render diff: {err}"))?;
     if truncated {
-        buf.push_str("\n…(diff truncated for review)\n");
+        if !allow_truncation {
+            return Err(format!(
+                "review diff exceeds the {max_bytes}-byte semantic-review limit; split or reduce the candidate and run fresh review"
+            ));
+        }
+        buf.push_str("\n…(diff truncated for preview)\n");
     }
     Ok(buf)
 }
@@ -772,7 +805,7 @@ mod tests {
         commit(&repo, &[("big.txt", big.as_str())], "big", &[a]);
         let diff = diff_three_dot(&path_of(&repo), "main", "feature", 200).unwrap();
         assert!(
-            diff.contains("(diff truncated for review)"),
+            diff.contains("(diff truncated for preview)"),
             "capped output: {diff}"
         );
         // Hard cap: the patch body (before the truncation marker) never exceeds max_bytes.
@@ -785,6 +818,26 @@ mod tests {
 
         // A traversal-style branch name is rejected before opening anything.
         assert!(diff_three_dot(".", "../evil", "feature", 100).is_err());
+    }
+
+    #[test]
+    fn immutable_semantic_review_diff_rejects_truncation() {
+        let (_dir, repo) = init_repo();
+        let base = commit(&repo, &[("base.txt", "base")], "base", &[]);
+        repo.branch("feature", &repo.find_commit(base).unwrap(), false)
+            .unwrap();
+        checkout_branch(&repo, "feature");
+        let big = "review every line\n".repeat(500);
+        let candidate = commit(&repo, &[("big.txt", big.as_str())], "big", &[base]);
+
+        let error = diff_between_oids(
+            &path_of(&repo),
+            &base.to_string(),
+            &candidate.to_string(),
+            200,
+        )
+        .unwrap_err();
+        assert!(error.contains("semantic-review limit"), "{error}");
     }
 
     #[test]

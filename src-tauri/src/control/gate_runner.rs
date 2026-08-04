@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::control::loop_ports::GateRunner;
+use crate::control::loop_ports::{GateRunner, ReviewedCandidateBinding};
 use crate::review::GateResults;
 use sha2::{Digest, Sha256};
 
@@ -79,6 +79,12 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+pub fn gate_results_digest(gates: &GateResults) -> Result<String, String> {
+    serde_json::to_vec(gates)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|error| format!("serialize review gates: {error}"))
 }
 
 fn a7_environment_fingerprint(
@@ -247,6 +253,7 @@ pub struct ProcessGateRunner<R: CommandRunner> {
     repo_path: String,
     commands: GateCommands,
     verdicts: HashMap<String, GateResults>,
+    review_bindings: HashMap<String, ReviewedCandidateBinding>,
     runner: R,
 }
 
@@ -261,8 +268,17 @@ impl<R: CommandRunner> ProcessGateRunner<R> {
             repo_path: repo_path.into(),
             commands,
             verdicts,
+            review_bindings: HashMap::new(),
             runner,
         }
+    }
+
+    pub fn with_review_bindings(
+        mut self,
+        review_bindings: HashMap<String, ReviewedCandidateBinding>,
+    ) -> Self {
+        self.review_bindings = review_bindings;
+        self
     }
 
     /// Decide one objective gate: run its command in `cwd` when configured,
@@ -278,6 +294,10 @@ impl<R: CommandRunner> ProcessGateRunner<R> {
 impl<R: CommandRunner> GateRunner for ProcessGateRunner<R> {
     fn has_verdict(&self, task_id: &str) -> bool {
         self.verdicts.contains_key(task_id)
+    }
+
+    fn review_binding(&self, task_id: &str) -> Option<ReviewedCandidateBinding> {
+        self.review_bindings.get(task_id).cloned()
     }
 
     fn run(&self, task_id: &str, branch: &str) -> GateResults {

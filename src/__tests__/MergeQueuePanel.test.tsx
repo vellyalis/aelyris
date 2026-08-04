@@ -9,9 +9,6 @@ vi.mock("../shared/hooks/useAgentFleet", () => ({
   useAgentFleet: () => ({ fleetSessions: fleetMock.sessions }),
 }));
 
-const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
-vi.mock("../shared/store/toastStore", () => ({ toast: toastMock }));
-
 import { MergeQueuePanel } from "../features/merge-queue/MergeQueuePanel";
 
 function doneSession() {
@@ -52,9 +49,6 @@ let intents: Array<Record<string, unknown>>;
 beforeEach(() => {
   fleetMock.sessions = [doneSession()];
   intents = [];
-  toastMock.success.mockReset();
-  toastMock.error.mockReset();
-  toastMock.info.mockReset();
   tauriMocks.invoke.mockReset();
   tauriMocks.invoke.mockImplementation((cmd: string, _args?: unknown) => {
     switch (cmd) {
@@ -64,20 +58,6 @@ beforeEach(() => {
         return Promise.resolve(readiness);
       case "merge_diff":
         return Promise.resolve("+added line\n-removed line");
-      case "request_merge_intent": {
-        const intent = {
-          intentId: "merge:t1:uuid",
-          repoPath: "/repo",
-          sourceBranch: "agent/feat-x",
-          targetBranch: "main",
-          state: "queued",
-          taskId: "t1",
-        };
-        intents = [intent];
-        return Promise.resolve(intent);
-      }
-      case "approve_merge_intent":
-        return Promise.resolve({ intentId: "merge:t1:uuid", status: "merged" });
       default:
         return Promise.reject(new Error(`unexpected command ${cmd}`));
     }
@@ -105,47 +85,16 @@ describe("MergeQueuePanel", () => {
     });
   });
 
-  it("requests a durable merge intent and then surfaces it as approvable", async () => {
+  it("does not expose the retired raw merge request or approval actions", async () => {
     render(<MergeQueuePanel visible onClose={() => {}} />);
-    fireEvent.click(screen.getByText("Request merge"));
-    await waitFor(() =>
-      expect(tauriMocks.invoke).toHaveBeenCalledWith("request_merge_intent", {
-        repoPath: "/repo",
-        taskId: "t1",
-        sessionId: "t1",
-        sourceBranch: "agent/feat-x",
-        targetBranch: "main",
-      }),
-    );
-    // The reloaded intents now include a queued one → an Approve action appears.
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
-    expect(screen.getByText("queued")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Fast-forward ready")).toBeTruthy());
+    expect(screen.queryByText("Request merge")).toBeNull();
+    expect(screen.queryByText("Approve")).toBeNull();
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith("request_merge_intent", expect.anything());
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith("approve_merge_intent", expect.anything());
   });
 
-  it("approves an existing intent through the durable approve command", async () => {
-    intents = [
-      {
-        intentId: "merge:t1:uuid",
-        repoPath: "/repo",
-        sourceBranch: "agent/feat-x",
-        targetBranch: "main",
-        state: "ready_to_merge",
-        taskId: "t1",
-      },
-    ];
-    render(<MergeQueuePanel visible onClose={() => {}} />);
-    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
-    fireEvent.click(screen.getByText("Approve"));
-    await waitFor(() =>
-      expect(tauriMocks.invoke).toHaveBeenCalledWith("approve_merge_intent", {
-        intentId: "merge:t1:uuid",
-        reviewerId: "operator",
-      }),
-    );
-    await waitFor(() => expect(toastMock.success).toHaveBeenCalled());
-  });
-
-  it("renders a persisted intent with no live session as its own approvable row", async () => {
+  it("renders a persisted intent with no live session as read-only evidence", async () => {
     fleetMock.sessions = [];
     intents = [
       {
@@ -159,7 +108,8 @@ describe("MergeQueuePanel", () => {
     ];
     render(<MergeQueuePanel visible onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText("agent/old-task")).toBeTruthy());
-    expect(screen.getByText("Approve")).toBeTruthy();
+    expect(screen.getByText("queued")).toBeTruthy();
+    expect(screen.queryByText("Approve")).toBeNull();
     expect(screen.queryByText("No branches ready to merge")).toBeNull();
   });
 

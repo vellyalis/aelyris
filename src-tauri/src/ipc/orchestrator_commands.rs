@@ -17,7 +17,7 @@ use crate::file_ownership::FileOwnership;
 use crate::orchestrator::autonomy::StepReport;
 use crate::orchestrator::{plan, DispatchPlan};
 use crate::pty::PtyManager;
-use crate::review::{GateResults, MissionReviewRecord, MissionReviewVerdict};
+use crate::review::{MissionReviewRecord, MissionReviewVerdict};
 use crate::startup_reconciliation::StartupReconciliationState;
 use crate::symbol_ownership::SymbolOwnership;
 use crate::task::{MissionGateEvidence, MissionPlanActivation, TaskManager};
@@ -55,16 +55,11 @@ pub fn orchestrator_plan(
     tasks.read(|graph| plan(graph, &caps, &usage))
 }
 
-/// Drive one autonomy step over the live Task Graph (BR9): resolve reviews with
-/// the caller-supplied gate verdicts into a real git merge, move finished agents
-/// (PTY exit) `Running -> Review`, and dispatch ready tasks by spawning each in a
-/// **visible PTY pane** (1 pane = 1 agent) routed to its owner's model. The loop
-/// logic lives in `control::loop_ports::run_step_visible`; this command adds the
-/// cockpit-side broadcasts: `task-graph-updated`, `orchestrator-step`, and a
-/// `TaskCompleted` event per merged task. (The MCP face keeps the headless
-/// `run_step`.)
-// Six of the arguments are injected Tauri state (app/tasks/cost/fleet/bus/...);
-// only `usage`/`repo_path`/`reviewer_id`/`gates` are the caller's.
+/// Drive one implementation step over the live Task Graph: sense completed
+/// workers and dispatch ready work into visible PTY panes. This public cockpit
+/// command does not accept reviewer identity or gate booleans and therefore
+/// cannot merge a Review task. [`orchestrator_review_and_merge`] is the only
+/// cockpit merge path and keeps the reviewed OIDs entirely backend-owned.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn orchestrator_step(
@@ -80,8 +75,6 @@ pub fn orchestrator_step(
     merge_store: State<'_, Option<Arc<crate::merge_intent::store::MergeIntentStore>>>,
     usage: CostUsage,
     repo_path: String,
-    reviewer_id: String,
-    gates: HashMap<String, GateResults>,
 ) -> Result<StepReport, String> {
     let event_repo_path = repo_path.clone();
     let report = run_step_visible(
@@ -95,10 +88,9 @@ pub fn orchestrator_step(
         &context,
         &usage,
         repo_path,
-        reviewer_id,
-        gates,
-        // The cockpit face supplies reviewer verdicts directly; mechanical gate
-        // commands are an MCP-face (autonomous) opt-in.
+        "cockpit-dispatch-only".into(),
+        HashMap::new(),
+        HashMap::new(),
         None,
         merge_store.inner().clone(),
         // P4 (Supervisor 実体): the loop driver durably records every give-up (a
@@ -159,6 +151,96 @@ pub fn orchestrator_step(
     Ok(report)
 }
 
+/// Result of the cockpit's single authoritative review/merge action. A red
+/// review returns evidence and leaves the task in Review. A green review is
+/// consumed in-process by the exact-OID merge step; the frontend never receives
+/// a reusable approval token or supplies merge-authority fields.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrchestratorReviewAndMergeReport {
+    pub review: super::review_commands::BranchReviewReport,
+    pub step: Option<StepReport>,
+    pub merged: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn orchestrator_review_and_merge(
+    app: AppHandle,
+    tasks: State<'_, Arc<TaskManager>>,
+    startup: State<'_, Arc<StartupReconciliationState>>,
+    cost: State<'_, Arc<CostManager>>,
+    fleet: State<'_, PaneFleet>,
+    bus: State<'_, Arc<EventBus>>,
+    ownership: State<'_, Arc<Mutex<FileOwnership>>>,
+    symbol_ownership: State<'_, Arc<Mutex<SymbolOwnership>>>,
+    context: State<'_, Arc<ContextStoreManager>>,
+    merge_store: State<'_, Option<Arc<crate::merge_intent::store::MergeIntentStore>>>,
+    repo_path: String,
+    task_id: String,
+) -> Result<OrchestratorReviewAndMergeReport, String> {
+    let reviewed = super::review_commands::review_task_candidate(
+        context.inner().clone(),
+        tasks.inner().clone(),
+        repo_path.clone(),
+        task_id.clone(),
+    )
+    .await?;
+
+    if !reviewed.report.merge_ok {
+        return Ok(OrchestratorReviewAndMergeReport {
+            review: reviewed.report,
+            step: None,
+            merged: false,
+        });
+    }
+
+    let reviewer_id = reviewed.binding.reviewer_id.clone();
+    let mut gates = HashMap::new();
+    gates.insert(task_id.clone(), reviewed.report.gates);
+    let mut review_bindings = HashMap::new();
+    review_bindings.insert(task_id.clone(), reviewed.binding);
+
+    let report = run_step_visible(
+        &startup,
+        &tasks,
+        &cost,
+        &fleet,
+        &ownership,
+        Some(symbol_ownership.inner().clone()),
+        &bus,
+        &context,
+        &CostUsage::default(),
+        repo_path,
+        reviewer_id,
+        gates,
+        review_bindings,
+        None,
+        merge_store.inner().clone(),
+        Some(app.state::<crate::db::ManagedDb>().inner()),
+        None,
+    )?;
+    if !report.merged.iter().any(|id| id == &task_id) {
+        return Err(format!(
+            "reviewed task '{task_id}' did not merge; the candidate or merge authority changed"
+        ));
+    }
+
+    let _ = app.emit("task-graph-updated", tasks.list());
+    let _ = app.emit("orchestrator-step", &report);
+    publish_and_emit(
+        &app,
+        &bus,
+        AgentEvent::new(AgentEventKind::TaskCompleted, json!({ "id": task_id })),
+    )?;
+
+    Ok(OrchestratorReviewAndMergeReport {
+        review: reviewed.report,
+        step: Some(report),
+        merged: true,
+    })
+}
+
 /// One explicit A7.2 control-plane tick. The caller selects only the immutable
 /// accepted plan revision; repository, branch, role, owned target, gate argv,
 /// and execution actor/generation are derived by backend owners. The route
@@ -206,6 +288,7 @@ pub fn mission_plan_run(
         // merge ports. Matching the immutable implementer role keeps the task
         // waiting at Review, where the A7.2 exact candidate path takes over.
         "implementer".into(),
+        HashMap::new(),
         HashMap::new(),
         None,
         None,

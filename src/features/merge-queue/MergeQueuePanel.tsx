@@ -1,9 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { CheckCircle2, GitMerge, RefreshCw, X } from "lucide-react";
+import { GitMerge, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentFleet } from "../../shared/hooks/useAgentFleet";
 import type { AgentFleetSession } from "../../shared/lib/agentFleet";
-import { toast } from "../../shared/store/toastStore";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import styles from "./MergeQueuePanel.module.css";
@@ -33,20 +32,11 @@ interface MergeIntent {
   taskId: string;
 }
 
-/** Mirrors crate::control::merge::DurableMergeExecution (serde camelCase). */
-interface DurableMergeExecution {
-  intentId: string;
-  status: string;
-}
-
 const READINESS_META: Record<MergeReadiness["status"], { label: string; tone: string }> = {
   already_merged: { label: "Already merged", tone: "merged" },
   fast_forward_ready: { label: "Fast-forward ready", tone: "ready" },
   merge_review_required: { label: "Review required", tone: "review" },
 };
-
-/** Intent states from which the operator may still approve a merge. */
-const APPROVABLE_STATES = new Set(["queued", "ready_to_merge"]);
 
 interface MergeQueuePanelProps {
   visible: boolean;
@@ -83,46 +73,6 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
     if (visible) void loadIntents();
   }, [visible, loadIntents]);
 
-  const requestMerge = useCallback(
-    async (session: AgentFleetSession) => {
-      try {
-        await invoke<MergeIntent>("request_merge_intent", {
-          repoPath: session.repoPath,
-          taskId: session.id,
-          sessionId: session.id,
-          sourceBranch: session.worktreeBranch,
-          targetBranch,
-        });
-        toast.success("Merge requested", `${session.worktreeBranch} → ${targetBranch}`);
-        await loadIntents();
-      } catch (err) {
-        toast.error("Merge request failed", err instanceof Error ? err.message : String(err));
-      }
-    },
-    [targetBranch, loadIntents],
-  );
-
-  const approveMerge = useCallback(
-    async (intent: MergeIntent) => {
-      try {
-        const execution = await invoke<DurableMergeExecution>("approve_merge_intent", {
-          intentId: intent.intentId,
-          reviewerId: "operator",
-        });
-        if (execution.status === "merged") {
-          toast.success("Merged", `${intent.sourceBranch} → ${intent.targetBranch}`);
-        } else {
-          toast.info(`Merge ${execution.status}`, `${intent.sourceBranch} → ${intent.targetBranch}`);
-        }
-        await loadIntents();
-      } catch (err) {
-        // StaleTips / NeedsReconcile / conflict surface here — never assume success.
-        toast.error("Approve failed", err instanceof Error ? err.message : String(err));
-      }
-    },
-    [loadIntents],
-  );
-
   // Match an intent to a session by task identity (the session id we send as
   // taskId at request time), NOT by branch pair alone — two repos can reuse a
   // branch name, and a branch can be reused for a newer task. Approve only sends
@@ -136,8 +86,8 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
     );
 
   // Durable intents persist across restart / session pruning; surface any that
-  // no longer have a live session as their own rows so the operator can still
-  // inspect and approve them instead of seeing an empty list.
+  // no longer have a live session as read-only evidence. Raw request/approval is
+  // intentionally retired; integration is owned by exact review in Orchestrator.
   const matchedIntentIds = new Set(
     doneSessions
       .map((session) => matchIntentForSession(session)?.intentId)
@@ -150,7 +100,7 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
   return (
     <div className={styles.panel}>
       <PanelHeader
-        title="Ready to Merge"
+        title="Merge Review (read-only)"
         count={doneSessions.length + orphanIntents.length}
         actions={
           <>
@@ -189,8 +139,6 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
               repoPath={session.repoPath ?? ""}
               targetBranch={targetBranch}
               intent={intent}
-              onRequest={() => requestMerge(session)}
-              onApprove={intent ? () => approveMerge(intent) : undefined}
             />
           );
         })}
@@ -201,7 +149,6 @@ export function MergeQueuePanel({ visible, onClose }: MergeQueuePanelProps) {
             repoPath={intent.repoPath}
             targetBranch={intent.targetBranch}
             intent={intent}
-            onApprove={() => approveMerge(intent)}
           />
         ))}
         {doneSessions.length === 0 && orphanIntents.length === 0 && (
@@ -221,12 +168,9 @@ interface MergeRowProps {
   repoPath: string;
   targetBranch: string;
   intent?: MergeIntent;
-  /** Present only for live done-session rows; orphan-intent rows are already requested. */
-  onRequest?: () => void;
-  onApprove?: () => void;
 }
 
-function MergeRow({ sourceBranch, repoPath, targetBranch, intent, onRequest, onApprove }: MergeRowProps) {
+function MergeRow({ sourceBranch, repoPath, targetBranch, intent }: MergeRowProps) {
   const [readiness, setReadiness] = useState<MergeReadiness | null>(null);
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -276,8 +220,6 @@ function MergeRow({ sourceBranch, repoPath, targetBranch, intent, onRequest, onA
   };
 
   const readinessMeta = readiness ? READINESS_META[readiness.status] : null;
-  const canApprove = Boolean(onApprove) && intent != null && APPROVABLE_STATES.has(intent.state);
-
   return (
     <div className={styles.row}>
       <div className={styles.rowHead}>
@@ -305,17 +247,6 @@ function MergeRow({ sourceBranch, repoPath, targetBranch, intent, onRequest, onA
         <button type="button" className={styles.actionBtn} onClick={() => void toggleDiff()}>
           {expanded ? "Hide diff" : "View diff"}
         </button>
-        {onRequest && !intent && (
-          <button type="button" className={styles.actionBtn} onClick={onRequest} title="Request a durable merge intent">
-            Request merge
-          </button>
-        )}
-        {canApprove && onApprove && (
-          <button type="button" className={styles.approveBtn} onClick={onApprove} title="Approve and merge">
-            <CheckCircle2 size={10} strokeWidth={2} aria-hidden="true" />
-            Approve
-          </button>
-        )}
       </div>
       {expanded && diff != null && (
         <pre className={styles.diffPreview}>

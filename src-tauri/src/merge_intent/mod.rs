@@ -6,8 +6,8 @@
 //! at REQUEST time and are immutable thereafter — enforced both here (no setters)
 //! and at the SQLite layer (an `UPDATE` trigger). Only `state`/`updated_at` and
 //! late metadata (`reviewer_id`, `gates_digest`) change after creation. This is
-//! what lets `aelyris.review.approve` take only an `intentId`: the merge target can
-//! never be re-pointed by a caller (the P0-3 security property).
+//! what lets the backend-owned review consumer approve only the stored intent:
+//! the merge target can never be re-pointed after review (the P0-3 security property).
 //!
 //! The SQLite row is the source of truth; an in-memory copy is a read cache only.
 //! The state transition that claims a merge is a conditional `UPDATE` (compare-and

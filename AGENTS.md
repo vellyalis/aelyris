@@ -400,15 +400,16 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
 3. `audit-remediation-instructions.md` - **CERTIFICATION ONLY**. A9.6r1 repo repair
    is complete at `f72a61b3`; signing, real sleep, authenticated operator prompts, and
    external evidence remain release-blocking without repository mutation.
-4. `product-delivery-instructions.md` - **ACTIVE / GMV-2**. GMV-0/1 proved the
-   cockpit goal-to-visible-work-to-review-to-merge path; GMV-2 now binds that exact
-   journey to existing Mission durability and restart owners.
+4. `product-delivery-instructions.md` - **ACTIVE / GMV-3**. GMV-0/1 proved and
+   exact-OID-hardened the cockpit goal-to-visible-work-to-review-to-merge path;
+   GMV-2 bound its accepted Goal and planner identity atomically to the durable
+   TaskGraph and proved restart. GMV-3 now owns Mission settlement/completion.
 5. `ui-quality-instructions.md` - scheduled work is owned by audit-remediation
    phase A3. Do not execute it as a concurrent work order.
 6. `renderer-instructions.md` - deferred to conditional audit-remediation phase
    A8. Do not reopen from the old generic route.
 現行実行順は `refactor (complete) -> hardening (complete) -> audit remediation
-R0..A9/A9.6r1 (repo complete) -> product delivery GMV-0/1 (complete) -> GMV-2 (active)`。A9 certification は
+R0..A9/A9.6r1 (repo complete) -> product delivery GMV-0/1/2 (complete) -> GMV-3 (active)`。A9 certification は
 release claim を BLOCK したまま operator/external lane で継続できるが、repo mutation を
 独占しない。full-native Rust migration は ADR-014 の戦略方向として保持し、ADR-015 と
 上記 migration activation gate を満たすまで自動的な next implementation program に

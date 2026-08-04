@@ -459,8 +459,13 @@ const requiredWorkOrderClauses = [
 const requiredProductWorkOrderClauses = [
   "STATUS: ACTIVE",
   "CURRENT PHASE: `GMV`",
-  "ACTIVE SLICE: `GMV-0`",
-  "NEXT IMPLEMENTATION SLICE: `GMV-0`",
+  "ACTIVE SLICE:",
+  "LAST COMPLETED SLICE:",
+  "NEXT IMPLEMENTATION SLICE:",
+  "### GMV-0",
+  "### GMV-1",
+  "### GMV-2",
+  "### GMV-3",
   "sole repo-mutating product lane",
   "certification-only lane",
 ];
@@ -471,7 +476,7 @@ const requiredArchitectureClauses = [
   "MissionProgressProjection",
   "Control Kernel",
   "finite A7 Core Mission substrate",
-  "active `GMV-0`",
+  "product-delivery-instructions.md",
   "separately gated Apex work",
 ];
 
@@ -1023,12 +1028,20 @@ const a9CertificationOnlyFrontierValid =
   currentFrontier.lastCompletedSlice === "A9.6r1" &&
   currentFrontier.nextPhase === "none" &&
   currentFrontier.nextImplementationSlice === "none";
+const activeProductSlice = /^GMV-(\d+)$/.exec(productFrontier.activeSlice ?? "");
+const nextProductSlice = /^GMV-(\d+)$/.exec(productFrontier.nextImplementationSlice ?? "");
+const activeProductIndex = activeProductSlice ? Number(activeProductSlice[1]) : Number.NaN;
+const nextProductIndex = nextProductSlice ? Number(nextProductSlice[1]) : Number.NaN;
+const expectedLastProductSlice =
+  activeProductIndex === 0 ? "none" : `GMV-${activeProductIndex - 1}`;
 const productDeliveryFrontierValid =
   productFrontier.status === "ACTIVE" &&
   productFrontier.phase === "GMV" &&
-  productFrontier.activeSlice === "GMV-0" &&
-  productFrontier.lastCompletedSlice === "none" &&
-  productFrontier.nextImplementationSlice === "GMV-0";
+  Number.isInteger(activeProductIndex) &&
+  activeProductIndex >= 0 &&
+  activeProductIndex <= 3 &&
+  nextProductIndex === activeProductIndex &&
+  productFrontier.lastCompletedSlice === expectedLastProductSlice;
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1283,7 +1296,7 @@ const checks = [
       currentFrontier.phase === "A9" &&
       a9CertificationOnlyFrontierValid &&
       productDeliveryFrontierValid,
-    "Audit remediation is certification-only after A9.6r1 while product delivery owns active GMV-0 repo implementation",
+    "Audit remediation is certification-only after A9.6r1 while product delivery owns one finite, sequential active GMV slice",
     {
       missingAuditClauses: missing.workOrder,
       missingProductClauses: missing.productWorkOrder,

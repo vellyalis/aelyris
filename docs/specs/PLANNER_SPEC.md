@@ -1,13 +1,15 @@
 # Autonomous Planner & Orchestration Loop Spec (WU-5.1 / 5.2)
 
-> **Implementation status (2026-07-02, verified against code in this repo).**
+> **Implementation status (2026-08-04, verified against code in this repo).**
 > Implemented today:
 >
 > - MCP orchestrator verbs `aelyris.orchestrator.plan` and
 >   `aelyris.orchestrator.step` (`src-tauri/src/api/mcp.rs`): `plan` computes a
->   scheduling plan over the task graph under cost caps; `step` drives the
->   dispatch → review → gated-merge cycle (with optional mechanical
->   `gateCommands` run in each task's worktree).
+>   scheduling plan over the task graph under cost caps; `step` is now the
+>   implementation-only completion/dispatch tick and accepts no review verdicts.
+>   The supported cockpit uses `orchestrator_review_and_merge` to freeze the exact
+>   candidate, run clean-checkout gates/review, and consume an OID-bound merge in
+>   one backend action.
 > - Plan validation: `validate_plan` (`src-tauri/src/task/planner.rs`).
 > - Objective → task-plan decomposition: `decompose_to_plan`
 >   (`src-tauri/src/task/decompose.rs`).
@@ -16,11 +18,11 @@
 > - Replanning of failed tasks: `replan_into` (`src-tauri/src/task/replan.rs`)
 >   via `TaskManager::replan_failed_task`.
 >
-> Still design only (not implemented): an in-app planner UI, an in-process
-> conductor that runs the full loop unattended, and the LLM one-liner →
-> `scripts/fleet/wu-manifest.json` emission pass described in §1. Sections 1–2
-> below describe the target design; where they say a layer is missing, check the
-> modules above first.
+> Product-accessible now: the in-app Orchestrator goal composer, generated
+> TaskGraph inspection, explicit visible dispatch, exact-candidate review/merge,
+> and durable Goal/plan restart. Still design only: a fully unattended conductor
+> and the legacy LLM one-liner → `scripts/fleet/wu-manifest.json` emission pass
+> described in §1. Sections 1–2 retain the broader target design.
 
 > ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
 > requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
@@ -44,9 +46,9 @@ fleet dispatch → parallel impl/test/review → star-comms → sequential gated
 > status banner. Everything downstream also exists or is being built: pane
 > split + launch (`mux_split_pane` / fleet), the implementer/tester/reviewer
 > roles (Orchestra), star comms (`send_keys_by_target` / `.fleet/`), merge
-> (`control/merge.rs`, WU-3.x). The remaining open items are the in-app planner
-> UI, the in-process conductor loop, and the LLM one-liner →
-> `wu-manifest.json` emission pass.
+> (`control/merge.rs`, WU-3.x). The supported in-app path is implemented; the
+> remaining broader items are the fully unattended conductor loop and the legacy
+> LLM one-liner → `wu-manifest.json` emission pass.
 
 ## 0. Insight
 
@@ -107,9 +109,11 @@ agent can drive the implemented backend pipeline directly:
   exposed to the app through the Tauri IPC commands in
   `src-tauri/src/ipc/task_commands.rs` (e.g. `task_submit_plan`), while MCP
   clients create tasks via `aelyris.task.create`.
-- Drive the loop with `aelyris.orchestrator.plan` /
-  `aelyris.orchestrator.step` (`src-tauri/src/api/mcp.rs`), which schedule
-  ready tasks, review finished agents, and perform gated merges.
+- Drive implementation with `aelyris.orchestrator.plan` /
+  `aelyris.orchestrator.step` (`src-tauri/src/api/mcp.rs`): the step senses
+  finished agents, recovers failures, and schedules ready tasks. It does not
+  accept `reviewerId`, `gates`, or `gateCommands` and cannot merge Review work;
+  use the durable OID-bound reviewer/merge authority for that transition.
 - For fleet-manifest-based dispatch, `scripts/fleet/wu-manifest.json` and
   `scripts/fleet/fleet-dispatch.ps1` remain the manifest contract and
   dispatcher.

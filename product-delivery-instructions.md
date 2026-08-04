@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `GMV` (General Mission Vertical).
-ACTIVE SLICE: `GMV-2`.
-LAST COMPLETED SLICE: `GMV-1`.
-NEXT IMPLEMENTATION SLICE: `GMV-2`.
+ACTIVE SLICE: `GMV-3`.
+LAST COMPLETED SLICE: `GMV-2`.
+NEXT IMPLEMENTATION SLICE: `GMV-3`.
 
 ## Goal
 
@@ -41,8 +41,8 @@ Current portfolio classification:
 | Workstream | Decision | Reason |
 | --- | --- | --- |
 | Cockpit goal -> plan -> visible run -> review -> merge | **COMPLETE** | Live exercised through the supported cockpit path on 2026-08-04 |
-| Durable Mission binding and restart | **NOW** | The usable path exists; bind only the fields it actually consumed |
-| Exact-OID Mission settlement | **NEXT** | Add Mission-level proof after restart durability, not another generic merge engine |
+| Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
+| Exact-OID Mission settlement | **NOW** | Extend the proven path into immutable Mission completion without another generic merge engine |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Remote Continuity | **PARKED** | Local core journey is not yet complete |
 | Proofbook product UI, Fleet Briefing, broad budget UX | **PARKED** | Adjacent value with lower current contribution |
@@ -53,7 +53,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `GMV-2` is active.
+- This work order is the sole repo-mutating product lane. `GMV-3` is active.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
   for release/public claims, but they do not make every bounded GMV slice wait idle.
@@ -124,9 +124,22 @@ Status: **COMPLETE**.
 
 - When implementation reaches `Review`, run the existing project gate detector and
   independent semantic reviewer from the same Orchestrator surface.
-- Feed a real green verdict into the existing `orchestrator_step` merge owner.
+- Freeze the candidate before review, prove the full merge-base-to-source history
+  touches only `Task.outputs`, and run gates/review in a clean detached checkout at
+  that exact candidate OID.
+- Require the generic candidate to be fast-forwardable from the current target.
+  A source branch behind the target must be rebased and freshly reviewed; Aelyris
+  does not synthesize an unreviewed three-way merge tree.
+- Treat semantic-review diff truncation as merge-ineligible. Read-only previews may
+  be capped, but an authority-bearing review must cover the complete candidate diff.
+- Consume the reviewed source/target OIDs, reviewer identity, and gate digest inside
+  one backend review-and-merge command. Raw frontend/MCP gate booleans are evidence,
+  never merge authority; `orchestrator_step` is implementation-only.
 - Commit and merge only backend-declared `Task.outputs`; runtime markers, build
-  caches, and undeclared files never become candidate content.
+  caches, undeclared dirty files, and undeclared prior branch commits never become
+  candidate content.
+- Derive the semantic-review provider from the authoritative `Task.model` instead of
+  hardcoding Codex in the frontend.
 - Keep a red review actionable in the cockpit instead of silently re-dispatching on
   an empty verdict map.
 - Done: the live cockpit path reaches `Done`, the declared output is on the target
@@ -135,14 +148,24 @@ Status: **COMPLETE**.
 ### GMV-2 — Durable Mission Binding And Resume
 
 Capability target: `Product-Accessible` persistence over the GMV-0 journey.
+Status: **COMPLETE**.
 
-- Bind the accepted GMV-0 plan and launched TaskGraph work to the existing Mission
-  preview/activation owners.
+- Bind the accepted Goal and exact generated task-plan identity to the existing
+  Mission preview owner while the existing TaskGraph remains mutable execution truth.
 - Generalize only the fields required by the live GMV-0 input; keep the frozen A7
   fixture as conformance evidence rather than a production admission rule.
-- Restore the same accepted request, plan, and active work after restart.
+- Accept Mission and publish the generated TaskGraph in one SQLite transaction; a
+  crash may expose neither fact or both facts, never a half-accepted plan.
+- Persist and restore planner-derived task IDs, dependency order, outputs, verified
+  symbol intents, branches, models, retry counters, and runtime status without a
+  frontend or second-plan owner.
+- Restore the latest accepted cockpit Mission by backend-canonical repository
+  identity and acceptance transaction order; preview creation time cannot outrank
+  a later accepted plan, and the frontend does not select or normalize Mission rows.
 - No new Mission engine, TaskGraph, journal, persistence table, or frontend state owner.
-- Done: the GMV-0 journey survives restart without manual reconstruction.
+- Done: a live Goal-to-Done journey was restarted against the same isolated SQLite
+  database on 2026-08-04; Mission ID, plan ID, Goal, task `Done`, target OID, clean
+  repository, and reclaimed worktree all remained exact.
 
 ### GMV-3 — Exact-OID Settlement And Completion
 
@@ -165,7 +188,7 @@ GMV or bypassing an owning product decision.
 
 - No new top-level verifier unless an existing gate cannot detect a named new failure
   mode; extend or replace an existing gate first.
-- Until GMV-2 is Product-Accessible, no standalone docs-, verifier-, review-, state-,
+- Until GMV-3 is Claim-Eligible, no standalone docs-, verifier-, review-, state-,
   or architecture-only commit is allowed. Such edits may accompany the product diff
   that consumes them in the same slice.
 - The next two completed slices must change product/runtime behavior. A Critical

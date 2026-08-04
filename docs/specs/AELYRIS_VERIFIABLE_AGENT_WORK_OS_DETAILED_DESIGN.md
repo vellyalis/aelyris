@@ -2648,19 +2648,19 @@ parses this block fail-closed and proves the section 3.2 catalog is exhaustive.
     {
       "journeyStep": "fresh_tests",
       "ipc": { "action": "orchestrator_step test phase", "disposition": "route", "seam": "ProcessGateRunner", "reason": "A7.2 wires the frozen argv into the existing gate runner and binds its result to the candidate OID" },
-      "mcp": { "action": "aelyris.orchestrator.step.gateCommands", "disposition": "compatibility_no_a7_authority", "seam": "ProcessGateRunner", "reason": "the compatibility path still executes but accepts caller-selected gate commands without the fixed Mission contract and grants no A7 evidence authority" },
+      "mcp": { "action": "aelyris.orchestrator.step", "disposition": "compatibility_no_a7_authority", "seam": "run_step", "reason": "the compatibility path still executes completion sensing and dispatch but no longer accepts gate commands or review verdicts, and grants no A7 evidence authority" },
       "pty": { "action": "terminal test output", "disposition": "no_a7_authority", "seam": "command evidence projection only", "reason": "raw terminal output may be displayed but cannot prove a fresh gate or tested OID" }
     },
     {
       "journeyStep": "independent_review",
-      "ipc": { "action": "review_branch", "disposition": "compatibility_no_a7_authority", "seam": "review module", "reason": "the compatibility command still executes but performs a hidden preparatory commit and accepts caller reviewer identity; it grants no A7 review authority" },
-      "mcp": { "action": "aelyris.orchestrator.step reviewerId and gates", "disposition": "compatibility_no_a7_authority", "seam": "review module", "reason": "the compatibility action still executes, but caller-supplied reviewer and verdict are not independent-review authority" },
+      "ipc": { "action": "review_branch | orchestrator_review_and_merge", "disposition": "compatibility_no_a7_authority", "seam": "Task.outputs freeze -> clean detached checkout -> review module -> bound MergeIntent", "reason": "the generic cockpit path still executes exact-OID review and merge, but it does not mint the A7 Mission reviewer-lineage record" },
+      "mcp": { "action": "aelyris.orchestrator.step reviewerId/gates", "disposition": "no_a7_authority", "seam": "retired caller-authored authority surface", "reason": "caller-supplied reviewer identity, gate commands, and raw verdict booleans are rejected and cannot authorize merge" },
       "pty": { "action": "agent self-review text", "disposition": "no_a7_authority", "seam": "none", "reason": "implementer text may exist but cannot establish reviewer independence or exact-OID review" }
     },
     {
       "journeyStep": "exact_oid_accept_merge",
-      "ipc": { "action": "request_merge_intent + approve_merge_intent", "disposition": "route", "seam": "MergeIntentStore -> MergeRepo -> control::merge", "reason": "the existing immutable source/target OID and CAS owner is extended with Mission and review evidence in A7.3" },
-      "mcp": { "action": "aelyris.request_merge + aelyris.review.approve", "disposition": "compatibility_no_a7_authority", "seam": "MergeIntentStore", "reason": "the compatibility actions still execute, but the direct face accepts caller authority and lacks accepted Mission/review lineage binding" },
+      "ipc": { "action": "orchestrator_review_and_merge | mission_plan_acceptance", "disposition": "route", "seam": "ReviewedCandidateBinding -> MergeIntentStore -> MergeRepo -> control::merge", "reason": "generic cockpit review consumes one backend-owned exact-OID binding; typed Mission acceptance extends the same immutable source/target OID and CAS owner with Mission/review evidence" },
+      "mcp": { "action": "aelyris.request_merge + aelyris.review.approve", "disposition": "no_a7_authority", "seam": "retired compatibility errors", "reason": "the raw MCP names remain cataloged only to fail closed and cannot create or approve a merge intent" },
       "pty": { "action": "git merge command text", "disposition": "no_a7_authority", "seam": "none", "reason": "shell text may execute but is not an exact-OID merge receipt or settlement authority" }
     },
     {
@@ -2958,7 +2958,7 @@ risk, and proof policies. The unlock gains no dispatch or completion authority h
   "authorityBoundary": {
     "capabilityUnlockAuthorizesOwnImplementation": false,
     "compatibilityWithoutA7Authority": [
-      "orchestrator_step caller repoPath/reviewerId/gates",
+      "orchestrator_step caller repoPath/activeAgents (implementation only)",
       "aelyris.orchestrator.step",
       "aelyris.spawn_agent",
       "aelyris.agent.spawn_visible",

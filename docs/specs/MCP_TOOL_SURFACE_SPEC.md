@@ -9,16 +9,16 @@
 > JSON-RPC source and focused verifiers own implemented transport truth; stdio or
 > other proposed transport text is not an implemented claim.
 
-> ⚠️ **Merge-model update (2026-06-15) — read first.** The authoritative
+> ⚠️ **Merge-model update (2026-08-04) — read first.** The authoritative
 > requirements ([docs/requirements.md](../requirements.md)) describe a **bounded
-> autonomy** model: agents can dispatch, review, and merge through **gated controls**,
-> and autonomy is bounded by verifier gates (this is alpha). A Reviewer agent
-> (reviewer ≠ implementer) can advance `request_merge` to `done` only after all
-> quality gates are green, and tool-approval can be auto-decided within a policy
-> envelope that keeps an auto-deny floor for catastrophic/irreversible ops. The
-> §3.5 / §4 "GATED / never returns done / human clicks grant / never auto-merges
-> main" content describes the **earlier v1 gate model** — treat it as historical on
-> the *merge* and *human-grant* axes; these mechanics are rewritten during Batch E/G.
+> autonomy** model. `aelyris.orchestrator.step` is implementation-only and stops
+> completed work at `Review`; it accepts no reviewer identity, gate commands, or
+> raw verdict booleans. The legacy MCP names `aelyris.request_merge` and
+> `aelyris.review.approve` remain cataloged only as fail-closed compatibility
+> errors. Generic integration is owned by the cockpit's backend-only
+> exact-candidate review-and-merge command, while typed Mission acceptance owns
+> Mission review/settlement. Earlier request/approve examples below are historical
+> unless this update explicitly rewrites them.
 > Automated, non-blocking compensating controls and human post-hoc override remain.
 
 Status: Draft / binding design alignment
@@ -198,7 +198,8 @@ the watchdog policy engine + human inbox resolve. See §4.
 |------|-----------|---------|------------|-------|
 | `aelyris.request_approval` | **params** `{ sessionId: string, tool: string, summary?: string, risk?: "low"\|"medium"\|"high"\|"critical" }` → **return** `{ intentId: string, status: "auto_approved"\|"auto_denied"\|"pending", rule?: string }` | Watchdog evaluation `WatchdogEngine::evaluate` `src-tauri/src/watchdog/engine.rs:30` → `WatchdogDecision::{AutoApprove,AutoDeny,AskUser}` (`engine.rs:7-14`). `AskUser` surfaces to the human inbox as a `permission_required` decision (`src/shared/lib/decisionInbox.ts:5-12`). The enqueue/observe IPC pair is **NEW**; the *decision engine* exists. | **GATED** | The orchestrator submits a request; the **engine** decides. Low-risk patterns auto-approve (`engine.rs:35-47`), unmatched → `AskUser` → routes to the human Decision Inbox (`src/features/decision-inbox/DecisionInboxPanel.tsx`). The tool returns the **decision status**, it does not *make* the decision. No `grant` parameter exists by construction. |
 | `aelyris.list_pending_approvals` | **params** `{}` → **return** `{ pending: HumanDecisionItem[] }` (`src/shared/lib/decisionInbox.ts:25-43`) | Derived from the decision inbox model (`buildDecisionInbox`, `src/shared/lib/decisionInbox.ts`), fed by agent watchdog events (`watchdog-decision-{sessionId}`, `src-tauri/src/ipc/commands.rs:4269-4292`) and audit events. A read IPC/MCP accessor is **NEW**. | **GATED (observe-only)** | Read-only poll of the human queue. Returns `pending` items only; the orchestrator uses this to *wait* for a human/engine decision. It cannot resolve an item. |
-| `aelyris.request_merge` | **params** `{ taskId?: string, sessionId?: string, repoPath: string, sourceBranch: string, targetBranch: string }` → **return** `{ intentId, status, intent }` | Implemented in `src-tauri/src/api/mcp.rs` through the durable `MergeIntentStore` and `src-tauri/src/control/merge.rs`. It captures repo/source/target branch tips and OIDs at request time and is idempotent per reviewed branch state. | **GATED** | Queues a durable, OID-bound merge intent. It does not by itself merge or re-point branches. The real merge path is `aelyris.review.approve`, which approves a stored intent by id, rejects override fields, re-validates bound tips, and uses `perform_merge_bound`; moved tips become `needs_reconcile` rather than silently merging unreviewed code. |
+| `aelyris.request_merge` | Legacy params retained for schema compatibility | Retired dispatcher stub in `src-tauri/src/api/mcp/dispatch.rs` | **GATED / retired** | Always returns a validation error before repository or persistence effects. Generic merge intents are minted only inside backend-owned exact-candidate review. |
+| `aelyris.review.approve` | Legacy `{ intentId }` shape retained for schema compatibility | Retired dispatcher stub in `src-tauri/src/api/mcp/dispatch.rs` | **GATED / retired** | Always returns a validation error and never claims or merges an intent. This closes raw caller-authored approval; `review.reject` and pending-list remain recovery/observation controls for existing durable rows. |
 
 ### 3.6 `AgentRunStatus` alignment (shared name)
 
@@ -504,9 +505,9 @@ publishes a system-channel `EscalationRaised` EventBus event with
 
 ## 6. Worked example: Opus orchestrator dispatching 3 agents
 
-Goal: implement three independent modules in parallel, observe, then request a
-gated merge of the one that's ready. All FREE calls run without human friction;
-the merge is GATED.
+Goal: implement three independent modules in parallel and observe them through
+Review. All FREE calls run without human friction; generic MCP orchestration
+intentionally stops before merge authority.
 
 ```
 # 1. Dispatch a fleet — three FREE spawns, each in its own worktree.
@@ -539,25 +540,22 @@ the merge is GATED.
                risk:"high", status:"pending", title:"write outside workspace" } ] }
    # The orchestrator records this and moves on. It cannot resolve d-9.
 
-# 6. Request a GATED merge of the ready branch. This STAGES — it never merges main.
-→ aelyris.request_merge { sessionId:"s-a1", sourceBranch:"feat/auth", targetBranch:"main" }
-← { intentId:"m-7", status:"queued", stagedCommitSha:"abc1234" }
-   # status:"queued", NOT "done". A human grants in the Cockpit UI; the engine
-   # never auto-merges to main.
+# 6. Advance implementation until the task reaches Review.
+→ aelyris.orchestrator.step { repoPath:"C:/proj", activeAgents:0 }
+← { dispatched:[], merged:[], state:"active" }
+   # No reviewerId/gates/gateCommands exist on this tool. The raw MCP
+   # request_merge/review.approve names are retired and return errors.
+   # Open the Cockpit's Review & merge action, or use typed Mission acceptance,
+   # so candidate freeze, clean-checkout gates, semantic review, and OID-bound
+   # merge remain one backend-owned authority path.
 
-# 7. Poll for the human decision (observe-only loop).
-→ aelyris.list_pending_approvals {}
-← { pending:[ { id:"m-7", type:"merge_conflict_strategy", status:"pending", risk:"high" } ] }
-   # ... repeat until the human resolves it in Face 1; m-7 leaves `pending`.
-
-# 8. Clean up the merged worktree (FREE).
+# 7. Clean up an abandoned or non-merged worktree explicitly when appropriate (FREE).
 → aelyris.stop_agent { sessionId:"s-a1", removeWorktree:true }
 ← { ok:true }
 ```
 
 Key takeaways the example demonstrates:
-- Steps 1-4, 8 are FREE — the orchestrator runs the whole fan-out/observe/steer
+- Steps 1-4, 7 are FREE — the orchestrator runs the whole fan-out/observe/steer
   loop with zero human friction.
-- Steps 5-7 are GATED — every privileged transition is `pending`/`queued`, and the
-  only resolver is the watchdog engine or a human in Face 1. The orchestrator's
-  role is strictly request + observe + poll.
+- Step 5 remains the tool-approval gate. Step 6 demonstrates the separate merge
+  boundary: MCP observes Review but cannot manufacture or approve merge authority.

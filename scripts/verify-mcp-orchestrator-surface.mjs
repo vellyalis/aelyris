@@ -19,6 +19,8 @@ const merge = read("src-tauri/src/control/merge.rs");
 const gitMod = read("src-tauri/src/git/mod.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");
+const orchestratorIpc = read("src-tauri/src/ipc/orchestrator_commands.rs");
+const reviewIpc = read("src-tauri/src/ipc/review_commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
 const autonomy = read("src-tauri/src/orchestrator/autonomy.rs");
 const gateRunner = read("src-tauri/src/control/gate_runner.rs");
@@ -104,20 +106,14 @@ const checks = [
     detail: "approval requests create pending inbox items instead of grants",
   },
   {
-    id: "request-merge-binds-durable-intent",
+    id: "raw-request-merge-is-retired-fail-closed",
     ok:
       apiMcp.includes('"aelyris.request_merge"') &&
-      // P0-3: request_merge mints a DURABLE immutable intent (not a RAM queue),
-      // capturing the canonical repo + the resolved branch OIDs at request time.
-      apiMcp.includes("state.merge_store.as_ref()") &&
-      apiMcp.includes('arg_string(&args, "repoPath")') &&
-      apiMcp.includes('arg_string(&args, "taskId")') &&
-      apiMcp.includes("crate::merge_intent::MergeIntent {") &&
-      apiMcp.includes("store.create_or_get(&intent)") &&
-      // ...and never merges to main at request time.
+      apiMcp.includes("aelyris.request_merge is retired") &&
+      apiMcp.includes("generic merge intents are backend-owned by exact-candidate review") &&
       !apiMcp.includes('"aelyris.merge_to_main"'),
     detail:
-      "request_merge captures repo/branch/OIDs into a durable, immutable intent; it never merges",
+      "the legacy request_merge name remains a fail-closed compatibility error and cannot mint merge authority",
   },
   {
     id: "merge-readiness-read-only-backend",
@@ -139,21 +135,21 @@ const checks = [
     detail: "pending approval polling explicitly reports no grant tool exposure",
   },
   {
-    id: "reviewer-approve-binds-to-stored-intent",
+    id: "raw-review-approve-is-retired-and-generic-cockpit-is-exact-bound",
     ok:
       apiMcp.includes('"aelyris.review.approve"') &&
       apiMcp.includes('"aelyris.review.reject"') &&
-      // P0-3 boundary #1/#4: approve NEVER takes caller repo/source/target; the
-      // old override call is gone, replaced by an OID-bound merge of the stored
-      // intent, claimed via the DB compare-and-swap.
-      !apiMcp.includes("crate::git::perform_merge(&repo_path, &source_branch, &target_branch)") &&
-      apiMcp.includes("APPROVE_ALLOWED") &&
-      apiMcp.includes("crate::control::merge::approve_durable_intent(") &&
+      apiMcp.includes("aelyris.review.approve is retired") &&
+      reviewIpc.includes("freeze_owned_worktree_candidate(") &&
+      reviewIpc.includes("DetachedReviewWorktree::create(") &&
+      orchestratorIpc.includes("pub async fn orchestrator_review_and_merge(") &&
+      orchestratorIpc.includes("review_bindings.insert(task_id.clone(), reviewed.binding)") &&
+      loopPorts.includes("request_durable_intent_bound(") &&
       merge.includes("crate::git::perform_merge_bound(") &&
       merge.includes(".claim_for_merge(intent_id, now)") &&
       gitMerge.includes("pub fn perform_merge_bound"),
     detail:
-      "reviewer approve binds to the stored immutable intent (intentId only), CAS-claims, and runs an OID-bound merge; reject resolves without merging",
+      "raw MCP approve is retired; the supported cockpit freezes outputs, reviews a clean exact candidate, then consumes its in-process binding through CAS-claimed OID-bound merge",
   },
   {
     id: "mcp-spawn-enforces-cost-gate",
@@ -189,7 +185,7 @@ const checks = [
       api.includes("pub task_manager: Option<Arc<crate::task::TaskManager>>") &&
       api.includes("pub fn with_task_manager") &&
       lib.includes(".with_task_manager(task_manager)") &&
-      lib.includes("Arc::new(task::TaskManager::new())"),
+      lib.includes("Arc::new(task::TaskManager::new_durable())"),
     detail:
       "orchestrator AI can decompose/assign/inspect the Task Graph over MCP against the same Arc<TaskManager> the cockpit shows (one source of truth, BR4/BR9)",
   },
@@ -205,7 +201,7 @@ const checks = [
       agentClaude.includes("pub fn reap(&self) -> ReapOutcome") &&
       agentClaude.includes("pub fn set_task("),
     detail:
-      "orchestrator.step drives one real autonomy step over MCP (shared run_step): finished agents (reap) -> review, green verdict -> real merge, ready -> spawn; same loop as Face 1",
+      "orchestrator.step drives the real implementation-only loop over MCP: finished agents (reap) -> Review, failures recover, and ready tasks spawn; it accepts no review verdict and cannot merge",
   },
   {
     id: "mcp-orchestrator-recovers-crashed-agents",
@@ -256,22 +252,17 @@ const checks = [
       "a mid-flight decision converges: every (re-)dispatch injects the current ADR (build_adr_header from context.all()), and review-rejected stale work is re-dispatched for rework rather than stranded (BR6, ③ context sync)",
   },
   {
-    id: "mcp-orchestrator-mechanical-gate",
+    id: "mcp-step-has-no-caller-gate-authority",
     ok:
-      // The mechanical gate runs the target project's commands in the worktree
-      // and maps real exit codes, so a red branch cannot merge (BR9 / ⑧).
-      gateRunner.includes("pub struct ProcessGateRunner") &&
-      gateRunner.includes("pub trait CommandRunner") &&
-      gateRunner.includes("pub struct SystemCommandRunner") &&
-      gateRunner.includes("status.success()") &&
-      // Wired into the shared loop step + exposed on the MCP step verb.
-      loopPorts.includes("ProcessGateRunner::new(") &&
-      loopPorts.includes("SystemCommandRunner") &&
-      loopPorts.includes("gate_commands: Option<crate::control::gate_runner::GateCommands>") &&
-      apiMcp.includes('"gateCommands"') &&
-      apiMcp.includes("gate_commands,"),
+      apiMcp.includes('"aelyris.orchestrator.step"') &&
+      apiMcp.includes("no longer accepts caller-authored review gates") === false &&
+      !apiMcp.includes('"gateCommands"') &&
+      !apiMcp.includes('"reviewerId"') &&
+      reviewIpc.includes("review::detect_gate_commands(detached.path())") &&
+      reviewIpc.includes("review::review_branch(&input, review::spawn_run") &&
+      gateRunner.includes("gate_results_digest"),
     detail:
-      "orchestrator.step can decide the objective gates (tests/lint/types) mechanically — ProcessGateRunner runs the configured commands in each worktree and maps real exit codes, so a branch whose tests fail cannot merge (BR9, ⑧)",
+      "MCP orchestrator.step exposes no reviewerId/gates/gateCommands; project gates and semantic review run only inside backend-owned exact-candidate review",
   },
   {
     id: "mcp-orchestrator-enforces-disjoint-lanes",

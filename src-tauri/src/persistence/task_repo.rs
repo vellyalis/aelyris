@@ -1,7 +1,7 @@
 //! `TaskRepo` — persistence for the Task Graph (FR-2).
 //!
 //! The Task Graph's live state (status, crash/rework/timeout attempts, branch
-//! bindings, outputs) is mutated through `TaskManager` — including the opaque
+//! bindings, outputs, verified symbol intents) is mutated through `TaskManager` — including the opaque
 //! revisioned snapshot/apply boundary the autonomy loop drives. Rather than try to
 //! diff which tasks changed inside that closure (a missed site = a silent
 //! durability hole), `save_graph` persists the WHOLE graph snapshot atomically
@@ -37,6 +37,7 @@ struct RawTask {
     priority: String,
     estimate: Option<i64>,
     outputs_json: String,
+    symbols_json: String,
     source_branch: Option<String>,
     target_branch: Option<String>,
     crash_attempts: i64,
@@ -883,16 +884,58 @@ impl TaskRepo {
         tx.commit().map_err(|e| format!("Commit task tx: {e}"))
     }
 
+    /// Persist one accepted cockpit Mission and the exact generated TaskGraph in
+    /// the same SQLite transaction. A crash can therefore expose neither fact
+    /// or both facts, but never an accepted Goal without its runnable plan (or a
+    /// graph without the Mission identity that the cockpit restores).
+    pub fn persist_accepted_cockpit_plan(
+        db: &Database,
+        preview: &MissionPlanPreview,
+        decision_principal_id: &str,
+        graph: &TaskGraph,
+    ) -> Result<MissionPlanPreview, MissionPlanError> {
+        preview.verify_integrity()?;
+        if preview.status != MissionPlanStatus::Previewed {
+            return Err(MissionPlanError::Validation(
+                "cockpit plan transaction requires a previewed Mission".into(),
+            ));
+        }
+        validate_decision_principal(decision_principal_id)?;
+        let tx = db.conn().unchecked_transaction().map_err(|error| {
+            MissionPlanError::Persistence(format!(
+                "begin accepted cockpit Mission transaction: {error}"
+            ))
+        })?;
+        Self::insert_mission_plan_preview(db, preview)?;
+        let accepted = Self::decide_mission_plan(
+            db,
+            &preview.plan_id,
+            preview.plan_revision,
+            MissionPlanStatus::Accepted,
+            decision_principal_id,
+            None,
+        )?;
+        Self::save_graph_tx(&tx, graph).map_err(MissionPlanError::Persistence)?;
+        tx.commit().map_err(|error| {
+            MissionPlanError::Persistence(format!(
+                "commit accepted cockpit Mission transaction: {error}"
+            ))
+        })?;
+        Ok(accepted)
+    }
+
     fn save_graph_tx(tx: &rusqlite::Transaction<'_>, graph: &TaskGraph) -> Result<(), String> {
         for (sort_order, task) in graph.list().iter().enumerate() {
             let outputs_json = serde_json::to_string(&task.outputs)
                 .map_err(|e| format!("Serialize outputs for {}: {e}", task.id))?;
+            let symbols_json = serde_json::to_string(&task.symbols)
+                .map_err(|e| format!("Serialize symbols for {}: {e}", task.id))?;
             tx.execute(
                 "INSERT INTO tasks (
                      id, title, description, status, owner, model, priority,
-                     estimate, outputs_json, source_branch, target_branch,
+                     estimate, outputs_json, symbols_json, source_branch, target_branch,
                      crash_attempts, rework_attempts, timeout_attempts, sort_order
-                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
+                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
                  ON CONFLICT(id) DO UPDATE SET
                      title = excluded.title,
                      description = excluded.description,
@@ -902,6 +945,7 @@ impl TaskRepo {
                      priority = excluded.priority,
                      estimate = excluded.estimate,
                      outputs_json = excluded.outputs_json,
+                     symbols_json = excluded.symbols_json,
                      source_branch = excluded.source_branch,
                      target_branch = excluded.target_branch,
                      crash_attempts = excluded.crash_attempts,
@@ -918,6 +962,7 @@ impl TaskRepo {
                     task.priority.as_str(),
                     task.estimate,
                     outputs_json,
+                    symbols_json,
                     task.source_branch,
                     task.target_branch,
                     task.crash_attempts,
@@ -976,7 +1021,7 @@ impl TaskRepo {
         let mut stmt = conn
             .prepare(
                 "SELECT id, title, description, status, owner, model, priority,
-                        estimate, outputs_json, source_branch, target_branch,
+                        estimate, outputs_json, symbols_json, source_branch, target_branch,
                         crash_attempts, rework_attempts, timeout_attempts
                  FROM tasks ORDER BY sort_order ASC, rowid ASC",
             )
@@ -993,11 +1038,12 @@ impl TaskRepo {
                     priority: row.get(6)?,
                     estimate: row.get(7)?,
                     outputs_json: row.get(8)?,
-                    source_branch: row.get(9)?,
-                    target_branch: row.get(10)?,
-                    crash_attempts: row.get(11)?,
-                    rework_attempts: row.get(12)?,
-                    timeout_attempts: row.get(13)?,
+                    symbols_json: row.get(9)?,
+                    source_branch: row.get(10)?,
+                    target_branch: row.get(11)?,
+                    crash_attempts: row.get(12)?,
+                    rework_attempts: row.get(13)?,
+                    timeout_attempts: row.get(14)?,
                 })
             })
             .map_err(|e| format!("Query tasks: {e}"))?
@@ -1008,6 +1054,8 @@ impl TaskRepo {
         for raw in raws {
             let outputs: Vec<String> = serde_json::from_str(&raw.outputs_json)
                 .map_err(|e| format!("Parse outputs for {}: {e}", raw.id))?;
+            let symbols = serde_json::from_str(&raw.symbols_json)
+                .map_err(|e| format!("Parse symbols for {}: {e}", raw.id))?;
             let task = Task {
                 dependencies: deps.remove(&raw.id).unwrap_or_default(),
                 status: TaskStatus::from_str(&raw.status)
@@ -1021,9 +1069,7 @@ impl TaskRepo {
                 rework_attempts: u32::try_from(raw.rework_attempts).unwrap_or(0),
                 timeout_attempts: u32::try_from(raw.timeout_attempts).unwrap_or(0),
                 outputs,
-                // Symbol intents are not persisted yet (re-declared per session);
-                // a restored task falls back to file-level exclusivity until then.
-                symbols: Vec::new(),
+                symbols,
                 id: raw.id,
                 title: raw.title,
                 description: raw.description,
@@ -1226,6 +1272,38 @@ impl TaskRepo {
             }
         };
         raws.into_iter().map(decode_mission_plan).collect()
+    }
+
+    /// Return the most recently *accepted* cockpit Mission for one canonical
+    /// repository. `rowid` is the acceptance linearization tiebreaker because a
+    /// cockpit row is inserted and accepted in the same serialized transaction;
+    /// preview construction time therefore cannot outrank a later acceptance.
+    pub fn latest_accepted_cockpit_mission(
+        db: &Database,
+        repository_root: &str,
+        governance_policy_id: &str,
+    ) -> Result<Option<MissionPlanPreview>, MissionPlanError> {
+        let raw = db
+            .conn()
+            .query_row(
+                "SELECT plan_id, plan_revision, request_id, mission_id, mission_revision,
+                        request_digest, content_digest, preview_json, status,
+                        decision_principal_id, decision_reason, created_at_ms, decided_at_ms
+                   FROM mission_plan_revisions
+                  WHERE status = 'accepted'
+                    AND json_extract(preview_json, '$.repositoryRoot') = ?1
+                    AND json_extract(
+                        preview_json,
+                        '$.missionDefinition.teamPolicy.governancePolicyId'
+                    ) = ?2
+                  ORDER BY decided_at_ms DESC, rowid DESC
+                  LIMIT 1",
+                params![repository_root, governance_policy_id],
+                raw_mission_plan,
+            )
+            .optional()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        raw.map(decode_mission_plan).transpose()
     }
 
     pub fn load_mission_activation(
@@ -1839,6 +1917,73 @@ mod tests {
             TaskRepo::insert_mission_plan_preview(&db, &conflict),
             Err(MissionPlanError::ContentConflict(_))
         ));
+    }
+
+    #[test]
+    fn current_cockpit_mission_follows_accept_linearization_not_preview_time() {
+        let db = Database::open_memory().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let repository_root = std::fs::canonicalize(root.path())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let trusted_head = "a".repeat(40);
+        let build_preview = |goal: &str, id: &str, output: &str| {
+            let mut task = Task::new(id, goal);
+            task.owner = Some(format!("worker-{id}"));
+            task.model = Some("codex".to_string());
+            task.outputs = vec![output.to_string()];
+            task.source_branch = Some(format!("agent/{id}"));
+            task.target_branch = Some("main".to_string());
+            let input = crate::task::mission::MissionPlanPreviewInput::from_cockpit_goal(
+                goal,
+                std::slice::from_ref(&task),
+                std::path::Path::new(&repository_root),
+                &trusted_head,
+            )
+            .unwrap();
+            let preview = MissionPlanPreview::from_input_with_repository(
+                input,
+                repository_root.clone(),
+                trusted_head.clone(),
+            )
+            .unwrap();
+            let mut graph = TaskGraph::new();
+            graph.add(task).unwrap();
+            graph.recompute_ready();
+            (preview, graph)
+        };
+
+        let (older_preview, older_graph) =
+            build_preview("accepted second", "older", "src/older.rs");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let (newer_preview, newer_graph) = build_preview("accepted first", "newer", "src/newer.rs");
+        assert!(older_preview.persisted_at_unix_ms < newer_preview.persisted_at_unix_ms);
+
+        TaskRepo::persist_accepted_cockpit_plan(
+            &db,
+            &newer_preview,
+            &uuid::Uuid::now_v7().to_string(),
+            &newer_graph,
+        )
+        .unwrap();
+        let accepted_last = TaskRepo::persist_accepted_cockpit_plan(
+            &db,
+            &older_preview,
+            &uuid::Uuid::now_v7().to_string(),
+            &older_graph,
+        )
+        .unwrap();
+
+        let current = TaskRepo::latest_accepted_cockpit_mission(
+            &db,
+            &repository_root,
+            crate::task::mission::COCKPIT_GOVERNANCE_POLICY_ID,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(current.plan_id, accepted_last.plan_id);
+        assert_eq!(current.request, "accepted second");
     }
 
     #[test]

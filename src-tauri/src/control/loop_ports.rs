@@ -29,6 +29,21 @@ use crate::symbol_ownership::agent_context::{
 use crate::symbol_ownership::{SymbolClaim, SymbolIntent, SymbolOwnership};
 use crate::task::{ExecutionEffect, ExecutionIdentity, ExecutionReservation, ExecutionRuntime};
 
+/// Backend-owned, one-call review authority. It never crosses the frontend or
+/// MCP wire: the exact reviewed source/target OIDs and gate digest are supplied
+/// directly to the merge adapter that consumes them once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewedCandidateBinding {
+    pub repo_path: String,
+    pub source_branch: String,
+    pub target_branch: String,
+    pub source_oid: String,
+    pub target_oid: String,
+    pub reviewer_id: String,
+    pub gates: GateResults,
+    pub gates_digest: String,
+}
+
 /// Wall-clock budget for a single dispatched agent before it is treated as hung
 /// and killed (BR9 hang recovery). Deliberately generous so a legitimately long
 /// real-agent run is never killed; a worker stuck past this is genuinely hung
@@ -95,6 +110,9 @@ pub trait GateRunner {
     fn run(&self, task_id: &str, branch: &str) -> GateResults;
     fn has_verdict(&self, _task_id: &str) -> bool {
         true
+    }
+    fn review_binding(&self, _task_id: &str) -> Option<ReviewedCandidateBinding> {
+        None
     }
 }
 
@@ -205,6 +223,8 @@ pub struct LoopPortsAdapter<'a, G, D, T> {
     queue: MergeQueue,
     merge_store: Option<Arc<MergeIntentStore>>,
     require_durable_merge: bool,
+    require_review_binding: bool,
+    dispatch_enabled: bool,
     gate_results: HashMap<String, GateResults>,
     gate_runner: G,
     dispatcher: D,
@@ -230,6 +250,8 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
             queue: MergeQueue::new(),
             merge_store: None,
             require_durable_merge: true,
+            require_review_binding: false,
+            dispatch_enabled: true,
             gate_results: HashMap::new(),
             gate_runner,
             dispatcher,
@@ -247,6 +269,16 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
     pub fn with_durable_merge_store(mut self, store: Option<Arc<MergeIntentStore>>) -> Self {
         self.merge_store = store;
         self.require_durable_merge = true;
+        self
+    }
+
+    fn with_required_review_binding(mut self) -> Self {
+        self.require_review_binding = true;
+        self
+    }
+
+    fn with_dispatch_disabled(mut self) -> Self {
+        self.dispatch_enabled = false;
         self
     }
 
@@ -384,6 +416,11 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
 
 impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'_, G, D, T> {
     fn dispatch(&mut self, task_id: &str) -> Result<(), String> {
+        if !self.dispatch_enabled {
+            return Err(format!(
+                "task {task_id} was not dispatched during a review-only autonomy step"
+            ));
+        }
         let source = self.task_info.branches(task_id).map(|(source, _)| source);
         let identity = self.reserve_dispatch(task_id)?;
         if let (Some(context), Some(identity)) = (self.execution, identity.as_ref()) {
@@ -636,6 +673,21 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             .map(|(source, _)| source)
             .unwrap_or_default();
         let results = self.gate_runner.run(task_id, &branch);
+        if self.require_review_binding {
+            let Some(binding) = self.gate_runner.review_binding(task_id) else {
+                return failed_execution_gates();
+            };
+            let digest = match crate::control::gate_runner::gate_results_digest(&results) {
+                Ok(value) => value,
+                Err(_) => return failed_execution_gates(),
+            };
+            if binding.gates != results
+                || binding.gates_digest != digest
+                || binding.reviewer_id != self.reviewer_id
+            {
+                return failed_execution_gates();
+            }
+        }
         if let (Some(context), Some(token)) = (self.execution, execution_token_for_review.as_ref())
         {
             if let Err(error) =
@@ -670,6 +722,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
 
     fn review_ready(&self, task_id: &str) -> bool {
         self.gate_runner.has_verdict(task_id)
+            && (!self.require_review_binding || self.gate_runner.review_binding(task_id).is_some())
     }
 
     fn reviewer_id(&self) -> String {
@@ -686,6 +739,38 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             .branches(task_id)
             .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
         let worktree = crate::control::worktree::predict_path(&self.repo_path, &source);
+        let review_binding = self.gate_runner.review_binding(task_id);
+        if self.require_review_binding && review_binding.is_none() {
+            return Err(format!(
+                "task {task_id} has no backend-owned reviewed-candidate binding"
+            ));
+        }
+        if let Some(binding) = review_binding.as_ref() {
+            let gates = self
+                .gate_results
+                .get(task_id)
+                .ok_or_else(|| format!("task {task_id} has no committed review gates"))?;
+            let digest = crate::control::gate_runner::gate_results_digest(gates)?;
+            if binding.repo_path != self.repo_path
+                || binding.source_branch != source
+                || binding.target_branch != target
+                || binding.reviewer_id != self.reviewer_id
+                || binding.gates != *gates
+                || binding.gates_digest != digest
+            {
+                return Err(format!(
+                    "task {task_id} reviewed-candidate binding disagrees with merge authority"
+                ));
+            }
+            crate::git::inspect_owned_candidate_at_oids(
+                &self.repo_path,
+                &source,
+                &target,
+                &self.task_info.outputs(task_id),
+                &binding.source_oid,
+                &binding.target_oid,
+            )?;
+        }
         if let Some(context) = self.execution {
             let current = context
                 .tasks
@@ -723,7 +808,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                 .map_err(|error| {
                     quarantine_fence_error(context, &token, "candidate-freeze start failed", error)
                 })?;
-            if worktree.is_dir() {
+            if review_binding.is_none() && worktree.is_dir() {
                 if let Err(error) = crate::control::worktree::commit_owned_for_branch(
                     &self.repo_path,
                     &source,
@@ -750,15 +835,29 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                     error.to_string()
                 })?;
 
-            let intent = match crate::control::merge::request_durable_intent(
-                &store,
-                &self.repo_path,
-                task_id,
-                Some(task_id),
-                &source,
-                &target,
-                now_secs() as i64,
-            ) {
+            let intent_result = match review_binding.as_ref() {
+                Some(binding) => crate::control::merge::request_durable_intent_bound(
+                    &store,
+                    &self.repo_path,
+                    task_id,
+                    Some(task_id),
+                    &source,
+                    &target,
+                    &binding.source_oid,
+                    &binding.target_oid,
+                    now_secs() as i64,
+                ),
+                None => crate::control::merge::request_durable_intent(
+                    &store,
+                    &self.repo_path,
+                    task_id,
+                    Some(task_id),
+                    &source,
+                    &target,
+                    now_secs() as i64,
+                ),
+            };
+            let intent = match intent_result {
                 Ok(intent) => intent,
                 Err(error) => {
                     let _ = context.tasks.fail_execution(
@@ -794,7 +893,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             let gates_digest = self
                 .gate_results
                 .get(task_id)
-                .and_then(|gates| serde_json::to_string(gates).ok());
+                .and_then(|gates| crate::control::gate_runner::gate_results_digest(gates).ok());
             let merge_execution = match crate::control::merge::approve_durable_intent(
                 &store,
                 &intent.intent_id,
@@ -962,7 +1061,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             // Durable merge intents bind exact source/target OIDs. The loop first
             // commits the worker's isolated worktree so the stored source OID is
             // the reviewed output, then creates/claims the intent in SQLite.
-            if worktree.is_dir() {
+            if review_binding.is_none() && worktree.is_dir() {
                 crate::control::worktree::commit_owned_for_branch(
                     &self.repo_path,
                     &source,
@@ -972,19 +1071,32 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                 .map_err(|e| format!("commit worktree for {source} failed: {e}"))?;
             }
             let now = now_secs() as i64;
-            let intent = crate::control::merge::request_durable_intent(
-                &store,
-                &self.repo_path,
-                task_id,
-                Some(task_id),
-                &source,
-                &target,
-                now,
-            )?;
+            let intent = match review_binding.as_ref() {
+                Some(binding) => crate::control::merge::request_durable_intent_bound(
+                    &store,
+                    &self.repo_path,
+                    task_id,
+                    Some(task_id),
+                    &source,
+                    &target,
+                    &binding.source_oid,
+                    &binding.target_oid,
+                    now,
+                )?,
+                None => crate::control::merge::request_durable_intent(
+                    &store,
+                    &self.repo_path,
+                    task_id,
+                    Some(task_id),
+                    &source,
+                    &target,
+                    now,
+                )?,
+            };
             let gates_digest = self
                 .gate_results
                 .get(task_id)
-                .and_then(|gates| serde_json::to_string(gates).ok());
+                .and_then(|gates| crate::control::gate_runner::gate_results_digest(gates).ok());
             let execution = crate::control::merge::approve_durable_intent(
                 &store,
                 &intent.intent_id,
@@ -1454,11 +1566,11 @@ impl Dispatcher for PaneDispatcher<'_> {
 }
 
 /// Drive one autonomy step over the live Task Graph with the real runtime ports
-/// (BR9): caller-supplied gate verdicts resolve reviews into a real git merge,
-/// finished agents (process exit) move `Running -> Review`, and ready tasks are
-/// dispatched by spawning real headless agents (routed to the task owner's
-/// model). Shared by the cockpit IPC (Face 1) and the MCP server (Face 2) so
-/// both faces drive exactly the same loop over the same managed state.
+/// (BR9). Dispatch-only callers pass no review bindings: finished agents move
+/// `Running -> Review`, failures recover, and ready tasks spawn. A merge-capable
+/// caller must provide a backend-owned [`ReviewedCandidateBinding`] created and
+/// consumed inside one trusted command; raw gate booleans never grant authority.
+/// Shared by the cockpit IPC (Face 1) and MCP server (Face 2) over the same state.
 ///
 /// The whole step runs inside the graph lock; branch/owner info is read from a
 /// pre-step snapshot so the loop never re-locks the graph (which would
@@ -1544,6 +1656,7 @@ pub fn run_step(
     repo_path: String,
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
+    review_bindings: std::collections::HashMap<String, ReviewedCandidateBinding>,
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
@@ -1560,6 +1673,7 @@ pub fn run_step(
     // Each task's owner + declared file paths (outputs), captured before the
     // step so dispatched/merged tasks can claim/free their file lanes.
     let lanes = capture_lanes(tasks);
+    let review_only = !review_bindings.is_empty();
     let report = tasks
         .run_autonomy_step(|graph| {
             // Snapshots captured before the step mutates the graph — the adapter
@@ -1580,7 +1694,8 @@ pub fn run_step(
                 gate_commands.unwrap_or_default(),
                 gates,
                 crate::control::gate_runner::SystemCommandRunner,
-            );
+            )
+            .with_review_bindings(review_bindings);
             let mut ports = LoopPortsAdapter::new(
                 repo_path,
                 reviewer_id,
@@ -1593,6 +1708,7 @@ pub fn run_step(
                 symbol_ownership.clone(),
             )
             .with_durable_merge_store(merge_store.clone())
+            .with_required_review_binding()
             .with_execution_fence(ExecutionFenceContext {
                 tasks,
                 events,
@@ -1601,6 +1717,9 @@ pub fn run_step(
                 db,
                 runtime: ExecutionRuntime::Headless,
             });
+            if review_only {
+                ports = ports.with_dispatch_disabled();
+            }
             crate::orchestrator::autonomy::step(graph, &caps, usage, &mut ports)
         })
         .map_err(|error| error.to_string())?;
@@ -1638,6 +1757,7 @@ pub fn run_step_visible(
     repo_path: String,
     reviewer_id: String,
     gates: std::collections::HashMap<String, GateResults>,
+    review_bindings: std::collections::HashMap<String, ReviewedCandidateBinding>,
     gate_commands: Option<crate::control::gate_runner::GateCommands>,
     merge_store: Option<Arc<MergeIntentStore>>,
     db: Option<&crate::db::ManagedDb>,
@@ -1650,6 +1770,7 @@ pub fn run_step_visible(
     let guidelines_header = build_guidelines_header(&repo_path);
     let claims_snapshot = snapshot_live_claims(symbol_ownership.as_ref());
     let lanes = capture_lanes(tasks);
+    let review_only = !review_bindings.is_empty();
     let report = tasks
         .run_autonomy_step(
             |graph| -> Result<crate::orchestrator::autonomy::StepReport, String> {
@@ -1669,7 +1790,8 @@ pub fn run_step_visible(
                     gate_commands.unwrap_or_default(),
                     gates,
                     crate::control::gate_runner::SystemCommandRunner,
-                );
+                )
+                .with_review_bindings(review_bindings);
                 let mut ports = LoopPortsAdapter::new(
                     repo_path,
                     reviewer_id,
@@ -1679,6 +1801,7 @@ pub fn run_step_visible(
                     symbol_ownership.clone(),
                 )
                 .with_durable_merge_store(merge_store.clone())
+                .with_required_review_binding()
                 .with_execution_fence(ExecutionFenceContext {
                     tasks,
                     events,
@@ -1687,6 +1810,9 @@ pub fn run_step_visible(
                     db,
                     runtime: ExecutionRuntime::VisiblePty,
                 });
+                if review_only {
+                    ports = ports.with_dispatch_disabled();
+                }
                 Ok(crate::orchestrator::autonomy::step(
                     graph, &caps, usage, &mut ports,
                 ))
@@ -1968,7 +2094,7 @@ pub fn revalidate_mission_candidate(
         .map_err(|error| error.to_string())
 }
 
-fn canonical_dispatch_repo_path(repo_path: &str) -> Result<String, String> {
+pub(crate) fn canonical_dispatch_repo_path(repo_path: &str) -> Result<String, String> {
     let canonical = std::fs::canonicalize(repo_path)
         .map_err(|_| "repo path must exist and be accessible".to_string())?;
     if !canonical.is_dir() {
@@ -2731,6 +2857,22 @@ mod tests {
         assert!(ports.queue().intents().is_empty());
     }
 
+    #[test]
+    fn raw_green_gates_without_a_reviewed_oid_binding_cannot_merge() {
+        let (_dir, repo, _feature_tip) = repo_with_feature_ahead();
+        let main_before = repo.refname_to_id("refs/heads/main").unwrap();
+        let mut graph = review_task_graph();
+        let mut ports = adapter_for(&repo, GREEN).with_required_review_binding();
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert!(report.merged.is_empty());
+        assert!(report.rejected.is_empty());
+        assert_eq!(graph.get("t").unwrap().status, TaskStatus::Review);
+        assert_eq!(repo.refname_to_id("refs/heads/main").unwrap(), main_before);
+        assert!(ports.queue().intents().is_empty());
+    }
+
     /// Feature and main both edit `shared.txt` divergently from a common base, so
     /// merging feature into main is a real 3-way CONFLICT.
     fn repo_with_conflicting_feature() -> (tempfile::TempDir, Repository) {
@@ -2951,11 +3093,14 @@ mod tests {
         assert_eq!(intent.source_branch, "feature");
         assert_eq!(intent.target_branch, "main");
         assert_eq!(intent.reviewer_id.as_deref(), Some("reviewer"));
-        assert!(intent
-            .gates_digest
-            .as_deref()
-            .unwrap_or_default()
-            .contains("tests_pass"));
+        assert_eq!(
+            intent.gates_digest.as_deref(),
+            Some(
+                crate::control::gate_runner::gate_results_digest(&GREEN)
+                    .unwrap()
+                    .as_str()
+            )
+        );
     }
 
     #[cfg(windows)]

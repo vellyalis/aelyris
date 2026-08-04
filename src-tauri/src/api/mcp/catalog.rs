@@ -492,7 +492,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.request_merge",
-                "description": "Queue a DURABLE merge intent (never merges to main). The repo/source/target and their branch-tip OIDs are captured and stored at request time, so the merge is bound to specific commits. Idempotent per (taskId, source commit, target commit): a duplicate request returns the original intent. Returns { intentId, status, intent }.",
+                "description": "RETIRED compatibility verb. Generic merge intents are now minted only inside backend-owned exact-candidate review; calling this tool returns a validation error and performs no repository or persistence mutation.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -555,8 +555,8 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.review.approve",
-                "description": "Reviewer authority: approve a DURABLE merge intent BY ID and perform the real git merge (fast-forward/3-way) into its BOUND target. The repo/source/target are read from the stored immutable intent — this verb does NOT accept repo/source/target (a caller can never re-point the merge), and rejects any unknown field. Operator-authority: the verb IS the verdict (an optional `verdict` must equal \"approve\"); `gatesDigest` records approval evidence. The bound branch tips are re-validated first: an already-merged target is idempotent; a moved tip becomes needs_reconcile. Returns { intentId, status, outcome }.",
-                "safety": "REVIEWER_AUTHORITY",
+                "description": "RETIRED compatibility verb. Raw intent approval cannot substitute for backend-bound project gates and semantic review; calling this tool returns a validation error and never merges.",
+                "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
                     "required": ["intentId"],
@@ -649,39 +649,14 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.orchestrator.step",
-                "description": "Drive one autonomy step over the live Task Graph (BR9): a finished agent's task moves Running->Review on a clean exit or is REASSIGNED on a crash (bounded retries, then left Failed — never lost); tasks awaiting review with an all-green verdict and reviewer != owner are MERGED into their target branch by a real git merge; ready tasks are dispatched by spawning real headless agents routed to each task's model (its `model`, or `owner` by default). Pass gateCommands to decide the objective gates (tests/lint/types) MECHANICALLY in each worktree so a red branch cannot merge. Call repeatedly to run the loop to quiescence (agents run between calls).",
-                "safety": "REVIEWER_AUTHORITY",
+                "description": "Drive one implementation-only autonomy step over the live Task Graph: sense clean exits/crashes, move completed work to Review, recover bounded failures, and dispatch ready tasks as real headless agents routed to each task's model. This tool never accepts review booleans and cannot merge a Review task. Use the existing OID-bound review approve/reject tools for merge authority.",
+                "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["repoPath", "reviewerId"],
+                    "required": ["repoPath"],
                     "properties": {
                         "repoPath": { "type": "string" },
-                        "reviewerId": { "type": "string" },
-                        "activeAgents": { "type": "integer", "minimum": 0 },
-                        "gates": {
-                            "type": "object",
-                            "description": "Map of task id -> reviewer verdict { tests_pass, lint_pass, types_pass, design_consistent, context_aligned }. A task with no entry is treated as all-red and never merged. When gateCommands run a gate, that objective field is decided mechanically and the verdict's claim for it is ignored.",
-                            "additionalProperties": {
-                                "type": "object",
-                                "properties": {
-                                    "tests_pass": { "type": "boolean" },
-                                    "lint_pass": { "type": "boolean" },
-                                    "types_pass": { "type": "boolean" },
-                                    "design_consistent": { "type": "boolean" },
-                                    "context_aligned": { "type": "boolean" }
-                                }
-                            }
-                        },
-                        "gateCommands": {
-                            "type": "object",
-                            "description": "Optional mechanical gate commands run in each task's worktree to decide the objective gates for real. Each is an argv array (e.g. test=[\"pnpm\",\"test\"]); an unset gate falls back to the reviewer's verdict. A configured gate's machine result is authoritative, so a branch whose tests fail cannot merge.",
-                            "properties": {
-                                "test": { "type": "array", "items": { "type": "string" } },
-                                "lint": { "type": "array", "items": { "type": "string" } },
-                                "types": { "type": "array", "items": { "type": "string" } }
-                            },
-                            "additionalProperties": false
-                        }
+                        "activeAgents": { "type": "integer", "minimum": 0 }
                     },
                     "additionalProperties": false
                 }

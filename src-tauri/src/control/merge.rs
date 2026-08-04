@@ -152,6 +152,55 @@ pub fn request_durable_intent(
     store.create_or_get(&intent)
 }
 
+/// Create a durable intent only when the live branch tips still equal the OIDs
+/// reviewed by the backend. Unlike the compatibility request path, this cannot
+/// silently bind a newer source commit after review.
+#[allow(clippy::too_many_arguments)]
+pub fn request_durable_intent_bound(
+    store: &MergeIntentStore,
+    repo_path: &str,
+    task_id: &str,
+    session_id: Option<&str>,
+    source_branch: &str,
+    target_branch: &str,
+    expected_source_oid: &str,
+    expected_target_oid: &str,
+    now: i64,
+) -> ControlResult<MergeIntent> {
+    if task_id.trim().is_empty() {
+        return Err("task id is required".to_string());
+    }
+    let canonical = std::fs::canonicalize(repo_path)
+        .map_err(|_| "repo path must exist and be accessible".to_string())?;
+    if !canonical.is_dir() {
+        return Err("repo path must be a directory".to_string());
+    }
+    let repo_path = strip_local_verbatim_prefix(&canonical.to_string_lossy());
+    let readiness = inspect(&repo_path, source_branch, target_branch)?;
+    if readiness.source_oid != expected_source_oid || readiness.target_oid != expected_target_oid {
+        return Err(
+            "reviewed source or target OID moved before merge-intent reservation".to_string(),
+        );
+    }
+    let intent = MergeIntent {
+        intent_id: format!("merge:{task_id}:{}", uuid::Uuid::new_v4()),
+        repo_path,
+        source_branch: source_branch.to_string(),
+        target_branch: target_branch.to_string(),
+        source_oid: readiness.source_oid,
+        target_oid: readiness.target_oid,
+        merge_base_oid: readiness.merge_base_oid,
+        task_id: task_id.to_string(),
+        created_at: now,
+        state: MergeIntentState::Queued,
+        updated_at: now,
+        session_id: session_id.map(str::to_string),
+        reviewer_id: None,
+        gates_digest: None,
+    };
+    store.create_or_get(&intent)
+}
+
 pub fn approve_durable_intent(
     store: &MergeIntentStore,
     intent_id: &str,

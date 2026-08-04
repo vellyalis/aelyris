@@ -6,6 +6,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -13,11 +14,12 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{validate_plan, Task};
+use super::{validate_plan, Task, TaskPriority};
 
 pub const MISSION_DEFINITION_SCHEMA: &str = "aelyris.mission_definition/v1";
 pub const MISSION_PLAN_PREVIEW_SCHEMA: &str = "aelyris.mission_plan_preview/v1";
 pub const MISSION_PLAN_CANONICALIZATION: &str = "rfc8785_json_utf8";
+pub const COCKPIT_GOVERNANCE_POLICY_ID: &str = "cockpit-mission/v1";
 const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 pub const A7_FIXTURE_REQUEST_ID: &str = "0197c000-0000-7000-8000-000000000001";
 pub const A7_FIXTURE_MISSION_ID: &str = "0197c000-0000-7000-8000-000000000002";
@@ -366,6 +368,67 @@ pub struct MergePolicy {
     pub automatic_main_merge: bool,
 }
 
+/// Immutable identity of one generated cockpit Task. Mutable execution facts
+/// such as status, retry counters, and active ownership remain exclusively in
+/// TaskGraph; this snapshot binds the accepted Goal to the exact planner output
+/// that must be restored after restart.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CockpitTaskPlanIdentity {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub owner: Option<String>,
+    pub model: Option<String>,
+    pub priority: String,
+    pub estimate: Option<u32>,
+    pub dependencies: Vec<String>,
+    pub outputs: Vec<String>,
+    pub symbols: Vec<crate::symbol_ownership::SymbolIntent>,
+    pub source_branch: Option<String>,
+    pub target_branch: Option<String>,
+}
+
+impl CockpitTaskPlanIdentity {
+    pub(crate) fn from_task(task: &Task) -> Self {
+        Self {
+            id: task.id.clone(),
+            title: task.title.clone(),
+            description: task.description.clone(),
+            owner: task.owner.clone(),
+            model: task.model.clone(),
+            priority: task.priority.as_str().to_string(),
+            estimate: task.estimate,
+            dependencies: task.dependencies.clone(),
+            outputs: task.outputs.clone(),
+            symbols: task.symbols.clone(),
+            source_branch: task.source_branch.clone(),
+            target_branch: task.target_branch.clone(),
+        }
+    }
+
+    fn task(&self) -> Result<Task, MissionPlanError> {
+        let priority = self.priority.parse::<TaskPriority>().map_err(|error| {
+            MissionPlanError::Validation(format!(
+                "cockpit task {} has invalid priority: {error}",
+                self.id
+            ))
+        })?;
+        let mut task = Task::new(self.id.clone(), self.title.clone());
+        task.description = self.description.clone();
+        task.owner = self.owner.clone();
+        task.model = self.model.clone();
+        task.priority = priority;
+        task.estimate = self.estimate;
+        task.dependencies = self.dependencies.clone();
+        task.outputs = self.outputs.clone();
+        task.symbols = self.symbols.clone();
+        task.source_branch = self.source_branch.clone();
+        task.target_branch = self.target_branch.clone();
+        Ok(task)
+    }
+}
+
 /// Caller-supplied declarative facts. Status, normalized text, digests, derived
 /// targets/tests, and persistence metadata are deliberately not caller-shaped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -380,6 +443,206 @@ pub struct MissionPlanPreviewInput {
     pub review_requirement: IndependentReviewRequirement,
     pub merge_policy: MergePolicy,
     pub explicit_risks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cockpit_task_plan: Option<Vec<CockpitTaskPlanIdentity>>,
+}
+
+impl MissionPlanPreviewInput {
+    /// Build the durable planning identity for the already-working cockpit
+    /// Goal -> TaskGraph path. The Mission owns the request, accepted base, and
+    /// aggregate declared-output boundary; the existing TaskGraph remains the
+    /// sole owner of individual task status, branches, models, and retries.
+    pub(crate) fn from_cockpit_goal(
+        goal: &str,
+        tasks: &[Task],
+        repository_root: &Path,
+        base_oid: &str,
+    ) -> Result<Self, MissionPlanError> {
+        let normalized_goal = normalize_request(goal);
+        require_nonempty("goal", &normalized_goal)?;
+        validate_git_oid("baseOid", base_oid)?;
+        if tasks.is_empty() {
+            return validation("cockpit Mission requires a generated TaskGraph plan");
+        }
+        let ordered_tasks = validate_plan(tasks.to_vec()).map_err(|errors| {
+            MissionPlanError::Validation(format!(
+                "cockpit generated TaskGraph is invalid: {}",
+                errors.join("; ")
+            ))
+        })?;
+        let cockpit_task_plan = ordered_tasks
+            .iter()
+            .map(CockpitTaskPlanIdentity::from_task)
+            .collect::<Vec<_>>();
+
+        let mut outputs = Vec::new();
+        let mut output_seen = HashSet::new();
+        for task in &ordered_tasks {
+            for output in &task.outputs {
+                validate_repo_relative_path(output)?;
+                if output_seen.insert(output.clone()) {
+                    outputs.push(output.clone());
+                }
+            }
+        }
+        if outputs.is_empty() {
+            return validation("cockpit Mission plan declares no output boundary");
+        }
+
+        let request_id = Uuid::now_v7().to_string();
+        let mission_id = Uuid::now_v7().to_string();
+        let work_unit_id = Uuid::now_v7().to_string();
+        let plan_id = Uuid::now_v7().to_string();
+        let workspace_id = Uuid::now_v7().to_string();
+        let project_id = Uuid::now_v7().to_string();
+        let actor_id = Uuid::now_v7().to_string();
+        let repository_id = Uuid::now_v7().to_string();
+        let clause_id = Uuid::now_v7().to_string();
+        let unlock_id = Uuid::now_v7().to_string();
+
+        let implementer = TeamRolePolicy {
+            role_id: "implementer".into(),
+            capability_profile_ids: vec!["cockpit-implementer/v1".into()],
+            budget_profile_id: "cockpit-bounded/v1".into(),
+            proof_profile_id: "cockpit-review/v1".into(),
+            may_implement: true,
+            may_review: false,
+            may_authorize_completion: false,
+        };
+        let reviewer = TeamRolePolicy {
+            role_id: "independent_reviewer".into(),
+            capability_profile_ids: vec!["cockpit-reviewer/v1".into()],
+            budget_profile_id: "cockpit-bounded/v1".into(),
+            proof_profile_id: "cockpit-review/v1".into(),
+            may_implement: false,
+            may_review: true,
+            may_authorize_completion: true,
+        };
+        let file_intents = outputs
+            .into_iter()
+            .map(|output| ResourceIntent {
+                operation: if repository_root.join(&output).exists() {
+                    ResourceOperation::Update
+                } else {
+                    ResourceOperation::Create
+                },
+                resource_ref: RepositoryResourceRef {
+                    repository_id: repository_id.clone(),
+                    repo_relative_path: output,
+                    base_oid: base_oid.to_string(),
+                    head_oid: base_oid.to_string(),
+                    blob_oid: None,
+                },
+                expected_base_digest: None,
+            })
+            .collect();
+
+        Ok(Self {
+            request_id,
+            request: normalized_goal.clone(),
+            plan_id,
+            plan_revision: 1,
+            mission_definition: MissionDefinitionRevision {
+                schema: MISSION_DEFINITION_SCHEMA.into(),
+                mission_id: mission_id.clone(),
+                revision: 1,
+                workspace_id,
+                project_id,
+                goal: normalized_goal.clone(),
+                desired_outcome: "Complete the generated TaskGraph through visible work, independent review, and merge".into(),
+                capability_outcome: "Restore the accepted cockpit goal and its durable TaskGraph after application restart".into(),
+                non_goals: vec!["No second execution engine or duplicate task-status owner".into()],
+                base_oid: base_oid.to_string(),
+                acceptance: vec![AcceptanceClause {
+                    clause_id: clause_id.clone(),
+                    statement: format!(
+                        "Complete {} generated task{} through the supported cockpit path",
+                        ordered_tasks.len(),
+                        if ordered_tasks.len() == 1 { "" } else { "s" }
+                    ),
+                    required_gate_ids: Vec::new(),
+                    required_artifact_ids: Vec::new(),
+                    completion_blocking: true,
+                }],
+                risk_policy: RiskPolicy {
+                    policy_id: "cockpit-risk/v1".into(),
+                    policy_version: "1".into(),
+                    maximum_risk_class: RiskClass::Moderate,
+                    human_approval_risk_classes: vec!["high".into(), "irreversible".into()],
+                    reconciliation_policy_id: "cockpit-reconcile/v1".into(),
+                },
+                budget_policy: BudgetPolicy {
+                    policy_id: "cockpit-budget/v1".into(),
+                    policy_version: "1".into(),
+                    limits: vec![BudgetLimit {
+                        kind: BudgetKind::WallTimeMs,
+                        unit: "ms".into(),
+                        amount: "3600000".into(),
+                        currency_iso_code: None,
+                        hard: true,
+                    }],
+                    exhaustion_result: BudgetExhaustionResult::Blocked,
+                },
+                runtime_policy: RuntimePolicy {
+                    policy_id: "visible-pty/v1".into(),
+                    policy_version: "1".into(),
+                    allowed_runtime_domain_ids: vec!["visible_pty".into()],
+                    required_adapter_capabilities: vec![AdapterCapability::Prompt],
+                    visible_pty_required: true,
+                },
+                team_policy: TeamExecutionPolicy {
+                    roles: vec![implementer, reviewer],
+                    reviewer_independence_policy_id: "cockpit-reviewer-independence/v1".into(),
+                    ownership_policy_id: "task-outputs/v1".into(),
+                    governance_policy_id: COCKPIT_GOVERNANCE_POLICY_ID.into(),
+                },
+                work_graph_definition_revision: 1,
+                created_by: actor_id,
+                approved_by: None,
+                created_at: current_rfc3339()?,
+            },
+            work_units: vec![WorkUnitDefinition {
+                work_unit_id: work_unit_id.clone(),
+                mission_id,
+                definition_revision: 1,
+                title: "Execute generated cockpit plan".into(),
+                objective: normalized_goal,
+                depends_on: Vec::new(),
+                required_role: "implementer".into(),
+                completion_authority_role_ids: vec!["independent_reviewer".into()],
+                required_adapter_capabilities: vec![AdapterCapability::Prompt],
+                file_intents,
+                symbol_intents: Vec::new(),
+                required_capability_templates: Vec::new(),
+                required_gates: Vec::new(),
+                required_artifacts: Vec::new(),
+                risk_class: RiskClass::Low,
+                capability_unlock: CapabilityUnlock {
+                    unlock_id,
+                    capability: "cockpit.resume_task_graph".into(),
+                    condition_clause_ids: vec![clause_id],
+                    available_after_work_unit_id: work_unit_id,
+                },
+            }],
+            review_requirement: IndependentReviewRequirement {
+                role: "independent_reviewer".into(),
+                policy_id: "cockpit-reviewer-independence/v1".into(),
+                must_differ_from_implementer_by: vec![
+                    ReviewerDifference::PrincipalId,
+                    ReviewerDifference::LogicalSessionId,
+                    ReviewerDifference::ForkLineage,
+                ],
+                required_verdict: "accepted".into(),
+            },
+            merge_policy: MergePolicy {
+                result: "reviewed_merge".into(),
+                target_branch_role: "task_target_branch".into(),
+                automatic_main_merge: false,
+            },
+            explicit_risks: Vec::new(),
+            cockpit_task_plan: Some(cockpit_task_plan),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -445,6 +708,8 @@ pub struct MissionPlanPreview {
     pub review_requirement: IndependentReviewRequirement,
     pub merge_policy: MergePolicy,
     pub explicit_risks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cockpit_task_plan: Option<Vec<CockpitTaskPlanIdentity>>,
     pub content_digest: String,
     pub decision_principal_id: Option<String>,
     pub decision_reason: Option<String>,
@@ -1139,9 +1404,15 @@ struct DigestContent<'a> {
     review_requirement: &'a IndependentReviewRequirement,
     merge_policy: &'a MergePolicy,
     explicit_risks: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cockpit_task_plan: Option<&'a [CockpitTaskPlanIdentity]>,
 }
 
 impl MissionPlanPreview {
+    pub(crate) fn is_cockpit_profile(&self) -> bool {
+        self.mission_definition.team_policy.governance_policy_id == COCKPIT_GOVERNANCE_POLICY_ID
+    }
+
     pub(crate) fn from_input_with_repository(
         input: MissionPlanPreviewInput,
         repository_root: String,
@@ -1152,12 +1423,8 @@ impl MissionPlanPreview {
         require_positive("planRevision", input.plan_revision)?;
         let normalized_request = normalize_request(&input.request);
         require_nonempty("request", &normalized_request)?;
-        if input.request_id != A7_FIXTURE_REQUEST_ID
-            || input.plan_id != A7_FIXTURE_PLAN_ID
-            || input.request != A7_FIXTURE_REQUEST
-        {
-            return validation("A7.1 admits only the frozen A7 Core request and plan identity");
-        }
+        let requires_declared_test =
+            input.mission_definition.team_policy.governance_policy_id == "a7-core/v1";
         require_nonempty("repositoryRoot", &repository_root)?;
         validate_git_oid("trustedHeadOid", &trusted_head_oid)?;
         if trusted_head_oid != input.mission_definition.base_oid {
@@ -1209,7 +1476,7 @@ impl MissionPlanPreview {
         if owned_targets.is_empty() {
             return validation("plan declares no owned write target");
         }
-        if expected_tests.is_empty() {
+        if requires_declared_test && expected_tests.is_empty() {
             return validation("plan declares no expected test gate");
         }
 
@@ -1234,6 +1501,7 @@ impl MissionPlanPreview {
             review_requirement: input.review_requirement,
             merge_policy: input.merge_policy,
             explicit_risks: input.explicit_risks,
+            cockpit_task_plan: input.cockpit_task_plan,
             content_digest: String::new(),
             decision_principal_id: None,
             decision_reason: None,
@@ -1266,6 +1534,7 @@ impl MissionPlanPreview {
             review_requirement: self.review_requirement.clone(),
             merge_policy: self.merge_policy.clone(),
             explicit_risks: self.explicit_risks.clone(),
+            cockpit_task_plan: self.cockpit_task_plan.clone(),
         };
         let ordered = validate_and_order(&input)?;
         if ordered != self.work_units {
@@ -1385,6 +1654,7 @@ impl MissionPlanPreview {
             review_requirement: &self.review_requirement,
             merge_policy: &self.merge_policy,
             explicit_risks: &self.explicit_risks,
+            cockpit_task_plan: self.cockpit_task_plan.as_deref(),
         };
         let value = serde_json::to_value(content)
             .map_err(|error| MissionPlanError::Validation(error.to_string()))?;
@@ -1395,6 +1665,303 @@ impl MissionPlanPreview {
 fn validate_and_order(
     input: &MissionPlanPreviewInput,
 ) -> Result<Vec<WorkUnitDefinition>, MissionPlanError> {
+    match input
+        .mission_definition
+        .team_policy
+        .governance_policy_id
+        .as_str()
+    {
+        "a7-core/v1" => validate_a7_and_order(input),
+        COCKPIT_GOVERNANCE_POLICY_ID => validate_cockpit_and_order(input),
+        value => validation(format!("unsupported Mission governance profile: {value}")),
+    }
+}
+
+fn validate_cockpit_and_order(
+    input: &MissionPlanPreviewInput,
+) -> Result<Vec<WorkUnitDefinition>, MissionPlanError> {
+    let mission = &input.mission_definition;
+    if mission.schema != MISSION_DEFINITION_SCHEMA {
+        return validation("mission definition schema must be aelyris.mission_definition/v1");
+    }
+    for (name, id) in [
+        ("requestId", input.request_id.as_str()),
+        ("planId", input.plan_id.as_str()),
+        ("missionId", mission.mission_id.as_str()),
+        ("workspaceId", mission.workspace_id.as_str()),
+        ("projectId", mission.project_id.as_str()),
+        ("createdBy", mission.created_by.as_str()),
+    ] {
+        validate_uuid_v7(name, id)?;
+    }
+    require_positive("planRevision", input.plan_revision)?;
+    if mission.revision != input.plan_revision
+        || mission.work_graph_definition_revision != input.plan_revision
+    {
+        return validation("cockpit plan, Mission, and work-graph revisions must align");
+    }
+    if mission.approved_by.is_some() {
+        return validation("preview input cannot pre-authorize approvedBy");
+    }
+    for (name, value) in [
+        ("goal", mission.goal.as_str()),
+        ("desiredOutcome", mission.desired_outcome.as_str()),
+        ("capabilityOutcome", mission.capability_outcome.as_str()),
+    ] {
+        require_nonempty(name, value)?;
+    }
+    if normalize_request(&input.request) != mission.goal {
+        return validation("cockpit Mission goal must equal its normalized request");
+    }
+    if mission.desired_outcome
+        != "Complete the generated TaskGraph through visible work, independent review, and merge"
+        || mission.capability_outcome
+            != "Restore the accepted cockpit goal and its durable TaskGraph after application restart"
+        || mission.non_goals != ["No second execution engine or duplicate task-status owner"]
+    {
+        return validation("cockpit Mission profile narratives differ from the supported path");
+    }
+    validate_rfc3339("createdAt", &mission.created_at)?;
+    validate_git_oid("baseOid", &mission.base_oid)?;
+    validate_nonempty_strings("nonGoals", &mission.non_goals)?;
+
+    if mission.risk_policy.policy_id != "cockpit-risk/v1"
+        || mission.risk_policy.policy_version != "1"
+        || mission.risk_policy.maximum_risk_class != RiskClass::Moderate
+        || mission.risk_policy.human_approval_risk_classes != ["high", "irreversible"]
+        || mission.risk_policy.reconciliation_policy_id != "cockpit-reconcile/v1"
+    {
+        return validation("unsupported cockpit risk policy");
+    }
+    if mission.budget_policy.policy_id != "cockpit-budget/v1"
+        || mission.budget_policy.policy_version != "1"
+        || mission.budget_policy.limits.len() != 1
+        || mission.budget_policy.limits[0].kind != BudgetKind::WallTimeMs
+        || mission.budget_policy.limits[0].unit != "ms"
+        || mission.budget_policy.limits[0].amount != "3600000"
+        || mission.budget_policy.limits[0].currency_iso_code.is_some()
+        || !mission.budget_policy.limits[0].hard
+        || mission.budget_policy.exhaustion_result != BudgetExhaustionResult::Blocked
+    {
+        return validation("unsupported cockpit budget policy");
+    }
+    let runtime = &mission.runtime_policy;
+    if runtime.policy_id != "visible-pty/v1"
+        || runtime.policy_version != "1"
+        || runtime.allowed_runtime_domain_ids != ["visible_pty"]
+        || runtime.required_adapter_capabilities != [AdapterCapability::Prompt]
+        || !runtime.visible_pty_required
+    {
+        return validation("cockpit Mission must use the existing visible PTY runtime");
+    }
+    let team = &mission.team_policy;
+    if team.governance_policy_id != COCKPIT_GOVERNANCE_POLICY_ID
+        || team.reviewer_independence_policy_id != "cockpit-reviewer-independence/v1"
+        || team.ownership_policy_id != "task-outputs/v1"
+        || team.roles.len() != 2
+    {
+        return validation("unsupported cockpit team policy");
+    }
+    let implementer = team.roles.iter().find(|role| role.role_id == "implementer");
+    let reviewer = team
+        .roles
+        .iter()
+        .find(|role| role.role_id == "independent_reviewer");
+    if !implementer.is_some_and(|role| {
+        role.capability_profile_ids == ["cockpit-implementer/v1"]
+            && role.budget_profile_id == "cockpit-bounded/v1"
+            && role.proof_profile_id == "cockpit-review/v1"
+            && role.may_implement
+            && !role.may_review
+            && !role.may_authorize_completion
+    }) || !reviewer.is_some_and(|role| {
+        role.capability_profile_ids == ["cockpit-reviewer/v1"]
+            && role.budget_profile_id == "cockpit-bounded/v1"
+            && role.proof_profile_id == "cockpit-review/v1"
+            && !role.may_implement
+            && role.may_review
+            && role.may_authorize_completion
+    }) {
+        return validation("cockpit implementer/reviewer roles differ from the supported path");
+    }
+
+    if input.review_requirement.role != "independent_reviewer"
+        || input.review_requirement.policy_id != "cockpit-reviewer-independence/v1"
+        || input.review_requirement.required_verdict != "accepted"
+    {
+        return validation("unsupported cockpit independent-review requirement");
+    }
+    let required_differences = HashSet::from([
+        ReviewerDifference::PrincipalId,
+        ReviewerDifference::LogicalSessionId,
+        ReviewerDifference::ForkLineage,
+    ]);
+    let actual_differences = input
+        .review_requirement
+        .must_differ_from_implementer_by
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    if actual_differences != required_differences
+        || input
+            .review_requirement
+            .must_differ_from_implementer_by
+            .len()
+            != required_differences.len()
+    {
+        return validation("cockpit review independence is incomplete");
+    }
+    if input.merge_policy.result != "reviewed_merge"
+        || input.merge_policy.target_branch_role != "task_target_branch"
+        || input.merge_policy.automatic_main_merge
+    {
+        return validation("unsupported cockpit merge policy");
+    }
+    validate_nonempty_strings("explicitRisks", &input.explicit_risks)?;
+
+    let task_plan = input.cockpit_task_plan.as_ref().ok_or_else(|| {
+        MissionPlanError::Validation(
+            "cockpit Mission is missing the generated TaskGraph plan identity".into(),
+        )
+    })?;
+    if task_plan.is_empty() {
+        return validation("cockpit Mission task plan cannot be empty");
+    }
+    let mut planned_tasks = Vec::with_capacity(task_plan.len());
+    for identity in task_plan {
+        require_nonempty("cockpitTaskPlan.id", &identity.id)?;
+        require_nonempty("cockpitTaskPlan.title", &identity.title)?;
+        if identity
+            .model
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return validation("cockpit task model cannot be empty when present");
+        }
+        for output in &identity.outputs {
+            validate_repo_relative_path(output)?;
+        }
+        for symbol in &identity.symbols {
+            validate_repo_relative_path(&symbol.path)?;
+            if !identity.outputs.iter().any(|output| output == &symbol.path) {
+                return validation("cockpit task symbol is outside its declared outputs");
+            }
+        }
+        planned_tasks.push(identity.task()?);
+    }
+    let ordered_tasks = validate_plan(planned_tasks).map_err(|errors| {
+        MissionPlanError::Validation(format!(
+            "cockpit task-plan identity rejected: {}",
+            errors.join("; ")
+        ))
+    })?;
+    let canonical_task_plan = ordered_tasks
+        .iter()
+        .map(CockpitTaskPlanIdentity::from_task)
+        .collect::<Vec<_>>();
+    if canonical_task_plan != *task_plan {
+        return validation("cockpit task-plan identity is not in canonical dependency order");
+    }
+
+    if mission.acceptance.len() != 1 {
+        return validation("cockpit Mission requires one aggregate acceptance clause");
+    }
+    let clause = &mission.acceptance[0];
+    validate_uuid_v7("acceptance.clauseId", &clause.clause_id)?;
+    require_nonempty("acceptance.statement", &clause.statement)?;
+    let expected_acceptance = format!(
+        "Complete {} generated task{} through the supported cockpit path",
+        task_plan.len(),
+        if task_plan.len() == 1 { "" } else { "s" }
+    );
+    if clause.statement != expected_acceptance {
+        return validation("cockpit acceptance does not match its generated task count");
+    }
+    if !clause.required_gate_ids.is_empty()
+        || !clause.required_artifact_ids.is_empty()
+        || !clause.completion_blocking
+    {
+        return validation("cockpit restart binding cannot invent proof or nonblocking acceptance");
+    }
+
+    if input.work_units.len() != 1 {
+        return validation("cockpit restart binding requires one aggregate WorkUnit");
+    }
+    let work = &input.work_units[0];
+    validate_uuid_v7("workUnitId", &work.work_unit_id)?;
+    validate_uuid_v7("workUnit.missionId", &work.mission_id)?;
+    if work.mission_id != mission.mission_id
+        || work.definition_revision != mission.work_graph_definition_revision
+        || work.title != "Execute generated cockpit plan"
+        || work.objective != mission.goal
+        || !work.depends_on.is_empty()
+        || work.required_role != "implementer"
+        || work.completion_authority_role_ids != ["independent_reviewer"]
+        || work.required_adapter_capabilities != [AdapterCapability::Prompt]
+        || !work.symbol_intents.is_empty()
+        || !work.required_capability_templates.is_empty()
+        || !work.required_gates.is_empty()
+        || !work.required_artifacts.is_empty()
+        || work.risk_class != RiskClass::Low
+    {
+        return validation("cockpit aggregate WorkUnit differs from the supported path");
+    }
+    if work.file_intents.is_empty() {
+        return validation("cockpit aggregate WorkUnit has no output boundary");
+    }
+    let mut paths = HashSet::new();
+    let mut repository_ids = HashSet::new();
+    for intent in &work.file_intents {
+        if !matches!(
+            intent.operation,
+            ResourceOperation::Create | ResourceOperation::Update
+        ) || intent.expected_base_digest.is_some()
+        {
+            return validation(
+                "cockpit output intents must be create/update without invented digests",
+            );
+        }
+        validate_resource_ref(&intent.resource_ref, &mission.base_oid)?;
+        if !paths.insert(intent.resource_ref.repo_relative_path.as_str()) {
+            return validation("duplicate cockpit output path");
+        }
+        repository_ids.insert(intent.resource_ref.repository_id.as_str());
+    }
+    if repository_ids.len() != 1 {
+        return validation("cockpit Mission must bind one repository identity");
+    }
+    let planned_paths = task_plan
+        .iter()
+        .flat_map(|task| task.outputs.iter().cloned())
+        .collect::<HashSet<_>>();
+    let intent_paths = work
+        .file_intents
+        .iter()
+        .map(|intent| intent.resource_ref.repo_relative_path.clone())
+        .collect::<HashSet<_>>();
+    if planned_paths != intent_paths {
+        return validation("cockpit aggregate output boundary differs from its TaskGraph plan");
+    }
+    validate_uuid_v7(
+        "capabilityUnlock.unlockId",
+        &work.capability_unlock.unlock_id,
+    )?;
+    if work.capability_unlock.capability != "cockpit.resume_task_graph"
+        || work.capability_unlock.available_after_work_unit_id != work.work_unit_id
+        || work.capability_unlock.condition_clause_ids != [clause.clause_id.clone()]
+    {
+        return validation("cockpit resume unlock differs from its aggregate acceptance");
+    }
+
+    Ok(vec![work.clone()])
+}
+
+fn validate_a7_and_order(
+    input: &MissionPlanPreviewInput,
+) -> Result<Vec<WorkUnitDefinition>, MissionPlanError> {
+    if input.cockpit_task_plan.is_some() {
+        return validation("A7 fixture cannot carry a cockpit TaskGraph plan identity");
+    }
     let mission = &input.mission_definition;
     if mission.schema != MISSION_DEFINITION_SCHEMA {
         return validation("mission definition schema must be aelyris.mission_definition/v1");
@@ -2060,7 +2627,7 @@ fn validate_rfc3339(name: &str, value: &str) -> Result<(), MissionPlanError> {
     let hour = digits(&bytes[11..13]).unwrap_or(99);
     let minute = digits(&bytes[14..16]).unwrap_or(99);
     let second = digits(&bytes[17..19]).unwrap_or(99);
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
     let max_day = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
@@ -2151,6 +2718,42 @@ fn validate_repo_relative_path(value: &str) -> Result<(), MissionPlanError> {
 
 fn normalize_request(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn current_rfc3339() -> Result<String, MissionPlanError> {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| MissionPlanError::Persistence(error.to_string()))?
+        .as_secs();
+    let seconds = i64::try_from(seconds)
+        .map_err(|_| MissionPlanError::Persistence("system time exceeds i64".into()))?;
+    let days = seconds.div_euclid(86_400);
+    let day_seconds = seconds.rem_euclid(86_400);
+
+    // Howard Hinnant's civil-from-days conversion, with Unix epoch offset.
+    let shifted = days + 719_468;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    if month <= 2 {
+        year += 1;
+    }
+    let hour = day_seconds / 3_600;
+    let minute = (day_seconds % 3_600) / 60;
+    let second = day_seconds % 60;
+    let value = format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z");
+    validate_rfc3339("createdAt", &value)?;
+    Ok(value)
 }
 
 pub(crate) fn decision_unix_ms() -> Result<u64, MissionPlanError> {
@@ -2462,6 +3065,7 @@ pub(crate) mod tests {
                 automatic_main_merge: false,
             },
             explicit_risks: vec!["TaskGraph ordering regression".into()],
+            cockpit_task_plan: None,
         }
     }
 
@@ -2486,6 +3090,64 @@ pub(crate) mod tests {
         );
         assert_eq!(first.merge_policy.result, "merged_exact_oid");
         first.verify_integrity().unwrap();
+    }
+
+    #[test]
+    fn cockpit_profile_binds_a_variable_goal_without_weakening_a7_conformance() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(directory.path().join("src")).unwrap();
+        std::fs::write(directory.path().join("src/lib.rs"), "pub fn old() {}\n").unwrap();
+        let oid = "0123456789abcdef0123456789abcdef01234567";
+        let mut task = Task::new("runtime-task", "Implement the accepted goal")
+            .with_branches("feat/runtime-task", "main");
+        task.owner = Some("worker-a".into());
+        task.model = Some("codex".into());
+        task.outputs = vec!["src/lib.rs".into(), "tests/new.rs".into()];
+
+        let input = MissionPlanPreviewInput::from_cockpit_goal(
+            "  Add a durable restart path  ",
+            &[task],
+            directory.path(),
+            oid,
+        )
+        .unwrap();
+        let preview = MissionPlanPreview::from_input_with_repository(
+            input,
+            directory.path().to_string_lossy().into_owned(),
+            oid.into(),
+        )
+        .unwrap();
+
+        assert_eq!(preview.request, "Add a durable restart path");
+        assert_eq!(
+            preview.mission_definition.team_policy.governance_policy_id,
+            COCKPIT_GOVERNANCE_POLICY_ID
+        );
+        assert_eq!(preview.owned_targets, ["src/lib.rs", "tests/new.rs"]);
+        assert!(preview.expected_tests.is_empty());
+        assert_eq!(
+            preview
+                .cockpit_task_plan
+                .as_ref()
+                .map(|tasks| tasks[0].id.as_str()),
+            Some("runtime-task")
+        );
+        assert_eq!(preview.work_units.len(), 1);
+        assert_eq!(
+            preview.work_units[0].file_intents[0].operation,
+            ResourceOperation::Update
+        );
+        assert_eq!(
+            preview.work_units[0].file_intents[1].operation,
+            ResourceOperation::Create
+        );
+        preview.verify_integrity().unwrap();
+
+        // The frozen A7 request still takes its exact validation path.
+        fixed_preview(fixed_input())
+            .unwrap()
+            .verify_integrity()
+            .unwrap();
     }
 
     #[test]

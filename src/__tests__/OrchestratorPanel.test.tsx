@@ -36,7 +36,26 @@ function task(partial: Partial<Task> & { id: string }): Task {
 
 const CAPS = { max_agents: 4, max_tokens: null, max_cost_usd: null, max_runtime_secs: null };
 
-function mockInvoke(tasks: Task[], plan: unknown, decisions: Record<string, string> = {}) {
+function missionPreview(request: string, repositoryRoot = "C:/repo") {
+  return {
+    planId: "0198c000-0000-7000-8000-000000000001",
+    planRevision: 1,
+    status: "accepted",
+    request,
+    repositoryRoot,
+    persistedAtUnixMs: 1_785_820_000_000,
+    missionDefinition: {
+      teamPolicy: { governancePolicyId: "cockpit-mission/v1" },
+    },
+  };
+}
+
+function mockInvoke(
+  tasks: Task[],
+  plan: unknown,
+  decisions: Record<string, string> = {},
+  missions: ReturnType<typeof missionPreview>[] = [],
+) {
   tauriMocks.invoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
       case "task_list":
@@ -49,32 +68,41 @@ function mockInvoke(tasks: Task[], plan: unknown, decisions: Record<string, stri
         return Promise.resolve(decisions);
       case "orchestrator_plan":
         return Promise.resolve(plan);
+      case "cockpit_mission_current":
+        return Promise.resolve(missions[missions.length - 1] ?? null);
       case "plan_build":
-        return Promise.resolve(["t1"]);
-      case "review_branch":
         return Promise.resolve({
-          gates: {
-            tests_pass: true,
-            lint_pass: true,
-            types_pass: true,
-            design_consistent: true,
-            context_aligned: true,
-          },
-          verdict: { verdict: "merge" },
-          mergeOk: true,
-          reasons: [],
+          readied: ["t1"],
+          mission: missionPreview(String(args?.goal ?? "")),
         });
-      case "orchestrator_step":
-        if (args?.gates && Object.keys(args.gates as object).length > 0) {
-          return Promise.resolve({
+      case "orchestrator_review_and_merge":
+        return Promise.resolve({
+          review: {
+            gates: {
+              tests_pass: true,
+              lint_pass: true,
+              types_pass: true,
+              design_consistent: true,
+              context_aligned: true,
+            },
+            verdict: { verdict: "merge" },
+            mergeOk: true,
+            reasons: [],
+            candidateSourceOid: "a".repeat(40),
+            candidateTargetOid: "b".repeat(40),
+            reviewerModel: "codex",
+          },
+          step: {
             dispatched: [],
             merged: ["t1"],
             rejected: [],
             recovered: [],
             escalations: [],
             state: "complete",
-          });
-        }
+          },
+          merged: true,
+        });
+      case "orchestrator_step":
         return Promise.resolve({
           dispatched: ["t1"],
           merged: [],
@@ -196,7 +224,8 @@ describe("OrchestratorPanel", () => {
         model: null,
       }),
     );
-    await waitFor(() => expect(screen.getByText(/Plan created/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Plan accepted/)).toBeTruthy());
+    expect(screen.getByText(/Mission 0198c000 · accepted/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Run next step" }));
 
@@ -209,14 +238,12 @@ describe("OrchestratorPanel", () => {
           runtime_secs: 0,
         },
         repoPath: "C:/repo",
-        reviewerId: "operator",
-        gates: {},
       }),
     );
     await waitFor(() => expect(screen.getByText("1 dispatched")).toBeTruthy());
   });
 
-  it("runs real review gates and feeds their verdict into the merge step", async () => {
+  it("keeps exact review and merge authority in one backend command", async () => {
     mockInvoke([task({ id: "t1", title: "Ready for review", status: "review", owner: "worker-a" })], {
       to_dispatch: [],
       state: "active",
@@ -228,34 +255,27 @@ describe("OrchestratorPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review & merge" }));
 
     await waitFor(() =>
-      expect(tauriMocks.invoke).toHaveBeenCalledWith("review_branch", {
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("orchestrator_review_and_merge", {
         repoPath: "C:/repo",
         taskId: "t1",
-        reviewerId: "cockpit-reviewer",
-        model: "codex",
       }),
     );
-    await waitFor(() =>
-      expect(tauriMocks.invoke).toHaveBeenCalledWith("orchestrator_step", {
-        usage: {
-          active_agents: 0,
-          tokens_used: 0,
-          cost_usd: 0,
-          runtime_secs: 0,
-        },
-        repoPath: "C:/repo",
-        reviewerId: "cockpit-reviewer",
-        gates: {
-          t1: {
-            tests_pass: true,
-            lint_pass: true,
-            types_pass: true,
-            design_consistent: true,
-            context_aligned: true,
-          },
-        },
-      }),
-    );
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith("review_branch", expect.anything());
     await waitFor(() => expect(screen.getByText("Ready for review reviewed and merged.")).toBeTruthy());
+  });
+
+  it("restores the latest accepted cockpit Mission goal for the current repository", async () => {
+    mockInvoke(
+      [task({ id: "t1", title: "Restored task", status: "ready" })],
+      { to_dispatch: ["t1"], state: "active" },
+      {},
+      [missionPreview("Resume this accepted goal")],
+    );
+
+    render(<OrchestratorPanel projectPath={"C:\\repo"} />);
+
+    const goal = (await screen.findByLabelText("Goal")) as HTMLTextAreaElement;
+    await waitFor(() => expect(goal.value).toBe("Resume this accepted goal"));
+    expect(screen.getByText(/Mission 0198c000 · accepted/)).toBeTruthy();
   });
 });

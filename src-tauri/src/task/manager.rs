@@ -11,7 +11,7 @@ use super::mission::{
     MissionPlanError, MissionPlanPreview, MissionPlanPreviewInput, MissionPlanStatus,
     MissionSettlementOutcome, SettlementBlocker, SettlementBlockerKind, SettlementNextAction,
     SettlementNextActionKind, A7_SETTLEMENT_PROOF_VERSION, BLOCKED_WORK_PACKET_SCHEMA,
-    COMPLETED_WORK_PACKET_SCHEMA, MISSION_COMPLETION_PACKET_SCHEMA,
+    COCKPIT_GOVERNANCE_POLICY_ID, COMPLETED_WORK_PACKET_SCHEMA, MISSION_COMPLETION_PACKET_SCHEMA,
 };
 use super::planner::validate_plan;
 use super::status::TaskStatus;
@@ -539,8 +539,15 @@ impl TaskManager {
         input: MissionPlanPreviewInput,
         repo_path: &str,
     ) -> Result<MissionPlanPreview, MissionPlanError> {
+        if input.mission_definition.team_policy.governance_policy_id == COCKPIT_GOVERNANCE_POLICY_ID
+        {
+            return Err(MissionPlanError::Validation(
+                "cockpit Mission preview/acceptance is backend-owned by plan_build and cannot use the generic Mission IPC"
+                    .into(),
+            ));
+        }
         let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
-        let (repository_root, trusted_head_oid) = resolve_a7_repository_head(repo_path)?;
+        let (repository_root, trusted_head_oid) = resolve_repository_head(repo_path)?;
         let preview = MissionPlanPreview::from_input_with_repository(
             input,
             repository_root,
@@ -548,6 +555,63 @@ impl TaskManager {
         )?;
         let _writer = self.persistence_lock();
         db.try_with(|database| TaskRepo::insert_mission_plan_preview(database, &preview))
+    }
+
+    /// Accept the supported cockpit Goal and publish its generated TaskGraph as
+    /// one durable transaction. The Mission stores immutable planner identity;
+    /// TaskGraph remains the sole owner of mutable execution state. A crash can
+    /// expose neither side or both sides, never an orphan accepted Mission or an
+    /// unbound runnable graph.
+    pub fn submit_cockpit_plan(
+        &self,
+        goal: &str,
+        tasks: Vec<Task>,
+        repo_path: &str,
+        decision_principal_id: &str,
+    ) -> Result<(Vec<String>, MissionPlanPreview), MissionPlanError> {
+        let ordered = validate_plan(tasks).map_err(|errors| {
+            MissionPlanError::Validation(format!("cockpit plan rejected: {}", errors.join("; ")))
+        })?;
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        let (repository_root, trusted_head_oid) = resolve_repository_head(repo_path)?;
+        let input = MissionPlanPreviewInput::from_cockpit_goal(
+            goal,
+            &ordered,
+            std::path::Path::new(&repository_root),
+            &trusted_head_oid,
+        )?;
+        let preview = MissionPlanPreview::from_input_with_repository(
+            input,
+            repository_root.clone(),
+            trusted_head_oid.clone(),
+        )?;
+        let _writer = self.persistence_lock();
+        let mut state = self.lock();
+        Self::require_mutation_available(&state)
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        let mut staging = state.graph.clone();
+        for task in ordered {
+            staging
+                .add(task)
+                .map_err(|error| MissionPlanError::ContentConflict(error.to_string()))?;
+        }
+        let changed = staging.recompute_ready();
+        let (current_root, current_head) = resolve_repository_head(repo_path)?;
+        if current_root != repository_root || current_head != trusted_head_oid {
+            return Err(MissionPlanError::ContentConflict(
+                "repository HEAD moved while accepting the cockpit plan".into(),
+            ));
+        }
+        let accepted = db.try_with(|database| {
+            TaskRepo::persist_accepted_cockpit_plan(
+                database,
+                &preview,
+                decision_principal_id,
+                &staging,
+            )
+        })?;
+        Self::publish_mutation(&mut state, staging);
+        Ok((changed, accepted))
     }
 
     pub fn mission_plan(
@@ -569,6 +633,25 @@ impl TaskManager {
     ) -> Result<Vec<MissionPlanPreview>, MissionPlanError> {
         let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
         db.try_with(|database| TaskRepo::list_mission_plans(database, request_id))
+    }
+
+    /// Backend-selected restore projection for the supported cockpit. The
+    /// frontend does not choose among Mission rows or normalize repository
+    /// identities; it receives the latest accepted cockpit Mission for the
+    /// canonical repository while TaskGraph restores execution state separately.
+    pub fn current_cockpit_mission(
+        &self,
+        repo_path: &str,
+    ) -> Result<Option<MissionPlanPreview>, MissionPlanError> {
+        let (repository_root, _) = resolve_repository_head(repo_path)?;
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| {
+            TaskRepo::latest_accepted_cockpit_mission(
+                database,
+                &repository_root,
+                COCKPIT_GOVERNANCE_POLICY_ID,
+            )
+        })
     }
 
     /// Activate one accepted A7.1 plan into exactly one existing TaskGraph task.
@@ -628,7 +711,7 @@ impl TaskManager {
             return Ok(existing);
         }
         let preview = self.mission_plan(plan_id, plan_revision)?;
-        let (root, head) = resolve_a7_repository_head(&preview.repository_root)?;
+        let (root, head) = resolve_repository_head(&preview.repository_root)?;
         if root != preview.repository_root
             || head != preview.accepted_mission_head_oid
             || head != preview.mission_definition.base_oid
@@ -1147,6 +1230,12 @@ impl TaskManager {
         decision_principal_id: &str,
     ) -> Result<MissionPlanPreview, MissionPlanError> {
         let preview = self.mission_plan(plan_id, plan_revision)?;
+        if preview.is_cockpit_profile() {
+            return Err(MissionPlanError::Validation(
+                "cockpit Mission acceptance must atomically publish its TaskGraph through plan_build"
+                    .into(),
+            ));
+        }
         if preview.status != MissionPlanStatus::Previewed {
             return self.decide_mission_plan(
                 plan_id,
@@ -1156,8 +1245,7 @@ impl TaskManager {
                 None,
             );
         }
-        let (canonical_root, current_head_oid) =
-            resolve_a7_repository_head(&preview.repository_root)?;
+        let (canonical_root, current_head_oid) = resolve_repository_head(&preview.repository_root)?;
         if canonical_root != preview.repository_root
             || current_head_oid != preview.accepted_mission_head_oid
             || current_head_oid != preview.mission_definition.base_oid
@@ -1377,7 +1465,7 @@ fn committed_work_state(effect: ExecutionEffect) -> WorkExecutionState {
     }
 }
 
-fn resolve_a7_repository_head(repo_path: &str) -> Result<(String, String), MissionPlanError> {
+fn resolve_repository_head(repo_path: &str) -> Result<(String, String), MissionPlanError> {
     crate::git::canonical_repository_head(repo_path).map_err(|error| {
         MissionPlanError::Validation(format!(
             "authoritative repository HEAD unavailable: {error}"
@@ -2429,6 +2517,195 @@ mod tests {
             second.get("child").unwrap().dependencies,
             vec!["dep".to_string()]
         );
+    }
+
+    #[test]
+    fn cockpit_goal_plan_and_active_graph_restore_from_one_durable_transaction() {
+        let repository_directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(repository_directory.path()).unwrap();
+        repository.set_head("refs/heads/main").unwrap();
+        std::fs::create_dir_all(repository_directory.path().join("src")).unwrap();
+        std::fs::write(
+            repository_directory.path().join("src/lib.rs"),
+            "pub fn existing() {}\n",
+        )
+        .unwrap();
+        let mut index = repository.index().unwrap();
+        index.add_path(std::path::Path::new("src/lib.rs")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("Cockpit test", "cockpit@example.invalid").unwrap();
+        repository
+            .commit(Some("HEAD"), &signature, &signature, "base", &tree, &[])
+            .unwrap();
+        drop(tree);
+        drop(index);
+        let repo_path = repository_directory.path().to_string_lossy().into_owned();
+
+        let database_directory = tempfile::tempdir().unwrap();
+        let database_path = database_directory.path().join("cockpit-restart.sqlite3");
+        let db = Arc::new(ManagedDb::new(
+            crate::db::Database::open(&database_path).unwrap(),
+        ));
+        let first = TaskManager::new_durable();
+        first.attach_db(db.clone()).unwrap();
+
+        let mut root = full("root", &["src/lib.rs"], &[]);
+        root.owner = Some("worker-a".into());
+        root.model = Some("codex".into());
+        root.symbols = vec![crate::symbol_ownership::SymbolIntent {
+            path: "src/lib.rs".into(),
+            symbol: "existing".into(),
+            range: crate::symbol_ownership::SymbolRange::new(1, 1),
+            mode: crate::symbol_ownership::ClaimMode::Write,
+            confidence: crate::symbol_ownership::Confidence::Parser,
+        }];
+        let expected_symbols = root.symbols.clone();
+        let mut child = full("child", &["tests/restart.rs"], &["root"]);
+        child.owner = Some("worker-b".into());
+        child.model = Some("claude-sonnet".into());
+
+        let principal = uuid::Uuid::now_v7().to_string();
+        let (readied, accepted) = first
+            .submit_cockpit_plan(
+                "Restore this exact generated plan",
+                vec![root, child],
+                &repo_path,
+                &principal,
+            )
+            .unwrap();
+        assert_eq!(readied, ["root"]);
+        assert_eq!(accepted.status, MissionPlanStatus::Accepted);
+        assert_eq!(
+            accepted
+                .cockpit_task_plan
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|task| task.id.as_str())
+                .collect::<Vec<_>>(),
+            ["root", "child"]
+        );
+        first.transition("root", TaskStatus::Running).unwrap();
+        drop(first);
+        drop(db);
+
+        let reopened = Arc::new(ManagedDb::new(
+            crate::db::Database::open(&database_path).unwrap(),
+        ));
+        let restored = TaskManager::new_durable();
+        assert_eq!(restored.attach_db(reopened).unwrap(), 2);
+        assert_eq!(
+            restored.current_cockpit_mission(&repo_path).unwrap(),
+            Some(accepted)
+        );
+        let restored_root = restored.get("root").unwrap();
+        assert_eq!(restored_root.status, TaskStatus::Ready);
+        assert_eq!(restored_root.model.as_deref(), Some("codex"));
+        assert_eq!(restored_root.source_branch.as_deref(), Some("feat/root"));
+        assert_eq!(restored_root.symbols, expected_symbols);
+        let restored_child = restored.get("child").unwrap();
+        assert_eq!(restored_child.status, TaskStatus::Pending);
+        assert_eq!(restored_child.dependencies, ["root"]);
+        assert_eq!(restored_child.model.as_deref(), Some("claude-sonnet"));
+    }
+
+    #[test]
+    fn cockpit_plan_transaction_rolls_back_mission_when_graph_persistence_fails() {
+        let repository_directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(repository_directory.path()).unwrap();
+        repository.set_head("refs/heads/main").unwrap();
+        std::fs::write(repository_directory.path().join("base.txt"), "base").unwrap();
+        let mut index = repository.index().unwrap();
+        index.add_path(std::path::Path::new("base.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("Cockpit test", "cockpit@example.invalid").unwrap();
+        repository
+            .commit(Some("HEAD"), &signature, &signature, "base", &tree, &[])
+            .unwrap();
+        drop(tree);
+        drop(index);
+        let repo_path = repository_directory.path().to_string_lossy().into_owned();
+
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+        db.with(|database| {
+            database
+                .conn()
+                .execute("DROP TABLE tasks", [])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+        let task = full("atomic", &["base.txt"], &[]);
+        let error = manager
+            .submit_cockpit_plan(
+                "Do not persist half a plan",
+                vec![task],
+                &repo_path,
+                &uuid::Uuid::now_v7().to_string(),
+            )
+            .unwrap_err();
+        assert!(matches!(error, MissionPlanError::Persistence(_)));
+        assert!(manager.list().is_empty());
+        assert!(manager.mission_plans(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn generic_mission_ipc_cannot_preview_or_accept_a_cockpit_profile() {
+        let (_repository, repo_path, _a7_input) = a7_repo_input();
+        let (_root, head) = resolve_repository_head(&repo_path).unwrap();
+        let task = full("cockpit-only", &["src/lib.rs"], &[]);
+        let input = MissionPlanPreviewInput::from_cockpit_goal(
+            "Use only the atomic cockpit path",
+            &[task],
+            std::path::Path::new(&repo_path),
+            &head,
+        )
+        .unwrap();
+        let db = mem_db();
+        let manager = TaskManager::new_durable();
+        manager.attach_db(db.clone()).unwrap();
+
+        let error = manager
+            .preview_mission_plan(input.clone(), &repo_path)
+            .unwrap_err();
+        assert!(
+            matches!(error, MissionPlanError::Validation(message) if message.contains("backend-owned by plan_build"))
+        );
+
+        let (root, current_head) = resolve_repository_head(&repo_path).unwrap();
+        let preview =
+            MissionPlanPreview::from_input_with_repository(input, root, current_head).unwrap();
+        db.try_with(|database| TaskRepo::insert_mission_plan_preview(database, &preview))
+            .unwrap();
+        let error = manager
+            .accept_mission_plan(
+                &preview.plan_id,
+                preview.plan_revision,
+                &uuid::Uuid::now_v7().to_string(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(error, MissionPlanError::Validation(message) if message.contains("atomically publish its TaskGraph"))
+        );
+        assert!(manager.list().is_empty());
+        assert_eq!(
+            manager
+                .mission_plan(&preview.plan_id, preview.plan_revision)
+                .unwrap()
+                .status,
+            MissionPlanStatus::Previewed
+        );
+        assert!(manager
+            .current_cockpit_mission(&repo_path)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

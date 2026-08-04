@@ -60,7 +60,8 @@ and remote surfaces are projections/adapters. Full target capability is not a
 current implementation or release-readiness claim.
 
 The completed R0-A9/A9.6r1 program established the finite A7 Core Mission substrate;
-active `GMV-0` now generalizes that contract without creating a second engine.
+`product-delivery-instructions.md` owns the exact active GMV slice that consumes and
+generalizes that contract without creating a second engine.
 Replay/time travel, Skill Foundry, Decision Lab, Counterfactual Arena, Project
 Twin, writable Remote Continuity, extension marketplace, and A2A federation remain
 separately gated Apex work.

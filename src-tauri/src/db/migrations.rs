@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 11;
+pub const CURRENT_SCHEMA_VERSION: i64 = 12;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -503,9 +503,9 @@ const V1_SCHEMA: &str = "
         BEGIN
             SELECT RAISE(ABORT, 'session_handoffs: rows are permanent (append-only)');
         END;
-        -- P0-3 world-release hardening: durable, IMMUTABLE merge intents. The MCP
-        -- merge approval path (aelyris.request_merge -> aelyris.review.approve) kept
-        -- intents in a RAM Vec and let the approver supply repo/source/target, so
+        -- P0-3 world-release hardening: durable, IMMUTABLE merge intents. The old
+        -- raw merge approval path kept intents in a RAM Vec and let the approver
+        -- supply repo/source/target, so
         -- an intent id was a mere token a caller could re-point at any merge. These
         -- rows are the source of truth: the merge-defining columns are captured at
         -- request time and an UPDATE trigger makes them immutable, so approve takes
@@ -530,7 +530,7 @@ const V1_SCHEMA: &str = "
             gates_digest   TEXT
         );
         -- Idempotency key (audit §P0-3): one intent per (task, source commit,
-        -- target commit). A duplicate request_merge resolves to the existing one.
+        -- target commit). A duplicate internal bound request resolves to the existing one.
         CREATE UNIQUE INDEX IF NOT EXISTS idx_merge_intents_idempotency
             ON merge_intents(task_id, source_oid, target_oid);
         CREATE INDEX IF NOT EXISTS idx_merge_intents_state
@@ -1495,6 +1495,15 @@ const V11_SCHEMA: &str = "
     END;
 ";
 
+// GMV-2: preserve the planner's verified symbol intents across application
+// restart. TaskGraph remains the sole execution owner; this column completes
+// its existing durable snapshot rather than creating a parallel plan store.
+const V12_SCHEMA: &str = "
+    ALTER TABLE tasks
+        ADD COLUMN symbols_json TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(symbols_json));
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1689,6 +1698,31 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         let migration = (|| {
             conn.execute_batch(V11_SCHEMA)?;
             conn.pragma_update(None, "user_version", 11)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
+    if version < 12 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            let symbols_present: bool = conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM pragma_table_info('tasks') WHERE name='symbols_json'
+                 )",
+                [],
+                |row| row.get(0),
+            )?;
+            if !symbols_present {
+                conn.execute_batch(V12_SCHEMA)?;
+            }
+            conn.pragma_update(None, "user_version", 12)?;
             Ok::<(), rusqlite::Error>(())
         })();
         match migration {
@@ -2373,7 +2407,7 @@ mod tests {
     fn a7_4_v11_adds_generation_leaf_and_single_successor_guards() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 11);
+        assert_eq!(schema_version(&conn).unwrap(), 12);
         let columns = conn
             .prepare("PRAGMA table_info(mission_settlement_packets)")
             .unwrap()

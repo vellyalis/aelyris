@@ -1,11 +1,7 @@
-// P0-3 security regression guard — static source assertions that the operator/MCP
-// merge approval path stays IMMUTABLE-INTENT bound. This is the headless gate for
-// the audit's "approval with altered repo/source/target fails" property: it fails
-// the build if anyone re-introduces a way for a caller to re-point a merge.
-//
-// Behavioral proof lives in the Rust suite (review_approve_rejects_overrides_…,
-// request_merge_is_idempotent_…, perform_merge_bound_…); this script guards the
-// SOURCE-LEVEL invariants those tests rely on (the 5 hard boundaries).
+// Security regression guard for generic merge authority. Raw MCP/Tauri
+// request/approve entry points are retired; the supported cockpit freezes a
+// backend-owned exact candidate, reviews that immutable tree, and consumes the
+// binding through the existing durable OID-bound merge owner.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -20,6 +16,11 @@ const migrations = read("src-tauri/src/db/migrations.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
 const domain = read("src-tauri/src/merge_intent/mod.rs");
 const controlMerge = read("src-tauri/src/control/merge.rs");
+const worktree = read("src-tauri/src/git/worktree.rs");
+const reviewIpc = read("src-tauri/src/ipc/review_commands.rs");
+const orchestratorIpc = read("src-tauri/src/ipc/orchestrator_commands.rs");
+const loopPorts = read("src-tauri/src/control/loop_ports.rs");
+const lib = read("src-tauri/src/lib.rs");
 
 // Isolate the approve handler body so "must NOT contain" checks are scoped to it.
 const approveStart = mcp.indexOf('"aelyris.review.approve" => {');
@@ -32,6 +33,9 @@ const approveSchemaStart = mcp.indexOf('"name": "aelyris.review.approve"');
 const nextNameStart = approveSchemaStart >= 0 ? mcp.indexOf('"name":', approveSchemaStart + 10) : -1;
 const approveSchema =
   approveSchemaStart >= 0 && nextNameStart > approveSchemaStart ? mcp.slice(approveSchemaStart, nextNameStart) : "";
+const requestStart = mcp.indexOf('"aelyris.request_merge" => {');
+const requestEnd = mcp.indexOf('"aelyris.spawn_agent" => {', requestStart);
+const requestBody = requestStart >= 0 && requestEnd > requestStart ? mcp.slice(requestStart, requestEnd) : "";
 
 // Whitespace-insensitive match so a harmless `cargo fmt` reflow never breaks a
 // security assertion (and a real regression still can't hide behind formatting).
@@ -55,121 +59,110 @@ const performBoundN = norm(sliceBetween(gitMerge, "pub fn perform_merge_bound(",
 
 const checks = [
   {
-    id: "boundary-1-approve-never-reads-caller-repo-source-target",
+    id: "raw-mcp-request-and-approve-are-retired-before-side-effects",
     ok:
-      approveBody.length > 0 &&
-      // NO read of repo/source/target from caller args, in ANY form (arg_string /
-      // arg_optional_string / raw args.get), and not the old override merge call.
-      ["repoPath", "sourceBranch", "targetBranch"].every(
-        (k) =>
-          !approveBodyN.includes(`arg_string(&args,"${k}")`) &&
-          !approveBodyN.includes(`arg_optional_string(&args,"${k}")`) &&
-          !approveBodyN.includes(`args.get("${k}")`),
-      ) &&
-      !approveBodyN.includes("perform_merge(&repo_path,&source_branch,&target_branch)"),
+      requestBody.includes("aelyris.request_merge is retired") &&
+      approveBody.includes("aelyris.review.approve is retired") &&
+      !requestBody.includes("merge_store") &&
+      !requestBody.includes("create_or_get") &&
+      !approveBody.includes("approve_durable_intent") &&
+      !approveBody.includes("perform_merge"),
     detail:
-      "approve handler never parses or forwards caller repoPath/sourceBranch/targetBranch in any form (boundary #1)",
+      "legacy MCP request/approve names fail closed before repository, store, claim, or merge effects",
   },
   {
-    id: "boundary-1-approve-schema-omits-overrides",
+    id: "raw-approve-schema-has-no-target-overrides",
     ok:
       approveSchema.length > 0 &&
       approveSchema.includes('"required": ["intentId"]') &&
       !approveSchema.includes('"repoPath"') &&
       !approveSchema.includes('"sourceBranch"') &&
       !approveSchema.includes('"targetBranch"'),
-    detail: "approve input schema exposes intentId (+verdict/gatesDigest) only — no merge-target overrides",
+    detail: "the retired compatibility schema exposes no repository or branch override",
   },
   {
-    id: "boundary-2-approve-rejects-unknown-fields-explicitly",
+    id: "tauri-raw-request-and-approve-commands-are-unregistered",
     ok:
-      // the allowlist is EXACTLY intentId/verdict/gatesDigest — adding repoPath
-      // (etc.) to it would fail this assertion.
-      approveBodyN.includes('APPROVE_ALLOWED:&[&str]=&["intentId","verdict","gatesDigest"]') &&
-      approveBodyN.includes("args.keys().find(|k|!APPROVE_ALLOWED.contains(&k.as_str()))") &&
-      // strict typed parse closes the non-string type-confusion bypass
-      approveBodyN.includes('v.as_str()!=Some("approve")') &&
-      approveBodyN.includes("serde_json::Value::String(s)") &&
-      // the rejection runs BEFORE the claim and the merge (no field reaches git).
-      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") >= 0 &&
-      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") < approveBodyN.indexOf("approve_durable_intent(") &&
-      approveBodyN.indexOf("!APPROVE_ALLOWED.contains") < approveBodyN.indexOf("approve_durable_intent("),
+      !lib.includes("ipc::request_merge_intent") &&
+      !lib.includes("ipc::approve_merge_intent") &&
+      !read("src-tauri/src/ipc/merge_commands.rs").includes("pub fn request_merge_intent") &&
+      !read("src-tauri/src/ipc/merge_commands.rs").includes("pub fn approve_merge_intent"),
+    detail: "the desktop face cannot invoke a raw merge request or raw approval command",
+  },
+  {
+    id: "candidate-freeze-validates-dirty-and-every-introduced-commit",
+    ok:
+      worktree.includes("fn ensure_worktree_changes_are_owned(") &&
+      worktree.includes("fn validate_owned_commit_history(") &&
+      worktree.includes("fn require_fast_forward_candidate(") &&
+      worktree.includes("rebase onto the current target and run fresh review") &&
+      worktree.includes("walk.hide(target)") &&
+      worktree.includes("candidate commit history contains undeclared path") &&
+      worktree.includes("cockpit_candidate_rejects_undeclared_paths_added_then_deleted_in_history"),
     detail:
-      "approve rejects unknown/extra fields server-side via an EXACT allowlist BEFORE any claim/merge, and strictly types verdict/gatesDigest (boundary #2)",
+      "candidate freeze rejects undeclared dirty files and every undeclared path in introduced commit history, including add-then-delete cases",
   },
   {
-    id: "boundary-4-approve-merges-stored-intent-oid-bound",
+    id: "review-runs-on-clean-exact-candidate-and-immutable-diff",
     ok:
-      approveBody.includes("crate::control::merge::approve_durable_intent(") &&
+      reviewIpc.includes("freeze_owned_worktree_candidate(") &&
+      reviewIpc.includes("diff_between_oids(") &&
+      reviewIpc.includes("DetachedReviewWorktree::create(") &&
+      reviewIpc.includes("review::detect_gate_commands(detached.path())") &&
+      reviewIpc.includes("review::review_branch(&input, review::spawn_run") &&
+      gitMerge.includes("semantic-review limit") &&
+      gitMerge.includes("if !allow_truncation"),
+    detail:
+      "deterministic gates and semantic review consume a clean detached checkout and complete diff rendered from fixed OIDs; truncation cannot authorize merge",
+  },
+  {
+    id: "review-binding-never-roundtrips-through-frontend",
+    ok:
+      orchestratorIpc.includes("pub async fn orchestrator_review_and_merge(") &&
+      orchestratorIpc.includes("review_task_candidate(") &&
+      orchestratorIpc.includes("review_bindings.insert(task_id.clone(), reviewed.binding)") &&
+      loopPorts.includes("pub struct ReviewedCandidateBinding") &&
+      loopPorts.includes("request_durable_intent_bound(") &&
+      loopPorts.includes("inspect_owned_candidate_at_oids("),
+    detail:
+      "reviewed source/target OIDs, reviewer identity, gates, and digest remain in-process until the bound intent is consumed",
+  },
+  {
+    id: "internal-durable-intent-and-merge-stay-oid-bound",
+    ok:
+      controlMerge.includes("pub fn request_durable_intent_bound(") &&
+      controlMerge.includes("readiness.source_oid != expected_source_oid") &&
+      approveHelper.includes(".claim_for_merge(intent_id, now)") &&
       approveHelper.includes("crate::git::perform_merge_bound(") &&
-      approveHelper.includes("&intent.repo_path") &&
-      approveHelper.includes("&intent.source_branch") &&
-      approveHelper.includes("&intent.target_branch") &&
       approveHelper.includes("&intent.source_oid") &&
-      approveHelper.includes("&intent.target_oid") &&
-      gitMerge.includes("pub fn perform_merge_bound"),
+      approveHelper.includes("&intent.target_oid"),
     detail:
-      "approve delegates execution to the shared durable helper, which merges using ONLY the stored immutable intent's repo/branches/OIDs via the OID-bound merge (boundary #4)",
+      "the internal durable intent rechecks reviewed OIDs, CAS-claims the row, and merges only the stored source/target commits",
   },
   {
-    id: "boundary-4-oid-bound-merge-uses-atomic-ref-cas",
+    id: "oid-bound-merge-uses-atomic-ref-cas",
     ok:
       mergeResolvedN.length > 0 &&
       performBoundN.length > 0 &&
-      // BOTH ref-mutating sites pass target_oid as the expected-old-OID (the 4th
-      // reference_matching arg, after force=true) — a true old-OID CAS, not a
-      // check-then-set. Normalized so fmt can't break or hide it.
       mergeResolvedN.split("reference_matching(").length - 1 >= 2 &&
       mergeResolvedN.split("true,target_oid,").length - 1 >= 2 &&
-      // the 3-way path creates the merge commit WITHOUT moving the ref first.
       mergeResolvedN.includes(".commit(None,") &&
-      // perform_merge_bound resolves once and bails to StaleTips on any drift.
       performBoundN.includes("BoundMergeResult::StaleTips") &&
       performBoundN.includes("source_oid!=expected_source||target_oid!=expected_target"),
     detail:
-      "the bound merge advances the target ref with an old-OID CAS (reference_matching(.., true, target_oid, ..)) at BOTH sites, builds the 3-way commit with update_ref=None, and bails to StaleTips on any tip drift",
+      "both target-ref mutation sites use old-OID CAS and any branch drift yields StaleTips",
   },
   {
-    id: "boundary-5-merge-claim-is-db-cas-no-lock-across-git",
+    id: "merge-state-remains-durable-and-immutable",
     ok:
-      approveHelper.includes(".claim_for_merge(intent_id, now)") &&
       repo.includes("WHERE intent_id = ?1 AND state IN ('queued','ready_to_merge')") &&
-      // the store is a thin facade; git calls are not inside a held lock
-      approveHelper.includes("perform_merge_bound"),
-    detail:
-      "the merge claim is a DB compare-and-swap (the row is the arbiter), and the git merge runs with no merge-state lock held (boundary #5)",
-  },
-  {
-    id: "boundary-3-merge-state-is-persisted-not-mcp-pending",
-    ok:
-      // request/approve/reject all reach the durable store; none drive merge state
-      // through mcp_pending. The only mcp_pending producer is the permission path.
-      mcp.includes("state.merge_store.as_ref()") &&
-      !approveBody.includes("state.mcp_pending") &&
-      !mcp.includes('kind: "merge_conflict_strategy"') &&
-      mcp.includes('kind: "permission_required".to_string()'),
-    detail:
-      "merge intents are the source of truth in merge_intents; mcp_pending holds only permission items (boundary #3)",
-  },
-  {
-    id: "durable-immutable-schema-enforced-at-db",
-    ok:
+      repo.includes("ON CONFLICT(task_id, source_oid, target_oid) DO NOTHING") &&
       migrations.includes("CREATE TABLE IF NOT EXISTS merge_intents") &&
       migrations.includes("idx_merge_intents_idempotency") &&
       migrations.includes("trg_merge_intents_immutable") &&
       migrations.includes("trg_merge_intents_no_delete") &&
-      migrations.includes('pragma_update(None, "recursive_triggers", "ON")') &&
-      migrations.includes("IS NOT OLD.repo_path"),
-    detail:
-      "the DB enforces immutability: an UPDATE trigger (null-safe IS NOT) + an append-only DELETE guard + recursive_triggers close the INSERT-OR-REPLACE bypass",
-  },
-  {
-    id: "request-merge-idempotent-and-binds-oids",
-    ok:
-      mcp.includes("store.create_or_get(&intent)") &&
-      repo.includes("ON CONFLICT(task_id, source_oid, target_oid) DO NOTHING") &&
-      mcp.includes("crate::control::merge::inspect(&repo_path, &source_branch, &target_branch)"),
-    detail: "request_merge resolves+stores the branch OIDs and is idempotent per (taskId, source_oid, target_oid)",
+      migrations.includes('pragma_update(None, "recursive_triggers", "ON")'),
+    detail: "merge_intents remains the append-only, idempotent, DB-CAS source of truth",
   },
   {
     id: "merge-states-cover-the-audit-lifecycle",
@@ -183,8 +176,8 @@ const checks = [
       "Rejected",
       "CleanupFailed",
       "NeedsReconcile",
-    ].every((s) => domain.includes(s)),
-    detail: "the 9 audit lifecycle states are modeled",
+    ].every((state) => domain.includes(state)),
+    detail: "the 9 audit lifecycle states remain modeled for internal authority and recovery",
   },
 ];
 
