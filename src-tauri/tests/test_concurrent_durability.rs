@@ -64,7 +64,7 @@ fn concurrent_writers_on_one_db_file_lose_no_writes() {
     thread::scope(|s| {
         s.spawn(|| {
             for i in 0..N {
-                cs.set(format!("key{i}"), "v");
+                cs.set(format!("key{i}"), "v").unwrap();
             }
         });
         s.spawn(|| {

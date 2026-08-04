@@ -489,7 +489,12 @@ Aelyris の継続可能性は、単一PCの local handoff ではなく、Git の
 | `pnpm test:full` | full frontend Vitest suite (confidence lane) |
 | `pnpm verify:fast` | typecheck + changed-file related tests |
 | `pnpm verify:full` | typecheck + full frontend suite |
-| `pnpm verify:rust:fast` | Rust app library cargo check |
+| `pnpm verify:rust:fast` | compile-check Rust app library, binaries, and integration tests |
+| `pnpm verify:rust:native-proof` | compile-check the feature-gated `aelyris-native` proof binary |
+| `pnpm verify:rust:examples` | compile-check Rust examples when their path changes |
+| `pnpm verify:rust:benches` | compile-check Rust benches when their path changes |
+| `pnpm verify:rust:unit` | Rust library unit tests for changed app owners |
+| `pnpm verify:rust:integration` | full local Rust integration suite; hosted fast CI executes only changed test binaries |
 | `pnpm verify:rust:pty` | PTY sidecar cargo check when its boundary changes |
 | `pnpm verify:rust:full` | full Rust app library, binary, and integration targets |
 | `pnpm verify:rust:pty:full` | full PTY sidecar tests |

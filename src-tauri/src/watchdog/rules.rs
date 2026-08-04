@@ -83,6 +83,37 @@ impl Default for WatchdogRules {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::watchdog::engine::{WatchdogDecision, WatchdogEngine};
+
+    #[test]
+    fn watchdog_default_is_fail_closed() {
+        let engine = WatchdogEngine::new(WatchdogRules::default());
+
+        assert_eq!(engine.evaluate("Read"), WatchdogDecision::AskUser);
+        assert_eq!(engine.evaluate("Glob"), WatchdogDecision::AskUser);
+        assert_eq!(
+            engine.evaluate("Bash(git status --short)"),
+            WatchdogDecision::AskUser
+        );
+    }
+
+    #[test]
+    fn enabled_default_watchdog_uses_the_owned_read_only_allowlist() {
+        let engine = WatchdogEngine::new(WatchdogRules {
+            enabled: true,
+            ..WatchdogRules::default()
+        });
+
+        for tool in ["Read", "Glob", "Grep"] {
+            assert_eq!(
+                engine.evaluate(tool),
+                WatchdogDecision::AutoApprove {
+                    rule: tool.to_string(),
+                }
+            );
+        }
+        assert_eq!(engine.evaluate("Edit"), WatchdogDecision::AskUser);
+    }
 
     #[test]
     fn default_auto_repair_is_disabled() {

@@ -132,6 +132,8 @@ jobs:
             src-tauri/pty-server -> target
       - name: App library, binary, and integration tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - name: Compile feature-gated native proof binary
+        run: cargo check --manifest-path src-tauri/Cargo.toml --features native-proof-cli --bin aelyris-native
       - name: PTY sidecar tests
         run: cargo test --manifest-path src-tauri/pty-server/Cargo.toml
       - name: rustfmt check (informational)

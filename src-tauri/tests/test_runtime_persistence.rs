@@ -32,18 +32,19 @@ fn runtime_core_state_survives_a_real_file_restart() {
         let tm = TaskManager::new();
         assert_eq!(tm.attach_db(open(&db_path)).unwrap(), 0);
 
-        cs.set("auth_method", "jwt");
-        cs.set("database", "postgresql");
+        cs.set("auth_method", "jwt").unwrap();
+        cs.set("database", "postgresql").unwrap();
 
         tm.create(Task::new("api", "Build API")).unwrap();
         tm.create(Task::new("ui", "Build UI").with_dependencies(["api".to_string()]))
             .unwrap();
-        // The autonomy loop mutates the graph opaquely via with_graph_mut —
-        // status + recovery counters must reach disk through that path.
-        tm.with_graph_mut(|g| {
+        // The autonomy loop mutates a revisioned snapshot and persists it
+        // atomically; status + recovery counters must reach disk through that path.
+        tm.run_autonomy_step(|g| {
             g.transition("api", TaskStatus::Running).unwrap();
             g.record_crash("api");
-        });
+        })
+        .unwrap();
     } // every connection dropped here -> WAL checkpointed into the file
 
     assert!(db_path.exists(), "db file must persist on disk");
@@ -112,7 +113,8 @@ fn event_log_survives_a_real_file_restart_with_no_loss() {
             bus.publish(AgentEvent::new(
                 AgentEventKind::AgentActivity,
                 serde_json::json!({ "i": i }),
-            ));
+            ))
+            .unwrap();
         }
     }
 
@@ -124,11 +126,11 @@ fn event_log_survives_a_real_file_restart_with_no_loss() {
     let mut cursor = 0;
     let mut seen = 0;
     loop {
-        let batch = bus2.since(cursor, 64);
-        if batch.is_empty() {
+        let batch = bus2.since(cursor, 64).unwrap();
+        if batch.events.is_empty() {
             break;
         }
-        for e in &batch {
+        for e in &batch.events {
             assert!(e.seq > cursor, "seq must strictly increase (no gaps)");
             cursor = e.seq;
             seen += 1;

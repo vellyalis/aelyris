@@ -43,7 +43,16 @@ Run the smallest lane that can decide the behavior and risk you changed:
 pnpm verify:fast
 pnpm test:related -- src/path/to/owner.ts
 pnpm verify:rust:fast
+pnpm verify:rust:native-proof
 ```
+
+Add `pnpm verify:rust:unit` when Rust app owners change. Add
+`pnpm verify:rust:integration` when a cross-test boundary requires the whole local
+integration suite. Hosted fast CI executes only changed integration test binaries;
+the nightly/manual Full Confidence lane still runs all Rust targets.
+
+Run `pnpm verify:rust:examples` or `pnpm verify:rust:benches` only when those
+target families change. Hosted fast CI selects them path-wise.
 
 Add `pnpm verify:rust:pty` only when the PTY sidecar or one of its imported
 `aelyris_lib` boundaries changes.

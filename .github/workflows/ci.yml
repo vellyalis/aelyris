@@ -1,8 +1,9 @@
 name: CI
 
 # Path-aware required feedback for normal product work. Full frontend,
-# rendered-UI, Rust, historical A6/A7, and release evidence remain available
-# in full-confidence.yml without blocking every bounded Work Unit.
+# rendered-UI, Rust, and release evidence remain available in
+# full-confidence.yml without blocking every bounded Work Unit. Completed A6/A7
+# evidence remains bound to its accepted exact SHA outside current-main CI.
 
 on:
   push:
@@ -28,7 +29,10 @@ jobs:
       frontend_full: ${{ steps.classify.outputs.frontend_full }}
       ui: ${{ steps.classify.outputs.ui }}
       rust: ${{ steps.classify.outputs.rust }}
-      rust_full: ${{ steps.classify.outputs.rust_full }}
+      rust_unit: ${{ steps.classify.outputs.rust_unit }}
+      rust_integration: ${{ steps.classify.outputs.rust_integration }}
+      rust_examples: ${{ steps.classify.outputs.rust_examples }}
+      rust_benches: ${{ steps.classify.outputs.rust_benches }}
       pty: ${{ steps.classify.outputs.pty }}
       dependencies: ${{ steps.classify.outputs.dependencies }}
       policy: ${{ steps.classify.outputs.policy }}
@@ -64,13 +68,16 @@ jobs:
           }
 
           $workflow = Has-Path '^\.github/workflows/'
-          $frontend = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|scripts/run-frontend-tests\.mjs$|package\.json$|pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|playwright)')
-          $frontendFull = $workflow -or (Has-Path '^(pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|src/(App\.tsx$|main\.tsx$|features/app/|shared/(store|types)/))')
-          $ui = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|package\.json$|pnpm-lock\.yaml$|playwright\.config\.ts$|scripts/verify-ui-trust-contract\.mjs$)')
+          $frontend = Has-Path '^(index\.html$|public/|assets/|src/|e2e/|scripts/run-frontend-tests\.mjs$|package\.json$|pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|playwright)'
+          $frontendFull = Has-Path '^(pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|src/(App\.tsx$|main\.tsx$|features/app/|shared/(store|types)/))'
+          $ui = Has-Path '^(index\.html$|public/|assets/|src/|e2e/|package\.json$|pnpm-lock\.yaml$|playwright\.config\.ts$|scripts/verify-ui-trust-contract\.mjs$)'
           $rust = $workflow -or (Has-Path '^(src-tauri/|.*Cargo\.(toml|lock)$)')
-          $rustFull = $workflow -or (Has-Path '^(src-tauri/(src/|tests/|vendor/|build\.rs$|Cargo\.(toml|lock)$|pty-server/(src/|tests/|build\.rs$|Cargo\.(toml|lock)$)))')
-          $pty = $workflow -or (Has-Path '^(src-tauri/(pty-server/|vendor/|Cargo\.(toml|lock)$|src/(lib\.rs$|startup_reconciliation\.rs$|api/|command_risk/|db/|logging/|pty/)))')
-          $dependencies = $workflow -or (Has-Path '(^|/)(package\.json|pnpm-lock\.yaml|Cargo\.toml|Cargo\.lock)$')
+          $rustUnit = Has-Path '^(src-tauri/(src/|vendor/|build\.rs$|Cargo\.(toml|lock)$))'
+          $rustIntegration = Has-Path '^src-tauri/tests/'
+          $rustExamples = Has-Path '^src-tauri/examples/'
+          $rustBenches = Has-Path '^src-tauri/benches/'
+          $pty = Has-Path '^(src-tauri/(pty-server/|vendor/|Cargo\.(toml|lock)$|src/(lib\.rs$|startup_reconciliation\.rs$|api/|command_risk/|db/|logging/|pty/)))'
+          $dependencies = Has-Path '(^|/)(package\.json|pnpm-lock\.yaml|Cargo\.toml|Cargo\.lock)$'
           $policy = $workflow -or (Has-Path '^(README\.md|CONTRIBUTING\.md|AGENTS\.md|AI_GUIDE\.md|GOAL\.md|DECISION_FRAMEWORK\.md|DELEGATION_FRAMEWORK\.md|DECISIONS\.md|ARCHITECTURE\.md|product-delivery-instructions\.md|tasks/README\.md|contracts/README\.md|docs/(README\.md|requirements\.md|PUBLICATION_READINESS\.md|AGENT_WORKFLOWS\.md)|scripts/(verify-ai-decision-knowledge|verify-release-hygiene-contract)\.mjs)$')
 
           "base=$base" >> $env:GITHUB_OUTPUT
@@ -78,7 +85,10 @@ jobs:
           "frontend_full=$($frontendFull.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "ui=$($ui.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "rust=$($rust.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          "rust_full=$($rustFull.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "rust_unit=$($rustUnit.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "rust_integration=$($rustIntegration.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "rust_examples=$($rustExamples.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "rust_benches=$($rustBenches.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "pty=$($pty.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "dependencies=$($dependencies.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "policy=$($policy.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
@@ -86,7 +96,7 @@ jobs:
           Write-Host "Base: $base"
           Write-Host "Changed files: $($files.Count)"
           $files | ForEach-Object { Write-Host " - $_" }
-          Write-Host "frontend=$frontend frontendFull=$frontendFull ui=$ui rust=$rust rustFull=$rustFull pty=$pty dependencies=$dependencies policy=$policy"
+          Write-Host "frontend=$frontend frontendFull=$frontendFull ui=$ui rust=$rust rustUnit=$rustUnit rustIntegration=$rustIntegration rustExamples=$rustExamples rustBenches=$rustBenches pty=$pty dependencies=$dependencies policy=$policy"
 
   frontend-fast:
     name: Frontend fast (tsc + changed Vitest)
@@ -200,23 +210,43 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           workspaces: |
             src-tauri -> target
             src-tauri/pty-server -> target
-      - name: App library check
-        if: needs.changes.outputs.rust_full != 'true'
-        run: cargo check --manifest-path src-tauri/Cargo.toml --lib
-      - name: PTY sidecar check
-        if: needs.changes.outputs.pty == 'true' && needs.changes.outputs.rust_full != 'true'
-        run: cargo check --manifest-path src-tauri/pty-server/Cargo.toml
-      - name: Full Rust app owner tests
-        if: needs.changes.outputs.rust_full == 'true'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
-      - name: Full PTY sidecar tests
-        if: needs.changes.outputs.pty == 'true' && needs.changes.outputs.rust_full == 'true'
+      - name: Compile Rust app library, binaries, and integration tests
+        run: cargo check --manifest-path src-tauri/Cargo.toml --lib --bins --tests
+      - name: Compile feature-gated native proof binary
+        run: cargo check --manifest-path src-tauri/Cargo.toml --features native-proof-cli --bin aelyris-native
+      - name: Compile changed Rust examples
+        if: needs.changes.outputs.rust_examples == 'true'
+        run: cargo check --manifest-path src-tauri/Cargo.toml --examples
+      - name: Compile changed Rust benches
+        if: needs.changes.outputs.rust_benches == 'true'
+        run: cargo check --manifest-path src-tauri/Cargo.toml --benches
+      - name: Rust library unit tests for changed app owners
+        if: needs.changes.outputs.rust_unit == 'true'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Rust integration tests when their boundary changes
+        if: needs.changes.outputs.rust_integration == 'true'
+        shell: pwsh
+        run: |
+          $tests = @(
+            git diff --name-only "${{ needs.changes.outputs.base }}" "${{ github.sha }}" |
+              Where-Object { $_ -match '^src-tauri/tests/[^/]+\.rs$' }
+          )
+          foreach ($test in $tests) {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($test)
+            Write-Host "Running changed Rust integration test: $name"
+            cargo test --manifest-path src-tauri/Cargo.toml --test $name
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: PTY sidecar tests when its boundary changes
+        if: needs.changes.outputs.pty == 'true'
         run: cargo test --manifest-path src-tauri/pty-server/Cargo.toml
 
   dependency-risk:
