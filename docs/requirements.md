@@ -1,8 +1,8 @@
 # Aelyris Requirements Index
 
 Status: active implementation index
-Last updated: 2026-08-03 JST
-Last reviewed: 2026-08-03 JST
+Last updated: 2026-08-04 JST
+Last reviewed: 2026-08-04 JST
 
 This file is the stable requirements entrypoint referenced by `AGENTS.md`.
 It does not replace the detailed specs. It points implementers to the current
@@ -47,13 +47,18 @@ order and the authoritative specs. Key still-active specs include:
    immutable work-unit packets and `MissionCompletionPacket`, reversible autonomy, governed learning,
    Attention Compiler, and post-release Apex direction. Its detailed design and
    roadmap are adjacent. These are target authorities, not shipped-capability or
-   release-readiness claims. The active A9 repo repair owns current required CI;
-   product delivery becomes the sole repo-mutating lane after that repair while
-   operator/external certification may remain pending.
+   release-readiness claims. A9.6r1 repo repair completed at `f72a61b3`; product
+   delivery is now the sole repo-mutating lane at `GMV-0`, while operator/external
+   certification remains pending without repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal
    without becoming prerequisites of that first vertical.
+
+   Current delivery order is value-first: connect the existing `plan_build` and
+   `orchestrator_step` owners to one supported cockpit path before further Mission
+   generalization, native migration, Remote Continuity, Proofbook product UI, or
+   release-certification work.
 
    Cross-face API/MCP security, identity, versioning, idempotency, cancellation,
    backpressure, evidence, migration, and adversarial acceptance are owned by

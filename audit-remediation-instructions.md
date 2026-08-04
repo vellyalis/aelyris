@@ -1,14 +1,14 @@
 # Comprehensive Audit Remediation Work Order
 
-STATUS: ACTIVE  
+STATUS: CERTIFICATION_ONLY
 PROGRAM: `audit-remediation`  
-REPO LANE: `REOPENED_BY_LATEST_REQUIRED_CI`.
+REPO LANE: `CLOSED_AT_F72A61B3_REQUIRED_FAST_CI`.
 CERTIFICATION LANE: `PENDING_OPERATOR_EXTERNAL`.
 CURRENT PHASE: `A9`.
-ACTIVE SLICE: `A9.6r1` (latest required-CI regression repair; not a new A9.7).
-LAST COMPLETED SLICE: `A9.6` at its accepted evidence HEAD; current repo completion is stale.
-NEXT PHASE: `A9`.
-NEXT IMPLEMENTATION SLICE: `A9.6r1`.
+ACTIVE SLICE: `A9-certification` (operator/external continuation only; no repo mutation).
+LAST COMPLETED SLICE: `A9.6r1` at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`.
+NEXT PHASE: `none` for repo-owned audit remediation.
+NEXT IMPLEMENTATION SLICE: `none` for this work order; `GMV-0` is owned by `product-delivery-instructions.md`.
 
 ## Latest Required-CI Completion Invalidation — 2026-08-03
 
@@ -23,16 +23,27 @@ GitHub Actions run `30786063813` at the latest required-CI product baseline
 - stack-risk reported two npm known vulnerabilities and one release blocker;
 - A6.8 then rejected its failed required dependency.
 
-The governance-only changes that route this repair do not alter the rendered-UI or
-dependency owners, so these failures remain unresolved across the policy commit. Only
-causal repair followed by fresh required CI at the resulting HEAD can close A9.6r1.
+The causal repair landed at `65829f5e`, and the verification-lane correction removed
+historical A6/A7 aggregates from current-main CI without weakening direct owner gates.
+Hosted Required fast CI run `30876300708` passed at
+`f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`: selected policy and Rust compile lanes
+were green, unrelated frontend/UI/dependency lanes were correctly skipped, and the
+final aggregate passed. A9.6r1 is therefore closed. Operator/external certification
+remains pending and release readiness remains false, but this work order no longer
+owns repository mutation. `product-delivery-instructions.md` is the sole active
+repo-mutating work order.
 
-`A9.6r1` owns only causal repair or correct classification of these current
-repo-owned failures. Do not weaken thresholds, convert current failures into stale or
-external rows, or restart completed A6/A7 implementation. After current required CI is
-green, the repo repair lane closes again, operator/external certification remains
-pending, and `product-delivery-instructions.md` becomes the sole repo-mutating work
-order. Certification-only work continues to block release claims but not product work.
+## A9.6r1 Repo-Lane Closeout — 2026-08-04
+
+- rendered desktop chrome now tests an explicit open-sidebar fixture without changing
+  the terminal-first product default;
+- Command Palette Escape dismissal is component-owned and idempotent; the prior flake
+  reproduced before repair and passed 20/20 after repair;
+- DOMPurify, PostCSS, and undici were advanced to patched versions and npm audit is zero;
+- fast CI selects only changed owners, while nightly/manual Full Confidence retains the
+  complete frontend, rendered UI, Rust, and release-hardening portfolio;
+- completed A6/A7 evidence remains bound to its accepted exact SHA and cannot block
+  current product delivery unless its phase is explicitly reopened.
 A4.12 closes the corrective A4.7-A4.12 runtime-integrity program. The existing
 `StartupReconciliationState` is mirrored across the sidecar process boundary with an
 authenticated epoch-bound decision; sidecar REST session creation, Workflow starts,
@@ -123,9 +134,9 @@ Execute the comprehensive 2026-07-10 remediation program without losing scope,
 creating duplicate state owners, or relying on stale evidence. The detailed plan is
 `docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md`.
 
-This work order supersedes generic renderer/release continuation while its repo repair
-lane is ACTIVE. After current required CI is green, its certification-only lane does
-not supersede the queued product-delivery work order.
+This work order no longer supersedes product implementation. Its certification-only
+lane remains authoritative for operator/external release evidence and changes no
+repository file.
 Completed refactor/hardening orders remain historical preflight only. WU-UQ-1 is an
 input to phase A3, not a concurrent active work order. Renderer Stage 2 is deferred to
 conditional phase A8.
@@ -133,9 +144,11 @@ conditional phase A8.
 The full-native Rust migration package remains an accepted-with-amendments strategic
 direction under
 `docs/plans/full-native-rust-migration/`. It does not change the
-current repair order or create a concurrent repo mutation. Activation is additionally
-gated by ADR-015 and the measured migration gate in `AGENTS.md`. The exact current slice is
-owned only by this root work order and the canonical local handoff; stable
+current product-delivery order or create a concurrent repo mutation. Activation is additionally
+gated by ADR-015 and the measured migration gate in `AGENTS.md`. The exact current
+certification slice is owned only by this root work order and its canonical local
+handoff; the exact repo implementation slice is `GMV-0` in
+`product-delivery-instructions.md`. Stable
 requirements/spec/native-package documents point here instead of copying that
 volatile value.
 
@@ -157,9 +170,9 @@ A4.12 complete
   -> A9.4 right-rail information-density verifier ownership reconciliation (complete; close_verifier_drift)
   -> A9.5 operator-progress resume-artifact freshness reconciliation (complete; refresh_owner_artifact)
   -> A9.6 repo-owned release-lane closeout and exact operator handoff (repo-owned complete; close_repo_owned_release_lane)
-  -> A9.6r1 latest required-CI regression repair (active; not A9.7)
-  -> product-delivery GMV after current required CI is green
-  -> A9 operator/external certification continues non-exclusively
+  -> A9.6r1 latest required-CI regression repair (complete at f72a61b3; not A9.7)
+  -> product-delivery GMV-0 (active repo mutation)
+  -> A9 operator/external certification continues non-exclusively without repo mutation
   -> NUI-F0..F7 only after ADR-015 activation evidence
 ```
 
@@ -183,7 +196,7 @@ implementation phase and not a reduction of the product Goal.
    authenticated exact-SHA closeout all pass. File length remains a diagnostic
    non-growth ratchet, not a universal `<=800` completion requirement. Do not move
    logic solely to satisfy a line count.
-3. **A7.5 and A7 are complete; A8.0 and A8.1 remain complete; the earlier A9.6 repo closeout is stale at current HEAD until A9.6r1 is green.** The accepted scope lock, durable inert
+3. **A7.5 and A7 are complete; A8.0 and A8.1 remain complete; A9.6r1 restored and closed the repo-owned A9 lane at `f72a61b3`.** The accepted scope lock, durable inert
    request/plan contract, clean-state visible implementation/fresh-test evidence,
    independent exact-OID review, and isolated target receipt now precede immutable
    settlement. A7 Core proves only:
@@ -206,8 +219,8 @@ implementation phase and not a reduction of the product Goal.
    source-string check, replace or supplement that check with the smallest executed
    behavior proof needed for the changed risk. Add a new verifier only for a unique
    failure mode that no existing gate can decide.
-6. Once A9.6r1 is green, certification-only A9 work may remain active without
-   holding the repository mutation lock. Activate `product-delivery-instructions.md`;
+6. A9.6r1 is green. Certification-only A9 work remains active without holding the
+   repository mutation lock. `product-delivery-instructions.md` owns active `GMV-0`;
    do not substitute NUI scaffolding, further audit prose, or another verifier wave for
    the general Mission user journey.
 

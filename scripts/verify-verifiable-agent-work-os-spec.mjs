@@ -20,6 +20,7 @@ const paths = {
   index: "docs/specs/README.md",
   plan: "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md",
   workOrder: "audit-remediation-instructions.md",
+  productWorkOrder: "product-delivery-instructions.md",
   packageJson: "package.json",
   traceVerifier: "scripts/verify-requirements-spec-design-traceability.mjs",
   verifier: "scripts/verify-verifiable-agent-work-os-spec.mjs",
@@ -113,6 +114,11 @@ function backtickField(text, label) {
   return text.match(new RegExp(`^${escaped}:\\s*\\x60([^\\x60]+)\\x60`, "m"))?.[1] ?? null;
 }
 
+function plainField(text, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.match(new RegExp(`^${escaped}:\\s*([^\\r\\n]+)`, "m"))?.[1]?.trim() ?? null;
+}
+
 function check(id, passed, detail, evidence = {}) {
   return { id, status: passed ? "passed" : "failed", detail, evidence };
 }
@@ -123,6 +129,13 @@ const currentFrontier = {
   lastCompletedSlice: backtickField(files.workOrder, "LAST COMPLETED SLICE"),
   nextPhase: backtickField(files.workOrder, "NEXT PHASE"),
   nextImplementationSlice: backtickField(files.workOrder, "NEXT IMPLEMENTATION SLICE"),
+};
+const productFrontier = {
+  status: plainField(files.productWorkOrder, "STATUS"),
+  phase: backtickField(files.productWorkOrder, "CURRENT PHASE"),
+  activeSlice: backtickField(files.productWorkOrder, "ACTIVE SLICE"),
+  lastCompletedSlice: backtickField(files.productWorkOrder, "LAST COMPLETED SLICE"),
+  nextImplementationSlice: backtickField(files.productWorkOrder, "NEXT IMPLEMENTATION SLICE"),
 };
 
 const a7ScopeLockParse = markedJson(files.design, "A7_CORE_SCOPE_LOCK_V1");
@@ -443,12 +456,22 @@ const requiredWorkOrderClauses = [
   "A9.6 closes repo-owned R0-A9",
 ];
 
+const requiredProductWorkOrderClauses = [
+  "STATUS: ACTIVE",
+  "CURRENT PHASE: `GMV`",
+  "ACTIVE SLICE: `GMV-0`",
+  "NEXT IMPLEMENTATION SLICE: `GMV-0`",
+  "sole repo-mutating product lane",
+  "certification-only lane",
+];
+
 const requiredArchitectureClauses = [
   "Verifiable Agent Work OS Composition",
   "Mission / WorkGraph",
   "MissionProgressProjection",
   "Control Kernel",
-  "finite A7 Core Mission Loop",
+  "finite A7 Core Mission substrate",
+  "active `GMV-0`",
   "separately gated Apex work",
 ];
 
@@ -525,6 +548,7 @@ const missing = {
   proofbook: missingFrom(files.proofbook, requiredProofbookClauses),
   plan: missingFrom(files.plan, requiredPlanClauses),
   workOrder: missingFrom(files.workOrder, requiredWorkOrderClauses),
+  productWorkOrder: missingFrom(files.productWorkOrder, requiredProductWorkOrderClauses),
 };
 
 const forbiddenPositiveClaims = [
@@ -994,10 +1018,17 @@ const a7VerifierNegativeMutations = {
   unknownFieldRejected: !exactKeys(unknownFieldMutation, Object.keys(a7ScopeLock ?? {})),
 };
 const a7VerifierNegativeMutationsValid = Object.values(a7VerifierNegativeMutations).every(Boolean);
-const a9ReleaseLaneCloseoutFrontierValid =
-  currentFrontier.activeSlice === "A9.6" &&
-  currentFrontier.lastCompletedSlice === "A9.6" &&
-  currentFrontier.nextImplementationSlice === "A9.6";
+const a9CertificationOnlyFrontierValid =
+  currentFrontier.activeSlice === "A9-certification" &&
+  currentFrontier.lastCompletedSlice === "A9.6r1" &&
+  currentFrontier.nextPhase === "none" &&
+  currentFrontier.nextImplementationSlice === "none";
+const productDeliveryFrontierValid =
+  productFrontier.status === "ACTIVE" &&
+  productFrontier.phase === "GMV" &&
+  productFrontier.activeSlice === "GMV-0" &&
+  productFrontier.lastCompletedSlice === "none" &&
+  productFrontier.nextImplementationSlice === "GMV-0";
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
@@ -1246,12 +1277,19 @@ const checks = [
   check(
     "work-order-frontier",
     missing.workOrder.length === 0 &&
+      missing.productWorkOrder.length === 0 &&
       Object.values(currentFrontier).every(Boolean) &&
+      Object.values(productFrontier).every(Boolean) &&
       currentFrontier.phase === "A9" &&
-      currentFrontier.activeSlice === currentFrontier.nextImplementationSlice &&
-      a9ReleaseLaneCloseoutFrontierValid,
-    "Work order preserves A7.5 and A8, records A9.0-A9.6 complete, and keeps A9.6 only as the operator/external continuation boundary",
-    { missingClauses: missing.workOrder, currentFrontier },
+      a9CertificationOnlyFrontierValid &&
+      productDeliveryFrontierValid,
+    "Audit remediation is certification-only after A9.6r1 while product delivery owns active GMV-0 repo implementation",
+    {
+      missingAuditClauses: missing.workOrder,
+      missingProductClauses: missing.productWorkOrder,
+      currentFrontier,
+      productFrontier,
+    },
   ),
   check(
     "a7-combined-acceptance-machine-contract",

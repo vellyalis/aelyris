@@ -4,7 +4,7 @@ Status: approved target design; not an implementation or release claim
 
 Version: 1.1
 
-Last reviewed: 2026-07-29 JST
+Last reviewed: 2026-08-04 JST
 
 ## 0. Purpose And Source Order
 
@@ -16,14 +16,17 @@ parallel runtime.
 Read in this order:
 
 1. `docs/requirements.md` for claim policy.
-2. `audit-remediation-instructions.md` and the active R0-A9 tracked plan.
-3. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md` for requirements.
-4. This document for architecture and detailed design.
-5. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md` for sequencing.
-6. Existing owner specs for visible PTY, TaskGraph, Qralis/message bus,
+2. `product-delivery-instructions.md` for active `GMV-0` scope and stop conditions.
+3. `audit-remediation-instructions.md` for certification-only boundaries and the
+   completed R0-A9/A9.6r1 history.
+4. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_SPEC.md` for requirements.
+5. This document for architecture and detailed design.
+6. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md` for sequencing.
+7. Existing owner specs for visible PTY, TaskGraph, Qralis/message bus,
    Proofbooks, ownership, merge intent, and Remote Continuity.
 
-If a conflict exists, preserve current claim policy and active remediation order,
+If a conflict exists, preserve current claim policy, active product-delivery order,
+and certification boundary,
 then update this design. A7 implements only the finite canonical Core Mission
 journey frozen by the 2026-07-29 scope lock. Deferred product requirements and
 Apex features remain outside A7 Core unless the tracked plan explicitly promotes a

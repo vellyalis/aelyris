@@ -59,7 +59,8 @@ attention, blockers, proof freshness, and repository truth. React, MCP, CLI, SSH
 and remote surfaces are projections/adapters. Full target capability is not a
 current implementation or release-readiness claim.
 
-The active R0-A9 plan implements only a finite A7 Core Mission Loop before A8/A9.
+The completed R0-A9/A9.6r1 program established the finite A7 Core Mission substrate;
+active `GMV-0` now generalizes that contract without creating a second engine.
 Replay/time travel, Skill Foundry, Decision Lab, Counterfactual Arena, Project
 Twin, writable Remote Continuity, extension marketplace, and A2A federation remain
 separately gated Apex work.
@@ -72,8 +73,8 @@ composition remains active through A8.1/A9 and until NUI activation and later
 surface-promotion gates transfer ownership.
 
 ADR-015 adds a product-delivery and measured-necessity gate before activation.
-The current repo order is latest required-CI repair, then the general Mission
-product vertical while A9 operator/external certification may remain pending.
+The latest required-CI repair is complete and the general Mission product vertical is
+the active repo lane while A9 operator/external certification remains pending.
 NUI-F0-F7 remains the accepted strategic native program, but it is not the automatic
 next repo mutation: NUI-F0 starts only after the general Mission path is
 Product-Accessible and current evidence satisfies the migration gate. It still compares

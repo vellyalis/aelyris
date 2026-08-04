@@ -265,11 +265,21 @@ agent_context:
       implementation_review_progress_or_session_clear:
         applies_when:
           - audit-remediation-instructions.md is not ACTIVE
+          - product-delivery-instructions.md is not ACTIVE
           - no Fable continuation cue applies
         read_in_order:
           - refactor-instructions.md
           - hardening-instructions.md
           - renderer-instructions.md
+      product_delivery_continuation:
+        applies_when:
+          - product-delivery-instructions.md is ACTIVE
+          - no Fable continuation cue applies
+        read_in_order:
+          - product-delivery-instructions.md
+          - docs/specs/README.md
+          - docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md
+          - owning GMV source files and focused evidence
       release_or_public_claim:
         read:
           - docs/requirements.md
@@ -387,18 +397,17 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
 2. `hardening-instructions.md` - H1-H8 repo-owned completion audit is complete
    on this branch; broader remaining blockers must be read from the current
    final-goal audit before choosing implementation vs external/operator work.
-3. `audit-remediation-instructions.md` - **ACTIVE REPO REPAIR + CERTIFICATION**.
-   The latest required-CI product baseline has reopened the repo lane; read its exact repair
-   slice and keep operator/external certification separate.
-4. `product-delivery-instructions.md` - **QUEUED**. It becomes the sole repo-mutating
-   product work order after the current required-CI repair is green. Its first product
-   program is the general Mission vertical over existing owners.
+3. `audit-remediation-instructions.md` - **CERTIFICATION ONLY**. A9.6r1 repo repair
+   is complete at `f72a61b3`; signing, real sleep, authenticated operator prompts, and
+   external evidence remain release-blocking without repository mutation.
+4. `product-delivery-instructions.md` - **ACTIVE / GMV-0**. It is the sole
+   repo-mutating work order and connects the general Mission vertical over existing owners.
 5. `ui-quality-instructions.md` - scheduled work is owned by audit-remediation
    phase A3. Do not execute it as a concurrent work order.
 6. `renderer-instructions.md` - deferred to conditional audit-remediation phase
    A8. Do not reopen from the old generic route.
 現行実行順は `refactor (complete) -> hardening (complete) -> audit remediation
-R0..A9 -> latest required-CI repair -> product delivery`。A9 certification は
+R0..A9/A9.6r1 (repo complete) -> product delivery GMV-0 (active)`。A9 certification は
 release claim を BLOCK したまま operator/external lane で継続できるが、repo mutation を
 独占しない。full-native Rust migration は ADR-014 の戦略方向として保持し、ADR-015 と
 上記 migration activation gate を満たすまで自動的な next implementation program に

@@ -1,7 +1,7 @@
 # Aelyris Verifiable Agent Work OS Specification
 
-Status: approved design authority; implementation remains gated by the active R0-A9
-remediation program
+Status: approved design authority; active implementation is the bounded `GMV-0`
+general Mission contract while A9 certification remains external/operator-gated
 
 Version: 1.1
 
@@ -17,12 +17,14 @@ implemented or release-ready.
 Authority order:
 
 1. `docs/requirements.md` owns current public and release claim policy.
-2. `audit-remediation-instructions.md` and
-   `COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` own active R0-A9 order.
-3. This document owns the target product requirements and acceptance language.
-4. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md` owns the proposed data,
+2. `product-delivery-instructions.md` owns the active `GMV-0` repo slice.
+3. `audit-remediation-instructions.md` and
+   `COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md` own completed R0-A9 history
+   and the continuing certification boundary.
+4. This document owns the target product requirements and acceptance language.
+5. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md` owns the proposed data,
    module, state-machine, and protocol design.
-5. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md` owns the staged
+6. `AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md` owns the staged
    implementation and capability-unlock map.
 
 Current Aelyris remains alpha and not release-ready. A passing documentation

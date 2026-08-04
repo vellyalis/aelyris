@@ -1,17 +1,18 @@
 # Aelyris Verifiable Agent Work OS Roadmap — 2026-07-13
 
-Status: tracked product roadmap; active execution remains the R0-A9 remediation
-program
+Status: tracked product roadmap; active execution is product-delivery `GMV-0` while
+A9 operator/external certification remains non-exclusive
 
-Last reviewed: 2026-07-29 JST
+Last reviewed: 2026-08-04 JST
 
 ## 0. Roadmap Contract
 
 This roadmap integrates the 2026-07-13 product/architecture audit without
 shrinking or indefinitely expanding the Comprehensive Audit Remediation goal.
 
-- **Now**: finish the active R0-A9 phase/slice in dependency order.
-- **Next**: implement a finite Core Mission Loop in A7 after A6 acceptance.
+- **Now**: execute `GMV-0`, separating the general Mission contract from the frozen
+  A7 conformance fixture through existing owners.
+- **Next**: expose the approved general plan preview in `GMV-1` after `GMV-0` proof.
 - **Destination**: build the Apex capabilities after release trust is established
   or through later explicitly gated programs.
 

@@ -258,7 +258,8 @@ const checks = [
         "NEXT PHASE:",
         "A8.1",
         "measured native terminal evidence and disposition",
-        "exact current slice is owned only by this root work order",
+        "exact current certification slice is owned only by this root work order",
+        "exact repo implementation slice is `GMV-0`",
         "gated by ADR-015",
       ]) &&
       includesAll(normalizedDocs.productDelivery, [

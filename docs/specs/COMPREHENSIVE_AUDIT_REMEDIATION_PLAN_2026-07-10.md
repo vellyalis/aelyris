@@ -2287,8 +2287,9 @@ new A9.7 or a release-readiness transition.
 
 ### **A9.6r1 — Latest Required-CI Regression Repair**
 
-Status: active on 2026-08-03. This is a fresh regression repair inside the A9 repo
-lane, not a new A9.7 and not a reopening of completed A6/A7 implementation.
+Status: complete on 2026-08-04 at `f72a61b3`, Required fast CI run `30876300708`.
+This was a fresh regression repair inside the A9 repo lane, not a new A9.7 and not a
+reopening of completed A6/A7 implementation.
 
 GitHub Actions run `30786063813` at the latest required-CI product baseline
 `d2b1f00e89d6600ded0cd9658b9056c7f220076a` invalidated the prior A9.6
@@ -2297,15 +2298,12 @@ contract, its command-dialog Escape scenario was flaky, stack-risk reported two 
 known vulnerabilities and one release blocker, and A6.8 rejected the failed required
 dependency.
 
-Required work is bounded to causal repair or correct repo-owned classification of those
-current failures, followed by fresh exact-HEAD required CI. The policy-only routing
-commit does not change the affected rendered-UI or dependency owners and therefore
-cannot close this slice. Threshold weakening,
-historical-PASS substitution, and external/stale reclassification are forbidden. When
-the current repo lane is green again, operator/external certification remains pending
-and release readiness stays false, but certification does not monopolize repository
-mutation. `product-delivery-instructions.md` then becomes the sole repo-mutating work
-order under ADR-015.
+The failures were causally repaired, dependency audit returned zero, rendered UI and
+frontend owner gates passed, and path-aware Required fast CI passed at the closing SHA.
+Historical A6/A7 aggregates were removed from current-main workflows and remain bound
+to their accepted exact SHAs. Operator/external certification remains pending and
+release readiness stays false, but certification does not monopolize repository
+mutation. `product-delivery-instructions.md` now owns active `GMV-0` under ADR-015.
 
 ## Post-A9 Apex Product Program - Tracked Destination, Not R0-A9 Scope
 
