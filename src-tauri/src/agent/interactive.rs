@@ -1120,7 +1120,7 @@ mod tests {
         // (no -p), no --model, and no auto-approve flags — a human keeps the gate.
         let (program, args, _env) =
             agent_command_spec("codex-mini", Some("review"), false).unwrap();
-        assert_eq!(program, platform_cli_program("codex"));
+        assert_eq!(program, platform_codex_program());
         assert_eq!(args, vec!["review"]);
     }
 
@@ -1132,7 +1132,7 @@ mod tests {
         // what makes the visible fleet genuinely multi-model (not claude-only).
         let (program, args, env) =
             agent_command_spec("codex-mini", Some("build it"), true).unwrap();
-        assert_eq!(program, platform_cli_program("codex"));
+        assert_eq!(program, platform_codex_program());
         assert_eq!(
             args,
             vec![
