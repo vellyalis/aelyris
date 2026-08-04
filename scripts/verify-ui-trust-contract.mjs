@@ -33,7 +33,8 @@ const sourcePaths = {
   app: "src/App.tsx",
   workspaceRegionFocus: "src/shared/lib/workspaceRegionFocus.ts",
   workspaceRegionFocusTests: "src/__tests__/workspaceRegionFocus.test.ts",
-  renderedUiWorkflow: ".github/workflows/ci.yml",
+  renderedUiFastWorkflow: ".github/workflows/ci.yml",
+  renderedUiFullWorkflow: ".github/workflows/full-confidence.yml",
   visualQaLayout: "e2e/visual-qa-layout.spec.ts",
 };
 
@@ -56,7 +57,8 @@ function localDate() {
 }
 
 const s = Object.fromEntries(Object.entries(sourcePaths).map(([id, path]) => [id, source(path)]));
-const renderedUiJob = s.renderedUiWorkflow.split("\n  rendered-ui-trust:")[1]?.split("\n  rust:")[0] ?? "";
+const fastRenderedUiJob = s.renderedUiFastWorkflow.split("\n  ui-smoke:")[1]?.split("\n  rust-fast:")[0] ?? "";
+const fullRenderedUiJob = s.renderedUiFullWorkflow.split("\n  rendered-ui-trust:")[1]?.split("\n  rust:")[0] ?? "";
 const checks = [];
 
 add(
@@ -174,12 +176,17 @@ add(
 add(
   checks,
   "q10-blocking-rendered-ui-trust",
-  renderedUiJob.length > 0 &&
-    !renderedUiJob.includes("continue-on-error: true") &&
-    renderedUiJob.includes('AELYRIS_E2E_EXTERNAL_DASHBOARD: "0"') &&
+  fastRenderedUiJob.length > 0 &&
+    !fastRenderedUiJob.includes("continue-on-error: true") &&
+    fastRenderedUiJob.includes('AELYRIS_E2E_EXTERNAL_DASHBOARD: "0"') &&
+    fastRenderedUiJob.includes("pnpm test:e2e:smoke") &&
+    fullRenderedUiJob.length > 0 &&
+    !fullRenderedUiJob.includes("continue-on-error: true") &&
+    fullRenderedUiJob.includes('AELYRIS_E2E_EXTERNAL_DASHBOARD: "0"') &&
+    fullRenderedUiJob.includes("playwright test e2e/visual-qa-layout.spec.ts") &&
     s.visualQaLayout.includes('AELYRIS_E2E_EXTERNAL_DASHBOARD === "1"') &&
     s.visualQaLayout.includes("External roadmap dashboard is an operator-owned visual gate."),
-  "The Aelyris rendered suite blocks CI while the external roadmap dashboard remains an explicit operator-owned gate.",
+  "Path-aware UI smoke blocks fast CI and the complete rendered suite blocks Full Confidence while the external roadmap dashboard remains an explicit operator-owned gate.",
 );
 
 const failedChecks = checks.filter((check) => !check.ok).map((check) => check.id);

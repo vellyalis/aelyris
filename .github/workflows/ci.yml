@@ -66,7 +66,7 @@ jobs:
           $workflow = Has-Path '^\.github/workflows/'
           $frontend = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|scripts/run-frontend-tests\.mjs$|package\.json$|pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|playwright)')
           $frontendFull = $workflow -or (Has-Path '^(pnpm-lock\.yaml$|vite\.config|vitest|tsconfig|src/(App\.tsx$|main\.tsx$|features/app/|shared/(store|types)/))')
-          $ui = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|package\.json$|pnpm-lock\.yaml$|playwright\.config\.ts$)')
+          $ui = $workflow -or (Has-Path '^(index\.html$|public/|assets/|src/|e2e/|package\.json$|pnpm-lock\.yaml$|playwright\.config\.ts$|scripts/verify-ui-trust-contract\.mjs$)')
           $rust = $workflow -or (Has-Path '^(src-tauri/|.*Cargo\.(toml|lock)$)')
           $rustFull = $workflow -or (Has-Path '^(src-tauri/(src/|tests/|vendor/|build\.rs$|Cargo\.(toml|lock)$|pty-server/(src/|tests/|build\.rs$|Cargo\.(toml|lock)$)))')
           $pty = $workflow -or (Has-Path '^(src-tauri/(pty-server/|vendor/|Cargo\.(toml|lock)$|src/(lib\.rs$|startup_reconciliation\.rs$|api/|command_risk/|db/|logging/|pty/)))')
