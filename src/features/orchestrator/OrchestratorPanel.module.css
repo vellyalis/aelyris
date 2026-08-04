@@ -8,6 +8,98 @@
   color: var(--text-secondary);
 }
 
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--glass-thick);
+  box-shadow: inset 0 0 0 1px rgba(124, 214, 235, 0.08);
+}
+
+.goalLabel {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--aelyris-champagne);
+}
+
+.goalInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  color: var(--text-primary);
+  background: rgba(8, 12, 20, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(124, 214, 235, 0.08);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.goalInput:focus-visible {
+  outline: 1px solid var(--aelyris-champagne);
+  outline-offset: 1px;
+}
+
+.goalInput::placeholder {
+  color: var(--text-muted);
+}
+
+.composerActions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.primaryAction,
+.secondaryAction {
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-4);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.primaryAction {
+  color: var(--aelyris-ink);
+  background: var(--aelyris-champagne);
+}
+
+.secondaryAction {
+  color: var(--text-primary);
+  background: rgba(124, 214, 235, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(124, 214, 235, 0.12);
+}
+
+.primaryAction:disabled,
+.secondaryAction:disabled,
+.goalInput:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.composerHint,
+.actionStatus {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.actionStatus {
+  color: var(--status-done);
+}
+
+.actionError {
+  color: var(--status-error);
+}
+
 .loopRow {
   display: flex;
   align-items: center;

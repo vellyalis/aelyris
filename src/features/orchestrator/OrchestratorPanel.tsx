@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useContextStore } from "../../shared/hooks/useContextStore";
 import { useCostManager } from "../../shared/hooks/useCostManager";
 import { useEventBus } from "../../shared/hooks/useEventBus";
@@ -55,6 +56,24 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
   execution_reserved: "execution reserved",
 };
 
+interface OrchestratorPanelProps {
+  projectPath?: string;
+}
+
+interface OrchestratorStepReport {
+  dispatched: string[];
+  merged: string[];
+  rejected: string[];
+  recovered?: string[];
+  escalations?: unknown[];
+  state: LoopState;
+}
+
+interface ActionStatus {
+  kind: "success" | "error";
+  message: string;
+}
+
 /** Best-effort subject id from an event payload (`{ id }`), for the feed. */
 function eventSubject(event: AgentEvent): string | null {
   if (event.payload && typeof event.payload === "object" && "id" in event.payload) {
@@ -71,13 +90,17 @@ function eventSubject(event: AgentEvent): string | null {
  * the Task Graph / Cost Manager / Event Bus / orchestrator hooks that were wired
  * to the backend but previously had no UI consumer.
  */
-export function OrchestratorPanel() {
+export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) {
   const { tasks } = useTaskGraph();
   const { caps } = useCostManager();
   const { events } = useEventBus();
   const { decisions } = useContextStore();
   const { fetchPlan } = useOrchestratorPlan();
   const [plan, setPlan] = useState<DispatchPlan | null>(null);
+  const [goal, setGoal] = useState("");
+  const [planning, setPlanning] = useState(false);
+  const [stepping, setStepping] = useState(false);
+  const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
 
   const runningCount = useMemo(() => tasks.filter((task) => task.status === "running").length, [tasks]);
 
@@ -118,8 +141,122 @@ export function OrchestratorPanel() {
 
   const decisionEntries = useMemo(() => Object.entries(decisions), [decisions]);
 
+  const plannerContext = useMemo(() => {
+    if (decisionEntries.length === 0) return null;
+    return decisionEntries.map(([key, value]) => `- ${key}: ${value}`).join("\n");
+  }, [decisionEntries]);
+
+  const handleBuildPlan = useCallback(async () => {
+    const trimmed = goal.trim();
+    if (!trimmed || !projectPath || planning || stepping) return;
+    setPlanning(true);
+    setActionStatus(null);
+    try {
+      const readied = await invoke<string[]>("plan_build", {
+        goal: trimmed,
+        context: plannerContext,
+        repoPath: projectPath,
+        model: null,
+      });
+      setActionStatus({
+        kind: "success",
+        message: `Plan created${readied.length > 0 ? ` · ${readied.length} task${readied.length === 1 ? "" : "s"} ready` : ""}. Review it below, then run the next step.`,
+      });
+    } catch (error) {
+      setActionStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setPlanning(false);
+    }
+  }, [goal, plannerContext, planning, projectPath, stepping]);
+
+  const handleRunNextStep = useCallback(async () => {
+    if (!projectPath || tasks.length === 0 || plan?.state !== "active" || planning || stepping) return;
+    setStepping(true);
+    setActionStatus(null);
+    try {
+      const report = await invoke<OrchestratorStepReport>("orchestrator_step", {
+        usage: {
+          active_agents: runningCount,
+          tokens_used: 0,
+          cost_usd: 0,
+          runtime_secs: 0,
+        },
+        repoPath: projectPath,
+        reviewerId: "operator",
+        gates: {},
+      });
+      const changes = [
+        report.dispatched.length > 0 ? `${report.dispatched.length} dispatched` : null,
+        report.merged.length > 0 ? `${report.merged.length} merged` : null,
+        report.recovered?.length ? `${report.recovered.length} recovered` : null,
+        report.escalations?.length ? `${report.escalations.length} blocked` : null,
+      ].filter((value): value is string => Boolean(value));
+      setActionStatus({
+        kind: "success",
+        message: changes.length > 0 ? changes.join(" · ") : `Loop is ${LOOP_STATE_LABEL[report.state].toLowerCase()}.`,
+      });
+    } catch (error) {
+      setActionStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setStepping(false);
+    }
+  }, [plan?.state, planning, projectPath, runningCount, stepping, tasks.length]);
+
+  const canBuild = goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping;
+  const canRun = projectPath.length > 0 && tasks.length > 0 && plan?.state === "active" && !planning && !stepping;
+
   return (
     <div className={styles.panel}>
+      <form
+        className={styles.composer}
+        aria-label="Goal planner"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleBuildPlan();
+        }}
+      >
+        <label className={styles.goalLabel} htmlFor="orchestrator-goal">
+          Goal
+        </label>
+        <textarea
+          id="orchestrator-goal"
+          className={styles.goalInput}
+          value={goal}
+          onChange={(event) => setGoal(event.target.value)}
+          placeholder="Describe the next development outcome…"
+          rows={3}
+          disabled={planning || stepping}
+        />
+        <div className={styles.composerActions}>
+          <button type="submit" className={styles.primaryAction} disabled={!canBuild}>
+            {planning ? "Building plan…" : "Build plan"}
+          </button>
+          <button
+            type="button"
+            className={styles.secondaryAction}
+            disabled={!canRun}
+            onClick={() => void handleRunNextStep()}
+          >
+            {stepping ? "Starting…" : "Run next step"}
+          </button>
+        </div>
+        <p className={styles.composerHint}>Build first, inspect the TaskGraph, then start visible agent work.</p>
+        {actionStatus ? (
+          <p
+            className={`${styles.actionStatus} ${actionStatus.kind === "error" ? styles.actionError : ""}`}
+            role={actionStatus.kind === "error" ? "alert" : "status"}
+          >
+            {actionStatus.message}
+          </p>
+        ) : null}
+      </form>
+
       <div className={styles.loopRow}>
         <span className={`${styles.loopBadge} ${plan ? LOOP_STATE_CLASS[plan.state] : ""}`}>
           {plan ? LOOP_STATE_LABEL[plan.state] : "—"}

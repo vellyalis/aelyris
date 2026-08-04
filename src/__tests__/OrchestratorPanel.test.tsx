@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrchestratorPanel } from "../features/orchestrator/OrchestratorPanel";
 import type { Task } from "../shared/types/task";
@@ -49,6 +49,17 @@ function mockInvoke(tasks: Task[], plan: unknown, decisions: Record<string, stri
         return Promise.resolve(decisions);
       case "orchestrator_plan":
         return Promise.resolve(plan);
+      case "plan_build":
+        return Promise.resolve(["t1"]);
+      case "orchestrator_step":
+        return Promise.resolve({
+          dispatched: ["t1"],
+          merged: [],
+          rejected: [],
+          recovered: [],
+          escalations: [],
+          state: "active",
+        });
       default:
         return Promise.resolve(null);
     }
@@ -138,5 +149,47 @@ describe("OrchestratorPanel", () => {
     await waitFor(() => expect(screen.getByText("Decisions")).toBeTruthy());
     expect(screen.getByText("merge-strategy")).toBeTruthy();
     expect(screen.getByText("auto-ff")).toBeTruthy();
+  });
+
+  it("builds a plan from a goal and explicitly starts the next visible step", async () => {
+    mockInvoke([task({ id: "t1", title: "Implement goal", status: "ready" })], {
+      to_dispatch: ["t1"],
+      state: "active",
+    });
+
+    render(<OrchestratorPanel projectPath="C:/repo" />);
+    await waitFor(() => expect(screen.getByText("Implement goal")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText("Goal"), {
+      target: { value: "Add a product-accessible mission flow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Build plan" }));
+
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("plan_build", {
+        goal: "Add a product-accessible mission flow",
+        context: null,
+        repoPath: "C:/repo",
+        model: null,
+      }),
+    );
+    await waitFor(() => expect(screen.getByText(/Plan created/)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Run next step" }));
+
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("orchestrator_step", {
+        usage: {
+          active_agents: 0,
+          tokens_used: 0,
+          cost_usd: 0,
+          runtime_secs: 0,
+        },
+        repoPath: "C:/repo",
+        reviewerId: "operator",
+        gates: {},
+      }),
+    );
+    await waitFor(() => expect(screen.getByText("1 dispatched")).toBeTruthy());
   });
 });

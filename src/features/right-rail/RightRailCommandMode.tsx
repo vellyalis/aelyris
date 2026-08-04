@@ -106,7 +106,7 @@ export function RightRailCommandMode({
             defaultOpen={false}
             forceOpen={focusedWidget === "orchestrator"}
           >
-            <OrchestratorPanel />
+            <OrchestratorPanel projectPath={project.path} />
           </RightRailWidgetFrame>
         </Suspense>
       </ErrorBoundary>
