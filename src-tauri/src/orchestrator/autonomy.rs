@@ -85,6 +85,11 @@ pub trait LoopPorts {
     }
     /// Quality-gate results for a task awaiting review.
     fn gate(&mut self, task_id: &str) -> GateResults;
+    /// Whether an actual reviewer verdict is available for this task. Missing
+    /// review input means "awaiting review", not "review failed".
+    fn review_ready(&self, _task_id: &str) -> bool {
+        true
+    }
     /// The reviewer agent's id (must differ from the implementer to merge).
     fn reviewer_id(&self) -> String;
     /// The agent that implemented `task_id`.
@@ -296,6 +301,9 @@ pub fn step(
         .map(|task| task.id.clone())
         .collect();
     for id in in_review {
+        if !ports.review_ready(&id) {
+            continue;
+        }
         let reviewer_id = ports.reviewer_id();
         let implementer_id = ports.implementer_id(&id);
         if reviewer_id == implementer_id {
@@ -504,6 +512,7 @@ mod tests {
         /// Tasks reported as hung-and-killed on the next poll — models a worker
         /// that exceeded the wall-clock budget and was killed by the adapter.
         pending_timeout: Vec<String>,
+        review_ready: bool,
     }
 
     impl FakePorts {
@@ -520,6 +529,7 @@ mod tests {
                 pending_finish: Vec::new(),
                 pending_fail: Vec::new(),
                 pending_timeout: Vec::new(),
+                review_ready: true,
             }
         }
     }
@@ -551,6 +561,9 @@ mod tests {
         fn gate(&mut self, task_id: &str) -> GateResults {
             self.gate_calls.push(task_id.to_string());
             *self.gates.get(task_id).unwrap_or(&GREEN)
+        }
+        fn review_ready(&self, _task_id: &str) -> bool {
+            self.review_ready
         }
         fn reviewer_id(&self) -> String {
             self.reviewer.clone()
@@ -587,6 +600,25 @@ mod tests {
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Running);
         assert_eq!(report.state, LoopState::Active);
         assert_eq!(ports.dispatched, ["a", "b"]);
+    }
+
+    #[test]
+    fn completed_work_waits_in_review_until_a_verdict_exists() {
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("a", "A")).unwrap();
+        graph.recompute_ready();
+        graph.transition("a", TaskStatus::Running).unwrap();
+
+        let mut ports = FakePorts::new();
+        ports.review_ready = false;
+        ports.pending_finish.push("a".to_string());
+
+        let report = step(&mut graph, &caps(1), &CostUsage::default(), &mut ports);
+
+        assert_eq!(graph.get("a").unwrap().status, TaskStatus::Review);
+        assert!(report.rejected.is_empty());
+        assert!(report.dispatched.is_empty());
+        assert!(ports.gate_calls.is_empty());
     }
 
     fn write_intent(path: &str, start: u32, end: u32) -> SymbolIntent {

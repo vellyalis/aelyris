@@ -103,6 +103,11 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
 
   const runningCount = useMemo(() => tasks.filter((task) => task.status === "running").length, [tasks]);
+  const reviewCount = useMemo(() => tasks.filter((task) => task.status === "review").length, [tasks]);
+  const hasRunnableWork = useMemo(
+    () => tasks.some((task) => task.status === "ready" || task.status === "running"),
+    [tasks],
+  );
 
   // Re-read the scheduling decision whenever the graph changes (a merge can
   // unblock dependents; a dispatch fills a slot). Read-only — never dispatches.
@@ -209,7 +214,14 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
   }, [plan?.state, planning, projectPath, runningCount, stepping, tasks.length]);
 
   const canBuild = goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping;
-  const canRun = projectPath.length > 0 && tasks.length > 0 && plan?.state === "active" && !planning && !stepping;
+  const canRun =
+    projectPath.length > 0 &&
+    tasks.length > 0 &&
+    hasRunnableWork &&
+    plan?.state === "active" &&
+    !planning &&
+    !stepping;
+  const runLabel = stepping ? "Starting…" : reviewCount > 0 && !hasRunnableWork ? "Await review" : "Run next step";
 
   return (
     <div className={styles.panel}>
@@ -243,10 +255,14 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
             disabled={!canRun}
             onClick={() => void handleRunNextStep()}
           >
-            {stepping ? "Starting…" : "Run next step"}
+            {runLabel}
           </button>
         </div>
-        <p className={styles.composerHint}>Build first, inspect the TaskGraph, then start visible agent work.</p>
+        <p className={styles.composerHint}>
+          {reviewCount > 0 && !hasRunnableWork
+            ? `${reviewCount} task${reviewCount === 1 ? "" : "s"} finished implementation and now wait for review.`
+            : "Build first, inspect the TaskGraph, then start visible agent work."}
+        </p>
         {actionStatus ? (
           <p
             className={`${styles.actionStatus} ${actionStatus.kind === "error" ? styles.actionError : ""}`}

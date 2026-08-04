@@ -192,4 +192,18 @@ describe("OrchestratorPanel", () => {
     );
     await waitFor(() => expect(screen.getByText("1 dispatched")).toBeTruthy());
   });
+
+  it("waits for a real review verdict instead of offering an empty-gate step", async () => {
+    mockInvoke([task({ id: "t1", title: "Ready for review", status: "review" })], {
+      to_dispatch: [],
+      state: "active",
+    });
+
+    render(<OrchestratorPanel projectPath="C:/repo" />);
+
+    await waitFor(() => expect(screen.getByText("Ready for review")).toBeTruthy());
+    const button = screen.getByRole("button", { name: "Await review" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText("1 task finished implementation and now wait for review.")).toBeTruthy();
+  });
 });

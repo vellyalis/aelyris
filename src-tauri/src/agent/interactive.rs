@@ -24,6 +24,60 @@ pub fn platform_cli_program(name: &str) -> String {
     name.to_string()
 }
 
+/// Prefer the standalone Codex package whose executable and Windows sandbox
+/// helpers are versioned together. The desktop-app launcher can appear first on
+/// PATH while its helpers live under a separate runtime directory; launching
+/// that binary from Aelyris makes workspace-write fail after the agent starts.
+pub(super) fn platform_codex_program() -> String {
+    #[cfg(windows)]
+    {
+        if let Some(program) = standalone_codex_program() {
+            return program.to_string_lossy().into_owned();
+        }
+    }
+    platform_cli_program("codex")
+}
+
+fn apply_codex_runtime_env(env: &mut HashMap<String, String>) {
+    #[cfg(windows)]
+    {
+        let Some(package) = standalone_codex_package() else {
+            return;
+        };
+        let resources = package.join("codex-resources");
+        let inherited = std::env::var_os("PATH").unwrap_or_default();
+        let paths = std::iter::once(resources).chain(std::env::split_paths(&inherited));
+        if let Ok(joined) = std::env::join_paths(paths) {
+            env.insert("PATH".to_string(), joined.to_string_lossy().into_owned());
+        }
+    }
+}
+
+#[cfg(windows)]
+fn standalone_codex_package() -> Option<std::path::PathBuf> {
+    let codex_home = std::env::var_os("CODEX_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(std::path::PathBuf::from)
+                .map(|home| home.join(".codex"))
+        })?;
+    let package = codex_home
+        .join("packages")
+        .join("standalone")
+        .join("current");
+    let resources = package.join("codex-resources");
+    (package.join("bin/codex.exe").is_file()
+        && resources.join("codex-command-runner.exe").is_file()
+        && resources.join("codex-windows-sandbox-setup.exe").is_file())
+    .then_some(package)
+}
+
+#[cfg(windows)]
+fn standalone_codex_program() -> Option<std::path::PathBuf> {
+    standalone_codex_package().map(|package| package.join("bin/codex.exe"))
+}
+
 #[cfg(windows)]
 fn has_windows_executable_extension(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
@@ -48,42 +102,6 @@ fn resolve_windows_cli_program_on_path(name: &str, path: &std::ffi::OsStr) -> Op
         // native executable over npm's .cmd shim when both exist; broken npm
         // wrappers should not mask a healthy CLI binary earlier on PATH.
         for ext in ["exe", "cmd", "bat"] {
-            let candidate = format!("{name}.{ext}");
-            if dir.join(&candidate).is_file() {
-                return Some(candidate);
-            }
-        }
-        if dir.join(name).is_file() {
-            return Some(name.to_string());
-        }
-    }
-    None
-}
-
-/// Resolve a CLI that will be invoked *from PowerShell*. Unlike a direct
-/// `CreateProcessW` launch, PowerShell can execute an npm `.ps1` shim. Prefer
-/// that shim over `.cmd` because cmd.exe truncates a quoted multiline prompt at
-/// its first newline when npm's batch wrapper expands `%*`.
-pub(super) fn platform_powershell_cli_program(name: &str) -> String {
-    #[cfg(windows)]
-    {
-        if let Some(path) = std::env::var_os("PATH") {
-            if let Some(candidate) = resolve_windows_powershell_cli_program_on_path(name, &path) {
-                return candidate;
-            }
-        }
-    }
-
-    platform_cli_program(name)
-}
-
-#[cfg(windows)]
-fn resolve_windows_powershell_cli_program_on_path(
-    name: &str,
-    path: &std::ffi::OsStr,
-) -> Option<String> {
-    for dir in std::env::split_paths(path) {
-        for ext in ["exe", "ps1", "cmd", "bat"] {
             let candidate = format!("{name}.{ext}");
             if dir.join(&candidate).is_file() {
                 return Some(candidate);
@@ -124,7 +142,7 @@ impl AgentCli {
             }
             AgentCli::Codex => {
                 // OpenAI Codex CLI
-                (platform_cli_program("codex"), Vec::new())
+                (platform_codex_program(), Vec::new())
             }
             AgentCli::Custom(bin) => (platform_cli_program(bin), Vec::new()),
         }
@@ -285,6 +303,14 @@ pub fn agent_command_spec(
     let mut env = HashMap::new();
     env.insert("AELYRIS_AGENT_CLI".to_string(), format!("{:?}", cli));
     env.insert("AELYRIS_AGENT_MODEL".to_string(), model.to_string());
+    // The service host may inherit TERM=dumb even though the child owns a real
+    // ConPTY. Advertise the actual terminal capability so interactive CLIs do
+    // not stop at a preflight confirmation before the prompt is processed.
+    env.insert("TERM".to_string(), "xterm-256color".to_string());
+    env.insert("COLORTERM".to_string(), "truecolor".to_string());
+    if cli == AgentCli::Codex {
+        apply_codex_runtime_env(&mut env);
+    }
 
     Ok((program, args, env))
 }
@@ -295,21 +321,21 @@ pub(super) fn ps_single_quote(token: &str) -> String {
     format!("'{}'", token.replace('\'', "''"))
 }
 
-/// Launch the agent CLI **inside a visible PowerShell pane**, running its full
-/// INTERACTIVE TUI — the operator's mental model: split pane → a shell starts →
-/// the AI CLI is invoked in it and you watch it work live. Run via `pwsh
-/// -Command "& <cli> … $env:AELYRIS_AGENT_PROMPT; exit $LASTEXITCODE"`.
+/// Launch the agent CLI **inside a visible PowerShell pane** — the operator's
+/// mental model: split pane → a shell starts → the AI CLI is invoked in it and
+/// you watch it work live. Claude and Gemini use their interactive TUI. An
+/// autonomous Codex fleet worker uses `codex exec` in the same visible PTY: the
+/// Codex TUI otherwise blocks on per-repository trust before reading the task,
+/// while `exec` does not persist that interactive trust decision and exits
+/// cleanly after the bounded work. Human-started Codex sessions still use
+/// [`agent_command_spec`] and remain interactive.
 ///
-/// Deliberately **no `-p`**: `-p`/`--print` is headless ("Print response and
-/// exit") — the operator sees only a text dump, not the agent's live interface.
-/// Omitting it runs the CLI's interactive TUI, which renders in the pane (the
-/// native engine is `alacritty_terminal`, so the alternate-screen full-screen UI
-/// is handled) and stays open. Because an interactive session never exits, the
-/// loop cannot use the PTY-exit sensor for it; completion is detected
-/// structurally from the task's declared outputs appearing in the worktree (see
-/// [`crate::control::pane_fleet::PaneFleet::poll_completions`]). The trailing
-/// `; exit $LASTEXITCODE` is a backstop: if the CLI *does* exit (e.g. a crash),
-/// PowerShell exits with its code so the PTY-exit recovery path still fires.
+/// Deliberately **no `-p`**: Claude's print mode remains forbidden. The native
+/// terminal renders either the interactive TUI or Codex's streamed visible exec
+/// output. Completion remains structurally bound to declared outputs and the
+/// backend-built done marker (see
+/// [`crate::control::pane_fleet::PaneFleet::poll_completions`]). The trailing `;
+/// exit $LASTEXITCODE` also preserves the PTY-exit recovery path.
 ///
 /// The prompt travels through the `AELYRIS_AGENT_PROMPT` env var and is referenced
 /// (not interpolated) inside the command, so arbitrary prompt text needs no
@@ -323,20 +349,37 @@ pub fn agent_shell_command_spec(
     let cli = AgentCli::from_model(&model);
     cli.validate()?;
     let (cli_program, mut cli_args) = cli.program_and_args(Some(&model));
-    let cli_program = if cli == AgentCli::Codex {
-        platform_powershell_cli_program("codex")
+    if cli == AgentCli::Codex && autonomous {
+        // Keep the worker visible, sandboxed, and non-interactive without
+        // accepting persistent repository trust on the user's behalf. `exec`
+        // still streams into this pane; it is not a hidden process. Do not pass
+        // `--ignore-user-config`: Codex v0.146 intentionally downgrades that
+        // mode to read-only even when `-s workspace-write` is requested.
+        cli_args = [
+            "-c",
+            "model_reasoning_effort=\"medium\"",
+            "-s",
+            "workspace-write",
+            "exec",
+            "--ephemeral",
+            "--disable",
+            "hooks",
+            "--skip-git-repo-check",
+            "--color",
+            "never",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     } else {
-        cli_program
-    };
-    if cli == AgentCli::Codex && model == "codex-no-hooks" {
-        cli_args.extend(["--disable".to_string(), "hooks".to_string()]);
-    }
-    // No -p: run the interactive TUI (visible, persistent), not headless print.
-    // Autonomous fleet worker → grant the per-provider auto-approve policy so a
-    // non-Claude worker (codex/gemini) builds without stalling at its own
-    // permission prompt, exactly like Claude's acceptEdits.
-    if autonomous {
-        cli_args.extend(autonomous_flags(&cli));
+        if cli == AgentCli::Codex && model == "codex-no-hooks" {
+            cli_args.extend(["--disable".to_string(), "hooks".to_string()]);
+        }
+        // Autonomous TUI worker → grant the provider's bounded auto-approve
+        // policy so it does not stall at the first edit permission prompt.
+        if autonomous {
+            cli_args.extend(autonomous_flags(&cli));
+        }
     }
 
     let mut command = format!("& {}", ps_single_quote(&cli_program));
@@ -350,6 +393,11 @@ pub fn agent_shell_command_spec(
     env.insert("AELYRIS_AGENT_CLI".to_string(), format!("{:?}", cli));
     env.insert("AELYRIS_AGENT_MODEL".to_string(), model);
     env.insert("AELYRIS_AGENT_PROMPT".to_string(), prompt.to_string());
+    env.insert("TERM".to_string(), "xterm-256color".to_string());
+    env.insert("COLORTERM".to_string(), "truecolor".to_string());
+    if cli == AgentCli::Codex {
+        apply_codex_runtime_env(&mut env);
+    }
 
     Ok((
         platform_cli_program("pwsh"),
@@ -964,8 +1012,23 @@ mod tests {
     fn program_and_args_codex_uses_platform_program() {
         let cli = AgentCli::Codex;
         let (prog, args) = cli.program_and_args(None);
-        assert_eq!(prog, platform_cli_program("codex"));
+        assert_eq!(prog, platform_codex_program());
         assert!(args.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn standalone_codex_resolution_requires_matching_sandbox_helpers() {
+        if let Some(program) = standalone_codex_program() {
+            let package = program.parent().unwrap().parent().unwrap();
+            assert!(package
+                .join("codex-resources/codex-command-runner.exe")
+                .is_file());
+            assert!(package
+                .join("codex-resources/codex-windows-sandbox-setup.exe")
+                .is_file());
+            assert_eq!(platform_codex_program(), program.to_string_lossy());
+        }
     }
 
     #[cfg(windows)]
@@ -1001,29 +1064,6 @@ mod tests {
         assert_eq!(
             resolve_windows_cli_program_on_path(&name, &third_then_first),
             Some(format!("{name}.exe"))
-        );
-
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn a7_2_windows_powershell_cli_resolution_avoids_multiline_cmd_truncation() {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("aelyris-shell-cli-resolution-{stamp}"));
-        std::fs::create_dir_all(&root).unwrap();
-
-        let name = format!("aelyris_shell_cli_resolution_{stamp}");
-        std::fs::write(root.join(format!("{name}.cmd")), "").unwrap();
-        std::fs::write(root.join(format!("{name}.ps1")), "").unwrap();
-        let path = std::env::join_paths([root.as_path()]).unwrap();
-
-        assert_eq!(
-            resolve_windows_powershell_cli_program_on_path(&name, &path),
-            Some(format!("{name}.ps1"))
         );
 
         let _ = std::fs::remove_dir_all(root);
@@ -1121,18 +1161,33 @@ mod tests {
 
     #[test]
     fn agent_shell_command_spec_autonomous_codex_auto_approves_in_workspace() {
-        // The visible-fleet path (codex inside a PowerShell pane) must carry the
-        // same autonomous auto-approve policy, or a codex pane would launch but
-        // hang on its own write-permission prompt and never produce its outputs.
+        // Codex runs as a bounded visible exec so it neither asks for persistent
+        // repository trust nor stalls on a write-permission prompt.
         let (program, args, env) =
             agent_shell_command_spec("codex-mini", "write the file", true).unwrap();
         assert_eq!(program, platform_cli_program("pwsh"));
         let cmd = &args[3];
-        assert!(cmd.contains("'codex"), "runs codex: {cmd}");
         assert!(
-            cmd.contains("'--sandbox' 'workspace-write'")
-                && cmd.contains("'--ask-for-approval' 'never'"),
-            "autonomous codex auto-approve: {cmd}"
+            cmd.contains(&ps_single_quote(&platform_codex_program())),
+            "runs the matched standalone codex: {cmd}"
+        );
+        assert!(
+            cmd.contains("'exec'")
+                && cmd.contains("'model_reasoning_effort=\"medium\"'")
+                && cmd.contains("'-s' 'workspace-write'"),
+            "bounded visible codex exec: {cmd}"
+        );
+        assert!(
+            !cmd.contains("'--ignore-user-config'"),
+            "would force read-only: {cmd}"
+        );
+        assert!(
+            !cmd.contains("'--ignore-rules'"),
+            "worker must receive repo rules: {cmd}"
+        );
+        assert!(
+            !cmd.contains("'--ask-for-approval'"),
+            "exec owns non-interactive approval: {cmd}"
         );
         assert!(!cmd.contains("'-p'"), "must NOT be headless -p: {cmd}");
         assert_eq!(
@@ -1148,8 +1203,12 @@ mod tests {
             agent_shell_command_spec("codex-no-hooks", prompt, true).unwrap();
         assert_eq!(program, platform_cli_program("pwsh"));
         let cmd = &args[3];
+        assert!(cmd.contains("'exec'"), "visible bounded worker: {cmd}");
         assert!(cmd.contains("'--disable' 'hooks'"), "hooks disabled: {cmd}");
-        assert!(!cmd.contains("'-p'"), "must remain interactive: {cmd}");
+        assert!(
+            !cmd.contains("'-p'"),
+            "must not use Claude print mode: {cmd}"
+        );
         assert_eq!(
             env.get("AELYRIS_AGENT_PROMPT").map(String::as_str),
             Some(prompt),
@@ -1274,6 +1333,8 @@ mod tests {
             env.get("AELYRIS_AGENT_MODEL").map(String::as_str),
             Some("sonnet")
         );
+        assert_eq!(env.get("TERM").map(String::as_str), Some("xterm-256color"));
+        assert_eq!(env.get("COLORTERM").map(String::as_str), Some("truecolor"));
     }
 
     #[test]

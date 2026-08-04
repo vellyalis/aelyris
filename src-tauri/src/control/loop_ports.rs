@@ -93,6 +93,9 @@ fn quarantine_fence_error(
 /// project's test/lint/type-check commands; tests inject scripted results.
 pub trait GateRunner {
     fn run(&self, task_id: &str, branch: &str) -> GateResults;
+    fn has_verdict(&self, _task_id: &str) -> bool {
+        true
+    }
 }
 
 /// Spawns an implementer agent for a task and reports which dispatched agents
@@ -649,6 +652,10 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
         }
         self.gate_results.insert(task_id.to_string(), results);
         results
+    }
+
+    fn review_ready(&self, task_id: &str) -> bool {
+        self.gate_runner.has_verdict(task_id)
     }
 
     fn reviewer_id(&self) -> String {

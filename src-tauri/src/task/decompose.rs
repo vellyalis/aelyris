@@ -10,8 +10,8 @@
 //!
 //! The LLM call is INJECTED (`llm: Fn(&str) -> Result<String, String>`), so the
 //! prompt contract, JSON extraction, and the retry/validation wiring are all
-//! unit-tested with a fake model; the real `claude` spawn is a thin adapter at
-//! the call site.
+//! unit-tested with a fake model; the real provider-selected one-shot spawn is a
+//! thin adapter at the call site.
 
 use serde::Deserialize;
 

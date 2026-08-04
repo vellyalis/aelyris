@@ -12,6 +12,13 @@ use crate::task::{MissionPlanPreview, MissionPlanPreviewInput, Task, TaskManager
 /// Emitted with the full task snapshot after any mutation so the frontend hook
 /// stays in sync (mirrors `agent-sessions-updated` / `agent-fleet-updated`).
 const TASK_GRAPH_UPDATED: &str = "task-graph-updated";
+const DEFAULT_PLANNER_MODEL: &str = "codex";
+
+fn bind_planner_model(tasks: &mut [Task], model: &str) {
+    for task in tasks {
+        task.model = Some(model.to_string());
+    }
+}
 
 /// Create or idempotently read a durable, inert A7.1 plan preview. This command
 /// never emits `task-graph-updated` because it does not materialize Tasks.
@@ -148,20 +155,24 @@ pub async fn plan_build(
     model: Option<String>,
 ) -> Result<Vec<String>, String> {
     let ctx = context.unwrap_or_default();
-    let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    let mdl = model
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_PLANNER_MODEL.to_string());
     // The repo root anchors symbol-target verification (the planner's declared symbols are
     // parsed from the REAL source there); see task::symbol_enrich.
     let repo = std::path::PathBuf::from(repo_path);
     // The decomposition is a blocking subprocess + validation loop; run it off
     // the async runtime.
     let ordered = tauri::async_runtime::spawn_blocking(move || {
-        crate::task::decompose_to_plan(
+        let mut ordered = crate::task::decompose_to_plan(
             &goal,
             &ctx,
             &repo,
-            |prompt| crate::agent::claude_oneshot(prompt, &mdl),
+            |prompt| crate::agent::planner_oneshot(prompt, &mdl, &repo),
             3,
-        )
+        )?;
+        bind_planner_model(&mut ordered, &mdl);
+        Ok::<_, String>(ordered)
     })
     .await
     .map_err(|e| format!("planner task join error: {e}"))??;
@@ -255,20 +266,24 @@ must cover these outputs: {outputs}.\n\
         .map(|(k, v)| format!("- {k}: {v}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let mdl = model.unwrap_or_else(|| "sonnet".to_string());
+    let mdl = model
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_PLANNER_MODEL.to_string());
     let repo = std::path::PathBuf::from(repo_path);
 
     // Decompose with the Planner LLM off the async runtime (blocking subprocess +
     // validation loop), then splice atomically. The repo root anchors symbol-target
     // verification (task::symbol_enrich).
     let subtasks = tauri::async_runtime::spawn_blocking(move || {
-        crate::task::decompose_to_plan(
+        let mut subtasks = crate::task::decompose_to_plan(
             &goal,
             &adr,
             &repo,
-            |prompt| crate::agent::claude_oneshot(prompt, &mdl),
+            |prompt| crate::agent::planner_oneshot(prompt, &mdl, &repo),
             3,
-        )
+        )?;
+        bind_planner_model(&mut subtasks, &mdl);
+        Ok::<_, String>(subtasks)
     })
     .await
     .map_err(|e| format!("re-plan task join error: {e}"))??;
@@ -384,6 +399,15 @@ pub fn task_recompute_ready(
 mod tests {
     use super::*;
     use crate::symbol_ownership::{ClaimMode, Confidence, SymbolIntent, SymbolRange};
+
+    #[test]
+    fn planner_model_is_bound_to_every_generated_task() {
+        let mut tasks = vec![Task::new("one", "One"), Task::new("two", "Two")];
+        bind_planner_model(&mut tasks, "codex");
+        assert!(tasks
+            .iter()
+            .all(|task| task.model.as_deref() == Some("codex")));
+    }
 
     #[test]
     fn caller_supplied_symbols_are_rejected_at_the_ipc_boundary() {

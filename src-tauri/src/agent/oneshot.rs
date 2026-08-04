@@ -1,14 +1,14 @@
-//! One-shot `claude -p` invocation shared by the autonomous PLANNER (goal
-//! decomposition) and REVIEWER (semantic judge). Both inject an
-//! `Fn(&str) -> Result<String, String>` LLM into pure, unit-tested logic; this is
-//! the single real adapter they share at the call site, so there is exactly one
-//! place that knows how to spawn the CLI (Windows shim resolution + hidden
-//! window) and map a non-zero exit to an error. Blocking — a subprocess call, so
-//! callers must keep it off the async runtime.
+//! One-shot agent CLI adapters used by the autonomous planner and reviewers.
+//! The planner selects an installed provider through the existing model/CLI
+//! mapping instead of assuming Claude is present. Pure planning and review logic
+//! still receive an injected `Fn(&str) -> Result<String, String>`; this module is
+//! the only process-spawn boundary. Blocking — callers must keep it off the async
+//! runtime.
 
 use super::platform_cli_program;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct EphemeralReviewSchema(PathBuf);
@@ -42,7 +42,7 @@ fn codex_a7_review_command(prompt: &str, output_schema_path: &Path) -> std::proc
         // visible-agent transport contract: invoke the PowerShell 7 shim and
         // keep the prompt in a process-local environment variable. The logical
         // Codex argv remains the fixed contract attested by the durable receipt.
-        let cli_program = super::interactive::platform_powershell_cli_program("codex");
+        let cli_program = super::interactive::platform_codex_program();
         let mut script = format!("& {}", super::interactive::ps_single_quote(&cli_program));
         for arg in [
             "exec",
@@ -91,16 +91,23 @@ fn codex_a7_review_command(prompt: &str, output_schema_path: &Path) -> std::proc
     }
 }
 
-/// Run `claude -p <prompt> --model <model>` once and return its stdout. Errors if
-/// the process cannot spawn or exits non-zero (stderr included), so a failed
-/// model call is never silently treated as an empty/valid response.
-pub fn claude_oneshot(prompt: &str, model: &str) -> Result<String, String> {
+fn claude_oneshot_at(
+    prompt: &str,
+    model: &str,
+    current_dir: Option<&Path>,
+) -> Result<String, String> {
     let program = platform_cli_program("claude");
-    let out = crate::process::hidden_command(&program)
+    let mut command = crate::process::hidden_command(&program);
+    command
         .arg("-p")
         .arg(prompt)
         .arg("--model")
         .arg(model)
+        .stdin(Stdio::null());
+    if let Some(current_dir) = current_dir {
+        command.current_dir(current_dir);
+    }
+    let out = command
         .output()
         .map_err(|e| format!("failed to spawn claude: {e}"))?;
     if !out.status.success() {
@@ -111,6 +118,110 @@ pub fn claude_oneshot(prompt: &str, model: &str) -> Result<String, String> {
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// Run `claude -p <prompt> --model <model>` once and return its stdout. Errors if
+/// the process cannot spawn or exits non-zero (stderr included), so a failed
+/// model call is never silently treated as an empty/valid response.
+pub fn claude_oneshot(prompt: &str, model: &str) -> Result<String, String> {
+    claude_oneshot_at(prompt, model, None)
+}
+
+fn codex_planner_command(prompt: &str, repo_root: &Path) -> std::process::Command {
+    #[cfg(windows)]
+    {
+        // Keep the multiline prompt out of argv. PowerShell resolves either the
+        // native Codex executable or npm shim, while stdin is closed so `codex
+        // exec` never waits for an additional piped prompt.
+        let cli_program = super::interactive::platform_codex_program();
+        let mut script = format!("& {}", super::interactive::ps_single_quote(&cli_program));
+        for arg in [
+            "-c",
+            "model_reasoning_effort=\"medium\"",
+            "-s",
+            "read-only",
+            "exec",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--disable",
+            "hooks",
+            "--skip-git-repo-check",
+            "--color",
+            "never",
+        ] {
+            script.push(' ');
+            script.push_str(&super::interactive::ps_single_quote(arg));
+        }
+        script.push_str(" $env:AELYRIS_PLANNER_PROMPT; exit $LASTEXITCODE");
+
+        let mut command = crate::process::hidden_command(platform_cli_program("pwsh"));
+        command
+            .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+            .arg(script)
+            .env("AELYRIS_PLANNER_PROMPT", prompt)
+            .current_dir(repo_root)
+            .stdin(Stdio::null());
+        command
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut command = crate::process::hidden_command(platform_cli_program("codex"));
+        command
+            .arg("-c")
+            .arg("model_reasoning_effort=\"medium\"")
+            .arg("-s")
+            .arg("read-only")
+            .arg("exec")
+            .arg("--ephemeral")
+            .arg("--ignore-user-config")
+            .arg("--ignore-rules")
+            .arg("--disable")
+            .arg("hooks")
+            .arg("--skip-git-repo-check")
+            .arg("--color")
+            .arg("never")
+            .arg(prompt)
+            .current_dir(repo_root)
+            .stdin(Stdio::null());
+        command
+    }
+}
+
+fn codex_planner_oneshot(prompt: &str, repo_root: &Path) -> Result<String, String> {
+    let out = codex_planner_command(prompt, repo_root)
+        .output()
+        .map_err(|error| format!("failed to spawn codex planner: {error}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "codex planner exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let response = String::from_utf8_lossy(&out.stdout).to_string();
+    if response.trim().is_empty() {
+        return Err("codex planner returned empty stdout".to_string());
+    }
+    Ok(response)
+}
+
+/// Provider-selected one-shot adapter for goal decomposition. The selected
+/// model is also assigned to generated worker tasks by the caller, so planning
+/// and visible execution do not silently switch back to an unavailable CLI.
+pub fn planner_oneshot(prompt: &str, model: &str, repo_root: &Path) -> Result<String, String> {
+    let model = super::interactive::resolve_agent_model(model);
+    match super::interactive::AgentCli::from_model(&model) {
+        super::interactive::AgentCli::Codex => codex_planner_oneshot(prompt, repo_root),
+        super::interactive::AgentCli::Claude => claude_oneshot_at(prompt, &model, Some(repo_root)),
+        super::interactive::AgentCli::Gemini => {
+            Err("Gemini planner one-shot is not wired; choose codex or a Claude model".to_string())
+        }
+        super::interactive::AgentCli::Custom(_) => {
+            Err("custom CLIs cannot own autonomous planning".to_string())
+        }
+    }
 }
 
 /// Fixed A7.3 reviewer adapter. The caller supplies only the prompt: provider,
@@ -177,6 +288,45 @@ pub fn codex_a7_review_oneshot(prompt: &str) -> Result<crate::review::ReviewerIn
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn windows_codex_planner_keeps_multiline_prompt_out_of_arguments() {
+        use std::ffi::OsStr;
+
+        let prompt = "first line\nsecond 'quoted' line";
+        let repo_root = std::path::Path::new(r"C:\Temp\planner-repo");
+        let command = super::codex_planner_command(prompt, repo_root);
+        let program = command.get_program().to_string_lossy().to_ascii_lowercase();
+        assert!(
+            program.ends_with("pwsh.exe") || program == "pwsh",
+            "program: {program}"
+        );
+        assert_eq!(command.get_current_dir(), Some(repo_root));
+
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let script = args.last().expect("PowerShell command script");
+        assert!(script.contains("codex"), "script: {script}");
+        assert!(script.contains("'exec'"), "script: {script}");
+        assert!(script.contains("'--ignore-rules'"), "script: {script}");
+        assert!(
+            script.contains("'model_reasoning_effort=\"medium\"'"),
+            "script: {script}"
+        );
+        assert!(script.contains("'read-only'"), "script: {script}");
+        assert!(script.contains("$env:AELYRIS_PLANNER_PROMPT"));
+        assert!(!script.contains(prompt));
+
+        let prompt_env = command
+            .get_envs()
+            .find(|(name, _)| *name == OsStr::new("AELYRIS_PLANNER_PROMPT"))
+            .and_then(|(_, value)| value)
+            .expect("process-local planner prompt");
+        assert_eq!(prompt_env, OsStr::new(prompt));
+    }
+
     #[cfg(windows)]
     #[test]
     fn a7_3_windows_fixed_reviewer_keeps_multiline_prompt_out_of_batch_arguments() {

@@ -276,6 +276,10 @@ impl<R: CommandRunner> ProcessGateRunner<R> {
 }
 
 impl<R: CommandRunner> GateRunner for ProcessGateRunner<R> {
+    fn has_verdict(&self, task_id: &str) -> bool {
+        self.verdicts.contains_key(task_id)
+    }
+
     fn run(&self, task_id: &str, branch: &str) -> GateResults {
         let caller = self.verdicts.get(task_id).copied().unwrap_or(ALL_RED);
         // Objective gates run where the task's code lives — its isolated
