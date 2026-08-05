@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionInboxPanel } from "../features/decision-inbox";
 import type { AgentFleetSession } from "../shared/lib/agentFleet";
@@ -181,6 +181,150 @@ describe("DecisionInboxPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Deny / }));
     expect(onDecide).toHaveBeenCalledTimes(1);
     release();
+  });
+
+  it("batches only the visible low-risk approvals through the existing single-item resolver", async () => {
+    const onDecide = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={onDecide}
+        auditEvents={[]}
+        sessions={[
+          session("safe-read", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-read",
+            approvalPrompt: "Bash(git status) · Do you want to proceed?",
+          }),
+          session("safe-test", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-test",
+            approvalPrompt: "Bash(pnpm test) · Do you want to proceed?",
+          }),
+          session("danger", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-danger",
+            approvalPrompt: "Bash(rm -rf dist) · Do you want to proceed?",
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve 2 visible low-risk gates" }));
+
+    await waitFor(() => expect(onDecide).toHaveBeenCalledTimes(2));
+    expect(onDecide).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ sessionId: "safe-read", batchApprovalEligible: true }),
+      "approve",
+    );
+    expect(onDecide).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ sessionId: "safe-test", batchApprovalEligible: true }),
+      "approve",
+    );
+    expect(onDecide).not.toHaveBeenCalledWith(expect.objectContaining({ sessionId: "danger" }), "approve");
+    expect(await screen.findByText("Approved 2 visible low-risk gates.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve 2 visible low-risk gates" })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Approve Destructive Operation · Agent danger" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("blocks a synchronous second batch click before React can re-render", async () => {
+    let release: () => void = () => {};
+    const onDecide = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      )
+      .mockResolvedValue(undefined);
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={onDecide}
+        auditEvents={[]}
+        sessions={[
+          session("safe-a", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-a",
+            approvalPrompt: "Bash(git status) · Do you want to proceed?",
+          }),
+          session("safe-b", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-b",
+            approvalPrompt: "Bash(pnpm test) · Do you want to proceed?",
+          }),
+        ]}
+      />,
+    );
+
+    const batchButton = screen.getByRole("button", { name: "Approve 2 visible low-risk gates" });
+    fireEvent.click(batchButton);
+    fireEvent.click(batchButton);
+
+    expect(onDecide).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(onDecide).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps failed batch items retryable while successful items remain latched", async () => {
+    const onDecide = vi.fn(async (item: { sessionId?: string }) => {
+      if (item.sessionId === "safe-failed") throw new Error("stale_approval");
+    });
+    render(
+      <DecisionInboxPanel
+        activeSessionId={null}
+        onSelectSession={vi.fn()}
+        onDecide={onDecide as never}
+        auditEvents={[]}
+        sessions={[
+          session("safe-ok", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-ok",
+            approvalPrompt: "Bash(git status) · Do you want to proceed?",
+          }),
+          session("safe-failed", {
+            runtime: "interactive",
+            status: "waiting",
+            runStatus: "waiting_approval",
+            ptyId: "pty-failed",
+            approvalPrompt: "Bash(pnpm test) · Do you want to proceed?",
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve 2 visible low-risk gates" }));
+
+    expect(await screen.findByText("Approved 1 of 2; 1 changed or failed.")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Approve Permission Required · Agent safe-ok" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", {
+        name: "Approve Permission Required · Agent safe-failed",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it("routes keyboard approval through the same latched handler and ignores repeat keys", () => {

@@ -68,6 +68,82 @@
   gap: var(--space-2);
 }
 
+.batchBar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(166, 227, 161, 0.12);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(166, 227, 161, 0.06), transparent 62%), rgba(0, 6, 14, 0.2);
+}
+
+.batchBar > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batchApproveBtn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 var(--space-2);
+  border: 1px solid rgba(166, 227, 161, 0.28);
+  border-radius: 999px;
+  background: rgba(166, 227, 161, 0.1);
+  color: var(--ctp-green);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.batchApproveBtn:hover:not(:disabled) {
+  border-color: rgba(166, 227, 161, 0.5);
+  color: var(--text-primary);
+}
+
+.batchApproveBtn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.batchApproveBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.batchStatus {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.2);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+
+.batchStatus[data-tone="success"] {
+  color: var(--ctp-green);
+}
+
+.batchStatus[data-tone="warn"] {
+  color: var(--gold);
+}
+
+.batchStatus[data-tone="error"] {
+  color: var(--ctp-red);
+}
+
 .history {
   padding-top: var(--space-2);
   border-top: 1px solid rgba(142, 226, 241, 0.055);
@@ -401,6 +477,15 @@
 }
 
 @container (max-width: 330px) {
+  .batchBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .batchApproveBtn {
+    width: 100%;
+  }
+
   .itemTop {
     grid-template-columns: 22px minmax(0, 1fr);
   }

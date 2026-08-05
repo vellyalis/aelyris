@@ -288,9 +288,72 @@ describe("decisionInbox", () => {
       sessionId: "int-benign",
       ptyId: "pty-7c",
       type: "permission_required",
+      risk: "low",
+      batchApprovalEligible: true,
+      approvalRiskClasses: ["read-only"],
       source: "agent",
     });
     expect(inbox.pendingItems[0].context).toContain("ls -la");
+    expect(inbox.pendingItems[0].evidence).toContain("batch=low-risk");
+  });
+
+  it("allows a single known build command into the low-risk batch but rejects composed commands", () => {
+    const safe = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-test", {
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-test",
+          approvalPrompt: "Bash(pnpm test) · Do you want to proceed?",
+        }),
+      ],
+    }).pendingItems[0];
+    const composed = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-composed", {
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-composed",
+          approvalPrompt: "Bash(git status && echo done) · Do you want to proceed?",
+        }),
+      ],
+    }).pendingItems[0];
+
+    expect(safe).toMatchObject({
+      risk: "low",
+      batchApprovalEligible: true,
+      approvalRiskClasses: ["build/test"],
+    });
+    expect(composed).toMatchObject({
+      risk: "medium",
+      batchApprovalEligible: false,
+    });
+  });
+
+  it.each([
+    "Bash(git status & whoami) · Do you want to proceed?",
+    "Bash(git branch -D topic) · Do you want to proceed?",
+    "Bash(git diff --ext-diff) · Do you want to proceed?",
+    "Bash(ls ../secrets) · Do you want to proceed?",
+    "Bash(git diff -- .env) · Do you want to proceed?",
+    "Bash(dir \\\\server\\share) · Do you want to proceed?",
+  ])("keeps composed, scope-escaping, and sensitive read commands out of the batch: %s", (approvalPrompt) => {
+    const item = buildDecisionInbox({
+      now: 5_000,
+      sessions: [
+        session("int-sensitive", {
+          runtime: "interactive",
+          runStatus: "waiting_approval",
+          ptyId: "pty-sensitive",
+          approvalPrompt,
+        }),
+      ],
+    }).pendingItems[0];
+
+    expect(item.batchApprovalEligible).toBe(false);
+    expect(item.risk).not.toBe("low");
   });
 
   it("remounts the inbox row for a new menu on the same session (fresh decision id)", () => {

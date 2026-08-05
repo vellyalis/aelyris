@@ -1,5 +1,6 @@
-import { AlertTriangle, Check, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, CheckCircle2, Clock3, Inbox, ShieldQuestion, UserRoundCheck, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { AgentFleetSession } from "../../shared/lib/agentFleet";
 import {
   buildDecisionInbox,
   type DecisionInboxSummary,
@@ -8,7 +9,6 @@ import {
   type HumanDecisionRisk,
   type HumanDecisionType,
 } from "../../shared/lib/decisionInbox";
-import type { AgentFleetSession } from "../../shared/lib/agentFleet";
 import type { AuditEventRecord } from "../../shared/types/audit";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
@@ -80,6 +80,78 @@ export function DecisionInboxPanel({
   );
   const pending = inbox.pendingItems.slice(0, 5);
   const history = inbox.historyItems.slice(0, 4);
+  const visibleLowRisk = pending.filter(
+    (item) =>
+      item.batchApprovalEligible === true &&
+      item.risk === "low" &&
+      item.status === "pending" &&
+      item.source === "agent" &&
+      Boolean(item.ptyId && item.approvalPromptKey),
+  );
+  const [batchInFlight, setBatchInFlight] = useState(false);
+  const batchInFlightRef = useRef(false);
+  const [batchLatchedIds, setBatchLatchedIds] = useState<Set<string>>(() => new Set());
+  const [batchStatus, setBatchStatus] = useState<{ tone: "success" | "warn" | "error"; text: string } | null>(null);
+  const pendingIdSignature = inbox.pendingItems.map((item) => item.id).join("\u0000");
+  const batchableLowRisk = visibleLowRisk.filter((item) => !batchLatchedIds.has(item.id));
+
+  useEffect(() => {
+    const liveIds = new Set(pendingIdSignature ? pendingIdSignature.split("\u0000") : []);
+    setBatchLatchedIds((current) => {
+      const next = new Set([...current].filter((id) => liveIds.has(id)));
+      if (next.size === current.size && [...next].every((id) => current.has(id))) return current;
+      return next;
+    });
+  }, [pendingIdSignature]);
+
+  const approveVisibleLowRisk = async () => {
+    if (!onDecide || batchInFlightRef.current || batchableLowRisk.length < 2) return;
+    batchInFlightRef.current = true;
+    const targets = [...batchableLowRisk];
+    const targetIds = targets.map((item) => item.id);
+    setBatchInFlight(true);
+    setBatchStatus(null);
+    setBatchLatchedIds((current) => new Set([...current, ...targetIds]));
+
+    const approvedIds: string[] = [];
+    const failedIds: string[] = [];
+    for (const item of targets) {
+      try {
+        // Deliberately reuse the exact single-item resolver. It retains the
+        // backend prompt fingerprint check and audit path for every gate; this
+        // UI batch owns no approval authority of its own.
+        await onDecide(item, "approve");
+        approvedIds.push(item.id);
+      } catch {
+        failedIds.push(item.id);
+      }
+    }
+
+    const approved = new Set(approvedIds);
+    setBatchLatchedIds((current) => {
+      const next = new Set(current);
+      for (const id of targetIds) if (!approved.has(id)) next.delete(id);
+      return next;
+    });
+    batchInFlightRef.current = false;
+    setBatchInFlight(false);
+    if (failedIds.length === 0) {
+      setBatchStatus({
+        tone: "success",
+        text: `Approved ${approvedIds.length} visible low-risk gates.`,
+      });
+    } else if (approvedIds.length > 0) {
+      setBatchStatus({
+        tone: "warn",
+        text: `Approved ${approvedIds.length} of ${targets.length}; ${failedIds.length} changed or failed.`,
+      });
+    } else {
+      setBatchStatus({
+        tone: "error",
+        text: `No low-risk approvals were delivered; ${failedIds.length} changed or failed.`,
+      });
+    }
+  };
 
   return (
     <section className={styles.panel} aria-label="Human decision inbox" data-empty={inbox.items.length === 0}>
@@ -107,6 +179,26 @@ export function DecisionInboxPanel({
 
           {pending.length > 0 && (
             <section className={styles.queue} aria-label="Pending human decisions">
+              {batchableLowRisk.length >= 2 && onDecide && (
+                <div className={styles.batchBar}>
+                  <span>{batchableLowRisk.length} visible low-risk gates</span>
+                  <button
+                    type="button"
+                    className={styles.batchApproveBtn}
+                    onClick={() => void approveVisibleLowRisk()}
+                    disabled={batchInFlight}
+                    aria-label={`Approve ${batchableLowRisk.length} visible low-risk gates`}
+                  >
+                    <CheckCheck size={12} aria-hidden="true" />
+                    {batchInFlight ? "Approving..." : "Approve visible low-risk"}
+                  </button>
+                </div>
+              )}
+              {batchStatus && (
+                <p className={styles.batchStatus} data-tone={batchStatus.tone} role="status" aria-live="polite">
+                  {batchStatus.text}
+                </p>
+              )}
               {pending.map((item, index) => (
                 <DecisionRow
                   key={item.id}
@@ -116,6 +208,7 @@ export function DecisionInboxPanel({
                   onOpenWorkflow={onOpenWorkflow}
                   onOpenAudit={onOpenAudit}
                   onDecide={onDecide}
+                  externallyDeciding={batchLatchedIds.has(item.id)}
                   focusRequestKey={index === 0 ? focusRequestKey : 0}
                 />
               ))}
@@ -155,6 +248,7 @@ function DecisionRow({
   onOpenWorkflow,
   onOpenAudit,
   onDecide,
+  externallyDeciding = false,
   focusRequestKey = 0,
 }: {
   item: HumanDecisionItem;
@@ -164,6 +258,7 @@ function DecisionRow({
   onOpenWorkflow?: (id: string) => void;
   onOpenAudit?: (id: number) => void;
   onDecide?: (item: HumanDecisionItem, decision: DecisionAction) => void | Promise<void>;
+  externallyDeciding?: boolean;
   focusRequestKey?: number;
 }) {
   const rowRef = useRef<HTMLElement>(null);
@@ -183,7 +278,7 @@ function DecisionRow({
   const decidingRef = useRef(false);
   const [deciding, setDeciding] = useState<DecisionAction | null>(null);
   const runDecision = (decision: DecisionAction) => {
-    if (!onDecide || decidingRef.current || deciding !== null) return;
+    if (!onDecide || externallyDeciding || decidingRef.current || deciding !== null) return;
     decidingRef.current = true;
     setDeciding(decision);
     Promise.resolve(onDecide(item, decision))
@@ -209,7 +304,7 @@ function DecisionRow({
       rows[(index + delta + rows.length) % rows.length]?.focus();
       return;
     }
-    if (event.repeat || !canDecide) return;
+    if (event.repeat || !canDecide || externallyDeciding) return;
     if (event.key.toLowerCase() === "a") {
       event.preventDefault();
       runDecision("approve");
@@ -221,6 +316,7 @@ function DecisionRow({
   const auditEventId = parseAuditEventId(item.id);
   const latestHistory = item.history[0];
   const visibleEvidence = item.evidence.slice(0, compact ? 1 : 3);
+  const decisionLocked = deciding !== null || externallyDeciding;
   const route =
     item.sessionId && canFocus
       ? { label: "Focus", route: "session" as const, hint: "Focus session" }
@@ -309,22 +405,22 @@ function DecisionRow({
               type="button"
               className={styles.approveBtn}
               data-decision="approve"
-              disabled={deciding !== null}
-              aria-disabled={deciding !== null}
+              disabled={decisionLocked}
+              aria-disabled={decisionLocked}
               onClick={() => runDecision("approve")}
               aria-label={`Approve ${item.title}`}
               aria-keyshortcuts="A"
               title={`Approve ${item.title}`}
             >
               <Check size={11} aria-hidden="true" />
-              {deciding === "approve" ? "Sent" : "Approve"}
+              {deciding === "approve" ? "Sent" : externallyDeciding ? "Queued" : "Approve"}
             </button>
             <button
               type="button"
               className={styles.denyBtn}
               data-decision="deny"
-              disabled={deciding !== null}
-              aria-disabled={deciding !== null}
+              disabled={decisionLocked}
+              aria-disabled={decisionLocked}
               onClick={() => runDecision("deny")}
               aria-label={`Deny ${item.title}`}
               aria-keyshortcuts="D"

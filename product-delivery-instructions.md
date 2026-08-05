@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `FB-1`.
-LAST COMPLETED SLICE: `FB-1`.
-NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `FB-1`; the
+ACTIVE SLICE: `AB-1`.
+LAST COMPLETED SLICE: `AB-1`.
+NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `AB-1`; the
 real-provider GMV-3 claim confirmation remains an external check after 2026-08-08,
 not a repository implementation slice.
 
@@ -52,7 +52,8 @@ Current portfolio classification:
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Remote Continuity | **PARKED** | Local core journey is not yet complete |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
-| Proofbook product UI, approval batching, broad budget UX | **PARKED** | Compare after the first post-GMV user-visible slice |
+| Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
+| Proofbook product UI, broad budget UX | **PARKED** | Compare after the first two post-GMV user-visible slices |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -60,7 +61,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `FB-1` is complete; no
+- This work order is the sole repo-mutating product lane. `AB-1` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -102,6 +103,9 @@ slice is acceptable only when the next named slice consumes it directly.
 | Completion | existing work/Mission settlement packets |
 | Durable Fleet Briefing facts | existing SQLite-backed `EventBus::since` sequence |
 | Fleet Briefing projection | existing Observe-mode right rail and widget persistence owner |
+| Interactive approval authority | existing `resolve_interactive_approval` prompt-fingerprint check and PTY write owner |
+| Approval classification | existing frontend `shellSafety.classifyCommand` plus the stricter AB-1 batch allowlist |
+| Approval batch projection | existing Decision Inbox; sequential orchestration only, no second approval authority |
 
 Forbidden second owners: Mission engine, TaskGraph, journal, Proofbook runner, merge
 authority, completion table, frontend execution truth, or provider-specific Mission.
@@ -227,13 +231,38 @@ Status: **COMPLETE**.
 - Done: an operator can open Observe mode, see a restart-safe summary of what changed
   since the last mark, refresh it, and advance the cursor without MCP/CLI calls.
 
+### AB-1 — Visible Low-Risk Approval Batching
+
+Capability target: `Product-Accessible`.
+Status: **COMPLETE**.
+
+- Add one batch action to the existing Decision Inbox only when at least two of the
+  first five visible pending rows are live, keystroke-resolvable, and independently
+  classified as low risk. Hidden rows are never silently included.
+- Reuse `shellSafety.classifyCommand`, then apply a stricter batch allowlist: one
+  known read/build/test command, high-confidence classification, no chaining,
+  redirection, substitution, secret-like value, absolute/UNC/home/parent scope,
+  or sensitive target such as `.env`, `.ssh`, credentials, or private keys.
+- Keep composed commands, unknown commands, mutation-capable Git forms, scope escapes,
+  and all medium/high/critical decisions on the existing per-item confirmation path.
+- Resolve every selected gate sequentially through the existing single-item
+  `onDecide -> resolve_interactive_approval` path. Each item retains its own current
+  prompt fingerprint check, audit event, stale-prompt rejection, and PTY write; the
+  UI batch creates no backend batch verb or approval authority.
+- Latch successful deliveries until their prompt rows disappear. Re-enable only the
+  items that failed or changed so a partial batch cannot duplicate successful
+  keystrokes or strand a retryable stale decision.
+- Done: an operator can approve multiple visible low-risk inspection/test gates with
+  one action while destructive, secret-bearing, ambiguous, hidden, or stale gates
+  remain individually controlled and fail closed.
+
 ## Deferred After GMV
 
-Fleet Briefing `FB-1` is complete. Proofbook product access, approval batching, broad
-budget UX, Remote Continuity, and other adjacent value remain portfolio candidates.
-Compare them against the owning Work OS/Apex roadmap and current user evidence before
-opening the next bounded slice; existing backend capability alone does not justify a
-new framework program.
+Fleet Briefing `FB-1` and low-risk approval batching `AB-1` are complete. Proofbook
+product access, broad budget UX, Remote Continuity, and other adjacent value remain
+portfolio candidates. Compare them against the owning Work OS/Apex roadmap and current
+user evidence before opening the next bounded slice; existing backend capability alone
+does not justify a new framework program.
 
 ## Complexity And Progress Stops
 

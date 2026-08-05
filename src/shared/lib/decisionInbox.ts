@@ -1,7 +1,7 @@
 import type { AgentLog, AgentSession } from "../types/agent";
 import type { AuditEventRecord } from "../types/audit";
 import type { AgentFleetSession } from "./agentFleet";
-import type { CommandRiskClass } from "./shellSafety";
+import { type CommandRiskClass, type CommandRiskReport, classifyCommand } from "./shellSafety";
 
 export type HumanDecisionType =
   | "permission_required"
@@ -44,6 +44,14 @@ export interface HumanDecisionItem {
    */
   ptyId?: string;
   approvalPromptKey?: string;
+  /**
+   * True only for a live interactive approval whose captured command passed the
+   * stricter low-risk batch policy. This is narrower than `risk === "low"` so a
+   * decided history row or a future low-risk workflow item can never become a
+   * keystroke batch target by accident.
+   */
+  batchApprovalEligible?: boolean;
+  approvalRiskClasses?: CommandRiskClass[];
   workflowId?: string;
   taskId?: string;
   evidence: string[];
@@ -299,6 +307,7 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
     // (e.g. `Bash(rm -rf dist)`) keeps its critical risk badge instead of a flat
     // medium "permission" — the existing classifiers already encode that policy.
     const type = typeFromText(prompt) ?? "permission_required";
+    const approvalSafety = classifyInteractiveApproval(prompt);
     const promptKey = stableTextKey(prompt);
     decisions.push(
       createDecision({
@@ -315,8 +324,13 @@ function decisionsFromSession(session: AgentFleetSession, now: number): HumanDec
         sessionId: session.id,
         ptyId: session.ptyId,
         approvalPromptKey: promptKey,
+        batchApprovalEligible: approvalSafety.batchEligible,
+        approvalRiskClasses: approvalSafety.report?.classes,
+        riskOverride: approvalSafety.batchEligible ? "low" : undefined,
         evidence: [
           `runStatus=${session.runStatus}`,
+          ...(approvalSafety.report ? [`risk=${approvalSafety.report.classes.join("+")}`] : []),
+          ...(approvalSafety.batchEligible ? ["batch=low-risk"] : []),
           ...lifecycleEvidence,
           ...(session.cli ? [`cli=${session.cli}`] : []),
         ],
@@ -474,18 +488,97 @@ function isExplicitHumanAudit(
   return explicitDecision || notifyUser || type === "destructive_operation" || type === "security_exception";
 }
 
-function createDecision(
-  item: Omit<HumanDecisionItem, "actor" | "recommendedOption" | "risk" | "consequence" | "timeoutPolicy">,
-): HumanDecisionItem {
+type HumanDecisionDraft = Omit<
+  HumanDecisionItem,
+  "actor" | "recommendedOption" | "risk" | "consequence" | "timeoutPolicy"
+> & {
+  riskOverride?: HumanDecisionRisk;
+};
+
+function createDecision(item: HumanDecisionDraft): HumanDecisionItem {
+  const { riskOverride, ...decision } = item;
   return {
-    ...item,
+    ...decision,
     actor: "human",
     recommendedOption: RECOMMENDED_OPTIONS[item.type],
-    risk: riskForType(item.type, item.status),
+    risk: riskOverride ?? riskForType(item.type, item.status),
     consequence: CONSEQUENCES[item.type],
     timeoutPolicy: TIMEOUTS[item.type],
     evidence: item.evidence.filter(Boolean).slice(0, 5),
   };
+}
+
+interface InteractiveApprovalSafety {
+  command: string | null;
+  report: CommandRiskReport | null;
+  batchEligible: boolean;
+}
+
+const LOW_RISK_READ_ONLY_COMMAND =
+  /^(?:git\s+status(?:\s+(?:--short|-s|--branch|-b|--porcelain(?:=v[12])?|--untracked-files(?:=(?:no|normal|all))?|--ignored(?:=(?:traditional|matching|no))?|--show-stash))*|git\s+rev-parse\b[^\r\n]*|git\s+remote\s+-v|pwd|get-location|ls(?:\s+(?:-[A-Za-z]+|\.))*|dir(?:\s+(?:\/[A-Za-z]+|\.))*)$/i;
+
+const LOW_RISK_BUILD_COMMAND =
+  /^(?:cargo\s+(?:test|check|build|clippy)\b|pnpm(?:\.cmd)?\s+(?:test|build|exec\s+(?:vitest|tsc|playwright)|run\s+(?:test|build|lint|typecheck))\b|npm\s+(?:test|run\s+(?:test|build|lint|typecheck))\b|yarn\s+(?:test|build)\b|bun\s+(?:test|run)\b|vitest\s+run\b|tsc\s+--noemit\b|playwright\s+test\b)/i;
+
+function classifyInteractiveApproval(prompt: string): InteractiveApprovalSafety {
+  const command = extractApprovalCommand(prompt);
+  if (!command) return { command: null, report: null, batchEligible: false };
+
+  const report = classifyCommand(command);
+  const onlyLowRiskClasses = report.classes.every(
+    (riskClass) => riskClass === "read-only" || riskClass === "build/test",
+  );
+  const startsWithKnownLowRiskCommand =
+    LOW_RISK_READ_ONLY_COMMAND.test(command) || LOW_RISK_BUILD_COMMAND.test(command);
+  // Batch approval is deliberately stricter than ordinary allow/review policy:
+  // one command only, no chaining/redirection/substitution, no absolute paths,
+  // no secret-like values, and only the existing read/build classes.
+  const hasShellComposition = /(?:&&|\|\||[;&|<>`]|[$%]|\r|\n)/.test(command);
+  const escapesWorkspaceScope =
+    /(?:^|[\s"'])\.\.(?:[\\/]|$)/.test(command) ||
+    /(?:^|[\s"'])~(?:[\\/]|$)/.test(command) ||
+    /(?:^|[\s"'])\\\\/.test(command);
+  const targetsSensitiveMaterial =
+    /(?:^|[\\/\s"'])(?:\.env(?:\.[^\\/\s"']*)?|\.ssh|credentials?|secrets?|id_(?:rsa|ed25519)|private[_-]?key)(?:[\\/\s"']|$)/i.test(
+      command,
+    );
+  const batchEligible =
+    report.severity === "allow" &&
+    report.allowExecution &&
+    !report.requiresApproval &&
+    report.confidence === "high" &&
+    report.lineCount === 1 &&
+    report.secretFindings.length === 0 &&
+    report.pathScope.paths.length === 0 &&
+    onlyLowRiskClasses &&
+    startsWithKnownLowRiskCommand &&
+    !hasShellComposition &&
+    !escapesWorkspaceScope &&
+    !targetsSensitiveMaterial;
+
+  return { command, report, batchEligible };
+}
+
+function extractApprovalCommand(prompt: string): string | null {
+  const lines = prompt
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+
+  const firstLine = lines[0];
+  const bashCall = firstLine.match(/^Bash\((.*)\)(?:\s*·.*)?$/i);
+  if (bashCall?.[1]?.trim()) return bashCall[1].trim();
+
+  if (/^Bash command$/i.test(firstLine)) {
+    const candidate = lines[1]?.trim();
+    return candidate && !/^Do you want\b/i.test(candidate) ? candidate : null;
+  }
+
+  const inlineQuestion = firstLine.split(/\s+·\s+(?=Do you want\b)/i)[0]?.trim();
+  if (!inlineQuestion || /^Do you want\b/i.test(inlineQuestion)) return null;
+  return inlineQuestion;
 }
 
 function latestWatchdogDecisionLog(logs: readonly AgentLog[]): AgentLog | null {
