@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-2`.
-LAST COMPLETED SLICE: `XPC-1`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-2`.
+ACTIVE SLICE: `PB-UI-3`.
+LAST COMPLETED SLICE: `PB-UI-2`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-3`.
 
 ```yaml
 continuation_contract:
@@ -358,17 +358,44 @@ Status: **COMPLETE**.
 ### PB-UI-2 — Narrow Proofbook Operator Effects
 
 Capability target: `Product-Accessible`.
+Status: **COMPLETE**.
+
+- Extend the existing Proofbook panel with only `manualGate` resolution. Do not add
+  Start, Cancel, agent settlement, raw artifact access, arbitrary input editors, or
+  a generic effect console.
+- Render the exact persisted `gateId`, `gateHash`, step, risk, default, evidence, and
+  fixed `cockpit-operator` actor before exposing Approve or Reject.
+- Require the persisted options to contain both `approve` and `reject`; an unknown
+  option vocabulary remains read-only rather than being reinterpreted by the UI.
+- Invoke only the existing `resolve_proofbook_manual_gate` IPC owner with the current
+  hash. Keep startup admission, durable ledger mutation, audit emission, and
+  `proofbook-updated` publication in their existing Rust owners.
+- Harden the Rust manual resolver so it cannot resolve `commandRisk`/`mcpTool` gates,
+  and accept exactly `approve` or `reject` at the Tauri boundary.
+- Use a synchronous delivery latch so rapid clicks cannot duplicate a decision.
+  A stale hash or missing run refreshes durable history and requires a fresh review.
+- Send no free-form comment from this cockpit surface; this slice creates no new
+  secret-bearing text path into the ledger or audit journal.
+- Done: an operator can inspect and resolve an existing durable manual gate from the
+  cockpit, while every other Proofbook effect and gate kind remains inaccessible.
+
+### PB-UI-3 — Start Validated Input-Free Proofbooks
+
+Capability target: `Product-Accessible`.
 Status: **ACTIVE**.
 
-- Add no generic effect console. Begin only from the existing read-only Proofbook
-  panel and existing typed IPC owners.
-- Define one bounded operator authority for Start, Cancel, or manual-gate resolution;
-  each effect must expose its exact inputs, startup-admission boundary, stale-state
-  protection, audit event, and visible result before implementation.
-- Keep agent-session settlement, arbitrary input editors, secret material, and broad
-  artifact access outside the first effect slice.
-- Select the smallest effect that produces user value without inventing a second
-  runner, gate authority, or frontend ledger owner.
+- Consider Start only for a selected definition that has passed a fresh explicit
+  validation and declares no required runtime inputs or secret references.
+- Reuse `start_proofbook_run`; do not add a second runner, frontend ledger owner, or
+  generic JSON input editor.
+- Show the exact definition path and validation identity before the operator starts
+  the run, then project the returned durable ledger and `proofbook-updated` events.
+- Keep command-risk/manual gates governed by their existing waiting-gate paths; a
+  Start click is not approval for a later gated step.
+- Fail visibly on startup reconciliation, definition drift, missing input metadata,
+  or any runner error. Do not present an empty/failed start as a successful run.
+- Keep Cancel, agent-session settlement, artifact opening, secrets, and input-bearing
+  Proofbooks outside this slice.
 
 ## Deferred After GMV
 

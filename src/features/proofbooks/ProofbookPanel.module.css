@@ -11,14 +11,17 @@
 .sectionHeading,
 .validationHeading,
 .runTop,
-.runMeta {
+.runMeta,
+.gateTop,
+.gateActions {
   display: flex;
   min-width: 0;
   align-items: center;
 }
 
 .toolbar,
-.runTop {
+.runTop,
+.gateTop {
   justify-content: space-between;
 }
 
@@ -27,7 +30,9 @@
 .sectionHeading,
 .validationHeading,
 .runTop,
-.runMeta {
+.runMeta,
+.gateTop,
+.gateActions {
   gap: var(--space-2);
 }
 
@@ -90,7 +95,9 @@
 .history,
 .definitionList,
 .runList,
-.validation {
+.validation,
+.gates,
+.gateList {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -171,9 +178,12 @@
 
 .validation,
 .run,
+.gate,
 .empty,
 .error,
-.disclosure {
+.disclosure,
+.gateStatus,
+.gateUnsupported {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   background: rgba(0, 6, 14, 0.2);
@@ -245,6 +255,170 @@
   box-shadow: inset 2px 0 0 rgba(244, 214, 146, 0.42);
 }
 
+.gate {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid rgba(244, 214, 146, 0.13);
+  box-shadow: inset 2px 0 0 rgba(244, 214, 146, 0.44);
+}
+
+.gate[data-risk="critical"],
+.gate[data-risk="high"] {
+  border-color: rgba(243, 139, 168, 0.2);
+  box-shadow: inset 2px 0 0 rgba(243, 139, 168, 0.48);
+}
+
+.gateTop strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateTop span {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(244, 214, 146, 0.1);
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.gate[data-risk="critical"] .gateTop span,
+.gate[data-risk="high"] .gateTop span {
+  background: rgba(243, 139, 168, 0.12);
+  color: var(--ctp-red);
+}
+
+.gateEvidence,
+.gateUnsupported,
+.gateStatus {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
+.gateEvidence {
+  color: var(--text-secondary);
+}
+
+.gateDetails {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.gateDetails div {
+  min-width: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.2);
+}
+
+.gateDetails dt,
+.gateDetails dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateDetails dt {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.gateDetails dd {
+  margin: 1px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.gateHash {
+  display: block;
+  max-height: 44px;
+  overflow: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.28);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.gateActions {
+  justify-content: flex-end;
+}
+
+.gateApprove,
+.gateReject {
+  display: inline-flex;
+  min-width: 76px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.gateApprove {
+  border-color: rgba(166, 227, 161, 0.28);
+  background: rgba(166, 227, 161, 0.1);
+  color: var(--ctp-green);
+}
+
+.gateReject {
+  border-color: rgba(243, 139, 168, 0.28);
+  background: rgba(243, 139, 168, 0.1);
+  color: var(--ctp-red);
+}
+
+.gateApprove:hover:not(:disabled),
+.gateReject:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.gateApprove:focus-visible,
+.gateReject:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.gateApprove:disabled,
+.gateReject:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.gateStatus[data-tone="success"] {
+  color: var(--ctp-green);
+}
+
+.gateStatus[data-tone="warn"] {
+  color: var(--gold);
+}
+
+.gateStatus[data-tone="error"],
+.gateUnsupported {
+  color: var(--ctp-red);
+}
+
 .runTop span {
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -264,7 +438,9 @@
 .empty,
 .overflow,
 .disclosure,
-.error {
+.error,
+.gateStatus,
+.gateUnsupported {
   margin: 0;
 }
 

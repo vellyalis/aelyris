@@ -63,6 +63,34 @@ function run(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
   };
 }
 
+function manualGateRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
+  return run({
+    runId: "run-gate",
+    status: "waiting_gate",
+    updatedAt: "2026-08-05T05:02:00.000Z",
+    steps: [
+      {
+        stepId: "approve-release",
+        kind: "manualGate",
+        status: "waiting_gate",
+        structuredOutput: {
+          gateId: "release-check",
+          gateHash: "sha256:current-gate-hash",
+          kind: "manualGate",
+          options: ["approve", "reject"],
+          default: "reject",
+          risk: "high",
+          evidence: "Release evidence is complete and awaits operator acceptance.",
+        },
+        artifactRefs: [],
+        redactionCount: 0,
+      },
+    ],
+    artifacts: [],
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   tauriMocks.invoke.mockReset();
   tauriMocks.listen.mockReset();
@@ -72,7 +100,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ProofbookPanel", () => {
-  it("shows the catalog, explicit validation, and durable run history without effect controls", async () => {
+  it("shows the catalog, explicit validation, and durable run history without unrelated effect controls", async () => {
     tauriMocks.invoke.mockImplementation((command: string) => {
       if (command === "list_proofbooks") return Promise.resolve(CATALOG);
       if (command === "list_proofbook_runs") return Promise.resolve([run()]);
@@ -88,7 +116,7 @@ describe("ProofbookPanel", () => {
     expect(screen.getByText("Broken audit")).toBeTruthy();
     expect(screen.getByText("Passed")).toBeTruthy();
     expect(screen.getByText("2/2 steps")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /start|run|cancel|approve|settle/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /start|run|cancel|settle/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Validate release.proofbook.yaml" }));
 
@@ -122,5 +150,130 @@ describe("ProofbookPanel", () => {
 
     expect(await screen.findByText("Waiting gate")).toBeTruthy();
     expect(screen.queryByText("Failed")).toBeNull();
+  });
+
+  it("resolves only the displayed manual gate with its exact hash and fixed cockpit actor", async () => {
+    let releaseResolution: (ledger: ProofbookRunLedger) => void = () => {};
+    const resolution = new Promise<ProofbookRunLedger>((resolve) => {
+      releaseResolution = resolve;
+    });
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([manualGateRun()]);
+      if (command === "resolve_proofbook_manual_gate") return resolution;
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+
+    expect(await screen.findByText("Release evidence is complete and awaits operator acceptance.")).toBeTruthy();
+    expect(screen.getByText("sha256:current-gate-hash")).toBeTruthy();
+    expect(screen.getByText("cockpit-operator")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    const approve = screen.getByRole("button", { name: "Approve manual gate release-check" });
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(([command]) => command === "resolve_proofbook_manual_gate");
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("resolve_proofbook_manual_gate", {
+      projectPath: "C:/repo",
+      runId: "run-gate",
+      gateId: "release-check",
+      gateHash: "sha256:current-gate-hash",
+      decision: "approve",
+      actor: "cockpit-operator",
+      comment: null,
+    });
+
+    releaseResolution(
+      manualGateRun({
+        status: "passed",
+        steps: [
+          {
+            stepId: "approve-release",
+            kind: "manualGate",
+            status: "passed",
+            artifactRefs: [],
+            redactionCount: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText(/Approved release-check/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve manual gate release-check" })).toBeNull();
+  });
+
+  it("does not expose the manual resolver for another Proofbook gate kind", async () => {
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") {
+        return Promise.resolve([
+          manualGateRun({
+            steps: [
+              {
+                stepId: "commit",
+                kind: "shell",
+                status: "waiting_gate",
+                structuredOutput: {
+                  gateId: "command-risk",
+                  gateHash: "sha256:command-risk",
+                  kind: "commandRisk",
+                  options: ["approve", "reject"],
+                  default: "reject",
+                },
+                artifactRefs: [],
+                redactionCount: 0,
+              },
+            ],
+          }),
+        ]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+
+    expect(await screen.findByText("Waiting gate")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Proofbook manual gates" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /manual gate/i })).toBeNull();
+  });
+
+  it("refreshes instead of retrying a stale manual-gate hash", async () => {
+    let listRunsCount = 0;
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") {
+        listRunsCount += 1;
+        return Promise.resolve([
+          manualGateRun({
+            steps: [
+              {
+                ...manualGateRun().steps[0],
+                structuredOutput: {
+                  ...(manualGateRun().steps[0].structuredOutput as Record<string, unknown>),
+                  gateHash: listRunsCount === 1 ? "sha256:current-gate-hash" : "sha256:replacement-gate-hash",
+                },
+              },
+            ],
+          }),
+        ]);
+      }
+      if (command === "resolve_proofbook_manual_gate") {
+        return Promise.reject({ code: "stale_gate_hash", message: "refresh run status and retry" });
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reject manual gate release-check" }));
+
+    expect(await screen.findByText(/Gate release-check changed before delivery/)).toBeTruthy();
+    expect(listRunsCount).toBe(2);
+    expect(screen.getByText("sha256:replacement-gate-hash")).toBeTruthy();
   });
 });

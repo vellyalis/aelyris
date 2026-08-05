@@ -43,12 +43,39 @@ export type ProofbookRunStatus =
   | "blocked-by-external-gates"
   | "cancelled";
 
+export interface ProofbookGateDecision {
+  gateId: string;
+  gateHash: string;
+  stepId: string;
+  decision: string;
+  actor: string;
+  comment: string;
+  decidedAt: string;
+}
+
+export interface ProofbookManualGateOutput {
+  gateId: string;
+  gateHash: string;
+  kind: "manualGate";
+  options: string[];
+  default: string;
+  risk: string;
+  evidence: string;
+}
+
 export interface ProofbookStepSummary {
   stepId: string;
   kind: string;
   status: ProofbookStepStatus;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  durationMs?: number | null;
+  attempt?: number;
+  structuredOutput?: unknown;
   artifactRefs: string[];
+  gateDecision?: ProofbookGateDecision | null;
   redactionCount: number;
+  risk?: unknown;
   error?: { code: string; message: string };
 }
 

@@ -283,6 +283,7 @@ impl ProofbookRunner {
             actor,
             comment,
             None,
+            Some("manualGate"),
         )
     }
 
@@ -307,6 +308,7 @@ impl ProofbookRunner {
             actor,
             comment,
             Some(mcp_executor),
+            None,
         )
     }
 
@@ -321,6 +323,7 @@ impl ProofbookRunner {
         actor: Option<String>,
         comment: Option<String>,
         mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+        expected_gate_kind: Option<&str>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let mut ledger = self.load_run(&root, run_id)?;
@@ -330,6 +333,17 @@ impl ProofbookRunner {
                 format!("no waiting Proofbook gate found for {gate_id}"),
             ));
         };
+        if let Some(expected_gate_kind) = expected_gate_kind {
+            if gate_kind != expected_gate_kind {
+                return Err(ProofbookError::new(
+                    ProofbookErrorCode::ValidationFailed,
+                    format!(
+                        "Proofbook gate {gate_id} is {gate_kind}, not {expected_gate_kind}; use its owning resolver"
+                    ),
+                )
+                .with_step(step_id));
+            }
+        }
         let expected_hash = gate_hash_for(&ledger, &gate_id).unwrap_or_default();
         if expected_hash != gate_hash {
             return Err(ProofbookError::new(
@@ -1748,6 +1762,49 @@ settlement:
         assert_eq!(done.status, ProofbookRunStatus::Passed);
         assert_eq!(done.decisions.len(), 1);
         assert_eq!(done.steps[1].status, ProofbookStepStatus::Passed);
+    }
+
+    #[test]
+    fn manual_gate_resolver_rejects_command_risk_gate_without_mutation() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb2-command-risk
+steps:
+  - id: commit
+    type: shell
+    command: git commit -m proofbook
+settlement:
+  requiredSteps: [commit]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let waiting = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        let gate = waiting.steps[0].structured_output.as_ref().unwrap();
+
+        let error = runner
+            .resolve_manual_gate(
+                &project_path(&project),
+                &waiting.run_id,
+                gate["gateId"].as_str().unwrap().to_string(),
+                gate["gateHash"].as_str().unwrap().to_string(),
+                "approve".to_string(),
+                Some("tester".to_string()),
+                None,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
+        let current = runner
+            .status(&project_path(&project), &waiting.run_id)
+            .unwrap();
+        assert_eq!(current.status, ProofbookRunStatus::WaitingGate);
+        assert_eq!(current.steps[0].status, ProofbookStepStatus::WaitingGate);
+        assert!(current.decisions.is_empty());
     }
 
     #[test]

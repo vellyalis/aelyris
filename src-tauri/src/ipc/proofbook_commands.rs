@@ -135,6 +135,7 @@ pub fn resolve_proofbook_manual_gate(
     actor: Option<String>,
     comment: Option<String>,
 ) -> Result<ProofbookRunLedger, ProofbookError> {
+    let decision = normalize_manual_gate_decision(&decision)?.to_string();
     require_proofbook_effect_admitted(
         app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
             .inner(),
@@ -169,6 +170,17 @@ pub fn resolve_proofbook_manual_gate(
     );
     emit_proofbook_update(&app, &ledger);
     Ok(ledger)
+}
+
+fn normalize_manual_gate_decision(decision: &str) -> Result<&'static str, ProofbookError> {
+    match decision.trim().to_ascii_lowercase().as_str() {
+        "approve" => Ok("approve"),
+        "reject" => Ok("reject"),
+        _ => Err(ProofbookError::new(
+            ProofbookErrorCode::ValidationFailed,
+            "Proofbook manual-gate decision must be exactly approve or reject",
+        )),
+    }
 }
 
 #[tauri::command]
@@ -380,6 +392,20 @@ settlement:
             serde_json::to_value(&error).unwrap()["code"],
             "runtime_not_available"
         );
+    }
+
+    #[test]
+    fn proofbook_manual_gate_decision_is_exact() {
+        assert_eq!(
+            normalize_manual_gate_decision("approve").unwrap(),
+            "approve"
+        );
+        assert_eq!(
+            normalize_manual_gate_decision(" Reject ").unwrap(),
+            "reject"
+        );
+        let error = normalize_manual_gate_decision("yes").unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
     }
 
     #[test]

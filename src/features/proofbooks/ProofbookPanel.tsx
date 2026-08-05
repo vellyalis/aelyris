@@ -1,12 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { AlertTriangle, BookOpenCheck, CheckCircle2, History, RefreshCw, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  BookOpenCheck,
+  Check,
+  CheckCircle2,
+  History,
+  RefreshCw,
+  ShieldCheck,
+  ShieldQuestion,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import type {
+  ProofbookManualGateOutput,
   ProofbookRunLedger,
   ProofbookRunStatus,
+  ProofbookStepSummary,
   ProofbookSummary,
   ProofbookValidationReport,
 } from "../../shared/types/proofbook";
@@ -14,6 +26,17 @@ import styles from "./ProofbookPanel.module.css";
 
 interface ProofbookPanelProps {
   readonly projectPath: string;
+}
+
+type ManualGateDecision = "approve" | "reject";
+
+interface ManualGateView {
+  readonly key: string;
+  readonly runId: string;
+  readonly proofbookId: string;
+  readonly stepId: string;
+  readonly prompt: ProofbookManualGateOutput;
+  readonly resolvable: boolean;
 }
 
 const RUN_STATUS_LABEL: Record<ProofbookRunStatus, string> = {
@@ -52,6 +75,62 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function errorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  return typeof (error as Record<string, unknown>).code === "string"
+    ? ((error as Record<string, unknown>).code as string)
+    : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function manualGateOutput(step: ProofbookStepSummary): ProofbookManualGateOutput | null {
+  if (step.status !== "waiting_gate") return null;
+  const output = asRecord(step.structuredOutput);
+  if (!output || output.kind !== "manualGate") return null;
+  const gateId = typeof output.gateId === "string" ? output.gateId.trim() : "";
+  const gateHash = typeof output.gateHash === "string" ? output.gateHash.trim() : "";
+  const options = Array.isArray(output.options)
+    ? output.options.filter((option): option is string => typeof option === "string").map((option) => option.trim())
+    : [];
+  const defaultOption = typeof output.default === "string" ? output.default.trim() : "";
+  const risk = typeof output.risk === "string" ? output.risk.trim() : "";
+  const evidence = typeof output.evidence === "string" ? output.evidence.trim() : "";
+  if (!gateId || !gateHash || options.length === 0 || !defaultOption || !risk) return null;
+  return {
+    gateId,
+    gateHash,
+    kind: "manualGate",
+    options,
+    default: defaultOption,
+    risk,
+    evidence,
+  };
+}
+
+function manualGates(runs: readonly ProofbookRunLedger[]): ManualGateView[] {
+  return runs.flatMap((run) => {
+    if (run.status !== "waiting_gate") return [];
+    return run.steps.flatMap((step) => {
+      const prompt = manualGateOutput(step);
+      if (!prompt) return [];
+      const normalizedOptions = new Set(prompt.options.map((option) => option.toLowerCase()));
+      return [
+        {
+          key: `${run.runId}:${step.stepId}:${prompt.gateHash}`,
+          runId: run.runId,
+          proofbookId: run.proofbookId,
+          stepId: step.stepId,
+          prompt,
+          resolvable: normalizedOptions.has("approve") && normalizedOptions.has("reject"),
+        },
+      ];
+    });
+  });
+}
+
 function sortedRuns(runs: readonly ProofbookRunLedger[]): ProofbookRunLedger[] {
   return [...runs].sort((left, right) => {
     const leftTime = Date.parse(left.updatedAt);
@@ -74,6 +153,9 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resolvingGateRef = useRef<string | null>(null);
+  const [resolvingGateKey, setResolvingGateKey] = useState<string | null>(null);
+  const [gateStatus, setGateStatus] = useState<{ tone: "success" | "warn" | "error"; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!projectPath || !isTauriRuntime()) {
@@ -86,6 +168,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setLoading(true);
     setError(null);
     setValidation(null);
+    setGateStatus(null);
     try {
       const [catalog, history] = await Promise.all([
         invoke<ProofbookSummary[]>("list_proofbooks", { projectPath }),
@@ -110,6 +193,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setSelectedPath(null);
     setValidation(null);
     setError(null);
+    setGateStatus(null);
     void refresh();
   }, [refresh]);
 
@@ -144,6 +228,8 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     [definitions, selectedPath],
   );
 
+  const pendingManualGates = useMemo(() => manualGates(runs), [runs]);
+
   const validateSelected = useCallback(async () => {
     if (!selected || validating) return;
     setValidating(true);
@@ -163,12 +249,65 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     }
   }, [projectPath, selected, validating]);
 
+  const resolveManualGate = useCallback(
+    async (gate: ManualGateView, decision: ManualGateDecision) => {
+      if (resolvingGateRef.current || !gate.resolvable) return;
+      resolvingGateRef.current = gate.key;
+      setResolvingGateKey(gate.key);
+      setGateStatus(null);
+      setError(null);
+      try {
+        const ledger = await invoke<ProofbookRunLedger>("resolve_proofbook_manual_gate", {
+          projectPath,
+          runId: gate.runId,
+          gateId: gate.prompt.gateId,
+          gateHash: gate.prompt.gateHash,
+          decision,
+          actor: "cockpit-operator",
+          comment: null,
+        });
+        setRuns((current) => sortedRuns([ledger, ...current.filter((run) => run.runId !== ledger.runId)]));
+        setGateStatus({
+          tone: decision === "approve" ? "success" : "warn",
+          text:
+            decision === "approve"
+              ? `Approved ${gate.prompt.gateId}; the durable runner continued from the matching gate hash.`
+              : `Rejected ${gate.prompt.gateId}; the durable run recorded the operator decision.`,
+        });
+      } catch (cause) {
+        const code = errorCode(cause);
+        if (code === "stale_gate_hash" || code === "run_not_found") {
+          await refresh();
+          setGateStatus({
+            tone: "error",
+            text: `Gate ${gate.prompt.gateId} changed before delivery. Run history was refreshed; review the current evidence before deciding.`,
+          });
+        } else {
+          setGateStatus({
+            tone: "error",
+            text: `Could not ${decision} ${gate.prompt.gateId}: ${errorMessage(cause)}`,
+          });
+        }
+        reportInvokeFailure({
+          source: "proofbooks",
+          operation: `manual_gate:${decision}`,
+          err: cause,
+          userVisible: true,
+        });
+      } finally {
+        resolvingGateRef.current = null;
+        setResolvingGateKey(null);
+      }
+    },
+    [projectPath, refresh],
+  );
+
   return (
     <section className={styles.panel} aria-label="Proofbooks">
       <div className={styles.toolbar}>
         <span className={styles.mode}>
           <ShieldCheck size={12} aria-hidden="true" />
-          Read-only catalog
+          Catalog + governed manual gates
         </span>
         <button
           type="button"
@@ -257,6 +396,91 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         </section>
       )}
 
+      {gateStatus && (
+        <p
+          className={styles.gateStatus}
+          data-tone={gateStatus.tone}
+          role={gateStatus.tone === "error" ? "alert" : "status"}
+        >
+          {gateStatus.text}
+        </p>
+      )}
+
+      {pendingManualGates.length > 0 && (
+        <section className={styles.gates} aria-label="Proofbook manual gates">
+          <div className={styles.sectionHeading}>
+            <ShieldQuestion size={12} aria-hidden="true" />
+            <span>Manual gates</span>
+            <strong>{pendingManualGates.length}</strong>
+          </div>
+          <div className={styles.gateList}>
+            {pendingManualGates.map((gate) => {
+              const resolving = resolvingGateKey === gate.key;
+              return (
+                <article key={gate.key} className={styles.gate} data-risk={gate.prompt.risk.toLowerCase()}>
+                  <div className={styles.gateTop}>
+                    <strong>{gate.proofbookId}</strong>
+                    <span>{gate.prompt.risk} risk</span>
+                  </div>
+                  <p className={styles.gateEvidence}>
+                    {gate.prompt.evidence || "No evidence context was supplied by this Proofbook definition."}
+                  </p>
+                  <dl className={styles.gateDetails}>
+                    <div>
+                      <dt>Gate</dt>
+                      <dd>{gate.prompt.gateId}</dd>
+                    </div>
+                    <div>
+                      <dt>Step</dt>
+                      <dd>{gate.stepId}</dd>
+                    </div>
+                    <div>
+                      <dt>Default</dt>
+                      <dd>{gate.prompt.default}</dd>
+                    </div>
+                    <div>
+                      <dt>Actor</dt>
+                      <dd>cockpit-operator</dd>
+                    </div>
+                  </dl>
+                  <code className={styles.gateHash} title={gate.prompt.gateHash}>
+                    {gate.prompt.gateHash}
+                  </code>
+                  {gate.resolvable ? (
+                    <div className={styles.gateActions}>
+                      <button
+                        type="button"
+                        className={styles.gateApprove}
+                        disabled={resolvingGateKey !== null}
+                        onClick={() => void resolveManualGate(gate, "approve")}
+                        aria-label={`Approve manual gate ${gate.prompt.gateId}`}
+                      >
+                        <Check size={11} aria-hidden="true" />
+                        {resolving ? "Delivering…" : "Approve"}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.gateReject}
+                        disabled={resolvingGateKey !== null}
+                        onClick={() => void resolveManualGate(gate, "reject")}
+                        aria-label={`Reject manual gate ${gate.prompt.gateId}`}
+                      >
+                        <X size={11} aria-hidden="true" />
+                        {resolving ? "Locked" : "Reject"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className={styles.gateUnsupported}>
+                      This gate does not expose the required approve/reject options and remains read-only.
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className={styles.history} aria-label="Proofbook run history">
         <div className={styles.sectionHeading}>
           <History size={12} aria-hidden="true" />
@@ -289,7 +513,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       </section>
 
       <p className={styles.disclosure}>
-        This surface cannot start, cancel, approve, or settle a Proofbook run. Those effects remain behind their existing governed commands.
+        This surface can resolve only an existing manualGate with its current gate hash. It cannot start, cancel, settle, open raw artifacts, or submit free-form gate comments.
       </p>
     </section>
   );
