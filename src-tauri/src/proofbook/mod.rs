@@ -1,3 +1,4 @@
+mod agent_settlement;
 mod agent_step;
 mod errors;
 mod ledger;
@@ -9,6 +10,9 @@ mod step_wait;
 mod types;
 pub(crate) mod validator;
 
+pub use agent_settlement::{
+    ProofbookAgentSessionExpectedArtifact, ProofbookAgentSessionSettlementContext,
+};
 pub use agent_step::{
     ProofbookAgentSessionCompletionProof, ProofbookAgentSessionExecutor,
     ProofbookAgentSessionRequest, ProofbookAgentSessionSpawn,

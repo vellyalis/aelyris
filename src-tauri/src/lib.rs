@@ -1624,6 +1624,8 @@ pub fn run() {
             ipc::cancel_current_proofbook_run,
             ipc::resolve_proofbook_manual_gate,
             ipc::settle_proofbook_agent_session,
+            ipc::proofbook_agent_session_settlement_candidate,
+            ipc::settle_current_proofbook_agent_session,
             // Agent session persistence
             ipc::save_agent_to_db,
             ipc::update_agent_in_db,

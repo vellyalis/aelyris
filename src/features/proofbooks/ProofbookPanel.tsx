@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import type {
+  ProofbookAgentSessionSettlementCandidate,
   ProofbookArtifactPreview,
   ProofbookArtifactRef,
   ProofbookManualGateOutput,
@@ -31,8 +32,11 @@ import type {
   ProofbookSummary,
   ProofbookValidationReport,
 } from "../../shared/types/proofbook";
+import { ProofbookAgentSessionSettlement } from "./ProofbookAgentSessionSettlement";
 import { ProofbookEvidenceInspector } from "./ProofbookEvidenceInspector";
 import styles from "./ProofbookPanel.module.css";
+import { proofbookErrorCode as errorCode, proofbookErrorMessage as errorMessage } from "./proofbookUiError";
+import { useProofbookAgentSessionSettlement } from "./useProofbookAgentSessionSettlement";
 
 interface ProofbookPanelProps {
   readonly projectPath: string;
@@ -72,24 +76,6 @@ function normalizedPath(value: string): string {
 function basename(value: string): string {
   const parts = value.replace(/\\/g, "/").split("/").filter(Boolean);
   return parts.at(-1) ?? value;
-}
-
-function errorMessage(error: unknown): string {
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    const message = typeof record.message === "string" ? record.message : null;
-    const code = typeof record.code === "string" ? record.code : null;
-    if (message && code) return `${code}: ${message}`;
-    if (message) return message;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
-function errorCode(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
-  return typeof (error as Record<string, unknown>).code === "string"
-    ? ((error as Record<string, unknown>).code as string)
-    : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -181,6 +167,27 @@ function submittedStringInputs(
   );
 }
 
+function runningAgentSessionSteps(run: ProofbookRunLedger): ProofbookStepSummary[] {
+  return run.steps.filter((step) => step.kind === "agentSession" && step.status === "running");
+}
+
+function settlementKey(run: ProofbookRunLedger, step: ProofbookStepSummary): string {
+  return `${run.runId}:${step.stepId}:${run.revision}`;
+}
+
+function candidateMatches(
+  candidate: ProofbookAgentSessionSettlementCandidate | null,
+  run: ProofbookRunLedger,
+  step: ProofbookStepSummary,
+): candidate is ProofbookAgentSessionSettlementCandidate {
+  return Boolean(
+    candidate &&
+      candidate.runId === run.runId &&
+      candidate.stepId === step.stepId &&
+      candidate.ledgerRevision === run.revision,
+  );
+}
+
 export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [definitions, setDefinitions] = useState<ProofbookSummary[]>([]);
   const [runs, setRuns] = useState<ProofbookRunLedger[]>([]);
@@ -204,6 +211,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [artifactPreview, setArtifactPreview] = useState<ProofbookArtifactPreview | null>(null);
   const [artifactStatus, setArtifactStatus] = useState<string | null>(null);
   const [expandedEvidenceRunId, setExpandedEvidenceRunId] = useState<string | null>(null);
+  const settlementResetRef = useRef<() => void>(() => {});
 
   const refresh = useCallback(async () => {
     if (!projectPath || !isTauriRuntime()) {
@@ -223,6 +231,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setArtifactPreview(null);
     setArtifactStatus(null);
     setExpandedEvidenceRunId(null);
+    settlementResetRef.current();
     try {
       const [catalog, history] = await Promise.all([
         invoke<ProofbookSummary[]>("list_proofbooks", { projectPath }),
@@ -241,6 +250,26 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     }
   }, [projectPath]);
 
+  const applyRunLedger = useCallback((ledger: ProofbookRunLedger) => {
+    setRuns((current) => sortedRuns([ledger, ...current.filter((run) => run.runId !== ledger.runId)]));
+  }, []);
+
+  const isOtherEffectActive = useCallback(
+    () =>
+      Boolean(
+        startingRef.current || resolvingGateRef.current || cancellingRunRef.current || previewingArtifactRef.current,
+      ),
+    [],
+  );
+
+  const settlement = useProofbookAgentSessionSettlement({
+    projectPath,
+    refresh,
+    onLedger: applyRunLedger,
+    isOtherEffectActive,
+  });
+  settlementResetRef.current = settlement.reset;
+
   useEffect(() => {
     setDefinitions([]);
     setRuns([]);
@@ -254,6 +283,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setArtifactPreview(null);
     setArtifactStatus(null);
     setExpandedEvidenceRunId(null);
+    settlementResetRef.current();
     void refresh();
   }, [refresh]);
 
@@ -266,6 +296,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     void listen<ProofbookRunLedger>("proofbook-updated", (event) => {
       if (cancelled || normalizedPath(event.payload.projectPath) !== projectIdentity) return;
       setRuns((current) => sortedRuns([event.payload, ...current.filter((run) => run.runId !== event.payload.runId)]));
+      settlement.reconcileLedger(event.payload);
     })
       .then((unsubscribe) => {
         if (cancelled) unsubscribe();
@@ -284,7 +315,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       cancelled = true;
       unlisten?.();
     };
-  }, [projectPath]);
+  }, [projectPath, settlement.reconcileLedger]);
 
   const selected = useMemo(
     () => definitions.find((definition) => definition.path === selectedPath) ?? null,
@@ -326,6 +357,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       resolvingGateRef.current ||
       cancellingRunRef.current ||
       previewingArtifactRef.current ||
+      settlement.isBusy() ||
       !selected ||
       !startAdmission?.eligible ||
       !startAdmission.definitionHash
@@ -375,7 +407,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       startingRef.current = false;
       setStarting(false);
     }
-  }, [projectPath, refresh, selected, startAdmission, submittedInputs]);
+  }, [projectPath, refresh, selected, settlement.isBusy, startAdmission, submittedInputs]);
 
   const resolveManualGate = useCallback(
     async (gate: ManualGateView, decision: ManualGateDecision) => {
@@ -384,6 +416,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         startingRef.current ||
         cancellingRunRef.current ||
         previewingArtifactRef.current ||
+        settlement.isBusy() ||
         !gate.resolvable
       ) {
         return;
@@ -435,7 +468,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         setResolvingGateKey(null);
       }
     },
-    [projectPath, refresh],
+    [projectPath, refresh, settlement.isBusy],
   );
 
   const cancelCurrentRun = useCallback(
@@ -445,6 +478,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         startingRef.current ||
         resolvingGateRef.current ||
         previewingArtifactRef.current ||
+        settlement.isBusy() ||
         !isCancellableRunStatus(run.status)
       ) {
         return;
@@ -484,7 +518,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         setCancellingRunId(null);
       }
     },
-    [projectPath, refresh],
+    [projectPath, refresh, settlement.isBusy],
   );
 
   const previewArtifact = useCallback(
@@ -495,6 +529,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         startingRef.current ||
         resolvingGateRef.current ||
         cancellingRunRef.current ||
+        settlement.isBusy() ||
         !isRunnerOwnedPreviewCandidate(run.runId, artifact)
       ) {
         return;
@@ -527,11 +562,16 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         setPreviewingArtifactKey(null);
       }
     },
-    [projectPath, refresh],
+    [projectPath, refresh, settlement.isBusy],
   );
 
   const effectLocked =
-    starting || resolvingGateKey !== null || cancellingRunId !== null || previewingArtifactKey !== null;
+    starting ||
+    resolvingGateKey !== null ||
+    cancellingRunId !== null ||
+    previewingArtifactKey !== null ||
+    settlement.checkingKey !== null ||
+    settlement.settlingKey !== null;
 
   return (
     <section className={styles.panel} aria-label="Proofbooks">
@@ -838,6 +878,16 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         </p>
       )}
 
+      {settlement.status && (
+        <p
+          className={styles.settlementStatus}
+          data-tone={settlement.status.tone}
+          role={settlement.status.tone === "error" ? "alert" : "status"}
+        >
+          {settlement.status.text}
+        </p>
+      )}
+
       {artifactPreview && (
         <section className={styles.artifactPreview} aria-label="Proofbook artifact preview">
           <div className={styles.previewHeading}>
@@ -898,6 +948,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
               const cancellable = isCancellableRunStatus(run.status);
               const cancelling = cancellingRunId === run.runId;
               const evidenceExpanded = expandedEvidenceRunId === run.runId;
+              const agentSessionSteps = runningAgentSessionSteps(run);
               return (
                 <article key={run.runId} className={styles.run} data-status={run.status}>
                   <div className={styles.runTop}>
@@ -930,6 +981,34 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                     {evidenceExpanded ? "Hide evidence" : "Inspect evidence"}
                   </button>
                   {evidenceExpanded && <ProofbookEvidenceInspector run={run} />}
+                  {agentSessionSteps.length > 0 && (
+                    <section
+                      className={styles.agentSettlements}
+                      aria-label={`Agent session settlement for ${run.runId}`}
+                    >
+                      {agentSessionSteps.map((step) => {
+                        const key = settlementKey(run, step);
+                        const checking = settlement.checkingKey === key;
+                        const settling = settlement.settlingKey === key;
+                        const candidate = candidateMatches(settlement.candidate, run, step)
+                          ? settlement.candidate
+                          : null;
+                        return (
+                          <ProofbookAgentSessionSettlement
+                            key={step.stepId}
+                            runId={run.runId}
+                            step={step}
+                            candidate={candidate}
+                            checking={checking}
+                            settling={settling}
+                            disabled={effectLocked}
+                            onInspect={() => void settlement.inspect(run, step)}
+                            onSettle={(current) => void settlement.settle(current)}
+                          />
+                        );
+                      })}
+                    </section>
+                  )}
                   {run.artifacts.length > 0 && (
                     <section className={styles.artifactList} aria-label={`Artifacts for ${run.runId}`}>
                       {run.artifacts.slice(0, 4).map((artifact) => {
@@ -995,8 +1074,10 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         This surface can start a freshly validated local Proofbook with no inputs or declared non-secret string inputs,
         resolve an existing manualGate with its current gate hash, cancel only the exact displayed revision of a
         non-terminal run, and preview verified runner-owned UTF-8 text artifacts. It cannot accept secrets, unsupported
-        input types, arbitrary JSON, settle agent work, read arbitrary paths, download/open raw artifacts, bulk-cancel,
-        or submit free-form gate comments.
+        input types, arbitrary JSON, or free-form completion proofs. It can settle only the exact displayed revision of
+        a running agentSession from current Aelyris-owned runtime status and contained expected artifacts; this does not
+        terminate a process, accept a review, or merge work. Arbitrary paths, raw artifact export, bulk cancellation,
+        and free-form gate comments remain unavailable.
       </p>
     </section>
   );

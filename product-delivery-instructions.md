@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-8`.
-LAST COMPLETED SLICE: `PB-UI-7`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-8`.
+ACTIVE SLICE: `CM-4`.
+LAST COMPLETED SLICE: `PB-UI-8`.
+NEXT IMPLEMENTATION SLICE: `CM-4`.
 
 ```yaml
 continuation_contract:
@@ -65,7 +65,8 @@ Current portfolio classification:
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
 | Bounded fleet cap editing | **COMPLETE** | The existing Cost Manager now owns one explicit validated cockpit save path with conflict-safe drafts and visible outcomes |
 | Non-secret Proofbook string inputs | **COMPLETE** | Cockpit validation now projects only supported string fields and the runner normalizes the exact declared object before ledger creation |
-| Exact Proofbook agentSession settlement | **NOW** | The runner already validates completion proofs; the remaining gap is a no-free-form cockpit projection over current runtime-owned evidence |
+| Exact Proofbook agentSession settlement | **COMPLETE** | Cockpit settlement re-derives the exact current session/revision from runtime-owned terminal status and contained expected artifacts without a free-form proof editor |
+| Durable fleet cap persistence | **NOW** | The bounded editor works, but operator-selected caps currently return to defaults after application restart |
 | Broader Proofbook effects and input/secret UX | **PARKED** | Further access requires separately bounded operator decisions and data handling |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
@@ -74,7 +75,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-7` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-8` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -544,7 +545,7 @@ Status: **COMPLETE**.
 ### PB-UI-8 — Exact Runtime-Owned Agent Session Settlement
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing Proofbook cockpit and `settle_proofbook_agent_session` owner;
   do not create a second completion protocol, runner, session registry, or evidence
@@ -553,10 +554,12 @@ Status: **ACTIVE**.
   `agentSession` step whose durable output still identifies the same runtime-owned
   session/pane/worktree. A changed definition, ledger revision, step state, or
   session identity must refresh and fail closed.
-- Derive the candidate completion packet from existing runtime-owned done signals,
-  final-report references, reviewer batches, and contained expected artifacts. Do
-  not expose a generic JSON editor or let the operator type arbitrary status,
-  artifact paths, done signals, reviewer ids, or blocker payloads.
+- Derive the candidate completion packet only from evidence owners that currently
+  exist: exact runtime session identity/status and contained expected artifacts.
+  Runtime-owned final-report or reviewer-batch references do not currently exist,
+  so this slice must not invent or accept them. Do not expose a generic JSON editor
+  or let the operator type arbitrary status, artifact paths, done signals, reviewer
+  ids, or blocker payloads.
 - Show the exact evidence that will be submitted, unresolved requirements, and the
   resulting durable status before enabling one explicit Settle action.
 - Keep terminal input, process termination, review acceptance, and merge authority
@@ -565,17 +568,39 @@ Status: **ACTIVE**.
 - Done: an operator can settle a current Proofbook `agentSession` from existing
   Aelyris-owned completion evidence without composing a proof packet by hand.
 
+### CM-4 — Durable Fleet Cap Persistence
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Persist the existing `CostCaps` owner through the existing Aelyris SQLite database;
+  do not add another database, generic settings framework, frontend cache authority,
+  or second Cost Manager.
+- Store one versioned singleton cap record. Validate it through the same backend
+  `CostCaps::validate_for_update` authority before both save and restore.
+- A Save is successful only if durable persistence succeeds before the in-memory
+  owner changes or `cost-caps-updated` emits. A database failure must preserve the
+  prior runtime caps and report the failure to the editor.
+- Restore persisted caps before orchestration can consume the Cost Manager. Missing
+  state uses the existing bounded defaults; malformed persisted state fails closed
+  to those defaults and produces explicit diagnostic evidence rather than silently
+  coercing an unsafe value.
+- Preserve the current truth boundary: token and cost values are reported telemetry,
+  not provider billing, and unknown telemetry is never converted to zero.
+- Done: deliberately saved fleet caps survive a clean application restart and remain
+  the one cap set observed by Cockpit and orchestration.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
 Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 `PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
 `CM-2` are complete, together with verified runner-owned artifact preview `PB-UI-5`.
-Durable step evidence inspection `PB-UI-6`, bounded cap editing `CM-3`, and validated
-non-secret string inputs `PB-UI-7` are also complete. Exact runtime-owned
-`agentSession` settlement `PB-UI-8` is active; secret-bearing starts, broader input
-types, raw artifact opening/export, Remote Continuity, and other adjacent value
-remain portfolio candidates.
+Durable step evidence inspection `PB-UI-6`, bounded cap editing `CM-3`, validated
+non-secret string inputs `PB-UI-7`, and exact runtime-owned `agentSession` settlement
+`PB-UI-8` are also complete. Durable fleet cap persistence `CM-4` is active;
+secret-bearing starts, broader input types, raw artifact opening/export, Remote
+Continuity, and other adjacent value remain portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

@@ -188,6 +188,7 @@
 .startBlocked,
 .cancelStatus,
 .artifactStatus,
+.settlementStatus,
 .artifactPreview {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
@@ -646,6 +647,23 @@
 .artifactStatus {
   color: var(--ctp-red);
   font-size: var(--text-2xs);
+}
+
+.settlementStatus {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
+.settlementStatus[data-tone="success"] {
+  color: var(--ctp-green);
+}
+
+.settlementStatus[data-tone="warn"] {
+  color: var(--gold);
+}
+
+.settlementStatus[data-tone="error"] {
+  color: var(--ctp-red);
 }
 
 .artifactPreview {
@@ -1212,6 +1230,13 @@
   line-height: var(--leading-normal);
 }
 
+.agentSettlements {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .artifactList {
   display: flex;
   min-width: 0;
@@ -1351,6 +1376,7 @@
 .startBlocked,
 .cancelStatus,
 .artifactStatus,
+.settlementStatus,
 .artifactPreview {
   margin: 0;
 }

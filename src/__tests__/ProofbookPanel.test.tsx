@@ -1,7 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProofbookPanel } from "../features/proofbooks/ProofbookPanel";
-import type { ProofbookArtifactPreview, ProofbookRunLedger, ProofbookSummary } from "../shared/types/proofbook";
+import type {
+  ProofbookAgentSessionSettlementCandidate,
+  ProofbookArtifactPreview,
+  ProofbookRunLedger,
+  ProofbookSummary,
+} from "../shared/types/proofbook";
 
 const tauriMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -120,6 +125,57 @@ function runningRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLe
     artifacts: [],
     ...overrides,
   });
+}
+
+function agentSessionRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
+  return runningRun({
+    revision: 11,
+    runId: "run-agent",
+    steps: [
+      {
+        stepId: "agent",
+        kind: "agentSession",
+        status: "running",
+        structuredOutput: {
+          kind: "agentSession",
+          sessionId: "session-agent",
+          paneId: "pane-agent",
+          ptyId: "pty-agent",
+          backend: "native",
+          repoPath: "C:/repo",
+          worktreePath: "C:/repo/.worktrees/agent",
+          visibleMode: "visible",
+          expectedArtifacts: [".aelyris/proofbooks/agent-summary.md"],
+        },
+        artifactRefs: [],
+        redactionCount: 0,
+      },
+    ],
+    ...overrides,
+  });
+}
+
+function settlementCandidate(
+  overrides: Partial<ProofbookAgentSessionSettlementCandidate> = {},
+): ProofbookAgentSessionSettlementCandidate {
+  return {
+    runId: "run-agent",
+    ledgerRevision: 11,
+    stepId: "agent",
+    sessionId: "session-agent",
+    paneId: "pane-agent",
+    ptyId: "pty-agent",
+    worktreePath: "C:/repo/.worktrees/agent",
+    runtimeStatus: "done",
+    eligible: true,
+    resultingStatus: "passed",
+    proofKind: "requiredArtifactSettlement",
+    doneSignal: "aelyris.runtime.session:session-agent:done",
+    proofSources: ["runtimeSessionStatus", "requiredArtifactSettlement"],
+    expectedArtifacts: [{ path: ".aelyris/proofbooks/agent-summary.md", present: true }],
+    blockers: [],
+    ...overrides,
+  };
 }
 
 function previewableArtifactRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
@@ -482,6 +538,129 @@ describe("ProofbookPanel", () => {
     expect(listRunsCount).toBe(2);
     expect(screen.getByText("revision 5")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel current Proofbook run run-live" })).toBeTruthy();
+  });
+
+  it("settles a running agentSession only from the exact backend runtime candidate", async () => {
+    let releaseSettlement: (ledger: ProofbookRunLedger) => void = () => {};
+    const settlement = new Promise<ProofbookRunLedger>((resolve) => {
+      releaseSettlement = resolve;
+    });
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([agentSessionRun()]);
+      if (command === "proofbook_agent_session_settlement_candidate") {
+        return Promise.resolve(settlementCandidate());
+      }
+      if (command === "settle_current_proofbook_agent_session") return settlement;
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    const inspect = await screen.findByRole("button", {
+      name: "Inspect runtime completion evidence for run-agent agent",
+    });
+    fireEvent.click(inspect);
+    fireEvent.click(inspect);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(
+        ([command]) => command === "proofbook_agent_session_settlement_candidate",
+      );
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("proofbook_agent_session_settlement_candidate", {
+      projectPath: "C:/repo",
+      runId: "run-agent",
+      stepId: "agent",
+      expectedRevision: 11,
+    });
+
+    const candidate = await screen.findByRole("region", { name: "Runtime completion candidate for agent" });
+    const evidence = within(candidate);
+    expect(evidence.getByText("session-agent")).toBeTruthy();
+    expect(evidence.getByText("done")).toBeTruthy();
+    expect(evidence.getByText("requiredArtifactSettlement")).toBeTruthy();
+    expect(evidence.getByText("aelyris.runtime.session:session-agent:done")).toBeTruthy();
+    expect(evidence.getByText("Sources: runtimeSessionStatus + requiredArtifactSettlement")).toBeTruthy();
+    expect(evidence.getByText(".aelyris/proofbooks/agent-summary.md")).toBeTruthy();
+    expect(evidence.getByText("present")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    const settle = screen.getByRole("button", { name: "Settle current agent session session-agent" });
+    fireEvent.click(settle);
+    fireEvent.click(settle);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(
+        ([command]) => command === "settle_current_proofbook_agent_session",
+      );
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("settle_current_proofbook_agent_session", {
+      projectPath: "C:/repo",
+      runId: "run-agent",
+      stepId: "agent",
+      expectedRevision: 11,
+      expectedSessionId: "session-agent",
+    });
+
+    releaseSettlement(
+      agentSessionRun({
+        revision: 12,
+        status: "passed",
+        steps: [
+          {
+            stepId: "agent",
+            kind: "agentSession",
+            status: "passed",
+            artifactRefs: ["artifact-agent-summary"],
+            redactionCount: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Settled agent from current Aelyris-owned runtime evidence at ledger revision 12/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Process termination, review acceptance, and merge are not claimed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Settle current agent session session-agent" })).toBeNull();
+  });
+
+  it("shows unresolved runtime evidence without exposing a free-form settlement action", async () => {
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([agentSessionRun()]);
+      if (command === "proofbook_agent_session_settlement_candidate") {
+        return Promise.resolve(
+          settlementCandidate({
+            runtimeStatus: "coding",
+            eligible: false,
+            resultingStatus: null,
+            proofKind: null,
+            doneSignal: null,
+            proofSources: [],
+            expectedArtifacts: [{ path: ".aelyris/proofbooks/agent-summary.md", present: false }],
+            blockers: ["runtime_session_not_terminal:coding"],
+          }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Inspect runtime completion evidence for run-agent agent" }),
+    );
+
+    const candidate = await screen.findByRole("region", { name: "Runtime completion candidate for agent" });
+    const evidence = within(candidate);
+    expect(evidence.getByText("coding")).toBeTruthy();
+    expect(evidence.getByText("missing")).toBeTruthy();
+    expect(evidence.getByText("Unresolved: runtime_session_not_terminal:coding")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Settle current agent session/ })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith("settle_current_proofbook_agent_session", expect.anything());
   });
 
   it("previews only a runner-owned artifact at the exact displayed ledger revision", async () => {

@@ -1,11 +1,13 @@
+use crate::proofbook::agent_settlement;
 use crate::proofbook::ledger::{
     self, ProofbookGateDecision, ProofbookResidualBlocker, ProofbookRunError, ProofbookRunLedger,
     ProofbookRunStatus, ProofbookStepOutcome, ProofbookStepStatus,
 };
 use crate::proofbook::{
     parse_proofbook, validate_definition, ProofbookAgentSessionCompletionProof,
-    ProofbookAgentSessionExecutor, ProofbookArtifactPreview, ProofbookDefinition, ProofbookError,
-    ProofbookErrorCode, ProofbookStep, ProofbookStepKind,
+    ProofbookAgentSessionExecutor, ProofbookAgentSessionSettlementContext,
+    ProofbookArtifactPreview, ProofbookDefinition, ProofbookError, ProofbookErrorCode,
+    ProofbookStep, ProofbookStepKind,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -235,53 +237,75 @@ impl ProofbookRunner {
         step_id: &str,
         proof: ProofbookAgentSessionCompletionProof,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.settle_agent_session_inner(project_path, run_id, step_id, None, None, proof)
+    }
+
+    pub fn agent_session_settlement_context(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        step_id: &str,
+        expected_revision: u64,
+    ) -> Result<ProofbookAgentSessionSettlementContext, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
-        let mut ledger = self.load_run(&root, run_id)?;
-        let definition = parse_proofbook(&ledger.definition_path)?;
-        let current_hash = ledger::hash_json(&definition)?;
-        if current_hash != ledger.definition_hash {
+        let (_, _, _, _, context) = self.load_agent_session_settlement_state(
+            &root,
+            project_path,
+            run_id,
+            step_id,
+            Some(expected_revision),
+        )?;
+        Ok(context)
+    }
+
+    pub fn settle_agent_session_if_current(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        step_id: &str,
+        expected_revision: u64,
+        expected_session_id: &str,
+        proof: ProofbookAgentSessionCompletionProof,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.settle_agent_session_inner(
+            project_path,
+            run_id,
+            step_id,
+            Some(expected_revision),
+            Some(expected_session_id),
+            proof,
+        )
+    }
+
+    fn settle_agent_session_inner(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        step_id: &str,
+        expected_revision: Option<u64>,
+        expected_session_id: Option<&str>,
+        proof: ProofbookAgentSessionCompletionProof,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        let root = crate::proofbook::validator::canonical_project_root(project_path)?;
+        let (mut ledger, definition, step, summary, context) = self
+            .load_agent_session_settlement_state(
+                &root,
+                project_path,
+                run_id,
+                step_id,
+                expected_revision,
+            )?;
+        if expected_session_id.is_some_and(|expected| expected != context.session_id) {
             return Err(agent_session_completion_validation(
                 step_id,
-                "Proofbook definition changed after agentSession started; refresh run status and restart",
-            ));
-        }
-        let report = validate_definition(project_path, &definition, &ledger.definition_path);
-        if !report.valid {
-            return Err(validation_failed(report.errors));
-        }
-        let step = definition
-            .steps
-            .iter()
-            .find(|step| step.id == step_id)
-            .ok_or_else(|| {
-                agent_session_completion_validation(
-                    step_id,
-                    format!("Proofbook agentSession step not found: {step_id}"),
-                )
-            })?;
-        if ProofbookStepKind::from_wire(&step.kind) != Some(ProofbookStepKind::AgentSession) {
-            return Err(agent_session_completion_validation(
-                step_id,
-                "Proofbook agentSession settlement requires an agentSession step",
-            ));
-        }
-        let summary = ledger.step(step_id).cloned().ok_or_else(|| {
-            agent_session_completion_validation(
-                step_id,
-                format!("Proofbook ledger step not found: {step_id}"),
-            )
-        })?;
-        if summary.status != ProofbookStepStatus::Running {
-            return Err(agent_session_completion_validation(
-                step_id,
-                "Proofbook agentSession settlement requires a running step",
+                "Proofbook agentSession runtime identity changed; refresh completion evidence",
             ));
         }
 
-        let outcome = agent_session_completion_outcome(&root, step, &summary, proof)?;
+        let outcome = agent_session_completion_outcome(&root, &step, &summary, proof)?;
         let completed_status = outcome.status;
         let completed_error = outcome.error.clone();
-        self.apply_step_outcome(&root, &mut ledger, step, outcome)?;
+        self.apply_step_outcome(&root, &mut ledger, &step, outcome)?;
         let (event_kind, event_message, event_status) = match completed_status {
             ProofbookStepStatus::Passed => (
                 "agent_session_completed",
@@ -318,6 +342,78 @@ impl ProofbookRunner {
         }
         self.remember(ledger.clone())?;
         Ok(ledger)
+    }
+
+    fn load_agent_session_settlement_state(
+        &self,
+        root: &Path,
+        project_path: &str,
+        run_id: &str,
+        step_id: &str,
+        expected_revision: Option<u64>,
+    ) -> Result<
+        (
+            ProofbookRunLedger,
+            ProofbookDefinition,
+            ProofbookStep,
+            ledger::ProofbookStepSummary,
+            ProofbookAgentSessionSettlementContext,
+        ),
+        ProofbookError,
+    > {
+        let ledger = self.load_run(root, run_id)?;
+        if let Some(expected_revision) = expected_revision {
+            if ledger.revision != expected_revision {
+                return Err(stale_revision_error(
+                    run_id,
+                    expected_revision,
+                    ledger.revision,
+                ));
+            }
+        }
+        let definition = parse_proofbook(&ledger.definition_path)?;
+        let current_hash = ledger::hash_json(&definition)?;
+        if current_hash != ledger.definition_hash {
+            return Err(agent_session_completion_validation(
+                step_id,
+                "Proofbook definition changed after agentSession started; refresh run status and restart",
+            ));
+        }
+        let report = validate_definition(project_path, &definition, &ledger.definition_path);
+        if !report.valid {
+            return Err(validation_failed(report.errors));
+        }
+        let step = definition
+            .steps
+            .iter()
+            .find(|step| step.id == step_id)
+            .cloned()
+            .ok_or_else(|| {
+                agent_session_completion_validation(
+                    step_id,
+                    format!("Proofbook agentSession step not found: {step_id}"),
+                )
+            })?;
+        if ProofbookStepKind::from_wire(&step.kind) != Some(ProofbookStepKind::AgentSession) {
+            return Err(agent_session_completion_validation(
+                step_id,
+                "Proofbook agentSession settlement requires an agentSession step",
+            ));
+        }
+        let summary = ledger.step(step_id).cloned().ok_or_else(|| {
+            agent_session_completion_validation(
+                step_id,
+                format!("Proofbook ledger step not found: {step_id}"),
+            )
+        })?;
+        if summary.status != ProofbookStepStatus::Running {
+            return Err(agent_session_completion_validation(
+                step_id,
+                "Proofbook agentSession settlement requires a running step",
+            ));
+        }
+        let context = agent_settlement::context_from(root, &ledger, &summary)?;
+        Ok((ledger, definition, step, summary, context))
     }
     pub fn list_runs(&self, project_path: &str) -> Result<Vec<ProofbookRunLedger>, ProofbookError> {
         self.restore_project(project_path)?;
@@ -1433,7 +1529,7 @@ fn agent_session_passed_outcome(
 
     let mut recorded_required_artifacts = false;
     if proof_kind_key == "requiredartifactsettlement" {
-        let mut settlement_paths = expected_agent_artifacts(summary);
+        let mut settlement_paths = agent_settlement::expected_artifacts(summary);
         if settlement_paths.is_empty() {
             settlement_paths = trimmed_vec(&proof.artifact_paths);
         }
@@ -1616,22 +1712,6 @@ fn record_agent_session_completion_artifact(
         ));
     }
     ledger::record_existing_artifact(root, step_id, kind, &path)
-}
-
-fn expected_agent_artifacts(summary: &ledger::ProofbookStepSummary) -> Vec<String> {
-    summary
-        .structured_output
-        .as_ref()
-        .and_then(|output| output.get("expectedArtifacts"))
-        .and_then(|value| value.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str())
-                .filter_map(trim_optional)
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 fn trimmed_vec(values: &[String]) -> Vec<String> {
@@ -2912,6 +2992,107 @@ settlement:
             .events
             .iter()
             .any(|event| event.kind == "step_running"));
+    }
+
+    #[test]
+    fn agent_session_settlement_context_and_cas_keep_revision_and_session_exact() {
+        let project = tempfile::tempdir().unwrap();
+        let expected = project
+            .path()
+            .join(".aelyris")
+            .join("proofbooks")
+            .join("agent-summary.md");
+        fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        fs::write(&expected, "summary").unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb4-agent-current-settlement
+steps:
+  - id: agent
+    type: agentSession
+    task: complete PB-4 runtime
+    role: implementation
+    expectedArtifacts:
+      - .aelyris/proofbooks/agent-summary.md
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let running = runner
+            .start_run_with_agent_executor(
+                &project_path(&project),
+                &proofbook,
+                json!({}),
+                &FakeAgentExecutor,
+            )
+            .unwrap();
+
+        let context = runner
+            .agent_session_settlement_context(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                running.revision,
+            )
+            .unwrap();
+        assert_eq!(context.session_id, "session-agent");
+        assert_eq!(context.pty_id.as_deref(), Some("pty-agent"));
+        assert!(context.visible);
+        assert_eq!(context.expected_artifacts.len(), 1);
+        assert!(context.expected_artifacts[0].present);
+
+        let stale = runner
+            .agent_session_settlement_context(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                running.revision.saturating_sub(1),
+            )
+            .unwrap_err();
+        assert_eq!(stale.code, ProofbookErrorCode::StaleLedgerRevision);
+
+        let wrong_session = runner
+            .settle_agent_session_if_current(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                running.revision,
+                "session-replaced",
+                ProofbookAgentSessionCompletionProof {
+                    status: "passed".to_string(),
+                    proof_kind: "requiredArtifactSettlement".to_string(),
+                    done_signal: Some("aelyris.runtime.session:session-agent:done".to_string()),
+                    ..ProofbookAgentSessionCompletionProof::default()
+                },
+            )
+            .unwrap_err();
+        assert_eq!(wrong_session.code, ProofbookErrorCode::ValidationFailed);
+        let unchanged = runner
+            .status(&project_path(&project), &running.run_id)
+            .unwrap();
+        assert_eq!(unchanged.revision, running.revision);
+        assert_eq!(unchanged.steps[0].status, ProofbookStepStatus::Running);
+
+        let settled = runner
+            .settle_agent_session_if_current(
+                &project_path(&project),
+                &running.run_id,
+                "agent",
+                running.revision,
+                "session-agent",
+                ProofbookAgentSessionCompletionProof {
+                    status: "passed".to_string(),
+                    proof_kind: "requiredArtifactSettlement".to_string(),
+                    done_signal: Some("aelyris.runtime.session:session-agent:done".to_string()),
+                    ..ProofbookAgentSessionCompletionProof::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(settled.status, ProofbookRunStatus::Passed);
+        assert_eq!(settled.steps[0].status, ProofbookStepStatus::Passed);
     }
 
     #[test]

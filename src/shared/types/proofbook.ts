@@ -126,6 +126,29 @@ export interface ProofbookArtifactPreview {
   content: string;
 }
 
+export interface ProofbookAgentSessionArtifactEvidence {
+  path: string;
+  present: boolean;
+}
+
+export interface ProofbookAgentSessionSettlementCandidate {
+  runId: string;
+  ledgerRevision: number;
+  stepId: string;
+  sessionId: string;
+  paneId: string | null;
+  ptyId: string | null;
+  worktreePath: string | null;
+  runtimeStatus: string | null;
+  eligible: boolean;
+  resultingStatus: "passed" | "failed" | "blocked" | null;
+  proofKind: string | null;
+  doneSignal: string | null;
+  proofSources: string[];
+  expectedArtifacts: ProofbookAgentSessionArtifactEvidence[];
+  blockers: string[];
+}
+
 export interface ProofbookRunLedger {
   schema: string;
   revision: number;

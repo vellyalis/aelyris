@@ -156,7 +156,7 @@ pub fn start_proofbook_run(
     Ok(ledger)
 }
 
-fn require_proofbook_effect_admitted(
+pub(super) fn require_proofbook_effect_admitted(
     startup: &crate::startup_reconciliation::StartupReconciliationState,
     surface: &str,
 ) -> Result<(), ProofbookError> {
@@ -361,6 +361,7 @@ pub fn settle_proofbook_agent_session(
     emit_proofbook_update(&app, &ledger);
     Ok(ledger)
 }
+
 struct IpcProofbookAgentExecutor {
     app: AppHandle,
 }
@@ -444,7 +445,7 @@ impl proofbook::ProofbookAgentSessionExecutor for IpcProofbookAgentExecutor {
     }
 }
 
-fn emit_proofbook_update(app: &AppHandle, ledger: &ProofbookRunLedger) {
+pub(super) fn emit_proofbook_update(app: &AppHandle, ledger: &ProofbookRunLedger) {
     let _ = app.emit("proofbook-updated", ledger);
 }
 
@@ -561,6 +562,7 @@ settlement:
             "Proofbook input-free start",
             "Proofbook manual-gate continuation",
             "Proofbook agent-session continuation",
+            "Proofbook runtime-owned agent-session settlement",
         ] {
             let pending_error = require_proofbook_effect_admitted(&pending, surface).unwrap_err();
             assert_eq!(pending_error.code, ProofbookErrorCode::RuntimeNotAvailable);
@@ -577,6 +579,7 @@ settlement:
             "Proofbook input-free start",
             "Proofbook manual-gate continuation",
             "Proofbook agent-session continuation",
+            "Proofbook runtime-owned agent-session settlement",
         ] {
             let failed_error = require_proofbook_effect_admitted(&failed, surface).unwrap_err();
             assert_eq!(failed_error.code, ProofbookErrorCode::RuntimeNotAvailable);
