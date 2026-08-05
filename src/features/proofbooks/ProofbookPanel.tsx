@@ -6,6 +6,8 @@ import {
   BookOpenCheck,
   Check,
   CheckCircle2,
+  Eye,
+  FileText,
   History,
   Play,
   RefreshCw,
@@ -17,6 +19,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportInvokeFailure } from "../../shared/lib/fallbackTelemetry";
 import { isTauriRuntime } from "../../shared/lib/tauriRuntime";
 import type {
+  ProofbookArtifactPreview,
+  ProofbookArtifactRef,
   ProofbookManualGateOutput,
   ProofbookRunLedger,
   ProofbookRunStatus,
@@ -151,6 +155,12 @@ function isCancellableRunStatus(status: ProofbookRunStatus): boolean {
   return status === "pending" || status === "running" || status === "waiting_gate";
 }
 
+function isRunnerOwnedPreviewCandidate(runId: string, artifact: ProofbookArtifactRef): boolean {
+  const path = normalizedPath(artifact.path);
+  const prefix = `.aelyris/proofbook-runs/artifacts/${runId.toLowerCase()}/`;
+  return path.startsWith(prefix) && path.endsWith(".txt");
+}
+
 export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [definitions, setDefinitions] = useState<ProofbookSummary[]>([]);
   const [runs, setRuns] = useState<ProofbookRunLedger[]>([]);
@@ -168,6 +178,10 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const cancellingRunRef = useRef<string | null>(null);
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const [cancelStatus, setCancelStatus] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const previewingArtifactRef = useRef<string | null>(null);
+  const [previewingArtifactKey, setPreviewingArtifactKey] = useState<string | null>(null);
+  const [artifactPreview, setArtifactPreview] = useState<ProofbookArtifactPreview | null>(null);
+  const [artifactStatus, setArtifactStatus] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!projectPath || !isTauriRuntime()) {
@@ -183,6 +197,8 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setStartStatus(null);
     setGateStatus(null);
     setCancelStatus(null);
+    setArtifactPreview(null);
+    setArtifactStatus(null);
     try {
       const [catalog, history] = await Promise.all([
         invoke<ProofbookSummary[]>("list_proofbooks", { projectPath }),
@@ -210,6 +226,8 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setStartStatus(null);
     setGateStatus(null);
     setCancelStatus(null);
+    setArtifactPreview(null);
+    setArtifactStatus(null);
     void refresh();
   }, [refresh]);
 
@@ -275,6 +293,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       startingRef.current ||
       resolvingGateRef.current ||
       cancellingRunRef.current ||
+      previewingArtifactRef.current ||
       !selected ||
       !startAdmission?.eligible ||
       !startAdmission.definitionHash
@@ -318,7 +337,15 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
 
   const resolveManualGate = useCallback(
     async (gate: ManualGateView, decision: ManualGateDecision) => {
-      if (resolvingGateRef.current || startingRef.current || cancellingRunRef.current || !gate.resolvable) return;
+      if (
+        resolvingGateRef.current ||
+        startingRef.current ||
+        cancellingRunRef.current ||
+        previewingArtifactRef.current ||
+        !gate.resolvable
+      ) {
+        return;
+      }
       resolvingGateRef.current = gate.key;
       setResolvingGateKey(gate.key);
       setGateStatus(null);
@@ -375,6 +402,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         cancellingRunRef.current ||
         startingRef.current ||
         resolvingGateRef.current ||
+        previewingArtifactRef.current ||
         !isCancellableRunStatus(run.status)
       ) {
         return;
@@ -417,7 +445,51 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     [projectPath, refresh],
   );
 
-  const effectLocked = starting || resolvingGateKey !== null || cancellingRunId !== null;
+  const previewArtifact = useCallback(
+    async (run: ProofbookRunLedger, artifact: ProofbookArtifactRef) => {
+      const key = `${run.runId}:${artifact.id}:${run.revision}`;
+      if (
+        previewingArtifactRef.current ||
+        startingRef.current ||
+        resolvingGateRef.current ||
+        cancellingRunRef.current ||
+        !isRunnerOwnedPreviewCandidate(run.runId, artifact)
+      ) {
+        return;
+      }
+      previewingArtifactRef.current = key;
+      setPreviewingArtifactKey(key);
+      setArtifactStatus(null);
+      setError(null);
+      try {
+        const preview = await invoke<ProofbookArtifactPreview>("preview_current_proofbook_artifact", {
+          projectPath,
+          runId: run.runId,
+          artifactId: artifact.id,
+          expectedRevision: run.revision,
+        });
+        setArtifactPreview(preview);
+      } catch (cause) {
+        const code = errorCode(cause);
+        if (code === "stale_ledger_revision" || code === "run_not_found" || code === "artifact_not_found") {
+          await refresh();
+          setArtifactStatus(
+            `Artifact ${artifact.id} changed or disappeared before preview. Durable history was refreshed.`,
+          );
+        } else {
+          setArtifactStatus(`Could not preview ${artifact.id}: ${errorMessage(cause)}`);
+        }
+        reportInvokeFailure({ source: "proofbooks", operation: "preview_artifact", err: cause, userVisible: true });
+      } finally {
+        previewingArtifactRef.current = null;
+        setPreviewingArtifactKey(null);
+      }
+    },
+    [projectPath, refresh],
+  );
+
+  const effectLocked =
+    starting || resolvingGateKey !== null || cancellingRunId !== null || previewingArtifactKey !== null;
 
   return (
     <section className={styles.panel} aria-label="Proofbooks">
@@ -651,6 +723,56 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         </p>
       )}
 
+      {artifactStatus && (
+        <p className={styles.artifactStatus} role="alert">
+          {artifactStatus}
+        </p>
+      )}
+
+      {artifactPreview && (
+        <section className={styles.artifactPreview} aria-label="Proofbook artifact preview">
+          <div className={styles.previewHeading}>
+            <span>
+              <FileText size={12} aria-hidden="true" />
+              <strong>{artifactPreview.artifactId}</strong>
+            </span>
+            <button
+              type="button"
+              className={styles.previewClose}
+              onClick={() => setArtifactPreview(null)}
+              aria-label="Close Proofbook artifact preview"
+            >
+              <X size={11} aria-hidden="true" />
+            </button>
+          </div>
+          <dl className={styles.previewMeta}>
+            <div>
+              <dt>Run</dt>
+              <dd>{artifactPreview.runId}</dd>
+            </div>
+            <div>
+              <dt>Revision</dt>
+              <dd>{artifactPreview.ledgerRevision}</dd>
+            </div>
+            <div>
+              <dt>Size</dt>
+              <dd>{artifactPreview.sizeBytes} bytes</dd>
+            </div>
+            <div>
+              <dt>Redactions</dt>
+              <dd>{artifactPreview.redactionCount}</dd>
+            </div>
+          </dl>
+          <code className={styles.previewHash} title={artifactPreview.sha256}>
+            {artifactPreview.sha256}
+          </code>
+          <pre className={styles.previewContent}>{artifactPreview.content}</pre>
+          <p className={styles.previewDisclosure}>
+            Containment, recorded size, and SHA-256 were verified for this ledger revision. The recorded redaction count does not prove semantic removal of every possible secret.
+          </p>
+        </section>
+      )}
+
       <section className={styles.history} aria-label="Proofbook run history">
         <div className={styles.sectionHeading}>
           <History size={12} aria-hidden="true" />
@@ -680,6 +802,41 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                     <code title={run.runId}>{run.runId}</code>
                     <span>revision {run.revision}</span>
                   </div>
+                  {run.artifacts.length > 0 && (
+                    <section className={styles.artifactList} aria-label={`Artifacts for ${run.runId}`}>
+                      {run.artifacts.slice(0, 4).map((artifact) => {
+                        const previewable = isRunnerOwnedPreviewCandidate(run.runId, artifact);
+                        const previewing = previewingArtifactKey === `${run.runId}:${artifact.id}:${run.revision}`;
+                        return (
+                          <div key={artifact.id} className={styles.artifactRow}>
+                            <span className={styles.artifactCopy} title={artifact.path}>
+                              <strong>{basename(artifact.path)}</strong>
+                              <small>
+                                {artifact.kind} · {artifact.sizeBytes} B · redactions {artifact.redactionCount}
+                              </small>
+                            </span>
+                            {previewable ? (
+                              <button
+                                type="button"
+                                className={styles.previewButton}
+                                disabled={effectLocked}
+                                onClick={() => void previewArtifact(run, artifact)}
+                                aria-label={`Preview Proofbook artifact ${artifact.id}`}
+                              >
+                                <Eye size={11} aria-hidden="true" />
+                                {previewing ? "Verifying…" : "Preview"}
+                              </button>
+                            ) : (
+                              <span className={styles.metadataOnly}>Metadata only</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {run.artifacts.length > 4 && (
+                        <span className={styles.artifactOverflow}>+{run.artifacts.length - 4} more artifacts</span>
+                      )}
+                    </section>
+                  )}
                   <time dateTime={run.updatedAt}>{formatUpdatedAt(run.updatedAt)}</time>
                   {cancellable && (
                     <div className={styles.cancelControl}>
@@ -706,7 +863,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       </section>
 
       <p className={styles.disclosure}>
-        This surface can start only a freshly validated input-free local Proofbook, resolve an existing manualGate with its current gate hash, and cancel only the exact displayed revision of a non-terminal run. It cannot accept inputs or secrets, settle agent work, open raw artifacts, bulk-cancel, or submit free-form gate comments.
+        This surface can start only a freshly validated input-free local Proofbook, resolve an existing manualGate with its current gate hash, cancel only the exact displayed revision of a non-terminal run, and preview verified runner-owned UTF-8 text artifacts. It cannot accept inputs or secrets, settle agent work, read arbitrary paths, download/open raw artifacts, bulk-cancel, or submit free-form gate comments.
       </p>
     </section>
   );

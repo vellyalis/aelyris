@@ -1,7 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProofbookPanel } from "../features/proofbooks/ProofbookPanel";
-import type { ProofbookRunLedger, ProofbookSummary } from "../shared/types/proofbook";
+import type {
+  ProofbookArtifactPreview,
+  ProofbookRunLedger,
+  ProofbookSummary,
+} from "../shared/types/proofbook";
 
 const tauriMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -116,6 +120,25 @@ function runningRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLe
       },
     ],
     artifacts: [],
+    ...overrides,
+  });
+}
+
+function previewableArtifactRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
+  return run({
+    revision: 6,
+    runId: "run-preview",
+    artifacts: [
+      {
+        id: "artifact-preview",
+        path: ".aelyris/proofbook-runs/artifacts/run-preview/echo-stdout.txt",
+        kind: "stdout",
+        sizeBytes: 18,
+        sha256: "sha256:verified-artifact",
+        redactionCount: 1,
+        stepId: "echo",
+      },
+    ],
     ...overrides,
   });
 }
@@ -329,6 +352,103 @@ describe("ProofbookPanel", () => {
     expect(listRunsCount).toBe(2);
     expect(screen.getByText("revision 5")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel current Proofbook run run-live" })).toBeTruthy();
+  });
+
+  it("previews only a runner-owned artifact at the exact displayed ledger revision", async () => {
+    let releasePreview: (preview: ProofbookArtifactPreview) => void = () => {};
+    const previewPromise = new Promise<ProofbookArtifactPreview>((resolve) => {
+      releasePreview = resolve;
+    });
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") {
+        return Promise.resolve([
+          previewableArtifactRun(),
+          run({
+            runId: "run-external-artifact",
+            artifacts: [
+              {
+                id: "artifact-external",
+                path: "reports/external.txt",
+                kind: "text",
+                sizeBytes: 12,
+                sha256: "sha256:external",
+                redactionCount: 0,
+                stepId: "report",
+              },
+            ],
+          }),
+        ]);
+      }
+      if (command === "preview_current_proofbook_artifact") return previewPromise;
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+
+    const preview = await screen.findByRole("button", { name: "Preview Proofbook artifact artifact-preview" });
+    expect(screen.getAllByText("Metadata only").length).toBeGreaterThan(0);
+    fireEvent.click(preview);
+    fireEvent.click(preview);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(
+        ([command]) => command === "preview_current_proofbook_artifact",
+      );
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("preview_current_proofbook_artifact", {
+      projectPath: "C:/repo",
+      runId: "run-preview",
+      artifactId: "artifact-preview",
+      expectedRevision: 6,
+    });
+
+    releasePreview({
+      ledgerRevision: 6,
+      runId: "run-preview",
+      artifactId: "artifact-preview",
+      stepId: "echo",
+      kind: "stdout",
+      sizeBytes: 18,
+      sha256: "sha256:verified-artifact",
+      redactionCount: 1,
+      encoding: "utf-8",
+      content: "verified content\n",
+    });
+
+    expect(await screen.findByRole("region", { name: "Proofbook artifact preview" })).toBeTruthy();
+    expect(screen.getByText("verified content")).toBeTruthy();
+    expect(screen.getByText("sha256:verified-artifact")).toBeTruthy();
+    expect(screen.getByText(/does not prove semantic removal/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close Proofbook artifact preview" }));
+    expect(screen.queryByRole("region", { name: "Proofbook artifact preview" })).toBeNull();
+  });
+
+  it("refreshes a stale artifact revision instead of previewing old content", async () => {
+    let listRunsCount = 0;
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") {
+        listRunsCount += 1;
+        return Promise.resolve([previewableArtifactRun({ revision: listRunsCount === 1 ? 6 : 7 })]);
+      }
+      if (command === "preview_current_proofbook_artifact") {
+        return Promise.reject({
+          code: "stale_ledger_revision",
+          message: "current revision is 7",
+        });
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Preview Proofbook artifact artifact-preview" }));
+
+    expect(await screen.findByText(/Artifact artifact-preview changed or disappeared before preview/)).toBeTruthy();
+    expect(listRunsCount).toBe(2);
+    expect(screen.getByText("revision 7")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Proofbook artifact preview" })).toBeNull();
   });
 
   it("projects live run-ledger updates only for the active project", async () => {

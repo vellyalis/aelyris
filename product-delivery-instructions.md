@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-5`.
-LAST COMPLETED SLICE: `PB-UI-4`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-5`.
+ACTIVE SLICE: `PB-UI-6`.
+LAST COMPLETED SLICE: `PB-UI-5`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-6`.
 
 ```yaml
 continuation_contract:
@@ -61,9 +61,9 @@ Current portfolio classification:
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
-| Proofbook catalog, validation, run history, manual gates, input-free start, and current-run cancel | **COMPLETE** | Command mode exposes bounded expected-state Proofbook effects while inputs, secrets, settlement, and artifacts remain separate |
+| Proofbook catalog, validation, run history, manual gates, input-free start, cancel, and verified text preview | **COMPLETE** | Command mode exposes bounded expected-state effects and integrity-checked runner artifacts while inputs, secrets, settlement, and raw files remain separate |
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
-| Proofbook artifacts and broader controls, broad budget editing UX | **PARKED** | Further access requires containment, integrity verification, and separately bounded operator decisions |
+| Broader Proofbook evidence/effects, broad budget editing UX | **PARKED** | Further access requires explicit ledger projection or separately bounded operator decisions |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -71,7 +71,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-4` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-5` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -438,7 +438,7 @@ Status: **COMPLETE**.
 ### PB-UI-5 — Verified Runner-Owned Artifact Preview
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Preview only artifacts already named by the current durable ledger and physically
   contained under the runner-owned `.aelyris/proofbook-runs/artifacts/<runId>` root.
@@ -453,15 +453,46 @@ Status: **ACTIVE**.
   semantically removed.
 - Keep raw artifact download, shell-open, arbitrary file read, agent settlement,
   inputs/secrets, and bulk export outside this slice.
+- Add a narrow `preview_current_proofbook_artifact` command that resolves only the
+  artifact id in the exact current ledger revision and logs metadata, never content.
+- Require a normal relative ledger path, canonical runner root beneath the canonical
+  project, canonical candidate beneath that exact run root, regular `.txt` file,
+  recorded/current size equality, recorded/current SHA-256 equality, UTF-8 decoding,
+  and a 64 KiB maximum before returning content.
+- Keep externally recorded expected artifacts visible as metadata-only even when they
+  are project-contained; this cockpit preview is only for redacted runner-owned text.
+- Done: an operator can inspect one exact, integrity-verified runner-owned text
+  artifact without granting an arbitrary path read, download, or shell-open surface.
+
+### PB-UI-6 — Durable Step Evidence Inspector
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Expand one durable run ledger at a time and project its current revision, ordered
+  step statuses, attempts, durations, errors, risk metadata, artifact references,
+  gate decision actor/decision, and residual blockers.
+- Reuse the existing `list_proofbook_runs`/`proofbook-updated` ledger projection; do
+  not add another evidence store, timeline owner, or frontend-derived execution truth.
+- Keep structured output bounded to known gate/risk summary fields. Do not dump
+  arbitrary JSON, command output, secret-bearing inputs, or raw artifact content into
+  the evidence inspector.
+- Make terminal and non-terminal state visually distinct, and retain the exact run id
+  and revision so operator decisions can be reconciled with subsequent updates.
+- Keep effect controls in their existing bounded surfaces; expanding evidence does
+  not approve, start, cancel, settle, retry, or mutate a run.
+- Done: an operator can explain why a Proofbook run is waiting, failed, blocked, or
+  passed from durable ledger facts without opening files or using MCP/CLI calls.
 
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
 Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 `PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
-`CM-2` are complete. Verified runner-owned artifact preview, input/secret-bearing
-starts, settling agent steps, raw artifact opening/export, budget editing, Remote
-Continuity, and other adjacent value remain portfolio candidates.
+`CM-2` are complete, together with verified runner-owned artifact preview `PB-UI-5`.
+Durable step evidence inspection, input/secret-bearing starts, settling agent steps,
+raw artifact opening/export, budget editing, Remote Continuity, and other adjacent
+value remain portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

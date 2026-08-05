@@ -15,9 +15,10 @@ pub use agent_step::{
 };
 pub use errors::{ProofbookError, ProofbookErrorCode};
 pub use ledger::{
-    hash_json, normalize_path, ProofbookArtifactRef, ProofbookGateDecision,
-    ProofbookResidualBlocker, ProofbookRunError, ProofbookRunEvent, ProofbookRunLedger,
-    ProofbookRunStatus, ProofbookStepOutcome, ProofbookStepStatus, PROOFBOOK_RUN_SCHEMA_V1,
+    hash_json, normalize_path, ProofbookArtifactPreview, ProofbookArtifactRef,
+    ProofbookGateDecision, ProofbookResidualBlocker, ProofbookRunError, ProofbookRunEvent,
+    ProofbookRunLedger, ProofbookRunStatus, ProofbookStepOutcome, ProofbookStepStatus,
+    PROOFBOOK_RUN_SCHEMA_V1,
 };
 pub use parser::{list_proofbook_files, parse_proofbook};
 pub use runner::{ProofbookMcpToolExecutor, ProofbookRunner};

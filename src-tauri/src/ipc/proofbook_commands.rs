@@ -1,6 +1,6 @@
 use crate::proofbook::{
-    self, ProofbookError, ProofbookErrorCode, ProofbookRunLedger, ProofbookSummary,
-    ProofbookValidationReport,
+    self, ProofbookArtifactPreview, ProofbookError, ProofbookErrorCode, ProofbookRunLedger,
+    ProofbookSummary, ProofbookValidationReport,
 };
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
@@ -136,6 +136,38 @@ pub fn list_proofbook_runs(
 ) -> Result<Vec<ProofbookRunLedger>, ProofbookError> {
     app.state::<proofbook::ProofbookRunner>()
         .list_runs(&project_path)
+}
+
+#[tauri::command]
+pub fn preview_current_proofbook_artifact(
+    app: AppHandle,
+    project_path: String,
+    run_id: String,
+    artifact_id: String,
+    expected_revision: u64,
+) -> Result<ProofbookArtifactPreview, ProofbookError> {
+    let preview = app
+        .state::<proofbook::ProofbookRunner>()
+        .preview_artifact_if_current(&project_path, &run_id, &artifact_id, expected_revision)?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "artifact_previewed",
+        "info",
+        Some("proofbook_artifact"),
+        Some(&artifact_id),
+        "Verified runner-owned Proofbook artifact previewed in cockpit",
+        serde_json::json!({
+            "projectPath": project_path,
+            "runId": run_id,
+            "expectedRevision": expected_revision,
+            "sizeBytes": preview.size_bytes,
+            "sha256": preview.sha256,
+            "redactionCount": preview.redaction_count,
+            "contentLogged": false,
+        }),
+    );
+    Ok(preview)
 }
 
 #[tauri::command]

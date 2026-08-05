@@ -4,13 +4,16 @@ use crate::proofbook::ledger::{
 };
 use crate::proofbook::{
     parse_proofbook, validate_definition, ProofbookAgentSessionCompletionProof,
-    ProofbookAgentSessionExecutor, ProofbookDefinition, ProofbookError, ProofbookErrorCode,
-    ProofbookStep, ProofbookStepKind,
+    ProofbookAgentSessionExecutor, ProofbookArtifactPreview, ProofbookDefinition, ProofbookError,
+    ProofbookErrorCode, ProofbookStep, ProofbookStepKind,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+pub const PROOFBOOK_ARTIFACT_PREVIEW_MAX_BYTES: u64 = 64 * 1024;
 
 pub trait ProofbookMcpToolExecutor {
     fn execute_mcp_tool(
@@ -274,6 +277,129 @@ impl ProofbookRunner {
         self.restore_project(project_path)?;
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         ledger::list_ledgers(&root)
+    }
+
+    pub fn preview_artifact_if_current(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        artifact_id: &str,
+        expected_revision: u64,
+    ) -> Result<ProofbookArtifactPreview, ProofbookError> {
+        let root = crate::proofbook::validator::canonical_project_root(project_path)?;
+        let ledger = self.load_run(&root, run_id)?;
+        if ledger.revision != expected_revision {
+            return Err(stale_revision_error(
+                run_id,
+                expected_revision,
+                ledger.revision,
+            ));
+        }
+
+        let mut matches = ledger
+            .artifacts
+            .iter()
+            .filter(|artifact| artifact.id == artifact_id);
+        let artifact = matches.next().cloned().ok_or_else(|| {
+            ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotFound,
+                format!("Proofbook artifact not found in current ledger: {artifact_id}"),
+            )
+        })?;
+        if matches.next().is_some() {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ArtifactIntegrityMismatch,
+                format!("Proofbook ledger contains duplicate artifact id: {artifact_id}"),
+            ));
+        }
+
+        let path = runner_owned_artifact_path(&root, run_id, &artifact.path)?;
+        if path.extension().and_then(|extension| extension.to_str()) != Some("txt") {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotPreviewable,
+                "Proofbook cockpit preview supports runner-owned .txt artifacts only",
+            )
+            .with_path(ledger::normalize_path(&path)));
+        }
+
+        let metadata = fs::metadata(&path).map_err(|error| {
+            ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotFound,
+                format!("cannot read Proofbook artifact metadata: {error}"),
+            )
+            .with_path(ledger::normalize_path(&path))
+        })?;
+        if !metadata.is_file() {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotPreviewable,
+                "Proofbook artifact preview target is not a regular file",
+            )
+            .with_path(ledger::normalize_path(&path)));
+        }
+        if metadata.len() != artifact.size_bytes {
+            return Err(artifact_integrity_error(
+                &artifact.id,
+                format!(
+                    "recorded size {} does not match current size {}",
+                    artifact.size_bytes,
+                    metadata.len()
+                ),
+            ));
+        }
+        if metadata.len() > PROOFBOOK_ARTIFACT_PREVIEW_MAX_BYTES {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotPreviewable,
+                format!(
+                    "Proofbook artifact exceeds the {} byte cockpit preview limit",
+                    PROOFBOOK_ARTIFACT_PREVIEW_MAX_BYTES
+                ),
+            )
+            .with_path(ledger::normalize_path(&path)));
+        }
+
+        let bytes = fs::read(&path).map_err(|error| {
+            ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotFound,
+                format!("cannot read Proofbook artifact: {error}"),
+            )
+            .with_path(ledger::normalize_path(&path))
+        })?;
+        if bytes.len() as u64 != artifact.size_bytes {
+            return Err(artifact_integrity_error(
+                &artifact.id,
+                "artifact size changed while reading",
+            ));
+        }
+        let current_sha256 = format!("sha256:{}", ledger::hash_bytes(&bytes));
+        if current_sha256 != artifact.sha256 {
+            return Err(artifact_integrity_error(
+                &artifact.id,
+                format!(
+                    "recorded hash {} does not match current hash {current_sha256}",
+                    artifact.sha256
+                ),
+            ));
+        }
+        let content = String::from_utf8(bytes).map_err(|_| {
+            ProofbookError::new(
+                ProofbookErrorCode::ArtifactNotPreviewable,
+                "Proofbook cockpit preview supports UTF-8 text only",
+            )
+            .with_path(ledger::normalize_path(&path))
+        })?;
+
+        Ok(ProofbookArtifactPreview {
+            ledger_revision: ledger.revision,
+            run_id: ledger.run_id,
+            artifact_id: artifact.id,
+            step_id: artifact.step_id,
+            kind: artifact.kind,
+            size_bytes: artifact.size_bytes,
+            sha256: artifact.sha256,
+            redaction_count: artifact.redaction_count,
+            encoding: "utf-8".to_string(),
+            content,
+        })
     }
 
     pub fn cancel_run(
@@ -1088,6 +1214,68 @@ fn stale_revision_error(run_id: &str, expected: u64, actual: u64) -> ProofbookEr
     )
 }
 
+fn runner_owned_artifact_path(
+    project_root: &Path,
+    run_id: &str,
+    recorded_path: &str,
+) -> Result<PathBuf, ProofbookError> {
+    let relative = Path::new(recorded_path);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(ProofbookError::new(
+            ProofbookErrorCode::ArtifactNotPreviewable,
+            "Proofbook artifact path is not a contained relative path",
+        )
+        .with_path(recorded_path));
+    }
+
+    let artifact_root = ledger::artifacts_dir(project_root, run_id);
+    let canonical_artifact_root = fs::canonicalize(&artifact_root).map_err(|error| {
+        ProofbookError::new(
+            ProofbookErrorCode::ArtifactNotPreviewable,
+            format!("runner-owned Proofbook artifact root is unavailable: {error}"),
+        )
+        .with_path(ledger::normalize_path(&artifact_root))
+    })?;
+    if !canonical_artifact_root.starts_with(project_root) {
+        return Err(ProofbookError::new(
+            ProofbookErrorCode::ArtifactNotPreviewable,
+            "runner-owned Proofbook artifact root escapes the project",
+        )
+        .with_path(ledger::normalize_path(&artifact_root)));
+    }
+
+    let candidate = project_root.join(relative);
+    let canonical_candidate = fs::canonicalize(&candidate).map_err(|error| {
+        ProofbookError::new(
+            ProofbookErrorCode::ArtifactNotFound,
+            format!("Proofbook artifact is unavailable: {error}"),
+        )
+        .with_path(recorded_path)
+    })?;
+    if !canonical_candidate.starts_with(&canonical_artifact_root) {
+        return Err(ProofbookError::new(
+            ProofbookErrorCode::ArtifactNotPreviewable,
+            "Proofbook artifact is not contained under the current run's runner-owned artifact root",
+        )
+        .with_path(recorded_path));
+    }
+    Ok(canonical_candidate)
+}
+
+fn artifact_integrity_error(artifact_id: &str, detail: impl Into<String>) -> ProofbookError {
+    ProofbookError::new(
+        ProofbookErrorCode::ArtifactIntegrityMismatch,
+        format!(
+            "Proofbook artifact integrity mismatch for {artifact_id}: {}",
+            detail.into()
+        ),
+    )
+}
+
 fn agent_session_completion_outcome(
     root: &Path,
     step: &ProofbookStep,
@@ -1571,6 +1759,35 @@ mod tests {
         project.path().to_string_lossy().to_string()
     }
 
+    fn start_echo_artifact(
+        project: &tempfile::TempDir,
+        runner: &ProofbookRunner,
+    ) -> (ProofbookRunLedger, ledger::ProofbookArtifactRef) {
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-artifact-preview
+steps:
+  - id: echo
+    type: shell
+    command: echo artifact-preview
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+        let run = runner
+            .start_run(&project_path(project), &proofbook, json!({}))
+            .unwrap();
+        let artifact = run
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "stdout")
+            .cloned()
+            .expect("stdout artifact");
+        (run, artifact)
+    }
+
     #[test]
     fn proofbook_ledger_commit_rejects_a_stale_snapshot_without_overwrite() {
         let project = tempfile::tempdir().unwrap();
@@ -1852,6 +2069,163 @@ settlement:
             .unwrap();
         assert_eq!(current.revision, passed.revision);
         assert_eq!(current.status, ProofbookRunStatus::Passed);
+    }
+
+    #[test]
+    fn artifact_preview_verifies_the_current_runner_owned_text_artifact() {
+        let project = tempfile::tempdir().unwrap();
+        let runner = ProofbookRunner::new();
+        let (run, artifact) = start_echo_artifact(&project, &runner);
+
+        let preview = runner
+            .preview_artifact_if_current(
+                &project_path(&project),
+                &run.run_id,
+                &artifact.id,
+                run.revision,
+            )
+            .unwrap();
+
+        assert_eq!(preview.ledger_revision, run.revision);
+        assert_eq!(preview.artifact_id, artifact.id);
+        assert_eq!(preview.sha256, artifact.sha256);
+        assert_eq!(preview.size_bytes, artifact.size_bytes);
+        assert_eq!(preview.encoding, "utf-8");
+        assert!(preview.content.contains("artifact-preview"));
+    }
+
+    #[test]
+    fn artifact_preview_rejects_a_stale_ledger_revision_before_reading() {
+        let project = tempfile::tempdir().unwrap();
+        let runner = ProofbookRunner::new();
+        let (run, artifact) = start_echo_artifact(&project, &runner);
+
+        let error = runner
+            .preview_artifact_if_current(
+                &project_path(&project),
+                &run.run_id,
+                &artifact.id,
+                run.revision + 1,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, ProofbookErrorCode::StaleLedgerRevision);
+    }
+
+    #[test]
+    fn artifact_preview_rejects_a_ledger_path_outside_the_runner_owned_root() {
+        let project = tempfile::tempdir().unwrap();
+        let runner = ProofbookRunner::new();
+        let (run, _) = start_echo_artifact(&project, &runner);
+        let root =
+            crate::proofbook::validator::canonical_project_root(&project_path(&project)).unwrap();
+        let external_path = root.join("outside.txt");
+        let bytes = b"external artifact";
+        fs::write(&external_path, bytes).unwrap();
+        let mut current = run.clone();
+        current.artifacts.push(ledger::ProofbookArtifactRef {
+            id: "artifact-external".to_string(),
+            path: "outside.txt".to_string(),
+            kind: "text".to_string(),
+            size_bytes: bytes.len() as u64,
+            sha256: format!("sha256:{}", ledger::hash_bytes(bytes)),
+            redaction_count: 0,
+            step_id: "echo".to_string(),
+        });
+        runner.commit_ledger(&root, &mut current).unwrap();
+
+        let error = runner
+            .preview_artifact_if_current(
+                &project_path(&project),
+                &current.run_id,
+                "artifact-external",
+                current.revision,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, ProofbookErrorCode::ArtifactNotPreviewable);
+    }
+
+    #[test]
+    fn artifact_preview_rejects_content_that_no_longer_matches_the_ledger_hash() {
+        let project = tempfile::tempdir().unwrap();
+        let runner = ProofbookRunner::new();
+        let (run, artifact) = start_echo_artifact(&project, &runner);
+        let root =
+            crate::proofbook::validator::canonical_project_root(&project_path(&project)).unwrap();
+        let path = root.join(&artifact.path);
+        let mut bytes = fs::read(&path).unwrap();
+        bytes[0] ^= 1;
+        fs::write(&path, bytes).unwrap();
+
+        let error = runner
+            .preview_artifact_if_current(
+                &project_path(&project),
+                &run.run_id,
+                &artifact.id,
+                run.revision,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, ProofbookErrorCode::ArtifactIntegrityMismatch);
+    }
+
+    #[test]
+    fn artifact_preview_rejects_oversized_and_non_utf8_runner_artifacts() {
+        let project = tempfile::tempdir().unwrap();
+        let runner = ProofbookRunner::new();
+        let (run, artifact) = start_echo_artifact(&project, &runner);
+        let root =
+            crate::proofbook::validator::canonical_project_root(&project_path(&project)).unwrap();
+        let path = root.join(&artifact.path);
+
+        let oversized = vec![b'x'; PROOFBOOK_ARTIFACT_PREVIEW_MAX_BYTES as usize + 1];
+        fs::write(&path, &oversized).unwrap();
+        let mut oversized_ledger = run.clone();
+        let oversized_artifact = oversized_ledger
+            .artifacts
+            .iter_mut()
+            .find(|entry| entry.id == artifact.id)
+            .unwrap();
+        oversized_artifact.size_bytes = oversized.len() as u64;
+        oversized_artifact.sha256 = format!("sha256:{}", ledger::hash_bytes(&oversized));
+        runner.commit_ledger(&root, &mut oversized_ledger).unwrap();
+        let oversized_error = runner
+            .preview_artifact_if_current(
+                &project_path(&project),
+                &oversized_ledger.run_id,
+                &artifact.id,
+                oversized_ledger.revision,
+            )
+            .unwrap_err();
+        assert_eq!(
+            oversized_error.code,
+            ProofbookErrorCode::ArtifactNotPreviewable
+        );
+
+        let non_utf8 = vec![0xff, 0xfe, 0xfd];
+        fs::write(&path, &non_utf8).unwrap();
+        let mut non_utf8_ledger = oversized_ledger.clone();
+        let non_utf8_artifact = non_utf8_ledger
+            .artifacts
+            .iter_mut()
+            .find(|entry| entry.id == artifact.id)
+            .unwrap();
+        non_utf8_artifact.size_bytes = non_utf8.len() as u64;
+        non_utf8_artifact.sha256 = format!("sha256:{}", ledger::hash_bytes(&non_utf8));
+        runner.commit_ledger(&root, &mut non_utf8_ledger).unwrap();
+        let non_utf8_error = runner
+            .preview_artifact_if_current(
+                &project_path(&project),
+                &non_utf8_ledger.run_id,
+                &artifact.id,
+                non_utf8_ledger.revision,
+            )
+            .unwrap_err();
+        assert_eq!(
+            non_utf8_error.code,
+            ProofbookErrorCode::ArtifactNotPreviewable
+        );
     }
 
     #[test]

@@ -65,6 +65,21 @@ pub struct ProofbookArtifactRef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProofbookArtifactPreview {
+    pub ledger_revision: u64,
+    pub run_id: String,
+    pub artifact_id: String,
+    pub step_id: String,
+    pub kind: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub redaction_count: usize,
+    pub encoding: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProofbookGateDecision {
     pub gate_id: String,
     pub gate_hash: String,

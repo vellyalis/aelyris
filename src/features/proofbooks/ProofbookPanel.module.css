@@ -186,7 +186,9 @@
 .gateUnsupported,
 .startStatus,
 .startBlocked,
-.cancelStatus {
+.cancelStatus,
+.artifactStatus,
+.artifactPreview {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   background: rgba(0, 6, 14, 0.2);
@@ -531,6 +533,141 @@
   color: var(--ctp-red);
 }
 
+.artifactStatus {
+  color: var(--ctp-red);
+  font-size: var(--text-2xs);
+}
+
+.artifactPreview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-shadow: inset 2px 0 0 rgba(142, 226, 241, 0.38);
+}
+
+.previewHeading,
+.previewHeading span,
+.artifactRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.previewHeading {
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.previewHeading span {
+  gap: var(--space-2);
+  color: var(--ctp-sky);
+}
+
+.previewHeading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewClose {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(142, 226, 241, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.24);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.previewClose:hover {
+  color: var(--text-primary);
+}
+
+.previewClose:focus-visible,
+.previewButton:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.previewMeta {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.previewMeta div {
+  min-width: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.2);
+}
+
+.previewMeta dt,
+.previewMeta dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewMeta dt {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.previewMeta dd {
+  margin: 1px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.previewHash {
+  display: block;
+  overflow: hidden;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.28);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.previewContent {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--space-3);
+  border: 1px solid rgba(142, 226, 241, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.34);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.previewDisclosure {
+  margin: 0;
+  color: var(--gold);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
 .runTop span {
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -572,6 +709,86 @@
 
 .runIdentity span {
   flex: 0 0 auto;
+}
+
+.artifactList {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.artifactRow {
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.18);
+}
+
+.artifactCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.artifactCopy strong,
+.artifactCopy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifactCopy strong {
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.artifactCopy small,
+.metadataOnly,
+.artifactOverflow {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.previewButton {
+  display: inline-flex;
+  min-width: 62px;
+  min-height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 var(--space-2);
+  border: 1px solid rgba(142, 226, 241, 0.2);
+  border-radius: 999px;
+  background: rgba(142, 226, 241, 0.07);
+  color: var(--ctp-sky);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.previewButton:hover:not(:disabled) {
+  border-color: rgba(142, 226, 241, 0.4);
+  color: var(--text-primary);
+}
+
+.previewButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.metadataOnly {
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.artifactOverflow {
+  padding-left: var(--space-2);
 }
 
 .cancelControl {
@@ -631,7 +848,9 @@
 .gateUnsupported,
 .startStatus,
 .startBlocked,
-.cancelStatus {
+.cancelStatus,
+.artifactStatus,
+.artifactPreview {
   margin: 0;
 }
 

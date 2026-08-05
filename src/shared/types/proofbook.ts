@@ -105,6 +105,19 @@ export interface ProofbookArtifactRef {
   stepId: string;
 }
 
+export interface ProofbookArtifactPreview {
+  ledgerRevision: number;
+  runId: string;
+  artifactId: string;
+  stepId: string;
+  kind: string;
+  sizeBytes: number;
+  sha256: string;
+  redactionCount: number;
+  encoding: "utf-8";
+  content: string;
+}
+
 export interface ProofbookRunLedger {
   schema: string;
   revision: number;

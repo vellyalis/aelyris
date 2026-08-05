@@ -23,6 +23,9 @@ pub enum ProofbookErrorCode {
     StaleDefinitionHash,
     StaleLedgerRevision,
     RunNotCancellable,
+    ArtifactNotFound,
+    ArtifactNotPreviewable,
+    ArtifactIntegrityMismatch,
     RuntimeNotAvailable,
 }
 

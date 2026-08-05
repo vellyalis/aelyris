@@ -1617,6 +1617,7 @@ pub fn run() {
             ipc::start_proofbook_run,
             ipc::proofbook_run_status,
             ipc::list_proofbook_runs,
+            ipc::preview_current_proofbook_artifact,
             ipc::cancel_proofbook_run,
             ipc::cancel_current_proofbook_run,
             ipc::resolve_proofbook_manual_gate,
