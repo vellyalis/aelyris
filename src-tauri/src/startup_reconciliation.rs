@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::db::ManagedDb;
-use crate::event_bus::AgentEventKind;
+use crate::event_bus::{AgentEventKind, EventBus};
+use crate::file_ownership::FileOwnership;
 use crate::merge_intent::store::MergeIntentStore;
 use crate::merge_intent::MergeIntentState;
 use crate::persistence::{EventRepo, OwnershipRepo};
+use crate::symbol_ownership::SymbolOwnership;
 #[cfg(test)]
 use crate::task::ExecutionRuntime;
 use crate::task::{
@@ -484,6 +486,9 @@ pub fn reconcile_runtime_authorities(
     let file_claims = db.with(|database| OwnershipRepo::load_file_claims(database, now))?;
     let symbol_claims = db.with(|database| OwnershipRepo::load_symbol_claims(database, now))?;
     let dangling_merges_reconciled = merge_store.reconcile_dangling_on_boot(now as i64)?;
+    for attempt in tasks.execution_snapshot() {
+        tasks.reconcile_cockpit_merge_completion(&attempt, now)?;
+    }
     let unresolved_intents = merge_store.list_unresolved()?;
 
     let task_snapshot = tasks.list();
@@ -500,6 +505,22 @@ pub fn reconcile_runtime_authorities(
         .iter()
         .map(|attempt| (attempt.identity.attempt_id.as_str(), attempt))
         .collect();
+    let mut pending_cockpit_finalization_task_ids = HashSet::new();
+    for task in &task_snapshot {
+        if tasks
+            .pending_cockpit_finalization(&task.id)
+            .map_err(|error| error.to_string())?
+            .is_some()
+        {
+            pending_cockpit_finalization_task_ids.insert(task.id.clone());
+        }
+    }
+    let mut pending_cockpit_settlement_task_ids = HashSet::new();
+    for attempt in &attempt_snapshot {
+        if tasks.is_resumable_cockpit_settlement(attempt)? {
+            pending_cockpit_settlement_task_ids.insert(attempt.identity.task_id.clone());
+        }
+    }
     let file_claim_by_id: HashMap<_, _> = file_claims
         .iter()
         .map(|claim| (claim.stable_id(), claim))
@@ -524,7 +545,10 @@ pub fn reconcile_runtime_authorities(
                 "file claim {} references missing task {task_id}",
                 claim.stable_id()
             )),
-            Some(task) if task.status.is_terminal() => {
+            Some(task)
+                if task.status.is_terminal()
+                    && !pending_cockpit_finalization_task_ids.contains(task_id) =>
+            {
                 release_claim_task_ids.insert(task_id.to_string());
             }
             Some(_) => match attempt_by_task.get(task_id) {
@@ -559,7 +583,10 @@ pub fn reconcile_runtime_authorities(
                 "symbol claim {} references missing task {task_id}",
                 claim.claim_id
             )),
-            Some(task) if task.status.is_terminal() => {
+            Some(task)
+                if task.status.is_terminal()
+                    && !pending_cockpit_finalization_task_ids.contains(task_id) =>
+            {
                 release_claim_task_ids.insert(task_id.to_string());
             }
             Some(_) if !attempt_by_task.contains_key(task_id) => {
@@ -586,7 +613,8 @@ pub fn reconcile_runtime_authorities(
             None => links.push("execution generation references a missing TaskGraph node".into()),
             Some(task)
                 if task.status.is_terminal()
-                    && !matches!(attempt.state, WorkExecutionState::Completed) =>
+                    && !matches!(attempt.state, WorkExecutionState::Completed)
+                    && !pending_cockpit_finalization_task_ids.contains(task_id) =>
             {
                 links.push(format!(
                     "TaskGraph is terminal ({}) while execution state is {}",
@@ -620,13 +648,15 @@ pub fn reconcile_runtime_authorities(
             }
         }
 
-        for claim_id in &attempt.ownership_claim_ids {
-            match file_claim_by_id.get(claim_id) {
-                Some(claim) if claim.task_id.as_deref() == Some(task_id) => {}
-                Some(_) => links.push(format!(
-                    "ownership claim {claim_id} is rebound to a different task"
-                )),
-                None => links.push(format!("ownership claim {claim_id} is missing")),
+        if !pending_cockpit_finalization_task_ids.contains(task_id) {
+            for claim_id in &attempt.ownership_claim_ids {
+                match file_claim_by_id.get(claim_id) {
+                    Some(claim) if claim.task_id.as_deref() == Some(task_id) => {}
+                    Some(_) => links.push(format!(
+                        "ownership claim {claim_id} is rebound to a different task"
+                    )),
+                    None => links.push(format!("ownership claim {claim_id} is missing")),
+                }
             }
         }
 
@@ -640,10 +670,14 @@ pub fn reconcile_runtime_authorities(
                         && same_repo_path(&intent.repo_path, &attempt.repo_path) =>
                 {
                     match intent.state {
-                        MergeIntentState::Rejected => {}
+                        MergeIntentState::Merged
+                            if pending_cockpit_finalization_task_ids.contains(task_id)
+                                || pending_cockpit_settlement_task_ids.contains(task_id) => {}
                         MergeIntentState::Merged => links.push(format!(
                             "merge intent {intent_id} landed and requires idempotent finalization"
                         )),
+                        MergeIntentState::Rejected
+                            if !pending_cockpit_finalization_task_ids.contains(task_id) => {}
                         state => links.push(format!(
                             "merge intent {intent_id} remains unresolved in state {}",
                             state.as_str()
@@ -695,6 +729,11 @@ pub fn reconcile_runtime_authorities(
                     }
                 }
                 for attempt in repo_attempts {
+                    if pending_cockpit_finalization_task_ids
+                        .contains(attempt.identity.task_id.as_str())
+                    {
+                        continue;
+                    }
                     if !effect_requires_worktree(attempt) {
                         continue;
                     }
@@ -832,6 +871,31 @@ pub fn reconcile_runtime_authorities(
         });
         let has_runtime_projection =
             headless_projection || pane_projection || conflicting_runtime_projection || wired_pty;
+
+        let pending_cockpit_finalization = pending_cockpit_finalization_task_ids.contains(task_id);
+        let pending_finalization_links_clean =
+            attempt_link_errors.get(task_id).is_none_or(Vec::is_empty);
+        if pending_cockpit_finalization
+            && !has_runtime_projection
+            && pending_finalization_links_clean
+        {
+            // Settlement and Task Done already linearized atomically. Resource
+            // cleanup is idempotent and is resumed only after every authority
+            // report below is clean; never replay review, merge, or settlement.
+            reconciled_attempts = reconciled_attempts.saturating_add(1);
+            continue;
+        }
+
+        let pending_cockpit_settlement = pending_cockpit_settlement_task_ids.contains(task_id);
+        let pending_settlement_links_clean =
+            attempt_link_errors.get(task_id).is_none_or(Vec::is_empty);
+        if pending_cockpit_settlement && !has_runtime_projection && pending_settlement_links_clean {
+            // The exact merge receipt is durable and the owned candidate remains
+            // inspectable. Preserve Review/MergeReady so the existing TaskRepo
+            // packet owner can linearize settlement; never replay review or Git.
+            reconciled_attempts = reconciled_attempts.saturating_add(1);
+            continue;
+        }
 
         let resumable_mission_review = tasks.is_resumable_a7_acceptance(attempt)?;
         if resumable_mission_review && !has_runtime_projection {
@@ -995,6 +1059,113 @@ pub fn reconcile_runtime_authorities(
     Ok(reports)
 }
 
+/// Resume only packet-authorized cockpit cleanup after the startup authority
+/// audit has proved the durable world consistent. Each retry is idempotent:
+/// worktree/branch deletion tolerates an earlier partial cleanup, ownership
+/// deletion is keyed by Task, and the release event reuses the immutable packet
+/// UUID as its Event Bus idempotency key.
+pub fn resume_packet_backed_cockpit_finalizations(
+    tasks: &TaskManager,
+    db: &ManagedDb,
+    ownership: &Arc<Mutex<FileOwnership>>,
+    symbol_ownership: &Arc<Mutex<SymbolOwnership>>,
+    events: &Arc<EventBus>,
+) -> Result<usize, String> {
+    let mut task_ids = tasks
+        .list()
+        .into_iter()
+        .map(|task| task.id)
+        .collect::<Vec<_>>();
+    task_ids.sort();
+    let mut resumed = 0usize;
+    for task_id in task_ids {
+        let Some((activation, packet)) = tasks
+            .pending_cockpit_finalization(&task_id)
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        crate::control::loop_ports::finalize_settled_cockpit_task(
+            tasks,
+            db,
+            ownership,
+            symbol_ownership,
+            events,
+            &activation,
+            &packet,
+        )?;
+        resumed = resumed.saturating_add(1);
+    }
+    Ok(resumed)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StartupCockpitResumeReport {
+    pub settlements: usize,
+    pub finalizations: usize,
+}
+
+/// Resume the two post-merge cockpit boundaries in authority order. A Task with
+/// a durable merge receipt but no packet is first handed to `TaskManager`'s
+/// existing settlement owner; only the resulting immutable work packet may then
+/// authorize resource cleanup and the Finalization fence. The second pass also
+/// recovers Tasks whose packet was already durable before the crash.
+pub fn resume_cockpit_settlements_and_finalizations(
+    tasks: &TaskManager,
+    db: &ManagedDb,
+    ownership: &Arc<Mutex<FileOwnership>>,
+    symbol_ownership: &Arc<Mutex<SymbolOwnership>>,
+    events: &Arc<EventBus>,
+) -> Result<StartupCockpitResumeReport, String> {
+    let mut task_ids = tasks
+        .list()
+        .into_iter()
+        .map(|task| task.id)
+        .collect::<Vec<_>>();
+    task_ids.sort();
+    let mut settlements = 0usize;
+    let mut finalizations = 0usize;
+    for task_id in &task_ids {
+        let Some(attempt) = tasks.current_execution(task_id) else {
+            continue;
+        };
+        if !tasks.is_resumable_cockpit_settlement(&attempt)? {
+            continue;
+        }
+        let activation = tasks
+            .mission_activation_for_task(task_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!("resumable cockpit settlement lost activation for task {task_id}")
+            })?;
+        let outcome = tasks
+            .settle_cockpit_task(task_id)
+            .map_err(|error| error.to_string())?;
+        crate::control::loop_ports::finalize_settled_cockpit_task(
+            tasks,
+            db,
+            ownership,
+            symbol_ownership,
+            events,
+            &activation,
+            &outcome.work_packet,
+        )?;
+        settlements = settlements.saturating_add(1);
+        finalizations = finalizations.saturating_add(1);
+    }
+    finalizations = finalizations.saturating_add(resume_packet_backed_cockpit_finalizations(
+        tasks,
+        db,
+        ownership,
+        symbol_ownership,
+        events,
+    )?);
+    Ok(StartupCockpitResumeReport {
+        settlements,
+        finalizations,
+    })
+}
+
 fn report(
     authority: &str,
     observed: usize,
@@ -1104,7 +1275,11 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::event_bus::AgentEvent;
-    use crate::task::{ExecutionReservation, Task, TaskStatus};
+    use crate::task::{
+        CockpitGateCommandEvidence, CockpitGateSuiteEnvelope, ExecutionReservation, Task,
+        TaskStatus,
+    };
+    use sha2::Digest;
     use std::sync::Arc;
 
     fn record_required_authorities(state: &StartupReconciliationState) {
@@ -1199,6 +1374,902 @@ mod tests {
                 intent.resource_ref.head_oid = head_oid.to_string();
             }
         }
+    }
+
+    fn append_reservation_event(db: &ManagedDb, attempt: &WorkExecutionAttempt) {
+        let event = AgentEvent::new(
+            AgentEventKind::ExecutionReserved,
+            serde_json::json!({
+                "attemptId": attempt.identity.attempt_id,
+                "taskId": attempt.identity.task_id,
+                "repoPath": attempt.repo_path,
+                "executionGeneration": attempt.identity.execution_generation,
+                "agentRunId": attempt.identity.agent_run_id,
+                "processGeneration": attempt.identity.process_generation,
+                "sessionId": attempt.identity.session_id,
+                "ptySessionId": attempt.identity.pty_session_id,
+                "ownershipClaimIds": attempt.ownership_claim_ids,
+            }),
+        )
+        .with_idempotency_key(attempt.reservation_event_id.clone());
+        db.with(|database| {
+            EventRepo::append(database, &event)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+    }
+
+    fn advance_effect(
+        tasks: &TaskManager,
+        token: &crate::task::ExecutionToken,
+        effect: ExecutionEffect,
+        now: &mut u64,
+    ) {
+        *now += 1;
+        tasks
+            .reserve_execution_effect(token, effect, None, *now)
+            .unwrap();
+        *now += 1;
+        tasks.start_execution_effect(token, effect, *now).unwrap();
+        *now += 1;
+        tasks.commit_execution_effect(token, effect, *now).unwrap();
+    }
+
+    fn cockpit_gate_command(
+        gate: &str,
+        command_argv: &[&str],
+        started_at_unix_ms: u64,
+    ) -> CockpitGateCommandEvidence {
+        let command_argv = command_argv
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect::<Vec<_>>();
+        let command_fingerprint = format!(
+            "{:x}",
+            sha2::Sha256::digest(serde_json::to_vec(&command_argv).unwrap())
+        );
+        CockpitGateCommandEvidence {
+            gate: gate.to_string(),
+            command_argv,
+            command_fingerprint,
+            environment_fingerprint: format!(
+                "{:x}",
+                sha2::Sha256::digest(b"cockpit-finalization-test-environment")
+            ),
+            result: "passed".into(),
+            exit_code: Some(0),
+            evidence_digest: format!(
+                "{:x}",
+                sha2::Sha256::digest(format!("cockpit-gate:{gate}").as_bytes())
+            ),
+            started_at_unix_ms,
+            ended_at_unix_ms: started_at_unix_ms + 1,
+        }
+    }
+
+    struct PacketBackedCockpitFixture {
+        _repo: tempfile::TempDir,
+        tasks: TaskManager,
+        db: Arc<ManagedDb>,
+        merge_store: MergeIntentStore,
+        activation: crate::task::MissionPlanActivation,
+        work_packet: Option<crate::task::CompletedWorkPacket>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum CockpitCrashStage {
+        AfterGitMergeBeforeReceipt,
+        AfterReceiptBeforeFenceCommit,
+        AfterMergeReceipt,
+        DuringFinalization,
+    }
+
+    fn cockpit_recovery_fixture(stage: CockpitCrashStage) -> PacketBackedCockpitFixture {
+        let repository_directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(repository_directory.path()).unwrap();
+        repository.set_head("refs/heads/main").unwrap();
+        std::fs::create_dir_all(repository_directory.path().join("src")).unwrap();
+        std::fs::write(
+            repository_directory.path().join("src/lib.rs"),
+            "pub fn base() {}\n",
+        )
+        .unwrap();
+        let mut index = repository.index().unwrap();
+        index.add_path(std::path::Path::new("src/lib.rs")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repository.find_tree(tree_id).unwrap();
+        let signature =
+            git2::Signature::now("Cockpit recovery", "cockpit-recovery@example.invalid").unwrap();
+        repository
+            .commit(Some("HEAD"), &signature, &signature, "base", &tree, &[])
+            .unwrap();
+        drop(tree);
+        drop(index);
+        drop(repository);
+        let repo_path = repository_directory.path().to_string_lossy().into_owned();
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = TaskManager::new_durable();
+        tasks.attach_db(db.clone()).unwrap();
+        let task_id = "cockpit-finalization-restart";
+        let mut task = Task::new(task_id, "Resume packet-backed Finalization");
+        task.description = "Prove restart-safe completion cleanup".into();
+        task.owner = Some("builder-a".into());
+        task.model = Some("codex".into());
+        task.outputs = vec!["src/lib.rs".into()];
+        task.source_branch = Some("agent/cockpit-finalization-restart".into());
+        task.target_branch = Some("main".into());
+        let (_readied, preview) = tasks
+            .submit_cockpit_plan(
+                "Complete one Task and recover only its packet-backed Finalization",
+                vec![task.clone()],
+                &repo_path,
+                &uuid::Uuid::now_v7().to_string(),
+            )
+            .unwrap();
+        let activation = tasks
+            .mission_activations(&preview.plan_id, preview.plan_revision)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+
+        crate::control::worktree::ensure_for_branch(
+            &activation.repository_root,
+            &activation.source_branch,
+        )
+        .unwrap();
+        let worktree = crate::control::worktree::predict_path(
+            &activation.repository_root,
+            &activation.source_branch,
+        );
+        std::fs::write(
+            worktree.join("src/lib.rs"),
+            "pub fn base() {}\npub fn recovered() {}\n",
+        )
+        .unwrap();
+        let candidate_oid = crate::control::worktree::commit_owned_for_branch(
+            &activation.repository_root,
+            &activation.source_branch,
+            &activation.owned_targets,
+            "cockpit recovery candidate",
+        )
+        .unwrap()
+        .unwrap();
+        let target_oid =
+            crate::git::resolve_branch_oid(&activation.repository_root, &activation.target_branch)
+                .unwrap();
+
+        let mut claim = crate::file_ownership::OwnershipClaim::new(
+            task.owner.clone().unwrap(),
+            activation.owned_targets[0].clone(),
+        );
+        claim.claim_id = Some(uuid::Uuid::now_v7().to_string());
+        claim.task_id = Some(task_id.into());
+        db.with(|database| OwnershipRepo::upsert_file_claim(database, &claim, 10).map(|_| ()))
+            .unwrap();
+
+        let attempt = tasks
+            .reserve_execution(ExecutionReservation {
+                task_id: task_id.into(),
+                repo_path: activation.repository_root.clone(),
+                runtime: crate::task::ExecutionRuntime::VisiblePty,
+                ownership_claim_ids: vec![claim.stable_id()],
+                now: 10,
+            })
+            .unwrap();
+        append_reservation_event(&db, &attempt);
+        let token = attempt.token();
+        let mut now = 10;
+        now += 1;
+        tasks.commit_execution_reservation(&token, now).unwrap();
+        advance_effect(&tasks, &token, ExecutionEffect::FirstEffect, &mut now);
+        advance_effect(&tasks, &token, ExecutionEffect::Spawn, &mut now);
+        tasks.transition(task_id, TaskStatus::Running).unwrap();
+        tasks.transition(task_id, TaskStatus::Review).unwrap();
+        now += 1;
+        tasks
+            .reserve_execution_effect(&token, ExecutionEffect::Review, None, now)
+            .unwrap();
+
+        let review_time = unix_now_ms().max(10_000);
+        let suite = CockpitGateSuiteEnvelope {
+            schema: crate::task::COCKPIT_GATE_SUITE_CONTRACT_VERSION.into(),
+            target_oid: target_oid.clone(),
+            candidate_oid: candidate_oid.clone(),
+            commands: vec![
+                cockpit_gate_command("tests", &["cargo", "test"], review_time - 5),
+                cockpit_gate_command("lint", &["cargo", "clippy"], review_time - 4),
+                cockpit_gate_command("types", &["cargo", "check"], review_time - 3),
+            ],
+        };
+        let evidence = crate::task::MissionGateEvidence::from_cockpit_gate_suite(
+            &activation,
+            attempt.identity.attempt_id.clone(),
+            attempt.identity.execution_generation,
+            attempt.identity.agent_run_id.clone(),
+            attempt.identity.pty_session_id.clone().unwrap(),
+            suite,
+        )
+        .unwrap();
+        let builder = crate::review::mission::builder_runtime_attestation_for_policy(
+            &evidence,
+            task.model.as_deref().unwrap(),
+            crate::review::mission::COCKPIT_REVIEW_POLICY_VERSION,
+        )
+        .unwrap();
+        let work = preview
+            .work_units
+            .iter()
+            .find(|work| work.work_unit_id == activation.work_unit_id)
+            .unwrap();
+        let clause_coverage = work
+            .capability_unlock
+            .condition_clause_ids
+            .iter()
+            .map(|clause_id| {
+                serde_json::json!({
+                    "clauseId": clause_id,
+                    "accepted": true,
+                    "reason": "exact candidate, gate suite, and owned path verified"
+                })
+            })
+            .collect::<Vec<_>>();
+        let response = serde_json::json!({
+            "clauseCoverage": clause_coverage,
+            "findings": []
+        })
+        .to_string();
+        let invocation = crate::review::ReviewerInvocation::test_only(&response);
+        let review = crate::review::review_exact_candidate(
+            &preview,
+            &activation,
+            &evidence,
+            &activation.owned_targets,
+            "+pub fn recovered() {}\n",
+            review_time,
+            &builder,
+            false,
+            &invocation,
+        )
+        .unwrap();
+        tasks
+            .persist_mission_review_bundle(&activation, &evidence, &invocation, &review)
+            .unwrap();
+        now += 1;
+        tasks
+            .start_execution_effect(&token, ExecutionEffect::Review, now)
+            .unwrap();
+        now += 1;
+        tasks
+            .commit_execution_effect(&token, ExecutionEffect::Review, now)
+            .unwrap();
+        advance_effect(&tasks, &token, ExecutionEffect::CandidateFreeze, &mut now);
+
+        let merge_store = MergeIntentStore::new(db.clone());
+        let intent = crate::control::merge::request_durable_intent_bound(
+            &merge_store,
+            &activation.repository_root,
+            task_id,
+            Some(task_id),
+            &activation.source_branch,
+            &activation.target_branch,
+            &candidate_oid,
+            &target_oid,
+            i64::try_from(now + 1).unwrap(),
+        )
+        .unwrap();
+        let binding = crate::merge_intent::MissionMergeBinding {
+            intent_id: intent.intent_id.clone(),
+            activation_id: activation.activation_id.clone(),
+            mission_id: activation.mission_id.clone(),
+            mission_revision: activation.mission_revision,
+            work_unit_id: activation.work_unit_id.clone(),
+            tested_evidence_id: evidence.evidence_id.clone(),
+            review_id: review.review_id.clone(),
+            reviewer_independence_digest: review.reviewer_independence.digest.clone(),
+            source_oid: candidate_oid.clone(),
+            target_oid: target_oid.clone(),
+            created_at_unix_ms: review_time + 1,
+        };
+        db.with(|database| {
+            crate::persistence::MergeRepo::insert_mission_binding(database, &binding).map(|_| ())
+        })
+        .unwrap();
+        now += 1;
+        tasks
+            .reserve_execution_effect(&token, ExecutionEffect::Merge, Some(&intent.intent_id), now)
+            .unwrap();
+        now += 1;
+        tasks
+            .start_execution_effect(&token, ExecutionEffect::Merge, now)
+            .unwrap();
+        let gates = crate::review::GateResults {
+            tests_pass: true,
+            lint_pass: true,
+            types_pass: true,
+            design_consistent: true,
+            context_aligned: true,
+        };
+        let gates_digest = crate::control::gate_runner::gate_results_digest(&gates).unwrap();
+        let merge = crate::control::merge::approve_durable_intent(
+            &merge_store,
+            &intent.intent_id,
+            &review.reviewer_independence.reviewer_principal_id,
+            Some(&gates_digest),
+            i64::try_from(now + 1).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            merge.outcome,
+            Some(crate::git::MergeOutcome::FastForwarded { .. })
+                | Some(crate::git::MergeOutcome::Merged { .. })
+                | Some(crate::git::MergeOutcome::AlreadyMerged)
+        ));
+        if stage == CockpitCrashStage::AfterGitMergeBeforeReceipt {
+            drop(tasks);
+            let restored = TaskManager::new_durable();
+            restored.attach_db(db.clone()).unwrap();
+            return PacketBackedCockpitFixture {
+                _repo: repository_directory,
+                tasks: restored,
+                db: db.clone(),
+                merge_store: MergeIntentStore::new(db),
+                activation,
+                work_packet: None,
+            };
+        }
+        let merge_receipt = crate::merge_intent::MissionMergeReceipt {
+            receipt_id: uuid::Uuid::now_v7().to_string(),
+            intent_id: intent.intent_id.clone(),
+            integrated_oid: candidate_oid,
+            merge_result: "merged_exact_oid".into(),
+            created_at_unix_ms: review_time + 2,
+        };
+        db.with(|database| {
+            crate::persistence::MergeRepo::insert_mission_receipt(database, &merge_receipt)
+                .map(|_| ())
+        })
+        .unwrap();
+        if stage == CockpitCrashStage::AfterReceiptBeforeFenceCommit {
+            drop(tasks);
+            let restored = TaskManager::new_durable();
+            restored.attach_db(db.clone()).unwrap();
+            return PacketBackedCockpitFixture {
+                _repo: repository_directory,
+                tasks: restored,
+                db: db.clone(),
+                merge_store: MergeIntentStore::new(db),
+                activation,
+                work_packet: None,
+            };
+        }
+        now += 1;
+        tasks
+            .commit_execution_effect(&token, ExecutionEffect::Merge, now)
+            .unwrap();
+
+        if stage == CockpitCrashStage::AfterMergeReceipt {
+            drop(tasks);
+            let restored = TaskManager::new_durable();
+            restored.attach_db(db.clone()).unwrap();
+            return PacketBackedCockpitFixture {
+                _repo: repository_directory,
+                tasks: restored,
+                db: db.clone(),
+                merge_store: MergeIntentStore::new(db),
+                activation,
+                work_packet: None,
+            };
+        }
+
+        let settled = tasks.settle_cockpit_task(task_id).unwrap();
+        assert!(settled.mission_packet.is_some());
+        assert_eq!(tasks.get(task_id).unwrap().status, TaskStatus::Done);
+        assert!(tasks
+            .pending_cockpit_finalization(task_id)
+            .unwrap()
+            .is_some());
+
+        // Crash after Finalization started and after two cleanup sub-effects:
+        // the worktree and durable claim are gone, but the branch, release event,
+        // and Finalization commit remain.
+        let current = tasks.current_execution(task_id).unwrap();
+        let finalization_token = current.token();
+        now += 1;
+        tasks
+            .reserve_execution_effect(
+                &finalization_token,
+                ExecutionEffect::Finalization,
+                None,
+                now,
+            )
+            .unwrap();
+        now += 1;
+        tasks
+            .start_execution_effect(&finalization_token, ExecutionEffect::Finalization, now)
+            .unwrap();
+        crate::control::worktree::remove_for_branch(
+            &activation.repository_root,
+            &activation.source_branch,
+            false,
+        )
+        .unwrap();
+        db.with(|database| {
+            OwnershipRepo::delete_file_claims_for_task(database, task_id).map(|_| ())
+        })
+        .unwrap();
+
+        drop(tasks);
+        let restored = TaskManager::new_durable();
+        restored.attach_db(db.clone()).unwrap();
+        PacketBackedCockpitFixture {
+            _repo: repository_directory,
+            tasks: restored,
+            db: db.clone(),
+            merge_store: MergeIntentStore::new(db),
+            activation,
+            work_packet: Some(settled.work_packet),
+        }
+    }
+
+    #[test]
+    fn startup_reconciles_post_git_merge_crashes_without_replaying_git() {
+        for (stage, receipt_before_reconcile) in [
+            (CockpitCrashStage::AfterGitMergeBeforeReceipt, false),
+            (CockpitCrashStage::AfterReceiptBeforeFenceCommit, true),
+        ] {
+            let fixture = cockpit_recovery_fixture(stage);
+            let before = fixture
+                .tasks
+                .current_execution(&fixture.activation.task_id)
+                .unwrap();
+            assert_eq!(before.state, WorkExecutionState::MergeReady, "{stage:?}");
+            assert_eq!(before.fence.effect, ExecutionEffect::Merge, "{stage:?}");
+            assert_eq!(
+                before.fence.state,
+                ExecutionFenceState::EffectStarted,
+                "{stage:?}"
+            );
+            assert_eq!(
+                fixture
+                    .db
+                    .with(|database| {
+                        database
+                            .conn()
+                            .query_row(
+                                "SELECT COUNT(*) FROM mission_merge_receipts WHERE intent_id=?1",
+                                [before.merge_intent_id.as_deref().unwrap()],
+                                |row| row.get::<_, i64>(0),
+                            )
+                            .map_err(|error| error.to_string())
+                    })
+                    .unwrap(),
+                i64::from(receipt_before_reconcile),
+                "{stage:?}"
+            );
+
+            let reports = reconcile_runtime_authorities(
+                &fixture.tasks,
+                &fixture.db,
+                &fixture.merge_store,
+                &StartupRuntimeSnapshot::default(),
+                10_000,
+            )
+            .unwrap();
+            assert!(
+                reports
+                    .iter()
+                    .all(|report| report.status == StartupAuthorityStatus::Reconciled),
+                "{stage:?}: {reports:#?}"
+            );
+            let reconciled = fixture
+                .tasks
+                .current_execution(&fixture.activation.task_id)
+                .unwrap();
+            assert_eq!(
+                reconciled.state,
+                WorkExecutionState::MergeReady,
+                "{stage:?}"
+            );
+            assert_eq!(reconciled.fence.effect, ExecutionEffect::Merge, "{stage:?}");
+            assert_eq!(
+                reconciled.fence.state,
+                ExecutionFenceState::Committed,
+                "{stage:?}"
+            );
+            assert_eq!(
+                fixture
+                    .db
+                    .with(|database| {
+                        database
+                            .conn()
+                            .query_row(
+                                "SELECT COUNT(*) FROM mission_merge_receipts WHERE intent_id=?1",
+                                [reconciled.merge_intent_id.as_deref().unwrap()],
+                                |row| row.get::<_, i64>(0),
+                            )
+                            .map_err(|error| error.to_string())
+                    })
+                    .unwrap(),
+                1,
+                "{stage:?}"
+            );
+
+            let ownership = Arc::new(Mutex::new(FileOwnership::new()));
+            for claim in fixture
+                .db
+                .with(|database| OwnershipRepo::load_file_claims(database, 10_000))
+                .unwrap()
+            {
+                ownership
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .assign_claim(claim);
+            }
+            let symbol_ownership = Arc::new(Mutex::new(SymbolOwnership::new()));
+            let events = Arc::new(EventBus::new_durable());
+            events.attach_db(fixture.db.clone());
+            assert_eq!(
+                resume_cockpit_settlements_and_finalizations(
+                    &fixture.tasks,
+                    &fixture.db,
+                    &ownership,
+                    &symbol_ownership,
+                    &events,
+                )
+                .unwrap(),
+                StartupCockpitResumeReport {
+                    settlements: 1,
+                    finalizations: 1,
+                },
+                "{stage:?}"
+            );
+            assert_eq!(
+                fixture
+                    .tasks
+                    .get(&fixture.activation.task_id)
+                    .unwrap()
+                    .status,
+                TaskStatus::Done,
+                "{stage:?}"
+            );
+            assert_eq!(
+                fixture
+                    .tasks
+                    .current_execution(&fixture.activation.task_id)
+                    .unwrap()
+                    .state,
+                WorkExecutionState::Completed,
+                "{stage:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn startup_resumes_only_packet_backed_cockpit_finalization_after_partial_cleanup() {
+        let fixture = cockpit_recovery_fixture(CockpitCrashStage::DuringFinalization);
+        let reports = reconcile_runtime_authorities(
+            &fixture.tasks,
+            &fixture.db,
+            &fixture.merge_store,
+            &StartupRuntimeSnapshot::default(),
+            10_000,
+        )
+        .unwrap();
+        assert!(
+            reports
+                .iter()
+                .all(|report| report.status == StartupAuthorityStatus::Reconciled),
+            "{reports:#?}"
+        );
+        let before = fixture
+            .tasks
+            .current_execution(&fixture.activation.task_id)
+            .unwrap();
+        assert_eq!(before.state, WorkExecutionState::MergeReady);
+        assert_eq!(before.fence.effect, ExecutionEffect::Finalization);
+        assert_eq!(before.fence.state, ExecutionFenceState::EffectStarted);
+
+        let ownership = Arc::new(Mutex::new(FileOwnership::new()));
+        let symbol_ownership = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(fixture.db.clone());
+        assert_eq!(
+            resume_packet_backed_cockpit_finalizations(
+                &fixture.tasks,
+                &fixture.db,
+                &ownership,
+                &symbol_ownership,
+                &events,
+            )
+            .unwrap(),
+            1
+        );
+
+        let completed = fixture
+            .tasks
+            .current_execution(&fixture.activation.task_id)
+            .unwrap();
+        assert_eq!(completed.state, WorkExecutionState::Completed);
+        assert_eq!(completed.fence.effect, ExecutionEffect::Finalization);
+        assert_eq!(completed.fence.state, ExecutionFenceState::Committed);
+        assert!(fixture
+            .tasks
+            .pending_cockpit_finalization(&fixture.activation.task_id)
+            .unwrap()
+            .is_none());
+        assert!(!crate::control::worktree::predict_path(
+            &fixture.activation.repository_root,
+            &fixture.activation.source_branch,
+        )
+        .is_dir());
+        assert!(git2::Repository::open(&fixture.activation.repository_root)
+            .unwrap()
+            .find_branch(&fixture.activation.source_branch, git2::BranchType::Local,)
+            .is_err());
+        let release_events = events
+            .recent()
+            .into_iter()
+            .filter(|event| event.kind == AgentEventKind::FileReleased)
+            .collect::<Vec<_>>();
+        assert_eq!(release_events.len(), 1);
+        assert_eq!(
+            release_events[0].event_id,
+            fixture
+                .work_packet
+                .as_ref()
+                .expect("finalization fixture has a work packet")
+                .packet_id
+        );
+        let completed_events = events
+            .recent()
+            .into_iter()
+            .filter(|event| event.kind == AgentEventKind::TaskCompleted)
+            .collect::<Vec<_>>();
+        assert_eq!(completed_events.len(), 1);
+        assert_eq!(
+            completed_events[0].event_id,
+            format!(
+                "task-completed:{}",
+                fixture
+                    .work_packet
+                    .as_ref()
+                    .expect("finalization fixture has a work packet")
+                    .packet_id
+            )
+        );
+
+        // The packet UUID is also the outbox idempotency key: a second startup
+        // pass does not repeat cleanup or append another release event.
+        assert_eq!(
+            resume_packet_backed_cockpit_finalizations(
+                &fixture.tasks,
+                &fixture.db,
+                &ownership,
+                &symbol_ownership,
+                &events,
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            events
+                .recent()
+                .into_iter()
+                .filter(|event| event.kind == AgentEventKind::FileReleased)
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .recent()
+                .into_iter()
+                .filter(|event| event.kind == AgentEventKind::TaskCompleted)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn startup_resumes_cockpit_settlement_after_merge_receipt_without_replaying_merge() {
+        let fixture = cockpit_recovery_fixture(CockpitCrashStage::AfterMergeReceipt);
+        assert!(fixture.work_packet.is_none());
+        assert_eq!(
+            fixture
+                .tasks
+                .get(&fixture.activation.task_id)
+                .unwrap()
+                .status,
+            TaskStatus::Review
+        );
+        let before = fixture
+            .tasks
+            .current_execution(&fixture.activation.task_id)
+            .unwrap();
+        assert_eq!(before.state, WorkExecutionState::MergeReady);
+        assert_eq!(before.fence.effect, ExecutionEffect::Merge);
+        assert_eq!(before.fence.state, ExecutionFenceState::Committed);
+        assert!(fixture
+            .tasks
+            .is_resumable_cockpit_settlement(&before)
+            .unwrap());
+
+        let reports = reconcile_runtime_authorities(
+            &fixture.tasks,
+            &fixture.db,
+            &fixture.merge_store,
+            &StartupRuntimeSnapshot::default(),
+            10_000,
+        )
+        .unwrap();
+        assert!(
+            reports
+                .iter()
+                .all(|report| report.status == StartupAuthorityStatus::Reconciled),
+            "{reports:#?}"
+        );
+
+        let ownership = Arc::new(Mutex::new(FileOwnership::new()));
+        for claim in fixture
+            .db
+            .with(|database| OwnershipRepo::load_file_claims(database, 10_000))
+            .unwrap()
+        {
+            ownership
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .assign_claim(claim);
+        }
+        let symbol_ownership = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(fixture.db.clone());
+
+        let resumed = resume_cockpit_settlements_and_finalizations(
+            &fixture.tasks,
+            &fixture.db,
+            &ownership,
+            &symbol_ownership,
+            &events,
+        )
+        .unwrap();
+        assert_eq!(
+            resumed,
+            StartupCockpitResumeReport {
+                settlements: 1,
+                finalizations: 1,
+            }
+        );
+        assert_eq!(
+            fixture
+                .tasks
+                .get(&fixture.activation.task_id)
+                .unwrap()
+                .status,
+            TaskStatus::Done
+        );
+        let completed = fixture
+            .tasks
+            .current_execution(&fixture.activation.task_id)
+            .unwrap();
+        assert_eq!(completed.state, WorkExecutionState::Completed);
+        assert_eq!(completed.fence.effect, ExecutionEffect::Finalization);
+        assert_eq!(completed.fence.state, ExecutionFenceState::Committed);
+
+        let work_packet = fixture
+            .db
+            .try_with(|database| {
+                crate::persistence::TaskRepo::load_completed_work_packet(
+                    database,
+                    &fixture.activation.activation_id,
+                )
+            })
+            .unwrap()
+            .expect("startup settlement must mint a work packet");
+        assert!(fixture
+            .db
+            .try_with(|database| {
+                crate::persistence::TaskRepo::load_cockpit_mission_completion(
+                    database,
+                    &fixture.activation.plan_id,
+                    fixture.activation.plan_revision,
+                )
+            })
+            .unwrap()
+            .is_some());
+        assert!(fixture
+            .db
+            .with(|database| OwnershipRepo::load_file_claims(database, 10_000))
+            .unwrap()
+            .is_empty());
+        assert!(ownership
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .claims()
+            .is_empty());
+        assert!(!crate::control::worktree::predict_path(
+            &fixture.activation.repository_root,
+            &fixture.activation.source_branch,
+        )
+        .is_dir());
+        assert!(git2::Repository::open(&fixture.activation.repository_root)
+            .unwrap()
+            .find_branch(&fixture.activation.source_branch, git2::BranchType::Local,)
+            .is_err());
+        let release_events = events
+            .recent()
+            .into_iter()
+            .filter(|event| event.kind == AgentEventKind::FileReleased)
+            .collect::<Vec<_>>();
+        assert_eq!(release_events.len(), 1);
+        assert_eq!(release_events[0].event_id, work_packet.packet_id);
+        let completed_events = events
+            .recent()
+            .into_iter()
+            .filter(|event| event.kind == AgentEventKind::TaskCompleted)
+            .collect::<Vec<_>>();
+        assert_eq!(completed_events.len(), 1);
+        assert_eq!(
+            completed_events[0].event_id,
+            format!("task-completed:{}", work_packet.packet_id)
+        );
+
+        assert_eq!(
+            resume_cockpit_settlements_and_finalizations(
+                &fixture.tasks,
+                &fixture.db,
+                &ownership,
+                &symbol_ownership,
+                &events,
+            )
+            .unwrap(),
+            StartupCockpitResumeReport {
+                settlements: 0,
+                finalizations: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn cockpit_settlement_resume_rejects_forged_merge_approval_metadata() {
+        let fixture = cockpit_recovery_fixture(CockpitCrashStage::AfterMergeReceipt);
+        let intent_id = fixture
+            .tasks
+            .current_execution(&fixture.activation.task_id)
+            .unwrap()
+            .merge_intent_id
+            .unwrap();
+        fixture
+            .db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute(
+                        "UPDATE merge_intents SET reviewer_id='forged-reviewer' WHERE intent_id=?1",
+                        [&intent_id],
+                    )
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+
+        let attempt = fixture
+            .tasks
+            .current_execution(&fixture.activation.task_id)
+            .unwrap();
+        assert!(!fixture
+            .tasks
+            .is_resumable_cockpit_settlement(&attempt)
+            .unwrap());
+        assert!(matches!(
+            fixture
+                .tasks
+                .settle_cockpit_task(&fixture.activation.task_id),
+            Err(crate::task::MissionPlanError::ContentConflict(message))
+                if message.contains("lineage drifted")
+        ));
     }
 
     #[test]

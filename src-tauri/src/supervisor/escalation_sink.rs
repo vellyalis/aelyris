@@ -87,6 +87,7 @@ mod tests {
         StepReport {
             dispatched: vec![],
             merged: vec![],
+            settlement_pending: vec![],
             rejected: vec![],
             recovered: vec![],
             escalations,

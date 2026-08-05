@@ -819,11 +819,48 @@ pub fn run() {
                                         &runtime,
                                         now_secs(),
                                     )?;
+                                let authorities_clean = authority_reports.iter().all(|report| {
+                                    report.status
+                                        == startup_reconciliation::StartupAuthorityStatus::Reconciled
+                                });
                                 // The reconciler may close fully observed failed
                                 // generations and release their stale claims.
                                 // Rehydrate the existing in-memory projections
                                 // from the same durable owner before dispatch.
                                 restore_ownership(&app_handle, &managed_db)?;
+                                if authorities_clean {
+                                    let file_ownership = app_handle
+                                        .state::<std::sync::Arc<std::sync::Mutex<
+                                            file_ownership::FileOwnership,
+                                        >>>()
+                                        .inner()
+                                        .clone();
+                                    let symbol_ownership = app_handle
+                                        .state::<std::sync::Arc<std::sync::Mutex<
+                                            symbol_ownership::SymbolOwnership,
+                                        >>>()
+                                        .inner()
+                                        .clone();
+                                    let event_bus = app_handle
+                                        .state::<std::sync::Arc<event_bus::EventBus>>()
+                                        .inner()
+                                        .clone();
+                                    let resumed = startup_reconciliation::
+                                        resume_cockpit_settlements_and_finalizations(
+                                            tasks.inner().as_ref(),
+                                            managed_db.inner(),
+                                            &file_ownership,
+                                            &symbol_ownership,
+                                            &event_bus,
+                                        )?;
+                                    if resumed.settlements > 0 || resumed.finalizations > 0 {
+                                        log::info!(
+                                            "Resumed {} cockpit settlement(s) and {} packet-backed Finalization(s)",
+                                            resumed.settlements,
+                                            resumed.finalizations,
+                                        );
+                                    }
+                                }
                                 Ok::<(usize, usize, usize), String>((
                                     adopted,
                                     restored,

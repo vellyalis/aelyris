@@ -59,6 +59,7 @@ pub struct OwnedCandidateSnapshot {
 pub struct DetachedReviewWorktree {
     repo_path: String,
     path: std::path::PathBuf,
+    node_modules_projection: Option<std::path::PathBuf>,
 }
 
 impl DetachedReviewWorktree {
@@ -82,16 +83,51 @@ impl DetachedReviewWorktree {
         Ok(Self {
             repo_path: repo_path.to_string(),
             path,
+            node_modules_projection: None,
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// Make an already-installed dependency tree available to Node gates without
+    /// copying it into the exact-OID checkout or running network/package install
+    /// side effects. A source is eligible only when its package and lock/workspace
+    /// identity exactly matches the detached candidate. The projection itself is
+    /// an untracked directory link removed before the Git worktree is reclaimed.
+    pub fn project_node_modules_from(
+        &mut self,
+        source_roots: &[std::path::PathBuf],
+    ) -> Result<(), String> {
+        if !self.path.join("package.json").is_file() {
+            return Ok(());
+        }
+        let link = self.path.join("node_modules");
+        if std::fs::symlink_metadata(&link).is_ok() {
+            return Ok(());
+        }
+        for source_root in source_roots {
+            let target = source_root.join("node_modules");
+            if !target.is_dir() || !node_dependency_identity_matches(source_root, &self.path)? {
+                continue;
+            }
+            create_directory_projection(&link, &target)?;
+            self.node_modules_projection = Some(link);
+            return Ok(());
+        }
+        Err(
+            "Node gates require an installed dependency tree whose package/lock identity matches the exact candidate; install dependencies in the task worktree before review"
+                .to_string(),
+        )
+    }
 }
 
 impl Drop for DetachedReviewWorktree {
     fn drop(&mut self) {
+        if let Some(projection) = self.node_modules_projection.take() {
+            let _ = remove_directory_projection(&projection);
+        }
         let path = self.path.to_string_lossy().into_owned();
         let _ = crate::process::hidden_command("git")
             .args(["worktree", "remove", "--force", &path])
@@ -102,6 +138,132 @@ impl Drop for DetachedReviewWorktree {
             .current_dir(&self.repo_path)
             .output();
         let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+const NODE_DEPENDENCY_IDENTITY_FILES: &[&str] = &[
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
+    ".npmrc",
+];
+
+fn node_dependency_identity_matches(source: &Path, candidate: &Path) -> Result<bool, String> {
+    for relative in NODE_DEPENDENCY_IDENTITY_FILES {
+        let source_path = source.join(relative);
+        let candidate_path = candidate.join(relative);
+        let source_bytes = normalized_node_dependency_identity(&source_path, relative)?;
+        let candidate_bytes = normalized_node_dependency_identity(&candidate_path, relative)?;
+        if source_bytes != candidate_bytes {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn normalized_node_dependency_identity(
+    path: &Path,
+    relative: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "read Node dependency identity {}: {error}",
+                path.display()
+            ))
+        }
+    };
+    if relative == "package.json" {
+        let value: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("parse package identity {}: {error}", path.display()))?;
+        return serde_json::to_vec(&value)
+            .map(Some)
+            .map_err(|error| format!("canonicalize package identity: {error}"));
+    }
+    if relative == "bun.lockb" {
+        return Ok(Some(bytes));
+    }
+    match String::from_utf8(bytes.clone()) {
+        Ok(text) => Ok(Some(text.replace("\r\n", "\n").into_bytes())),
+        Err(_) => Ok(Some(bytes)),
+    }
+}
+
+#[cfg(windows)]
+fn create_directory_projection(link: &Path, target: &Path) -> Result<(), String> {
+    if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+        return Ok(());
+    }
+
+    // Directory symlinks require either Developer Mode or elevated privilege on
+    // many Windows installations. Fall back to an NTFS junction, which does not
+    // require either. Pass both paths through environment variables so spaces,
+    // Unicode, and shell metacharacters never become command text.
+    let output = crate::process::hidden_command("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "New-Item -ItemType Junction -Path $env:AELYRIS_NODE_MODULES_LINK -Target $env:AELYRIS_NODE_MODULES_TARGET -ErrorAction Stop | Out-Null",
+        ])
+        .env("AELYRIS_NODE_MODULES_LINK", link)
+        .env("AELYRIS_NODE_MODULES_TARGET", target)
+        .output()
+        .map_err(|error| format!("create Node dependency junction: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "create Node dependency junction: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+#[cfg(unix)]
+fn create_directory_projection(link: &Path, target: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(target, link)
+        .map_err(|error| format!("create Node dependency symlink: {error}"))
+}
+
+#[cfg(windows)]
+fn remove_directory_projection(link: &Path) -> Result<(), String> {
+    match std::fs::remove_dir(link) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(first_error) => {
+            let output = crate::process::hidden_command("cmd")
+                .args(["/D", "/S", "/C", "rmdir \"%AELYRIS_NODE_MODULES_LINK%\""])
+                .env("AELYRIS_NODE_MODULES_LINK", link)
+                .output()
+                .map_err(|error| {
+                    format!("remove Node dependency junction after {first_error}: {error}")
+                })?;
+            if output.status.success() || std::fs::symlink_metadata(link).is_err() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "remove Node dependency junction after {first_error}: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn remove_directory_projection(link: &Path) -> Result<(), String> {
+    match std::fs::remove_file(link) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("remove Node dependency symlink: {error}")),
     }
 }
 
@@ -620,6 +782,41 @@ pub fn remove_worktree_for_branch(
     Ok(())
 }
 
+/// Idempotently finish post-merge cleanup for one backend-owned branch. A crash
+/// may occur after the linked worktree disappears but before its branch is
+/// deleted; retrying must therefore prune stale registrations and delete the
+/// local branch independently instead of treating a missing worktree path as a
+/// completed cleanup.
+pub fn remove_worktree_for_branch_idempotent(repo_path: &str, branch: &str) -> Result<(), String> {
+    validate_branch_name(branch)?;
+    let path = predict_worktree_path(repo_path, branch);
+    if path.is_dir() {
+        remove_worktree_for_branch(repo_path, branch, false)?;
+    } else {
+        let output = crate::process::hidden_command("git")
+            .args(["worktree", "prune"])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|error| format!("Git worktree prune failed: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Worktree prune failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+    }
+
+    let repo = Repository::open(repo_path).map_err(|error| format!("open repo: {error}"))?;
+    let result = match repo.find_branch(branch, git2::BranchType::Local) {
+        Ok(mut local) => local
+            .delete()
+            .map_err(|error| format!("delete finalized branch {branch}: {error}")),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(()),
+        Err(error) => Err(format!("inspect finalized branch {branch}: {error}")),
+    };
+    result
+}
+
 /// Validate branch name: ASCII alphanumeric, hyphens, underscores, slashes, dots only.
 /// Rejects path traversal, absolute-ish paths, unsafe prefixes, and overlong names.
 pub fn validate_branch_name(name: &str) -> Result<(), String> {
@@ -652,6 +849,13 @@ pub fn validate_branch_name(name: &str) -> Result<(), String> {
 /// worktree — used by ghostdiff to register a layer before the worktree
 /// exists on disk, so the fs watcher can start as soon as it does.
 pub fn predict_worktree_path(repo_path: &str, branch_name: &str) -> std::path::PathBuf {
+    let normalized;
+    let repo_path = if let Some(rest) = repo_path.strip_prefix(r"\\?\UNC\") {
+        normalized = format!(r"\\{rest}");
+        normalized.as_str()
+    } else {
+        repo_path.strip_prefix(r"\\?\").unwrap_or(repo_path)
+    };
     let repo = std::path::Path::new(repo_path);
     let parent = repo.parent().unwrap_or(repo);
     let name = repo.file_name().unwrap_or_default().to_string_lossy();
@@ -1172,6 +1376,84 @@ pub fn inspect_owned_candidate_at_oids(
     )
 }
 
+/// Re-check one already-integrated cockpit candidate at settlement time. The
+/// reviewed target OID remains the lower history bound, while both live source
+/// and live target refs must now resolve to the exact integrated candidate OID.
+/// This differs from [`inspect_owned_candidate_at_oids`], which is the pre-merge
+/// check where the target ref must still equal the reviewed base.
+pub fn inspect_integrated_owned_candidate_at_oids(
+    repo_path: &str,
+    source_branch: &str,
+    target_branch: &str,
+    owned_paths: &[String],
+    reviewed_target_oid: &str,
+    integrated_candidate_oid: &str,
+) -> Result<OwnedCandidateSnapshot, String> {
+    validate_branch_name(source_branch)?;
+    validate_branch_name(target_branch)?;
+    if source_branch == target_branch {
+        return Err("candidate source and target branches must differ".to_string());
+    }
+    let pathspec = owned_pathspec(owned_paths)?;
+    let repository = Repository::open(repo_path)
+        .map_err(|error| format!("open integrated candidate repository: {error}"))?;
+    let reviewed_target = Oid::from_str(reviewed_target_oid)
+        .map_err(|error| format!("decode reviewed target OID: {error}"))?;
+    let candidate = Oid::from_str(integrated_candidate_oid)
+        .map_err(|error| format!("decode integrated candidate OID: {error}"))?;
+    let live_source = Oid::from_str(&crate::git::resolve_branch_oid(repo_path, source_branch)?)
+        .map_err(|error| format!("decode live source OID: {error}"))?;
+    let live_target = Oid::from_str(&crate::git::resolve_branch_oid(repo_path, target_branch)?)
+        .map_err(|error| format!("decode live target OID: {error}"))?;
+    if live_source != candidate || live_target != candidate {
+        return Err(
+            "integrated candidate source or target OID moved after merge receipt".to_string(),
+        );
+    }
+    if candidate == reviewed_target
+        || !repository
+            .graph_descendant_of(candidate, reviewed_target)
+            .map_err(|error| format!("inspect integrated candidate ancestry: {error}"))?
+    {
+        return Err(
+            "integrated candidate does not descend from the exact reviewed target".to_string(),
+        );
+    }
+
+    let worktree_dir = predict_worktree_path(repo_path, source_branch);
+    let worktree = Repository::open(&worktree_dir).map_err(|error| {
+        format!(
+            "open integrated candidate worktree {}: {error}",
+            worktree_dir.display()
+        )
+    })?;
+    let head = worktree
+        .head()
+        .map_err(|error| format!("read integrated candidate worktree HEAD: {error}"))?;
+    if !head.is_branch()
+        || head.shorthand().ok() != Some(source_branch)
+        || head
+            .peel_to_commit()
+            .map_err(|error| format!("peel integrated candidate worktree HEAD: {error}"))?
+            .id()
+            != candidate
+    {
+        return Err("integrated candidate worktree branch/OID binding changed".to_string());
+    }
+    ensure_worktree_clean(&worktree)?;
+    let (merge_base, changed_paths) =
+        inspect_owned_history(&repository, candidate, reviewed_target, &pathspec)?;
+    if merge_base != reviewed_target {
+        return Err("integrated candidate merge-base differs from reviewed target".to_string());
+    }
+    Ok(OwnedCandidateSnapshot {
+        source_oid: candidate.to_string(),
+        target_oid: candidate.to_string(),
+        merge_base_oid: reviewed_target.to_string(),
+        changed_paths,
+    })
+}
+
 /// Create the worktree for `branch` if it is not already on disk; a no-op when it
 /// is (idempotent — a task re-dispatched after rework reuses its worktree). This
 /// is what lets the autonomy loop OWN worktree creation at dispatch instead of
@@ -1421,6 +1703,86 @@ mod tests {
         git(&["add", "."]);
         git(&["commit", "-qm", "base"]);
         (tmp, repo_str)
+    }
+
+    #[test]
+    fn detached_review_projects_only_matching_node_dependencies_and_preserves_the_source() {
+        let (_tmp, repo_str) = base_repo();
+        let root = Path::new(&repo_str);
+        std::fs::write(
+            root.join("package.json"),
+            r#"{"packageManager":"pnpm@10.33.0","scripts":{"test":"tool"}}"#,
+        )
+        .unwrap();
+        std::fs::write(root.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+        let output = crate::process::hidden_command("git")
+            .args(["add", "package.json", "pnpm-lock.yaml"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let output = crate::process::hidden_command("git")
+            .args(["commit", "-qm", "node identity"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let marker = root.join("node_modules").join("tool").join("marker.txt");
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "installed dependency").unwrap();
+        let candidate_oid = crate::git::resolve_branch_oid(&repo_str, "main").unwrap();
+
+        let mut detached = DetachedReviewWorktree::create(&repo_str, &candidate_oid).unwrap();
+        let detached_path = detached.path().to_path_buf();
+        detached
+            .project_node_modules_from(&[root.to_path_buf()])
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(
+                detached
+                    .path()
+                    .join("node_modules")
+                    .join("tool")
+                    .join("marker.txt")
+            )
+            .unwrap(),
+            "installed dependency"
+        );
+        drop(detached);
+
+        assert_eq!(
+            std::fs::read_to_string(marker).unwrap(),
+            "installed dependency"
+        );
+        assert!(!detached_path.exists());
+    }
+
+    #[test]
+    fn detached_review_rejects_stale_node_dependencies() {
+        let (_tmp, repo_str) = base_repo();
+        let root = Path::new(&repo_str);
+        std::fs::write(root.join("package.json"), r#"{"name":"candidate"}"#).unwrap();
+        let output = crate::process::hidden_command("git")
+            .args(["add", "package.json"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let output = crate::process::hidden_command("git")
+            .args(["commit", "-qm", "candidate package"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        std::fs::create_dir_all(root.join("node_modules")).unwrap();
+        let candidate_oid = crate::git::resolve_branch_oid(&repo_str, "main").unwrap();
+        let mut detached = DetachedReviewWorktree::create(&repo_str, &candidate_oid).unwrap();
+
+        std::fs::write(root.join("package.json"), r#"{"name":"stale-source"}"#).unwrap();
+        let error = detached
+            .project_node_modules_from(&[root.to_path_buf()])
+            .unwrap_err();
+        assert!(error.contains("package/lock identity matches"), "{error}");
     }
 
     /// Proves the path-based removal actually reclaims a created worktree —
@@ -1754,6 +2116,34 @@ mod tests {
             .unwrap()
             .refname_to_id("refs/heads/agent/gone")
             .is_ok());
+    }
+
+    #[test]
+    fn idempotent_post_merge_cleanup_finishes_after_worktree_only_crash() {
+        let (_tmp, repo_str) = base_repo();
+        ensure_worktree(&repo_str, "agent/restart-cleanup").expect("create");
+        let path = predict_worktree_path(&repo_str, "agent/restart-cleanup");
+
+        // Crash boundary: the linked worktree is gone, but the source branch
+        // deletion has not happened yet.
+        remove_worktree_for_branch(&repo_str, "agent/restart-cleanup", false)
+            .expect("remove only the worktree");
+        assert!(!path.is_dir());
+        assert!(Repository::open(&repo_str)
+            .unwrap()
+            .find_branch("agent/restart-cleanup", git2::BranchType::Local)
+            .is_ok());
+
+        remove_worktree_for_branch_idempotent(&repo_str, "agent/restart-cleanup")
+            .expect("resume cleanup");
+        assert!(Repository::open(&repo_str)
+            .unwrap()
+            .find_branch("agent/restart-cleanup", git2::BranchType::Local)
+            .is_err());
+
+        // A second startup retry is a no-op rather than a false failure.
+        remove_worktree_for_branch_idempotent(&repo_str, "agent/restart-cleanup")
+            .expect("idempotent retry");
     }
 
     #[test]

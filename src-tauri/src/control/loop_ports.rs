@@ -27,7 +27,10 @@ use crate::symbol_ownership::agent_context::{
     active_ownership_context, render_ownership_header, DEFAULT_CONTEXT_CAP,
 };
 use crate::symbol_ownership::{SymbolClaim, SymbolIntent, SymbolOwnership};
-use crate::task::{ExecutionEffect, ExecutionIdentity, ExecutionReservation, ExecutionRuntime};
+use crate::task::{
+    ExecutionEffect, ExecutionFenceState, ExecutionIdentity, ExecutionReservation,
+    ExecutionRuntime, TaskManager, TaskStatus, WorkExecutionState,
+};
 
 /// Backend-owned, one-call review authority. It never crosses the frontend or
 /// MCP wire: the exact reviewed source/target OIDs and gate digest are supplied
@@ -42,6 +45,18 @@ pub struct ReviewedCandidateBinding {
     pub reviewer_id: String,
     pub gates: GateResults,
     pub gates_digest: String,
+    pub mission_authority: Option<MissionReviewedAuthority>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissionReviewedAuthority {
+    pub activation_id: String,
+    pub mission_id: String,
+    pub mission_revision: u64,
+    pub work_unit_id: String,
+    pub tested_evidence_id: String,
+    pub review_id: String,
+    pub reviewer_independence_digest: String,
 }
 
 /// Wall-clock budget for a single dispatched agent before it is treated as hung
@@ -56,6 +71,14 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
         .unwrap_or(0)
 }
 
@@ -382,13 +405,12 @@ impl<'a, G, D, T> LoopPortsAdapter<'a, G, D, T> {
                 now_secs(),
             )
         })
-        .map_err(|error| {
+        .inspect_err(|_| {
             let _ = context.tasks.fail_execution(
                 &attempt.token(),
                 "ownership reservation failed before first effect",
                 now_secs(),
             );
-            error
         })?;
         {
             let mut ownership = context
@@ -733,6 +755,13 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
         self.task_info.implementer(task_id)
     }
 
+    fn completion_deferred(&self, task_id: &str) -> bool {
+        self.gate_runner
+            .review_binding(task_id)
+            .and_then(|binding| binding.mission_authority)
+            .is_some()
+    }
+
     fn merge(&mut self, task_id: &str) -> Result<(), String> {
         let (source, target) = self
             .task_info
@@ -740,6 +769,9 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
             .ok_or_else(|| format!("task {task_id} has no source/target branch"))?;
         let worktree = crate::control::worktree::predict_path(&self.repo_path, &source);
         let review_binding = self.gate_runner.review_binding(task_id);
+        let mission_authority = review_binding
+            .as_ref()
+            .and_then(|binding| binding.mission_authority.clone());
         if self.require_review_binding && review_binding.is_none() {
             return Err(format!(
                 "task {task_id} has no backend-owned reviewed-candidate binding"
@@ -868,6 +900,48 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                     return Err(error);
                 }
             };
+            if let Some(authority) = mission_authority.as_ref() {
+                let db = context.db.ok_or_else(|| {
+                    let _ = context.tasks.fail_execution(
+                        &token,
+                        "Mission merge authority requires the durable database",
+                        now_secs(),
+                    );
+                    "Mission merge authority requires the durable database".to_string()
+                })?;
+                let reviewed_binding = review_binding.as_ref().ok_or_else(|| {
+                    let _ = context.tasks.fail_execution(
+                        &token,
+                        "Mission merge authority lacks its reviewed OID binding",
+                        now_secs(),
+                    );
+                    "Mission merge authority lacks its reviewed OID binding".to_string()
+                })?;
+                let binding = crate::merge_intent::MissionMergeBinding {
+                    intent_id: intent.intent_id.clone(),
+                    activation_id: authority.activation_id.clone(),
+                    mission_id: authority.mission_id.clone(),
+                    mission_revision: authority.mission_revision,
+                    work_unit_id: authority.work_unit_id.clone(),
+                    tested_evidence_id: authority.tested_evidence_id.clone(),
+                    review_id: authority.review_id.clone(),
+                    reviewer_independence_digest: authority.reviewer_independence_digest.clone(),
+                    source_oid: reviewed_binding.source_oid.clone(),
+                    target_oid: reviewed_binding.target_oid.clone(),
+                    created_at_unix_ms: now_ms(),
+                };
+                if let Err(error) = db.with(|database| {
+                    crate::persistence::MergeRepo::insert_mission_binding(database, &binding)
+                        .map(|_| ())
+                }) {
+                    let _ = context.tasks.fail_execution(
+                        &token,
+                        &format!("Mission merge binding failed before integration: {error}"),
+                        now_secs(),
+                    );
+                    return Err(error);
+                }
+            }
             context
                 .tasks
                 .reserve_execution_effect(
@@ -911,7 +985,7 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                     return Err(error.to_string());
                 }
             };
-            match merge_execution.outcome {
+            let integrated_oid = match merge_execution.outcome {
                 Some(MergeOutcome::Conflict { paths }) => {
                     context
                         .tasks
@@ -941,18 +1015,33 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                         })?;
                     return Err(format!("merge conflict: {}", paths.join(", ")));
                 }
-                Some(_) => {
-                    context
-                        .tasks
-                        .commit_execution_effect(&token, ExecutionEffect::Merge, now_secs())
-                        .map_err(|error| {
-                            let _ = context.tasks.mark_execution_needs_reconcile(
-                                &token,
-                                &format!("merge succeeded but fence commit failed: {error}"),
-                                now_secs(),
-                            );
-                            error.to_string()
-                        })?;
+                Some(MergeOutcome::FastForwarded { target_oid }) => target_oid,
+                Some(MergeOutcome::AlreadyMerged) => {
+                    crate::git::resolve_branch_oid(&self.repo_path, &target).map_err(|error| {
+                        let _ = context.tasks.mark_execution_needs_reconcile(
+                            &token,
+                            &format!(
+                            "merge reported already-merged but target OID is unavailable: {error}"
+                        ),
+                            now_secs(),
+                        );
+                        error
+                    })?
+                }
+                Some(MergeOutcome::Merged { merge_commit_oid }) => {
+                    if mission_authority.is_some() {
+                        let message = format!(
+                            "Mission merge produced synthetic commit {merge_commit_oid}; exact reviewed OID {} was not integrated verbatim",
+                            intent.source_oid
+                        );
+                        let _ = context.tasks.mark_execution_needs_reconcile(
+                            &token,
+                            &message,
+                            now_secs(),
+                        );
+                        return Err(message);
+                    }
+                    merge_commit_oid
                 }
                 None => {
                     let message = format!(
@@ -965,6 +1054,68 @@ impl<G: GateRunner, D: Dispatcher, T: TaskInfo> LoopPorts for LoopPortsAdapter<'
                             .mark_execution_needs_reconcile(&token, &message, now_secs());
                     return Err(message);
                 }
+            };
+            if mission_authority.is_some() && integrated_oid != intent.source_oid {
+                let message = format!(
+                    "Mission merge target resolved to {integrated_oid}, not the exact reviewed OID {}",
+                    intent.source_oid
+                );
+                let _ = context
+                    .tasks
+                    .mark_execution_needs_reconcile(&token, &message, now_secs());
+                return Err(message);
+            }
+
+            if mission_authority.is_some() {
+                let db = context.db.ok_or_else(|| {
+                    let message =
+                        "Mission exact-OID receipt requires the durable database".to_string();
+                    let _ =
+                        context
+                            .tasks
+                            .mark_execution_needs_reconcile(&token, &message, now_secs());
+                    message
+                })?;
+                let receipt = crate::merge_intent::MissionMergeReceipt {
+                    receipt_id: uuid::Uuid::now_v7().to_string(),
+                    intent_id: intent.intent_id.clone(),
+                    integrated_oid: intent.source_oid.clone(),
+                    merge_result: "merged_exact_oid".into(),
+                    created_at_unix_ms: now_ms(),
+                };
+                if let Err(error) = db.with(|database| {
+                    crate::persistence::MergeRepo::insert_mission_receipt(database, &receipt)
+                        .map(|_| ())
+                }) {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!(
+                            "exact target update succeeded but Mission receipt persistence failed: {error}"
+                        ),
+                        now_secs(),
+                    );
+                    return Err(error);
+                }
+            }
+
+            context
+                .tasks
+                .commit_execution_effect(&token, ExecutionEffect::Merge, now_secs())
+                .map_err(|error| {
+                    let _ = context.tasks.mark_execution_needs_reconcile(
+                        &token,
+                        &format!("merge succeeded but fence commit failed: {error}"),
+                        now_secs(),
+                    );
+                    error.to_string()
+                })?;
+
+            // Mission-bound integration deliberately stops at MergeReady. The
+            // exact receipt exists, but Task Done, worktree cleanup, ownership
+            // release, and Finalization are authorized only after TaskRepo has
+            // minted the immutable CompletedWorkPacket.
+            if mission_authority.is_some() {
+                return Ok(());
             }
 
             context
@@ -2146,6 +2297,11 @@ fn apply_file_lanes(
 ) -> Result<(), String> {
     let mut to_publish = Vec::new();
     let mut durability_failures = Vec::new();
+    let settlement_pending = report
+        .settlement_pending
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::HashSet<_>>();
     let now = now_secs();
     {
         let Ok(mut owner) = ownership.lock() else {
@@ -2189,6 +2345,9 @@ fn apply_file_lanes(
             }
         }
         for id in &report.merged {
+            if settlement_pending.contains(id.as_str()) {
+                continue;
+            }
             if let Some((agent, paths)) = lanes.get(id) {
                 if paths.is_empty() {
                     continue;
@@ -2281,13 +2440,163 @@ fn apply_symbol_lanes(
         return;
     };
     let mut owner = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let settlement_pending = report
+        .settlement_pending
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::HashSet<_>>();
     let terminal = report
         .merged
         .iter()
+        .filter(|task_id| !settlement_pending.contains(task_id.as_str()))
         .chain(report.escalations.iter().map(|esc| &esc.task_id));
     for task_id in terminal {
         owner.release_for_task(task_id);
     }
+}
+
+/// Complete the existing execution/finalization owner only after TaskRepo has
+/// durably accepted the exact cockpit work packet. Cleanup remains observable
+/// and fail-closed: an uncertain worktree/claim release is quarantined instead
+/// of pretending the completed packet also proves resource reclamation.
+pub fn finalize_settled_cockpit_task(
+    tasks: &TaskManager,
+    db: &crate::db::ManagedDb,
+    ownership: &Arc<Mutex<FileOwnership>>,
+    symbol_ownership: &Arc<Mutex<SymbolOwnership>>,
+    events: &Arc<EventBus>,
+    activation: &crate::task::MissionPlanActivation,
+    work_packet: &crate::task::CompletedWorkPacket,
+) -> Result<(), String> {
+    work_packet.validate().map_err(|error| error.to_string())?;
+    if work_packet.activation_id != activation.activation_id
+        || work_packet.work_unit_id != activation.work_unit_id
+        || work_packet.plan_id != activation.plan_id
+        || work_packet.mission_id != activation.mission_id
+    {
+        return Err("cockpit finalization packet differs from its activation".into());
+    }
+    let task = tasks
+        .get(&activation.task_id)
+        .ok_or_else(|| "cockpit finalization Task vanished".to_string())?;
+    if task.status != TaskStatus::Done {
+        return Err("cockpit finalization requires a packet-backed Done Task".into());
+    }
+    let current = tasks
+        .current_execution(&activation.task_id)
+        .ok_or_else(|| "cockpit finalization execution attempt vanished".to_string())?;
+    if current.state == WorkExecutionState::Completed
+        && current.fence.effect == ExecutionEffect::Finalization
+        && current.fence.state == ExecutionFenceState::Committed
+    {
+        return Ok(());
+    }
+    if current.state != WorkExecutionState::MergeReady
+        || current.merge_intent_id.as_deref() != Some(work_packet.merge_intent_id.as_str())
+    {
+        return Err("cockpit finalization is not at the committed Merge fence".into());
+    }
+    let token = current.token();
+    match (current.fence.effect, current.fence.state) {
+        (ExecutionEffect::Merge, ExecutionFenceState::Committed) => {
+            tasks
+                .reserve_execution_effect(&token, ExecutionEffect::Finalization, None, now_secs())
+                .map_err(|error| error.to_string())?;
+            tasks
+                .start_execution_effect(&token, ExecutionEffect::Finalization, now_secs())
+                .map_err(|error| error.to_string())?;
+        }
+        (ExecutionEffect::Finalization, ExecutionFenceState::Reserved) => {
+            tasks
+                .start_execution_effect(&token, ExecutionEffect::Finalization, now_secs())
+                .map_err(|error| error.to_string())?;
+        }
+        (ExecutionEffect::Finalization, ExecutionFenceState::EffectStarted) => {}
+        _ => return Err("cockpit finalization is outside its restart-safe fence states".into()),
+    }
+
+    let cleanup = (|| -> Result<Vec<String>, String> {
+        crate::control::worktree::remove_for_branch_idempotent(
+            &activation.repository_root,
+            &activation.source_branch,
+        )?;
+        let paths = task.outputs.clone();
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::delete_file_claims_for_task(
+                database,
+                &activation.task_id,
+            )?;
+            crate::persistence::OwnershipRepo::delete_symbol_claims_for_task(
+                database,
+                &activation.task_id,
+            )?;
+            Ok::<(), String>(())
+        })?;
+        ownership
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .release_for_task(&activation.task_id);
+        symbol_ownership
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .release_for_task(&activation.task_id);
+        Ok(paths)
+    })();
+    let paths = cleanup?;
+    let release_event = AgentEvent::new(
+        AgentEventKind::FileReleased,
+        serde_json::json!({
+            "task": activation.task_id,
+            "agent": task.owner,
+            "paths": paths,
+            "completionPacketId": work_packet.packet_id,
+            "attemptId": token.attempt_id,
+            "executionGeneration": token.execution_generation,
+        }),
+    )
+    .with_idempotency_key(work_packet.packet_id.clone());
+    if let Err(error) = events.publish(release_event) {
+        return Err(error.to_string());
+    }
+    let mission_completion_packet_id = db
+        .try_with(|database| {
+            crate::persistence::TaskRepo::load_cockpit_mission_completion(
+                database,
+                &work_packet.plan_id,
+                work_packet.plan_revision,
+            )
+        })
+        .map_err(|error| error.to_string())?
+        .map(|packet| packet.packet_id);
+    let completed_event = cockpit_task_completed_event(
+        &activation.task_id,
+        work_packet,
+        mission_completion_packet_id.as_deref(),
+    );
+    if let Err(error) = events.publish(completed_event) {
+        return Err(error.to_string());
+    }
+    tasks
+        .commit_execution_effect(&token, ExecutionEffect::Finalization, now_secs())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn cockpit_task_completed_event(
+    task_id: &str,
+    work_packet: &crate::task::CompletedWorkPacket,
+    mission_completion_packet_id: Option<&str>,
+) -> AgentEvent {
+    AgentEvent::new(
+        AgentEventKind::TaskCompleted,
+        serde_json::json!({
+            "id": task_id,
+            "settled": true,
+            "workPacketId": work_packet.packet_id,
+            "missionCompletionPacketId": mission_completion_packet_id,
+        }),
+    )
+    .with_idempotency_key(format!("task-completed:{}", work_packet.packet_id))
 }
 
 #[cfg(test)]
@@ -2760,6 +3069,7 @@ mod tests {
         let report = StepReport {
             dispatched: vec![],
             merged: vec!["t-merge".to_string()],
+            settlement_pending: vec![],
             rejected: vec!["t-reject".to_string()],
             recovered: vec!["t-recover".to_string()],
             escalations: vec![Escalation {
@@ -3359,6 +3669,7 @@ mod tests {
         let report = StepReport {
             dispatched: vec!["t".to_string()],
             merged: vec![],
+            settlement_pending: vec![],
             rejected: vec![],
             recovered: vec![],
             escalations: vec![],
@@ -3387,6 +3698,7 @@ mod tests {
         let report = StepReport {
             dispatched: vec![],
             merged: vec!["t".to_string()],
+            settlement_pending: vec![],
             rejected: vec![],
             recovered: vec![],
             escalations: vec![],
@@ -3412,6 +3724,7 @@ mod tests {
         let report = StepReport {
             dispatched: vec![],
             merged: vec![],
+            settlement_pending: vec![],
             rejected: vec![],
             recovered: vec![],
             escalations: vec![crate::orchestrator::autonomy::Escalation {

@@ -20,6 +20,9 @@ pub const MISSION_DEFINITION_SCHEMA: &str = "aelyris.mission_definition/v1";
 pub const MISSION_PLAN_PREVIEW_SCHEMA: &str = "aelyris.mission_plan_preview/v1";
 pub const MISSION_PLAN_CANONICALIZATION: &str = "rfc8785_json_utf8";
 pub const COCKPIT_GOVERNANCE_POLICY_ID: &str = "cockpit-mission/v1";
+pub const COCKPIT_GATE_SUITE_ID: &str = "cockpit-gate-suite";
+pub const COCKPIT_GATE_SUITE_CONTRACT_VERSION: &str = "aelyris.cockpit-gate-suite/v1";
+pub const COCKPIT_SETTLEMENT_PROOF_VERSION: &str = "aelyris.cockpit-settlement-proof/v1";
 const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 pub const A7_FIXTURE_REQUEST_ID: &str = "0197c000-0000-7000-8000-000000000001";
 pub const A7_FIXTURE_MISSION_ID: &str = "0197c000-0000-7000-8000-000000000002";
@@ -376,6 +379,8 @@ pub struct MergePolicy {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CockpitTaskPlanIdentity {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_unit_id: Option<String>,
     pub title: String,
     pub description: String,
     pub owner: Option<String>,
@@ -393,6 +398,7 @@ impl CockpitTaskPlanIdentity {
     pub(crate) fn from_task(task: &Task) -> Self {
         Self {
             id: task.id.clone(),
+            work_unit_id: None,
             title: task.title.clone(),
             description: task.description.clone(),
             owner: task.owner.clone(),
@@ -470,35 +476,31 @@ impl MissionPlanPreviewInput {
                 errors.join("; ")
             ))
         })?;
-        let cockpit_task_plan = ordered_tasks
-            .iter()
-            .map(CockpitTaskPlanIdentity::from_task)
-            .collect::<Vec<_>>();
-
-        let mut outputs = Vec::new();
-        let mut output_seen = HashSet::new();
-        for task in &ordered_tasks {
-            for output in &task.outputs {
-                validate_repo_relative_path(output)?;
-                if output_seen.insert(output.clone()) {
-                    outputs.push(output.clone());
-                }
-            }
-        }
-        if outputs.is_empty() {
-            return validation("cockpit Mission plan declares no output boundary");
-        }
-
         let request_id = Uuid::now_v7().to_string();
         let mission_id = Uuid::now_v7().to_string();
-        let work_unit_id = Uuid::now_v7().to_string();
         let plan_id = Uuid::now_v7().to_string();
         let workspace_id = Uuid::now_v7().to_string();
         let project_id = Uuid::now_v7().to_string();
         let actor_id = Uuid::now_v7().to_string();
         let repository_id = Uuid::now_v7().to_string();
-        let clause_id = Uuid::now_v7().to_string();
-        let unlock_id = Uuid::now_v7().to_string();
+
+        let work_unit_ids = ordered_tasks
+            .iter()
+            .map(|task| (task.id.clone(), Uuid::now_v7().to_string()))
+            .collect::<HashMap<_, _>>();
+        let clause_ids = ordered_tasks
+            .iter()
+            .map(|task| (task.id.clone(), Uuid::now_v7().to_string()))
+            .collect::<HashMap<_, _>>();
+
+        let cockpit_task_plan = ordered_tasks
+            .iter()
+            .map(|task| {
+                let mut identity = CockpitTaskPlanIdentity::from_task(task);
+                identity.work_unit_id = work_unit_ids.get(&task.id).cloned();
+                identity
+            })
+            .collect::<Vec<_>>();
 
         let implementer = TeamRolePolicy {
             role_id: "implementer".into(),
@@ -518,24 +520,149 @@ impl MissionPlanPreviewInput {
             may_review: true,
             may_authorize_completion: true,
         };
-        let file_intents = outputs
-            .into_iter()
-            .map(|output| ResourceIntent {
-                operation: if repository_root.join(&output).exists() {
-                    ResourceOperation::Update
-                } else {
-                    ResourceOperation::Create
-                },
-                resource_ref: RepositoryResourceRef {
-                    repository_id: repository_id.clone(),
-                    repo_relative_path: output,
-                    base_oid: base_oid.to_string(),
-                    head_oid: base_oid.to_string(),
-                    blob_oid: None,
-                },
-                expected_base_digest: None,
+        let acceptance = ordered_tasks
+            .iter()
+            .map(|task| {
+                Ok(AcceptanceClause {
+                    clause_id: clause_ids.get(&task.id).cloned().ok_or_else(|| {
+                        MissionPlanError::Validation(format!(
+                            "cockpit task {} lacks its generated clause identity",
+                            task.id
+                        ))
+                    })?,
+                    statement: format!(
+                        "Complete generated task {} ({}) through exact-OID review, merge, and immutable settlement",
+                        task.id, task.title
+                    ),
+                    required_gate_ids: vec![COCKPIT_GATE_SUITE_ID.into()],
+                    required_artifact_ids: Vec::new(),
+                    completion_blocking: true,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, MissionPlanError>>()?;
+
+        let work_units = ordered_tasks
+            .iter()
+            .map(|task| {
+                if task.outputs.is_empty() {
+                    return validation(format!(
+                        "cockpit task {} declares no output boundary",
+                        task.id
+                    ));
+                }
+                let mut seen = HashSet::new();
+                let file_intents = task
+                    .outputs
+                    .iter()
+                    .map(|output| {
+                        validate_repo_relative_path(output)?;
+                        if !seen.insert(output.clone()) {
+                            return validation(format!(
+                                "cockpit task {} repeats output {}",
+                                task.id, output
+                            ));
+                        }
+                        Ok(ResourceIntent {
+                            operation: if repository_root.join(output).exists() {
+                                ResourceOperation::Update
+                            } else {
+                                ResourceOperation::Create
+                            },
+                            resource_ref: RepositoryResourceRef {
+                                repository_id: repository_id.clone(),
+                                repo_relative_path: output.clone(),
+                                base_oid: base_oid.to_string(),
+                                head_oid: base_oid.to_string(),
+                                blob_oid: None,
+                            },
+                            expected_base_digest: None,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, MissionPlanError>>()?;
+                let symbol_intents = task
+                    .symbols
+                    .iter()
+                    .map(|symbol| {
+                        let language = Path::new(&symbol.path)
+                            .extension()
+                            .and_then(|extension| extension.to_str())
+                            .unwrap_or("unknown")
+                            .to_ascii_lowercase();
+                        SymbolIntent {
+                            resource_ref: RepositoryResourceRef {
+                                repository_id: repository_id.clone(),
+                                repo_relative_path: symbol.path.clone(),
+                                base_oid: base_oid.to_string(),
+                                head_oid: base_oid.to_string(),
+                                blob_oid: None,
+                            },
+                            language,
+                            symbol_kind: "verified_range".into(),
+                            qualified_name: symbol.symbol.clone(),
+                            stable_locator: format!(
+                                "{}:{}-{}",
+                                symbol.path, symbol.range.start_line, symbol.range.end_line
+                            ),
+                            operation: if matches!(
+                                symbol.mode,
+                                crate::symbol_ownership::ClaimMode::Write
+                            ) {
+                                ResourceOperation::Update
+                            } else {
+                                ResourceOperation::Read
+                            },
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let work_unit_id = work_unit_ids.get(&task.id).cloned().ok_or_else(|| {
+                    MissionPlanError::Validation(format!(
+                        "cockpit task {} lacks its generated WorkUnit identity",
+                        task.id
+                    ))
+                })?;
+                let clause_id = clause_ids.get(&task.id).cloned().ok_or_else(|| {
+                    MissionPlanError::Validation(format!(
+                        "cockpit task {} lacks its generated clause identity",
+                        task.id
+                    ))
+                })?;
+                let depends_on = task
+                    .dependencies
+                    .iter()
+                    .map(|dependency| {
+                        work_unit_ids.get(dependency).cloned().ok_or_else(|| {
+                            MissionPlanError::Validation(format!(
+                                "cockpit task {} depends on unknown task {}",
+                                task.id, dependency
+                            ))
+                        })
+                    })
+                    .collect::<Result<Vec<_>, MissionPlanError>>()?;
+                Ok(WorkUnitDefinition {
+                    work_unit_id: work_unit_id.clone(),
+                    mission_id: mission_id.clone(),
+                    definition_revision: 1,
+                    title: task.title.clone(),
+                    objective: task.description.clone(),
+                    depends_on,
+                    required_role: "implementer".into(),
+                    completion_authority_role_ids: vec!["independent_reviewer".into()],
+                    required_adapter_capabilities: vec![AdapterCapability::Prompt],
+                    file_intents,
+                    symbol_intents,
+                    required_capability_templates: Vec::new(),
+                    required_gates: Vec::new(),
+                    required_artifacts: Vec::new(),
+                    risk_class: RiskClass::Low,
+                    capability_unlock: CapabilityUnlock {
+                        unlock_id: Uuid::now_v7().to_string(),
+                        capability: "cockpit.complete_task".into(),
+                        condition_clause_ids: vec![clause_id],
+                        available_after_work_unit_id: work_unit_id,
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>, MissionPlanError>>()?;
 
         Ok(Self {
             request_id,
@@ -549,21 +676,14 @@ impl MissionPlanPreviewInput {
                 workspace_id,
                 project_id,
                 goal: normalized_goal.clone(),
-                desired_outcome: "Complete the generated TaskGraph through visible work, independent review, and merge".into(),
-                capability_outcome: "Restore the accepted cockpit goal and its durable TaskGraph after application restart".into(),
-                non_goals: vec!["No second execution engine or duplicate task-status owner".into()],
+                desired_outcome: "Complete the generated TaskGraph through visible work, independent review, exact-OID merge, and immutable settlement".into(),
+                capability_outcome: "Restore the accepted cockpit goal, TaskGraph, and exact completion packets after application restart".into(),
+                non_goals: vec![
+                    "No second execution engine or duplicate task-status owner".into(),
+                    "No completion credit from agent self-report, file existence, or UI status".into(),
+                ],
                 base_oid: base_oid.to_string(),
-                acceptance: vec![AcceptanceClause {
-                    clause_id: clause_id.clone(),
-                    statement: format!(
-                        "Complete {} generated task{} through the supported cockpit path",
-                        ordered_tasks.len(),
-                        if ordered_tasks.len() == 1 { "" } else { "s" }
-                    ),
-                    required_gate_ids: Vec::new(),
-                    required_artifact_ids: Vec::new(),
-                    completion_blocking: true,
-                }],
+                acceptance,
                 risk_policy: RiskPolicy {
                     policy_id: "cockpit-risk/v1".into(),
                     policy_version: "1".into(),
@@ -601,29 +721,7 @@ impl MissionPlanPreviewInput {
                 approved_by: None,
                 created_at: current_rfc3339()?,
             },
-            work_units: vec![WorkUnitDefinition {
-                work_unit_id: work_unit_id.clone(),
-                mission_id,
-                definition_revision: 1,
-                title: "Execute generated cockpit plan".into(),
-                objective: normalized_goal,
-                depends_on: Vec::new(),
-                required_role: "implementer".into(),
-                completion_authority_role_ids: vec!["independent_reviewer".into()],
-                required_adapter_capabilities: vec![AdapterCapability::Prompt],
-                file_intents,
-                symbol_intents: Vec::new(),
-                required_capability_templates: Vec::new(),
-                required_gates: Vec::new(),
-                required_artifacts: Vec::new(),
-                risk_class: RiskClass::Low,
-                capability_unlock: CapabilityUnlock {
-                    unlock_id,
-                    capability: "cockpit.resume_task_graph".into(),
-                    condition_clause_ids: vec![clause_id],
-                    available_after_work_unit_id: work_unit_id,
-                },
-            }],
+            work_units,
             review_requirement: IndependentReviewRequirement {
                 role: "independent_reviewer".into(),
                 policy_id: "cockpit-reviewer-independence/v1".into(),
@@ -780,6 +878,257 @@ pub struct MissionGateEvidence {
     pub tested_oid: String,
     pub started_at_unix_ms: u64,
     pub ended_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CockpitGateCommandEvidence {
+    pub gate: String,
+    pub command_argv: Vec<String>,
+    pub command_fingerprint: String,
+    pub environment_fingerprint: String,
+    pub result: String,
+    pub exit_code: Option<i32>,
+    pub evidence_digest: String,
+    pub started_at_unix_ms: u64,
+    pub ended_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CockpitGateSuiteEnvelope {
+    pub schema: String,
+    pub target_oid: String,
+    pub candidate_oid: String,
+    pub commands: Vec<CockpitGateCommandEvidence>,
+}
+
+impl CockpitGateSuiteEnvelope {
+    pub fn canonical_json(&self) -> Result<String, MissionPlanError> {
+        let value = serde_json::to_value(self)
+            .map_err(|error| MissionPlanError::Validation(error.to_string()))?;
+        String::from_utf8(canonical_json_bytes(&value)?).map_err(|error| {
+            MissionPlanError::Validation(format!("encode cockpit gate suite JSON: {error}"))
+        })
+    }
+
+    pub fn command_fingerprint(&self) -> Result<String, MissionPlanError> {
+        let argv = self
+            .commands
+            .iter()
+            .map(|command| (&command.gate, &command.command_argv))
+            .collect::<Vec<_>>();
+        serde_json::to_vec(&argv)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(|error| MissionPlanError::Validation(error.to_string()))
+    }
+
+    pub fn environment_fingerprint(&self) -> Result<String, MissionPlanError> {
+        let mut environments = self
+            .commands
+            .iter()
+            .map(|command| command.environment_fingerprint.as_str())
+            .collect::<Vec<_>>();
+        environments.sort_unstable();
+        environments.dedup();
+        serde_json::to_vec(&environments)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(|error| MissionPlanError::Validation(error.to_string()))
+    }
+
+    pub fn started_at_unix_ms(&self) -> u64 {
+        self.commands
+            .iter()
+            .map(|command| command.started_at_unix_ms)
+            .min()
+            .unwrap_or(0)
+    }
+
+    pub fn ended_at_unix_ms(&self) -> u64 {
+        self.commands
+            .iter()
+            .map(|command| command.ended_at_unix_ms)
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub fn validate(&self) -> Result<(), MissionPlanError> {
+        if self.schema != COCKPIT_GATE_SUITE_CONTRACT_VERSION {
+            return validation("unsupported cockpit gate-suite envelope");
+        }
+        validate_git_oid("cockpitGateSuite.targetOid", &self.target_oid)?;
+        validate_git_oid("cockpitGateSuite.candidateOid", &self.candidate_oid)?;
+        if self.commands.is_empty() {
+            return validation("cockpit gate suite has no executed commands");
+        }
+        let mut gate_counts = HashMap::<&str, usize>::new();
+        for command in &self.commands {
+            if !matches!(command.gate.as_str(), "tests" | "lint" | "types")
+                || command.command_argv.is_empty()
+                || !is_sha256(&command.command_fingerprint)
+                || !is_sha256(&command.environment_fingerprint)
+                || command.result != "passed"
+                || command.exit_code != Some(0)
+                || !is_sha256(&command.evidence_digest)
+                || command.started_at_unix_ms == 0
+                || command.ended_at_unix_ms < command.started_at_unix_ms
+            {
+                return validation("cockpit gate command evidence is incomplete or not passed");
+            }
+            let expected_fingerprint = serde_json::to_vec(&command.command_argv)
+                .map(|bytes| sha256_hex(&bytes))
+                .map_err(|error| MissionPlanError::Validation(error.to_string()))?;
+            if command.command_fingerprint != expected_fingerprint {
+                return validation("cockpit gate command argv fingerprint disagrees");
+            }
+            *gate_counts.entry(command.gate.as_str()).or_default() += 1;
+        }
+        if ["tests", "lint", "types"]
+            .iter()
+            .any(|gate| gate_counts.get(gate).copied().unwrap_or(0) == 0)
+        {
+            return validation("cockpit gate suite lacks tests, lint, or types evidence");
+        }
+        Ok(())
+    }
+}
+
+impl MissionGateEvidence {
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_cockpit_gate_suite(
+        activation: &MissionPlanActivation,
+        attempt_id: String,
+        execution_generation: u64,
+        agent_run_id: String,
+        pty_session_id: String,
+        suite: CockpitGateSuiteEnvelope,
+    ) -> Result<Self, MissionPlanError> {
+        suite.validate()?;
+        if activation.test_argv != [COCKPIT_GATE_SUITE_CONTRACT_VERSION]
+            || activation.activation_id.trim().is_empty()
+            || attempt_id.trim().is_empty()
+            || execution_generation == 0
+            || agent_run_id.trim().is_empty()
+            || pty_session_id.trim().is_empty()
+        {
+            return validation("cockpit gate suite lacks immutable activation/execution authority");
+        }
+        let suite_json = suite.canonical_json()?;
+        let command_fingerprint = suite.command_fingerprint()?;
+        let environment_fingerprint = suite.environment_fingerprint()?;
+        let started_at_unix_ms = suite.started_at_unix_ms();
+        let ended_at_unix_ms = suite.ended_at_unix_ms();
+        let mut evidence = Self {
+            schema: "aelyris.mission_gate_evidence/v1".into(),
+            evidence_id: Uuid::now_v7().to_string(),
+            activation_id: activation.activation_id.clone(),
+            plan_content_digest: activation.plan_content_digest.clone(),
+            attempt_id,
+            execution_generation,
+            agent_run_id,
+            runtime_domain_id: "visible_pty".into(),
+            pty_session_id,
+            gate_id: COCKPIT_GATE_SUITE_ID.into(),
+            contract_version: COCKPIT_GATE_SUITE_CONTRACT_VERSION.into(),
+            command_argv: vec![COCKPIT_GATE_SUITE_CONTRACT_VERSION.into(), suite_json],
+            command_fingerprint,
+            environment_fingerprint,
+            result: "passed".into(),
+            evidence_digest: String::new(),
+            base_oid: suite.target_oid,
+            candidate_oid: suite.candidate_oid.clone(),
+            tested_oid: suite.candidate_oid,
+            started_at_unix_ms,
+            ended_at_unix_ms,
+        };
+        let digest_envelope = serde_json::json!({
+            "schema": "aelyris.mission_gate_evidence_digest/v1",
+            "activationId": evidence.activation_id,
+            "planContentDigest": evidence.plan_content_digest,
+            "attemptId": evidence.attempt_id,
+            "executionGeneration": evidence.execution_generation,
+            "agentRunId": evidence.agent_run_id,
+            "runtimeDomainId": evidence.runtime_domain_id,
+            "ptySessionId": evidence.pty_session_id,
+            "gateId": evidence.gate_id,
+            "contractVersion": evidence.contract_version,
+            "commandFingerprint": evidence.command_fingerprint,
+            "environmentFingerprint": evidence.environment_fingerprint,
+            "gateSuiteJson": evidence.command_argv[1],
+            "result": evidence.result,
+            "baseOid": evidence.base_oid,
+            "candidateOid": evidence.candidate_oid,
+            "testedOid": evidence.tested_oid,
+            "startedAtUnixMs": evidence.started_at_unix_ms,
+            "endedAtUnixMs": evidence.ended_at_unix_ms,
+        });
+        evidence.evidence_digest = serde_json::to_vec(&digest_envelope)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(|error| MissionPlanError::Validation(error.to_string()))?;
+        evidence.cockpit_gate_suite()?;
+        Ok(evidence)
+    }
+
+    pub fn cockpit_gate_suite(&self) -> Result<Option<CockpitGateSuiteEnvelope>, MissionPlanError> {
+        if self.gate_id != COCKPIT_GATE_SUITE_ID
+            && self.contract_version != COCKPIT_GATE_SUITE_CONTRACT_VERSION
+        {
+            return Ok(None);
+        }
+        if self.gate_id != COCKPIT_GATE_SUITE_ID
+            || self.contract_version != COCKPIT_GATE_SUITE_CONTRACT_VERSION
+            || self.command_argv.len() != 2
+            || self.command_argv.first().map(String::as_str)
+                != Some(COCKPIT_GATE_SUITE_CONTRACT_VERSION)
+            || self.result != "passed"
+            || self.candidate_oid != self.tested_oid
+        {
+            return validation("cockpit Mission gate evidence has a malformed suite binding");
+        }
+        let suite: CockpitGateSuiteEnvelope =
+            serde_json::from_str(&self.command_argv[1]).map_err(|error| {
+                MissionPlanError::Validation(format!("decode cockpit gate suite: {error}"))
+            })?;
+        suite.validate()?;
+        if suite.canonical_json()? != self.command_argv[1]
+            || suite.target_oid != self.base_oid
+            || suite.candidate_oid != self.candidate_oid
+            || suite.command_fingerprint()? != self.command_fingerprint
+            || suite.environment_fingerprint()? != self.environment_fingerprint
+            || suite.started_at_unix_ms() != self.started_at_unix_ms
+            || suite.ended_at_unix_ms() != self.ended_at_unix_ms
+        {
+            return validation("cockpit gate-suite evidence projection disagrees");
+        }
+        let digest_envelope = serde_json::json!({
+            "schema": "aelyris.mission_gate_evidence_digest/v1",
+            "activationId": self.activation_id,
+            "planContentDigest": self.plan_content_digest,
+            "attemptId": self.attempt_id,
+            "executionGeneration": self.execution_generation,
+            "agentRunId": self.agent_run_id,
+            "runtimeDomainId": self.runtime_domain_id,
+            "ptySessionId": self.pty_session_id,
+            "gateId": self.gate_id,
+            "contractVersion": self.contract_version,
+            "commandFingerprint": self.command_fingerprint,
+            "environmentFingerprint": self.environment_fingerprint,
+            "gateSuiteJson": self.command_argv[1],
+            "result": self.result,
+            "baseOid": self.base_oid,
+            "candidateOid": self.candidate_oid,
+            "testedOid": self.tested_oid,
+            "startedAtUnixMs": self.started_at_unix_ms,
+            "endedAtUnixMs": self.ended_at_unix_ms,
+        });
+        let digest = serde_json::to_vec(&digest_envelope)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(|error| MissionPlanError::Validation(error.to_string()))?;
+        if self.evidence_digest != digest {
+            return validation("cockpit Mission gate evidence digest disagrees");
+        }
+        Ok(Some(suite))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1014,6 +1363,14 @@ pub enum MissionSettlementOutcome {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CockpitTaskSettlementOutcome {
+    pub work_packet: CompletedWorkPacket,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mission_packet: Option<MissionCompletionPacket>,
+}
+
 fn packet_digest<T: Serialize>(packet: &T) -> Result<String, MissionPlanError> {
     let bytes = serde_json::to_vec(packet).map_err(|error| {
         MissionPlanError::Validation(format!("serialize settlement packet: {error}"))
@@ -1027,6 +1384,13 @@ const fn default_settlement_generation() -> u64 {
 
 fn legacy_git_fingerprint() -> String {
     "0".repeat(64)
+}
+
+fn valid_settlement_proof_version(value: &str) -> bool {
+    matches!(
+        value,
+        A7_SETTLEMENT_PROOF_VERSION | COCKPIT_SETTLEMENT_PROOF_VERSION
+    )
 }
 
 impl CompletedWorkPacket {
@@ -1076,7 +1440,7 @@ impl CompletedWorkPacket {
         });
         let independence = &self.reviewer_independence;
         if self.schema != COMPLETED_WORK_PACKET_SCHEMA
-            || self.contract_proof_version != A7_SETTLEMENT_PROOF_VERSION
+            || !valid_settlement_proof_version(&self.contract_proof_version)
             || self.packet_id.trim().is_empty()
             || self.activation_id.trim().is_empty()
             || self.plan_id.trim().is_empty()
@@ -1203,7 +1567,7 @@ impl BlockedWorkPacket {
         });
         let evidence_ids = self.evidence_ids.iter().collect::<HashSet<_>>();
         if self.schema != BLOCKED_WORK_PACKET_SCHEMA
-            || self.contract_proof_version != A7_SETTLEMENT_PROOF_VERSION
+            || !valid_settlement_proof_version(&self.contract_proof_version)
             || self.packet_id.trim().is_empty()
             || self.activation_id.trim().is_empty()
             || self.plan_id.trim().is_empty()
@@ -1286,7 +1650,7 @@ impl MissionCompletionPacket {
             .values()
             .collect::<HashSet<_>>();
         if self.schema != MISSION_COMPLETION_PACKET_SCHEMA
-            || self.contract_proof_version != A7_SETTLEMENT_PROOF_VERSION
+            || !valid_settlement_proof_version(&self.contract_proof_version)
             || self.packet_id.trim().is_empty()
             || self.mission_id.trim().is_empty()
             || self.mission_revision == 0
@@ -1380,6 +1744,87 @@ pub fn activation_from_accepted_plan(
     );
     let task = activation.task(&work.title, &runtime_description);
     Ok((activation, task))
+}
+
+/// Derive one immutable activation per accepted cockpit Task. The accepted
+/// Mission owns task/work-unit identity and the original plan base; each later
+/// evidence row binds the exact target OID actually reviewed for that Task.
+pub(crate) fn cockpit_activations_from_plan(
+    preview: &MissionPlanPreview,
+    activated_by: &str,
+    activated_at_unix_ms: u64,
+) -> Result<Vec<MissionPlanActivation>, MissionPlanError> {
+    preview.verify_integrity()?;
+    if !preview.is_cockpit_profile() {
+        return validation("cockpit activations require the cockpit governance profile");
+    }
+    validate_decision_principal(activated_by)?;
+    let task_plan = preview.cockpit_task_plan.as_ref().ok_or_else(|| {
+        MissionPlanError::Validation("cockpit Mission lacks TaskGraph identity".into())
+    })?;
+    if task_plan.iter().all(|task| task.work_unit_id.is_none()) {
+        // GMV-2 aggregate rows remain readable but cannot mint completion
+        // authority retroactively because their immutable plan has no Task to
+        // WorkUnit mapping.
+        return Ok(Vec::new());
+    }
+    let work_by_id = preview
+        .work_units
+        .iter()
+        .map(|work| (work.work_unit_id.as_str(), work))
+        .collect::<HashMap<_, _>>();
+    task_plan
+        .iter()
+        .map(|task| {
+            let work_unit_id = task.work_unit_id.clone().ok_or_else(|| {
+                MissionPlanError::Validation(
+                    "cockpit settlement task lacks immutable workUnitId".into(),
+                )
+            })?;
+            let work = work_by_id.get(work_unit_id.as_str()).ok_or_else(|| {
+                MissionPlanError::Validation(format!(
+                    "cockpit task {} references unknown WorkUnit {}",
+                    task.id, work_unit_id
+                ))
+            })?;
+            let source_branch = task.source_branch.clone().ok_or_else(|| {
+                MissionPlanError::Validation(format!(
+                    "cockpit task {} lacks a source branch",
+                    task.id
+                ))
+            })?;
+            let target_branch = task.target_branch.clone().ok_or_else(|| {
+                MissionPlanError::Validation(format!(
+                    "cockpit task {} lacks a target branch",
+                    task.id
+                ))
+            })?;
+            Ok(MissionPlanActivation {
+                schema: "aelyris.mission_plan_activation/v1".into(),
+                activation_id: Uuid::now_v7().to_string(),
+                plan_id: preview.plan_id.clone(),
+                plan_revision: preview.plan_revision,
+                mission_id: preview.mission_definition.mission_id.clone(),
+                mission_revision: preview.mission_definition.revision,
+                work_unit_id,
+                task_id: task.id.clone(),
+                plan_content_digest: preview.content_digest.clone(),
+                accepted_base_oid: preview.accepted_mission_head_oid.clone(),
+                repository_root: preview.repository_root.clone(),
+                source_branch,
+                target_branch,
+                owned_targets: work
+                    .file_intents
+                    .iter()
+                    .filter(|intent| !matches!(intent.operation, ResourceOperation::Read))
+                    .map(|intent| intent.resource_ref.repo_relative_path.clone())
+                    .collect(),
+                test_argv: vec![COCKPIT_GATE_SUITE_CONTRACT_VERSION.into()],
+                activated_by: activated_by.to_string(),
+                activated_at_unix_ms,
+            })
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -1713,12 +2158,21 @@ fn validate_cockpit_and_order(
     if normalize_request(&input.request) != mission.goal {
         return validation("cockpit Mission goal must equal its normalized request");
     }
-    if mission.desired_outcome
-        != "Complete the generated TaskGraph through visible work, independent review, and merge"
-        || mission.capability_outcome
-            != "Restore the accepted cockpit goal and its durable TaskGraph after application restart"
-        || mission.non_goals != ["No second execution engine or duplicate task-status owner"]
-    {
+    let legacy_narrative = mission.desired_outcome
+        == "Complete the generated TaskGraph through visible work, independent review, and merge"
+        && mission.capability_outcome
+            == "Restore the accepted cockpit goal and its durable TaskGraph after application restart"
+        && mission.non_goals == ["No second execution engine or duplicate task-status owner"];
+    let settlement_narrative = mission.desired_outcome
+        == "Complete the generated TaskGraph through visible work, independent review, exact-OID merge, and immutable settlement"
+        && mission.capability_outcome
+            == "Restore the accepted cockpit goal, TaskGraph, and exact completion packets after application restart"
+        && mission.non_goals
+            == [
+                "No second execution engine or duplicate task-status owner",
+                "No completion credit from agent self-report, file existence, or UI status",
+            ];
+    if !legacy_narrative && !settlement_narrative {
         return validation("cockpit Mission profile narratives differ from the supported path");
     }
     validate_rfc3339("createdAt", &mission.created_at)?;
@@ -1857,14 +2311,47 @@ fn validate_cockpit_and_order(
     })?;
     let canonical_task_plan = ordered_tasks
         .iter()
-        .map(CockpitTaskPlanIdentity::from_task)
+        .zip(task_plan)
+        .map(|(task, identity)| {
+            let mut canonical = CockpitTaskPlanIdentity::from_task(task);
+            canonical.work_unit_id = identity.work_unit_id.clone();
+            canonical
+        })
         .collect::<Vec<_>>();
     if canonical_task_plan != *task_plan {
         return validation("cockpit task-plan identity is not in canonical dependency order");
     }
+    let legacy_work_units = task_plan.iter().all(|task| task.work_unit_id.is_none());
+    let settlement_work_units = task_plan.iter().all(|task| task.work_unit_id.is_some());
+    if !legacy_work_units && !settlement_work_units {
+        return validation(
+            "cockpit task-plan work-unit bindings cannot mix legacy and settlement profiles",
+        );
+    }
+    if legacy_work_units {
+        if !legacy_narrative {
+            return validation(
+                "legacy cockpit work-unit shape requires the legacy Mission narrative",
+            );
+        }
+        validate_legacy_cockpit_work(input, task_plan)
+    } else {
+        if !settlement_narrative {
+            return validation(
+                "settlement cockpit work-unit shape requires the settlement Mission narrative",
+            );
+        }
+        validate_settlement_cockpit_work(input, task_plan)
+    }
+}
 
+fn validate_legacy_cockpit_work(
+    input: &MissionPlanPreviewInput,
+    task_plan: &[CockpitTaskPlanIdentity],
+) -> Result<Vec<WorkUnitDefinition>, MissionPlanError> {
+    let mission = &input.mission_definition;
     if mission.acceptance.len() != 1 {
-        return validation("cockpit Mission requires one aggregate acceptance clause");
+        return validation("legacy cockpit Mission requires one aggregate acceptance clause");
     }
     let clause = &mission.acceptance[0];
     validate_uuid_v7("acceptance.clauseId", &clause.clause_id)?;
@@ -1874,18 +2361,15 @@ fn validate_cockpit_and_order(
         task_plan.len(),
         if task_plan.len() == 1 { "" } else { "s" }
     );
-    if clause.statement != expected_acceptance {
-        return validation("cockpit acceptance does not match its generated task count");
-    }
-    if !clause.required_gate_ids.is_empty()
+    if clause.statement != expected_acceptance
+        || !clause.required_gate_ids.is_empty()
         || !clause.required_artifact_ids.is_empty()
         || !clause.completion_blocking
     {
-        return validation("cockpit restart binding cannot invent proof or nonblocking acceptance");
+        return validation("legacy cockpit aggregate acceptance is non-canonical");
     }
-
     if input.work_units.len() != 1 {
-        return validation("cockpit restart binding requires one aggregate WorkUnit");
+        return validation("legacy cockpit restart binding requires one aggregate WorkUnit");
     }
     let work = &input.work_units[0];
     validate_uuid_v7("workUnitId", &work.work_unit_id)?;
@@ -1904,32 +2388,9 @@ fn validate_cockpit_and_order(
         || !work.required_artifacts.is_empty()
         || work.risk_class != RiskClass::Low
     {
-        return validation("cockpit aggregate WorkUnit differs from the supported path");
+        return validation("legacy cockpit aggregate WorkUnit differs from the supported path");
     }
-    if work.file_intents.is_empty() {
-        return validation("cockpit aggregate WorkUnit has no output boundary");
-    }
-    let mut paths = HashSet::new();
-    let mut repository_ids = HashSet::new();
-    for intent in &work.file_intents {
-        if !matches!(
-            intent.operation,
-            ResourceOperation::Create | ResourceOperation::Update
-        ) || intent.expected_base_digest.is_some()
-        {
-            return validation(
-                "cockpit output intents must be create/update without invented digests",
-            );
-        }
-        validate_resource_ref(&intent.resource_ref, &mission.base_oid)?;
-        if !paths.insert(intent.resource_ref.repo_relative_path.as_str()) {
-            return validation("duplicate cockpit output path");
-        }
-        repository_ids.insert(intent.resource_ref.repository_id.as_str());
-    }
-    if repository_ids.len() != 1 {
-        return validation("cockpit Mission must bind one repository identity");
-    }
+    validate_cockpit_file_intents(&work.file_intents, &mission.base_oid)?;
     let planned_paths = task_plan
         .iter()
         .flat_map(|task| task.outputs.iter().cloned())
@@ -1940,7 +2401,9 @@ fn validate_cockpit_and_order(
         .map(|intent| intent.resource_ref.repo_relative_path.clone())
         .collect::<HashSet<_>>();
     if planned_paths != intent_paths {
-        return validation("cockpit aggregate output boundary differs from its TaskGraph plan");
+        return validation(
+            "legacy cockpit aggregate output boundary differs from its TaskGraph plan",
+        );
     }
     validate_uuid_v7(
         "capabilityUnlock.unlockId",
@@ -1950,10 +2413,225 @@ fn validate_cockpit_and_order(
         || work.capability_unlock.available_after_work_unit_id != work.work_unit_id
         || work.capability_unlock.condition_clause_ids != [clause.clause_id.clone()]
     {
-        return validation("cockpit resume unlock differs from its aggregate acceptance");
+        return validation("legacy cockpit resume unlock differs from its aggregate acceptance");
     }
-
     Ok(vec![work.clone()])
+}
+
+fn validate_settlement_cockpit_work(
+    input: &MissionPlanPreviewInput,
+    task_plan: &[CockpitTaskPlanIdentity],
+) -> Result<Vec<WorkUnitDefinition>, MissionPlanError> {
+    let mission = &input.mission_definition;
+    let target_branches = task_plan
+        .iter()
+        .map(|task| {
+            let source = task.source_branch.as_deref().ok_or_else(|| {
+                MissionPlanError::Validation(format!(
+                    "cockpit task {} lacks a source branch",
+                    task.id
+                ))
+            })?;
+            let target = task.target_branch.as_deref().ok_or_else(|| {
+                MissionPlanError::Validation(format!(
+                    "cockpit task {} lacks a target branch",
+                    task.id
+                ))
+            })?;
+            require_nonempty("cockpitTaskPlan.sourceBranch", source)?;
+            require_nonempty("cockpitTaskPlan.targetBranch", target)?;
+            Ok(target)
+        })
+        .collect::<Result<HashSet<_>, MissionPlanError>>()?;
+    if target_branches.len() != 1 {
+        return validation(
+            "claim-eligible cockpit Mission requires every Task to settle into one target branch",
+        );
+    }
+    if mission.acceptance.len() != task_plan.len() || input.work_units.len() != task_plan.len() {
+        return validation("settlement cockpit Mission requires one clause and WorkUnit per Task");
+    }
+    let clauses = mission
+        .acceptance
+        .iter()
+        .map(|clause| {
+            validate_uuid_v7("acceptance.clauseId", &clause.clause_id)?;
+            require_nonempty("acceptance.statement", &clause.statement)?;
+            if clause.required_gate_ids != [COCKPIT_GATE_SUITE_ID]
+                || !clause.required_artifact_ids.is_empty()
+                || !clause.completion_blocking
+            {
+                return validation(
+                    "cockpit task acceptance must be completion-blocking backend evidence",
+                );
+            }
+            Ok((clause.clause_id.as_str(), clause))
+        })
+        .collect::<Result<HashMap<_, _>, MissionPlanError>>()?;
+    if clauses.len() != mission.acceptance.len() {
+        return validation("cockpit task acceptance clause ids must be unique");
+    }
+    let work_by_id = input
+        .work_units
+        .iter()
+        .map(|work| (work.work_unit_id.as_str(), work))
+        .collect::<HashMap<_, _>>();
+    if work_by_id.len() != input.work_units.len() {
+        return validation("cockpit task WorkUnit ids must be unique");
+    }
+    let task_to_work = task_plan
+        .iter()
+        .map(|task| {
+            let work_unit_id = task.work_unit_id.as_deref().ok_or_else(|| {
+                MissionPlanError::Validation("cockpit settlement task lacks workUnitId".into())
+            })?;
+            validate_uuid_v7("cockpitTaskPlan.workUnitId", work_unit_id)?;
+            Ok((task.id.as_str(), work_unit_id))
+        })
+        .collect::<Result<HashMap<_, _>, MissionPlanError>>()?;
+    if task_to_work.len() != task_plan.len() {
+        return validation("cockpit task ids must be unique");
+    }
+    let mut repository_ids = HashSet::new();
+    for task in task_plan {
+        let work_unit_id = task.work_unit_id.as_deref().ok_or_else(|| {
+            MissionPlanError::Validation("cockpit settlement task lacks workUnitId".into())
+        })?;
+        let work = work_by_id.get(work_unit_id).copied().ok_or_else(|| {
+            MissionPlanError::Validation(format!(
+                "cockpit task {} references unknown WorkUnit {}",
+                task.id, work_unit_id
+            ))
+        })?;
+        validate_uuid_v7("workUnit.missionId", &work.mission_id)?;
+        let expected_dependencies = task
+            .dependencies
+            .iter()
+            .map(|dependency| {
+                task_to_work
+                    .get(dependency.as_str())
+                    .copied()
+                    .ok_or_else(|| {
+                        MissionPlanError::Validation(format!(
+                            "cockpit task {} depends on unknown task {}",
+                            task.id, dependency
+                        ))
+                    })
+            })
+            .collect::<Result<Vec<_>, MissionPlanError>>()?;
+        if work.mission_id != mission.mission_id
+            || work.definition_revision != mission.work_graph_definition_revision
+            || work.title != task.title
+            || work.objective != task.description
+            || work
+                .depends_on
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                != expected_dependencies
+            || work.required_role != "implementer"
+            || work.completion_authority_role_ids != ["independent_reviewer"]
+            || work.required_adapter_capabilities != [AdapterCapability::Prompt]
+            || !work.required_capability_templates.is_empty()
+            || !work.required_gates.is_empty()
+            || !work.required_artifacts.is_empty()
+            || work.risk_class != RiskClass::Low
+        {
+            return validation("cockpit task WorkUnit differs from its accepted Task identity");
+        }
+        let ids = validate_cockpit_file_intents(&work.file_intents, &mission.base_oid)?;
+        repository_ids.extend(ids);
+        let planned_paths = task.outputs.iter().cloned().collect::<HashSet<_>>();
+        let intent_paths = work
+            .file_intents
+            .iter()
+            .map(|intent| intent.resource_ref.repo_relative_path.clone())
+            .collect::<HashSet<_>>();
+        if planned_paths != intent_paths {
+            return validation("cockpit task output boundary differs from its WorkUnit");
+        }
+        let expected_symbols = task
+            .symbols
+            .iter()
+            .map(|symbol| {
+                (
+                    symbol.path.as_str(),
+                    symbol.symbol.as_str(),
+                    format!(
+                        "{}:{}-{}",
+                        symbol.path, symbol.range.start_line, symbol.range.end_line
+                    ),
+                )
+            })
+            .collect::<HashSet<_>>();
+        let actual_symbols = work
+            .symbol_intents
+            .iter()
+            .map(|symbol| {
+                (
+                    symbol.resource_ref.repo_relative_path.as_str(),
+                    symbol.qualified_name.as_str(),
+                    symbol.stable_locator.clone(),
+                )
+            })
+            .collect::<HashSet<_>>();
+        if expected_symbols != actual_symbols {
+            return validation("cockpit task symbol boundary differs from its WorkUnit");
+        }
+        validate_uuid_v7(
+            "capabilityUnlock.unlockId",
+            &work.capability_unlock.unlock_id,
+        )?;
+        if work.capability_unlock.capability != "cockpit.complete_task"
+            || work.capability_unlock.available_after_work_unit_id != work.work_unit_id
+            || work.capability_unlock.condition_clause_ids.len() != 1
+        {
+            return validation("cockpit task completion unlock is non-canonical");
+        }
+        let clause_id = &work.capability_unlock.condition_clause_ids[0];
+        let clause = clauses.get(clause_id.as_str()).copied().ok_or_else(|| {
+            MissionPlanError::Validation("cockpit task unlock references unknown clause".into())
+        })?;
+        let expected_statement = format!(
+            "Complete generated task {} ({}) through exact-OID review, merge, and immutable settlement",
+            task.id, task.title
+        );
+        if clause.statement != expected_statement {
+            return validation("cockpit task clause does not match its Task identity");
+        }
+    }
+    if repository_ids.len() != 1 {
+        return validation("cockpit Mission must bind one repository identity");
+    }
+    Ok(input.work_units.clone())
+}
+
+fn validate_cockpit_file_intents<'a>(
+    intents: &'a [ResourceIntent],
+    base_oid: &str,
+) -> Result<HashSet<&'a str>, MissionPlanError> {
+    if intents.is_empty() {
+        return validation("cockpit WorkUnit has no output boundary");
+    }
+    let mut paths = HashSet::new();
+    let mut repository_ids = HashSet::new();
+    for intent in intents {
+        if !matches!(
+            intent.operation,
+            ResourceOperation::Create | ResourceOperation::Update
+        ) || intent.expected_base_digest.is_some()
+        {
+            return validation(
+                "cockpit output intents must be create/update without invented digests",
+            );
+        }
+        validate_resource_ref(&intent.resource_ref, base_oid)?;
+        if !paths.insert(intent.resource_ref.repo_relative_path.as_str()) {
+            return validation("duplicate cockpit output path");
+        }
+        repository_ids.insert(intent.resource_ref.repository_id.as_str());
+    }
+    Ok(repository_ids)
 }
 
 fn validate_a7_and_order(
@@ -2782,6 +3460,13 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// RFC 8785-compatible subset used by the A7 contracts. Object keys use UTF-16

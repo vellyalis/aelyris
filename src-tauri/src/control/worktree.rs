@@ -81,6 +81,13 @@ pub fn commit_owned_for_branch(
 pub fn remove_for_branch(repo_path: &str, branch: &str, delete_branch: bool) -> ControlResult<()> {
     git::remove_worktree_for_branch(repo_path, branch, delete_branch)
 }
+
+/// Restart-safe post-merge cleanup. Unlike `remove_for_branch`, this succeeds
+/// when a previous attempt already removed the worktree and still verifies that
+/// the local source branch is gone.
+pub fn remove_for_branch_idempotent(repo_path: &str, branch: &str) -> ControlResult<()> {
+    git::remove_worktree_for_branch_idempotent(repo_path, branch)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,6 +14,7 @@ use crate::task::{MissionGateEvidence, MissionPlanActivation, MissionPlanPreview
 pub const MISSION_REVIEW_SCHEMA: &str = "aelyris.review_record/v1";
 pub const REVIEW_INDEPENDENCE_SCHEMA: &str = "aelyris.reviewer_independence_proof/v1";
 pub const REVIEW_POLICY_VERSION: &str = "a7-core-reviewer-independence/v1";
+pub const COCKPIT_REVIEW_POLICY_VERSION: &str = "cockpit-reviewer-independence/v1";
 pub const REVIEW_EVIDENCE_MAX_AGE_MS: u64 = 300_000;
 pub const REVIEWER_INVOCATION_RECEIPT_SCHEMA: &str =
     "aelyris.mission_reviewer_invocation_receipt/v1";
@@ -583,13 +584,33 @@ pub fn builder_runtime_attestation(
     evidence: &MissionGateEvidence,
     builder_adapter: &str,
 ) -> Result<RuntimeInvocationAttestation, String> {
-    if builder_adapter != A7_BUILDER_ADAPTER {
-        return Err("builder adapter fact differs from the fixed visible Codex route".to_string());
-    }
-    let model_ref = VersionedRef {
-        id: UNOBSERVED_MODEL_ID.to_string(),
-        contract_version: "aelyris.agent-model-observation/v1".to_string(),
-        content_digest: sha256_text(UNOBSERVED_MODEL_ID),
+    let (provider, model_ref) = if builder_adapter == A7_BUILDER_ADAPTER {
+        (
+            A7_BUILDER_PROVIDER.to_string(),
+            VersionedRef {
+                id: UNOBSERVED_MODEL_ID.to_string(),
+                contract_version: "aelyris.agent-model-observation/v1".to_string(),
+                content_digest: sha256_text(UNOBSERVED_MODEL_ID),
+            },
+        )
+    } else {
+        let model = crate::agent::interactive::resolve_agent_model(builder_adapter);
+        let provider = match crate::agent::interactive::AgentCli::from_model(&model) {
+            crate::agent::interactive::AgentCli::Codex => "codex",
+            crate::agent::interactive::AgentCli::Claude => "claude",
+            crate::agent::interactive::AgentCli::Gemini => "gemini",
+            crate::agent::interactive::AgentCli::Custom(_) => {
+                return Err("custom builder adapters cannot authorize Mission settlement".into())
+            }
+        };
+        (
+            provider.to_string(),
+            VersionedRef {
+                id: model.clone(),
+                contract_version: "aelyris.visible-agent-model/v1".to_string(),
+                content_digest: sha256_text(&model),
+            },
+        )
     };
     let lineage_id = format!(
         "visible-pty:{}:{}:{}",
@@ -598,7 +619,7 @@ pub fn builder_runtime_attestation(
     Ok(RuntimeInvocationAttestation {
         principal_id: evidence.agent_run_id.clone(),
         logical_session_id: evidence.pty_session_id.clone(),
-        provider: A7_BUILDER_PROVIDER.to_string(),
+        provider,
         model_ref,
         invocation_id: evidence.attempt_id.clone(),
         lineage_ref: VersionedRef {
@@ -609,6 +630,23 @@ pub fn builder_runtime_attestation(
         ancestor_lineage_ids: Vec::new(),
         runtime_domain_id: evidence.runtime_domain_id.clone(),
     })
+}
+
+pub fn builder_runtime_attestation_for_policy(
+    evidence: &MissionGateEvidence,
+    builder_adapter: &str,
+    policy_version: &str,
+) -> Result<RuntimeInvocationAttestation, String> {
+    match policy_version {
+        REVIEW_POLICY_VERSION if builder_adapter != A7_BUILDER_ADAPTER => {
+            return Err(
+                "builder adapter fact differs from the fixed visible Codex route".to_string(),
+            )
+        }
+        REVIEW_POLICY_VERSION | COCKPIT_REVIEW_POLICY_VERSION => {}
+        _ => return Err("unsupported reviewer-independence policy".to_string()),
+    }
+    builder_runtime_attestation(evidence, builder_adapter)
 }
 
 fn canonical_independence_digest(proof: &ReviewerIndependenceProof) -> Result<String, String> {
@@ -623,7 +661,10 @@ pub fn validate_independence_proof(proof: &ReviewerIndependenceProof) -> Result<
     validate_versioned_ref(&proof.reviewer_lineage_ref, "reviewer lineage")?;
     validate_versioned_ref(&proof.builder_lineage_ref, "builder lineage")?;
     if proof.schema != REVIEW_INDEPENDENCE_SCHEMA
-        || proof.policy_version != REVIEW_POLICY_VERSION
+        || !matches!(
+            proof.policy_version.as_str(),
+            REVIEW_POLICY_VERSION | COCKPIT_REVIEW_POLICY_VERSION
+        )
         || proof.reviewer_principal_id.trim().is_empty()
         || proof.builder_principal_id.trim().is_empty()
         || proof.reviewer_logical_session_id.trim().is_empty()
@@ -677,6 +718,30 @@ pub fn compute_independence(
     different_provider_required: bool,
     computed_by_event_id: &str,
 ) -> Result<ReviewerIndependenceProof, String> {
+    compute_independence_with_policy(
+        evidence,
+        reviewer,
+        builder,
+        different_provider_required,
+        computed_by_event_id,
+        REVIEW_POLICY_VERSION,
+    )
+}
+
+pub fn compute_independence_with_policy(
+    evidence: &MissionGateEvidence,
+    reviewer: &RuntimeInvocationAttestation,
+    builder: &RuntimeInvocationAttestation,
+    different_provider_required: bool,
+    computed_by_event_id: &str,
+    policy_version: &str,
+) -> Result<ReviewerIndependenceProof, String> {
+    if !matches!(
+        policy_version,
+        REVIEW_POLICY_VERSION | COCKPIT_REVIEW_POLICY_VERSION
+    ) {
+        return Err("unsupported reviewer-independence policy".into());
+    }
     if builder.principal_id != evidence.agent_run_id
         || builder.logical_session_id != evidence.pty_session_id
         || builder.invocation_id != evidence.attempt_id
@@ -721,7 +786,7 @@ pub fn compute_independence(
         .any(|relation| relation == "same_or_forked_lineage");
     let mut proof = ReviewerIndependenceProof {
         schema: REVIEW_INDEPENDENCE_SCHEMA.to_string(),
-        policy_version: REVIEW_POLICY_VERSION.to_string(),
+        policy_version: policy_version.to_string(),
         reviewer_principal_id: reviewer.principal_id.clone(),
         builder_principal_id: evidence.agent_run_id.clone(),
         reviewer_logical_session_id: reviewer.logical_session_id.clone(),
@@ -783,15 +848,50 @@ pub(crate) fn receipt_response_projection(
     Ok((model.clause_coverage, model.findings))
 }
 
+fn review_clauses_for_activation<'a>(
+    preview: &'a MissionPlanPreview,
+    activation: &MissionPlanActivation,
+) -> Result<Vec<&'a AcceptanceClause>, String> {
+    if preview.review_requirement.policy_id == REVIEW_POLICY_VERSION {
+        return Ok(preview.mission_definition.acceptance.iter().collect());
+    }
+    if preview.review_requirement.policy_id != COCKPIT_REVIEW_POLICY_VERSION {
+        return Err("unsupported Mission review policy".into());
+    }
+    let work = preview
+        .work_units
+        .iter()
+        .find(|work| work.work_unit_id == activation.work_unit_id)
+        .ok_or_else(|| "cockpit activation has no accepted WorkUnit".to_string())?;
+    let clause_ids = work
+        .capability_unlock
+        .condition_clause_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let clauses = preview
+        .mission_definition
+        .acceptance
+        .iter()
+        .filter(|clause| clause_ids.contains(clause.clause_id.as_str()))
+        .collect::<Vec<_>>();
+    if clauses.is_empty() || clauses.len() != clause_ids.len() {
+        return Err("cockpit WorkUnit acceptance coverage is incomplete".into());
+    }
+    Ok(clauses)
+}
+
 pub(crate) fn build_review_prompt(
     preview: &MissionPlanPreview,
+    activation: &MissionPlanActivation,
     evidence: &MissionGateEvidence,
     changed_paths: &[String],
     diff: &str,
-) -> String {
+) -> Result<String, String> {
     let gate_argv = serde_json::to_string(&evidence.command_argv)
         .unwrap_or_else(|_| "[\"unavailable\"]".to_string());
-    format!(
+    let clauses = review_clauses_for_activation(preview, activation)?;
+    Ok(format!(
         "You are the independent reviewer for one frozen Aelyris Mission candidate. Review only the exact OID and clauses below. Return strict JSON matching the supplied output schema with exactly two keys: clauseCoverage and findings. clauseCoverage is an array of objects and must contain every clauseId exactly once with accepted boolean and a concrete reason. findings is an array of {{clauseId|null,message}} objects. Do not return an object map for clauseCoverage. Do not suggest scope expansion.\n\nThe gate facts below are authoritative backend evidence: Aelyris executed the exact argv after freezing the candidate, bound the result to the exact tested OID, and revalidated freshness before this review. Treat result=passed as executed test evidence, not as an unverified caller claim.\nExact tested OID: {}\nGate evidence id: {}\nGate result: {}\nGate command argv: {}\nGate evidence digest: {}\nGate started at unix ms: {}\nGate ended at unix ms: {}\nAcceptance clauses:\n{}\nChanged paths: {}\nUnified diff:\n{}",
         evidence.tested_oid,
         evidence.evidence_id,
@@ -800,16 +900,14 @@ pub(crate) fn build_review_prompt(
         evidence.evidence_digest,
         evidence.started_at_unix_ms,
         evidence.ended_at_unix_ms,
-        preview
-            .mission_definition
-            .acceptance
+        clauses
             .iter()
             .map(|clause| format!("- {}: {}", clause.clause_id, clause.statement))
             .collect::<Vec<_>>()
             .join("\n"),
         changed_paths.join(", "),
         diff,
-    )
+    ))
 }
 
 #[derive(Serialize)]
@@ -845,14 +943,31 @@ pub fn review_exact_candidate(
     different_provider_required: bool,
     invocation: &ReviewerInvocation,
 ) -> Result<MissionReviewRecord, String> {
+    let policy = preview.review_requirement.policy_id.as_str();
+    let a7_policy = policy == REVIEW_POLICY_VERSION;
+    let cockpit_policy = policy == COCKPIT_REVIEW_POLICY_VERSION;
+    let changed = changed_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let owned = activation
+        .owned_targets
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let cockpit_suite_valid = evidence
+        .cockpit_gate_suite()
+        .map_err(|error| error.to_string())?
+        .is_some();
     if preview.content_digest != activation.plan_content_digest
-        || preview.review_requirement.policy_id != REVIEW_POLICY_VERSION
+        || (!a7_policy && !cockpit_policy)
         || activation.activation_id != evidence.activation_id
         || activation.plan_content_digest != evidence.plan_content_digest
-        || activation.accepted_base_oid != evidence.base_oid
+        || (a7_policy && activation.accepted_base_oid != evidence.base_oid)
+        || (cockpit_policy && !cockpit_suite_valid)
         || evidence.candidate_oid != evidence.tested_oid
         || evidence.result != "passed"
-        || changed_paths != activation.owned_targets
+        || changed != owned
     {
         return Err("Mission review input binding changed or contains an unowned diff".to_string());
     }
@@ -861,15 +976,16 @@ pub fn review_exact_candidate(
     {
         return Err("Mission test evidence is stale".to_string());
     }
-    let clauses = &preview.mission_definition.acceptance;
+    let clauses = review_clauses_for_activation(preview, activation)?;
     invocation.receipt.validate()?;
     let review_id = uuid::Uuid::now_v7().to_string();
-    let independence = compute_independence(
+    let independence = compute_independence_with_policy(
         evidence,
         &invocation.receipt.runtime_attestation(),
         builder,
         different_provider_required,
         &review_id,
+        policy,
     )?;
     if !independence.eligible {
         return Err(format!(
@@ -917,7 +1033,11 @@ pub fn review_exact_candidate(
         MissionReviewVerdict::ChangesRequested
     };
     let next_action = if accepted {
-        "Create an A7-bound durable merge intent and integrate only this reviewed OID into the isolated acceptance target."
+        if cockpit_policy {
+            "Create a Task-bound durable merge intent, integrate only this reviewed OID into the accepted target, then let TaskRepo mint immutable work/Mission settlement packets."
+        } else {
+            "Create an A7-bound durable merge intent and integrate only this reviewed OID into the isolated acceptance target."
+        }
     } else {
         "Create a new implementation generation that addresses the exact findings, then freeze, test, and review the new OID."
     }
@@ -1148,10 +1268,12 @@ mod tests {
         let (preview, activation, evidence) = fixture();
         let prompt = build_review_prompt(
             &preview,
+            &activation,
             &evidence,
             &activation.owned_targets,
             "+ named regression test",
-        );
+        )
+        .unwrap();
 
         assert!(prompt.contains(&format!("Exact tested OID: {}", evidence.tested_oid)));
         assert!(prompt.contains(&format!("Gate result: {}", evidence.result)));

@@ -55,6 +55,11 @@ function mockInvoke(
   plan: unknown,
   decisions: Record<string, string> = {},
   missions: ReturnType<typeof missionPreview>[] = [],
+  reviewSettlement: {
+    settled?: boolean;
+    workPacketId?: string | null;
+    missionCompletionPacketId?: string | null;
+  } = {},
 ) {
   tauriMocks.invoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
@@ -101,6 +106,7 @@ function mockInvoke(
             state: "complete",
           },
           merged: true,
+          ...reviewSettlement,
         });
       case "orchestrator_step":
         return Promise.resolve({
@@ -262,6 +268,30 @@ describe("OrchestratorPanel", () => {
     );
     expect(tauriMocks.invoke).not.toHaveBeenCalledWith("review_branch", expect.anything());
     await waitFor(() => expect(screen.getByText("Ready for review reviewed and merged.")).toBeTruthy());
+  });
+
+  it("surfaces the immutable Mission completion packet returned by settlement", async () => {
+    mockInvoke(
+      [task({ id: "t1", title: "Packet-backed review", status: "review", owner: "worker-a" })],
+      { to_dispatch: [], state: "active" },
+      {},
+      [],
+      {
+        settled: true,
+        workPacketId: "0198d000-0000-7000-8000-000000000001",
+        missionCompletionPacketId: "0198e000-0000-7000-8000-000000000002",
+      },
+    );
+
+    render(<OrchestratorPanel projectPath="C:/repo" />);
+    await waitFor(() => expect(screen.getByText("Packet-backed review")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Review & merge" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Packet-backed review reviewed and merged. Mission completed · packet 0198e000."),
+      ).toBeTruthy(),
+    );
   });
 
   it("restores the latest accepted cockpit Mission goal for the current repository", async () => {

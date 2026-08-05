@@ -63,6 +63,7 @@ interface OrchestratorPanelProps {
 interface OrchestratorStepReport {
   dispatched: string[];
   merged: string[];
+  settlementPending?: string[];
   rejected: string[];
   recovered?: string[];
   escalations?: unknown[];
@@ -90,6 +91,9 @@ interface OrchestratorReviewAndMergeReport {
   review: BranchReviewReport;
   step: OrchestratorStepReport | null;
   merged: boolean;
+  settled?: boolean;
+  workPacketId?: string | null;
+  missionCompletionPacketId?: string | null;
 }
 
 interface CockpitMissionPreview {
@@ -262,6 +266,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
       const changes = [
         report.dispatched.length > 0 ? `${report.dispatched.length} dispatched` : null,
         report.merged.length > 0 ? `${report.merged.length} merged` : null,
+        report.settlementPending?.length ? `${report.settlementPending.length} awaiting settlement` : null,
         report.recovered?.length ? `${report.recovered.length} recovered` : null,
         report.escalations?.length ? `${report.escalations.length} blocked` : null,
       ].filter((value): value is string => Boolean(value));
@@ -296,7 +301,15 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
         });
         return;
       }
-      setActionStatus({ kind: "success", message: `${reviewTask.title} reviewed and merged.` });
+      const proof = result.missionCompletionPacketId
+        ? ` Mission completed · packet ${result.missionCompletionPacketId.slice(0, 8)}.`
+        : result.settled && result.workPacketId
+          ? ` Work settled · packet ${result.workPacketId.slice(0, 8)}.`
+          : "";
+      setActionStatus({
+        kind: "success",
+        message: `${reviewTask.title} reviewed and merged.${proof}`,
+      });
     } catch (error) {
       setActionStatus({
         kind: "error",
@@ -307,8 +320,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     }
   }, [planning, projectPath, reviewTask, reviewing, stepping]);
 
-  const canBuild =
-    goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping && !reviewing;
+  const canBuild = goal.trim().length > 0 && projectPath.length > 0 && !planning && !stepping && !reviewing;
   const canRun =
     projectPath.length > 0 &&
     tasks.length > 0 &&
@@ -319,13 +331,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     !reviewing;
   const reviewOnly = reviewTask != null && !hasRunnableWork;
   const canReview = reviewOnly && projectPath.length > 0 && !planning && !stepping && !reviewing;
-  const runLabel = reviewing
-    ? "Reviewing…"
-    : reviewOnly
-      ? "Review & merge"
-      : stepping
-        ? "Starting…"
-        : "Run next step";
+  const runLabel = reviewing ? "Reviewing…" : reviewOnly ? "Review & merge" : stepping ? "Starting…" : "Run next step";
 
   return (
     <div className={styles.panel}>

@@ -96,6 +96,12 @@ pub trait LoopPorts {
     fn implementer_id(&self, task_id: &str) -> String;
     /// Merge the reviewed branch for `task_id` into the target.
     fn merge(&mut self, task_id: &str) -> Result<(), String>;
+    /// A successful merge normally authorizes the TaskGraph `Done` transition.
+    /// Mission-bound tasks override this so the graph stays at Review until the
+    /// existing settlement owner persists an immutable CompletedWorkPacket.
+    fn completion_deferred(&self, _task_id: &str) -> bool {
+        false
+    }
 
     /// Is dispatching a task with these declared symbol `intents` AND file
     /// `outputs` blocked by the LIVE symbol-ownership map (what running agents are
@@ -139,6 +145,10 @@ pub struct Escalation {
 pub struct StepReport {
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
+    /// Git integration completed, but Task Done/finalization is waiting for an
+    /// immutable Mission settlement packet.
+    #[serde(default)]
+    pub settlement_pending: Vec<String>,
     pub rejected: Vec<String>,
     /// Tasks whose worker died this step (crashed with a non-zero exit, or hung
     /// past the wall-clock budget and was killed) and were reassigned
@@ -240,6 +250,7 @@ pub fn step(
     ports: &mut impl LoopPorts,
 ) -> StepReport {
     let mut merged = Vec::new();
+    let mut settlement_pending = Vec::new();
     let mut rejected = Vec::new();
     let mut recovered = Vec::new();
     let mut escalations = Vec::new();
@@ -318,7 +329,11 @@ pub fn step(
         match review(&gates, &reviewer_id, &implementer_id) {
             ReviewVerdict::Merge => {
                 if ports.merge(&id).is_ok() {
-                    let _ = graph.transition(&id, TaskStatus::Done);
+                    if ports.completion_deferred(&id) {
+                        settlement_pending.push(id.clone());
+                    } else {
+                        let _ = graph.transition(&id, TaskStatus::Done);
+                    }
                     merged.push(id);
                 } else {
                     // Merge failed (e.g. a conflict because the target advanced
@@ -415,6 +430,7 @@ pub fn step(
     StepReport {
         dispatched,
         merged,
+        settlement_pending,
         rejected,
         recovered,
         escalations,
@@ -428,6 +444,7 @@ pub struct RunReport {
     pub steps: usize,
     pub dispatched: Vec<String>,
     pub merged: Vec<String>,
+    pub settlement_pending: Vec<String>,
     pub rejected: Vec<String>,
     /// Every reassignment performed while driving the loop (a crashed or
     /// hung-and-killed worker's task sent back for another attempt). See BR9.
@@ -457,6 +474,7 @@ pub fn run(
         steps: 0,
         dispatched: Vec::new(),
         merged: Vec::new(),
+        settlement_pending: Vec::new(),
         rejected: Vec::new(),
         recovered: Vec::new(),
         escalations: Vec::new(),
@@ -471,6 +489,7 @@ pub fn run(
         report.steps += 1;
         report.dispatched.extend(r.dispatched);
         report.merged.extend(r.merged);
+        report.settlement_pending.extend(r.settlement_pending);
         report.rejected.extend(r.rejected);
         report.recovered.extend(r.recovered);
         report.escalations.extend(r.escalations);
@@ -513,6 +532,7 @@ mod tests {
         /// that exceeded the wall-clock budget and was killed by the adapter.
         pending_timeout: Vec<String>,
         review_ready: bool,
+        defer_completion: bool,
     }
 
     impl FakePorts {
@@ -530,6 +550,7 @@ mod tests {
                 pending_fail: Vec::new(),
                 pending_timeout: Vec::new(),
                 review_ready: true,
+                defer_completion: false,
             }
         }
     }
@@ -578,6 +599,9 @@ mod tests {
             } else {
                 Err("conflict".to_string())
             }
+        }
+        fn completion_deferred(&self, _task_id: &str) -> bool {
+            self.defer_completion
         }
     }
 
@@ -859,6 +883,24 @@ mod tests {
         assert_eq!(g.get("a").unwrap().status, TaskStatus::Done);
         assert_eq!(report.state, LoopState::Complete);
         assert_eq!(ports.merged, ["a"]);
+    }
+
+    #[test]
+    fn packet_owned_completion_stays_in_review_until_settlement() {
+        let mut graph = TaskGraph::new();
+        graph.add(Task::new("a", "A")).unwrap();
+        graph.recompute_ready();
+        graph.transition("a", TaskStatus::Running).unwrap();
+        graph.transition("a", TaskStatus::Review).unwrap();
+        let mut ports = FakePorts::new();
+        ports.defer_completion = true;
+
+        let report = step(&mut graph, &caps(4), &CostUsage::default(), &mut ports);
+
+        assert_eq!(report.merged, ["a"]);
+        assert_eq!(report.settlement_pending, ["a"]);
+        assert_eq!(graph.get("a").unwrap().status, TaskStatus::Review);
+        assert_ne!(report.state, LoopState::Complete);
     }
 
     #[test]

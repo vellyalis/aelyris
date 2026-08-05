@@ -87,11 +87,36 @@ pub fn gate_results_digest(gates: &GateResults) -> Result<String, String> {
         .map_err(|error| format!("serialize review gates: {error}"))
 }
 
-fn a7_environment_fingerprint(
+fn environment_identity_commands(program: &str) -> Vec<(String, Vec<String>)> {
+    let tool = std::path::Path::new(program)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+    match tool.as_str() {
+        "cargo" => vec![
+            (program.to_string(), vec!["-V".into()]),
+            ("rustc".into(), vec!["-Vv".into()]),
+        ],
+        "pnpm" => vec![
+            (program.to_string(), vec!["--version".into()]),
+            ("node".into(), vec!["--version".into()]),
+        ],
+        "corepack" => vec![
+            (program.to_string(), vec!["--version".into()]),
+            (program.to_string(), vec!["pnpm".into(), "--version".into()]),
+            ("node".into(), vec!["--version".into()]),
+        ],
+        _ => vec![(program.to_string(), vec!["--version".into()])],
+    }
+}
+
+fn command_environment_fingerprint(
+    program: &str,
     cwd: &str,
     cargo_target_dir: Option<&std::path::Path>,
 ) -> Result<String, String> {
-    fn version(program: &str, args: &[&str], cwd: &str) -> Result<String, String> {
+    fn version(program: &str, args: &[String], cwd: &str) -> Result<String, String> {
         let mut command = crate::process::hidden_command(program);
         command.args(args).current_dir(cwd);
         let output = crate::process::run_supervised(
@@ -124,15 +149,26 @@ fn a7_environment_fingerprint(
                 .map_err(|error| format!("canonicalize exact gate Cargo target: {error}"))
         })
         .transpose()?;
+    let tool_identity = environment_identity_commands(program)
+        .into_iter()
+        .map(|(program, args)| {
+            version(&program, &args, cwd).map(|value| {
+                serde_json::json!({
+                    "program": program,
+                    "args": args,
+                    "output": value,
+                })
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let identity = serde_json::json!({
-        "schema": "aelyris.a7_gate_environment/v1",
+        "schema": "aelyris.command_environment/v1",
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
         "family": std::env::consts::FAMILY,
         "cwd": canonical_cwd.to_string_lossy().replace('\\', "/"),
         "cargoTargetDir": canonical_cargo_target,
-        "cargoVersion": version("cargo", &["-V"], cwd)?,
-        "rustcVersionVerbose": version("rustc", &["-Vv"], cwd)?,
+        "toolIdentity": tool_identity,
     });
     serde_json::to_vec(&identity)
         .map(|bytes| sha256_hex(&bytes))
@@ -170,7 +206,7 @@ pub fn run_exact_command_with_cargo_target(
     let canonical_argv =
         serde_json::to_vec(argv).map_err(|error| format!("serialize exact gate argv: {error}"))?;
     let command_fingerprint = sha256_hex(&canonical_argv);
-    let environment_fingerprint = a7_environment_fingerprint(cwd, cargo_target_dir)?;
+    let environment_fingerprint = command_environment_fingerprint(program, cwd, cargo_target_dir)?;
     let started = now_unix_ms();
     let mut command = crate::process::hidden_command(program);
     command.args(args).current_dir(cwd);
@@ -476,5 +512,36 @@ mod tests {
             cached.environment_fingerprint, evidence.environment_fingerprint,
             "the exact evidence must bind the shared Cargo cache identity"
         );
+    }
+
+    #[test]
+    fn node_gate_environment_identity_never_requires_the_rust_toolchain() {
+        for program in ["pnpm", "pnpm.cmd", "corepack", "corepack.cmd"] {
+            let commands = environment_identity_commands(program);
+            assert!(commands.iter().all(|(tool, _)| {
+                let tool = tool.to_ascii_lowercase();
+                !tool.contains("cargo") && !tool.contains("rustc")
+            }));
+            assert!(commands.iter().any(|(tool, _)| {
+                std::path::Path::new(tool)
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| matches!(name, "pnpm" | "corepack"))
+            }));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn exact_node_gate_runs_through_the_resolved_corepack_shim() {
+        let program = crate::agent::interactive::platform_cli_program("corepack");
+        if program == "corepack" {
+            return;
+        }
+        let argv = vec![program, "pnpm".into(), "--version".into()];
+        let evidence = run_exact_command(&argv, env!("CARGO_MANIFEST_DIR")).unwrap();
+        assert_eq!(evidence.result, "passed");
+        assert_eq!(evidence.exit_code, Some(0));
+        assert_eq!(evidence.environment_fingerprint.len(), 64);
     }
 }

@@ -24,7 +24,7 @@ pub enum GateKind {
 }
 
 impl GateKind {
-    fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             GateKind::Tests => "tests",
             GateKind::Lint => "lint",
@@ -98,7 +98,7 @@ pub fn run_deterministic_gates(
         let (pass, reason) = if cmds.is_empty() {
             (
                 false,
-                Some(format!("no {} command configured", kind.name())),
+                Some(format!("no {} command configured", kind.as_str())),
             )
         } else {
             let mut outcome = (true, None);
@@ -117,7 +117,7 @@ pub fn run_deterministic_gates(
             GateKind::Types => gates.types_pass = pass,
         }
         if let Some(reason) = reason {
-            gates.failures.push((kind.name().to_string(), reason));
+            gates.failures.push((kind.as_str().to_string(), reason));
         }
     }
     gates

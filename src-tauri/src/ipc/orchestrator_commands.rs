@@ -161,6 +161,81 @@ pub struct OrchestratorReviewAndMergeReport {
     pub review: super::review_commands::BranchReviewReport,
     pub step: Option<StepReport>,
     pub merged: bool,
+    pub settled: bool,
+    pub work_packet_id: Option<String>,
+    pub mission_completion_packet_id: Option<String>,
+}
+
+fn durable_cockpit_review_projection(
+    tasks: &TaskManager,
+    db: &crate::db::ManagedDb,
+    task_id: &str,
+) -> Result<
+    (
+        super::review_commands::BranchReviewReport,
+        MissionPlanActivation,
+    ),
+    String,
+> {
+    let activation = tasks
+        .mission_activation_for_task(task_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("cockpit completion retry has no activation for task {task_id}"))?;
+    let evidence = tasks
+        .mission_gate_evidence(&activation.activation_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "cockpit completion retry has no exact gate evidence".to_string())?;
+    evidence
+        .cockpit_gate_suite()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "cockpit completion retry evidence is not a typed gate suite".to_string())?;
+    let review = db
+        .with(|database| {
+            crate::persistence::ReviewRepo::latest_for_activation(
+                database,
+                &activation.activation_id,
+            )
+        })?
+        .ok_or_else(|| "cockpit completion retry has no durable review".to_string())?;
+    crate::review::mission::validate_mission_review_record(&review)?;
+    let binding = db
+        .with(|database| {
+            crate::persistence::MergeRepo::mission_binding_for_activation(
+                database,
+                &activation.activation_id,
+            )
+        })?
+        .ok_or_else(|| "cockpit completion retry has no durable merge binding".to_string())?;
+    if review.verdict != crate::review::MissionReviewVerdict::AcceptedExactOid
+        || review.activation_id != activation.activation_id
+        || review.work_unit_id != activation.work_unit_id
+        || review.tested_evidence_id != evidence.evidence_id
+        || review.reviewed_oid != evidence.tested_oid
+        || binding.review_id != review.review_id
+        || binding.tested_evidence_id != evidence.evidence_id
+        || binding.source_oid != evidence.tested_oid
+        || binding.target_oid != evidence.base_oid
+    {
+        return Err("cockpit completion retry review projection drifted".to_string());
+    }
+    Ok((
+        super::review_commands::BranchReviewReport {
+            gates: crate::review::GateResults {
+                tests_pass: true,
+                lint_pass: true,
+                types_pass: true,
+                design_consistent: true,
+                context_aligned: true,
+            },
+            verdict: crate::review::ReviewVerdict::Merge,
+            merge_ok: true,
+            reasons: Vec::new(),
+            candidate_source_oid: binding.source_oid,
+            candidate_target_oid: binding.target_oid,
+            reviewer_model: review.reviewer_independence.reviewer_model_ref.id,
+        },
+        activation,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -179,6 +254,64 @@ pub async fn orchestrator_review_and_merge(
     repo_path: String,
     task_id: String,
 ) -> Result<OrchestratorReviewAndMergeReport, String> {
+    startup.require_dispatch_admitted()?;
+    let managed_db = app.state::<crate::db::ManagedDb>();
+    let resumable_settlement = tasks
+        .current_execution(&task_id)
+        .map(|attempt| tasks.is_resumable_cockpit_settlement(&attempt))
+        .transpose()?
+        .unwrap_or(false);
+    let pending_finalization = tasks
+        .pending_cockpit_finalization(&task_id)
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if resumable_settlement || pending_finalization {
+        let (review, activation) = durable_cockpit_review_projection(
+            tasks.inner().as_ref(),
+            managed_db.inner(),
+            &task_id,
+        )?;
+        if activation.repository_root
+            != crate::control::loop_ports::canonical_dispatch_repo_path(&repo_path)?
+        {
+            return Err("cockpit completion retry repository identity changed".into());
+        }
+        let settlement = tasks
+            .settle_cockpit_task(&task_id)
+            .map_err(|error| error.to_string())?;
+        crate::control::loop_ports::finalize_settled_cockpit_task(
+            tasks.inner().as_ref(),
+            managed_db.inner(),
+            ownership.inner(),
+            symbol_ownership.inner(),
+            bus.inner(),
+            &activation,
+            &settlement.work_packet,
+        )?;
+        let mission_completion_packet_id = settlement
+            .mission_packet
+            .as_ref()
+            .map(|packet| packet.packet_id.clone());
+        publish_and_emit(
+            &app,
+            &bus,
+            crate::control::loop_ports::cockpit_task_completed_event(
+                &task_id,
+                &settlement.work_packet,
+                mission_completion_packet_id.as_deref(),
+            ),
+        )?;
+        let _ = app.emit("task-graph-updated", tasks.list());
+        return Ok(OrchestratorReviewAndMergeReport {
+            review,
+            step: None,
+            merged: true,
+            settled: true,
+            work_packet_id: Some(settlement.work_packet.packet_id),
+            mission_completion_packet_id,
+        });
+    }
+
     let reviewed = super::review_commands::review_task_candidate(
         context.inner().clone(),
         tasks.inner().clone(),
@@ -186,22 +319,19 @@ pub async fn orchestrator_review_and_merge(
         task_id.clone(),
     )
     .await?;
-
-    if !reviewed.report.merge_ok {
-        return Ok(OrchestratorReviewAndMergeReport {
-            review: reviewed.report,
-            step: None,
-            merged: false,
-        });
-    }
-
-    let reviewer_id = reviewed.binding.reviewer_id.clone();
+    let super::review_commands::ReviewedTaskCandidate {
+        report: review,
+        binding,
+        mission_lineage,
+    } = reviewed;
+    let merge_ok = review.merge_ok;
+    let reviewer_id = binding.reviewer_id.clone();
     let mut gates = HashMap::new();
-    gates.insert(task_id.clone(), reviewed.report.gates);
+    gates.insert(task_id.clone(), review.gates);
     let mut review_bindings = HashMap::new();
-    review_bindings.insert(task_id.clone(), reviewed.binding);
+    review_bindings.insert(task_id.clone(), binding);
 
-    let report = run_step_visible(
+    let mut report = run_step_visible(
         &startup,
         &tasks,
         &cost,
@@ -220,24 +350,107 @@ pub async fn orchestrator_review_and_merge(
         Some(app.state::<crate::db::ManagedDb>().inner()),
         None,
     )?;
+    if !merge_ok {
+        if !report.rejected.iter().any(|id| id == &task_id) {
+            return Err(format!(
+                "rejected review for task '{task_id}' did not close or requeue the execution attempt"
+            ));
+        }
+        let _ = app.emit("task-graph-updated", tasks.list());
+        let _ = app.emit("orchestrator-step", &report);
+        return Ok(OrchestratorReviewAndMergeReport {
+            review,
+            step: Some(report),
+            merged: false,
+            settled: false,
+            work_packet_id: None,
+            mission_completion_packet_id: None,
+        });
+    }
     if !report.merged.iter().any(|id| id == &task_id) {
         return Err(format!(
             "reviewed task '{task_id}' did not merge; the candidate or merge authority changed"
         ));
     }
 
+    let mut settled = false;
+    let mut work_packet_id = None;
+    let mut mission_completion_packet_id = None;
+    if let Some(lineage) = mission_lineage {
+        if !report.settlement_pending.iter().any(|id| id == &task_id) {
+            return Err(format!(
+                "Mission-bound task '{task_id}' merged without entering packet settlement"
+            ));
+        }
+        let settlement = tasks
+            .settle_cockpit_task(&task_id)
+            .map_err(|error| error.to_string())?;
+        if settlement.work_packet.activation_id != lineage.activation.activation_id
+            || settlement.work_packet.gate_evidence_id != lineage.evidence.evidence_id
+            || settlement.work_packet.review_id != lineage.review.review_id
+            || settlement.work_packet.tested_oid != lineage.evidence.tested_oid
+            || settlement.work_packet.reviewed_oid != lineage.review.reviewed_oid
+        {
+            return Err(
+                "cockpit settlement packet differs from the just-consumed review lineage".into(),
+            );
+        }
+        crate::control::loop_ports::finalize_settled_cockpit_task(
+            tasks.inner().as_ref(),
+            app.state::<crate::db::ManagedDb>().inner(),
+            ownership.inner(),
+            symbol_ownership.inner(),
+            bus.inner(),
+            &lineage.activation,
+            &settlement.work_packet,
+        )?;
+        report.settlement_pending.retain(|id| id != &task_id);
+        settled = true;
+        work_packet_id = Some(settlement.work_packet.packet_id.clone());
+        mission_completion_packet_id = settlement
+            .mission_packet
+            .as_ref()
+            .map(|packet| packet.packet_id.clone());
+        publish_and_emit(
+            &app,
+            &bus,
+            crate::control::loop_ports::cockpit_task_completed_event(
+                &task_id,
+                &settlement.work_packet,
+                mission_completion_packet_id.as_deref(),
+            ),
+        )?;
+    } else if report.settlement_pending.iter().any(|id| id == &task_id) {
+        return Err(format!(
+            "task '{task_id}' entered Mission settlement without durable review lineage"
+        ));
+    }
+
     let _ = app.emit("task-graph-updated", tasks.list());
     let _ = app.emit("orchestrator-step", &report);
-    publish_and_emit(
-        &app,
-        &bus,
-        AgentEvent::new(AgentEventKind::TaskCompleted, json!({ "id": task_id })),
-    )?;
+    if !settled {
+        publish_and_emit(
+            &app,
+            &bus,
+            AgentEvent::new(
+                AgentEventKind::TaskCompleted,
+                json!({
+                    "id": task_id,
+                    "settled": false,
+                    "workPacketId": null,
+                    "missionCompletionPacketId": null,
+                }),
+            ),
+        )?;
+    }
 
     Ok(OrchestratorReviewAndMergeReport {
-        review: reviewed.report,
+        review,
         step: Some(report),
         merged: true,
+        settled,
+        work_packet_id,
+        mission_completion_packet_id,
     })
 }
 
@@ -937,15 +1150,20 @@ pub async fn mission_plan_review_accept(
             .ok_or_else(|| {
                 quarantine_execution(&tasks, &token, "Mission builder adapter fact is missing")
             })?;
-        let builder =
-            crate::review::mission::builder_runtime_attestation(&gate_evidence, &builder_adapter)
-                .map_err(|error| quarantine_execution(&tasks, &token, error))?;
+        let builder = crate::review::mission::builder_runtime_attestation_for_policy(
+            &gate_evidence,
+            &builder_adapter,
+            crate::review::mission::REVIEW_POLICY_VERSION,
+        )
+        .map_err(|error| quarantine_execution(&tasks, &token, error))?;
         let reviewer_prompt = crate::review::mission::build_review_prompt(
             &preview,
+            &activation,
             &gate_evidence,
             &snapshot.changed_paths,
             &snapshot.diff,
-        );
+        )
+        .map_err(|error| quarantine_execution(&tasks, &token, error))?;
         let invocation = crate::agent::codex_a7_review_oneshot(&reviewer_prompt)
             .map_err(|error| quarantine_execution(&tasks, &token, error))?;
         if let Err(error) = database.with(|db| {

@@ -362,14 +362,19 @@ fn validate_against_authoritative_db(
     let builder_adapter = authority.4.as_deref().ok_or_else(|| {
         "Mission builder adapter fact is missing from the authoritative Task".to_string()
     })?;
-    let builder = crate::review::mission::builder_runtime_attestation(&evidence, builder_adapter)?;
+    let builder = crate::review::mission::builder_runtime_attestation_for_policy(
+        &evidence,
+        builder_adapter,
+        &record.reviewer_independence.policy_version,
+    )?;
     let reviewer = receipt.runtime_attestation();
-    let expected = crate::review::mission::compute_independence(
+    let expected = crate::review::mission::compute_independence_with_policy(
         &evidence,
         &reviewer,
         &builder,
         record.reviewer_independence.different_provider_required,
         &record.review_id,
+        &record.reviewer_independence.policy_version,
     )?;
     if expected != record.reviewer_independence {
         return Err(

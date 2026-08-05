@@ -17,13 +17,94 @@ use super::gates::{run_deterministic_gates, CommandRun, GateCommand, GateKind};
 use super::judge::judge_semantics;
 use super::{review, GateResults, ReviewVerdict};
 
+fn pnpm_gate_command_with(
+    kind: GateKind,
+    args: &[&str],
+    resolve: impl Fn(&str) -> String,
+) -> GateCommand {
+    let pnpm = resolve("pnpm");
+    if pnpm == "pnpm" {
+        let corepack = resolve("corepack");
+        if corepack != "corepack" {
+            return GateCommand {
+                kind,
+                program: corepack,
+                args: std::iter::once("pnpm".to_string())
+                    .chain(args.iter().map(|arg| (*arg).to_string()))
+                    .collect(),
+            };
+        }
+    }
+    GateCommand::new(kind, pnpm, args)
+}
+
+fn pnpm_gate_command(kind: GateKind, args: &[&str]) -> GateCommand {
+    pnpm_gate_command_with(kind, args, crate::agent::interactive::platform_cli_program)
+}
+
+fn cargo_gate_command(kind: GateKind, manifest_path: Option<&str>, args: &[&str]) -> GateCommand {
+    let mut command_args = args
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
+    if let Some(manifest_path) = manifest_path {
+        let insertion = command_args
+            .iter()
+            .position(|arg| arg == "--")
+            .unwrap_or(command_args.len());
+        command_args.splice(
+            insertion..insertion,
+            ["--manifest-path".to_string(), manifest_path.to_string()],
+        );
+    }
+    GateCommand {
+        kind,
+        program: "cargo".into(),
+        args: command_args,
+    }
+}
+
+fn package_scripts(worktree: &Path) -> std::collections::HashSet<String> {
+    let Ok(json) = std::fs::read_to_string(worktree.join("package.json")) else {
+        return std::collections::HashSet::new();
+    };
+    serde_json::from_str::<serde_json::Value>(&json)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("scripts")
+                .and_then(serde_json::Value::as_object)
+                .cloned()
+        })
+        .map(|scripts| {
+            scripts
+                .into_iter()
+                .filter_map(|(name, value)| value.as_str().map(|_| name))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn first_script<'a>(
+    scripts: &std::collections::HashSet<String>,
+    names: &'a [&'a str],
+) -> Option<&'a str> {
+    names.iter().copied().find(|name| scripts.contains(*name))
+}
+
+fn has_any(worktree: &Path, names: &[&str]) -> bool {
+    names.iter().any(|name| worktree.join(name).is_file())
+}
+
 /// Pick the quality-gate commands for whatever kind of project lives in
-/// `worktree`, by sniffing its manifest files. A Rust crate (`Cargo.toml`) gets
-/// `cargo test` / `cargo clippy --all-targets -- -D warnings` / `cargo check`; a
-/// Node/TS project (`package.json`) gets `pnpm test` / `pnpm exec eslint .` /
-/// `pnpm exec tsc --noEmit`. A repo with both gets both sets (a mixed repo must
-/// pass all of them). A directory with neither yields NO commands — and an
-/// unconfigured gate is a failure downstream, never assumed green.
+/// `worktree`, by sniffing its manifest files and declared package scripts. A
+/// root Rust crate or standard Tauri `src-tauri/Cargo.toml` gets real Cargo
+/// test/clippy/check commands bound to that manifest. A Node/TS project uses its
+/// declared `test`, `lint`/`check`, and typecheck scripts; only when a matching
+/// config exists does it fall back to direct Biome/ESLint/tsc commands. A repo
+/// with both stacks gets both sets (all commands for a gate must pass). Missing
+/// configuration yields no command and therefore a red gate downstream — never
+/// an assumed green or a guessed tool.
 ///
 /// This is the OUT-OF-BAND reviewer's command source: it auto-discovers commands
 /// from the manifest because it runs off the orchestrator lock (in `spawn_blocking`)
@@ -36,27 +117,67 @@ use super::{review, GateResults, ReviewVerdict};
 /// this verdict rather than re-running the gates).
 pub fn detect_gate_commands(worktree: &Path) -> Vec<GateCommand> {
     let mut cmds = Vec::new();
-    if worktree.join("Cargo.toml").is_file() {
-        cmds.push(GateCommand::new(GateKind::Tests, "cargo", &["test"]));
-        cmds.push(GateCommand::new(
-            GateKind::Lint,
-            "cargo",
-            &["clippy", "--all-targets", "--", "-D", "warnings"],
+    let cargo_manifest = if worktree.join("Cargo.toml").is_file() {
+        Some(None)
+    } else if worktree.join("src-tauri").join("Cargo.toml").is_file() {
+        Some(Some("src-tauri/Cargo.toml"))
+    } else {
+        None
+    };
+    if let Some(manifest_path) = cargo_manifest {
+        cmds.push(cargo_gate_command(
+            GateKind::Tests,
+            manifest_path,
+            &["test"],
         ));
-        cmds.push(GateCommand::new(GateKind::Types, "cargo", &["check"]));
+        cmds.push(cargo_gate_command(
+            GateKind::Lint,
+            manifest_path,
+            &["clippy", "--all-targets"],
+        ));
+        cmds.push(cargo_gate_command(
+            GateKind::Types,
+            manifest_path,
+            &["check", "--all-targets"],
+        ));
     }
     if worktree.join("package.json").is_file() {
-        cmds.push(GateCommand::new(GateKind::Tests, "pnpm", &["test"]));
-        cmds.push(GateCommand::new(
-            GateKind::Lint,
-            "pnpm",
-            &["exec", "eslint", "."],
-        ));
-        cmds.push(GateCommand::new(
-            GateKind::Types,
-            "pnpm",
-            &["exec", "tsc", "--noEmit"],
-        ));
+        let scripts = package_scripts(worktree);
+        if scripts.contains("test") {
+            cmds.push(pnpm_gate_command(GateKind::Tests, &["run", "test"]));
+        }
+        if let Some(script) = first_script(&scripts, &["lint", "check"]) {
+            cmds.push(pnpm_gate_command(GateKind::Lint, &["run", script]));
+        } else if has_any(worktree, &["biome.json", "biome.jsonc"]) {
+            cmds.push(pnpm_gate_command(
+                GateKind::Lint,
+                &["exec", "biome", "check", "."],
+            ));
+        } else if has_any(
+            worktree,
+            &[
+                "eslint.config.js",
+                "eslint.config.mjs",
+                "eslint.config.cjs",
+                ".eslintrc",
+                ".eslintrc.json",
+                ".eslintrc.js",
+                ".eslintrc.cjs",
+            ],
+        ) {
+            cmds.push(pnpm_gate_command(GateKind::Lint, &["exec", "eslint", "."]));
+        }
+        if let Some(script) = first_script(
+            &scripts,
+            &["typecheck", "type-check", "check:types", "types"],
+        ) {
+            cmds.push(pnpm_gate_command(GateKind::Types, &["run", script]));
+        } else if worktree.join("tsconfig.json").is_file() {
+            cmds.push(pnpm_gate_command(
+                GateKind::Types,
+                &["exec", "tsc", "--noEmit"],
+            ));
+        }
     }
     cmds
 }
@@ -291,17 +412,111 @@ mod tests {
         assert!(rc.iter().all(|c| c.program == "cargo"));
 
         let node = tempfile::tempdir().unwrap();
-        std::fs::write(node.path().join("package.json"), "{}").unwrap();
+        std::fs::write(
+            node.path().join("package.json"),
+            r#"{"scripts":{"test":"vitest","lint":"biome check .","typecheck":"tsc --noEmit"}}"#,
+        )
+        .unwrap();
         let nc = detect_gate_commands(node.path());
         assert_eq!(nc.len(), 3);
-        assert!(nc.iter().all(|c| c.program == "pnpm"));
+        assert!(nc.iter().all(|command| {
+            command.program.to_ascii_lowercase().contains("pnpm")
+                || (command.program.to_ascii_lowercase().contains("corepack")
+                    && command.args.first().map(String::as_str) == Some("pnpm"))
+        }));
 
         let both = tempfile::tempdir().unwrap();
         std::fs::write(both.path().join("Cargo.toml"), "[package]").unwrap();
-        std::fs::write(both.path().join("package.json"), "{}").unwrap();
+        std::fs::write(
+            both.path().join("package.json"),
+            r#"{"scripts":{"test":"vitest","check":"biome check .","typecheck":"tsc --noEmit"}}"#,
+        )
+        .unwrap();
         assert_eq!(detect_gate_commands(both.path()).len(), 6);
 
         let empty = tempfile::tempdir().unwrap();
         assert!(detect_gate_commands(empty.path()).is_empty());
+    }
+
+    #[test]
+    fn standard_tauri_repo_uses_nested_cargo_and_declared_node_tools() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::create_dir(repo.path().join("src-tauri")).unwrap();
+        std::fs::write(
+            repo.path().join("src-tauri").join("Cargo.toml"),
+            "[package]",
+        )
+        .unwrap();
+        std::fs::write(
+            repo.path().join("package.json"),
+            r#"{"scripts":{"test":"vitest","check":"biome check ."}}"#,
+        )
+        .unwrap();
+        std::fs::write(repo.path().join("tsconfig.json"), "{}").unwrap();
+
+        let commands = detect_gate_commands(repo.path());
+        assert_eq!(commands.len(), 6);
+        let cargo = commands
+            .iter()
+            .filter(|command| command.program == "cargo")
+            .collect::<Vec<_>>();
+        assert_eq!(cargo.len(), 3);
+        assert!(cargo.iter().all(|command| {
+            command
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--manifest-path", "src-tauri/Cargo.toml"])
+        }));
+        let node = commands
+            .iter()
+            .filter(|command| command.program != "cargo")
+            .collect::<Vec<_>>();
+        assert_eq!(node.len(), 3);
+        assert!(node
+            .iter()
+            .any(|command| { command.args.ends_with(&["run".into(), "check".into()]) }));
+        assert!(node.iter().any(|command| {
+            command
+                .args
+                .ends_with(&["exec".into(), "tsc".into(), "--noEmit".into()])
+        }));
+    }
+
+    #[test]
+    fn current_aelyris_layout_is_fully_gate_detectable() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri has repository parent");
+        let commands = detect_gate_commands(root);
+        for gate in [GateKind::Tests, GateKind::Lint, GateKind::Types] {
+            assert!(
+                commands.iter().any(|command| command.kind == gate),
+                "missing {gate:?} command: {commands:?}"
+            );
+        }
+        assert!(commands.iter().any(|command| {
+            command.program == "cargo"
+                && command
+                    .args
+                    .windows(2)
+                    .any(|pair| pair == ["--manifest-path", "src-tauri/Cargo.toml"])
+        }));
+        assert!(commands.iter().any(|command| {
+            command.kind == GateKind::Lint
+                && command
+                    .args
+                    .ends_with(&["run".into(), "lint".into()])
+        }));
+    }
+
+    #[test]
+    fn node_gate_falls_back_to_resolved_corepack_when_pnpm_shim_is_missing() {
+        let command = pnpm_gate_command_with(GateKind::Tests, &["test"], |name| match name {
+            "pnpm" => "pnpm".into(),
+            "corepack" => "corepack.cmd".into(),
+            _ => name.into(),
+        });
+        assert_eq!(command.program, "corepack.cmd");
+        assert_eq!(command.args, ["pnpm", "test"]);
     }
 }

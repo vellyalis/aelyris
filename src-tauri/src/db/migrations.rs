@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 12;
+pub const CURRENT_SCHEMA_VERSION: i64 = 13;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1504,6 +1504,123 @@ const V12_SCHEMA: &str = "
         CHECK (json_valid(symbols_json));
 ";
 
+// GMV-3: one immutable activation per accepted cockpit Task. The existing
+// Mission/Task/Review/Merge/settlement owners remain authoritative; this only
+// removes the A7-era one-activation-per-plan cardinality and permits the typed
+// cockpit gate-suite envelope to bind the exact per-Task target OID.
+const V13_SCHEMA: &str = "
+    DROP TRIGGER trg_mission_plan_activation_immutable;
+    DROP TRIGGER trg_mission_plan_activation_no_delete;
+    DROP TRIGGER trg_mission_gate_evidence_binding;
+    DROP TRIGGER trg_mission_merge_binding_consistency;
+
+    ALTER TABLE mission_plan_activations RENAME TO mission_plan_activations_v12;
+    CREATE TABLE mission_plan_activations (
+        activation_id       TEXT PRIMARY KEY NOT NULL,
+        plan_id             TEXT NOT NULL,
+        plan_revision       INTEGER NOT NULL CHECK (plan_revision > 0),
+        mission_id          TEXT NOT NULL,
+        mission_revision    INTEGER NOT NULL CHECK (mission_revision > 0),
+        work_unit_id        TEXT NOT NULL UNIQUE,
+        task_id             TEXT NOT NULL UNIQUE REFERENCES tasks(id) ON DELETE RESTRICT,
+        plan_content_digest TEXT NOT NULL CHECK (
+            length(plan_content_digest) = 64
+            AND plan_content_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        accepted_base_oid   TEXT NOT NULL CHECK (
+            length(accepted_base_oid) = 40
+            AND accepted_base_oid NOT GLOB '*[^0-9a-f]*'
+        ),
+        repository_root     TEXT NOT NULL,
+        source_branch       TEXT NOT NULL,
+        target_branch       TEXT NOT NULL,
+        owned_targets_json  TEXT NOT NULL CHECK (json_valid(owned_targets_json)),
+        test_argv_json      TEXT NOT NULL CHECK (json_valid(test_argv_json)),
+        activated_by        TEXT NOT NULL,
+        activated_at_ms     INTEGER NOT NULL CHECK (activated_at_ms >= 0),
+        UNIQUE (plan_id, plan_revision, work_unit_id),
+        UNIQUE (plan_id, plan_revision, task_id),
+        FOREIGN KEY (plan_id, plan_revision)
+            REFERENCES mission_plan_revisions(plan_id, plan_revision) ON DELETE RESTRICT
+    );
+    INSERT INTO mission_plan_activations (
+        activation_id,plan_id,plan_revision,mission_id,mission_revision,work_unit_id,
+        task_id,plan_content_digest,accepted_base_oid,repository_root,source_branch,
+        target_branch,owned_targets_json,test_argv_json,activated_by,activated_at_ms
+    )
+    SELECT activation_id,plan_id,plan_revision,mission_id,mission_revision,work_unit_id,
+        task_id,plan_content_digest,accepted_base_oid,repository_root,source_branch,
+        target_branch,owned_targets_json,test_argv_json,activated_by,activated_at_ms
+      FROM mission_plan_activations_v12;
+    DROP TABLE mission_plan_activations_v12;
+    CREATE INDEX idx_mission_plan_activations_plan
+        ON mission_plan_activations(plan_id, plan_revision, work_unit_id);
+
+    CREATE TRIGGER trg_mission_plan_activation_immutable
+    BEFORE UPDATE ON mission_plan_activations BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_activations: immutable');
+    END;
+    CREATE TRIGGER trg_mission_plan_activation_no_delete
+    BEFORE DELETE ON mission_plan_activations BEGIN
+        SELECT RAISE(ABORT, 'mission_plan_activations: immutable history');
+    END;
+
+    CREATE TRIGGER trg_mission_gate_evidence_binding
+    BEFORE INSERT ON mission_gate_evidence
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM mission_plan_activations AS activation
+          JOIN work_execution_attempts AS attempt ON attempt.task_id = activation.task_id
+         WHERE activation.activation_id = NEW.activation_id
+           AND activation.plan_content_digest = NEW.plan_content_digest
+           AND (
+                (activation.test_argv_json = NEW.command_argv_json
+                 AND activation.accepted_base_oid = NEW.base_oid)
+                OR (
+                    json_extract(activation.test_argv_json, '$[0]') = 'aelyris.cockpit-gate-suite/v1'
+                    AND json_extract(NEW.command_argv_json, '$[0]') = 'aelyris.cockpit-gate-suite/v1'
+                )
+           )
+           AND attempt.attempt_id = NEW.attempt_id
+           AND attempt.execution_generation = NEW.execution_generation
+           AND attempt.agent_run_id = NEW.agent_run_id
+           AND attempt.runtime = NEW.runtime_domain_id
+           AND attempt.pty_session_id = NEW.pty_session_id
+           AND attempt.fence_effect = 'review'
+           AND attempt.fence_state = 'reserved'
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_gate_evidence: activation/execution binding mismatch');
+    END;
+
+    CREATE TRIGGER trg_mission_merge_binding_consistency
+    BEFORE INSERT ON mission_merge_bindings
+    FOR EACH ROW WHEN NOT EXISTS (
+        SELECT 1
+          FROM merge_intents AS intent
+          JOIN mission_review_records AS review ON review.review_id = NEW.review_id
+          JOIN mission_plan_activations AS activation
+            ON activation.activation_id = NEW.activation_id
+         WHERE intent.intent_id = NEW.intent_id
+           AND intent.task_id = activation.task_id
+           AND activation.mission_id = NEW.mission_id
+           AND activation.mission_revision = NEW.mission_revision
+           AND activation.work_unit_id = NEW.work_unit_id
+           AND intent.source_oid = NEW.source_oid
+           AND intent.target_oid = NEW.target_oid
+           AND review.activation_id = NEW.activation_id
+           AND review.mission_id = NEW.mission_id
+           AND review.mission_revision = NEW.mission_revision
+           AND review.work_unit_id = NEW.work_unit_id
+           AND review.tested_evidence_id = NEW.tested_evidence_id
+           AND review.reviewed_oid = NEW.source_oid
+           AND review.independence_digest = NEW.reviewer_independence_digest
+           AND review.independence_eligible = 1
+           AND review.verdict = 'accepted_exact_oid'
+    ) BEGIN
+        SELECT RAISE(ABORT, 'mission_merge_bindings: intent/review binding mismatch');
+    END;
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1734,6 +1851,34 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         }
     }
 
+    if version < 13 {
+        conn.pragma_update(None, "foreign_keys", "OFF")?;
+        conn.pragma_update(None, "legacy_alter_table", "ON")?;
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V13_SCHEMA)?;
+            let foreign_key_violations: i64 =
+                conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get(0)
+                })?;
+            if foreign_key_violations != 0 {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            conn.pragma_update(None, "user_version", 13)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        let result = match migration {
+            Ok(()) => conn.execute_batch("COMMIT"),
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        };
+        conn.pragma_update(None, "legacy_alter_table", "OFF")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        result?;
+    }
+
     Ok(())
 }
 
@@ -1764,6 +1909,36 @@ mod tests {
         run_migrations(&conn).unwrap();
         run_migrations(&conn).unwrap();
         assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
+        let foreign_key_violations: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(foreign_key_violations, 0);
+        for child in [
+            "mission_gate_evidence",
+            "mission_review_records",
+            "mission_merge_bindings",
+            "mission_settlement_packets",
+        ] {
+            let parents = conn
+                .prepare(&format!("PRAGMA foreign_key_list('{child}')"))
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(2))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            assert!(
+                !parents.iter().any(|parent| parent.ends_with("_v12")),
+                "{child} still references a renamed v12 table: {parents:?}"
+            );
+            assert!(
+                parents
+                    .iter()
+                    .any(|parent| parent == "mission_plan_activations"),
+                "{child} has no live activation parent: {parents:?}"
+            );
+        }
 
         // P1 Context Store table round-trips a decision.
         conn.execute(
@@ -2407,7 +2582,7 @@ mod tests {
     fn a7_4_v11_adds_generation_leaf_and_single_successor_guards() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
-        assert_eq!(schema_version(&conn).unwrap(), 12);
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
         let columns = conn
             .prepare("PRAGMA table_info(mission_settlement_packets)")
             .unwrap()
