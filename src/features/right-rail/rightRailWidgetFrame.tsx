@@ -13,7 +13,7 @@ export const RIGHT_RAIL_GUARDRAIL_SYNC_EVENT = "aelyris:right-rail-guardrail-syn
 export const RIGHT_RAIL_WIDGET_STORAGE_PREFIX = "aelyris:right-rail-widget:";
 export const RIGHT_RAIL_WIDGET_SYNC_EVENT = "aelyris:right-rail-widget-sync";
 export const RIGHT_RAIL_WIDGET_IDS: readonly RightRailWidgetId[] = [
-  "decision-inbox", "sessions", "orchestrator", "workflow", "toolkit", "cost-meter", "fleet-briefing", "context", "audit-timeline", "run-graph", "tool-ledger", "logs",
+  "decision-inbox", "sessions", "orchestrator", "workflow", "toolkit", "cost-meter", "proofbooks", "fleet-briefing", "context", "audit-timeline", "run-graph", "tool-ledger", "logs",
 ];
 
 export function isRightRailGuardrailSelection(value: string | null): value is RightRailGuardrailSelection {

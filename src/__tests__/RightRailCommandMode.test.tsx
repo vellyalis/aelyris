@@ -96,6 +96,12 @@ vi.mock("../features/orchestrator/OrchestratorPanel", () => ({
   OrchestratorPanel: () => <section aria-label="orchestrator projection" />,
 }));
 
+vi.mock("../features/proofbooks/ProofbookPanel", () => ({
+  ProofbookPanel: ({ projectPath }: { projectPath: string }) => (
+    <section aria-label="proofbook projection" data-project-path={projectPath} />
+  ),
+}));
+
 vi.mock("../features/workflow/WorkflowPanel", () => ({
   WorkflowPanel: ({
     projectPath,
@@ -190,6 +196,10 @@ describe("RightRailCommandMode", () => {
     expect(screen.getByRole("region", { name: "cost meter projection" }).dataset.sessionCount).toBe("0");
     expect(screen.getByRole("region", { name: "Cost Meter" }).dataset.subtitle).toBe(
       "reported usage and configured caps",
+    );
+    expect(screen.getByRole("region", { name: "proofbook projection" }).dataset.projectPath).toBe("C:/repo");
+    expect(screen.getByRole("region", { name: "Proofbooks" }).dataset.subtitle).toBe(
+      "catalog, validation, and run history",
     );
     expect(screen.getByRole("region", { name: "decision projection" }).dataset.focusRequest).toBe("7");
     expect(screen.getByRole("region", { name: "Decision Inbox" }).dataset.subtitle).toBe("2 waiting");

@@ -1,0 +1,86 @@
+export interface ProofbookError {
+  code: string;
+  message: string;
+  definitionId?: string;
+  stepId?: string;
+  field?: string;
+  path?: string;
+}
+
+export interface ProofbookSummary {
+  id: string;
+  title: string;
+  path: string;
+  stepCount: number;
+  valid: boolean;
+  errorCount: number;
+}
+
+export interface ProofbookValidationReport {
+  definitionId: string | null;
+  path: string;
+  valid: boolean;
+  errors: ProofbookError[];
+}
+
+export type ProofbookStepStatus =
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "waiting_gate"
+  | "blocked"
+  | "cancelled";
+
+export type ProofbookRunStatus =
+  | "pending"
+  | "running"
+  | "waiting_gate"
+  | "passed"
+  | "failed"
+  | "blocked-by-policy"
+  | "blocked-by-external-gates"
+  | "cancelled";
+
+export interface ProofbookStepSummary {
+  stepId: string;
+  kind: string;
+  status: ProofbookStepStatus;
+  artifactRefs: string[];
+  redactionCount: number;
+  error?: { code: string; message: string };
+}
+
+export interface ProofbookResidualBlocker {
+  code: string;
+  stepId?: string | null;
+  message: string;
+}
+
+export interface ProofbookArtifactRef {
+  id: string;
+  path: string;
+  kind: string;
+  sizeBytes: number;
+  sha256: string;
+  redactionCount: number;
+  stepId: string;
+}
+
+export interface ProofbookRunLedger {
+  schema: string;
+  revision: number;
+  runId: string;
+  proofbookId: string;
+  projectPath: string;
+  definitionPath: string;
+  status: ProofbookRunStatus;
+  startedAt: string;
+  updatedAt: string;
+  definitionHash: string;
+  inputHash: string;
+  steps: ProofbookStepSummary[];
+  artifacts: ProofbookArtifactRef[];
+  residualBlockers: ProofbookResidualBlocker[];
+}

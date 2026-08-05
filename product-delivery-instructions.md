@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `CM-1`.
-LAST COMPLETED SLICE: `CM-1`.
-NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `CM-1`; the
+ACTIVE SLICE: `PB-UI-1`.
+LAST COMPLETED SLICE: `PB-UI-1`.
+NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `PB-UI-1`; the
 real-provider GMV-3 claim confirmation remains an external check after 2026-08-08,
 not a repository implementation slice.
 
@@ -54,7 +54,8 @@ Current portfolio classification:
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
-| Proofbook product UI, broad budget editing UX | **PARKED** | Compare after the first three post-GMV user-visible slices |
+| Proofbook catalog, validation, and run history | **COMPLETE** | Command mode exposes existing read-only Proofbook owners without adding execution authority |
+| Proofbook run controls, broad budget editing UX | **PARKED** | Effects require a separately bounded authority and operator-flow decision |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -62,7 +63,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `CM-1` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-1` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -109,6 +110,8 @@ slice is acceptable only when the next named slice consumes it directly.
 | Approval batch projection | existing Decision Inbox; sequential orchestration only, no second approval authority |
 | Cost caps | existing Rust `CostManager` and `useCostManager` projection |
 | Fleet cost/token totals | existing unified `AgentSession` telemetry and `workstationSummary` confidence vocabulary |
+| Proofbook definitions and validation | existing `list_proofbooks` and `validate_proofbook` IPC owners |
+| Durable Proofbook run history | existing `list_proofbook_runs` ledger owner and `proofbook-updated` event |
 
 Forbidden second owners: Mission engine, TaskGraph, journal, Proofbook runner, merge
 authority, completion table, frontend execution truth, or provider-specific Mission.
@@ -278,13 +281,36 @@ Status: **COMPLETE**.
 - Done: before starting more work, an operator can see reported fleet usage beside
   configured caps and distinguish blocked, within-cap, uncapped, and unknown states.
 
+### PB-UI-1 — Proofbook Catalog, Validation, And Run History
+
+Capability target: `Product-Accessible` read access only.
+Status: **COMPLETE**.
+
+- Add one Proofbooks widget to the existing Command-mode right rail; do not create a
+  second parser, validator, runner, ledger, decision inbox, or frontend execution owner.
+- List contained definitions through `list_proofbooks`, show only bounded metadata,
+  and validate the explicitly selected definition through `validate_proofbook`.
+- Show structured validation errors without reading or rendering definition contents,
+  secret references, shell output, or artifact bodies in the frontend.
+- Read durable run ledgers through `list_proofbook_runs`, surface status, passed-step
+  coverage, artifact count, blocker count, and update time, and merge matching live
+  `proofbook-updated` events only for the active canonicalized project identity.
+- Keep this slice strictly read-only. It contains no start, cancel, gate decision,
+  agent settlement, raw artifact open, or caller-shaped completion action.
+- Failure remains visible in the widget; an empty or failed backend read cannot be
+  presented as a successful catalog or successful validation.
+- Done: an operator can discover definitions, run explicit static validation, and
+  inspect durable run history from the supported cockpit without MCP or CLI calls.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, and Honest Cost Meter `CM-1`
-are complete. Proofbook product access, budget editing, Remote Continuity, and other
-adjacent value remain portfolio candidates. Compare them against the owning Work
-OS/Apex roadmap and current user evidence before opening the next bounded slice;
-existing backend capability alone does not justify a new framework program.
+are complete, and `PB-UI-1` closes read-only Proofbook product access. Starting or
+cancelling runs, deciding gates, settling agent steps, opening artifacts, budget
+editing, Remote Continuity, and other adjacent value remain portfolio candidates.
+Compare them against the owning Work OS/Apex roadmap and current user evidence before
+opening the next bounded slice; existing backend capability alone does not justify a
+new framework program.
 
 ## Complexity And Progress Stops
 

@@ -5,6 +5,7 @@ import { ContextPanel } from "../context/ContextPanel";
 import { CostMeterPanel } from "../cost-meter/CostMeterPanel";
 import { DecisionInboxPanel } from "../decision-inbox";
 import { OrchestratorPanel } from "../orchestrator/OrchestratorPanel";
+import { ProofbookPanel } from "../proofbooks/ProofbookPanel";
 import { ToolkitPanel } from "../toolkit/ToolkitPanel";
 import { WorkflowPanel } from "../workflow/WorkflowPanel";
 import type { RightRailCommandModeActions, RightRailCommandModeViewModel } from "./rightRailCommandModeContract";
@@ -57,6 +58,19 @@ export function RightRailCommandMode({
               forceExpanded={focusedWidget === "toolkit"}
             />
           </div>
+        </Suspense>
+      </ErrorBoundary>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <RightRailWidgetFrame
+            widget="proofbooks"
+            title="Proofbooks"
+            subtitle="catalog, validation, and run history"
+            defaultOpen={false}
+            forceOpen={focusedWidget === "proofbooks"}
+          >
+            <ProofbookPanel projectPath={project.path} />
+          </RightRailWidgetFrame>
         </Suspense>
       </ErrorBoundary>
       <ErrorBoundary>
