@@ -133,7 +133,7 @@ export function RightRailCommandMode({
             defaultOpen={false}
             forceOpen={focusedWidget === "orchestrator"}
           >
-            <OrchestratorPanel projectPath={project.path} />
+            <OrchestratorPanel projectPath={project.path} sessions={sessions} />
           </RightRailWidgetFrame>
         </Suspense>
       </ErrorBoundary>

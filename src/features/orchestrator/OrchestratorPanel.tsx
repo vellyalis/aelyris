@@ -5,6 +5,8 @@ import { useCostManager } from "../../shared/hooks/useCostManager";
 import { useEventBus } from "../../shared/hooks/useEventBus";
 import { useOrchestratorPlan } from "../../shared/hooks/useOrchestratorPlan";
 import { useTaskGraph } from "../../shared/hooks/useTaskGraph";
+import { deriveFleetCostMeter, isCostMeterLiveStatus } from "../../shared/lib/costMeter";
+import type { AgentSession } from "../../shared/types/agent";
 import type { AgentEvent, AgentEventKind } from "../../shared/types/eventBus";
 import type { DispatchPlan, LoopState } from "../../shared/types/orchestratorPlan";
 import type { TaskStatus } from "../../shared/types/taskStatus";
@@ -36,6 +38,7 @@ const STATUS_CLASS: Record<TaskStatus, string> = {
 
 // Highest-attention states first, so in-flight + reviewable work sits on top.
 const STATUS_ORDER: TaskStatus[] = ["running", "review", "ready", "pending", "blocked", "failed", "done"];
+const EMPTY_SESSIONS: readonly AgentSession[] = [];
 
 const EVENT_LABEL: Record<AgentEventKind, string> = {
   task_created: "created",
@@ -58,6 +61,7 @@ const EVENT_LABEL: Record<AgentEventKind, string> = {
 
 interface OrchestratorPanelProps {
   projectPath?: string;
+  sessions?: readonly AgentSession[];
 }
 
 interface OrchestratorStepReport {
@@ -136,7 +140,7 @@ function eventSubject(event: AgentEvent): string | null {
  * the Task Graph / Cost Manager / Event Bus / orchestrator hooks that were wired
  * to the backend but previously had no UI consumer.
  */
-export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) {
+export function OrchestratorPanel({ projectPath = "", sessions = EMPTY_SESSIONS }: OrchestratorPanelProps) {
   const { tasks } = useTaskGraph();
   const { caps } = useCostManager();
   const { events } = useEventBus();
@@ -149,6 +153,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
   const [reviewing, setReviewing] = useState(false);
   const [mission, setMission] = useState<CockpitMissionPreview | null>(null);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
+  const [usageNow, setUsageNow] = useState(Date.now());
 
   const runningCount = useMemo(() => tasks.filter((task) => task.status === "running").length, [tasks]);
   const reviewCount = useMemo(() => tasks.filter((task) => task.status === "review").length, [tasks]);
@@ -157,24 +162,53 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     [tasks],
   );
   const reviewTask = useMemo(() => tasks.find((task) => task.status === "review") ?? null, [tasks]);
+  const usageMeter = useMemo(
+    () =>
+      deriveFleetCostMeter(
+        sessions,
+        caps ?? { max_agents: null, max_tokens: null, max_cost_usd: null, max_runtime_secs: null },
+        usageNow,
+      ),
+    [caps, sessions, usageNow],
+  );
+  const usage = useMemo(
+    () => ({ ...usageMeter.usage, active_agents: runningCount }),
+    [runningCount, usageMeter.usage],
+  );
+  const graphRevision = useMemo(
+    () =>
+      tasks
+        .map((task) => `${task.id}:${task.status}:${task.priority}:${task.dependencies.join(",")}`)
+        .join("\u0000"),
+    [tasks],
+  );
+  const fetchPlanForGraph = useCallback(
+    (_graphRevision: string) => fetchPlan(usage),
+    [fetchPlan, usage],
+  );
+  const budgetCoverageIncomplete = usageMeter.unknownLimits.length > 0;
+  const budgetCoverageMessage = budgetCoverageIncomplete
+    ? `Run blocked: configured ${usageMeter.unknownLimits.join(" + ")} telemetry is unknown.`
+    : null;
+
+  useEffect(() => {
+    const hasLiveSession = sessions.some((session) => isCostMeterLiveStatus(session.status));
+    if (!hasLiveSession) return;
+    const timer = window.setInterval(() => setUsageNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [sessions]);
 
   // Re-read the scheduling decision whenever the graph changes (a merge can
   // unblock dependents; a dispatch fills a slot). Read-only — never dispatches.
   useEffect(() => {
     let cancelled = false;
-    const activeAgents = tasks.filter((task) => task.status === "running").length;
-    void fetchPlan({
-      active_agents: activeAgents,
-      tokens_used: 0,
-      cost_usd: 0,
-      runtime_secs: 0,
-    }).then((next) => {
+    void fetchPlanForGraph(graphRevision).then((next) => {
       if (!cancelled) setPlan(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [fetchPlan, tasks]);
+  }, [fetchPlanForGraph, graphRevision]);
 
   // Mission persistence owns the accepted Goal/plan identity; TaskGraph remains
   // the execution truth. Restore only the latest cockpit Mission for this repo.
@@ -250,17 +284,21 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
   }, [goal, plannerContext, planning, projectPath, reviewing, stepping]);
 
   const handleRunNextStep = useCallback(async () => {
-    if (!projectPath || tasks.length === 0 || plan?.state !== "active" || planning || stepping || reviewing) return;
+    if (
+      !projectPath ||
+      tasks.length === 0 ||
+      plan?.state !== "active" ||
+      budgetCoverageIncomplete ||
+      planning ||
+      stepping ||
+      reviewing
+    )
+      return;
     setStepping(true);
     setActionStatus(null);
     try {
       const report = await invoke<OrchestratorStepReport>("orchestrator_step", {
-        usage: {
-          active_agents: runningCount,
-          tokens_used: 0,
-          cost_usd: 0,
-          runtime_secs: 0,
-        },
+        usage,
         repoPath: projectPath,
       });
       const changes = [
@@ -282,7 +320,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     } finally {
       setStepping(false);
     }
-  }, [plan?.state, planning, projectPath, reviewing, runningCount, stepping, tasks.length]);
+  }, [budgetCoverageIncomplete, plan?.state, planning, projectPath, reviewing, stepping, tasks.length, usage]);
 
   const handleReviewAndMerge = useCallback(async () => {
     if (!projectPath || !reviewTask || planning || stepping || reviewing) return;
@@ -326,6 +364,7 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
     tasks.length > 0 &&
     hasRunnableWork &&
     plan?.state === "active" &&
+    !budgetCoverageIncomplete &&
     !planning &&
     !stepping &&
     !reviewing;
@@ -380,6 +419,11 @@ export function OrchestratorPanel({ projectPath = "" }: OrchestratorPanelProps) 
             role={actionStatus.kind === "error" ? "alert" : "status"}
           >
             {actionStatus.message}
+          </p>
+        ) : null}
+        {budgetCoverageMessage ? (
+          <p className={`${styles.actionStatus} ${styles.actionError}`} role="alert">
+            {budgetCoverageMessage}
           </p>
         ) : null}
       </form>

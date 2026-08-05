@@ -153,4 +153,15 @@ describe("buildWorkstationSummary", () => {
     expect(meter.unknownLimits).toEqual(["runtime"]);
     expect(meter.blockedBy).toEqual([]);
   });
+
+  it("counts idle persistent agents against the configured concurrency cap", () => {
+    const meter = deriveFleetCostMeter(
+      [session("idle", { status: "idle", startedAt: 1_799_999_940 })],
+      { max_agents: 1, max_tokens: null, max_cost_usd: null, max_runtime_secs: null },
+      1_800_000_000_000,
+    );
+
+    expect(meter.usage.active_agents).toBe(1);
+    expect(meter.blockedBy).toEqual(["agents"]);
+  });
 });

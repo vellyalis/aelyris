@@ -1,7 +1,7 @@
 import { AlertTriangle, CircleDollarSign, Clock3, Gauge, UsersRound } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useCostManager } from "../../shared/hooks/useCostManager";
-import { deriveFleetCostMeter, type FleetCostMeter } from "../../shared/lib/costMeter";
+import { deriveFleetCostMeter, type FleetCostMeter, isCostMeterLiveStatus } from "../../shared/lib/costMeter";
 import { compactWorkstationNumber } from "../../shared/lib/workstationSummary";
 import type { AgentSession, TelemetryConfidence } from "../../shared/types/agent";
 import type { CostCaps, CostLimit } from "../../shared/types/cost";
@@ -55,7 +55,7 @@ export function CostMeterPanel({ sessions }: CostMeterPanelProps) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (!sessions.some((session) => ["thinking", "generating", "coding", "waiting"].includes(session.status))) return;
+    if (!sessions.some((session) => isCostMeterLiveStatus(session.status))) return;
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, [sessions]);

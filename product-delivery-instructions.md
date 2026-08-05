@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-1`.
-LAST COMPLETED SLICE: `PB-UI-1`.
-NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `PB-UI-1`; the
+ACTIVE SLICE: `CM-2`.
+LAST COMPLETED SLICE: `CM-2`.
+NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `CM-2`; the
 real-provider GMV-3 claim confirmation remains an external check after 2026-08-08,
 not a repository implementation slice.
 
@@ -55,6 +55,7 @@ Current portfolio classification:
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
 | Proofbook catalog, validation, and run history | **COMPLETE** | Command mode exposes existing read-only Proofbook owners without adding execution authority |
+| Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
 | Proofbook run controls, broad budget editing UX | **PARKED** | Effects require a separately bounded authority and operator-flow decision |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
@@ -63,7 +64,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-1` is complete; no
+- This work order is the sole repo-mutating product lane. `CM-2` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -110,6 +111,7 @@ slice is acceptable only when the next named slice consumes it directly.
 | Approval batch projection | existing Decision Inbox; sequential orchestration only, no second approval authority |
 | Cost caps | existing Rust `CostManager` and `useCostManager` projection |
 | Fleet cost/token totals | existing unified `AgentSession` telemetry and `workstationSummary` confidence vocabulary |
+| Supported cockpit budget submission | existing `orchestrator_plan` / `orchestrator_step` usage contract |
 | Proofbook definitions and validation | existing `list_proofbooks` and `validate_proofbook` IPC owners |
 | Durable Proofbook run history | existing `list_proofbook_runs` ledger owner and `proofbook-updated` event |
 
@@ -302,12 +304,36 @@ Status: **COMPLETE**.
 - Done: an operator can discover definitions, run explicit static validation, and
   inspect durable run history from the supported cockpit without MCP or CLI calls.
 
+### CM-2 — Bind Reported Fleet Usage To Cockpit Orchestration
+
+Capability target: `Product-Accessible` budget enforcement for the supported cockpit
+dispatch path.
+Status: **COMPLETE**.
+
+- Stop sending zero-filled token, cost, and runtime usage from the Orchestrator panel.
+  Derive the current reported snapshot from the same unified sessions and confidence
+  rules used by CM-1, while preserving TaskGraph `Running` count as the scheduler's
+  active-agent value.
+- Refresh runtime-sensitive planning while live or idle persistent agents remain, and
+  count idle persistent sessions in the Cost Meter because they still occupy backend
+  agent capacity.
+- Submit that snapshot to both `orchestrator_plan` and `orchestrator_step` so known
+  token, cost, and runtime caps can halt the existing Rust scheduler rather than being
+  cosmetic cockpit labels.
+- When a configured cap axis has unknown telemetry, disable `Run next step` and show
+  the exact missing axis. Unknown is not converted to zero and cannot silently pass a
+  configured budget check.
+- Keep this bounded to the supported cockpit path. It does not claim that every legacy
+  MCP/compatibility caller has provider-exact billing or a new universal budget owner.
+- Done: cockpit dispatch passes reported usage, known over-budget state reaches the
+  existing backend halt, and capped-but-unmeasured usage fails closed before spawn.
+
 ## Deferred After GMV
 
-Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, and Honest Cost Meter `CM-1`
-are complete, and `PB-UI-1` closes read-only Proofbook product access. Starting or
-cancelling runs, deciding gates, settling agent steps, opening artifacts, budget
-editing, Remote Continuity, and other adjacent value remain portfolio candidates.
+Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
+read-only Proofbook product access `PB-UI-1`, and cockpit budget binding `CM-2` are complete.
+Starting or cancelling Proofbook runs, deciding gates, settling agent steps, opening
+artifacts, budget editing, Remote Continuity, and other adjacent value remain portfolio candidates.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before
 opening the next bounded slice; existing backend capability alone does not justify a
 new framework program.

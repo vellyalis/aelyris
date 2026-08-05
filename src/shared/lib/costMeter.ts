@@ -1,6 +1,6 @@
 import type { AgentSession, TelemetryConfidence } from "../types/agent";
 import type { CostCaps, CostLimit, CostUsage } from "../types/cost";
-import { isLiveAgentStatus, tokenTelemetryConfidence } from "./workstationSummary";
+import { tokenTelemetryConfidence } from "./workstationSummary";
 
 export type CostMeterStatus = "blocked" | "incomplete" | "within" | "agent_only";
 
@@ -12,6 +12,18 @@ export interface FleetCostMeter {
   readonly blockedBy: CostLimit[];
   readonly unknownLimits: CostLimit[];
   readonly status: CostMeterStatus;
+}
+
+const COST_LIVE_STATUSES = new Set<AgentSession["status"]>([
+  "idle",
+  "thinking",
+  "generating",
+  "coding",
+  "waiting",
+]);
+
+export function isCostMeterLiveStatus(status: AgentSession["status"]): boolean {
+  return COST_LIVE_STATUSES.has(status);
 }
 
 function finiteNonnegative(value: number): number {
@@ -51,7 +63,7 @@ export function deriveFleetCostMeter(
   caps: CostCaps,
   now = Date.now(),
 ): FleetCostMeter {
-  const liveSessions = sessions.filter((session) => isLiveAgentStatus(session.status));
+  const liveSessions = sessions.filter((session) => isCostMeterLiveStatus(session.status));
   const runtime = liveRuntime(liveSessions, now);
   const usage: CostUsage = {
     active_agents: liveSessions.length,

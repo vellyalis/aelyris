@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrchestratorPanel } from "../features/orchestrator/OrchestratorPanel";
+import type { AgentSession } from "../shared/types/agent";
+import type { CostCaps } from "../shared/types/cost";
 import type { Task } from "../shared/types/task";
 
 const tauriMocks = vi.hoisted(() => {
@@ -34,7 +36,7 @@ function task(partial: Partial<Task> & { id: string }): Task {
   };
 }
 
-const CAPS = { max_agents: 4, max_tokens: null, max_cost_usd: null, max_runtime_secs: null };
+const CAPS: CostCaps = { max_agents: 4, max_tokens: null, max_cost_usd: null, max_runtime_secs: null };
 
 function missionPreview(request: string, repositoryRoot = "C:/repo") {
   return {
@@ -60,13 +62,14 @@ function mockInvoke(
     workPacketId?: string | null;
     missionCompletionPacketId?: string | null;
   } = {},
+  caps = CAPS,
 ) {
   tauriMocks.invoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
       case "task_list":
         return Promise.resolve(tasks);
       case "cost_caps":
-        return Promise.resolve(CAPS);
+        return Promise.resolve(caps);
       case "event_recent":
         return Promise.resolve([]);
       case "context_all":
@@ -247,6 +250,74 @@ describe("OrchestratorPanel", () => {
       }),
     );
     await waitFor(() => expect(screen.getByText("1 dispatched")).toBeTruthy());
+  });
+
+  it("passes reported token, cost, and runtime usage into the supported cockpit step", async () => {
+    mockInvoke([task({ id: "t1", title: "Continue live work", status: "running" })], {
+      to_dispatch: [],
+      state: "active",
+    });
+    const sessions: AgentSession[] = [
+      {
+        id: "agent-live",
+        name: "Live agent",
+        status: "coding",
+        model: "claude-sonnet",
+        prompt: "work",
+        startedAt: Date.now() - 60_000,
+        logs: [],
+        cost: 0.75,
+        tokensUsed: 12_000,
+      },
+    ];
+
+    render(<OrchestratorPanel projectPath="C:/repo" sessions={sessions} />);
+    await waitFor(() => expect(screen.getByText("Continue live work")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Run next step" }));
+
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("orchestrator_step", {
+        usage: {
+          active_agents: 1,
+          tokens_used: 12_000,
+          cost_usd: 0.75,
+          runtime_secs: expect.any(Number),
+        },
+        repoPath: "C:/repo",
+      }),
+    );
+  });
+
+  it("fails closed when a configured budget axis has unknown telemetry", async () => {
+    mockInvoke(
+      [task({ id: "t1", title: "Budget-sensitive work", status: "ready" })],
+      { to_dispatch: ["t1"], state: "active" },
+      {},
+      [],
+      {},
+      { ...CAPS, max_tokens: 1_000 },
+    );
+    const sessions: AgentSession[] = [
+      {
+        id: "agent-unknown",
+        name: "Unknown usage agent",
+        status: "done",
+        model: "custom-model",
+        prompt: "work",
+        startedAt: Date.now() - 60_000,
+        logs: [],
+        cost: 0,
+        tokensUsed: 0,
+      },
+    ];
+
+    render(<OrchestratorPanel projectPath="C:/repo" sessions={sessions} />);
+
+    expect(await screen.findByText("Run blocked: configured tokens telemetry is unknown.")).toBeTruthy();
+    const runButton = screen.getByRole("button", { name: "Run next step" }) as HTMLButtonElement;
+    await waitFor(() => expect(runButton.disabled).toBe(true));
+    fireEvent.click(runButton);
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith("orchestrator_step", expect.anything());
   });
 
   it("keeps exact review and merge authority in one backend command", async () => {
