@@ -118,11 +118,21 @@ pub struct ProofbookSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProofbookStringInputField {
+    pub key: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProofbookStartAdmission {
     pub eligible: bool,
     pub definition_hash: Option<String>,
     pub input_count: usize,
     pub secret_count: usize,
+    pub string_inputs: Vec<ProofbookStringInputField>,
+    pub unsupported_inputs: Vec<String>,
     pub unsupported_step_kinds: Vec<String>,
     pub blockers: Vec<String>,
 }
@@ -134,6 +144,8 @@ impl ProofbookStartAdmission {
             definition_hash: None,
             input_count: 0,
             secret_count: 0,
+            string_inputs: Vec::new(),
+            unsupported_inputs: Vec::new(),
             unsupported_step_kinds: Vec::new(),
             blockers: vec![blocker.into()],
         }
@@ -184,5 +196,30 @@ mod tests {
         assert_eq!(value["errors"][0]["code"], "runtime_not_available");
         assert_eq!(value["startAdmission"]["eligible"], false);
         assert!(value["errors"][0].get("definitionId").is_none());
+    }
+
+    #[test]
+    fn string_input_admission_uses_camel_case_without_exposing_secret_values() {
+        let admission = ProofbookStartAdmission {
+            eligible: true,
+            definition_hash: Some("sha256:definition".to_string()),
+            input_count: 1,
+            secret_count: 0,
+            string_inputs: vec![ProofbookStringInputField {
+                key: "target".to_string(),
+                required: true,
+                default_value: Some("main".to_string()),
+            }],
+            unsupported_inputs: Vec::new(),
+            unsupported_step_kinds: Vec::new(),
+            blockers: Vec::new(),
+        };
+
+        let value = serde_json::to_value(admission).unwrap();
+        assert_eq!(value["definitionHash"], "sha256:definition");
+        assert_eq!(value["stringInputs"][0]["key"], "target");
+        assert_eq!(value["stringInputs"][0]["defaultValue"], "main");
+        assert_eq!(value["unsupportedInputs"], serde_json::json!([]));
+        assert!(value.get("secretValues").is_none());
     }
 }

@@ -1,6 +1,6 @@
 use crate::proofbook::{
     ProofbookDefinition, ProofbookError, ProofbookErrorCode, ProofbookStartAdmission,
-    ProofbookStepKind, ProofbookValidationReport, PROOFBOOK_SCHEMA_V1,
+    ProofbookStepKind, ProofbookStringInputField, ProofbookValidationReport, PROOFBOOK_SCHEMA_V1,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
@@ -34,7 +34,7 @@ pub fn validate_definition(
     validate_secrets(definition, &mut errors);
 
     let valid = errors.is_empty();
-    let start_admission = input_free_start_admission(definition, valid);
+    let start_admission = cockpit_start_admission(definition, valid);
 
     ProofbookValidationReport {
         definition_id: if definition.id.trim().is_empty() {
@@ -49,20 +49,45 @@ pub fn validate_definition(
     }
 }
 
-fn input_free_start_admission(
+fn cockpit_start_admission(
     definition: &ProofbookDefinition,
     definition_valid: bool,
 ) -> ProofbookStartAdmission {
-    const SUPPORTED_INPUT_FREE_START_KINDS: &[&str] =
-        &["shell", "verifier", "waitFor", "manualGate"];
+    const SUPPORTED_COCKPIT_START_KINDS: &[&str] = &["shell", "verifier", "waitFor", "manualGate"];
     let definition_hash = crate::proofbook::hash_json(definition).ok();
     let input_count = definition.inputs.len();
     let secret_count = definition.secrets.len();
+    let mut string_inputs = Vec::new();
+    let mut unsupported_inputs = Vec::new();
+    for (key, spec) in &definition.inputs {
+        if spec.input_type != "string" {
+            let input_type = if spec.input_type.trim().is_empty() {
+                "missing_type"
+            } else {
+                spec.input_type.as_str()
+            };
+            unsupported_inputs.push(format!("{key}:{input_type}"));
+            continue;
+        }
+        let default_value = match &spec.default {
+            None => None,
+            Some(serde_yaml::Value::String(value)) => Some(value.clone()),
+            Some(_) => {
+                unsupported_inputs.push(format!("{key}:default_not_string"));
+                continue;
+            }
+        };
+        string_inputs.push(ProofbookStringInputField {
+            key: key.clone(),
+            required: spec.required,
+            default_value,
+        });
+    }
     let unsupported_step_kinds = definition
         .steps
         .iter()
         .filter_map(|step| {
-            (!SUPPORTED_INPUT_FREE_START_KINDS.contains(&step.kind.as_str()))
+            (!SUPPORTED_COCKPIT_START_KINDS.contains(&step.kind.as_str()))
                 .then_some(step.kind.clone())
         })
         .collect::<BTreeSet<_>>()
@@ -75,11 +100,11 @@ fn input_free_start_admission(
     if definition_hash.is_none() {
         blockers.push("definition_hash_unavailable".to_string());
     }
-    if input_count > 0 {
-        blockers.push("runtime_inputs_declared".to_string());
-    }
     if secret_count > 0 {
         blockers.push("secret_references_declared".to_string());
+    }
+    if !unsupported_inputs.is_empty() {
+        blockers.push("unsupported_inputs".to_string());
     }
     if !unsupported_step_kinds.is_empty() {
         blockers.push("unsupported_step_kinds".to_string());
@@ -89,6 +114,8 @@ fn input_free_start_admission(
         definition_hash,
         input_count,
         secret_count,
+        string_inputs,
+        unsupported_inputs,
         unsupported_step_kinds,
         blockers,
     }
@@ -572,7 +599,7 @@ settlement:
     }
 
     #[test]
-    fn proofbook_validator_explains_why_cockpit_input_free_start_is_blocked() {
+    fn proofbook_validator_projects_string_inputs_but_blocks_secrets_and_unsupported_steps() {
         let report = validate_yaml(
             r#"
 schema: aelyris.proofbook.v1
@@ -597,14 +624,15 @@ settlement:
         assert!(!report.start_admission.eligible);
         assert_eq!(report.start_admission.input_count, 1);
         assert_eq!(report.start_admission.secret_count, 1);
+        assert_eq!(report.start_admission.string_inputs.len(), 1);
+        assert_eq!(report.start_admission.string_inputs[0].key, "target");
+        assert!(report.start_admission.string_inputs[0].required);
+        assert_eq!(report.start_admission.string_inputs[0].default_value, None);
+        assert!(report.start_admission.unsupported_inputs.is_empty());
         assert_eq!(
             report.start_admission.unsupported_step_kinds,
             ["agentSession"]
         );
-        assert!(report
-            .start_admission
-            .blockers
-            .contains(&"runtime_inputs_declared".to_string()));
         assert!(report
             .start_admission
             .blockers
@@ -613,6 +641,39 @@ settlement:
             .start_admission
             .blockers
             .contains(&"unsupported_step_kinds".to_string()));
+    }
+
+    #[test]
+    fn proofbook_validator_blocks_unsupported_input_types_and_defaults() {
+        let report = validate_yaml(
+            r#"
+schema: aelyris.proofbook.v1
+id: unsupported-inputs
+inputs:
+  count:
+    type: number
+  label:
+    type: string
+    default: [not, a, string]
+steps:
+  - id: echo
+    type: shell
+    command: echo ready
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+
+        assert!(report.valid, "{:?}", report.errors);
+        assert!(!report.start_admission.eligible);
+        assert_eq!(
+            report.start_admission.unsupported_inputs,
+            ["count:number", "label:default_not_string"]
+        );
+        assert!(report
+            .start_admission
+            .blockers
+            .contains(&"unsupported_inputs".to_string()));
     }
 
     #[test]

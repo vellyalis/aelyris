@@ -1,11 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProofbookPanel } from "../features/proofbooks/ProofbookPanel";
-import type {
-  ProofbookArtifactPreview,
-  ProofbookRunLedger,
-  ProofbookSummary,
-} from "../shared/types/proofbook";
+import type { ProofbookArtifactPreview, ProofbookRunLedger, ProofbookSummary } from "../shared/types/proofbook";
 
 const tauriMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -39,6 +35,8 @@ const INPUT_FREE_ADMISSION = {
   definitionHash: "sha256:validated-definition-hash",
   inputCount: 0,
   secretCount: 0,
+  stringInputs: [],
+  unsupportedInputs: [],
   unsupportedStepKinds: [],
   blockers: [],
 };
@@ -236,7 +234,8 @@ describe("ProofbookPanel", () => {
             ...INPUT_FREE_ADMISSION,
             eligible: false,
             inputCount: 1,
-            blockers: ["runtime_inputs_declared"],
+            unsupportedInputs: ["count:number"],
+            blockers: ["unsupported_inputs"],
           },
         });
       }
@@ -258,7 +257,8 @@ describe("ProofbookPanel", () => {
       projectPath: "C:/repo",
       proofbookPath: CATALOG[0].path,
     });
-    expect(screen.getByText(/runtime_inputs_declared/)).toBeTruthy();
+    expect(screen.getByText(/unsupported_inputs/)).toBeTruthy();
+    expect(screen.getByText(/count:number/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Start validated Proofbook/ })).toBeNull();
   });
 
@@ -307,6 +307,66 @@ describe("ProofbookPanel", () => {
     releaseStart(run({ runId: "run-started", status: "passed" }));
     expect(await screen.findByText(/Started release-closeout/)).toBeTruthy();
     expect(screen.getByText("Passed")).toBeTruthy();
+  });
+
+  it("starts declared non-secret string inputs with defaults and an exact submitted-value preview", async () => {
+    let releaseStart: (ledger: ProofbookRunLedger) => void = () => {};
+    const startPromise = new Promise<ProofbookRunLedger>((resolve) => {
+      releaseStart = resolve;
+    });
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([]);
+      if (command === "validate_proofbook") {
+        return Promise.resolve({
+          definitionId: "release-closeout",
+          path: CATALOG[0].path,
+          valid: true,
+          errors: [],
+          startAdmission: {
+            ...INPUT_FREE_ADMISSION,
+            inputCount: 2,
+            stringInputs: [
+              { key: "mode", required: false, defaultValue: "release" },
+              { key: "target", required: true, defaultValue: null },
+            ],
+          },
+        });
+      }
+      if (command === "start_string_input_proofbook_run") return startPromise;
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Validate release.proofbook.yaml" }));
+
+    expect(await screen.findByText("String-input start eligible")).toBeTruthy();
+    const mode = screen.getByRole("textbox", { name: "Proofbook input mode" }) as HTMLInputElement;
+    const target = screen.getByRole("textbox", { name: "Proofbook input target" }) as HTMLInputElement;
+    expect(mode.value).toBe("release");
+    expect(target.value).toBe("");
+    expect(screen.getByText("Exact values submitted on Start")).toBeTruthy();
+
+    fireEvent.change(target, { target: { value: "main" } });
+    expect(within(screen.getByLabelText("Proofbook string inputs")).getByText("main")).toBeTruthy();
+
+    const start = screen.getByRole("button", { name: "Start validated Proofbook release.proofbook.yaml" });
+    fireEvent.click(start);
+    fireEvent.click(start);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(([command]) => command === "start_string_input_proofbook_run");
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("start_string_input_proofbook_run", {
+      projectPath: "C:/repo",
+      proofbookPath: CATALOG[0].path,
+      expectedDefinitionHash: "sha256:validated-definition-hash",
+      inputs: { mode: "release", target: "main" },
+    });
+
+    releaseStart(run({ runId: "run-string-input", status: "passed" }));
+    expect(await screen.findByText(/Started release-closeout/)).toBeTruthy();
   });
 
   it("requires revalidation when the definition hash changes before start", async () => {
@@ -718,12 +778,10 @@ describe("ProofbookPanel", () => {
 
   it("keeps an expanded evidence inspector reconciled with live ledger revisions", async () => {
     const listener: { current?: (event: { payload: ProofbookRunLedger }) => void } = {};
-    tauriMocks.listen.mockImplementation(
-      (name: string, callback: (event: { payload: ProofbookRunLedger }) => void) => {
-        if (name === "proofbook-updated") listener.current = callback;
-        return Promise.resolve(vi.fn());
-      },
-    );
+    tauriMocks.listen.mockImplementation((name: string, callback: (event: { payload: ProofbookRunLedger }) => void) => {
+      if (name === "proofbook-updated") listener.current = callback;
+      return Promise.resolve(vi.fn());
+    });
     tauriMocks.invoke.mockImplementation((command: string) => {
       if (command === "list_proofbooks") return Promise.resolve(CATALOG);
       if (command === "list_proofbook_runs") return Promise.resolve([evidenceRun()]);

@@ -1615,6 +1615,7 @@ pub fn run() {
             ipc::list_proofbooks,
             ipc::validate_proofbook,
             ipc::start_input_free_proofbook_run,
+            ipc::start_string_input_proofbook_run,
             ipc::start_proofbook_run,
             ipc::proofbook_run_status,
             ipc::list_proofbook_runs,

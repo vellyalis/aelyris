@@ -24,7 +24,7 @@ pub use parser::{list_proofbook_files, parse_proofbook};
 pub use runner::{ProofbookMcpToolExecutor, ProofbookRunner};
 pub use types::{
     ProofbookDefinition, ProofbookInputSpec, ProofbookSecretRef, ProofbookSettlement,
-    ProofbookStartAdmission, ProofbookStep, ProofbookStepKind, ProofbookSummary,
-    ProofbookValidationReport, PROOFBOOK_SCHEMA_V1,
+    ProofbookStartAdmission, ProofbookStep, ProofbookStepKind, ProofbookStringInputField,
+    ProofbookSummary, ProofbookValidationReport, PROOFBOOK_SCHEMA_V1,
 };
 pub use validator::validate_definition;

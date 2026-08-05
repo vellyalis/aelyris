@@ -29,8 +29,16 @@ export interface ProofbookStartAdmission {
   definitionHash: string | null;
   inputCount: number;
   secretCount: number;
+  stringInputs: ProofbookStringInputField[];
+  unsupportedInputs: string[];
   unsupportedStepKinds: string[];
   blockers: string[];
+}
+
+export interface ProofbookStringInputField {
+  key: string;
+  required: boolean;
+  defaultValue: string | null;
 }
 
 export type ProofbookStepStatus =

@@ -15,6 +15,12 @@ use std::sync::{Arc, Mutex};
 
 pub const PROOFBOOK_ARTIFACT_PREVIEW_MAX_BYTES: u64 = 64 * 1024;
 
+#[derive(Clone, Copy)]
+enum CockpitStartContract<'a> {
+    InputFree(&'a str),
+    StringInputs(&'a str),
+}
+
 pub trait ProofbookMcpToolExecutor {
     fn execute_mcp_tool(
         &self,
@@ -67,7 +73,23 @@ impl ProofbookRunner {
             proofbook_path,
             serde_json::json!({}),
             ProofbookExecutorRefs::default(),
-            Some(expected_definition_hash),
+            Some(CockpitStartContract::InputFree(expected_definition_hash)),
+        )
+    }
+
+    pub fn start_string_input_run(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        expected_definition_hash: &str,
+        inputs: serde_json::Value,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.start_run_inner(
+            project_path,
+            proofbook_path,
+            inputs,
+            ProofbookExecutorRefs::default(),
+            Some(CockpitStartContract::StringInputs(expected_definition_hash)),
         )
     }
 
@@ -127,9 +149,9 @@ impl ProofbookRunner {
         &self,
         project_path: &str,
         proofbook_path: &str,
-        inputs: serde_json::Value,
+        mut inputs: serde_json::Value,
         executors: ProofbookExecutorRefs<'_>,
-        expected_input_free_definition_hash: Option<&str>,
+        cockpit_start: Option<CockpitStartContract<'_>>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let proofbook_path = resolve_proofbook_path(&root, proofbook_path)?;
@@ -138,28 +160,52 @@ impl ProofbookRunner {
         if !report.valid {
             return Err(validation_failed(report.errors));
         }
-        if let Some(expected_definition_hash) = expected_input_free_definition_hash {
+        if let Some(contract) = cockpit_start {
             let admission = &report.start_admission;
-            if !admission.eligible {
-                return Err(ProofbookError::new(
-                    ProofbookErrorCode::ValidationFailed,
-                    format!(
-                        "Proofbook is not eligible for input-free cockpit start: {}",
-                        admission.blockers.join(", ")
-                    ),
-                ));
-            }
             let actual_definition_hash = admission.definition_hash.as_deref().ok_or_else(|| {
                 ProofbookError::new(
                     ProofbookErrorCode::ValidationFailed,
-                    "Proofbook definition hash is unavailable for input-free start",
+                    "Proofbook definition hash is unavailable for cockpit start",
                 )
             })?;
+            let expected_definition_hash = match contract {
+                CockpitStartContract::InputFree(hash)
+                | CockpitStartContract::StringInputs(hash) => hash,
+            };
             if actual_definition_hash != expected_definition_hash {
                 return Err(ProofbookError::new(
                     ProofbookErrorCode::StaleDefinitionHash,
                     "Proofbook definition changed after validation; validate again before starting",
                 ));
+            }
+            match contract {
+                CockpitStartContract::InputFree(_) => {
+                    let mut blockers = admission.blockers.clone();
+                    if !definition.inputs.is_empty() {
+                        blockers.push("runtime_inputs_declared".to_string());
+                    }
+                    if !blockers.is_empty() {
+                        return Err(ProofbookError::new(
+                            ProofbookErrorCode::ValidationFailed,
+                            format!(
+                                "Proofbook is not eligible for input-free cockpit start: {}",
+                                blockers.join(", ")
+                            ),
+                        ));
+                    }
+                }
+                CockpitStartContract::StringInputs(_) => {
+                    if !admission.eligible {
+                        return Err(ProofbookError::new(
+                            ProofbookErrorCode::ValidationFailed,
+                            format!(
+                                "Proofbook is not eligible for string-input cockpit start: {}",
+                                admission.blockers.join(", ")
+                            ),
+                        ));
+                    }
+                    inputs = normalize_string_inputs(&definition, inputs)?;
+                }
             }
         }
 
@@ -1637,6 +1683,91 @@ fn validation_failed(errors: Vec<ProofbookError>) -> ProofbookError {
     ProofbookError::new(ProofbookErrorCode::ValidationFailed, message)
 }
 
+fn normalize_string_inputs(
+    definition: &ProofbookDefinition,
+    submitted: serde_json::Value,
+) -> Result<serde_json::Value, ProofbookError> {
+    let mut submitted = submitted.as_object().cloned().ok_or_else(|| {
+        ProofbookError::new(
+            ProofbookErrorCode::ValidationFailed,
+            "Proofbook cockpit inputs must be an object of declared string values",
+        )
+        .with_definition(definition.id.clone())
+        .with_field("inputs")
+    })?;
+
+    for key in submitted.keys() {
+        if !definition.inputs.contains_key(key) {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ValidationFailed,
+                format!("unknown Proofbook input: {key}"),
+            )
+            .with_definition(definition.id.clone())
+            .with_field(format!("inputs.{key}")));
+        }
+    }
+
+    let mut normalized = BTreeMap::<String, serde_json::Value>::new();
+    for (key, spec) in &definition.inputs {
+        if spec.input_type != "string" {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ValidationFailed,
+                format!(
+                    "unsupported Proofbook input type for {key}: {}",
+                    spec.input_type
+                ),
+            )
+            .with_definition(definition.id.clone())
+            .with_field(format!("inputs.{key}.type")));
+        }
+
+        if let Some(value) = submitted.remove(key) {
+            let value = value.as_str().ok_or_else(|| {
+                ProofbookError::new(
+                    ProofbookErrorCode::ValidationFailed,
+                    format!("Proofbook input {key} must be a string"),
+                )
+                .with_definition(definition.id.clone())
+                .with_field(format!("inputs.{key}"))
+            })?;
+            normalized.insert(key.clone(), serde_json::Value::String(value.to_string()));
+            continue;
+        }
+
+        match &spec.default {
+            Some(serde_yaml::Value::String(value)) => {
+                normalized.insert(key.clone(), serde_json::Value::String(value.clone()));
+            }
+            Some(_) => {
+                return Err(ProofbookError::new(
+                    ProofbookErrorCode::ValidationFailed,
+                    format!("Proofbook input {key} has a non-string default"),
+                )
+                .with_definition(definition.id.clone())
+                .with_field(format!("inputs.{key}.default")));
+            }
+            None if spec.required => {
+                return Err(ProofbookError::new(
+                    ProofbookErrorCode::ValidationFailed,
+                    format!("missing required Proofbook input: {key}"),
+                )
+                .with_definition(definition.id.clone())
+                .with_field(format!("inputs.{key}")));
+            }
+            None => {}
+        }
+    }
+
+    serde_json::to_value(normalized).map_err(|error| {
+        ProofbookError::new(
+            ProofbookErrorCode::ValidationFailed,
+            format!("could not normalize Proofbook inputs: {error}"),
+        )
+        .with_definition(definition.id.clone())
+        .with_field("inputs")
+    })
+}
+
 fn dependencies_passed(ledger: &ProofbookRunLedger, step: &ProofbookStep) -> bool {
     step.depends_on.iter().all(|dependency| {
         ledger
@@ -1956,6 +2087,108 @@ settlement:
         assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
         assert!(error.message.contains("runtime_inputs_declared"));
         assert!(error.message.contains("unsupported_step_kinds"));
+    }
+
+    #[test]
+    fn string_input_start_normalizes_declared_values_and_defaults() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-string-inputs
+inputs:
+  mode:
+    type: string
+    default: release
+  target:
+    type: string
+    required: true
+steps:
+  - id: echo
+    type: shell
+    command: echo string-inputs
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+        let definition = parse_proofbook(&proofbook).unwrap();
+        let definition_hash = ledger::hash_json(&definition).unwrap();
+        let runner = ProofbookRunner::new();
+
+        let started = runner
+            .start_string_input_run(
+                &project_path(&project),
+                &proofbook,
+                &definition_hash,
+                json!({ "target": "main" }),
+            )
+            .unwrap();
+
+        assert_eq!(started.status, ProofbookRunStatus::Passed);
+        assert_eq!(
+            started.input_hash,
+            ledger::hash_json(&json!({ "mode": "release", "target": "main" })).unwrap()
+        );
+    }
+
+    #[test]
+    fn string_input_start_rejects_invalid_objects_before_creating_a_ledger() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-string-input-errors
+inputs:
+  target:
+    type: string
+    required: true
+steps:
+  - id: echo
+    type: shell
+    command: echo string-input-errors
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+        let definition = parse_proofbook(&proofbook).unwrap();
+        let definition_hash = ledger::hash_json(&definition).unwrap();
+        let runner = ProofbookRunner::new();
+
+        for (inputs, field) in [
+            (json!({}), "inputs.target"),
+            (json!({ "target": 7 }), "inputs.target"),
+            (
+                json!({ "target": "main", "unexpected": "value" }),
+                "inputs.unexpected",
+            ),
+        ] {
+            let error = runner
+                .start_string_input_run(
+                    &project_path(&project),
+                    &proofbook,
+                    &definition_hash,
+                    inputs,
+                )
+                .unwrap_err();
+            assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
+            assert_eq!(error.field.as_deref(), Some(field));
+        }
+
+        let stale = runner
+            .start_string_input_run(
+                &project_path(&project),
+                &proofbook,
+                "sha256:stale",
+                json!({ "target": "main" }),
+            )
+            .unwrap_err();
+        assert_eq!(stale.code, ProofbookErrorCode::StaleDefinitionHash);
+        assert!(runner
+            .list_runs(&project_path(&project))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

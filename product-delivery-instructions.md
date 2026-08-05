@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-7`.
-LAST COMPLETED SLICE: `CM-3`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-7`.
+ACTIVE SLICE: `PB-UI-8`.
+LAST COMPLETED SLICE: `PB-UI-7`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-8`.
 
 ```yaml
 continuation_contract:
@@ -57,14 +57,15 @@ Current portfolio classification:
 | Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
 | Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
-| Remote Continuity | **PARKED** | Local core journey is not yet complete |
+| Remote Continuity | **PARKED** | Finish the local Proofbook agent-completion path before opening a remote surface |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
 | Proofbook product access through durable evidence inspection | **COMPLETE** | Command mode exposes catalog/history, bounded effects, verified runner artifacts, and an allowlisted ledger inspector while inputs, secrets, settlement, and raw files remain separate |
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
 | Bounded fleet cap editing | **COMPLETE** | The existing Cost Manager now owns one explicit validated cockpit save path with conflict-safe drafts and visible outcomes |
-| Non-secret Proofbook string inputs | **NOW** | The runner already accepts an input object; the next gap is one backend-validated declared-input form without exposing secrets or generic JSON |
+| Non-secret Proofbook string inputs | **COMPLETE** | Cockpit validation now projects only supported string fields and the runner normalizes the exact declared object before ledger creation |
+| Exact Proofbook agentSession settlement | **NOW** | The runner already validates completion proofs; the remaining gap is a no-free-form cockpit projection over current runtime-owned evidence |
 | Broader Proofbook effects and input/secret UX | **PARKED** | Further access requires separately bounded operator decisions and data handling |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
@@ -73,7 +74,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-6` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-7` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -522,7 +523,7 @@ Status: **COMPLETE**.
 ### PB-UI-7 — Validated Non-Secret Proofbook String Inputs
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing Proofbook cockpit panel and runner; do not add a generic JSON
   editor, a second input schema owner, or a secret-value store.
@@ -540,16 +541,41 @@ Status: **ACTIVE**.
 - Done: an operator can start an otherwise-supported Proofbook with declared string
   inputs from the cockpit, while the backend remains the only admission authority.
 
+### PB-UI-8 — Exact Runtime-Owned Agent Session Settlement
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Extend the existing Proofbook cockpit and `settle_proofbook_agent_session` owner;
+  do not create a second completion protocol, runner, session registry, or evidence
+  store.
+- Offer settlement only for the exact displayed revision of a running
+  `agentSession` step whose durable output still identifies the same runtime-owned
+  session/pane/worktree. A changed definition, ledger revision, step state, or
+  session identity must refresh and fail closed.
+- Derive the candidate completion packet from existing runtime-owned done signals,
+  final-report references, reviewer batches, and contained expected artifacts. Do
+  not expose a generic JSON editor or let the operator type arbitrary status,
+  artifact paths, done signals, reviewer ids, or blocker payloads.
+- Show the exact evidence that will be submitted, unresolved requirements, and the
+  resulting durable status before enabling one explicit Settle action.
+- Keep terminal input, process termination, review acceptance, and merge authority
+  in their existing owners. Settling a ledger step must not claim that an external
+  process was killed, reviewed, or merged.
+- Done: an operator can settle a current Proofbook `agentSession` from existing
+  Aelyris-owned completion evidence without composing a proof packet by hand.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
 Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 `PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
 `CM-2` are complete, together with verified runner-owned artifact preview `PB-UI-5`.
-Durable step evidence inspection `PB-UI-6` and bounded cap editing `CM-3` are also
-complete. Validated non-secret string inputs `PB-UI-7` are active; secret-bearing
-starts, broader input types, settling agent steps, raw artifact opening/export,
-Remote Continuity, and other adjacent value remain portfolio candidates.
+Durable step evidence inspection `PB-UI-6`, bounded cap editing `CM-3`, and validated
+non-secret string inputs `PB-UI-7` are also complete. Exact runtime-owned
+`agentSession` settlement `PB-UI-8` is active; secret-bearing starts, broader input
+types, raw artifact opening/export, Remote Continuity, and other adjacent value
+remain portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

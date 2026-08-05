@@ -269,6 +269,116 @@
   white-space: normal;
 }
 
+.inputEditor {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(142, 226, 241, 0.1);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.2);
+}
+
+.inputFields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.inputField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inputLabel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.inputLabel code,
+.inputPreview dt {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.inputLabel small,
+.inputField > small {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.inputField input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid rgba(142, 226, 241, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 6, 14, 0.32);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.inputField input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.inputField input:disabled {
+  opacity: 0.55;
+}
+
+.inputPreview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(142, 226, 241, 0.06);
+}
+
+.inputPreview > strong {
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.inputPreview dl {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.inputPreviewRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(70px, 0.45fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.inputPreview dt,
+.inputPreview dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.inputPreview dd {
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
 .startButton {
   display: inline-flex;
   min-height: 28px;
@@ -1259,9 +1369,13 @@
 }
 
 @keyframes proofbook-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spinning { animation: none; }
+  .spinning {
+    animation: none;
+  }
 }

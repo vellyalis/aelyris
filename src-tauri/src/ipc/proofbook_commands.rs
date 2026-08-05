@@ -73,6 +73,52 @@ pub fn start_input_free_proofbook_run(
 }
 
 #[tauri::command]
+pub fn start_string_input_proofbook_run(
+    app: AppHandle,
+    project_path: String,
+    proofbook_path: String,
+    expected_definition_hash: String,
+    inputs: serde_json::Value,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    require_proofbook_effect_admitted(
+        app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+            .inner(),
+        "Proofbook string-input start",
+    )?;
+    let input_keys = inputs
+        .as_object()
+        .map(|values| values.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let ledger = app
+        .state::<proofbook::ProofbookRunner>()
+        .start_string_input_run(
+            &project_path,
+            &proofbook_path,
+            &expected_definition_hash,
+            inputs,
+        )?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "string_input_run_started",
+        "info",
+        Some("proofbook"),
+        Some(&ledger.run_id),
+        "Validated non-secret string-input Proofbook run started from cockpit",
+        serde_json::json!({
+            "projectPath": project_path,
+            "proofbookPath": proofbook_path,
+            "definitionHash": expected_definition_hash,
+            "inputKeys": input_keys,
+            "inputValuesLogged": false,
+            "status": ledger.status,
+        }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
+}
+
+#[tauri::command]
 pub fn start_proofbook_run(
     app: AppHandle,
     project_path: String,
