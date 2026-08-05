@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
 import { ContextPanel } from "../context/ContextPanel";
+import { CostMeterPanel } from "../cost-meter/CostMeterPanel";
 import { DecisionInboxPanel } from "../decision-inbox";
 import { OrchestratorPanel } from "../orchestrator/OrchestratorPanel";
 import { ToolkitPanel } from "../toolkit/ToolkitPanel";
@@ -56,6 +57,18 @@ export function RightRailCommandMode({
               forceExpanded={focusedWidget === "toolkit"}
             />
           </div>
+        </Suspense>
+      </ErrorBoundary>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <RightRailWidgetFrame
+            widget="cost-meter"
+            title="Cost Meter"
+            subtitle="reported usage and configured caps"
+            forceOpen={focusedWidget === "cost-meter"}
+          >
+            <CostMeterPanel sessions={sessions} />
+          </RightRailWidgetFrame>
         </Suspense>
       </ErrorBoundary>
       {decisionInbox.visible && (

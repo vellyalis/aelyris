@@ -86,6 +86,12 @@ vi.mock("../features/decision-inbox", () => ({
   ),
 }));
 
+vi.mock("../features/cost-meter/CostMeterPanel", () => ({
+  CostMeterPanel: ({ sessions }: { sessions: unknown[] }) => (
+    <section aria-label="cost meter projection" data-session-count={sessions.length} />
+  ),
+}));
+
 vi.mock("../features/orchestrator/OrchestratorPanel", () => ({
   OrchestratorPanel: () => <section aria-label="orchestrator projection" />,
 }));
@@ -181,6 +187,10 @@ describe("RightRailCommandMode", () => {
     expect(screen.getByText("decision destination")).not.toBeNull();
     expect(screen.getByRole("region", { name: "agent inspector slot" })).not.toBeNull();
     expect(screen.getByRole("region", { name: "toolkit projection" }).dataset.targetReady).toBe("true");
+    expect(screen.getByRole("region", { name: "cost meter projection" }).dataset.sessionCount).toBe("0");
+    expect(screen.getByRole("region", { name: "Cost Meter" }).dataset.subtitle).toBe(
+      "reported usage and configured caps",
+    );
     expect(screen.getByRole("region", { name: "decision projection" }).dataset.focusRequest).toBe("7");
     expect(screen.getByRole("region", { name: "Decision Inbox" }).dataset.subtitle).toBe("2 waiting");
     expect(screen.getByRole("region", { name: "Agents" }).dataset.subtitle).toBe("1 active · 1 ready");

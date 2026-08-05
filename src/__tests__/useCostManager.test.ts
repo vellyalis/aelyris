@@ -1,6 +1,9 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { createElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CostMeterPanel } from "../features/cost-meter/CostMeterPanel";
 import { useCostManager } from "../shared/hooks/useCostManager";
+import type { AgentSession } from "../shared/types/agent";
 import type { CostCaps } from "../shared/types/cost";
 
 const tauriMocks = vi.hoisted(() => ({
@@ -61,5 +64,31 @@ describe("useCostManager", () => {
     const updated = await result.current.updateCaps(next);
     expect(updated?.max_agents).toBe(6);
     expect(tauriMocks.invoke).toHaveBeenCalledWith("cost_set_caps", { caps: next });
+  });
+
+  it("renders reported usage beside configured caps without a cap-editing control", async () => {
+    tauriMocks.invoke.mockImplementation((cmd: string) =>
+      cmd === "cost_caps"
+        ? Promise.resolve({ max_agents: 4, max_tokens: 20_000, max_cost_usd: 1, max_runtime_secs: null })
+        : Promise.resolve(null),
+    );
+    const session: AgentSession = {
+      id: "done",
+      name: "Completed agent",
+      status: "done",
+      model: "claude-sonnet",
+      prompt: "work",
+      startedAt: Date.now() - 60_000,
+      logs: [],
+      cost: 0.5,
+      tokensUsed: 12_000,
+    };
+
+    render(createElement(CostMeterPanel, { sessions: [session] }));
+
+    expect(await screen.findByText("12k / 20k")).toBeTruthy();
+    expect(screen.getByText("$0.50 / $1.00")).toBeTruthy();
+    expect(screen.getByText("Reported fleet usage is within the configured caps.")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

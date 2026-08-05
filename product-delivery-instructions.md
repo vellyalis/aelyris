@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AB-1`.
-LAST COMPLETED SLICE: `AB-1`.
-NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `AB-1`; the
+ACTIVE SLICE: `CM-1`.
+LAST COMPLETED SLICE: `CM-1`.
+NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `CM-1`; the
 real-provider GMV-3 claim confirmation remains an external check after 2026-08-08,
 not a repository implementation slice.
 
@@ -53,7 +53,8 @@ Current portfolio classification:
 | Remote Continuity | **PARKED** | Local core journey is not yet complete |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
-| Proofbook product UI, broad budget UX | **PARKED** | Compare after the first two post-GMV user-visible slices |
+| Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
+| Proofbook product UI, broad budget editing UX | **PARKED** | Compare after the first three post-GMV user-visible slices |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -61,7 +62,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AB-1` is complete; no
+- This work order is the sole repo-mutating product lane. `CM-1` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -106,6 +107,8 @@ slice is acceptable only when the next named slice consumes it directly.
 | Interactive approval authority | existing `resolve_interactive_approval` prompt-fingerprint check and PTY write owner |
 | Approval classification | existing frontend `shellSafety.classifyCommand` plus the stricter AB-1 batch allowlist |
 | Approval batch projection | existing Decision Inbox; sequential orchestration only, no second approval authority |
+| Cost caps | existing Rust `CostManager` and `useCostManager` projection |
+| Fleet cost/token totals | existing unified `AgentSession` telemetry and `workstationSummary` confidence vocabulary |
 
 Forbidden second owners: Mission engine, TaskGraph, journal, Proofbook runner, merge
 authority, completion table, frontend execution truth, or provider-specific Mission.
@@ -256,13 +259,32 @@ Status: **COMPLETE**.
   one action while destructive, secret-bearing, ambiguous, hidden, or stale gates
   remain individually controlled and fail closed.
 
+### CM-1 — Honest Fleet Cost Meter
+
+Capability target: `Product-Accessible`.
+Status: **COMPLETE**.
+
+- Add a compact Cost Meter to the existing Command-mode right rail; do not create a
+  second Cost Manager, telemetry store, budget authority, or cap-editing surface.
+- Reuse the unified fleet sessions for reported active-agent, token, cost, and
+  longest-live-runtime usage, and reuse `useCostManager` for configured caps.
+- Normalize seconds/milliseconds session start timestamps before calculating runtime.
+- Treat absent token/cost telemetry as `unknown`, never as proof of zero spend. If a
+  corresponding cap is configured, show incomplete coverage instead of a false green.
+- Show a cap as reached only when its usage is known; active-agent and runtime facts
+  remain exact projections, while token/cost confidence stays explicit.
+- Keep this slice read-only. Changing caps or claiming provider-exact billing requires
+  a separate authority and telemetry decision rather than a convenient UI field.
+- Done: before starting more work, an operator can see reported fleet usage beside
+  configured caps and distinguish blocked, within-cap, uncapped, and unknown states.
+
 ## Deferred After GMV
 
-Fleet Briefing `FB-1` and low-risk approval batching `AB-1` are complete. Proofbook
-product access, broad budget UX, Remote Continuity, and other adjacent value remain
-portfolio candidates. Compare them against the owning Work OS/Apex roadmap and current
-user evidence before opening the next bounded slice; existing backend capability alone
-does not justify a new framework program.
+Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, and Honest Cost Meter `CM-1`
+are complete. Proofbook product access, budget editing, Remote Continuity, and other
+adjacent value remain portfolio candidates. Compare them against the owning Work
+OS/Apex roadmap and current user evidence before opening the next bounded slice;
+existing backend capability alone does not justify a new framework program.
 
 ## Complexity And Progress Stops
 
