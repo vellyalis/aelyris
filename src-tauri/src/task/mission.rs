@@ -16,6 +16,9 @@ use uuid::Uuid;
 
 use super::{validate_plan, Task, TaskPriority};
 
+mod cockpit_packets;
+pub(crate) use cockpit_packets::{aggregate_cockpit_coverage, cockpit_settlement_coverage};
+
 pub const MISSION_DEFINITION_SCHEMA: &str = "aelyris.mission_definition/v1";
 pub const MISSION_PLAN_PREVIEW_SCHEMA: &str = "aelyris.mission_plan_preview/v1";
 pub const MISSION_PLAN_CANONICALIZATION: &str = "rfc8785_json_utf8";

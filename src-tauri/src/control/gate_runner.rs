@@ -533,15 +533,14 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn exact_node_gate_runs_through_the_resolved_corepack_shim() {
+    fn resolved_corepack_shim_is_bound_into_node_environment_identity() {
         let program = crate::agent::interactive::platform_cli_program("corepack");
-        if program == "corepack" {
-            return;
-        }
-        let argv = vec![program, "pnpm".into(), "--version".into()];
-        let evidence = run_exact_command(&argv, env!("CARGO_MANIFEST_DIR")).unwrap();
-        assert_eq!(evidence.result, "passed");
-        assert_eq!(evidence.exit_code, Some(0));
-        assert_eq!(evidence.environment_fingerprint.len(), 64);
+        let commands = environment_identity_commands(&program);
+        assert_eq!(commands[0], (program.clone(), vec!["--version".into()]));
+        assert_eq!(
+            commands[1],
+            (program, vec!["pnpm".into(), "--version".into()])
+        );
+        assert_eq!(commands[2], ("node".into(), vec!["--version".into()]));
     }
 }

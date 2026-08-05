@@ -171,8 +171,19 @@ Status: **COMPLETE**.
 
 Capability target: `Claim-Eligible` for the bounded Mission journey only.
 
+Repository implementation status: **COMPLETE** at `5461b86f`. The remaining
+Claim-Eligible transition is a live-provider confirmation, not another repository
+architecture phase. The local Codex account refused that confirmation on 2026-08-05
+because its usage window is limited until 2026-08-08; this external quota does not
+reopen settlement, CI, verifier, or framework work.
+
 - Invoke the existing exact-OID merge/acceptance and immutable settlement owners.
 - A successful agent self-report, file existence, or UI status cannot settle Mission.
+- Keep the existing public authorities while localizing their private implementation:
+  `task/manager/cockpit_settlement.rs` owns the exact lineage/packet coordinator,
+  `startup_reconciliation/cockpit.rs` owns post-merge resumption order, and
+  `task/mission/cockpit_packets.rs` owns pure acceptance-coverage construction.
+  These modules own no TaskGraph, database, merge queue, or completion truth.
 - Stop when the one supported request-to-settlement path is decidable; do not expand
   into Proofbook recipes, Remote Continuity, or a broad framework program.
 

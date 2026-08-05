@@ -400,10 +400,13 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
 3. `audit-remediation-instructions.md` - **CERTIFICATION ONLY**. A9.6r1 repo repair
    is complete at `f72a61b3`; signing, real sleep, authenticated operator prompts, and
    external evidence remain release-blocking without repository mutation.
-4. `product-delivery-instructions.md` - **ACTIVE / GMV-3**. GMV-0/1 proved and
-   exact-OID-hardened the cockpit goal-to-visible-work-to-review-to-merge path;
-   GMV-2 bound its accepted Goal and planner identity atomically to the durable
-   TaskGraph and proved restart. GMV-3 now owns Mission settlement/completion.
+4. `product-delivery-instructions.md` - **ACTIVE / GMV-3 claim confirmation**.
+   GMV-0/1 proved and exact-OID-hardened the cockpit goal-to-visible-work path;
+   GMV-2 proved durable restart; GMV-3 repository implementation completed at
+   `5461b86f` and its settlement/recovery code is privately localized without a
+   second authority. A live-provider confirmation remains externally blocked by
+   the local Codex usage window until 2026-08-08; do not replace that wait with
+   more repository framework, verifier, or architecture work.
 5. `ui-quality-instructions.md` - scheduled work is owned by audit-remediation
    phase A3. Do not execute it as a concurrent work order.
 6. `renderer-instructions.md` - deferred to conditional audit-remediation phase

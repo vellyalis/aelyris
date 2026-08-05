@@ -48,18 +48,24 @@ order and the authoritative specs. Key still-active specs include:
    Attention Compiler, and post-release Apex direction. Its detailed design and
    roadmap are adjacent. These are target authorities, not shipped-capability or
    release-readiness claims. A9.6r1 repo repair completed at `f72a61b3`; product
-   delivery is now the sole repo-mutating lane at `GMV-3`. The supported cockpit
+   delivery remains at `GMV-3` for live-provider claim confirmation. Repository
+   implementation completed at `5461b86f`, including exact-OID settlement,
+   immutable Task/Mission packets, crash-safe resumption, and private locality
+   boundaries under the existing TaskManager/Mission authorities. The supported cockpit
    goal -> visible implementation -> exact-candidate independent review -> OID-bound
    merge path is live and its accepted Goal/plan survives restart, while
-   operator/external certification remains pending without repository mutation.
+   the final live-provider confirmation is externally blocked by the local Codex
+   quota until 2026-08-08. Operator/external certification remains pending without
+   repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal
    without becoming prerequisites of that first vertical.
 
-   Current delivery order is value-first: consume the already-live, restart-durable
-   path in the existing immutable Mission settlement/completion owners before native
-   migration, Remote Continuity, Proofbook product UI, or release-certification work.
+   Current delivery order is value-first: confirm the implemented bounded journey
+   when the provider window reopens, then perform portfolio selection. Native
+   migration, Remote Continuity, Proofbook product UI, and release-certification
+   work do not become automatic next phases.
 
    Cross-face API/MCP security, identity, versioning, idempotency, cancellation,
    backpressure, evidence, migration, and adversarial acceptance are owned by
