@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-6`.
-LAST COMPLETED SLICE: `PB-UI-5`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-6`.
+ACTIVE SLICE: `CM-3`.
+LAST COMPLETED SLICE: `PB-UI-6`.
+NEXT IMPLEMENTATION SLICE: `CM-3`.
 
 ```yaml
 continuation_contract:
@@ -61,9 +61,10 @@ Current portfolio classification:
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
-| Proofbook catalog, validation, run history, manual gates, input-free start, cancel, and verified text preview | **COMPLETE** | Command mode exposes bounded expected-state effects and integrity-checked runner artifacts while inputs, secrets, settlement, and raw files remain separate |
+| Proofbook product access through durable evidence inspection | **COMPLETE** | Command mode exposes catalog/history, bounded effects, verified runner artifacts, and an allowlisted ledger inspector while inputs, secrets, settlement, and raw files remain separate |
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
-| Broader Proofbook evidence/effects, broad budget editing UX | **PARKED** | Further access requires explicit ledger projection or separately bounded operator decisions |
+| Bounded fleet cap editing | **NOW** | Cost Manager already owns caps; the remaining gap is an explicit validated cockpit save path |
+| Broader Proofbook effects and input/secret UX | **PARKED** | Further access requires separately bounded operator decisions and data handling |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -71,7 +72,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-5` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-6` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -467,7 +468,7 @@ Status: **COMPLETE**.
 ### PB-UI-6 — Durable Step Evidence Inspector
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Expand one durable run ledger at a time and project its current revision, ordered
   step statuses, attempts, durations, errors, risk metadata, artifact references,
@@ -483,6 +484,39 @@ Status: **ACTIVE**.
   not approve, start, cancel, settle, retry, or mutate a run.
 - Done: an operator can explain why a Proofbook run is waiting, failed, blocked, or
   passed from durable ledger facts without opening files or using MCP/CLI calls.
+- Derive the inspector through a pure allowlist projection. Show only status,
+  attempt, duration, typed errors, selected risk fields, known gate summary fields,
+  decision/actor/time, bounded artifact ids, redaction counts, and residual blockers.
+- Never render gate hashes, decision comments, risk reasons/previews, unknown nested
+  fields, or arbitrary structured-output JSON. Long durable text is compacted and
+  bounded before it reaches the component.
+- Keep one expanded run at a time and reconcile it in place when the existing
+  `proofbook-updated` event advances revision or terminal state.
+
+### CM-3 — Explicit Validated Fleet Cap Editing
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Extend the existing Cost Meter; do not create another Cost Manager, settings
+  database, budget ledger, or frontend execution authority.
+- Require one explicit Save action. Editing local form fields never changes runtime
+  caps until the operator submits the complete candidate.
+- Keep `max_agents` mandatory and bounded to a conservative positive range. Token,
+  reported-cost, and runtime caps may be absent or positive; reject zero, negatives,
+  non-finite values, fractions on integer axes, and malformed input at the backend.
+- Put validation in the existing Cost Manager/cap owner so cockpit, MCP, tests, and
+  future callers cannot disagree. A successful update remains the same atomic
+  `cost-caps-updated` event source consumed by the meter and orchestrator.
+- Show the exact current and proposed caps, explain that token/cost telemetry is
+  reported rather than provider billing, and disclose that lowering a cap below
+  current known usage halts future orchestration but does not kill existing work.
+- Do not expose an unlimited agent cap, automatic save, presets, bulk policy editor,
+  provider pricing estimates, or silent conversion of unknown telemetry to zero.
+- On stale/external cap updates, keep the operator's dirty draft visible and show a
+  conflict notice rather than overwriting it; a clean form may synchronize normally.
+- Done: an operator can deliberately change bounded runaway-prevention caps from the
+  supported cockpit, with one backend validation authority and visible outcomes.
 
 ## Deferred After GMV
 
@@ -490,9 +524,9 @@ Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-
 Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 `PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
 `CM-2` are complete, together with verified runner-owned artifact preview `PB-UI-5`.
-Durable step evidence inspection, input/secret-bearing starts, settling agent steps,
-raw artifact opening/export, budget editing, Remote Continuity, and other adjacent
-value remain portfolio candidates.
+Durable step evidence inspection `PB-UI-6` is also complete. Bounded cap editing
+`CM-3` is active; input/secret-bearing starts, settling agent steps, raw artifact
+opening/export, Remote Continuity, and other adjacent value remain portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

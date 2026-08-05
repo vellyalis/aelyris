@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProofbookPanel } from "../features/proofbooks/ProofbookPanel";
 import type {
@@ -143,6 +143,76 @@ function previewableArtifactRun(overrides: Partial<ProofbookRunLedger> = {}): Pr
   });
 }
 
+function evidenceRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
+  return run({
+    revision: 9,
+    runId: "run-evidence",
+    status: "waiting_gate",
+    updatedAt: "2026-08-05T05:04:00.000Z",
+    steps: [
+      {
+        stepId: "deploy",
+        kind: "shell",
+        status: "waiting_gate",
+        startedAt: "2026-08-05T05:03:58.000Z",
+        completedAt: null,
+        durationMs: 1_500,
+        attempt: 2,
+        structuredOutput: {
+          gateId: "deploy-risk",
+          gateHash: "sha256:hidden-gate-hash",
+          kind: "commandRisk",
+          default: "reject",
+          reason: "Deployment command requires operator approval.",
+          commandPreview: "git push origin main",
+          arbitrarySecret: "structured-output-secret",
+          nested: { secret: "nested-structured-secret" },
+        },
+        artifactRefs: ["artifact-a", "artifact-b", "artifact-c", "artifact-d", "artifact-e"],
+        gateDecision: {
+          gateId: "deploy-risk",
+          gateHash: "sha256:hidden-gate-hash",
+          stepId: "deploy",
+          decision: "approve",
+          actor: "release-operator",
+          comment: "super-secret-comment",
+          decidedAt: "2026-08-05T05:04:00.000Z",
+        },
+        redactionCount: 3,
+        risk: {
+          severity: "review",
+          classes: ["network", "git mutation"],
+          requiresApproval: true,
+          allowExecution: true,
+          confidence: "high",
+          reasons: ["hidden-risk-reason"],
+          preview: "hidden-risk-preview",
+          arbitrarySecret: "risk-secret",
+        },
+      },
+      {
+        stepId: "verify",
+        kind: "verifier",
+        status: "failed",
+        attempt: 1,
+        durationMs: 75,
+        artifactRefs: [],
+        redactionCount: 0,
+        error: { code: "verification_failed", message: "Required release evidence was not accepted." },
+      },
+    ],
+    artifacts: [],
+    residualBlockers: [
+      {
+        code: "operator_gate_pending",
+        stepId: "deploy",
+        message: "Deployment remains blocked until the durable gate is resolved.",
+      },
+    ],
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   tauriMocks.invoke.mockReset();
   tauriMocks.listen.mockReset();
@@ -179,7 +249,7 @@ describe("ProofbookPanel", () => {
     expect(screen.getByText("Broken audit")).toBeTruthy();
     expect(screen.getByText("Passed")).toBeTruthy();
     expect(screen.getByText("2/2 steps")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /start|run|cancel|settle/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Start validated|Cancel current|Settle/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Validate release.proofbook.yaml" }));
 
@@ -599,5 +669,101 @@ describe("ProofbookPanel", () => {
     expect(await screen.findByText(/Gate release-check changed before delivery/)).toBeTruthy();
     expect(listRunsCount).toBe(2);
     expect(screen.getByText("sha256:replacement-gate-hash")).toBeTruthy();
+  });
+
+  it("projects bounded durable step evidence without dumping arbitrary JSON or gate comments", async () => {
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([evidenceRun()]);
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Inspect durable evidence for run-evidence" }));
+
+    const inspector = await screen.findByRole("region", { name: "Evidence for run-evidence" });
+    const evidence = within(inspector);
+    expect(inspector.dataset.status).toBe("waiting_gate");
+    expect(inspector.dataset.terminal).toBeUndefined();
+    expect(evidence.getByText("Durable step evidence")).toBeTruthy();
+    expect(evidence.getByText("deploy-risk")).toBeTruthy();
+    expect(evidence.getByText("Deployment command requires operator approval.")).toBeTruthy();
+    expect(evidence.getByText("git push origin main")).toBeTruthy();
+    expect(evidence.getByText("severity review")).toBeTruthy();
+    expect(evidence.getByText("confidence high")).toBeTruthy();
+    expect(evidence.getByText("approval required")).toBeTruthy();
+    expect(evidence.getByText("execution allowed")).toBeTruthy();
+    expect(evidence.getByText("network")).toBeTruthy();
+    expect(evidence.getByText("git mutation")).toBeTruthy();
+    expect(evidence.getByText("approve")).toBeTruthy();
+    expect(evidence.getByText("by release-operator")).toBeTruthy();
+    expect(evidence.getByText("verification_failed")).toBeTruthy();
+    expect(evidence.getByText("operator_gate_pending")).toBeTruthy();
+    expect(evidence.getByText("artifact-a")).toBeTruthy();
+    expect(evidence.getByText("+1 more")).toBeTruthy();
+
+    expect(evidence.queryByText("artifact-e")).toBeNull();
+    expect(evidence.queryByText("sha256:hidden-gate-hash")).toBeNull();
+    expect(evidence.queryByText("super-secret-comment")).toBeNull();
+    expect(evidence.queryByText("structured-output-secret")).toBeNull();
+    expect(evidence.queryByText("nested-structured-secret")).toBeNull();
+    expect(evidence.queryByText("hidden-risk-reason")).toBeNull();
+    expect(evidence.queryByText("hidden-risk-preview")).toBeNull();
+    expect(evidence.queryByText("risk-secret")).toBeNull();
+    expect(evidence.getByText(/arbitrary structured JSON/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide durable evidence for run-evidence" }));
+    expect(screen.queryByRole("region", { name: "Evidence for run-evidence" })).toBeNull();
+  });
+
+  it("keeps an expanded evidence inspector reconciled with live ledger revisions", async () => {
+    const listener: { current?: (event: { payload: ProofbookRunLedger }) => void } = {};
+    tauriMocks.listen.mockImplementation(
+      (name: string, callback: (event: { payload: ProofbookRunLedger }) => void) => {
+        if (name === "proofbook-updated") listener.current = callback;
+        return Promise.resolve(vi.fn());
+      },
+    );
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([evidenceRun()]);
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Inspect durable evidence for run-evidence" }));
+    await waitFor(() => expect(listener.current).toBeTypeOf("function"));
+
+    act(() => {
+      listener.current?.({
+        payload: evidenceRun({
+          revision: 10,
+          status: "failed",
+          updatedAt: "2026-08-05T05:05:00.000Z",
+          steps: [
+            {
+              stepId: "deploy",
+              kind: "shell",
+              status: "failed",
+              attempt: 2,
+              durationMs: 2_000,
+              artifactRefs: [],
+              redactionCount: 3,
+              error: { code: "command_failed", message: "Deployment command failed after approval." },
+            },
+          ],
+          residualBlockers: [],
+        }),
+      });
+    });
+
+    const inspector = await screen.findByRole("region", { name: "Evidence for run-evidence" });
+    const evidence = within(inspector);
+    expect(inspector.dataset.status).toBe("failed");
+    expect(inspector.dataset.terminal).toBe("true");
+    expect(evidence.getByText("revision", { exact: false })).toBeTruthy();
+    expect(evidence.getByText("10")).toBeTruthy();
+    expect(evidence.getByText("command_failed")).toBeTruthy();
+    expect(evidence.getByText("Deployment command failed after approval.")).toBeTruthy();
   });
 });

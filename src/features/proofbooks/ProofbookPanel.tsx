@@ -6,6 +6,8 @@ import {
   BookOpenCheck,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Eye,
   FileText,
   History,
@@ -28,6 +30,7 @@ import type {
   ProofbookSummary,
   ProofbookValidationReport,
 } from "../../shared/types/proofbook";
+import { ProofbookEvidenceInspector } from "./ProofbookEvidenceInspector";
 import styles from "./ProofbookPanel.module.css";
 
 interface ProofbookPanelProps {
@@ -182,6 +185,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [previewingArtifactKey, setPreviewingArtifactKey] = useState<string | null>(null);
   const [artifactPreview, setArtifactPreview] = useState<ProofbookArtifactPreview | null>(null);
   const [artifactStatus, setArtifactStatus] = useState<string | null>(null);
+  const [expandedEvidenceRunId, setExpandedEvidenceRunId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!projectPath || !isTauriRuntime()) {
@@ -199,6 +203,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setCancelStatus(null);
     setArtifactPreview(null);
     setArtifactStatus(null);
+    setExpandedEvidenceRunId(null);
     try {
       const [catalog, history] = await Promise.all([
         invoke<ProofbookSummary[]>("list_proofbooks", { projectPath }),
@@ -228,6 +233,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setCancelStatus(null);
     setArtifactPreview(null);
     setArtifactStatus(null);
+    setExpandedEvidenceRunId(null);
     void refresh();
   }, [refresh]);
 
@@ -787,6 +793,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
               const passed = run.steps.filter((step) => step.status === "passed").length;
               const cancellable = isCancellableRunStatus(run.status);
               const cancelling = cancellingRunId === run.runId;
+              const evidenceExpanded = expandedEvidenceRunId === run.runId;
               return (
                 <article key={run.runId} className={styles.run} data-status={run.status}>
                   <div className={styles.runTop}>
@@ -802,6 +809,17 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                     <code title={run.runId}>{run.runId}</code>
                     <span>revision {run.revision}</span>
                   </div>
+                  <button
+                    type="button"
+                    className={styles.evidenceToggle}
+                    aria-expanded={evidenceExpanded}
+                    onClick={() => setExpandedEvidenceRunId((current) => (current === run.runId ? null : run.runId))}
+                    aria-label={`${evidenceExpanded ? "Hide" : "Inspect"} durable evidence for ${run.runId}`}
+                  >
+                    {evidenceExpanded ? <ChevronUp size={11} aria-hidden="true" /> : <ChevronDown size={11} aria-hidden="true" />}
+                    {evidenceExpanded ? "Hide evidence" : "Inspect evidence"}
+                  </button>
+                  {evidenceExpanded && <ProofbookEvidenceInspector run={run} />}
                   {run.artifacts.length > 0 && (
                     <section className={styles.artifactList} aria-label={`Artifacts for ${run.runId}`}>
                       {run.artifacts.slice(0, 4).map((artifact) => {
