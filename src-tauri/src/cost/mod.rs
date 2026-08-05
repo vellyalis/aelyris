@@ -12,6 +12,43 @@ pub use manager::CostManager;
 
 use serde::{Deserialize, Serialize};
 
+pub const MIN_CONFIGURED_AGENTS: usize = 1;
+pub const MAX_CONFIGURED_AGENTS: usize = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct CostCapsPolicy {
+    pub min_agents: usize,
+    pub max_agents: usize,
+}
+
+impl Default for CostCapsPolicy {
+    fn default() -> Self {
+        Self {
+            min_agents: MIN_CONFIGURED_AGENTS,
+            max_agents: MAX_CONFIGURED_AGENTS,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
+#[error("invalid_cost_caps: {field}: {message}")]
+#[serde(rename_all = "camelCase")]
+pub struct CostCapsValidationError {
+    pub code: &'static str,
+    pub field: &'static str,
+    pub message: String,
+}
+
+impl CostCapsValidationError {
+    fn new(field: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code: "invalid_cost_caps",
+            field,
+            message: message.into(),
+        }
+    }
+}
+
 /// Hard caps. `None` means "no limit on this axis". The default fleet size is a
 /// controlled-but-bounded 4 concurrent agents — the spec's binding default
 /// (AELYRIS_COCKPIT_REQUIREMENTS BR7: `max_agents` default 4; worker batch 3-4),
@@ -97,6 +134,48 @@ impl SpawnDecision {
 }
 
 impl CostCaps {
+    pub fn validate_for_update(
+        &self,
+        policy: CostCapsPolicy,
+    ) -> Result<(), CostCapsValidationError> {
+        let max_agents = self.max_agents.ok_or_else(|| {
+            CostCapsValidationError::new(
+                "max_agents",
+                "a bounded agent cap is required for cockpit/runtime updates",
+            )
+        })?;
+        if !(policy.min_agents..=policy.max_agents).contains(&max_agents) {
+            return Err(CostCapsValidationError::new(
+                "max_agents",
+                format!(
+                    "must be between {} and {}",
+                    policy.min_agents, policy.max_agents
+                ),
+            ));
+        }
+        if self.max_tokens == Some(0) {
+            return Err(CostCapsValidationError::new(
+                "max_tokens",
+                "must be absent or a positive integer",
+            ));
+        }
+        if let Some(max_cost_usd) = self.max_cost_usd {
+            if !max_cost_usd.is_finite() || max_cost_usd <= 0.0 {
+                return Err(CostCapsValidationError::new(
+                    "max_cost_usd",
+                    "must be absent or a finite positive number",
+                ));
+            }
+        }
+        if self.max_runtime_secs == Some(0) {
+            return Err(CostCapsValidationError::new(
+                "max_runtime_secs",
+                "must be absent or a positive integer",
+            ));
+        }
+        Ok(())
+    }
+
     /// Decide whether **one more** agent may spawn. Blocks when the agent
     /// concurrency cap is full or any budget cap is already met/exceeded
     /// (spawning more would only deepen the overrun).
@@ -244,5 +323,44 @@ mod tests {
         };
         assert_eq!(caps.over_budget(&usage), Some(CostLimit::Runtime));
         assert_eq!(caps.can_spawn(&usage).blocked_by, Some(CostLimit::Runtime));
+    }
+
+    #[test]
+    fn runtime_cap_updates_require_bounded_agents_and_positive_optional_axes() {
+        let policy = CostCapsPolicy::default();
+        assert!(CostCaps::default().validate_for_update(policy).is_ok());
+
+        for invalid in [
+            CostCaps {
+                max_agents: None,
+                ..CostCaps::default()
+            },
+            CostCaps {
+                max_agents: Some(0),
+                ..CostCaps::default()
+            },
+            CostCaps {
+                max_agents: Some(MAX_CONFIGURED_AGENTS + 1),
+                ..CostCaps::default()
+            },
+            CostCaps {
+                max_tokens: Some(0),
+                ..CostCaps::default()
+            },
+            CostCaps {
+                max_cost_usd: Some(0.0),
+                ..CostCaps::default()
+            },
+            CostCaps {
+                max_cost_usd: Some(f64::NAN),
+                ..CostCaps::default()
+            },
+            CostCaps {
+                max_runtime_secs: Some(0),
+                ..CostCaps::default()
+            },
+        ] {
+            assert!(invalid.validate_for_update(policy).is_err(), "{invalid:?}");
+        }
     }
 }

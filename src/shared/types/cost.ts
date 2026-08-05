@@ -9,6 +9,17 @@ export interface CostCaps {
   max_runtime_secs: number | null;
 }
 
+export interface CostCapsPolicy {
+  min_agents: number;
+  max_agents: number;
+}
+
+export interface CostCapsValidationError {
+  code: "invalid_cost_caps";
+  field: "max_agents" | "max_tokens" | "max_cost_usd" | "max_runtime_secs";
+  message: string;
+}
+
 export interface CostUsage {
   active_agents: number;
   tokens_used: number;

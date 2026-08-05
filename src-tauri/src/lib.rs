@@ -1489,6 +1489,7 @@ pub fn run() {
             ipc::event_by_channel,
             ipc::event_since,
             ipc::cost_caps,
+            ipc::cost_caps_policy,
             ipc::cost_set_caps,
             ipc::cost_can_spawn,
             ipc::failure_decide,

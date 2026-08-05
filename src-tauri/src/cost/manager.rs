@@ -1,6 +1,8 @@
 use std::sync::Mutex;
 
-use super::{CostCaps, CostLimit, CostUsage, SpawnDecision};
+use super::{
+    CostCaps, CostCapsPolicy, CostCapsValidationError, CostLimit, CostUsage, SpawnDecision,
+};
 
 /// Thread-safe owner of the configurable cost caps, managed in Tauri state.
 /// The spawn decision (`can_spawn`) is pure and takes the caller-computed
@@ -26,8 +28,14 @@ impl CostManager {
         *self.lock()
     }
 
-    pub fn set_caps(&self, caps: CostCaps) {
+    pub fn policy(&self) -> CostCapsPolicy {
+        CostCapsPolicy::default()
+    }
+
+    pub fn set_caps(&self, caps: CostCaps) -> Result<CostCaps, CostCapsValidationError> {
+        caps.validate_for_update(self.policy())?;
         *self.lock() = caps;
+        Ok(caps)
     }
 
     pub fn can_spawn(&self, usage: &CostUsage) -> SpawnDecision {
@@ -69,7 +77,8 @@ mod tests {
         mgr.set_caps(CostCaps {
             max_agents: Some(12),
             ..CostCaps::default()
-        });
+        })
+        .unwrap();
         assert_eq!(mgr.caps().max_agents, Some(12));
     }
 
@@ -92,7 +101,22 @@ mod tests {
         mgr.set_caps(CostCaps {
             max_agents: Some(12),
             ..CostCaps::default()
-        });
+        })
+        .unwrap();
         assert!(mgr.can_spawn(&at_cap).allowed);
+    }
+
+    #[test]
+    fn invalid_cap_update_does_not_mutate_the_current_owner() {
+        let mgr = CostManager::new();
+        let before = mgr.caps();
+        let error = mgr
+            .set_caps(CostCaps {
+                max_agents: None,
+                ..before
+            })
+            .unwrap_err();
+        assert_eq!(error.field, "max_agents");
+        assert_eq!(mgr.caps().max_agents, before.max_agents);
     }
 }

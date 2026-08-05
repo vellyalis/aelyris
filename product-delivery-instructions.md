@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `CM-3`.
-LAST COMPLETED SLICE: `PB-UI-6`.
-NEXT IMPLEMENTATION SLICE: `CM-3`.
+ACTIVE SLICE: `PB-UI-7`.
+LAST COMPLETED SLICE: `CM-3`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-7`.
 
 ```yaml
 continuation_contract:
@@ -63,7 +63,8 @@ Current portfolio classification:
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
 | Proofbook product access through durable evidence inspection | **COMPLETE** | Command mode exposes catalog/history, bounded effects, verified runner artifacts, and an allowlisted ledger inspector while inputs, secrets, settlement, and raw files remain separate |
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
-| Bounded fleet cap editing | **NOW** | Cost Manager already owns caps; the remaining gap is an explicit validated cockpit save path |
+| Bounded fleet cap editing | **COMPLETE** | The existing Cost Manager now owns one explicit validated cockpit save path with conflict-safe drafts and visible outcomes |
+| Non-secret Proofbook string inputs | **NOW** | The runner already accepts an input object; the next gap is one backend-validated declared-input form without exposing secrets or generic JSON |
 | Broader Proofbook effects and input/secret UX | **PARKED** | Further access requires separately bounded operator decisions and data handling |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
@@ -496,7 +497,7 @@ Status: **COMPLETE**.
 ### CM-3 — Explicit Validated Fleet Cap Editing
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing Cost Meter; do not create another Cost Manager, settings
   database, budget ledger, or frontend execution authority.
@@ -518,15 +519,37 @@ Status: **ACTIVE**.
 - Done: an operator can deliberately change bounded runaway-prevention caps from the
   supported cockpit, with one backend validation authority and visible outcomes.
 
+### PB-UI-7 — Validated Non-Secret Proofbook String Inputs
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Extend the existing Proofbook cockpit panel and runner; do not add a generic JSON
+  editor, a second input schema owner, or a secret-value store.
+- Limit this slice to declared `string` inputs. Defaults and `required` remain owned
+  by the parsed Proofbook definition; unsupported input types fail closed with a
+  structured validation blocker rather than being coerced by the frontend.
+- Validate the complete submitted input object in the existing Proofbook owner before
+  creating a ledger: reject unknown keys, missing required values, non-string values,
+  and a stale definition hash. Preserve the existing deterministic input hash and
+  single managed runner.
+- Show declared labels/keys, defaults, required state, current validation blockers,
+  and the exact submitted non-secret values before the explicit Start action.
+- Never render or accept secret values, arbitrary nested objects, arrays, environment
+  lookups, agent-session inputs, or unsupported step kinds in this slice.
+- Done: an operator can start an otherwise-supported Proofbook with declared string
+  inputs from the cockpit, while the backend remains the only admission authority.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
 Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 `PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
 `CM-2` are complete, together with verified runner-owned artifact preview `PB-UI-5`.
-Durable step evidence inspection `PB-UI-6` is also complete. Bounded cap editing
-`CM-3` is active; input/secret-bearing starts, settling agent steps, raw artifact
-opening/export, Remote Continuity, and other adjacent value remain portfolio candidates.
+Durable step evidence inspection `PB-UI-6` and bounded cap editing `CM-3` are also
+complete. Validated non-secret string inputs `PB-UI-7` are active; secret-bearing
+starts, broader input types, settling agent steps, raw artifact opening/export,
+Remote Continuity, and other adjacent value remain portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { reportInvokeFailure } from "../lib/fallbackTelemetry";
 import { isTauriRuntime } from "../lib/tauriRuntime";
-import type { CostCaps, CostUsage, SpawnDecision } from "../types/cost";
+import type { CostCaps, CostCapsPolicy, CostUsage, SpawnDecision } from "../types/cost";
 
 /**
  * Consumes the Cost Manager (BR7): the configurable runaway-prevention caps.
@@ -12,6 +12,8 @@ import type { CostCaps, CostUsage, SpawnDecision } from "../types/cost";
  */
 export function useCostManager() {
   const [caps, setCaps] = useState<CostCaps | null>(null);
+  const [policy, setPolicy] = useState<CostCapsPolicy | null>(null);
+  const capsWriteGenerationRef = useRef(0);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -19,7 +21,10 @@ export function useCostManager() {
     let unlisten: UnlistenFn | null = null;
 
     void listen<CostCaps>("cost-caps-updated", (event) => {
-      if (!cancelled) setCaps(event.payload);
+      if (!cancelled) {
+        capsWriteGenerationRef.current += 1;
+        setCaps(event.payload);
+      }
     })
       .then((unsubscribe) => {
         if (cancelled) {
@@ -32,12 +37,20 @@ export function useCostManager() {
         reportInvokeFailure({ source: "cost-manager", operation: "listen:cost-caps-updated", err, userVisible: false });
       });
 
+    const hydrationGeneration = capsWriteGenerationRef.current;
     void invoke<CostCaps>("cost_caps")
-      .then((next) => {
-        if (!cancelled) setCaps(next);
+      .then((nextCaps) => {
+        if (!cancelled && capsWriteGenerationRef.current === hydrationGeneration) setCaps(nextCaps);
       })
       .catch((err) => {
         reportInvokeFailure({ source: "cost-manager", operation: "cost_caps", err, userVisible: false });
+      });
+    void invoke<CostCapsPolicy>("cost_caps_policy")
+      .then((nextPolicy) => {
+        if (!cancelled) setPolicy(nextPolicy);
+      })
+      .catch((err) => {
+        reportInvokeFailure({ source: "cost-manager", operation: "cost_caps_policy", err, userVisible: false });
       });
 
     return () => {
@@ -46,12 +59,15 @@ export function useCostManager() {
     };
   }, []);
 
-  const updateCaps = useCallback(async (next: CostCaps): Promise<CostCaps | null> => {
+  const updateCaps = useCallback(async (next: CostCaps): Promise<CostCaps> => {
     try {
-      return await invoke<CostCaps>("cost_set_caps", { caps: next });
+      const updated = await invoke<CostCaps>("cost_set_caps", { caps: next });
+      capsWriteGenerationRef.current += 1;
+      setCaps(updated);
+      return updated;
     } catch (err) {
       reportInvokeFailure({ source: "cost-manager", operation: "cost_set_caps", err, userVisible: true });
-      return null;
+      throw err;
     }
   }, []);
 
@@ -64,5 +80,5 @@ export function useCostManager() {
     }
   }, []);
 
-  return { caps, updateCaps, canSpawn };
+  return { caps, policy, updateCaps, canSpawn };
 }
