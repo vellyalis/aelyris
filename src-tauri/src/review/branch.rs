@@ -502,10 +502,7 @@ mod tests {
                     .any(|pair| pair == ["--manifest-path", "src-tauri/Cargo.toml"])
         }));
         assert!(commands.iter().any(|command| {
-            command.kind == GateKind::Lint
-                && command
-                    .args
-                    .ends_with(&["run".into(), "lint".into()])
+            command.kind == GateKind::Lint && command.args.ends_with(&["run".into(), "lint".into()])
         }));
     }
 
