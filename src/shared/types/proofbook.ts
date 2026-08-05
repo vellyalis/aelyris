@@ -21,6 +21,16 @@ export interface ProofbookValidationReport {
   path: string;
   valid: boolean;
   errors: ProofbookError[];
+  startAdmission: ProofbookStartAdmission;
+}
+
+export interface ProofbookStartAdmission {
+  eligible: boolean;
+  definitionHash: string | null;
+  inputCount: number;
+  secretCount: number;
+  unsupportedStepKinds: string[];
+  blockers: string[];
 }
 
 export type ProofbookStepStatus =

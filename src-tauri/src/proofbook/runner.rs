@@ -49,6 +49,22 @@ impl ProofbookRunner {
             proofbook_path,
             inputs,
             ProofbookExecutorRefs::default(),
+            None,
+        )
+    }
+
+    pub fn start_input_free_run(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        expected_definition_hash: &str,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        self.start_run_inner(
+            project_path,
+            proofbook_path,
+            serde_json::json!({}),
+            ProofbookExecutorRefs::default(),
+            Some(expected_definition_hash),
         )
     }
 
@@ -100,6 +116,7 @@ impl ProofbookRunner {
                 mcp: mcp_executor,
                 agent: agent_executor,
             },
+            None,
         )
     }
 
@@ -109,6 +126,7 @@ impl ProofbookRunner {
         proofbook_path: &str,
         inputs: serde_json::Value,
         executors: ProofbookExecutorRefs<'_>,
+        expected_input_free_definition_hash: Option<&str>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let proofbook_path = resolve_proofbook_path(&root, proofbook_path)?;
@@ -116,6 +134,30 @@ impl ProofbookRunner {
         let report = validate_definition(project_path, &definition, &proofbook_path);
         if !report.valid {
             return Err(validation_failed(report.errors));
+        }
+        if let Some(expected_definition_hash) = expected_input_free_definition_hash {
+            let admission = &report.start_admission;
+            if !admission.eligible {
+                return Err(ProofbookError::new(
+                    ProofbookErrorCode::ValidationFailed,
+                    format!(
+                        "Proofbook is not eligible for input-free cockpit start: {}",
+                        admission.blockers.join(", ")
+                    ),
+                ));
+            }
+            let actual_definition_hash = admission.definition_hash.as_deref().ok_or_else(|| {
+                ProofbookError::new(
+                    ProofbookErrorCode::ValidationFailed,
+                    "Proofbook definition hash is unavailable for input-free start",
+                )
+            })?;
+            if actual_definition_hash != expected_definition_hash {
+                return Err(ProofbookError::new(
+                    ProofbookErrorCode::StaleDefinitionHash,
+                    "Proofbook definition changed after validation; validate again before starting",
+                ));
+            }
         }
 
         let candidate = ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?;
@@ -1589,6 +1631,69 @@ settlement:
         assert_eq!(second.revision, first.revision);
         assert_eq!(second.events.len(), first.events.len());
         assert_eq!(second.status, ProofbookRunStatus::Passed);
+    }
+
+    #[test]
+    fn input_free_start_requires_the_fresh_validated_definition_hash() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-input-free
+steps:
+  - id: echo
+    type: shell
+    command: echo input-free
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+        let definition = parse_proofbook(&proofbook).unwrap();
+        let definition_hash = ledger::hash_json(&definition).unwrap();
+        let runner = ProofbookRunner::new();
+
+        let stale = runner
+            .start_input_free_run(&project_path(&project), &proofbook, "sha256:stale")
+            .unwrap_err();
+        assert_eq!(stale.code, ProofbookErrorCode::StaleDefinitionHash);
+
+        let started = runner
+            .start_input_free_run(&project_path(&project), &proofbook, &definition_hash)
+            .unwrap();
+        assert_eq!(started.status, ProofbookRunStatus::Passed);
+        assert_eq!(started.input_hash, ledger::hash_json(&json!({})).unwrap());
+    }
+
+    #[test]
+    fn input_free_start_rejects_inputs_secrets_and_unsupported_steps() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-not-input-free
+inputs:
+  target:
+    type: string
+    required: true
+steps:
+  - id: agent
+    type: agentSession
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let definition = parse_proofbook(&proofbook).unwrap();
+        let definition_hash = ledger::hash_json(&definition).unwrap();
+        let runner = ProofbookRunner::new();
+
+        let error = runner
+            .start_input_free_run(&project_path(&project), &proofbook, &definition_hash)
+            .unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
+        assert!(error.message.contains("runtime_inputs_declared"));
+        assert!(error.message.contains("unsupported_step_kinds"));
     }
 
     #[test]

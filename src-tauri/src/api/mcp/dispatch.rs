@@ -499,6 +499,9 @@ fn mcp_validate_proofbook_report(
             path: proofbook_path,
             valid: false,
             errors: vec![error],
+            start_admission: crate::proofbook::ProofbookStartAdmission::unavailable(
+                "definition_unreadable",
+            ),
         }),
     }
 }

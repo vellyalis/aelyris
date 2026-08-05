@@ -118,11 +118,36 @@ pub struct ProofbookSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProofbookStartAdmission {
+    pub eligible: bool,
+    pub definition_hash: Option<String>,
+    pub input_count: usize,
+    pub secret_count: usize,
+    pub unsupported_step_kinds: Vec<String>,
+    pub blockers: Vec<String>,
+}
+
+impl ProofbookStartAdmission {
+    pub fn unavailable(blocker: impl Into<String>) -> Self {
+        Self {
+            eligible: false,
+            definition_hash: None,
+            input_count: 0,
+            secret_count: 0,
+            unsupported_step_kinds: Vec::new(),
+            blockers: vec![blocker.into()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProofbookValidationReport {
     pub definition_id: Option<String>,
     pub path: String,
     pub valid: bool,
     pub errors: Vec<crate::proofbook::ProofbookError>,
+    pub start_admission: ProofbookStartAdmission,
 }
 
 #[cfg(test)]
@@ -151,11 +176,13 @@ mod tests {
             errors: vec![crate::proofbook::ProofbookError::runtime_not_available(
                 "run",
             )],
+            start_admission: ProofbookStartAdmission::unavailable("definition_invalid"),
         };
 
         let value = serde_json::to_value(&report).unwrap();
         assert_eq!(value["definitionId"], "release-closeout");
         assert_eq!(value["errors"][0]["code"], "runtime_not_available");
+        assert_eq!(value["startAdmission"]["eligible"], false);
         assert!(value["errors"][0].get("definitionId").is_none());
     }
 }

@@ -1,6 +1,6 @@
 use crate::proofbook::{
-    ProofbookDefinition, ProofbookError, ProofbookErrorCode, ProofbookStepKind,
-    ProofbookValidationReport, PROOFBOOK_SCHEMA_V1,
+    ProofbookDefinition, ProofbookError, ProofbookErrorCode, ProofbookStartAdmission,
+    ProofbookStepKind, ProofbookValidationReport, PROOFBOOK_SCHEMA_V1,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
@@ -33,6 +33,9 @@ pub fn validate_definition(
     validate_settlement(definition, root.as_deref(), &mut errors);
     validate_secrets(definition, &mut errors);
 
+    let valid = errors.is_empty();
+    let start_admission = input_free_start_admission(definition, valid);
+
     ProofbookValidationReport {
         definition_id: if definition.id.trim().is_empty() {
             None
@@ -40,8 +43,54 @@ pub fn validate_definition(
             Some(definition.id.clone())
         },
         path: path.to_string(),
-        valid: errors.is_empty(),
+        valid,
         errors,
+        start_admission,
+    }
+}
+
+fn input_free_start_admission(
+    definition: &ProofbookDefinition,
+    definition_valid: bool,
+) -> ProofbookStartAdmission {
+    const SUPPORTED_INPUT_FREE_START_KINDS: &[&str] =
+        &["shell", "verifier", "waitFor", "manualGate"];
+    let definition_hash = crate::proofbook::hash_json(definition).ok();
+    let input_count = definition.inputs.len();
+    let secret_count = definition.secrets.len();
+    let unsupported_step_kinds = definition
+        .steps
+        .iter()
+        .filter_map(|step| {
+            (!SUPPORTED_INPUT_FREE_START_KINDS.contains(&step.kind.as_str()))
+                .then_some(step.kind.clone())
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut blockers = Vec::new();
+    if !definition_valid {
+        blockers.push("definition_invalid".to_string());
+    }
+    if definition_hash.is_none() {
+        blockers.push("definition_hash_unavailable".to_string());
+    }
+    if input_count > 0 {
+        blockers.push("runtime_inputs_declared".to_string());
+    }
+    if secret_count > 0 {
+        blockers.push("secret_references_declared".to_string());
+    }
+    if !unsupported_step_kinds.is_empty() {
+        blockers.push("unsupported_step_kinds".to_string());
+    }
+    ProofbookStartAdmission {
+        eligible: blockers.is_empty(),
+        definition_hash,
+        input_count,
+        secret_count,
+        unsupported_step_kinds,
+        blockers,
     }
 }
 
@@ -515,6 +564,55 @@ settlement:
 
         assert!(report.valid, "{:?}", report.errors);
         assert_eq!(report.definition_id.as_deref(), Some("release-closeout"));
+        assert!(report.start_admission.eligible);
+        assert!(report.start_admission.definition_hash.is_some());
+        assert_eq!(report.start_admission.input_count, 0);
+        assert_eq!(report.start_admission.secret_count, 0);
+        assert!(report.start_admission.unsupported_step_kinds.is_empty());
+    }
+
+    #[test]
+    fn proofbook_validator_explains_why_cockpit_input_free_start_is_blocked() {
+        let report = validate_yaml(
+            r#"
+schema: aelyris.proofbook.v1
+id: operator-inputs
+inputs:
+  target:
+    type: string
+    required: true
+secrets:
+  api-token:
+    provider: env
+    key: API_TOKEN
+steps:
+  - id: agent
+    type: agentSession
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+
+        assert!(report.valid, "{:?}", report.errors);
+        assert!(!report.start_admission.eligible);
+        assert_eq!(report.start_admission.input_count, 1);
+        assert_eq!(report.start_admission.secret_count, 1);
+        assert_eq!(
+            report.start_admission.unsupported_step_kinds,
+            ["agentSession"]
+        );
+        assert!(report
+            .start_admission
+            .blockers
+            .contains(&"runtime_inputs_declared".to_string()));
+        assert!(report
+            .start_admission
+            .blockers
+            .contains(&"secret_references_declared".to_string()));
+        assert!(report
+            .start_admission
+            .blockers
+            .contains(&"unsupported_step_kinds".to_string()));
     }
 
     #[test]

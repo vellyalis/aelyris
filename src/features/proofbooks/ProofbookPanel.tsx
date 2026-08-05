@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   History,
+  Play,
   RefreshCw,
   ShieldCheck,
   ShieldQuestion,
@@ -153,6 +154,9 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const startingRef = useRef(false);
+  const [starting, setStarting] = useState(false);
+  const [startStatus, setStartStatus] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const resolvingGateRef = useRef<string | null>(null);
   const [resolvingGateKey, setResolvingGateKey] = useState<string | null>(null);
   const [gateStatus, setGateStatus] = useState<{ tone: "success" | "warn" | "error"; text: string } | null>(null);
@@ -168,6 +172,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setLoading(true);
     setError(null);
     setValidation(null);
+    setStartStatus(null);
     setGateStatus(null);
     try {
       const [catalog, history] = await Promise.all([
@@ -193,6 +198,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setSelectedPath(null);
     setValidation(null);
     setError(null);
+    setStartStatus(null);
     setGateStatus(null);
     void refresh();
   }, [refresh]);
@@ -229,11 +235,16 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   );
 
   const pendingManualGates = useMemo(() => manualGates(runs), [runs]);
+  const startAdmission = useMemo(() => {
+    if (!selected || !validation || normalizedPath(validation.path) !== normalizedPath(selected.path)) return null;
+    return validation.startAdmission;
+  }, [selected, validation]);
 
   const validateSelected = useCallback(async () => {
     if (!selected || validating) return;
     setValidating(true);
     setValidation(null);
+    setStartStatus(null);
     setError(null);
     try {
       const report = await invoke<ProofbookValidationReport>("validate_proofbook", {
@@ -248,6 +259,50 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       setValidating(false);
     }
   }, [projectPath, selected, validating]);
+
+  const startSelected = useCallback(async () => {
+    if (
+      startingRef.current ||
+      !selected ||
+      !startAdmission?.eligible ||
+      !startAdmission.definitionHash
+    ) {
+      return;
+    }
+    startingRef.current = true;
+    setStarting(true);
+    setStartStatus(null);
+    setError(null);
+    try {
+      const ledger = await invoke<ProofbookRunLedger>("start_input_free_proofbook_run", {
+        projectPath,
+        proofbookPath: selected.path,
+        expectedDefinitionHash: startAdmission.definitionHash,
+      });
+      setRuns((current) => sortedRuns([ledger, ...current.filter((run) => run.runId !== ledger.runId)]));
+      setStartStatus({
+        tone: "success",
+        text: `Started ${ledger.proofbookId}; durable run ${ledger.runId} is ${RUN_STATUS_LABEL[ledger.status].toLowerCase()}.`,
+      });
+    } catch (cause) {
+      if (errorCode(cause) === "stale_definition_hash") {
+        await refresh();
+        setStartStatus({
+          tone: "error",
+          text: `${basename(selected.path)} changed after validation. Validate the current definition before starting.`,
+        });
+      } else {
+        setStartStatus({
+          tone: "error",
+          text: `Could not start ${basename(selected.path)}: ${errorMessage(cause)}`,
+        });
+      }
+      reportInvokeFailure({ source: "proofbooks", operation: "start_input_free", err: cause, userVisible: true });
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
+  }, [projectPath, refresh, selected, startAdmission]);
 
   const resolveManualGate = useCallback(
     async (gate: ManualGateView, decision: ManualGateDecision) => {
@@ -307,7 +362,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       <div className={styles.toolbar}>
         <span className={styles.mode}>
           <ShieldCheck size={12} aria-hidden="true" />
-          Catalog + governed manual gates
+          Catalog + governed effects
         </span>
         <button
           type="button"
@@ -393,7 +448,50 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
             </ul>
           )}
           {validation.errors.length > 3 && <p className={styles.overflow}>+{validation.errors.length - 3} more errors</p>}
+          {validation.valid && (
+            <div className={styles.startAdmission} data-eligible={startAdmission?.eligible || undefined}>
+              <div className={styles.admissionHeading}>
+                <strong>{startAdmission?.eligible ? "Input-free start eligible" : "Start remains read-only"}</strong>
+                <span>
+                  {startAdmission?.inputCount ?? 0} inputs · {startAdmission?.secretCount ?? 0} secrets
+                </span>
+              </div>
+              {startAdmission?.definitionHash && (
+                <code className={styles.definitionHash} title={startAdmission.definitionHash}>
+                  {startAdmission.definitionHash}
+                </code>
+              )}
+              {startAdmission?.eligible ? (
+                <button
+                  type="button"
+                  className={styles.startButton}
+                  disabled={starting}
+                  onClick={() => void startSelected()}
+                  aria-label={`Start validated Proofbook ${selected ? basename(selected.path) : "definition"}`}
+                >
+                  <Play size={11} aria-hidden="true" />
+                  {starting ? "Starting…" : "Start validated Proofbook"}
+                </button>
+              ) : (
+                <p className={styles.startBlocked}>
+                  {startAdmission?.blockers.length
+                    ? `Blocked: ${startAdmission.blockers.join(", ")}${
+                        startAdmission.unsupportedStepKinds.length
+                          ? ` (${startAdmission.unsupportedStepKinds.join(", ")})`
+                          : ""
+                      }`
+                    : "Validate again to establish an input-free start boundary."}
+                </p>
+              )}
+            </div>
+          )}
         </section>
+      )}
+
+      {startStatus && (
+        <p className={styles.startStatus} data-tone={startStatus.tone} role={startStatus.tone === "error" ? "alert" : "status"}>
+          {startStatus.text}
+        </p>
       )}
 
       {gateStatus && (
@@ -513,7 +611,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       </section>
 
       <p className={styles.disclosure}>
-        This surface can resolve only an existing manualGate with its current gate hash. It cannot start, cancel, settle, open raw artifacts, or submit free-form gate comments.
+        This surface can start only a freshly validated input-free local Proofbook and resolve an existing manualGate with its current gate hash. It cannot accept inputs or secrets, cancel, settle, open raw artifacts, or submit free-form gate comments.
       </p>
     </section>
   );

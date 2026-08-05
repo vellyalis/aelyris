@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-3`.
-LAST COMPLETED SLICE: `PB-UI-2`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-3`.
+ACTIVE SLICE: `PB-UI-4`.
+LAST COMPLETED SLICE: `PB-UI-3`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-4`.
 
 ```yaml
 continuation_contract:
@@ -61,9 +61,9 @@ Current portfolio classification:
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
-| Proofbook catalog, validation, and run history | **COMPLETE** | Command mode exposes existing read-only Proofbook owners without adding execution authority |
+| Proofbook catalog, validation, run history, manual gates, and input-free start | **COMPLETE** | Command mode exposes bounded Proofbook access while inputs, secrets, cancellation, settlement, and artifacts remain separate |
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
-| Proofbook run controls, broad budget editing UX | **PARKED** | Effects require a separately bounded authority and operator-flow decision |
+| Proofbook cancellation and broader controls, broad budget editing UX | **PARKED** | Further effects require expected-state protection and separately bounded operator decisions |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -71,7 +71,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `CM-2` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-3` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -382,27 +382,60 @@ Status: **COMPLETE**.
 ### PB-UI-3 — Start Validated Input-Free Proofbooks
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Consider Start only for a selected definition that has passed a fresh explicit
-  validation and declares no required runtime inputs or secret references.
-- Reuse `start_proofbook_run`; do not add a second runner, frontend ledger owner, or
-  generic JSON input editor.
-- Show the exact definition path and validation identity before the operator starts
-  the run, then project the returned durable ledger and `proofbook-updated` events.
+  validation and declares no runtime inputs, secret references, or unsupported
+  `mcpTool`/`agentSession`/HTTP/fan-out/sub-Proofbook step kinds.
+- Reuse the existing `ProofbookRunner` through a narrow
+  `start_input_free_proofbook_run` adapter; do not add a second runner, frontend
+  ledger owner, generic JSON input editor, or alternate execution path.
+- Return an explicit `startAdmission` and exact definition hash from Rust validation.
+  Show that hash and the admission facts before the operator starts the run.
+- Reparse and revalidate in the runner, require the same expected definition hash,
+  and reject drift with `stale_definition_hash` before ledger initialization.
+- Supply exactly `{}` as inputs. Input-bearing or secret-bearing definitions remain
+  ineligible even when their inputs declare defaults.
+- Project the returned durable ledger and existing `proofbook-updated` events.
 - Keep command-risk/manual gates governed by their existing waiting-gate paths; a
   Start click is not approval for a later gated step.
 - Fail visibly on startup reconciliation, definition drift, missing input metadata,
   or any runner error. Do not present an empty/failed start as a successful run.
 - Keep Cancel, agent-session settlement, artifact opening, secrets, and input-bearing
   Proofbooks outside this slice.
+- Done: the cockpit can start only a freshly validated, exact-hash, local input-free
+  Proofbook while every broader execution surface remains unavailable.
+
+### PB-UI-4 — Cancel Current Non-Terminal Proofbook Runs
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Expose Cancel only for a durable non-terminal run: `pending`, `running`, or
+  `waiting_gate`. Passed, failed, policy-blocked, externally blocked, and already
+  cancelled runs remain immutable through this surface.
+- Require the exact displayed ledger `revision` at the Rust boundary. If any worker,
+  gate decision, restart recovery, or other writer advanced the ledger, fail with a
+  stale-revision error and refresh before another operator action.
+- Reuse the existing runner cancellation owner, append-only cancellation event,
+  durable atomic ledger commit, audit record, and `proofbook-updated` publication.
+- Add a synchronous UI latch and show the run id, current status, revision, and
+  consequence before Cancel. Do not add bulk cancel or a hidden-row batch action.
+- Keep process termination claims narrow: this slice changes durable Proofbook run
+  admission/state only and must not claim it killed an external agent/process unless
+  its existing owner provides that evidence.
+- Keep Start with inputs/secrets, agent settlement, artifact opening, and generic
+  comments outside this slice.
 
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
-read-only Proofbook product access `PB-UI-1`, and cockpit budget binding `CM-2` are complete.
-Starting or cancelling Proofbook runs, deciding gates, settling agent steps, opening
-artifacts, budget editing, Remote Continuity, and other adjacent value remain portfolio candidates.
+Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
+`PB-UI-3`, and cockpit budget binding `CM-2` are complete. Cancelling current runs,
+input/secret-bearing starts, settling agent steps, opening artifacts, budget editing,
+Remote Continuity, and other adjacent value remain portfolio candidates.
+Proofbook product access remains explicitly bounded to the completed cockpit slices;
+it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before
 opening the next bounded slice; existing backend capability alone does not justify a
 new framework program.

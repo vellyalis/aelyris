@@ -30,6 +30,15 @@ const CATALOG: ProofbookSummary[] = [
   },
 ];
 
+const INPUT_FREE_ADMISSION = {
+  eligible: true,
+  definitionHash: "sha256:validated-definition-hash",
+  inputCount: 0,
+  secretCount: 0,
+  unsupportedStepKinds: [],
+  blockers: [],
+};
+
 function run(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
   return {
     schema: "aelyris.proofbook_run.v1",
@@ -105,7 +114,18 @@ describe("ProofbookPanel", () => {
       if (command === "list_proofbooks") return Promise.resolve(CATALOG);
       if (command === "list_proofbook_runs") return Promise.resolve([run()]);
       if (command === "validate_proofbook") {
-        return Promise.resolve({ definitionId: "release-closeout", path: CATALOG[0].path, valid: true, errors: [] });
+        return Promise.resolve({
+          definitionId: "release-closeout",
+          path: CATALOG[0].path,
+          valid: true,
+          errors: [],
+          startAdmission: {
+            ...INPUT_FREE_ADMISSION,
+            eligible: false,
+            inputCount: 1,
+            blockers: ["runtime_inputs_declared"],
+          },
+        });
       }
       return Promise.reject(new Error(`unexpected command: ${command}`));
     });
@@ -125,6 +145,90 @@ describe("ProofbookPanel", () => {
       projectPath: "C:/repo",
       proofbookPath: CATALOG[0].path,
     });
+    expect(screen.getByText(/runtime_inputs_declared/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Start validated Proofbook/ })).toBeNull();
+  });
+
+  it("starts only after fresh input-free validation and sends the exact definition hash", async () => {
+    let releaseStart: (ledger: ProofbookRunLedger) => void = () => {};
+    const startPromise = new Promise<ProofbookRunLedger>((resolve) => {
+      releaseStart = resolve;
+    });
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([]);
+      if (command === "validate_proofbook") {
+        return Promise.resolve({
+          definitionId: "release-closeout",
+          path: CATALOG[0].path,
+          valid: true,
+          errors: [],
+          startAdmission: INPUT_FREE_ADMISSION,
+        });
+      }
+      if (command === "start_input_free_proofbook_run") return startPromise;
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    expect(await screen.findByText("Release closeout")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start validated Proofbook release.proofbook.yaml" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate release.proofbook.yaml" }));
+    const start = await screen.findByRole("button", { name: "Start validated Proofbook release.proofbook.yaml" });
+    expect(screen.getByText("sha256:validated-definition-hash")).toBeTruthy();
+
+    fireEvent.click(start);
+    fireEvent.click(start);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(([command]) => command === "start_input_free_proofbook_run");
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("start_input_free_proofbook_run", {
+      projectPath: "C:/repo",
+      proofbookPath: CATALOG[0].path,
+      expectedDefinitionHash: "sha256:validated-definition-hash",
+    });
+
+    releaseStart(run({ runId: "run-started", status: "passed" }));
+    expect(await screen.findByText(/Started release-closeout/)).toBeTruthy();
+    expect(screen.getByText("Passed")).toBeTruthy();
+  });
+
+  it("requires revalidation when the definition hash changes before start", async () => {
+    let catalogReads = 0;
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") {
+        catalogReads += 1;
+        return Promise.resolve(CATALOG);
+      }
+      if (command === "list_proofbook_runs") return Promise.resolve([]);
+      if (command === "validate_proofbook") {
+        return Promise.resolve({
+          definitionId: "release-closeout",
+          path: CATALOG[0].path,
+          valid: true,
+          errors: [],
+          startAdmission: INPUT_FREE_ADMISSION,
+        });
+      }
+      if (command === "start_input_free_proofbook_run") {
+        return Promise.reject({
+          code: "stale_definition_hash",
+          message: "validate again before starting",
+        });
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Validate release.proofbook.yaml" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start validated Proofbook release.proofbook.yaml" }));
+
+    expect(await screen.findByText(/changed after validation/)).toBeTruthy();
+    expect(catalogReads).toBe(2);
+    expect(screen.queryByRole("button", { name: "Start validated Proofbook release.proofbook.yaml" })).toBeNull();
   });
 
   it("projects live run-ledger updates only for the active project", async () => {

@@ -20,6 +20,7 @@ pub enum ProofbookErrorCode {
     RunNotFound,
     ValidationFailed,
     StaleGateHash,
+    StaleDefinitionHash,
     StaleLedgerRevision,
     RuntimeNotAvailable,
 }

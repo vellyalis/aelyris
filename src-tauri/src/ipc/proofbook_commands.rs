@@ -31,8 +31,45 @@ pub fn validate_proofbook(
             path: proofbook_path,
             valid: false,
             errors: vec![error],
+            start_admission: proofbook::ProofbookStartAdmission::unavailable(
+                "definition_unreadable",
+            ),
         }),
     }
+}
+
+#[tauri::command]
+pub fn start_input_free_proofbook_run(
+    app: AppHandle,
+    project_path: String,
+    proofbook_path: String,
+    expected_definition_hash: String,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    require_proofbook_effect_admitted(
+        app.state::<std::sync::Arc<crate::startup_reconciliation::StartupReconciliationState>>()
+            .inner(),
+        "Proofbook input-free start",
+    )?;
+    let ledger = app
+        .state::<proofbook::ProofbookRunner>()
+        .start_input_free_run(&project_path, &proofbook_path, &expected_definition_hash)?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "input_free_run_started",
+        "info",
+        Some("proofbook"),
+        Some(&ledger.run_id),
+        "Input-free Proofbook run started from cockpit",
+        serde_json::json!({
+            "projectPath": project_path,
+            "proofbookPath": proofbook_path,
+            "definitionHash": expected_definition_hash,
+            "status": ledger.status,
+        }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
 }
 
 #[tauri::command]
@@ -413,6 +450,7 @@ settlement:
         let pending = crate::startup_reconciliation::StartupReconciliationState::new();
         for surface in [
             "Proofbook start",
+            "Proofbook input-free start",
             "Proofbook manual-gate continuation",
             "Proofbook agent-session continuation",
         ] {
@@ -428,6 +466,7 @@ settlement:
         failed.fail("fault", "injected failure").unwrap();
         for surface in [
             "Proofbook start",
+            "Proofbook input-free start",
             "Proofbook manual-gate continuation",
             "Proofbook agent-session continuation",
         ] {
