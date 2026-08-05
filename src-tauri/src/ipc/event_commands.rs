@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::event_bus::{AgentEvent, AgentEventKind, EventBus, EventChannel};
+use crate::event_bus::{AgentEvent, AgentEventKind, EventBatch, EventBus, EventChannel};
 
 /// Live fleet event stream the cockpit feed subscribes to (BR5).
 const AGENT_EVENT: &str = "agent-event";
@@ -104,6 +104,26 @@ pub fn event_by_channel(bus: State<'_, Arc<EventBus>>, channel: EventChannel) ->
     bus.by_channel(channel)
 }
 
+fn normalize_event_since_args(after_seq: i64, limit: Option<usize>) -> (i64, usize) {
+    (after_seq.max(0), limit.unwrap_or(100).clamp(1, 1000))
+}
+
+/// Durably committed events after a monotonic sequence cursor.
+///
+/// Unlike `event_recent`, this reads the SQLite-backed event owner and therefore
+/// remains valid after a process restart. The server clamps both arguments so a
+/// malformed UI request cannot turn into an unbounded SQLite query.
+#[tauri::command]
+pub fn event_since(
+    bus: State<'_, Arc<EventBus>>,
+    after_seq: i64,
+    limit: Option<usize>,
+) -> Result<EventBatch, String> {
+    let (after_seq, limit) = normalize_event_since_args(after_seq, limit);
+    bus.since(after_seq, limit)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +153,12 @@ mod tests {
         assert_eq!(chat_stream_event("chat-1"), "chat-stream-chat-1");
         assert_eq!(chat_session_id_event("chat-1"), "chat-session-id-chat-1");
         assert_eq!(chat_complete_event("chat-1"), "chat-complete-chat-1");
+    }
+
+    #[test]
+    fn durable_event_cursor_arguments_are_bounded() {
+        assert_eq!(normalize_event_since_args(-5, Some(0)), (0, 1));
+        assert_eq!(normalize_event_since_args(42, None), (42, 100));
+        assert_eq!(normalize_event_since_args(42, Some(50_000)), (42, 1000));
     }
 }

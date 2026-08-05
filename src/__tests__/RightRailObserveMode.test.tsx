@@ -2,12 +2,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RightRailObserveMode } from "../features/right-rail/RightRailObserveMode";
+import { deriveFleetBriefing } from "../features/fleet-briefing/fleetBriefingModel";
 import type {
   RightRailObserveModeActions,
   RightRailObserveModeViewModel,
 } from "../features/right-rail/rightRailObserveModeContract";
 import { buildWorkstationGraph } from "../shared/lib/workstationGraph";
 import type { TerminalPaneTarget } from "../shared/types/terminalPane";
+import type { SeqEvent } from "../shared/types/eventBus";
 
 const PANE: TerminalPaneTarget = {
   paneId: "pane-1",
@@ -32,6 +34,12 @@ vi.mock("../features/right-rail/rightRailWidgetFrame", () => ({
     <section aria-label={title} data-subtitle={subtitle}>
       {children}
     </section>
+  ),
+}));
+
+vi.mock("../features/fleet-briefing/FleetBriefingPanel", () => ({
+  FleetBriefingPanel: ({ projectPath }: { projectPath: string }) => (
+    <section aria-label="fleet briefing projection" data-project-path={projectPath} />
   ),
 }));
 
@@ -275,6 +283,7 @@ describe("RightRailObserveMode", () => {
     expect(screen.getByText("live destination")).not.toBeNull();
     expect(screen.getByText("audit destination")).not.toBeNull();
     expect(screen.getByText("reliability destination")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "fleet briefing projection" }).dataset.projectPath).toBe("C:/repo");
     expect(screen.getByRole("region", { name: "observe agent inspector slot" })).not.toBeNull();
     expect(screen.getByRole("region", { name: "process projection" }).dataset.activeTerminal).toBe("terminal-1");
     expect(screen.getByRole("region", { name: "audit projection" }).dataset.traceFilter).toBe("trace-current");
@@ -335,5 +344,25 @@ describe("RightRailObserveMode", () => {
     expect(actions.onSelectSession).toHaveBeenNthCalledWith(2, "agent-tool");
     expect(actions.onSelectIncident).toHaveBeenCalledWith({ eventId: 51 });
     expect(actions.onTraceIncident).toHaveBeenCalledWith("trace-2", { eventId: 51 });
+  });
+
+  it("summarizes durable fleet facts without inventing timestamps or serializing arbitrary payloads", () => {
+    const events: SeqEvent[] = [
+      { seq: 1, eventId: "event-1", kind: "agent_activity", channel: "system", payload: { sessionId: "agent-1" } },
+      { seq: 2, eventId: "event-2", kind: "task_completed", channel: "planning", payload: { taskId: "task-7" } },
+      { seq: 3, eventId: "event-3", kind: "review_required", channel: "review", payload: { message: "Needs operator review" } },
+      { seq: 4, eventId: "event-4", kind: "execution_reserved", channel: "system", payload: { nested: { secret: true } } },
+    ];
+
+    const summary = deriveFleetBriefing(events, 3);
+
+    expect(summary.total).toBe(4);
+    expect(summary.latestSeq).toBe(4);
+    expect(summary.counts).toEqual({ progress: 1, attention: 1, durable: 1, fleet: 1 });
+    expect(summary.unlocks).toBe(1);
+    expect(summary.headline).toBe("1 item needs attention");
+    expect(summary.items.map((item) => item.seq)).toEqual([4, 3, 2]);
+    expect(summary.items[0]?.detail).toBeNull();
+    expect(summary.items[1]?.detail).toBe("Needs operator review");
   });
 });

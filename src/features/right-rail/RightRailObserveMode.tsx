@@ -7,6 +7,7 @@ import { LivePanesPanel } from "../context/LivePanesPanel";
 import { ReliabilityPanel } from "../context/ReliabilityPanel";
 import { RunGraphPanel } from "../context/RunGraphPanel";
 import { ToolLedgerPanel } from "../context/ToolLedgerPanel";
+import { FleetBriefingPanel } from "../fleet-briefing/FleetBriefingPanel";
 import { LogsPanel } from "../logs/LogsPanel";
 import { ProcessManagerPanel } from "../process-manager";
 import type { RightRailObserveModeActions, RightRailObserveModeViewModel } from "./rightRailObserveModeContract";
@@ -48,6 +49,18 @@ export function RightRailObserveMode({
 
   return (
     <>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <RightRailWidgetFrame
+            widget="fleet-briefing"
+            title="Fleet Briefing"
+            subtitle="since your last check"
+            forceOpen={focusedWidget === "fleet-briefing"}
+          >
+            <FleetBriefingPanel key={project.path} projectPath={project.path} />
+          </RightRailWidgetFrame>
+        </Suspense>
+      </ErrorBoundary>
       <ErrorBoundary>
         <Suspense fallback={null}>
           <div className="bento-widget" data-widget="processes">

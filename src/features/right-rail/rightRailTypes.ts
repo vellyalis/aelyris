@@ -6,7 +6,7 @@ export type RightRailActionResultTone = "success" | "warn" | "error";
 export type RightRailGuardrailSelection = "Auto" | WorkforceGuardrailProfile;
 export type RightRailWidgetId =
   | "decision-inbox" | "sessions" | "orchestrator" | "workflow" | "toolkit"
-  | "context" | "audit-timeline" | "run-graph" | "tool-ledger" | "logs";
+  | "fleet-briefing" | "context" | "audit-timeline" | "run-graph" | "tool-ledger" | "logs";
 
 export interface RightRailActionResult {
   id: string; label: string; detail: string; tone: RightRailActionResultTone; timestamp: number;

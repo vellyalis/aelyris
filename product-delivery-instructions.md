@@ -3,10 +3,12 @@
 STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
-CURRENT PHASE: `GMV` (General Mission Vertical).
-ACTIVE SLICE: `GMV-3`.
-LAST COMPLETED SLICE: `GMV-2`.
-NEXT IMPLEMENTATION SLICE: `GMV-3`.
+CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
+ACTIVE SLICE: `FB-1`.
+LAST COMPLETED SLICE: `FB-1`.
+NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `FB-1`; the
+real-provider GMV-3 claim confirmation remains an external check after 2026-08-08,
+not a repository implementation slice.
 
 ## Goal
 
@@ -27,6 +29,10 @@ path. They do not precede it. This is not a new orchestration engine: `plan_buil
 `orchestrator_step`, TaskGraph, PaneFleet, worktree, PTY, review, and settlement
 remain the existing owners.
 
+The finite **General Mission Vertical** (`GMV-0` through `GMV-3`) remains the
+completed repository foundation for this post-GMV product-access phase; the pending
+real-provider confirmation changes claim eligibility, not its implementation owner.
+
 ## Portfolio Reset — 2026-08-04
 
 The prior order was layer-first rather than value-first. `GMV-0` generalized a
@@ -42,10 +48,11 @@ Current portfolio classification:
 | --- | --- | --- |
 | Cockpit goal -> plan -> visible run -> review -> merge | **COMPLETE** | Live exercised through the supported cockpit path on 2026-08-04 |
 | Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
-| Exact-OID Mission settlement | **NOW** | Extend the proven path into immutable Mission completion without another generic merge engine |
+| Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Remote Continuity | **PARKED** | Local core journey is not yet complete |
-| Proofbook product UI, Fleet Briefing, broad budget UX | **PARKED** | Adjacent value with lower current contribution |
+| Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
+| Proofbook product UI, approval batching, broad budget UX | **PARKED** | Compare after the first post-GMV user-visible slice |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -53,7 +60,8 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `GMV-3` is active.
+- This work order is the sole repo-mutating product lane. `FB-1` is complete; no
+  second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
   for release/public claims, but they do not make every bounded GMV slice wait idle.
@@ -92,6 +100,8 @@ slice is acceptable only when the next named slice consumes it directly.
 | Independent review | existing review owner |
 | Exact-OID integration | existing merge-intent owner |
 | Completion | existing work/Mission settlement packets |
+| Durable Fleet Briefing facts | existing SQLite-backed `EventBus::since` sequence |
+| Fleet Briefing projection | existing Observe-mode right rail and widget persistence owner |
 
 Forbidden second owners: Mission engine, TaskGraph, journal, Proofbook runner, merge
 authority, completion table, frontend execution truth, or provider-specific Mission.
@@ -197,13 +207,33 @@ provider quota reopens.
 - Stop when the one supported request-to-settlement path is decidable; do not expand
   into Proofbook recipes, Remote Continuity, or a broad framework program.
 
+### FB-1 — Fleet Briefing
+
+Capability target: `Product-Accessible`.
+Status: **COMPLETE**.
+
+- Add the briefing to the existing Observe-mode right rail; do not create another
+  dashboard, event store, timeline, or frontend execution owner.
+- Read facts through a bounded Tauri projection of the existing SQLite-backed
+  `EventBus::since` owner. The volatile hot cache is not restart truth.
+- Keep only the operator's per-project `afterSeq` and local mark time in UI storage.
+  That cursor is presentation state, never event truth, and resets safely if the
+  durable database is replaced and the cursor moves beyond its high-water mark.
+- Summarize progress, attention, durable lifecycle facts, fleet coordination, and
+  observed unlocks from the fixed event taxonomy. Do not invent event timestamps,
+  proof packets, or cost data that the current event contract does not contain.
+- Bound hydration to 4,000 events per briefing and disclose when more remain rather
+  than presenting a truncated result as complete.
+- Done: an operator can open Observe mode, see a restart-safe summary of what changed
+  since the last mark, refresh it, and advance the cursor without MCP/CLI calls.
+
 ## Deferred After GMV
 
-Proofbook product access, Fleet Briefing, approval batching, and other adjacent value
-remain portfolio candidates rather than slices in this work order. After GMV-3 closes,
-compare them against the owning Work OS/Apex roadmap and current user evidence before
-opening another program. Their existing backend capability does not justify extending
-GMV or bypassing an owning product decision.
+Fleet Briefing `FB-1` is complete. Proofbook product access, approval batching, broad
+budget UX, Remote Continuity, and other adjacent value remain portfolio candidates.
+Compare them against the owning Work OS/Apex roadmap and current user evidence before
+opening the next bounded slice; existing backend capability alone does not justify a
+new framework program.
 
 ## Complexity And Progress Stops
 
