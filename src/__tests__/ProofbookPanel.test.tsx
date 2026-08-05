@@ -100,6 +100,26 @@ function manualGateRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRu
   });
 }
 
+function runningRun(overrides: Partial<ProofbookRunLedger> = {}): ProofbookRunLedger {
+  return run({
+    revision: 4,
+    runId: "run-live",
+    status: "running",
+    updatedAt: "2026-08-05T05:03:00.000Z",
+    steps: [
+      {
+        stepId: "verify",
+        kind: "verifier",
+        status: "running",
+        artifactRefs: [],
+        redactionCount: 0,
+      },
+    ],
+    artifacts: [],
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   tauriMocks.invoke.mockReset();
   tauriMocks.listen.mockReset();
@@ -229,6 +249,86 @@ describe("ProofbookPanel", () => {
     expect(await screen.findByText(/changed after validation/)).toBeTruthy();
     expect(catalogReads).toBe(2);
     expect(screen.queryByRole("button", { name: "Start validated Proofbook release.proofbook.yaml" })).toBeNull();
+  });
+
+  it("cancels only the exact displayed non-terminal revision and latches rapid clicks", async () => {
+    let releaseCancel: (ledger: ProofbookRunLedger) => void = () => {};
+    const cancelPromise = new Promise<ProofbookRunLedger>((resolve) => {
+      releaseCancel = resolve;
+    });
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") return Promise.resolve([runningRun(), run({ runId: "run-passed" })]);
+      if (command === "cancel_current_proofbook_run") return cancelPromise;
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+
+    expect(await screen.findByText("run-live")).toBeTruthy();
+    expect(screen.getByText("revision 4")).toBeTruthy();
+    expect(screen.getByText(/does not prove an external process was terminated/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel current Proofbook run run-passed" })).toBeNull();
+
+    const cancel = screen.getByRole("button", { name: "Cancel current Proofbook run run-live" });
+    fireEvent.click(cancel);
+    fireEvent.click(cancel);
+
+    await waitFor(() => {
+      const calls = tauriMocks.invoke.mock.calls.filter(([command]) => command === "cancel_current_proofbook_run");
+      expect(calls).toHaveLength(1);
+    });
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("cancel_current_proofbook_run", {
+      projectPath: "C:/repo",
+      runId: "run-live",
+      expectedRevision: 4,
+    });
+
+    releaseCancel(
+      runningRun({
+        revision: 5,
+        status: "cancelled",
+        steps: [
+          {
+            stepId: "verify",
+            kind: "verifier",
+            status: "cancelled",
+            artifactRefs: [],
+            redactionCount: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText(/Marked run-live cancelled in durable Proofbook state at revision 5/)).toBeTruthy();
+    expect(screen.getAllByText("Cancelled").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Cancel current Proofbook run run-live" })).toBeNull();
+  });
+
+  it("refreshes a stale cancellation revision before exposing another operator action", async () => {
+    let listRunsCount = 0;
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "list_proofbooks") return Promise.resolve(CATALOG);
+      if (command === "list_proofbook_runs") {
+        listRunsCount += 1;
+        return Promise.resolve([runningRun({ revision: listRunsCount === 1 ? 4 : 5 })]);
+      }
+      if (command === "cancel_current_proofbook_run") {
+        return Promise.reject({
+          code: "stale_ledger_revision",
+          message: "current revision is 5",
+        });
+      }
+      return Promise.reject(new Error(`unexpected command: ${command}`));
+    });
+
+    render(<ProofbookPanel projectPath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel current Proofbook run run-live" }));
+
+    expect(await screen.findByText(/Run run-live changed before cancellation/)).toBeTruthy();
+    expect(listRunsCount).toBe(2);
+    expect(screen.getByText("revision 5")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel current Proofbook run run-live" })).toBeTruthy();
   });
 
   it("projects live run-ledger updates only for the active project", async () => {

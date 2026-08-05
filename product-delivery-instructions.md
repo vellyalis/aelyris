@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `PB-UI-4`.
-LAST COMPLETED SLICE: `PB-UI-3`.
-NEXT IMPLEMENTATION SLICE: `PB-UI-4`.
+ACTIVE SLICE: `PB-UI-5`.
+LAST COMPLETED SLICE: `PB-UI-4`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-5`.
 
 ```yaml
 continuation_contract:
@@ -61,9 +61,9 @@ Current portfolio classification:
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
-| Proofbook catalog, validation, run history, manual gates, and input-free start | **COMPLETE** | Command mode exposes bounded Proofbook access while inputs, secrets, cancellation, settlement, and artifacts remain separate |
+| Proofbook catalog, validation, run history, manual gates, input-free start, and current-run cancel | **COMPLETE** | Command mode exposes bounded expected-state Proofbook effects while inputs, secrets, settlement, and artifacts remain separate |
 | Cockpit budget binding | **COMPLETE** | The supported Orchestrator path submits reported fleet usage and refuses capped-but-unknown telemetry instead of zero-filling it |
-| Proofbook cancellation and broader controls, broad budget editing UX | **PARKED** | Further effects require expected-state protection and separately bounded operator decisions |
+| Proofbook artifacts and broader controls, broad budget editing UX | **PARKED** | Further access requires containment, integrity verification, and separately bounded operator decisions |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
 
@@ -71,7 +71,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-3` is complete; no
+- This work order is the sole repo-mutating product lane. `PB-UI-4` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -409,7 +409,7 @@ Status: **COMPLETE**.
 ### PB-UI-4 — Cancel Current Non-Terminal Proofbook Runs
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Expose Cancel only for a durable non-terminal run: `pending`, `running`, or
   `waiting_gate`. Passed, failed, policy-blocked, externally blocked, and already
@@ -426,14 +426,42 @@ Status: **ACTIVE**.
   its existing owner provides that evidence.
 - Keep Start with inputs/secrets, agent settlement, artifact opening, and generic
   comments outside this slice.
+- Harden the shared runner cancellation owner so terminal ledgers cannot be rewritten,
+  and include `waiting_gate` steps in the cancelled step set instead of leaving an
+  impossible waiting step inside a cancelled run.
+- Add a narrow `cancel_current_proofbook_run` cockpit adapter that consumes the exact
+  displayed revision, audits expected/committed revisions, emits the existing update,
+  and explicitly records that external process termination was not claimed.
+- Done: an operator can cancel one exact non-terminal ledger revision, while stale,
+  terminal, hidden, and already-cancelled runs fail closed or expose no action.
+
+### PB-UI-5 — Verified Runner-Owned Artifact Preview
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Preview only artifacts already named by the current durable ledger and physically
+  contained under the runner-owned `.aelyris/proofbook-runs/artifacts/<runId>` root.
+- Consume `runId`, `artifactId`, and exact ledger `revision`; do not accept an
+  arbitrary filesystem path from the frontend.
+- Canonicalize the artifact path, reject symlink/path escape, re-read a bounded byte
+  count, and verify recorded size plus SHA-256 before returning any content.
+- Support bounded UTF-8 text preview only. Binary, oversized, missing, externally
+  recorded, or integrity-mismatched artifacts remain metadata-only and fail visibly.
+- Return the recorded redaction count and show an explicit disclosure that validation
+  proves ledger integrity/containment, not that every possible secret pattern was
+  semantically removed.
+- Keep raw artifact download, shell-open, arbitrary file read, agent settlement,
+  inputs/secrets, and bulk export outside this slice.
 
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
 Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
-`PB-UI-3`, and cockpit budget binding `CM-2` are complete. Cancelling current runs,
-input/secret-bearing starts, settling agent steps, opening artifacts, budget editing,
-Remote Continuity, and other adjacent value remain portfolio candidates.
+`PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
+`CM-2` are complete. Verified runner-owned artifact preview, input/secret-bearing
+starts, settling agent steps, raw artifact opening/export, budget editing, Remote
+Continuity, and other adjacent value remain portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

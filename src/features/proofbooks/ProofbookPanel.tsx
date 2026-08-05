@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
+  Ban,
   BookOpenCheck,
   Check,
   CheckCircle2,
@@ -146,6 +147,10 @@ function formatUpdatedAt(value: string): string {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleString() : value;
 }
 
+function isCancellableRunStatus(status: ProofbookRunStatus): boolean {
+  return status === "pending" || status === "running" || status === "waiting_gate";
+}
+
 export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const [definitions, setDefinitions] = useState<ProofbookSummary[]>([]);
   const [runs, setRuns] = useState<ProofbookRunLedger[]>([]);
@@ -160,6 +165,9 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const resolvingGateRef = useRef<string | null>(null);
   const [resolvingGateKey, setResolvingGateKey] = useState<string | null>(null);
   const [gateStatus, setGateStatus] = useState<{ tone: "success" | "warn" | "error"; text: string } | null>(null);
+  const cancellingRunRef = useRef<string | null>(null);
+  const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
+  const [cancelStatus, setCancelStatus] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!projectPath || !isTauriRuntime()) {
@@ -174,6 +182,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setValidation(null);
     setStartStatus(null);
     setGateStatus(null);
+    setCancelStatus(null);
     try {
       const [catalog, history] = await Promise.all([
         invoke<ProofbookSummary[]>("list_proofbooks", { projectPath }),
@@ -200,6 +209,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     setError(null);
     setStartStatus(null);
     setGateStatus(null);
+    setCancelStatus(null);
     void refresh();
   }, [refresh]);
 
@@ -263,6 +273,8 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
   const startSelected = useCallback(async () => {
     if (
       startingRef.current ||
+      resolvingGateRef.current ||
+      cancellingRunRef.current ||
       !selected ||
       !startAdmission?.eligible ||
       !startAdmission.definitionHash
@@ -306,7 +318,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
 
   const resolveManualGate = useCallback(
     async (gate: ManualGateView, decision: ManualGateDecision) => {
-      if (resolvingGateRef.current || !gate.resolvable) return;
+      if (resolvingGateRef.current || startingRef.current || cancellingRunRef.current || !gate.resolvable) return;
       resolvingGateRef.current = gate.key;
       setResolvingGateKey(gate.key);
       setGateStatus(null);
@@ -356,6 +368,56 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
     },
     [projectPath, refresh],
   );
+
+  const cancelCurrentRun = useCallback(
+    async (run: ProofbookRunLedger) => {
+      if (
+        cancellingRunRef.current ||
+        startingRef.current ||
+        resolvingGateRef.current ||
+        !isCancellableRunStatus(run.status)
+      ) {
+        return;
+      }
+      cancellingRunRef.current = run.runId;
+      setCancellingRunId(run.runId);
+      setCancelStatus(null);
+      setError(null);
+      try {
+        const ledger = await invoke<ProofbookRunLedger>("cancel_current_proofbook_run", {
+          projectPath,
+          runId: run.runId,
+          expectedRevision: run.revision,
+        });
+        setRuns((current) => sortedRuns([ledger, ...current.filter((entry) => entry.runId !== ledger.runId)]));
+        setCancelStatus({
+          tone: "success",
+          text: `Marked ${run.runId} cancelled in durable Proofbook state at revision ${ledger.revision}. External process termination is not claimed.`,
+        });
+      } catch (cause) {
+        const code = errorCode(cause);
+        if (code === "stale_ledger_revision" || code === "run_not_found" || code === "run_not_cancellable") {
+          await refresh();
+          setCancelStatus({
+            tone: "error",
+            text: `Run ${run.runId} changed before cancellation. Durable history was refreshed; review the current status and revision.`,
+          });
+        } else {
+          setCancelStatus({
+            tone: "error",
+            text: `Could not cancel ${run.runId}: ${errorMessage(cause)}`,
+          });
+        }
+        reportInvokeFailure({ source: "proofbooks", operation: "cancel_current", err: cause, userVisible: true });
+      } finally {
+        cancellingRunRef.current = null;
+        setCancellingRunId(null);
+      }
+    },
+    [projectPath, refresh],
+  );
+
+  const effectLocked = starting || resolvingGateKey !== null || cancellingRunId !== null;
 
   return (
     <section className={styles.panel} aria-label="Proofbooks">
@@ -465,7 +527,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                 <button
                   type="button"
                   className={styles.startButton}
-                  disabled={starting}
+                  disabled={effectLocked}
                   onClick={() => void startSelected()}
                   aria-label={`Start validated Proofbook ${selected ? basename(selected.path) : "definition"}`}
                 >
@@ -549,7 +611,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                       <button
                         type="button"
                         className={styles.gateApprove}
-                        disabled={resolvingGateKey !== null}
+                        disabled={effectLocked}
                         onClick={() => void resolveManualGate(gate, "approve")}
                         aria-label={`Approve manual gate ${gate.prompt.gateId}`}
                       >
@@ -559,7 +621,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                       <button
                         type="button"
                         className={styles.gateReject}
-                        disabled={resolvingGateKey !== null}
+                        disabled={effectLocked}
                         onClick={() => void resolveManualGate(gate, "reject")}
                         aria-label={`Reject manual gate ${gate.prompt.gateId}`}
                       >
@@ -579,6 +641,16 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
         </section>
       )}
 
+      {cancelStatus && (
+        <p
+          className={styles.cancelStatus}
+          data-tone={cancelStatus.tone}
+          role={cancelStatus.tone === "error" ? "alert" : "status"}
+        >
+          {cancelStatus.text}
+        </p>
+      )}
+
       <section className={styles.history} aria-label="Proofbook run history">
         <div className={styles.sectionHeading}>
           <History size={12} aria-hidden="true" />
@@ -591,6 +663,8 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
           <div className={styles.runList}>
             {runs.map((run) => {
               const passed = run.steps.filter((step) => step.status === "passed").length;
+              const cancellable = isCancellableRunStatus(run.status);
+              const cancelling = cancellingRunId === run.runId;
               return (
                 <article key={run.runId} className={styles.run} data-status={run.status}>
                   <div className={styles.runTop}>
@@ -602,7 +676,28 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
                     <span>{run.artifacts.length} artifacts</span>
                     <span>{run.residualBlockers.length} blockers</span>
                   </div>
+                  <div className={styles.runIdentity}>
+                    <code title={run.runId}>{run.runId}</code>
+                    <span>revision {run.revision}</span>
+                  </div>
                   <time dateTime={run.updatedAt}>{formatUpdatedAt(run.updatedAt)}</time>
+                  {cancellable && (
+                    <div className={styles.cancelControl}>
+                      <p>
+                        Cancelling stops future Proofbook queue progression and marks pending, running, or waiting steps cancelled. It does not prove an external process was terminated.
+                      </p>
+                      <button
+                        type="button"
+                        className={styles.cancelButton}
+                        disabled={effectLocked}
+                        onClick={() => void cancelCurrentRun(run)}
+                        aria-label={`Cancel current Proofbook run ${run.runId}`}
+                      >
+                        <Ban size={11} aria-hidden="true" />
+                        {cancelling ? "Cancelling…" : "Cancel current run"}
+                      </button>
+                    </div>
+                  )}
                 </article>
               );
             })}
@@ -611,7 +706,7 @@ export function ProofbookPanel({ projectPath }: ProofbookPanelProps) {
       </section>
 
       <p className={styles.disclosure}>
-        This surface can start only a freshly validated input-free local Proofbook and resolve an existing manualGate with its current gate hash. It cannot accept inputs or secrets, cancel, settle, open raw artifacts, or submit free-form gate comments.
+        This surface can start only a freshly validated input-free local Proofbook, resolve an existing manualGate with its current gate hash, and cancel only the exact displayed revision of a non-terminal run. It cannot accept inputs or secrets, settle agent work, open raw artifacts, bulk-cancel, or submit free-form gate comments.
       </p>
     </section>
   );

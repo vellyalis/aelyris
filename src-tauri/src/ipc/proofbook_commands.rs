@@ -162,6 +162,36 @@ pub fn cancel_proofbook_run(
 }
 
 #[tauri::command]
+pub fn cancel_current_proofbook_run(
+    app: AppHandle,
+    project_path: String,
+    run_id: String,
+    expected_revision: u64,
+) -> Result<ProofbookRunLedger, ProofbookError> {
+    let ledger = app
+        .state::<proofbook::ProofbookRunner>()
+        .cancel_run_if_current(&project_path, &run_id, expected_revision)?;
+    record_audit_event(
+        &app,
+        "proofbook",
+        "current_run_cancelled",
+        "warn",
+        Some("proofbook"),
+        Some(&run_id),
+        "Current Proofbook run cancelled from cockpit",
+        serde_json::json!({
+            "projectPath": project_path,
+            "expectedRevision": expected_revision,
+            "committedRevision": ledger.revision,
+            "status": ledger.status,
+            "externalProcessTerminationClaimed": false,
+        }),
+    );
+    emit_proofbook_update(&app, &ledger);
+    Ok(ledger)
+}
+
+#[tauri::command]
 pub fn resolve_proofbook_manual_gate(
     app: AppHandle,
     project_path: String,

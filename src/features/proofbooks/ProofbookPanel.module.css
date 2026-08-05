@@ -185,7 +185,8 @@
 .gateStatus,
 .gateUnsupported,
 .startStatus,
-.startBlocked {
+.startBlocked,
+.cancelStatus {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   background: rgba(0, 6, 14, 0.2);
@@ -522,6 +523,14 @@
   color: var(--ctp-red);
 }
 
+.cancelStatus[data-tone="success"] {
+  color: var(--gold);
+}
+
+.cancelStatus[data-tone="error"] {
+  color: var(--ctp-red);
+}
+
 .runTop span {
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -538,6 +547,82 @@
   background: rgba(142, 226, 241, 0.05);
 }
 
+.runIdentity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.runIdentity code,
+.runIdentity span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runIdentity code {
+  flex: 1 1 auto;
+}
+
+.runIdentity span {
+  flex: 0 0 auto;
+}
+
+.cancelControl {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(243, 139, 168, 0.1);
+}
+
+.cancelControl p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+
+.cancelButton {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(243, 139, 168, 0.28);
+  border-radius: var(--radius-sm);
+  background: rgba(243, 139, 168, 0.09);
+  color: var(--ctp-red);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.cancelButton:hover:not(:disabled) {
+  border-color: rgba(243, 139, 168, 0.5);
+  color: var(--text-primary);
+}
+
+.cancelButton:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cancelButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .empty,
 .overflow,
 .disclosure,
@@ -545,7 +630,8 @@
 .gateStatus,
 .gateUnsupported,
 .startStatus,
-.startBlocked {
+.startBlocked,
+.cancelStatus {
   margin: 0;
 }
 

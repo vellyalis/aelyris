@@ -282,15 +282,60 @@ impl ProofbookRunner {
         run_id: &str,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
-        let mut ledger = self.load_run(&root, run_id)?;
+        let ledger = self.load_run(&root, run_id)?;
+        let expected_revision = ledger.revision;
+        self.cancel_loaded_run(&root, ledger, expected_revision)
+    }
+
+    pub fn cancel_run_if_current(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        expected_revision: u64,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        let root = crate::proofbook::validator::canonical_project_root(project_path)?;
+        let ledger = self.load_run(&root, run_id)?;
+        self.cancel_loaded_run(&root, ledger, expected_revision)
+    }
+
+    fn cancel_loaded_run(
+        &self,
+        root: &Path,
+        mut ledger: ProofbookRunLedger,
+        expected_revision: u64,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        if ledger.revision != expected_revision {
+            return Err(stale_revision_error(
+                &ledger.run_id,
+                expected_revision,
+                ledger.revision,
+            ));
+        }
+        if !matches!(
+            ledger.status,
+            ProofbookRunStatus::Pending
+                | ProofbookRunStatus::Running
+                | ProofbookRunStatus::WaitingGate
+        ) {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::RunNotCancellable,
+                format!(
+                    "Proofbook run {} is terminal ({:?}) and cannot be cancelled",
+                    ledger.run_id, ledger.status
+                ),
+            ));
+        }
         ledger.status = ProofbookRunStatus::Cancelled;
+        let completed_at = ledger::now_timestamp();
         for step in &mut ledger.steps {
             if matches!(
                 step.status,
-                ProofbookStepStatus::Pending | ProofbookStepStatus::Running
+                ProofbookStepStatus::Pending
+                    | ProofbookStepStatus::Running
+                    | ProofbookStepStatus::WaitingGate
             ) {
                 step.status = ProofbookStepStatus::Cancelled;
-                step.completed_at = Some(ledger::now_timestamp());
+                step.completed_at = Some(completed_at.clone());
             }
         }
         ledger.append_event(
@@ -300,7 +345,7 @@ impl ProofbookRunner {
             Some("cancelled".to_string()),
             None,
         );
-        self.commit_ledger(&root, &mut ledger)?;
+        self.commit_ledger(root, &mut ledger)?;
         self.remember(ledger.clone())?;
         Ok(ledger)
     }
@@ -1694,6 +1739,119 @@ settlement:
         assert_eq!(error.code, ProofbookErrorCode::ValidationFailed);
         assert!(error.message.contains("runtime_inputs_declared"));
         assert!(error.message.contains("unsupported_step_kinds"));
+    }
+
+    #[test]
+    fn cancel_current_run_cancels_waiting_gate_at_the_exact_revision() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cancel-current
+steps:
+  - id: approve
+    type: manualGate
+    gateId: cancellation-check
+    options: [approve, reject]
+    default: reject
+    risk: medium
+settlement:
+  requiredSteps: [approve]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let waiting = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+
+        let cancelled = runner
+            .cancel_run_if_current(&project_path(&project), &waiting.run_id, waiting.revision)
+            .unwrap();
+
+        assert_eq!(cancelled.status, ProofbookRunStatus::Cancelled);
+        assert_eq!(cancelled.revision, waiting.revision + 1);
+        assert_eq!(cancelled.steps[0].status, ProofbookStepStatus::Cancelled);
+        assert!(cancelled.steps[0].completed_at.is_some());
+        assert!(cancelled
+            .events
+            .iter()
+            .any(|event| event.kind == "run_cancelled"));
+    }
+
+    #[test]
+    fn cancel_current_run_rejects_a_stale_revision_without_mutation() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cancel-stale
+steps:
+  - id: approve
+    type: manualGate
+    gateId: stale-cancel
+    options: [approve, reject]
+    default: reject
+    risk: medium
+settlement:
+  requiredSteps: [approve]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let waiting = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+
+        let error = runner
+            .cancel_run_if_current(
+                &project_path(&project),
+                &waiting.run_id,
+                waiting.revision + 1,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::StaleLedgerRevision);
+
+        let current = runner
+            .status(&project_path(&project), &waiting.run_id)
+            .unwrap();
+        assert_eq!(current.revision, waiting.revision);
+        assert_eq!(current.status, ProofbookRunStatus::WaitingGate);
+        assert_eq!(current.steps[0].status, ProofbookStepStatus::WaitingGate);
+    }
+
+    #[test]
+    fn cancel_current_run_rejects_terminal_ledgers_without_rewriting_history() {
+        let project = tempfile::tempdir().unwrap();
+        let proofbook = write_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: pb-cancel-terminal
+steps:
+  - id: echo
+    type: shell
+    command: echo done
+settlement:
+  requiredSteps: [echo]
+"#,
+        );
+        let runner = ProofbookRunner::new();
+        let passed = runner
+            .start_run(&project_path(&project), &proofbook, json!({}))
+            .unwrap();
+        assert_eq!(passed.status, ProofbookRunStatus::Passed);
+
+        let error = runner
+            .cancel_run_if_current(&project_path(&project), &passed.run_id, passed.revision)
+            .unwrap_err();
+        assert_eq!(error.code, ProofbookErrorCode::RunNotCancellable);
+
+        let current = runner
+            .status(&project_path(&project), &passed.run_id)
+            .unwrap();
+        assert_eq!(current.revision, passed.revision);
+        assert_eq!(current.status, ProofbookRunStatus::Passed);
     }
 
     #[test]

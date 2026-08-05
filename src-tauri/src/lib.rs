@@ -1618,6 +1618,7 @@ pub fn run() {
             ipc::proofbook_run_status,
             ipc::list_proofbook_runs,
             ipc::cancel_proofbook_run,
+            ipc::cancel_current_proofbook_run,
             ipc::resolve_proofbook_manual_gate,
             ipc::settle_proofbook_agent_session,
             // Agent session persistence

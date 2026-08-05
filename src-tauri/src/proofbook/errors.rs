@@ -22,6 +22,7 @@ pub enum ProofbookErrorCode {
     StaleGateHash,
     StaleDefinitionHash,
     StaleLedgerRevision,
+    RunNotCancellable,
     RuntimeNotAvailable,
 }
 
