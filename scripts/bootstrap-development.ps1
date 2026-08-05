@@ -9,12 +9,14 @@ $ErrorActionPreference = "Stop"
 function Invoke-Checked {
   param(
     [Parameter(Mandatory = $true)][string]$FilePath,
-    [Parameter(Mandatory = $true)][string[]]$Arguments
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [string[]]$PrefixArguments = @()
   )
 
-  & $FilePath @Arguments
+  $allArguments = @($PrefixArguments) + @($Arguments)
+  & $FilePath @allArguments
   if ($LASTEXITCODE -ne 0) {
-    throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+    throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($allArguments -join ' ')"
   }
 }
 
@@ -31,6 +33,31 @@ function Require-Command {
   return $command.Source
 }
 
+function Resolve-PnpmCommand {
+  $direct = Get-Command "pnpm.cmd" -ErrorAction SilentlyContinue
+  if ($direct) {
+    return @{
+      FilePath = $direct.Source
+      PrefixArguments = @()
+      Display = "pnpm"
+    }
+  }
+
+  $corepack = Get-Command "corepack.cmd" -ErrorAction SilentlyContinue
+  if (-not $corepack) {
+    $corepack = Get-Command "corepack.exe" -ErrorAction SilentlyContinue
+  }
+  if ($corepack) {
+    return @{
+      FilePath = $corepack.Source
+      PrefixArguments = @("pnpm")
+      Display = "corepack pnpm"
+    }
+  }
+
+  throw "pnpm 10.x is required. Install it directly or provide Corepack with the tracked packageManager version."
+}
+
 $git = Require-Command "git.exe" "Install Git for Windows, then reopen PowerShell."
 $scriptRepository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $repoRoot = (& $git -C $scriptRepository rev-parse --show-toplevel).Trim()
@@ -41,12 +68,13 @@ Push-Location -LiteralPath $repoRoot
 try {
 
 $node = Require-Command "node.exe" "Install Node.js 24.x. The tracked version is in .node-version."
-$pnpm = Require-Command "pnpm.cmd" "Install pnpm 10.x (for example: npm install --global pnpm@10.33.0)."
+$pnpm = Resolve-PnpmCommand
 $rustc = Require-Command "rustc.exe" "Install the stable Rust MSVC toolchain with rustup."
 $cargo = Require-Command "cargo.exe" "Install the stable Rust MSVC toolchain with rustup."
 
 $nodeVersion = (& $node --version).Trim()
-$pnpmVersion = (& $pnpm --version).Trim()
+$pnpmVersionArguments = @($pnpm.PrefixArguments) + @("--version")
+$pnpmVersion = (& $pnpm.FilePath @pnpmVersionArguments).Trim()
 $rustVersion = (& $rustc --version).Trim()
 $cargoVersion = (& $cargo --version).Trim()
 $rustDetails = (& $rustc -vV) -join "`n"
@@ -79,19 +107,19 @@ if (-not ($webViewCandidates | Where-Object { Test-Path -LiteralPath $_ } | Sele
   throw "Microsoft Edge WebView2 Runtime is required. Install the Evergreen Runtime and rerun this script."
 }
 
-Write-Host "Aelyris toolchain: Node $nodeVersion; pnpm $pnpmVersion; $rustVersion; $cargoVersion"
+Write-Host "Aelyris toolchain: Node $nodeVersion; $($pnpm.Display) $pnpmVersion; $rustVersion; $cargoVersion"
 
 if (-not $SkipInstall) {
-  Invoke-Checked -FilePath $pnpm -Arguments @("install", "--frozen-lockfile")
+  Invoke-Checked -FilePath $pnpm.FilePath -PrefixArguments $pnpm.PrefixArguments -Arguments @("install", "--frozen-lockfile")
 } elseif (-not (Test-Path -LiteralPath (Join-Path $repoRoot "node_modules"))) {
   throw "-SkipInstall requires an existing node_modules directory."
 }
 
 Invoke-Checked -FilePath $node -Arguments @("scripts/bootstrap-fresh-clone-continuation.mjs")
-Invoke-Checked -FilePath $pnpm -Arguments @("verify:fresh-clone")
+Invoke-Checked -FilePath $pnpm.FilePath -PrefixArguments $pnpm.PrefixArguments -Arguments @("verify:fresh-clone")
 
 if ($VerifyBuild) {
-  Invoke-Checked -FilePath $pnpm -Arguments @("exec", "tsc", "--noEmit")
+  Invoke-Checked -FilePath $pnpm.FilePath -PrefixArguments $pnpm.PrefixArguments -Arguments @("exec", "tsc", "--noEmit")
   Invoke-Checked -FilePath $cargo -Arguments @("check", "--manifest-path", "src-tauri/Cargo.toml", "--lib")
 }
 

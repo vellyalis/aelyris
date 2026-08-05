@@ -4,11 +4,18 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `CM-2`.
-LAST COMPLETED SLICE: `CM-2`.
-NEXT IMPLEMENTATION SLICE: choose the next user-visible candidate after `CM-2`; the
-real-provider GMV-3 claim confirmation remains an external check after 2026-08-08,
-not a repository implementation slice.
+ACTIVE SLICE: `PB-UI-2`.
+LAST COMPLETED SLICE: `XPC-1`.
+NEXT IMPLEMENTATION SLICE: `PB-UI-2`.
+
+```yaml
+continuation_contract:
+  tracked_plan: product-delivery-instructions.md
+  root_work_order: product-delivery-instructions.md
+  worklog_dir: .codex-auto/worklogs/product-delivery
+  local_handoff: .claude/agent-memory-local/CODEX_MUST_READ_NEXT_SESSION_PRODUCT_DELIVERY_LOCAL_ONLY.md
+  verifier: pnpm verify:product-delivery:continuation
+```
 
 ## Goal
 
@@ -327,6 +334,41 @@ Status: **COMPLETE**.
   MCP/compatibility caller has provider-exact billing or a new universal budget owner.
 - Done: cockpit dispatch passes reported usage, known over-budget state reaches the
   existing backend halt, and capped-but-unmeasured usage fails closed before spawn.
+
+### XPC-1 — Portable Active-Program Continuation
+
+Capability target: `Product-Accessible development continuity`.
+Status: **COMPLETE**.
+
+- Repair the fresh-clone bootstrap so it selects the sole `STATUS: ACTIVE`
+  repo-mutating work order instead of remaining hardwired to the closed audit lane.
+- Give product delivery one canonical ignored worklog, local handoff, and focused
+  continuation verifier derived from tracked Git truth.
+- Resolve pnpm through either the direct executable or Corepack using the tracked
+  `packageManager` version. Do not require an unrelated global pnpm installation.
+- Locate the hosted fresh-checkout proof in the tracked workflow portfolio rather
+  than assuming it remains in `ci.yml` after CI lane separation.
+- Require a clean worktree, matching local/tracking/remote OIDs, current bootstrap
+  evidence, and exact active-work-order identity before a cross-PC-ready claim.
+- Preserve the audit-remediation verifier for its certification-only record; do not
+  reopen that closed repository lane or rewrite its historical evidence.
+- Done: `pnpm verify:cross-pc-continuation` passes on a clean, pushed product-delivery
+  HEAD and the same tracked bootstrap reconstructs the product continuation locally.
+
+### PB-UI-2 — Narrow Proofbook Operator Effects
+
+Capability target: `Product-Accessible`.
+Status: **ACTIVE**.
+
+- Add no generic effect console. Begin only from the existing read-only Proofbook
+  panel and existing typed IPC owners.
+- Define one bounded operator authority for Start, Cancel, or manual-gate resolution;
+  each effect must expose its exact inputs, startup-admission boundary, stale-state
+  protection, audit event, and visible result before implementation.
+- Keep agent-session settlement, arbitrary input editors, secret material, and broad
+  artifact access outside the first effect slice.
+- Select the smallest effect that produces user value without inventing a second
+  runner, gate authority, or frontend ledger owner.
 
 ## Deferred After GMV
 

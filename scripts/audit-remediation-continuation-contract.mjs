@@ -127,6 +127,7 @@ export function validateWorkRecord({
   expectedHead,
   expectedGitStatus,
   expectedCommit,
+  sliceIdParser = granularSliceId,
 }) {
   const block = extractYamlBlock(source, "work_record");
   const missing = [];
@@ -198,7 +199,7 @@ export function validateWorkRecord({
   if (canonicalGitStatus(fields.worktree_at_close) !== canonicalGitStatus(expectedGitStatus)) {
     missing.push("worktree-at-close-current");
   }
-  if (granularSliceId(fields.next_exact_action) !== expectedNextSlice) {
+  if (sliceIdParser(fields.next_exact_action) !== expectedNextSlice) {
     missing.push("next-exact-action-slice");
   }
 
@@ -243,6 +244,7 @@ export function validateHandoff({
   expectedGitStatus,
   expectedWorklog,
   expectedChangedPaths,
+  sliceIdParser = granularSliceId,
 }) {
   const block = extractYamlBlock(source, "program");
   const missing = [];
@@ -301,7 +303,7 @@ export function validateHandoff({
     if (String(source).split(marker).length - 1 !== 1) missing.push(marker);
   }
 
-  const nextActionSlice = granularSliceId(sectionAfterHeading(source, "## Next Exact Action"));
+  const nextActionSlice = sliceIdParser(sectionAfterHeading(source, "## Next Exact Action"));
   if (nextActionSlice !== expectedNextSlice) missing.push("handoff-next-action-slice");
 
   const goalSection = sectionAfterHeading(source, "## Pasteable /goal");

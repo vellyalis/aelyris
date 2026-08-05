@@ -41,6 +41,43 @@ function major(version) {
   return Number.parseInt(String(version).match(/\d+/)?.[0] ?? "", 10);
 }
 
+function firstSuccessfulRun(candidates) {
+  const attempts = [];
+  for (const [command, args, label] of candidates) {
+    const result = run(command, args);
+    attempts.push({ label, ...result });
+    if (result.ok) return { ...result, invocation: label, attempts };
+  }
+  const last = attempts.at(-1) ?? { ok: false, value: "", error: "no invocation candidates" };
+  return { ok: false, value: "", error: last.error, invocation: null, attempts };
+}
+
+function pnpmRuntimeVersion() {
+  const candidates =
+    process.platform === "win32"
+      ? [
+          ["pnpm.cmd", ["--version"], "pnpm.cmd --version"],
+          ["corepack.cmd", ["pnpm", "--version"], "corepack.cmd pnpm --version"],
+          ["corepack.exe", ["pnpm", "--version"], "corepack.exe pnpm --version"],
+          [process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "corepack pnpm --version"], "corepack pnpm --version"],
+        ]
+      : [
+          ["pnpm", ["--version"], "pnpm --version"],
+          ["corepack", ["pnpm", "--version"], "corepack pnpm --version"],
+        ];
+  return firstSuccessfulRun(candidates);
+}
+
+function safeQualityArtifactPath(value) {
+  const path = String(value ?? "").replace(/\\/g, "/");
+  return (
+    path.startsWith(".codex-auto/quality/") &&
+    path.endsWith(".json") &&
+    !path.split("/").includes("..") &&
+    !/^[a-z]:\//i.test(path)
+  );
+}
+
 function canonicalStatus(value) {
   return String(value ?? "")
     .replace(/\r?\n/g, "; ")
@@ -57,12 +94,16 @@ const requiredTrackedPaths = [
   "scripts/bootstrap-development.ps1",
   "scripts/bootstrap-fresh-clone-continuation.mjs",
   "scripts/verify-fresh-clone-readiness.mjs",
+  "scripts/product-delivery-continuation-contract.mjs",
+  "scripts/verify-product-delivery-continuation.mjs",
   "scripts/verify-audit-remediation-continuation.mjs",
   ".github/workflows/ci.yml",
+  ".github/workflows/full-confidence.yml",
   "AGENTS.md",
   "README.md",
   "README.ja.md",
   "CONTRIBUTING.md",
+  "product-delivery-instructions.md",
   "audit-remediation-instructions.md",
   "docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md",
 ];
@@ -97,7 +138,9 @@ checks.push(
     packageJson?.scripts?.["bootstrap:continuation"] === "node scripts/bootstrap-fresh-clone-continuation.mjs" &&
       packageJson?.scripts?.["verify:fresh-clone"] === "node scripts/verify-fresh-clone-readiness.mjs" &&
       packageJson?.scripts?.["verify:cross-pc-continuation"] ===
-        "node scripts/verify-fresh-clone-readiness.mjs --require-remote-sync",
+        "node scripts/verify-fresh-clone-readiness.mjs --require-remote-sync" &&
+      packageJson?.scripts?.["verify:product-delivery:continuation"] ===
+        "node scripts/verify-product-delivery-continuation.mjs",
     "package scripts expose bootstrap and fail-closed cross-PC verification",
   ),
 );
@@ -106,7 +149,20 @@ const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8");
 const protocol = readFileSync(join(ROOT, "docs", "WORK_RECORD_AND_CONTINUATION_PROTOCOL.md"), "utf8");
 const readme = readFileSync(join(ROOT, "README.md"), "utf8");
 const contributing = readFileSync(join(ROOT, "CONTRIBUTING.md"), "utf8");
-const workflow = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
+const workflowDir = join(ROOT, ".github", "workflows");
+const workflowPaths = readdirSync(workflowDir)
+  .filter((name) => /\.ya?ml$/i.test(name))
+  .sort()
+  .map((name) => `.github/workflows/${name}`);
+const workflowSources = workflowPaths.map((path) => ({ path, source: readFileSync(join(ROOT, path), "utf8") }));
+const workflow = workflowSources.map(({ source }) => source).join("\n");
+const bootstrapWorkflowPaths = workflowSources
+  .filter(
+    ({ source }) =>
+      source.includes("Fresh-clone continuation bootstrap") &&
+      source.includes("scripts/bootstrap-development.ps1 -SkipInstall"),
+  )
+  .map(({ path }) => path);
 const pnpmSetupCount = workflow.match(/uses:\s*pnpm\/action-setup@/g)?.length ?? 0;
 const explicitPnpmSetupVersionCount =
   workflow.match(/pnpm\/action-setup@[^\r\n]+\r?\n\s+with:\r?\n\s+version:/g)?.length ?? 0;
@@ -125,20 +181,16 @@ checks.push(
 checks.push(
   check(
     "hosted-fresh-checkout-proof",
-    workflow.includes("Fresh-clone continuation bootstrap") &&
-      workflow.includes("scripts/bootstrap-development.ps1 -SkipInstall") &&
+    bootstrapWorkflowPaths.length > 0 &&
       pnpmSetupCount > 0 &&
       explicitPnpmSetupVersionCount === 0,
     "Windows CI executes the tracked bootstrap and takes pnpm version only from packageManager",
-    { pnpmSetupCount, explicitPnpmSetupVersionCount },
+    { workflowPaths, bootstrapWorkflowPaths, pnpmSetupCount, explicitPnpmSetupVersionCount },
   ),
 );
 
 const nodeVersion = run("node", ["--version"]);
-const pnpmVersion =
-  process.platform === "win32"
-    ? run(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "pnpm --version"])
-    : run("pnpm", ["--version"]);
+const pnpmVersion = pnpmRuntimeVersion();
 const rustVersion = run("rustc", ["--version"]);
 const rustDetails = run("rustc", ["-vV"]);
 const cargoVersion = run("cargo", ["--version"]);
@@ -203,32 +255,57 @@ checks.push(
 );
 
 const head = run("git", ["rev-parse", "HEAD"]);
+const shortHeadResult = run("git", ["rev-parse", "--short", "HEAD"]);
 const branch = run("git", ["branch", "--show-current"]);
 const gitStatus = run("git", ["status", "--short", "--branch", "--untracked-files=all"]);
-const continuation = readJson(".codex-auto/quality/audit-remediation-continuation.json");
+const worktreeStatus = run("git", ["status", "--porcelain=v1", "--untracked-files=all"]);
 const bootstrap = readJson(".codex-auto/quality/fresh-clone-bootstrap.json");
+const continuationArtifact = safeQualityArtifactPath(bootstrap?.continuationArtifact)
+  ? bootstrap.continuationArtifact
+  : null;
+const continuation = continuationArtifact ? readJson(continuationArtifact) : null;
+const shortHead = shortHeadResult.value;
 checks.push(
   check(
     "continuation-reconstructed",
-    continuation?.ok === true &&
-      continuation?.status === "pass-current-audit-remediation-continuation" &&
-      bootstrap?.ok === true &&
+    bootstrap?.ok === true &&
       bootstrap?.status === "pass-fresh-clone-continuation-bootstrap" &&
-      continuation?.head === head.value.slice(0, 7) &&
-      bootstrap?.head === head.value.slice(0, 7) &&
+      safeQualityArtifactPath(bootstrap?.continuationArtifact) &&
+      continuation?.ok === true &&
+      /^pass-current-[a-z0-9-]+-continuation$/.test(continuation?.status ?? "") &&
+      bootstrap?.verifierStatus === continuation?.status &&
+      continuation?.program === bootstrap?.program &&
+      continuation?.head === shortHead &&
+      bootstrap?.head === shortHead &&
       continuation?.branch === branch.value &&
+      bootstrap?.branch === branch.value &&
       canonicalStatus(continuation?.gitStatus) === canonicalStatus(gitStatus.value) &&
       canonicalStatus(bootstrap?.gitStatus) === canonicalStatus(gitStatus.value),
     "current-machine handoff and worklog were reconstructed from this checkout",
     {
+      program: bootstrap?.program ?? null,
       continuationStatus: continuation?.status ?? null,
       bootstrapStatus: bootstrap?.status ?? null,
       continuationHead: continuation?.head ?? null,
       bootstrapHead: bootstrap?.head ?? null,
+      continuationArtifact,
       head: head.value,
+      shortHead,
       branch: branch.value,
       gitStatus: gitStatus.value,
     },
+  ),
+);
+
+const worktreeClean = worktreeStatus.ok && worktreeStatus.value === "";
+checks.push(
+  check(
+    "portable-worktree-clean",
+    !requireRemoteSync || worktreeClean,
+    requireRemoteSync
+      ? "cross-PC readiness requires every non-ignored change to be represented by the published HEAD"
+      : "local fresh-clone verification reports worktree portability without requiring publication",
+    { required: requireRemoteSync, clean: worktreeClean, porcelain: worktreeStatus.value, error: worktreeStatus.error ?? null },
   ),
 );
 
@@ -271,7 +348,7 @@ checks.push(
 const failed = checks.filter((entry) => entry.status === "failed");
 const localFailed = failed.filter((entry) => entry.id !== "remote-head-current");
 const freshCloneReady = localFailed.length === 0;
-const crossPcReady = freshCloneReady && remoteSync;
+const crossPcReady = freshCloneReady && worktreeClean && remoteSync;
 const gateOk = freshCloneReady && (!requireRemoteSync || remoteSync);
 const result = {
   version: 1,
@@ -292,7 +369,11 @@ const result = {
   checks,
   nextAction: crossPcReady
     ? "Clone the configured upstream on another Windows PC and run scripts/bootstrap-development.ps1."
-    : requireRemoteSync
+    : requireRemoteSync && !worktreeClean
+      ? "Commit and publish every non-ignored change, regenerate continuation evidence, then rerun this gate."
+    : !freshCloneReady
+      ? "Repair the failed local bootstrap, toolchain, or continuation checks, then rerun this gate."
+      : requireRemoteSync
       ? "Publish the verified HEAD to its configured upstream, then rerun this gate."
       : "Run pnpm verify:cross-pc-continuation after the verified HEAD is published.",
 };

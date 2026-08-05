@@ -7,13 +7,14 @@ import {
   granularSliceId,
   phaseForSlice,
 } from "./audit-remediation-continuation-contract.mjs";
+import {
+  parseProductDeliveryContinuationContract,
+  parseProductDeliveryFrontier,
+} from "./product-delivery-continuation-contract.mjs";
 
 const ROOT = resolve(process.cwd());
-const WORK_ORDER = "audit-remediation-instructions.md";
-const WORKLOG_DIR = ".codex-auto/worklogs/audit-remediation";
-const HANDOFF = ".claude/agent-memory-local/CODEX_MUST_READ_NEXT_SESSION_COMPREHENSIVE_AUDIT_REMEDIATION_LOCAL_ONLY.md";
 const BOOTSTRAP_ARTIFACT = ".codex-auto/quality/fresh-clone-bootstrap.json";
-const CONTINUATION_ARTIFACT = ".codex-auto/quality/audit-remediation-continuation.json";
+const PROTOCOL = "docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md";
 
 function git(args) {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
@@ -21,6 +22,10 @@ function git(args) {
 
 function fullPath(path) {
   return join(ROOT, path);
+}
+
+function readText(path) {
+  return readFileSync(fullPath(path), "utf8");
 }
 
 function writeAtomic(path, value) {
@@ -33,6 +38,14 @@ function writeAtomic(path, value) {
 
 function writeJson(path, value) {
   writeAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(fullPath(path), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function json(value) {
@@ -71,13 +84,19 @@ function jstTimestamp(date = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+09:00`;
 }
 
-function requireFrontier(source) {
+function exactActiveStatus(source) {
+  const matches = [...String(source).matchAll(/^STATUS:\s*ACTIVE\s*$/gm)];
+  return matches.length === 1;
+}
+
+function auditFrontier(source) {
   const program = backtickField(source, "PROGRAM");
   const activePhase = backtickField(source, "CURRENT PHASE");
   const activeSlice = backtickField(source, "ACTIVE SLICE");
   const completedSlice = backtickField(source, "LAST COMPLETED SLICE");
   const nextSlice = backtickField(source, "NEXT IMPLEMENTATION SLICE");
-  const valid =
+  const ok =
+    exactActiveStatus(source) &&
     program === "audit-remediation" &&
     /^A\d+$/.test(activePhase ?? "") &&
     granularSliceId(activeSlice) === activeSlice &&
@@ -85,10 +104,77 @@ function requireFrontier(source) {
     granularSliceId(nextSlice) === nextSlice &&
     phaseForSlice(activeSlice) === activePhase &&
     phaseForSlice(nextSlice) === activePhase;
-  if (!valid) {
-    throw new Error("The tracked audit-remediation work order does not expose one valid exact continuation frontier.");
+  return { ok, program, activePhase, activeSlice, completedSlice, nextSlice };
+}
+
+function selectActiveProgram() {
+  const productWorkOrder = "product-delivery-instructions.md";
+  const auditWorkOrder = "audit-remediation-instructions.md";
+  const productSource = readText(productWorkOrder);
+  const auditSource = readText(auditWorkOrder);
+  const productFrontier = parseProductDeliveryFrontier(productSource);
+  const productContract = parseProductDeliveryContinuationContract(productSource);
+  const audit = auditFrontier(auditSource);
+  const candidates = [];
+
+  if (exactActiveStatus(productSource)) {
+    candidates.push({
+      source: productSource,
+      workOrder: productWorkOrder,
+      frontier: productFrontier,
+      contract: productContract,
+      continuationArtifact: ".codex-auto/quality/product-delivery-continuation.json",
+    });
   }
-  return { program, activePhase, activeSlice, completedSlice, nextSlice };
+  if (exactActiveStatus(auditSource)) {
+    candidates.push({
+      source: auditSource,
+      workOrder: auditWorkOrder,
+      frontier: audit,
+      contract: {
+        ok: audit.ok,
+        fields: {
+          tracked_plan: "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md",
+          root_work_order: auditWorkOrder,
+          worklog_dir: ".codex-auto/worklogs/audit-remediation",
+          local_handoff:
+            ".claude/agent-memory-local/CODEX_MUST_READ_NEXT_SESSION_COMPREHENSIVE_AUDIT_REMEDIATION_LOCAL_ONLY.md",
+          verifier: "pnpm verify:audit-remediation:continuation",
+        },
+        problems: audit.ok ? [] : ["legacy-audit-frontier"],
+      },
+      continuationArtifact: ".codex-auto/quality/audit-remediation-continuation.json",
+    });
+  }
+
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Fresh-clone continuation requires exactly one STATUS: ACTIVE repo work order; found ${candidates.length}.`,
+    );
+  }
+  const selected = candidates[0];
+  if (!selected.frontier.ok || !selected.contract.ok) {
+    throw new Error(
+      `The active ${selected.frontier.program ?? "unknown"} work order does not expose one valid exact continuation frontier: ${[
+        ...(selected.frontier.problems ?? []),
+        ...(selected.contract.problems ?? []),
+      ].join(", ")}`,
+    );
+  }
+  return selected;
+}
+
+function resolveVerifierInvocation(command) {
+  const match = String(command ?? "").match(/^pnpm\s+([a-z0-9:-]+)$/i);
+  if (!match) throw new Error(`Unsupported continuation verifier command: ${command}`);
+  const packageJson = JSON.parse(readText("package.json"));
+  const packageCommand = packageJson.scripts?.[match[1]];
+  const nodeMatch = String(packageCommand ?? "").match(/^node\s+([^\s]+)(?:\s+(.*))?$/);
+  if (!nodeMatch) {
+    throw new Error(`Continuation verifier ${match[1]} must be one direct tracked Node script.`);
+  }
+  const args = [nodeMatch[1], ...(nodeMatch[2]?.trim().split(/\s+/).filter(Boolean) ?? [])];
+  return { command: process.execPath, args };
 }
 
 function renderWorklog(context, continuationResult) {
@@ -98,48 +184,48 @@ function renderWorklog(context, continuationResult) {
 
 \`\`\`yaml
 work_record:
-  program: audit-remediation
+  program: ${context.frontier.program}
   session_date_jst: ${context.timestamp}
   branch: ${context.branch}
   head_at_start: ${context.head}
   head_at_close: ${context.head}
   worktree_at_start: ${json(context.gitStatus)}
   worktree_at_close: ${json(context.gitStatus)}
-  active_phase: ${context.frontier.activePhase}
+  active_phase: ${json(context.frontier.activePhase)}
   active_slice: ${context.frontier.activeSlice}
   completed_slice: ${context.frontier.completedSlice}
   next_implementation_slice: ${context.frontier.nextSlice}
-  objective: Reconstruct machine-local continuation state from tracked Git truth without copying secrets, historical generated evidence, or another machine's local state.
-  files_read: ${json(["AGENTS.md", WORK_ORDER, "docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md", "docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md", "docs/specs/README.md"])}
-  files_changed: ${json([context.worklogPath, HANDOFF, BOOTSTRAP_ARTIFACT, CONTINUATION_ARTIFACT])}
+  objective: Reconstruct machine-local ${context.frontier.program} continuation from tracked Git truth without importing another machine's local evidence.
+  files_read: ${json(context.filesRead)}
+  files_changed: ${json([context.worklogPath, context.contract.local_handoff, BOOTSTRAP_ARTIFACT, context.continuationArtifact])}
   commands:
-    - command: pnpm verify:audit-remediation:continuation
+    - command: ${context.contract.verifier}
       result: ${result}
-      artifact: ${CONTINUATION_ARTIFACT}
-  decisions: ${json(["Use tracked work-order and current Git state as the portable source; regenerate local-only routing on each machine.", "Do not import another machine's ignored artifacts, credentials, signing material, or secret-bearing transcripts."])}
+      artifact: ${context.continuationArtifact}
+  decisions: ${json(["Select the sole STATUS: ACTIVE repository work order as continuation owner.", "Regenerate ignored worklog and handoff locally; never transfer secrets or host evidence through Git."])}
   commit: ${commit}
   blockers:
     implementation: []
-    stale_evidence: ${json(["Fresh clones do not inherit generated live-host evidence; refresh only the focused owner artifact needed for the next action."])}
+    stale_evidence: ${json(["Historical generated evidence from another machine is not portable proof."])}
     policy: ${json(["Aelyris remains alpha, active development, and not release-ready."])}
-    external: ${json(["Signing, real Windows sleep/resume, authenticated token prompts, and production endpoints remain operator/external actions."])}
-  residual_risk: ${json(["Cross-PC readiness additionally requires this HEAD to exist on the configured remote."])}
-  next_exact_action: ${context.frontier.nextSlice} resumes only from current Git and regenerated artifact truth under the tracked work-order boundary.
+    external: ${json(["Signing, real sleep/resume, authenticated prompts, and production endpoints remain separately authorized."])}
+  residual_risk: ${json(["Cross-PC readiness additionally requires a clean worktree and this exact HEAD on the configured remote."])}
+  next_exact_action: Continue exact slice ${context.frontier.nextSlice} from current tracked ${context.frontier.program} truth.
 \`\`\`
 
-This record was generated on the current machine. It contains no transferred local evidence and grants no release credit.
+This record was generated on the current machine and grants no release or external-service credit.
 `;
 }
 
 function renderHandoff(context, continuationResult) {
   const result = continuationResult === "PASS" ? "PASS" : "NOT_RUN";
-  return `# Next Session Handoff - Comprehensive Audit Remediation
+  return `# Next Session Handoff - ${context.frontier.program}
 
 LOCAL ONLY. DO NOT COMMIT.
 
 \`\`\`yaml
-program: audit-remediation
-active_phase: ${context.frontier.activePhase}
+program: ${context.frontier.program}
+active_phase: ${json(context.frontier.activePhase)}
 active_slice: ${context.frontier.activeSlice}
 last_completed_slice: ${context.frontier.completedSlice}
 next_implementation_slice: ${context.frontier.nextSlice}
@@ -154,47 +240,43 @@ tracked_paths: ${json(context.changedPaths)}
 ## Current Boundary
 
 This machine reconstructed its local continuation pointer from tracked Git truth at
-\`${context.head}\`. Generated artifacts from another machine were not copied. Aelyris
-remains alpha / active development / not release-ready; this bootstrap grants no
-product, release, signing, live-host, sleep/resume, or authenticated-provider credit.
+\`${context.head}\`. Generated artifacts from another machine were not copied.
 
 ## Read Order
 
 1. \`AGENTS.md\`
-2. \`audit-remediation-instructions.md\`
+2. \`${context.workOrder}\`
 3. this handoff
-4. \`docs/WORK_RECORD_AND_CONTINUATION_PROTOCOL.md\`
-5. \`docs/specs/COMPREHENSIVE_AUDIT_REMEDIATION_PLAN_2026-07-10.md\` (${context.frontier.activeSlice} only)
-6. \`docs/specs/README.md\`
-7. \`${context.worklogPath}\`
-8. current Git and freshly regenerated owner artifacts
+4. \`${PROTOCOL}\`
+5. \`${context.contract.tracked_plan}\`
+6. \`${context.worklogPath}\`
+7. current Git and freshly regenerated owner artifacts
 
 ## Current Artifacts And Refresh Commands
 
-- \`${CONTINUATION_ARTIFACT}\`: \`pnpm verify:audit-remediation:continuation\`
-- \`.codex-auto/quality/final-goal-safe-no-token.json\`: refresh only after an owner action with \`pnpm verify:goal:safe:no-token\`
-- \`.codex-auto/quality/a9-release-lane-closeout.json\`: \`pnpm verify:a9:release-lane-closeout\`
+- \`${context.continuationArtifact}\`: \`${context.contract.verifier}\`
+- \`${BOOTSTRAP_ARTIFACT}\`: \`pnpm verify:fresh-clone\`
 
 ## Commands And Results
 
-- \`pnpm verify:audit-remediation:continuation\`: ${result}
+- \`${context.contract.verifier}\`: ${result}
 - \`pnpm verify:fresh-clone\`: run by \`scripts/bootstrap-development.ps1\` after this pointer is rebuilt
 
 ## Blocker Split
 
-- implementation: none inferred by bootstrap; fresh evidence owns any new diagnosis
-- stale evidence: live-host artifacts are intentionally absent on a fresh clone
+- implementation: none inferred by bootstrap; current source and focused gates own diagnosis
+- stale evidence: live-host artifacts are intentionally not imported from another machine
 - policy: alpha / active development / not release-ready
 - external/operator: signing, real sleep/resume, authenticated prompts, production endpoints
 
 ## Next Exact Action
 
-Resume ${context.frontier.nextSlice} from current Git truth. Run only the focused owner command for the selected action; do not replay historical generated evidence as current proof.
+Continue exact slice ${context.frontier.nextSlice} from current Git truth and the owner files named by \`${context.workOrder}\`.
 
 ## Forbidden Scope
 
 - no credentials, token values, signing material, \`.env\` contents, or secret-bearing transcripts in Git
-- no provider token prompt, signing, real sleep, publication, or other external action without its approval boundary
+- no provider token prompt, signing, publication, or other external action without its approval boundary
 - no release-ready claim from bootstrap or continuation PASS
 - no replacement of tracked work-order truth with machine-local notes
 
@@ -202,27 +284,24 @@ Resume ${context.frontier.nextSlice} from current Git truth. Run only the focuse
 
 \`\`\`yaml
 continuation_goal:
-  program: audit-remediation
-  current_phase: ${context.frontier.activePhase}
+  program: ${context.frontier.program}
+  current_phase: ${json(context.frontier.activePhase)}
   active_slice: ${context.frontier.activeSlice}
   next_implementation_slice: ${context.frontier.nextSlice}
   boundary: fresh_clone_reconstructed_from_tracked_git_truth
 \`\`\`
 
-Resume from current Git and artifact truth. Preserve the tracked Goal, claim boundary,
-and operator/external approval boundaries.
+Resume exact slice ${context.frontier.nextSlice} from current Git and artifact truth.
 `;
 }
 
-function runContinuationVerifier() {
-  return spawnSync(process.execPath, ["scripts/verify-audit-remediation-continuation.mjs"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
+function runVerifier(invocation) {
+  return spawnSync(invocation.command, invocation.args, { cwd: ROOT, encoding: "utf8" });
 }
 
-const workOrderSource = readFileSync(fullPath(WORK_ORDER), "utf8");
-const frontier = requireFrontier(workOrderSource);
+const selected = selectActiveProgram();
+const contract = selected.contract.fields;
+const verifierInvocation = resolveVerifierInvocation(contract.verifier);
 const head = git(["rev-parse", "--short", "HEAD"]);
 const headSubject = git(["log", "-1", "--pretty=%s"]);
 const branch = git(["branch", "--show-current"]);
@@ -231,10 +310,17 @@ const changedPaths = statusPaths();
 const gitStatus = canonicalGitStatus(git(["status", "--short", "--branch", "--untracked-files=all"]));
 const now = new Date();
 const timestamp = jstTimestamp(now);
-const sliceSlug = frontier.activeSlice.replace(/\./g, "-").toLowerCase();
-const worklogPath = `${WORKLOG_DIR}/${timestamp.slice(0, 10)}T${timestamp.slice(11, 19).replace(/:/g, "-")}JST-${sliceSlug}-fresh-clone-${now.getTime()}.md`;
+const sliceSlug = selected.frontier.activeSlice.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+const worklogPath = `${contract.worklog_dir}/${timestamp.slice(0, 10)}T${timestamp
+  .slice(11, 19)
+  .replace(/:/g, "-")}JST-${sliceSlug}-fresh-clone-${now.getTime()}.md`;
+const filesRead = [...new Set(["AGENTS.md", selected.workOrder, PROTOCOL, contract.tracked_plan])];
 const context = {
-  frontier,
+  frontier: selected.frontier,
+  contract,
+  continuationArtifact: selected.continuationArtifact,
+  workOrder: selected.workOrder,
+  filesRead,
   head,
   headSubject,
   branch,
@@ -245,26 +331,30 @@ const context = {
 };
 
 const baseArtifact = {
-  version: 1,
+  version: 2,
   generatedAt: new Date().toISOString(),
-  program: frontier.program,
-  activePhase: frontier.activePhase,
-  activeSlice: frontier.activeSlice,
-  nextImplementationSlice: frontier.nextSlice,
+  program: selected.frontier.program,
+  activePhase: selected.frontier.activePhase,
+  activeSlice: selected.frontier.activeSlice,
+  nextImplementationSlice: selected.frontier.nextSlice,
   branch,
   head,
   gitStatus,
+  workOrder: selected.workOrder,
+  trackedPlan: contract.tracked_plan,
   worklog: worklogPath,
-  handoff: HANDOFF,
+  handoff: contract.local_handoff,
+  verifier: contract.verifier,
+  continuationArtifact: selected.continuationArtifact,
   importedMachineLocalEvidence: false,
   releaseCredit: false,
 };
 
 writeJson(BOOTSTRAP_ARTIFACT, { ...baseArtifact, status: "prepared", ok: false });
 writeAtomic(worklogPath, renderWorklog(context, "NOT_RUN"));
-writeAtomic(HANDOFF, renderHandoff(context, "NOT_RUN"));
+writeAtomic(contract.local_handoff, renderHandoff(context, "NOT_RUN"));
 
-let verification = runContinuationVerifier();
+let verification = runVerifier(verifierInvocation);
 if (verification.status !== 0) {
   writeJson(BOOTSTRAP_ARTIFACT, {
     ...baseArtifact,
@@ -278,8 +368,8 @@ if (verification.status !== 0) {
 }
 
 writeAtomic(worklogPath, renderWorklog(context, "PASS"));
-writeAtomic(HANDOFF, renderHandoff(context, "PASS"));
-verification = runContinuationVerifier();
+writeAtomic(contract.local_handoff, renderHandoff(context, "PASS"));
+verification = runVerifier(verifierInvocation);
 if (verification.status !== 0) {
   writeJson(BOOTSTRAP_ARTIFACT, {
     ...baseArtifact,
@@ -292,22 +382,25 @@ if (verification.status !== 0) {
   process.exit(verification.status ?? 1);
 }
 
+const continuation = readJson(selected.continuationArtifact);
 writeJson(BOOTSTRAP_ARTIFACT, {
   ...baseArtifact,
   status: "pass-fresh-clone-continuation-bootstrap",
   ok: true,
-  verifierStatus: "pass-current-audit-remediation-continuation",
+  verifierStatus: continuation?.status ?? null,
 });
 console.log(
   JSON.stringify(
     {
       artifact: BOOTSTRAP_ARTIFACT,
       status: "pass-fresh-clone-continuation-bootstrap",
+      program: selected.frontier.program,
       head,
       branch,
-      activeSlice: frontier.activeSlice,
-      handoff: HANDOFF,
+      activeSlice: selected.frontier.activeSlice,
+      handoff: contract.local_handoff,
       worklog: worklogPath,
+      continuationArtifact: selected.continuationArtifact,
     },
     null,
     2,
