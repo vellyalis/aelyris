@@ -2258,6 +2258,10 @@ pub(crate) fn canonical_dispatch_repo_path(repo_path: &str) -> Result<String, St
         .to_string())
 }
 
+pub(crate) fn canonical_repo_paths_equal(left: &str, right: &str) -> Result<bool, String> {
+    Ok(canonical_dispatch_repo_path(left)? == canonical_dispatch_repo_path(right)?)
+}
+
 /// Push each give-up escalation from the step onto the coordination stream as an
 /// `EscalationRaised` event (review channel), so a task the loop left `Failed`
 /// (a retry budget exhausted) is surfaced to the supervisor/reviewer — via the
@@ -2638,6 +2642,14 @@ mod tests {
             canonical_dispatch_repo_path(&verbatim).unwrap(),
             canonical_dispatch_repo_path(plain).unwrap()
         );
+        assert!(canonical_repo_paths_equal(&verbatim, plain).unwrap());
+
+        let other = tempfile::tempdir().unwrap();
+        assert!(!canonical_repo_paths_equal(plain, &other.path().to_string_lossy()).unwrap());
+
+        let file = directory.path().join("not-a-repository-directory");
+        std::fs::write(&file, b"file").unwrap();
+        assert!(canonical_repo_paths_equal(plain, &file.to_string_lossy()).is_err());
     }
 
     #[test]

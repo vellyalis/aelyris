@@ -271,9 +271,10 @@ pub async fn orchestrator_review_and_merge(
             managed_db.inner(),
             &task_id,
         )?;
-        if activation.repository_root
-            != crate::control::loop_ports::canonical_dispatch_repo_path(&repo_path)?
-        {
+        if !crate::control::loop_ports::canonical_repo_paths_equal(
+            &activation.repository_root,
+            &repo_path,
+        )? {
             return Err("cockpit completion retry repository identity changed".into());
         }
         let settlement = tasks

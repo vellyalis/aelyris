@@ -177,6 +177,16 @@ architecture phase. The local Codex account refused that confirmation on 2026-08
 because its usage window is limited until 2026-08-08; this external quota does not
 reopen settlement, CI, verifier, or framework work.
 
+On 2026-08-05 the ChatGPT controller also ran the existing fresh-profile journey
+with an isolated deterministic Codex-compatible provider double. That run exercised
+the real Tauri IPC, visible PTY, worktree, project gates, independent-review adapter,
+OID-bound merge, immutable WorkPacket/MissionCompletionPacket settlement, durable
+Event Bus, cleanup, and same-SQLite restart. It exposed and fixed a Windows identity
+bug where `C:\...` and `\\?\C:\...` named the same repository but were compared as
+raw strings. The deterministic run proves the Aelyris product plumbing and recovery
+path; it does **not** substitute for confirming real Codex model behavior after the
+provider quota reopens.
+
 - Invoke the existing exact-OID merge/acceptance and immutable settlement owners.
 - A successful agent self-report, file existence, or UI status cannot settle Mission.
 - Keep the existing public authorities while localizing their private implementation:

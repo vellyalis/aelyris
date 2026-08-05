@@ -304,7 +304,10 @@ async fn review_mission_task_candidate(
     owned_paths: Vec<String>,
 ) -> Result<ReviewedTaskCandidate, String> {
     if activation.task_id != task_id
-        || activation.repository_root != repo_path
+        || !crate::control::loop_ports::canonical_repo_paths_equal(
+            &activation.repository_root,
+            &repo_path,
+        )?
         || activation.source_branch != source_branch
         || activation.target_branch != target_branch
         || activation
