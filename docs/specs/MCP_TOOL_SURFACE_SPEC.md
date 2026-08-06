@@ -142,6 +142,14 @@ value-minimized: it may identify operation, runtime kind, result, and resulting
 session id, but never prompt text, cwd, model/tool payloads, resume/branch values,
 environment values, bearer credentials, or provider output.
 
+`aelyris.worktree.create` and `aelyris.worktree.remove` continue to use the existing
+Git/control owner. Their audit binds the authenticated Principal to create/remove,
+result, delete-branch intent, and a one-way target digest only. Raw repository paths,
+branch/worktree names, Git output, credentials, bearer values, and environment values
+are excluded. The MCP remove adapter treats `worktreeName` as the branch/name returned
+by create/list and routes through the branch-aware removal owner so Git receives the
+predicted worktree path.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

@@ -879,6 +879,161 @@ mod tests {
     }
 
     #[test]
+    fn mcp_worktree_mutation_audit_is_principal_bound_and_target_minimized() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("AIO12_REPO_PATH_MUST_NOT_BE_LOGGED");
+        std::fs::create_dir(&repo).unwrap();
+        let git = |args: &[&str]| {
+            crate::process::hidden_command("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .expect("git available")
+        };
+        assert!(git(&["init", "-q", "-b", "main"]).status.success());
+        assert!(git(&["config", "user.email", "aio12@example.invalid"])
+            .status
+            .success());
+        assert!(git(&["config", "user.name", "AIO12 Test"]).status.success());
+        std::fs::write(repo.join("base.txt"), "base").unwrap();
+        assert!(git(&["add", "."]).status.success());
+        assert!(git(&["commit", "-qm", "base"]).status.success());
+
+        let repo_path = repo.to_string_lossy().replace('\\', "/");
+        let branch = "agent/AIO12_BRANCH_MUST_NOT_BE_LOGGED";
+        let predicted = crate::control::worktree::predict_path(&repo_path, branch)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()));
+        for verb in ["aelyris.worktree.create", "aelyris.worktree.remove"] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "worktree-agent",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        let Json(created) = call(
+            "aelyris.worktree.create",
+            serde_json::json!({
+                "repoPath": repo_path,
+                "branchName": branch,
+            }),
+        )
+        .expect("create worktree");
+        assert_eq!(created["result"]["worktree"]["branch"], branch);
+        assert!(std::path::Path::new(&predicted).exists());
+
+        assert!(matches!(
+            call(
+                "aelyris.worktree.create",
+                serde_json::json!({
+                    "repoPath": repo_path,
+                    "branchName": branch,
+                }),
+            ),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let Json(removed) = call(
+            "aelyris.worktree.remove",
+            serde_json::json!({
+                "repoPath": repo_path,
+                "worktreeName": branch,
+                "deleteBranch": true,
+            }),
+        )
+        .expect("remove branch-owned worktree");
+        assert_eq!(removed["result"]["removed"], true);
+        assert_eq!(removed["result"]["deleteBranch"], true);
+        assert!(!std::path::Path::new(&predicted).exists());
+        assert!(!git(&[
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ])
+        .status
+        .success());
+
+        assert!(matches!(
+            call(
+                "aelyris.worktree.remove",
+                serde_json::json!({
+                    "repoPath": repo_path,
+                    "worktreeName": branch,
+                    "deleteBranch": true,
+                }),
+            ),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_worktree_mutation_authority".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read worktree mutation audit");
+        assert_eq!(rows.len(), 4);
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("worktree-agent")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            2
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            2
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "create"
+                && row.redacted_payload_json["rejectionCode"] == "worktree_create_failed"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "remove"
+                && row.redacted_payload_json["deleteBranch"] == true
+                && row.redacted_payload_json["rejectionCode"] == "worktree_remove_failed"
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["targetValuesLogged"], false);
+            let digest = row.redacted_payload_json["targetDigest"]
+                .as_str()
+                .expect("target digest");
+            assert_eq!(digest.len(), 64);
+            assert!(digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+            let audit_text = serde_json::to_string(row).unwrap();
+            assert!(!audit_text.contains("AIO12_REPO_PATH_MUST_NOT_BE_LOGGED"));
+            assert!(!audit_text.contains("AIO12_BRANCH_MUST_NOT_BE_LOGGED"));
+            assert!(!audit_text.contains(&repo_path));
+            assert!(!audit_text.contains(&predicted));
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

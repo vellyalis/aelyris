@@ -120,7 +120,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.worktree.create",
-                "description": "Create an isolated agent worktree.",
+                "description": "Create an isolated agent worktree as the authenticated Principal through the existing Git owner. Durable audit retains only a one-way target digest, never the repo path or branch name.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -134,7 +134,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.worktree.remove",
-                "description": "Remove an isolated agent worktree.",
+                "description": "Remove the branch/name returned by worktree create/list and optionally delete its branch as the authenticated Principal. Durable audit retains only a one-way target digest, never local repo/worktree/branch names.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

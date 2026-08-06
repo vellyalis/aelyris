@@ -724,6 +724,75 @@ fn mcp_stop_headless(_state: &ApiState, session_id: &str) -> ApiResult<String> {
     }
 }
 
+fn authenticated_worktree_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated worktree mutation Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn worktree_target_digest(
+    operation: &str,
+    repo_path: &str,
+    target: &str,
+    delete_branch: bool,
+) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.worktree\n{operation}\n{repo_path}\n{target}\n{delete_branch}"
+    ))
+    .as_str()
+    .to_string()
+}
+
+fn audit_mcp_worktree_mutation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    target_digest: &str,
+    delete_branch: bool,
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(target_digest.to_string()),
+        kind: "mcp_worktree_mutation_authority".to_string(),
+        severity: if status == "rejected" {
+            "warning".to_string()
+        } else {
+            "info".to_string()
+        },
+        source: "mcp-worktree-mutation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "targetDigest": target_digest,
+            "deleteBranch": delete_branch,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "targetValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, target_digest, error = %error, "worktree mutation audit failed");
+    }
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -1752,19 +1821,77 @@ pub(super) async fn dispatch_authorized(
             serde_json::json!({ "repoPath": repo_path, "worktrees": worktrees })
         }
         "aelyris.worktree.create" => {
+            let actor = authenticated_worktree_actor(actor)?;
             let repo_path = arg_string(&args, "repoPath")?;
             let branch_name = arg_string(&args, "branchName")?;
-            let worktree = crate::control::worktree::create(&repo_path, &branch_name)
-                .map_err(ApiError::BadRequest)?;
-            serde_json::json!({ "repoPath": repo_path, "branchName": branch_name, "worktree": worktree })
+            let target_digest = worktree_target_digest("create", &repo_path, &branch_name, false);
+            match crate::control::worktree::create(&repo_path, &branch_name) {
+                Ok(worktree) => {
+                    audit_mcp_worktree_mutation(
+                        &state,
+                        actor,
+                        "create",
+                        &target_digest,
+                        false,
+                        "accepted",
+                        None,
+                    );
+                    serde_json::json!({ "repoPath": repo_path, "branchName": branch_name, "worktree": worktree })
+                }
+                Err(error) => {
+                    audit_mcp_worktree_mutation(
+                        &state,
+                        actor,
+                        "create",
+                        &target_digest,
+                        false,
+                        "rejected",
+                        Some("worktree_create_failed"),
+                    );
+                    return Err(ApiError::BadRequest(error));
+                }
+            }
         }
         "aelyris.worktree.remove" => {
+            let actor = authenticated_worktree_actor(actor)?;
             let repo_path = arg_string(&args, "repoPath")?;
             let worktree_name = arg_string(&args, "worktreeName")?;
             let delete_branch = arg_bool(&args, "deleteBranch", false);
-            crate::control::worktree::remove(&repo_path, &worktree_name, delete_branch)
-                .map_err(ApiError::BadRequest)?;
-            serde_json::json!({ "repoPath": repo_path, "worktreeName": worktree_name, "removed": true, "deleteBranch": delete_branch })
+            let target_digest =
+                worktree_target_digest("remove", &repo_path, &worktree_name, delete_branch);
+            // `worktreeName` is the branch/name returned by create/list. Route
+            // through the branch-aware owner so Git receives the predicted
+            // worktree path rather than treating the branch as a filesystem path.
+            match crate::control::worktree::remove_for_branch(
+                &repo_path,
+                &worktree_name,
+                delete_branch,
+            ) {
+                Ok(()) => {
+                    audit_mcp_worktree_mutation(
+                        &state,
+                        actor,
+                        "remove",
+                        &target_digest,
+                        delete_branch,
+                        "accepted",
+                        None,
+                    );
+                    serde_json::json!({ "repoPath": repo_path, "worktreeName": worktree_name, "removed": true, "deleteBranch": delete_branch })
+                }
+                Err(error) => {
+                    audit_mcp_worktree_mutation(
+                        &state,
+                        actor,
+                        "remove",
+                        &target_digest,
+                        delete_branch,
+                        "rejected",
+                        Some("worktree_remove_failed"),
+                    );
+                    return Err(ApiError::BadRequest(error));
+                }
+            }
         }
         "aelyris.fleet_status" => {
             let sessions = state

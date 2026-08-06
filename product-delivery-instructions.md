@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-12`.
-LAST COMPLETED SLICE: `AIO-11`.
-NEXT IMPLEMENTATION SLICE: `AIO-12`.
+ACTIVE SLICE: `AIO-13`.
+LAST COMPLETED SLICE: `AIO-12`.
+NEXT IMPLEMENTATION SLICE: `AIO-13`.
 
 ```yaml
 continuation_contract:
@@ -69,7 +69,8 @@ Current portfolio classification:
 | MCP pane-input lease and audit binding | **COMPLETE** | MCP pane input now requires the matching Principal/clientId for an exclusive lease and records payload-free accepted/rejected authority evidence |
 | MCP pane metadata controller binding | **COMPLETE** | Rename and role changes now require the matching Principal/clientId under an exclusive lease and retain value-minimized actor evidence |
 | MCP agent lifecycle actor evidence | **COMPLETE** | Headless/visible spawn and headless stop now retain authenticated, payload-free lifecycle evidence without changing runtime ownership |
-| MCP worktree mutation actor evidence | **NOW** | AI can create and remove isolated worktrees, including optional branch deletion, without durable evidence of the authenticated initiating Principal |
+| MCP worktree mutation actor evidence | **COMPLETE** | Create/remove now retain authenticated, target-minimized evidence and remove the branch/name through the branch-aware Git owner |
+| MCP task mutation actor evidence | **NOW** | AI can create and transition durable tasks, but task owner/metadata are caller-selected domain fields and the initiating authenticated Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -87,7 +88,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-11` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-12` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -971,7 +972,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` isolated-worktree creation and removal whose
 durable evidence identifies the authenticated MCP Principal without exposing local
 repository paths or branch names.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.worktree.create` and `aelyris.worktree.remove`
   adapters, current `control::worktree` owner, Git validation, Governance, and durable
@@ -993,6 +994,34 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can create or remove the existing isolated worktree path,
   and the mutation is durably attributable without disclosing its local target names.
 
+### AIO-13 — Principal-Bound MCP Task Mutation Evidence
+
+Capability target: `Product-Accessible` durable task creation and transition whose
+initiating identity comes from the authenticated MCP Principal rather than task
+assignment metadata.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.task.create` and `aelyris.task.transition` adapters,
+  current Task Manager, Event Bus publication, Governance, and durable audit journal.
+  Do not add a task graph, actor field, mutation service, identity store, or AI-only
+  task path.
+- Keep task `owner`, model, priority, dependencies, outputs, branches, title, and
+  description as domain inputs. None of those fields may substitute for the
+  authenticated initiating Principal or be copied into actor evidence.
+- Preserve verified-symbol minting, caller-symbol rejection, transition validation,
+  task durability, TaskCreated/ReviewRequired/TaskCompleted publication, typed errors,
+  and the current Task Manager as the sole mutation authority.
+- Retain accepted/rejected audit with actor, operation, resulting status when known,
+  and a stable one-way task digest sufficient for correlation. Do not persist task id,
+  title, description, owner, model, priorities, dependencies, outputs, branch names,
+  bearer values, environment values, or Event Bus payloads in the audit record.
+- Event publication failure must remain an explicit failure and must not be audited as
+  a fully successful coordinated mutation. Do not replay a Task Manager mutation merely
+  to obtain audit evidence.
+- Done: an authenticated AI can create or transition the existing durable task graph,
+  and each effect is attributable without confusing task assignment with caller identity
+  or leaking the task packet.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -1011,8 +1040,9 @@ Principal-bound Proofbook run start `AIO-5` are complete. Authenticated mux inpu
 identity `AIO-6`, authenticated direct REST session input identity `AIO-7`, and
 WebSocket stream-ticket Principal continuity `AIO-8` and Principal-bound MCP pane-input
 lease/audit `AIO-9` and Principal-bound MCP pane metadata control `AIO-10` are
-complete. Principal-bound MCP agent lifecycle evidence `AIO-11` is also complete.
-Principal-bound MCP worktree mutation evidence `AIO-12` is active;
+complete. Principal-bound MCP agent lifecycle evidence `AIO-11` and Principal-bound
+MCP worktree mutation evidence `AIO-12` are also complete. Principal-bound MCP task
+mutation evidence `AIO-13` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
