@@ -1176,7 +1176,11 @@ mod tests {
             .expect("authorized fleet projection");
         let result = &value["result"];
         assert_eq!(result["available"], true);
-        assert_eq!(result["source"], "rust-agent-manager");
+        assert_eq!(result["headlessAvailable"], true);
+        assert_eq!(result["interactiveAvailable"], false);
+        assert_eq!(result["headlessCount"], 0);
+        assert_eq!(result["interactiveCount"], 0);
+        assert_eq!(result["source"], "rust-agent-managers");
         assert_eq!(result["sessions"], serde_json::json!([]));
         assert_eq!(result["telemetryBoundary"], "reported_aelyris_telemetry");
         assert_eq!(result["providerBillingClaimed"], false);
@@ -1195,6 +1199,108 @@ mod tests {
             Err(ApiError::Forbidden(_))
         ));
         assert!(scoped_tool_names(&state, "blocked-observer").is_empty());
+    }
+
+    #[test]
+    fn mcp_fleet_status_combines_runtime_owners_deterministically_and_rejects_duplicate_ids() {
+        use crate::agent::{
+            AgentCli, AgentManager, AgentSession, AgentSessionInfo, InteractiveSessionInfo,
+            InteractiveSessionManager,
+        };
+        use crate::pty::PtyManager;
+
+        fn headless(id: &str) -> AgentSession {
+            AgentSession::from(AgentSessionInfo {
+                id: id.to_string(),
+                status: "thinking".to_string(),
+                model: "claude-haiku".to_string(),
+                prompt: format!("{id}-HEADLESS-PROMPT-MUST-NOT-BE-EXPOSED"),
+                cwd: format!("C:/{id}/HEADLESS/PATH"),
+                cost: 0.5,
+                tokens_used: 500,
+                started_at: 5,
+                task_id: None,
+                execution_identity: None,
+                current_activity: None,
+            })
+        }
+
+        fn interactive(id: &str) -> InteractiveSessionInfo {
+            InteractiveSessionInfo {
+                id: id.to_string(),
+                logical_session_id: format!("logical-{id}"),
+                pty_id: format!("pty-{id}"),
+                backend: "native".to_string(),
+                cli: AgentCli::Claude,
+                status: "idle".to_string(),
+                model: "claude-sonnet".to_string(),
+                initial_prompt: Some(format!("{id}-INTERACTIVE-PROMPT-MUST-NOT-BE-EXPOSED")),
+                approval_prompt: Some(format!("{id}-APPROVAL-MUST-NOT-BE-EXPOSED")),
+                cwd: format!("C:/{id}/INTERACTIVE/PATH"),
+                worktree_branch: Some(format!("branch-{id}")),
+                worktree_path: Some(format!("C:/{id}/WORKTREE/PATH")),
+                repo_path: Some(format!("C:/{id}/REPOSITORY/PATH")),
+                cost: 1.5,
+                tokens_used: 1_500,
+                started_at: 15,
+                last_activity: 16,
+                turn_count: 3,
+                context_remaining: None,
+            }
+        }
+
+        let merged = fleet_status::merge_sessions(
+            vec![headless("z-headless")],
+            vec![AgentSession::from(interactive("a-interactive"))],
+        )
+        .expect("headless and interactive owners merge");
+        let merged = serde_json::to_value(merged).unwrap();
+        assert_eq!(merged[0]["id"], "a-interactive");
+        assert_eq!(merged[0]["runMode"], "interactive");
+        assert_eq!(merged[1]["id"], "z-headless");
+        assert_eq!(merged[1]["runMode"], "headless");
+        assert!(!serde_json::to_string(&merged)
+            .unwrap()
+            .contains("MUST-NOT-BE-EXPOSED"));
+
+        let duplicate = fleet_status::merge_sessions(
+            vec![headless("duplicate-session")],
+            vec![AgentSession::from(interactive("duplicate-session"))],
+        );
+        assert!(matches!(
+            duplicate,
+            Err(ApiError::Conflict(message)) if message == "duplicate_fleet_session_id"
+        ));
+
+        let interactive_manager = InteractiveSessionManager::new();
+        interactive_manager
+            .register(interactive("visible-agent"))
+            .unwrap();
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_agent_manager(AgentManager::new())
+            .with_interactive_session_manager(interactive_manager);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let Json(value) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                crate::governance::DEFAULT_ACTOR,
+                ToolCallBody {
+                    name: "aelyris.fleet_status".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+            ))
+            .expect("unified fleet status");
+        let result = &value["result"];
+        assert_eq!(result["headlessAvailable"], true);
+        assert_eq!(result["interactiveAvailable"], true);
+        assert_eq!(result["headlessCount"], 0);
+        assert_eq!(result["interactiveCount"], 1);
+        assert_eq!(result["sessions"][0]["id"], "visible-agent");
+        assert_eq!(result["sessions"][0]["runMode"], "interactive");
+        assert_eq!(result["sessions"][0]["approvalPending"], true);
+        assert!(!serde_json::to_string(result)
+            .unwrap()
+            .contains("MUST-NOT-BE-EXPOSED"));
     }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {

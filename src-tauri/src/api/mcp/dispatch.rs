@@ -3877,7 +3877,7 @@ pub(super) async fn dispatch_authorized(
                 }
             }
         }
-        "aelyris.fleet_status" => super::fleet_status::get(&state),
+        "aelyris.fleet_status" => super::fleet_status::get(&state)?,
         "aelyris.cost.get_caps" => super::cost_caps::get(&state)?,
         "aelyris.cost.set_caps" => super::cost_caps::set(&state, actor, &args)?,
         "aelyris.cost.can_spawn" => super::cost_caps::can_spawn(&state, &args)?,

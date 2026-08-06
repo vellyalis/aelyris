@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 
 use crate::agent::context_lifecycle::ContextRemaining;
 use crate::agent::{AgentRunMode, AgentRunStatus, AgentSession};
 
-use super::super::ApiState;
+use super::super::{ApiError, ApiResult, ApiState};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,25 +57,54 @@ pub(super) fn project_session(session: AgentSession) -> FleetSessionProjection {
     }
 }
 
-pub(super) fn get(state: &ApiState) -> serde_json::Value {
-    let available = state.agent_manager.is_some();
-    let sessions = state
+pub(super) fn merge_sessions(
+    headless: Vec<AgentSession>,
+    interactive: Vec<AgentSession>,
+) -> ApiResult<Vec<FleetSessionProjection>> {
+    let mut by_id = BTreeMap::new();
+    for session in headless.into_iter().chain(interactive) {
+        if by_id.insert(session.id.clone(), session).is_some() {
+            return Err(ApiError::Conflict("duplicate_fleet_session_id".to_string()));
+        }
+    }
+    Ok(by_id.into_values().map(project_session).collect())
+}
+
+pub(super) fn get(state: &ApiState) -> ApiResult<serde_json::Value> {
+    let headless_available = state.agent_manager.is_some();
+    let interactive_available = state.interactive_session_manager.is_some();
+    let headless = state
         .agent_manager
         .as_ref()
         .map(crate::control::agent::list_headless)
-        .unwrap_or_default()
-        .into_iter()
-        .map(project_session)
-        .collect::<Vec<_>>();
+        .unwrap_or_default();
+    let interactive = match state.interactive_session_manager.as_ref() {
+        Some(manager) => manager
+            .list()
+            .map_err(|error| {
+                ApiError::Internal(format!("interactive fleet snapshot failed: {error}"))
+            })?
+            .into_iter()
+            .map(AgentSession::from)
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+    let headless_count = headless.len();
+    let interactive_count = interactive.len();
+    let sessions = merge_sessions(headless, interactive)?;
 
-    serde_json::json!({
-        "available": available,
-        "source": "rust-agent-manager",
+    Ok(serde_json::json!({
+        "available": headless_available || interactive_available,
+        "headlessAvailable": headless_available,
+        "interactiveAvailable": interactive_available,
+        "headlessCount": headless_count,
+        "interactiveCount": interactive_count,
+        "source": "rust-agent-managers",
         "sessions": sessions,
         "telemetryBoundary": "reported_aelyris_telemetry",
         "providerBillingClaimed": false,
         "promptValuesExposed": false,
         "workspacePathsExposed": false,
         "readOnly": true,
-    })
+    }))
 }
