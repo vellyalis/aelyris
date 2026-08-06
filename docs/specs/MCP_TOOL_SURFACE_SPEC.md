@@ -150,6 +150,16 @@ are excluded. The MCP remove adapter treats `worktreeName` as the branch/name re
 by create/list and routes through the branch-aware removal owner so Git receives the
 predicted worktree path.
 
+`aelyris.task.create` and `aelyris.task.transition` keep the Task Manager as the sole
+mutation owner and preserve TaskCreated/ReviewRequired/TaskCompleted Event Bus
+publication. The authenticated Principal is the initiating actor; task `owner`, model,
+priority, dependencies, outputs, branches, title, and description remain task-domain
+metadata and never substitute for that identity. Durable authority evidence contains
+only operation, result, resulting lifecycle status, publication outcome, and a stable
+one-way task digest. If Event Bus publication fails after a durable Task Manager
+mutation, the call remains an explicit failure and the audit records that partial
+coordination state without replaying the mutation or copying the task/event payload.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

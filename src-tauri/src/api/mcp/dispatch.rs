@@ -793,6 +793,262 @@ fn audit_mcp_worktree_mutation(
     }
 }
 
+fn authenticated_task_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated task mutation Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn task_target_digest(task_id: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!("aelyris.task\n{task_id}"))
+        .as_str()
+        .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_task_mutation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    task_digest: &str,
+    resulting_status: Option<&str>,
+    status: &str,
+    rejection_code: Option<&str>,
+    mutation_applied: bool,
+    event_published: Option<bool>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(task_digest.to_string()),
+        kind: "mcp_task_mutation_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-task-mutation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "taskDigest": task_digest,
+            "resultingStatus": resulting_status,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "mutationApplied": mutation_applied,
+            "eventPublished": event_published,
+            "taskPacketLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, task_digest, error = %error, "task mutation audit failed");
+    }
+}
+
+fn mcp_task_create(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_task_actor(actor)?;
+    let tasks = state.task_manager.as_ref().ok_or_else(|| {
+        ApiError::Internal("task graph is not attached to this process".to_string())
+    })?;
+    let task_id = arg_string(args, "id")?;
+    let task_digest = task_target_digest(&task_id);
+    let mut task = crate::task::Task::new(task_id.clone(), arg_string(args, "title")?);
+    if let Some(description) = arg_optional_string(args, "description") {
+        task.description = description;
+    }
+    task.owner = arg_optional_string(args, "owner");
+    task.model = arg_optional_string(args, "model");
+    if let Some(priority) = args.get("priority").and_then(|value| value.as_str()) {
+        task.priority = serde_json::from_value(serde_json::Value::String(priority.to_string()))
+            .map_err(|_| ApiError::BadRequest(format!("invalid priority `{priority}`")))?;
+    }
+    if let Some(dependencies) = arg_optional_string_array(args, "dependencies")? {
+        task.dependencies = dependencies;
+    }
+    if let Some(outputs) = arg_optional_string_array(args, "outputs")? {
+        task.outputs = outputs;
+    }
+    if args.contains_key("symbols") {
+        audit_mcp_task_mutation(
+            state,
+            actor,
+            "create",
+            &task_digest,
+            None,
+            "rejected",
+            Some("caller_symbols_forbidden"),
+            false,
+            None,
+        );
+        return Err(ApiError::BadRequest(
+            "task symbols cannot be set via task.create — they are derived from \
+             verified source by the planner's symbol-enrichment step"
+                .to_string(),
+        ));
+    }
+    if let (Some(source), Some(target)) = (
+        arg_optional_string(args, "sourceBranch"),
+        arg_optional_string(args, "targetBranch"),
+    ) {
+        task = task.with_branches(source, target);
+    }
+
+    let title = task.title.clone();
+    let changed = match tasks.create(task) {
+        Ok(changed) => changed,
+        Err(error) => {
+            audit_mcp_task_mutation(
+                state,
+                actor,
+                "create",
+                &task_digest,
+                tasks.get(&task_id).map(|task| task.status.as_str()),
+                "rejected",
+                Some("task_create_failed"),
+                false,
+                None,
+            );
+            return Err(ApiError::BadRequest(error.to_string()));
+        }
+    };
+    let resulting_status = tasks.get(&task_id).map(|task| task.status);
+    let event_published = if let Some(bus) = state.event_bus.as_ref() {
+        if let Err(error) = bus.publish(crate::event_bus::AgentEvent::new(
+            crate::event_bus::AgentEventKind::TaskCreated,
+            serde_json::json!({ "id": task_id, "title": title }),
+        )) {
+            audit_mcp_task_mutation(
+                state,
+                actor,
+                "create",
+                &task_digest,
+                resulting_status.map(crate::task::TaskStatus::as_str),
+                "rejected",
+                Some("task_event_publication_failed"),
+                true,
+                Some(false),
+            );
+            return Err(ApiError::Internal(error.to_string()));
+        }
+        Some(true)
+    } else {
+        None
+    };
+    audit_mcp_task_mutation(
+        state,
+        actor,
+        "create",
+        &task_digest,
+        resulting_status.map(crate::task::TaskStatus::as_str),
+        "accepted",
+        None,
+        true,
+        event_published,
+    );
+    Ok(serde_json::json!({
+        "id": task_id,
+        "created": true,
+        "changed": changed,
+    }))
+}
+
+fn mcp_task_transition(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_task_actor(actor)?;
+    let tasks = state.task_manager.as_ref().ok_or_else(|| {
+        ApiError::Internal("task graph is not attached to this process".to_string())
+    })?;
+    let task_id = arg_string(args, "id")?;
+    let task_digest = task_target_digest(&task_id);
+    let to_raw = arg_string(args, "to")?;
+    let to: crate::task::TaskStatus =
+        serde_json::from_value(serde_json::Value::String(to_raw.clone()))
+            .map_err(|_| ApiError::BadRequest(format!("invalid task status `{to_raw}`")))?;
+    let changed = match tasks.transition(&task_id, to) {
+        Ok(changed) => changed,
+        Err(error) => {
+            audit_mcp_task_mutation(
+                state,
+                actor,
+                "transition",
+                &task_digest,
+                tasks.get(&task_id).map(|task| task.status.as_str()),
+                "rejected",
+                Some("task_transition_failed"),
+                false,
+                None,
+            );
+            return Err(ApiError::BadRequest(error.to_string()));
+        }
+    };
+    let resulting_status = tasks.get(&task_id).map(|task| task.status);
+    let event_kind = match to {
+        crate::task::TaskStatus::Review => Some(crate::event_bus::AgentEventKind::ReviewRequired),
+        crate::task::TaskStatus::Done => Some(crate::event_bus::AgentEventKind::TaskCompleted),
+        _ => None,
+    };
+    let event_published = if let (Some(bus), Some(kind)) = (state.event_bus.as_ref(), event_kind) {
+        if let Err(error) = bus.publish(crate::event_bus::AgentEvent::new(
+            kind,
+            serde_json::json!({ "id": task_id }),
+        )) {
+            audit_mcp_task_mutation(
+                state,
+                actor,
+                "transition",
+                &task_digest,
+                resulting_status.map(crate::task::TaskStatus::as_str),
+                "rejected",
+                Some("task_event_publication_failed"),
+                true,
+                Some(false),
+            );
+            return Err(ApiError::Internal(error.to_string()));
+        }
+        Some(true)
+    } else {
+        None
+    };
+    audit_mcp_task_mutation(
+        state,
+        actor,
+        "transition",
+        &task_digest,
+        resulting_status.map(crate::task::TaskStatus::as_str),
+        "accepted",
+        None,
+        true,
+        event_published,
+    );
+    Ok(serde_json::json!({
+        "id": task_id,
+        "to": to_raw,
+        "changed": changed,
+    }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -2288,106 +2544,14 @@ pub(super) async fn dispatch_authorized(
             }
             serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason })
         }
-        "aelyris.task.create" => {
-            let tasks = state.task_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("task graph is not attached to this process".to_string())
-            })?;
-            let mut task =
-                crate::task::Task::new(arg_string(&args, "id")?, arg_string(&args, "title")?);
-            if let Some(description) = arg_optional_string(&args, "description") {
-                task.description = description;
-            }
-            task.owner = arg_optional_string(&args, "owner");
-            task.model = arg_optional_string(&args, "model");
-            if let Some(priority) = args.get("priority").and_then(|value| value.as_str()) {
-                task.priority =
-                    serde_json::from_value(serde_json::Value::String(priority.to_string()))
-                        .map_err(|_| {
-                            ApiError::BadRequest(format!("invalid priority `{priority}`"))
-                        })?;
-            }
-            if let Some(dependencies) = arg_optional_string_array(&args, "dependencies")? {
-                task.dependencies = dependencies;
-            }
-            // Declared file lanes (BR8): when the task is dispatched these paths
-            // are claimed for its owner + a FileLocked event is published.
-            if let Some(outputs) = arg_optional_string_array(&args, "outputs")? {
-                task.outputs = outputs;
-            }
-            // Task.symbols (the finer lane that unlocks same-file co-dispatch, §6.2) are
-            // MINTED ONLY by `enrich_plan_with_symbols`, which VERIFIES each declared
-            // symbol against real source via the tree-sitter parser. A caller must never
-            // supply them — that would let an unverified guess wear `Confidence::Parser`
-            // and falsely unlock parallelism (A6.3 hard boundary). Reject the attempt.
-            if args.contains_key("symbols") {
-                return Err(ApiError::BadRequest(
-                    "task symbols cannot be set via task.create — they are derived from \
-                     verified source by the planner's symbol-enrichment step"
-                        .to_string(),
-                ));
-            }
-            if let (Some(source), Some(target)) = (
-                arg_optional_string(&args, "sourceBranch"),
-                arg_optional_string(&args, "targetBranch"),
-            ) {
-                task = task.with_branches(source, target);
-            }
-            let id = task.id.clone();
-            let title = task.title.clone();
-            let changed = tasks
-                .create(task)
-                .map_err(|err| ApiError::BadRequest(err.to_string()))?;
-            // Publish to the shared coordination stream so the fleet sees the
-            // new work (BR5) — same event the cockpit task_create command emits.
-            if let Some(bus) = state.event_bus.as_ref() {
-                bus.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::TaskCreated,
-                    serde_json::json!({ "id": id, "title": title }),
-                ))
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({ "id": id, "created": true, "changed": changed })
-        }
+        "aelyris.task.create" => mcp_task_create(&state, actor, &args)?,
         "aelyris.task.list" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())
             })?;
             serde_json::json!({ "tasks": tasks.list() })
         }
-        "aelyris.task.transition" => {
-            let tasks = state.task_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("task graph is not attached to this process".to_string())
-            })?;
-            let id = arg_string(&args, "id")?;
-            let to_raw = arg_string(&args, "to")?;
-            let to: crate::task::TaskStatus =
-                serde_json::from_value(serde_json::Value::String(to_raw.clone()))
-                    .map_err(|_| ApiError::BadRequest(format!("invalid task status `{to_raw}`")))?;
-            let changed = tasks
-                .transition(&id, to)
-                .map_err(|err| ApiError::BadRequest(err.to_string()))?;
-            // Reaching Review/Done publishes the lifecycle event to the shared
-            // stream (BR5), mirroring the cockpit task_transition command.
-            if let Some(bus) = state.event_bus.as_ref() {
-                let kind = match to {
-                    crate::task::TaskStatus::Review => {
-                        Some(crate::event_bus::AgentEventKind::ReviewRequired)
-                    }
-                    crate::task::TaskStatus::Done => {
-                        Some(crate::event_bus::AgentEventKind::TaskCompleted)
-                    }
-                    _ => None,
-                };
-                if let Some(kind) = kind {
-                    bus.publish(crate::event_bus::AgentEvent::new(
-                        kind,
-                        serde_json::json!({ "id": id }),
-                    ))
-                    .map_err(|error| ApiError::Internal(error.to_string()))?;
-                }
-            }
-            serde_json::json!({ "id": id, "to": to_raw, "changed": changed })
-        }
+        "aelyris.task.transition" => mcp_task_transition(&state, actor, &args)?,
         "aelyris.orchestrator.plan" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("task graph is not attached to this process".to_string())

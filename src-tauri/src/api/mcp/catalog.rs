@@ -588,7 +588,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.task.create",
-                "description": "Create a Task Graph node (BR4): a unit of work the orchestrator AI assigns (owner = implementer identity, used by the reviewer-!=-implementer merge gate) and the autonomy loop schedules. Optionally route to a specific model (claude/codex/gemini) via `model`; when omitted the loop falls back to `owner`. Binds source/target branches for the merge wiring. Re-runs the dependency gate.",
+                "description": "Create a Task Graph node (BR4) as the authenticated Principal. `owner` remains the assigned implementer identity, not the caller identity. Optionally route to a specific model via `model`, bind source/target branches, and re-run the dependency gate. Durable authority evidence stores only a one-way task digest and resulting status, never the task packet.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -616,7 +616,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.task.transition",
-                "description": "Transition a task to a new lifecycle state (lifecycle-validated) and re-run the dependency gate.",
+                "description": "Transition a task as the authenticated Principal to a lifecycle-validated state and re-run the dependency gate. Review/done events retain their existing Event Bus owner; durable authority evidence stores only a one-way task digest and resulting status.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

@@ -1034,6 +1034,223 @@ mod tests {
     }
 
     #[test]
+    fn mcp_task_mutation_audit_is_principal_bound_and_packet_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEventKind, EventBus};
+        use crate::pty::PtyManager;
+        use crate::task::{TaskManager, TaskStatus};
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = Arc::new(TaskManager::new());
+        let bus = Arc::new(EventBus::new_durable());
+        bus.attach_db(db.clone());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_task_manager(tasks.clone())
+            .with_event_bus(bus.clone());
+        for verb in ["aelyris.task.create", "aelyris.task.transition"] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "task-agent",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let task_id = "AIO13_TASK_ID_MUST_NOT_BE_LOGGED";
+        let title = "AIO13_TITLE_MUST_NOT_BE_LOGGED";
+        let description = "AIO13_DESCRIPTION_MUST_NOT_BE_LOGGED";
+        let owner = "AIO13_ASSIGNED_OWNER_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let model = "AIO13_MODEL_MUST_NOT_BE_LOGGED";
+        let output = "AIO13_OUTPUT_MUST_NOT_BE_LOGGED";
+        let source_branch = "AIO13_SOURCE_BRANCH_MUST_NOT_BE_LOGGED";
+        let target_branch = "AIO13_TARGET_BRANCH_MUST_NOT_BE_LOGGED";
+
+        let Json(created) = call(
+            &state,
+            "aelyris.task.create",
+            serde_json::json!({
+                "id": task_id,
+                "title": title,
+                "description": description,
+                "owner": owner,
+                "model": model,
+                "priority": "critical",
+                "outputs": [output],
+                "sourceBranch": source_branch,
+                "targetBranch": target_branch,
+            }),
+        )
+        .expect("task create succeeds");
+        assert_eq!(created["result"]["created"], true);
+        assert_eq!(
+            tasks.get(task_id).map(|task| task.owner),
+            Some(Some(owner.to_string()))
+        );
+        assert_eq!(
+            tasks.get(task_id).map(|task| task.status),
+            Some(TaskStatus::Ready)
+        );
+
+        assert!(matches!(
+            call(
+                &state,
+                "aelyris.task.create",
+                serde_json::json!({ "id": task_id, "title": "duplicate" }),
+            ),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let Json(running) = call(
+            &state,
+            "aelyris.task.transition",
+            serde_json::json!({ "id": task_id, "to": "running" }),
+        )
+        .expect("task transitions to running");
+        assert_eq!(running["result"]["to"], "running");
+
+        let Json(review) = call(
+            &state,
+            "aelyris.task.transition",
+            serde_json::json!({ "id": task_id, "to": "review" }),
+        )
+        .expect("task transitions to review");
+        assert_eq!(review["result"]["to"], "review");
+
+        assert!(matches!(
+            call(
+                &state,
+                "aelyris.task.transition",
+                serde_json::json!({ "id": task_id, "to": "ready" }),
+            ),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let published_kinds = bus
+            .recent()
+            .into_iter()
+            .map(|event| event.kind)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            published_kinds,
+            [AgentEventKind::TaskCreated, AgentEventKind::ReviewRequired]
+        );
+
+        let publication_failure_tasks = Arc::new(TaskManager::new());
+        let publication_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_task_manager(publication_failure_tasks.clone())
+                .with_event_bus(Arc::new(EventBus::new_durable()));
+        let failed_task_id = "AIO13_EVENT_FAILURE_TASK_ID_MUST_NOT_BE_LOGGED";
+        assert!(matches!(
+            call(
+                &publication_failure_state,
+                "aelyris.task.create",
+                serde_json::json!({
+                    "id": failed_task_id,
+                    "title": "AIO13_EVENT_FAILURE_TITLE_MUST_NOT_BE_LOGGED",
+                    "owner": "AIO13_EVENT_FAILURE_OWNER_MUST_NOT_BE_LOGGED",
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(
+            publication_failure_tasks
+                .get(failed_task_id)
+                .map(|task| task.status),
+            Some(TaskStatus::Ready),
+            "event failure must not replay or roll back the already-authoritative Task Manager mutation"
+        );
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_task_mutation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read task mutation audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("task-agent")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["mutationApplied"] == true)
+                .count(),
+            4
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "task_event_publication_failed"
+                && row.redacted_payload_json["mutationApplied"] == true
+                && row.redacted_payload_json["eventPublished"] == false
+                && row.redacted_payload_json["resultingStatus"] == "ready"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "transition"
+                && row.redacted_payload_json["status"] == "accepted"
+                && row.redacted_payload_json["resultingStatus"] == "review"
+                && row.redacted_payload_json["eventPublished"] == true
+        }));
+        let task_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["taskDigest"]
+                    .as_str()
+                    .expect("task digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(task_digests.len(), 2);
+        assert!(task_digests.iter().all(|digest| {
+            digest.len() == 64
+                && digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["taskPacketLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                task_id,
+                title,
+                description,
+                owner,
+                model,
+                output,
+                source_branch,
+                target_branch,
+                failed_task_id,
+                "AIO13_EVENT_FAILURE_TITLE_MUST_NOT_BE_LOGGED",
+                "AIO13_EVENT_FAILURE_OWNER_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(
