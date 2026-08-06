@@ -353,7 +353,13 @@ Conventions for **FREE / GATED** (the safety boundary, see §4):
 | `aelyris.fleet_status` | **params** `{}` → **return** `{ sessions: AgentSession[] }` (the `InteractiveSessionInfo[]` list) | `list_interactive_agents` `src-tauri/src/ipc/interactive_commands.rs:381`; IPC `ipc::list_interactive_agents` `src-tauri/src/lib.rs:676`. Live status maintained by `run_output_monitor` `interactive_commands.rs:424` | FREE | The fleet view. `status` is the run-status string set by the output monitor: `thinking`/`coding`/`idle`/`done`/`waiting`/`unknown` (`interactive_commands.rs:464-472`). See §3.6 for `AgentRunStatus` enum alignment. Frontend consumes the same data via the unified `useAgentFleet` hook (today `useAgentManager`, `src/shared/hooks/useAgentManager.ts`). |
 | `aelyris.send_steer` | **params** `{ target: string, text: string }` → **return** `{ accepted: u32 }` | `send_keys_by_target` `src-tauri/src/ipc/commands.rs:5313`; IPC `ipc::send_keys_by_target` `src-tauri/src/lib.rs:639` | FREE | Mid-run guidance: writes keystrokes to a running agent's PTY. `target` resolves by exact PTY id, `@role`/`role:` prefix, or pane name (collision rejected) via `resolve_send_target` (`commands.rs:5325`). Payload validated by `validate_keys_payload` (`commands.rs:5318`). Every write is audited (`record_audit_event`, `commands.rs:5408`). FREE because steering an isolated agent does not bypass any human gate — the agent's downstream tool calls are still gated. |
 
-### 3.2.1 Session lifecycle domain (GATED)
+### 3.2.1 Cost Manager domain
+
+| Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
+|------|-----------|---------|------------|-------|
+| `aelyris.cost.get_caps` | **params** `{}` → **return** `{ caps: CostCaps, policy: CostCapsPolicy, source: "shared-cost-manager", telemetryBoundary: "reported_aelyris_telemetry", providerBillingClaimed: false, unknownUsageZeroFilled: false, readOnly: true }` | shared `CostManager::caps` / `CostManager::policy` | FREE | Reads the exact live owner used by Cockpit and orchestration. `null` remains a disabled cap; the response never turns unknown usage into zero and never claims provider invoice truth. |
+
+### 3.2.2 Session lifecycle domain (GATED)
 
 These rows mirror the shipped `/mcp/tools/list` catalog entries added in H2 and
 are locked in code by `catalog_and_schemas_list_exactly_the_same_verbs`. Every

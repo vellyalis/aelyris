@@ -5,6 +5,7 @@ mod agent_coordination;
 mod approval_request;
 mod approval_resolution;
 mod catalog;
+mod cost_caps;
 mod dispatch;
 mod event_ack;
 mod orchestrator_step;
@@ -294,7 +295,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 86] = [
+    const FROZEN_A64_VERBS: [&str; 87] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -306,6 +307,7 @@ mod tests {
         "aelyris.worktree.create",
         "aelyris.worktree.remove",
         "aelyris.fleet_status",
+        "aelyris.cost.get_caps",
         "aelyris.route_agent",
         "aelyris.pane_send_input",
         "aelyris.agent_diff",
@@ -437,6 +439,113 @@ mod tests {
         );
     }
 
+    #[test]
+    fn mcp_cost_get_caps_reads_the_shared_truthful_owner() {
+        use crate::cost::{CostCaps, CostCapsRestoreOutcome, CostManager};
+        use crate::db::{Database, ManagedDb};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct CostReaderPolicy;
+        impl AccessControl for CostReaderPolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "budget-reader" && verb == "aelyris.cost.get_caps" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        let db = ManagedDb::new(Database::open_memory().unwrap());
+        let manager = Arc::new(CostManager::new());
+        assert_eq!(manager.attach_db(db), CostCapsRestoreOutcome::Missing);
+        let configured = CostCaps {
+            max_agents: Some(7),
+            max_tokens: Some(88_000),
+            max_cost_usd: Some(3.25),
+            max_runtime_secs: None,
+        };
+        assert_eq!(manager.set_caps(configured).unwrap(), configured);
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_cost_manager(manager.clone())
+            .with_governance(Arc::new(Governance::with_access(Box::new(
+                CostReaderPolicy,
+            ))));
+        let schema = input_schema_for_tool_ref("aelyris.cost.get_caps").unwrap();
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["additionalProperties"], false);
+        assert!(schema["properties"].is_null());
+        let listed = scoped_tool_names(&state, "budget-reader");
+        assert_eq!(listed, ["aelyris.cost.get_caps"]);
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let Json(value) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "budget-reader",
+                ToolCallBody {
+                    name: "aelyris.cost.get_caps".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+            ))
+            .expect("authorized cost cap read");
+        assert_eq!(value["result"]["caps"]["max_agents"], 7);
+        assert_eq!(value["result"]["caps"]["max_tokens"], 88_000);
+        assert_eq!(value["result"]["caps"]["max_cost_usd"], 3.25);
+        assert_eq!(
+            value["result"]["caps"]["max_runtime_secs"],
+            serde_json::Value::Null,
+            "disabled cap stays null rather than zero"
+        );
+        assert_eq!(
+            value["result"]["policy"]["min_agents"],
+            crate::cost::MIN_CONFIGURED_AGENTS
+        );
+        assert_eq!(
+            value["result"]["policy"]["max_agents"],
+            crate::cost::MAX_CONFIGURED_AGENTS
+        );
+        assert_eq!(value["result"]["source"], "shared-cost-manager");
+        assert_eq!(
+            value["result"]["telemetryBoundary"],
+            "reported_aelyris_telemetry"
+        );
+        assert_eq!(value["result"]["providerBillingClaimed"], false);
+        assert_eq!(value["result"]["unknownUsageZeroFilled"], false);
+        assert_eq!(value["result"]["readOnly"], true);
+        assert_eq!(manager.caps(), configured);
+
+        let denied = rt.block_on(tools_call_as_actor(
+            &state,
+            "blocked-reader",
+            ToolCallBody {
+                name: "aelyris.cost.get_caps".to_string(),
+                arguments: serde_json::json!({}),
+            },
+        ));
+        assert!(matches!(denied, Err(ApiError::Forbidden(_))));
+        assert!(scoped_tool_names(&state, "blocked-reader").is_empty());
+
+        let unavailable = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(
+                CostReaderPolicy,
+            ))));
+        let missing = rt.block_on(tools_call_as_actor(
+            &unavailable,
+            "budget-reader",
+            ToolCallBody {
+                name: "aelyris.cost.get_caps".to_string(),
+                arguments: serde_json::json!({}),
+            },
+        ));
+        assert!(matches!(
+            missing,
+            Err(ApiError::Internal(message)) if message.contains("cost manager is not attached")
+        ));
+    }
+
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {
         const BEGIN: &str = "// A6.4_DISPATCH_TOOL_ARMS_BEGIN";
         const END: &str = "// A6.4_DISPATCH_TOOL_ARMS_END";
@@ -525,12 +634,12 @@ mod tests {
 
         assert!(
             verb_inventory_is_exact(&catalog),
-            "catalog changed from the frozen 83-verb contract"
+            "catalog changed from the frozen MCP verb contract"
         );
         assert_eq!(catalog, schemas, "catalog and schema order/set drifted");
         assert!(
             verb_inventory_is_exact(&dispatch),
-            "sole dispatcher changed from the frozen 83-verb contract"
+            "sole dispatcher changed from the frozen MCP verb contract"
         );
         assert_eq!(
             catalog.iter().cloned().collect::<BTreeSet<_>>(),

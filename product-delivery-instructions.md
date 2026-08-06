@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-29`.
-LAST COMPLETED SLICE: `AIO-28`.
-NEXT IMPLEMENTATION SLICE: `AIO-29`.
+ACTIVE SLICE: `AIO-30`.
+LAST COMPLETED SLICE: `AIO-29`.
+NEXT IMPLEMENTATION SLICE: `AIO-30`.
 
 ```yaml
 continuation_contract:
@@ -86,7 +86,8 @@ Current portfolio classification:
 | MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset now retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
 | Remaining MCP Proofbook mutation evidence | **COMPLETE** | Compatibility caller-proof settlement and cancellation now retain the authenticated initiating Principal through proof-free ledger outcome evidence |
 | MCP runtime-owned Proofbook settlement evidence | **COMPLETE** | Exact current runtime-owned settlement now retains the authenticated initiating Principal through runtime-identity-free evidence without accepting a caller proof |
-| MCP cost-cap read access | **NOW** | Cockpit and orchestration share one durable Cost Manager, but an authenticated AI cannot inspect the exact live cap policy through its scoped MCP catalog |
+| MCP cost-cap read access | **COMPLETE** | Authenticated AI reads the exact shared live caps/policy with disabled axes preserved as null and no provider-billing claim |
+| MCP conflict-safe cost-cap updates | **NOW** | The shared Cost Manager persists validated caps, but AI cannot safely update them through MCP without a stale-write guard and Principal-bound evidence |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1448,7 +1449,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated read access to the one live,
 durably restored Cost Manager cap policy used by Cockpit and orchestration.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one `aelyris.cost.get_caps` MCP read adapter over the existing `CostManager`,
   Governance, principal-scoped discovery, and current MCP schema registry. Do not add a
@@ -1464,6 +1465,30 @@ Status: **ACTIVE**.
   they are not a claim about provider invoices or unreported consumption.
 - Done: an authenticated AI can inspect the exact cap policy that will govern its next
   orchestration action without a duplicate owner or a misleading zero-filled view.
+
+### AIO-30 — Principal-Bound Conflict-Safe MCP Cost-Cap Updates
+
+Capability target: `Product-Accessible` authenticated, stale-write-safe updates to the
+one durable Cost Manager used by Cockpit and orchestration.
+Status: **ACTIVE**.
+
+- Add one `aelyris.cost.set_caps` GATED MCP adapter over the existing `CostManager`,
+  durable SQLite singleton, `CostCaps::validate_for_update`, Governance, and audit
+  journal. Do not add a settings store, frontend cache authority, billing adapter,
+  second Cost Manager, or generic JSON patch surface.
+- Require both exact `expectedCaps` and replacement `caps`. Compare and persist under
+  the existing Cost Manager lock so concurrent Cockpit/AI changes reject as stale rather
+  than overwriting each other. Persistence must succeed before the live owner changes.
+- Preserve bounded `max_agents`, positive optional token/cost/runtime caps, explicit
+  `null` disabled axes, and structured validation/persistence failures. Never infer a
+  cap from reported usage or provider billing.
+- Retain accepted/rejected audit with authenticated actor, changed/stale outcome, and
+  stable one-way expected/replacement digests. Do not persist raw cap values, SQLite
+  rows, provider usage, bearer values, environment values, or billing data.
+- Audit failure must not replay a successful update or fabricate another cap revision;
+  stale, validation, and persistence failures must leave the current owner unchanged.
+- Done: an authorized AI can deliberately update the same durable caps the operator
+  sees, while concurrent edits and misleading telemetry assumptions fail closed.
 
 ## Deferred After GMV
 
@@ -1499,7 +1524,8 @@ complete. Principal-bound MCP approval-request evidence `AIO-25` is also complet
 Principal-bound MCP session-lifecycle evidence `AIO-26` is also complete. Principal-
 bound remaining MCP Proofbook mutation evidence `AIO-27` is also complete. Principal-
 bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is also complete. MCP
-cost-cap read access `AIO-29` is active;
+cost-cap read access `AIO-29` is also complete. Principal-bound conflict-safe MCP
+cost-cap updates `AIO-30` are active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

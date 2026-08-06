@@ -154,6 +154,12 @@ fn build_tools_list_value() -> serde_json::Value {
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
+                "name": "aelyris.cost.get_caps",
+                "description": "Read the exact live Cost Manager caps and bounded agent policy used by Cockpit and orchestration. Null cap axes remain explicitly disabled. These are Aelyris controls over reported telemetry, not provider invoice or unreported-usage claims.",
+                "safety": "FREE",
+                "inputSchema": { "type": "object", "additionalProperties": false }
+            },
+            {
                 "name": "aelyris.route_agent",
                 "description": "Route a prompt to the recommended coding model profile.",
                 "safety": "FREE",

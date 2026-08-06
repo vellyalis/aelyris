@@ -3889,6 +3889,7 @@ pub(super) async fn dispatch_authorized(
                 "sessions": sessions,
             })
         }
+        "aelyris.cost.get_caps" => super::cost_caps::get(&state)?,
         "aelyris.route_agent" => {
             let prompt = arg_string(&args, "prompt")?;
             let budget_remaining = arg_optional_f64(&args, "budgetRemaining")?;
