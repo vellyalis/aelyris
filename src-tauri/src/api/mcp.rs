@@ -1901,6 +1901,243 @@ mod tests {
     }
 
     #[test]
+    fn mcp_context_mutation_audit_is_principal_bound_and_value_free() {
+        use crate::context_store::ContextStoreManager;
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEventKind, EventBus};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let context = Arc::new(ContextStoreManager::new_durable());
+        context.attach_db(db.clone()).unwrap();
+        let bus = Arc::new(EventBus::new_durable());
+        bus.attach_db(db.clone());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_context_store(context.clone())
+            .with_event_bus(bus.clone());
+        for verb in ["aelyris.context.set", "aelyris.context.remove"] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "context-operator",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let key = "AIO17_CONTEXT_KEY_MUST_NOT_BE_LOGGED";
+        let first_value = "AIO17_CONTEXT_VALUE_A_MUST_NOT_BE_LOGGED";
+        let second_value = "AIO17_CONTEXT_VALUE_B_MUST_NOT_BE_LOGGED";
+
+        let Json(created) = call(
+            &state,
+            "aelyris.context.set",
+            serde_json::json!({ "key": key, "value": first_value }),
+        )
+        .expect("create context decision");
+        assert_eq!(
+            created["result"]["change"]["previous"],
+            serde_json::Value::Null
+        );
+        assert_eq!(created["result"]["change"]["value"], first_value);
+
+        let Json(no_change) = call(
+            &state,
+            "aelyris.context.set",
+            serde_json::json!({ "key": key, "value": first_value }),
+        )
+        .expect("identical context set is a no-op");
+        assert_eq!(no_change["result"]["change"], serde_json::Value::Null);
+
+        let Json(updated) = call(
+            &state,
+            "aelyris.context.set",
+            serde_json::json!({ "key": key, "value": second_value }),
+        )
+        .expect("update context decision");
+        assert_eq!(updated["result"]["change"]["previous"], first_value);
+        assert_eq!(updated["result"]["change"]["value"], second_value);
+
+        let Json(removed) = call(
+            &state,
+            "aelyris.context.remove",
+            serde_json::json!({ "key": key }),
+        )
+        .expect("remove context decision");
+        assert_eq!(removed["result"]["change"]["previous"], second_value);
+        assert_eq!(
+            removed["result"]["change"]["value"],
+            serde_json::Value::Null
+        );
+
+        let Json(remove_no_change) = call(
+            &state,
+            "aelyris.context.remove",
+            serde_json::json!({ "key": key }),
+        )
+        .expect("missing context remove is a no-op");
+        assert_eq!(
+            remove_no_change["result"]["change"],
+            serde_json::Value::Null
+        );
+        assert_eq!(context.get(key), None);
+        assert_eq!(
+            bus.recent()
+                .into_iter()
+                .filter(|event| event.kind == AgentEventKind::DecisionChanged)
+                .count(),
+            3,
+            "only real changes publish DecisionChanged"
+        );
+
+        let event_failure_context = Arc::new(ContextStoreManager::new_durable());
+        event_failure_context.attach_db(db.clone()).unwrap();
+        let event_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_context_store(event_failure_context.clone())
+                .with_event_bus(Arc::new(EventBus::new_durable()));
+        let event_failure_key = "AIO17_EVENT_FAILURE_KEY_MUST_NOT_BE_LOGGED";
+        let event_failure_value = "AIO17_EVENT_FAILURE_VALUE_MUST_NOT_BE_LOGGED";
+        assert!(matches!(
+            call(
+                &event_failure_state,
+                "aelyris.context.set",
+                serde_json::json!({
+                    "key": event_failure_key,
+                    "value": event_failure_value,
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(
+            event_failure_context.get(event_failure_key).as_deref(),
+            Some(event_failure_value),
+            "Event Bus failure does not replay or roll back the durable context mutation"
+        );
+
+        let persistence_failure_key = "AIO17_PERSISTENCE_FAILURE_KEY_MUST_NOT_BE_LOGGED";
+        let persistence_failure_value = "AIO17_PERSISTENCE_FAILURE_VALUE_MUST_NOT_BE_LOGGED";
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_aio17_context_decision\n\
+                     BEFORE INSERT ON context_decisions\n\
+                     WHEN NEW.key = '{persistence_failure_key}'\n\
+                     BEGIN\n\
+                         SELECT RAISE(ABORT, 'simulated context persistence failure');\n\
+                     END;"
+                ))
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            call(
+                &state,
+                "aelyris.context.set",
+                serde_json::json!({
+                    "key": persistence_failure_key,
+                    "value": persistence_failure_value,
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(context.get(persistence_failure_key), None);
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_context_mutation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read context mutation audit");
+        assert_eq!(rows.len(), 7);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("context-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            5
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            2
+        );
+        for kind in ["created", "updated", "removed", "no_change"] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["changeKind"] == kind));
+        }
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "context_event_publication_failed"
+                && row.redacted_payload_json["mutationApplied"] == true
+                && row.redacted_payload_json["eventPublished"] == false
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "context_persistence_failed"
+                && row.redacted_payload_json["mutationApplied"] == false
+                && row.redacted_payload_json["eventPublished"].is_null()
+        }));
+        let decision_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["decisionDigest"]
+                    .as_str()
+                    .expect("decision digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("context input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(decision_digests.len(), 3);
+        assert_eq!(input_digests.len(), 5);
+        assert!(decision_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["decisionValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                key,
+                first_value,
+                second_value,
+                event_failure_key,
+                event_failure_value,
+                persistence_failure_key,
+                persistence_failure_value,
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

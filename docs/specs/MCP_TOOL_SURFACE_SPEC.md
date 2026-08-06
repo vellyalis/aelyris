@@ -190,6 +190,15 @@ origin/input digests, derived/recorded and outcome counts, fallback, result, and
 persistence/memory application state. Raw diff/source, assignment values, targets,
 language, claim ids, and conflict payloads are excluded.
 
+`aelyris.context.set` and `aelyris.context.remove` keep `ContextStoreManager` as the
+durable decision owner and publish DecisionChanged through the existing Event Bus only
+for real changes. The authenticated Principal is the initiating actor while key, value,
+and previous value remain decision-domain data. Authority evidence contains only
+operation, change kind, one-way decision/input digests, mutation state, Event Bus
+publication outcome, and result. A publication failure after a durable mutation stays
+an explicit partial-coordination failure; it is not replayed or rolled back, and raw
+decision or Event Bus payloads are excluded from audit.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

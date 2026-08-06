@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-17`.
-LAST COMPLETED SLICE: `AIO-16`.
-NEXT IMPLEMENTATION SLICE: `AIO-17`.
+ACTIVE SLICE: `AIO-18`.
+LAST COMPLETED SLICE: `AIO-17`.
+NEXT IMPLEMENTATION SLICE: `AIO-18`.
 
 ```yaml
 continuation_contract:
@@ -74,7 +74,8 @@ Current portfolio classification:
 | MCP file-ownership assignment evidence | **COMPLETE** | File-pattern assignment now retains the authenticated initiating Principal separately from assignee/pattern values, using a target-minimized digest and persistence/memory outcome evidence |
 | MCP manual symbol-ownership mutation evidence | **COMPLETE** | Manual claim/refresh/release now retain the authenticated initiating Principal separately from claim ownership fields, using target-free digests and explicit persistence/memory outcomes |
 | MCP derived symbol-ownership mutation evidence | **COMPLETE** | Diff/source reconciliation now retains the authenticated initiating Principal through the existing extractors and transaction, using aggregate-only origin/input digests and no source payload evidence |
-| MCP context decision mutation evidence | **NOW** | AI can set/remove shared project decisions and publish fleet events, but the authenticated initiating Principal and payload-minimized coordination outcome are not retained separately |
+| MCP context decision mutation evidence | **COMPLETE** | Shared decision set/remove now retain the authenticated initiating Principal separately from key/value data, using one-way digests and explicit partial-coordination outcomes |
+| MCP intent mutation evidence | **NOW** | AI can propose and resolve coordination intents, but proposer/target/payload fields are domain values and the authenticated initiating Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -92,7 +93,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-16` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-17` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1115,7 +1116,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` shared-context set/remove whose initiating
 identity comes from the authenticated MCP Principal while decision key/value remain
 domain data.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.context.set` and `aelyris.context.remove` adapters,
   `ContextStoreManager`, durable store, Event Bus, Governance, and audit journal. Do not
@@ -1136,6 +1137,34 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can set or remove the existing shared project context, and
   each effect is attributable without leaking decision contents or confusing data with
   caller identity.
+
+### AIO-18 — Principal-Bound MCP Intent Mutation Evidence
+
+Capability target: `Product-Accessible` intent propose/resolve whose initiating
+identity comes from the authenticated MCP Principal while proposer, target, scope, and
+payload remain coordination-domain data.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.intent.propose` and `aelyris.intent.resolve` adapters,
+  `IntentBus`, durable store if attached, Governance, Event Bus integration, and audit
+  journal. Do not add an intent bus, proposal service, actor field, identity store, or
+  AI-only coordination path.
+- Keep caller-supplied intent id, proposer, target, kind, scope, payload, and resolution
+  values as intent-domain inputs. They remain coordination data and never define the
+  caller identity or enter actor evidence.
+- Preserve validation, duplicate/stale resolution behavior, current state transitions,
+  durable ordering, Event Bus publication semantics, typed errors, and the existing
+  IntentBus as the sole mutation authority.
+- Retain accepted/rejected audit with actor, operation, resulting state/outcome when
+  known, mutation/event-publication state, and stable one-way intent/input digests. Do
+  not persist raw ids, proposer/target, kind, scope, payload, resolution contents,
+  Event Bus payloads, bearer values, environment values, or repository contents.
+- Event publication failure after an intent mutation must remain explicit and must not
+  be audited as fully coordinated success. Do not replay or roll back the IntentBus
+  mutation merely to obtain audit evidence.
+- Done: an authenticated AI can propose or resolve through the existing intent owner,
+  and each effect is attributable without leaking coordination contents or confusing
+  proposer/target metadata with caller identity.
 
 ## Deferred After GMV
 
@@ -1160,8 +1189,8 @@ worktree mutation evidence `AIO-12`, and Principal-bound MCP task mutation evide
 `AIO-13` and Principal-bound MCP file-ownership assignment evidence `AIO-14` are also
 complete. Principal-bound MCP manual symbol-ownership mutation evidence `AIO-15` is
 also complete. Principal-bound MCP derived symbol-ownership mutation evidence `AIO-16`
-is also complete. Principal-bound MCP context decision mutation evidence `AIO-17` is
-active;
+and Principal-bound MCP context decision mutation evidence `AIO-17` are also complete.
+Principal-bound MCP intent mutation evidence `AIO-18` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

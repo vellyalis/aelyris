@@ -853,7 +853,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.context.set",
-                "description": "Set a project decision in the shared Context Store / ADR (BR6) — e.g. auth_method=jwt, database=postgresql, framework=nextjs — the world-model every agent aligns to. Publishes decision_changed to the fleet stream on a real change. This ADR is injected into every dispatched agent's prompt.",
+                "description": "Set a shared Context Store / ADR decision as the authenticated Principal. Existing create/update/no-change semantics and DecisionChanged publication only on a real change remain unchanged. Durable authority evidence stores only one-way decision/input digests and coordination outcome, never key, value, or previous value.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -881,7 +881,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.context.remove",
-                "description": "Remove a project decision from the shared ADR. Publishes decision_changed.",
+                "description": "Remove a shared ADR decision as the authenticated Principal. Existing remove/no-change semantics and DecisionChanged publication only on a real removal remain unchanged; decision contents are excluded from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

@@ -2072,6 +2072,236 @@ fn mcp_symbol_claim_from_source(
     }))
 }
 
+fn authenticated_context_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated context mutation Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn context_decision_digest(key: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!("aelyris.context\n{key}"))
+        .as_str()
+        .to_string()
+}
+
+fn context_input_digest(operation: &str, key: &str, value: Option<&str>) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.context-input\n{operation}\n{key}\n{}",
+        value.unwrap_or("")
+    ))
+    .as_str()
+    .to_string()
+}
+
+fn context_change_kind(
+    operation: &str,
+    change: Option<&crate::context_store::DecisionChange>,
+) -> &'static str {
+    match (operation, change) {
+        (_, None) => "no_change",
+        ("set", Some(change)) if change.previous.is_none() => "created",
+        ("set", Some(_)) => "updated",
+        ("remove", Some(_)) => "removed",
+        _ => "changed",
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_context_mutation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    decision_digest: &str,
+    input_digest: &str,
+    change_kind: Option<&str>,
+    status: &str,
+    rejection_code: Option<&str>,
+    mutation_applied: bool,
+    event_published: Option<bool>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(decision_digest.to_string()),
+        kind: "mcp_context_mutation_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-context-mutation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "decisionDigest": decision_digest,
+            "inputDigest": input_digest,
+            "changeKind": change_kind,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "mutationApplied": mutation_applied,
+            "eventPublished": event_published,
+            "decisionValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, decision_digest, error = %error, "context mutation audit failed");
+    }
+}
+
+fn mcp_context_set(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_context_actor(actor)?;
+    let store = state.context_store.as_ref().ok_or_else(|| {
+        ApiError::Internal("context store is not attached to this process".to_string())
+    })?;
+    let key = arg_string(args, "key")?;
+    let value = arg_string(args, "value")?;
+    let decision_digest = context_decision_digest(&key);
+    let input_digest = context_input_digest("set", &key, Some(&value));
+    let change = match store.set(key, value) {
+        Ok(change) => change,
+        Err(error) => {
+            audit_mcp_context_mutation(
+                state,
+                actor,
+                "set",
+                &decision_digest,
+                &input_digest,
+                None,
+                "rejected",
+                Some("context_persistence_failed"),
+                false,
+                None,
+            );
+            return Err(ApiError::Internal(error));
+        }
+    };
+    let change_kind = context_change_kind("set", change.as_ref());
+    let event_published = if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
+        if let Err(error) = bus.publish(crate::event_bus::AgentEvent::new(
+            crate::event_bus::AgentEventKind::DecisionChanged,
+            serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
+        )) {
+            audit_mcp_context_mutation(
+                state,
+                actor,
+                "set",
+                &decision_digest,
+                &input_digest,
+                Some(change_kind),
+                "rejected",
+                Some("context_event_publication_failed"),
+                true,
+                Some(false),
+            );
+            return Err(ApiError::Internal(error.to_string()));
+        }
+        Some(true)
+    } else {
+        None
+    };
+    audit_mcp_context_mutation(
+        state,
+        actor,
+        "set",
+        &decision_digest,
+        &input_digest,
+        Some(change_kind),
+        "accepted",
+        None,
+        change.is_some(),
+        event_published,
+    );
+    Ok(serde_json::json!({ "change": change }))
+}
+
+fn mcp_context_remove(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_context_actor(actor)?;
+    let store = state.context_store.as_ref().ok_or_else(|| {
+        ApiError::Internal("context store is not attached to this process".to_string())
+    })?;
+    let key = arg_string(args, "key")?;
+    let decision_digest = context_decision_digest(&key);
+    let input_digest = context_input_digest("remove", &key, None);
+    let change = match store.remove(&key) {
+        Ok(change) => change,
+        Err(error) => {
+            audit_mcp_context_mutation(
+                state,
+                actor,
+                "remove",
+                &decision_digest,
+                &input_digest,
+                None,
+                "rejected",
+                Some("context_persistence_failed"),
+                false,
+                None,
+            );
+            return Err(ApiError::Internal(error));
+        }
+    };
+    let change_kind = context_change_kind("remove", change.as_ref());
+    let event_published = if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
+        if let Err(error) = bus.publish(crate::event_bus::AgentEvent::new(
+            crate::event_bus::AgentEventKind::DecisionChanged,
+            serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
+        )) {
+            audit_mcp_context_mutation(
+                state,
+                actor,
+                "remove",
+                &decision_digest,
+                &input_digest,
+                Some(change_kind),
+                "rejected",
+                Some("context_event_publication_failed"),
+                true,
+                Some(false),
+            );
+            return Err(ApiError::Internal(error.to_string()));
+        }
+        Some(true)
+    } else {
+        None
+    };
+    audit_mcp_context_mutation(
+        state,
+        actor,
+        "remove",
+        &decision_digest,
+        &input_digest,
+        Some(change_kind),
+        "accepted",
+        None,
+        change.is_some(),
+        event_published,
+    );
+    Ok(serde_json::json!({ "change": change }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -3877,24 +4107,7 @@ pub(super) async fn dispatch_authorized(
         }
         "aelyris.symbol.claim_from_diff" => mcp_symbol_claim_from_diff(&state, actor, &args)?,
         "aelyris.symbol.claim_from_source" => mcp_symbol_claim_from_source(&state, actor, &args)?,
-        "aelyris.context.set" => {
-            let store = state.context_store.as_ref().ok_or_else(|| {
-                ApiError::Internal("context store is not attached to this process".to_string())
-            })?;
-            let key = arg_string(&args, "key")?;
-            let value = arg_string(&args, "value")?;
-            let change = store.set(key, value).map_err(ApiError::Internal)?;
-            // Broadcast to the fleet stream (BR6) — only on a real change, so the
-            // shared world-model update reaches every subscriber once.
-            if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
-                bus.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::DecisionChanged,
-                    serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
-                ))
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({ "change": change })
-        }
+        "aelyris.context.set" => mcp_context_set(&state, actor, &args)?,
         "aelyris.context.get" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
@@ -3908,21 +4121,7 @@ pub(super) async fn dispatch_authorized(
             })?;
             serde_json::json!({ "decisions": store.all() })
         }
-        "aelyris.context.remove" => {
-            let store = state.context_store.as_ref().ok_or_else(|| {
-                ApiError::Internal("context store is not attached to this process".to_string())
-            })?;
-            let key = arg_string(&args, "key")?;
-            let change = store.remove(&key).map_err(ApiError::Internal)?;
-            if let (Some(change), Some(bus)) = (&change, state.event_bus.as_ref()) {
-                bus.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::DecisionChanged,
-                    serde_json::to_value(change).unwrap_or(serde_json::Value::Null),
-                ))
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({ "change": change })
-        }
+        "aelyris.context.remove" => mcp_context_remove(&state, actor, &args)?,
         "aelyris.agent.report_activity" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {
                 ApiError::Internal("agent runtime is not attached to this process".to_string())
