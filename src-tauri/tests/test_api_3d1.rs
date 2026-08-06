@@ -404,6 +404,117 @@ async fn mux_workspace_input_uses_authenticated_principal_across_rest_and_mcp() 
     shutdown_server(&state, join).await;
 }
 
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn rest_session_input_uses_authenticated_principal_for_synchronized_targets() {
+    use aelyris_lib::command_risk::gate::CommandRiskGate;
+    use aelyris_lib::db::AuditJournalFilter;
+    use aelyris_lib::governance::{Governance, Principal, PrincipalResolver};
+
+    struct RestInputPrincipalResolver;
+    impl PrincipalResolver for RestInputPrincipalResolver {
+        fn resolve(&self, _credential: &str) -> Principal {
+            Principal {
+                actor: "rest-input-agent".to_string(),
+                tenant: "default".to_string(),
+                roles: Vec::new(),
+            }
+        }
+    }
+
+    let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+    let gate = Arc::new(CommandRiskGate::new(Some(db.clone())));
+    let governance = Governance::new().with_resolver(Box::new(RestInputPrincipalResolver));
+    let state = ApiState::new(
+        PtyManager::new(),
+        AuthConfig::with_token("rest-input-token"),
+    )
+    .with_governance(Arc::new(governance))
+    .with_db(Some(db.clone()))
+    .with_command_risk_gate(Some(gate));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+
+    let created = client()
+        .post(format!("{base}/sessions"))
+        .header(AUTHORIZATION, "Bearer rest-input-token")
+        .json(&json!({ "shell": "cmd", "cols": 80, "rows": 24 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::OK);
+    let created: serde_json::Value = created.json().await.unwrap();
+    let terminal_id = created["id"].as_str().unwrap().to_string();
+
+    let split = client()
+        .post(format!("{base}/mux/workspaces/{terminal_id}/panes/split"))
+        .header(AUTHORIZATION, "Bearer rest-input-token")
+        .json(&json!({
+            "targetPaneId": terminal_id,
+            "axis": "horizontal",
+            "shell": "cmd",
+            "cols": 80,
+            "rows": 24
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(split.status(), StatusCode::OK);
+
+    let synchronized = client()
+        .post(format!(
+            "{base}/mux/workspaces/{terminal_id}/panes/synchronize"
+        ))
+        .header(AUTHORIZATION, "Bearer rest-input-token")
+        .json(&json!({ "enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(synchronized.status(), StatusCode::OK);
+
+    let input = client()
+        .post(format!("{base}/sessions/{terminal_id}/input"))
+        .header(AUTHORIZATION, "Bearer rest-input-token")
+        .json(&json!({ "text": "git commit -m synchronized\r" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(input.status(), StatusCode::CONFLICT);
+
+    let rows = db
+        .with(|database| {
+            database.list_audit_journal_events(&AuditJournalFilter {
+                kind: Some("session_input_authority".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row.agent_id.as_deref(), Some("rest-input-agent"));
+    assert_eq!(row.source, "rest-session-input");
+    assert_eq!(row.redacted_payload_json["actor"], "rest-input-agent");
+    assert_eq!(row.redacted_payload_json["targetCount"], 2);
+    assert_eq!(row.redacted_payload_json["synchronizedTargetSet"], true);
+    assert_eq!(row.redacted_payload_json["status"], "rejected");
+    assert_eq!(
+        row.redacted_payload_json["rejectionCode"],
+        "command_approval_required"
+    );
+    assert_eq!(row.redacted_payload_json["payloadLogged"], false);
+    assert!(!serde_json::to_string(&row.redacted_payload_json)
+        .unwrap()
+        .contains("git commit"));
+
+    shutdown_server(&state, join).await;
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]

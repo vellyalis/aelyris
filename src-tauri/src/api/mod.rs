@@ -1846,6 +1846,64 @@ pub(crate) fn execute_terminal_write(
         .map_err(|nack| ApiError::TerminalWriteRejected(nack.code.clone(), nack))
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn audit_programmatic_terminal_write(
+    state: &ApiState,
+    event_kind: &str,
+    principal: &str,
+    scope_id: &str,
+    source_kind: &str,
+    target_ids: &[String],
+    data: &[u8],
+    approval_supplied: bool,
+    status: &str,
+    rejection_code: Option<&str>,
+    extra_payload: serde_json::Value,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let target_refs = target_ids.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut payload_json = serde_json::json!({
+        "actor": principal,
+        "sourceKind": source_kind,
+        "targetCount": target_ids.len(),
+        "targetScopeHash": crate::command_risk::approval::target_scope_hash(&target_refs),
+        "commandHash": crate::command_risk::approval::command_hash(&String::from_utf8_lossy(data)).as_str(),
+        "approvalSupplied": approval_supplied,
+        "status": status,
+        "rejectionCode": rejection_code,
+        "payloadLogged": false,
+    });
+    if let (Some(payload), Some(extra)) = (payload_json.as_object_mut(), extra_payload.as_object())
+    {
+        payload.extend(extra.clone());
+    }
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(principal),
+        thread_id: None,
+        session_id: Some(scope_id.to_string()),
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(principal.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(scope_id.to_string()),
+        kind: event_kind.to_string(),
+        severity: if status == "rejected" {
+            "warning".to_string()
+        } else {
+            "info".to_string()
+        },
+        source: source_kind.to_string(),
+        confidence: None,
+        payload_json,
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(scope_id, principal, event_kind, error = %error, "terminal input audit failed");
+    }
+}
+
 type ApiResult<T> = Result<T, ApiError>;
 
 /// Map a typed PtyError onto the right HTTP status without string-matching.
@@ -2622,10 +2680,17 @@ async fn resize_session(
 
 async fn send_session_input(
     State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<InputBody>,
 ) -> ApiResult<Json<crate::command_risk::authority::TerminalWriteAck>> {
+    let principal = principal.actor.trim();
+    if principal.is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated session input principal is unavailable".to_string(),
+        ));
+    }
     let id = resolve_api_terminal_ref(&state, &id)?;
     let bytes = body.text.as_bytes();
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
@@ -2644,21 +2709,67 @@ async fn send_session_input(
             .controller_leases
             .ensure_can_control(target_id, client_id.as_deref())?;
     }
-    let ack = execute_terminal_write(
+    let write = execute_terminal_write(
         &state,
         crate::command_risk::authority::WriteActor {
-            principal: "operator".to_string(),
+            principal: principal.to_string(),
             kind: crate::command_risk::authority::WriteActorKind::Programmatic,
         },
         "rest-session-input",
         &id,
         &id,
-        targets,
+        targets.clone(),
         body.approval_id.as_deref(),
         bytes,
         crate::command_risk::authority::WritePayloadMode::HoldUntilApproved,
-    )?;
-    Ok(Json(ack))
+    );
+    match write {
+        Ok(ack) => {
+            audit_programmatic_terminal_write(
+                &state,
+                "session_input_authority",
+                principal,
+                &id,
+                "rest-session-input",
+                &targets,
+                bytes,
+                body.approval_id.is_some(),
+                match &ack.status {
+                    crate::command_risk::authority::TerminalWriteAckStatus::Executed => "executed",
+                    crate::command_risk::authority::TerminalWriteAckStatus::Held => "held",
+                },
+                None,
+                serde_json::json!({
+                    "terminalId": id,
+                    "synchronizedTargetSet": targets.len() > 1,
+                }),
+            );
+            Ok(Json(ack))
+        }
+        Err(error) => {
+            let rejection_code = match &error {
+                ApiError::TerminalWriteRejected(code, _) => Some(code.as_str()),
+                _ => None,
+            };
+            audit_programmatic_terminal_write(
+                &state,
+                "session_input_authority",
+                principal,
+                &id,
+                "rest-session-input",
+                &targets,
+                bytes,
+                body.approval_id.is_some(),
+                "rejected",
+                rejection_code,
+                serde_json::json!({
+                    "terminalId": id,
+                    "synchronizedTargetSet": targets.len() > 1,
+                }),
+            );
+            Err(error)
+        }
+    }
 }
 
 async fn internal_terminal_write(
