@@ -3800,9 +3800,7 @@ pub(super) async fn dispatch_authorized(
         }
         "aelyris.worktree.list" => {
             let repo_path = arg_string(&args, "repoPath")?;
-            let worktrees =
-                crate::control::worktree::list(&repo_path).map_err(ApiError::BadRequest)?;
-            serde_json::json!({ "repoPath": repo_path, "worktrees": worktrees })
+            super::worktree_inventory::get(&repo_path)?
         }
         "aelyris.worktree.create" => {
             let actor = authenticated_worktree_actor(actor)?;

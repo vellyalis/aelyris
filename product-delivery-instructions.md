@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-37`.
-LAST COMPLETED SLICE: `AIO-36`.
-NEXT IMPLEMENTATION SLICE: `AIO-37`.
+ACTIVE SLICE: `AIO-38`.
+LAST COMPLETED SLICE: `AIO-37`.
+NEXT IMPLEMENTATION SLICE: `AIO-38`.
 
 ```yaml
 continuation_contract:
@@ -94,7 +94,8 @@ Current portfolio classification:
 | MCP unified fleet coverage | **COMPLETE** | One deterministic prompt-free projection now merges headless and visible interactive owners, reports owner availability/counts, and fails closed on duplicate session identity |
 | MCP deterministic agent-activity read | **COMPLETE** | Typed headless activity now has stable session ordering, explicit owner availability/counts, and a read-only prompt-free projection boundary |
 | MCP value-minimized pending-decision read | **COMPLETE** | Pending approvals retain exact decision identity/risk/state plus a session digest, while durable merge intents retain only exact intent identity/state/timestamps and evidence-presence flags |
-| MCP path-minimized worktree inventory | **NOW** | The current worktree list echoes the repository path and every absolute worktree path even though branch, HEAD, status, and worktree name are sufficient for coordination |
+| MCP path-minimized worktree inventory | **COMPLETE** | Worktree inventory now returns exact name/branch/HEAD/status in stable order plus a repository digest, without echoing repository or absolute worktree paths |
+| MCP path-minimized worktree mutation results | **NOW** | Worktree create/remove audit is value-minimized, but their success responses still echo repository and absolute worktree paths |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1641,7 +1642,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated read-only worktree coordination
 without echoing machine-local repository or worktree paths.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `aelyris.worktree.list` over the existing `control::worktree::list`, Git
   repository owner, Governance, and principal-scoped discovery. Do not add a worktree
@@ -1657,6 +1658,30 @@ Status: **ACTIVE**.
   repositories remain typed failures rather than empty successful inventories.
 - Done: an authenticated AI can select an exact branch/worktree name for existing
   authorized operations without receiving host-specific filesystem paths.
+
+### AIO-38 — MCP Path-Minimized Worktree Mutation Results
+
+Capability target: `Product-Accessible` authenticated worktree create/remove results
+without reflecting repository or absolute worktree paths.
+Status: **ACTIVE**.
+
+- Keep `aelyris.worktree.create` and `aelyris.worktree.remove` over the existing
+  branch-aware `control::worktree` owners, Governance, principal-bound audit, and Git
+  mutation semantics. Do not add a worktree registry, mutation owner, path resolver,
+  response cache, or alternate Git operation.
+- On create, return the exact worktree name/branch, main flag, HEAD SHA, status, and a
+  stable repository digest through the AIO-37 safe projection. Do not echo input
+  `repoPath`, predicted path, or the created absolute worktree path.
+- On remove, return exact worktree name, `removed:true`, requested `deleteBranch`, and
+  the stable repository digest only. Do not echo repository or resolved worktree paths.
+- Preserve branch validation, duplicate-create rejection, branch-aware predicted-path
+  removal, optional branch deletion, typed failures, and the existing payload-free
+  authenticated mutation audit. An audit failure must not replay the Git mutation.
+- Return explicit `repositoryPathExposed:false` and `worktreePathsExposed:false` on
+  accepted results. Do not claim cleanup or branch deletion beyond what the existing
+  owner actually completed.
+- Done: an authenticated AI can create and remove exact worktree identities while host
+  filesystem paths remain confined to the existing Git owner.
 
 ## Deferred After GMV
 
@@ -1698,7 +1723,8 @@ prompt-minimized agent routing `AIO-32` are also complete. MCP prompt-free fleet
 projection `AIO-33` and MCP unified fleet coverage `AIO-34` are also complete. MCP
 deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
 pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inventory
-`AIO-37` is active;
+`AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
+active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

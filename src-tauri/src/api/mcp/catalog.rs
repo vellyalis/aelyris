@@ -127,7 +127,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.worktree.list",
-                "description": "List git worktrees for a repository.",
+                "description": "Read a deterministic, path-minimized Git worktree inventory. Keeps exact worktree name, branch, main flag, HEAD SHA, and status while excluding the input repository path and all absolute worktree paths. Read-only; invalid repositories remain typed failures.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

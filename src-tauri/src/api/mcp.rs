@@ -16,6 +16,7 @@ mod proofbook_compat_mutations;
 mod proofbook_runtime_settlement;
 mod review_rejection;
 mod session_lifecycle;
+mod worktree_inventory;
 
 use catalog::{
     input_schema_for_tool, tools_list_value, tools_list_value_filtered, validate_tool_arguments,
@@ -1578,6 +1579,136 @@ mod tests {
             Err(ApiError::Forbidden(_))
         ));
         assert!(scoped_tool_names(&state, "blocked-decision-observer").is_empty());
+    }
+
+    #[test]
+    fn mcp_worktree_inventory_is_path_minimized_deterministic_and_read_only() {
+        use crate::git::{WorktreeInfo, WorktreeStatus};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+        use git2::Repository;
+        use std::path::Path;
+
+        struct WorktreePolicy;
+        impl AccessControl for WorktreePolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "worktree-observer" && verb == "aelyris.worktree.list" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        let projected = worktree_inventory::project_worktrees(vec![
+            WorktreeInfo {
+                name: "z-linked".to_string(),
+                path: "C:/AIO37/Z/WORKTREE/PATH/MUST-NOT-BE-EXPOSED".to_string(),
+                branch: "feature/z".to_string(),
+                is_main: false,
+                head_sha: "z-head".to_string(),
+                status: WorktreeStatus::Modified,
+            },
+            WorktreeInfo {
+                name: "main".to_string(),
+                path: "C:/AIO37/MAIN/PATH/MUST-NOT-BE-EXPOSED".to_string(),
+                branch: "main".to_string(),
+                is_main: true,
+                head_sha: "main-head".to_string(),
+                status: WorktreeStatus::Clean,
+            },
+            WorktreeInfo {
+                name: "a-linked".to_string(),
+                path: "C:/AIO37/A/WORKTREE/PATH/MUST-NOT-BE-EXPOSED".to_string(),
+                branch: "feature/a".to_string(),
+                is_main: false,
+                head_sha: "a-head".to_string(),
+                status: WorktreeStatus::Conflicted,
+            },
+        ]);
+        let projected = serde_json::to_value(projected).unwrap();
+        assert_eq!(projected[0]["name"], "main");
+        assert_eq!(projected[0]["isMain"], true);
+        assert_eq!(projected[1]["name"], "a-linked");
+        assert_eq!(projected[2]["name"], "z-linked");
+        assert_eq!(projected[1]["branch"], "feature/a");
+        assert_eq!(projected[1]["headSha"], "a-head");
+        assert_eq!(projected[1]["status"], "Conflicted");
+        for item in projected.as_array().unwrap() {
+            assert!(item.get("path").is_none());
+        }
+        assert!(!serde_json::to_string(&projected)
+            .unwrap()
+            .contains("MUST-NOT-BE-EXPOSED"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        std::fs::write(dir.path().join("README.md"), "AIO-37").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("README.md")).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let signature = git2::Signature::now("AIO37", "aio37@example.test").unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+        let repo_path = dir.path().to_string_lossy().to_string();
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(WorktreePolicy))));
+        let schema = input_schema_for_tool_ref("aelyris.worktree.list").unwrap();
+        assert_eq!(schema["required"], serde_json::json!(["repoPath"]));
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(
+            scoped_tool_names(&state, "worktree-observer"),
+            ["aelyris.worktree.list"]
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, actor: &str, path: &str| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.worktree.list".to_string(),
+                    arguments: serde_json::json!({ "repoPath": path }),
+                },
+            ))
+        };
+        let Json(value) =
+            call(&state, "worktree-observer", &repo_path).expect("worktree inventory");
+        let result = &value["result"];
+        assert_eq!(result["source"], "git-worktree-owner");
+        assert_eq!(result["worktreeCount"], 1);
+        assert_eq!(result["worktrees"][0]["name"], "main");
+        assert_eq!(result["worktrees"][0]["branch"], "main");
+        assert_eq!(result["worktrees"][0]["isMain"], true);
+        assert_eq!(result["worktrees"][0]["status"], "Clean");
+        assert_eq!(result["repositoryPathExposed"], false);
+        assert_eq!(result["worktreePathsExposed"], false);
+        assert_eq!(result["readOnly"], true);
+        assert!(result.get("repoPath").is_none());
+        assert!(result["worktrees"][0].get("path").is_none());
+        let digest = result["repositoryDigest"].as_str().unwrap();
+        assert_eq!(digest.len(), 64);
+        assert!(digest
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
+        assert!(!serde_json::to_string(result).unwrap().contains(&repo_path));
+        assert_eq!(
+            repo.worktrees().unwrap().len(),
+            0,
+            "read created no worktree"
+        );
+
+        assert!(matches!(
+            call(&state, "worktree-observer", "C:/AIO37/NOT/A/REPOSITORY"),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            call(&state, "blocked-worktree-observer", &repo_path),
+            Err(ApiError::Forbidden(_))
+        ));
+        assert!(scoped_tool_names(&state, "blocked-worktree-observer").is_empty());
     }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {
