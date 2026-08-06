@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-35`.
-LAST COMPLETED SLICE: `AIO-34`.
-NEXT IMPLEMENTATION SLICE: `AIO-35`.
+ACTIVE SLICE: `AIO-36`.
+LAST COMPLETED SLICE: `AIO-35`.
+NEXT IMPLEMENTATION SLICE: `AIO-36`.
 
 ```yaml
 continuation_contract:
@@ -92,7 +92,8 @@ Current portfolio classification:
 | MCP prompt-minimized agent routing | **COMPLETE** | The shared router returns only its model-profile decision and explicit read-only metadata; the caller prompt is no longer reflected |
 | MCP prompt-free fleet status | **COMPLETE** | Fleet coordination now uses a bounded projection that excludes prompts, approval text, repository/worktree paths, branch names, and full lineage contents |
 | MCP unified fleet coverage | **COMPLETE** | One deterministic prompt-free projection now merges headless and visible interactive owners, reports owner availability/counts, and fails closed on duplicate session identity |
-| MCP deterministic agent-activity read | **NOW** | The existing activity tool returns headless HashMap order without explicit owner availability, read-only metadata, or a stable projection boundary |
+| MCP deterministic agent-activity read | **COMPLETE** | Typed headless activity now has stable session ordering, explicit owner availability/counts, and a read-only prompt-free projection boundary |
+| MCP value-minimized pending-decision read | **NOW** | The pending list currently returns approval summaries and full merge targets, branches, OIDs, task/session identity, and review evidence that coordination does not require |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1588,7 +1589,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated read-only headless activity
 coordination with deterministic ordering and an explicit data boundary.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `aelyris.agent.activity` over the existing `AgentManager::list_sessions`,
   `AgentActivity`, Governance, and principal-scoped discovery. Do not add an activity
@@ -1606,6 +1607,34 @@ Status: **ACTIVE**.
 - Done: an authenticated AI receives a stable, truthful activity snapshot from the one
   owner that currently records typed activity, without response-order drift or hidden
   read side effects.
+
+### AIO-36 — MCP Value-Minimized Pending-Decision Read
+
+Capability target: `Product-Accessible` authenticated read-only pending-decision
+coordination without exposing approval text or merge targets.
+Status: **ACTIVE**.
+
+- Keep `aelyris.list_pending_approvals` over the existing bounded `mcp_pending` queue,
+  durable `MergeIntentStore`, Governance, and principal-scoped discovery. Do not add a
+  decision store, merge store, queue, approval authority, resolver, or second review
+  model.
+- Project live approval requests with exact decision id, kind, risk, status, and a
+  stable one-way session digest only. Do not serialize title, summary, raw session id,
+  requested tool, generated UI text, or approval capability material.
+- Project unresolved merge intents with exact intent id, state, created/updated times,
+  and presence flags for requestor/reviewer/gate evidence. Do not expose repository
+  path, branches, source/target/merge-base OIDs, task id, session/reviewer ids, or gates
+  digest. Exact intent id remains because the separately authorized review-reject tool
+  requires it.
+- Preserve queue order for live decisions and deterministic intent ordering. Return
+  explicit owner availability/counts plus `decisionValuesExposed:false`,
+  `mergeTargetsExposed:false`, `grantToolExposed:false`, and `readOnly:true`.
+- Reading the projection must not evict, resolve, approve, reject, merge, refresh, or
+  otherwise mutate either owner. Missing durable merge storage is explicit and yields
+  an empty merge list rather than fabricated state.
+- Done: an authenticated AI can see which decisions require attention and target an
+  exact durable intent without receiving prompts, summaries, repository targets, OIDs,
+  or review evidence contents.
 
 ## Deferred After GMV
 
@@ -1645,7 +1674,8 @@ cost-cap read access `AIO-29` is also complete. Principal-bound conflict-safe MC
 cost-cap updates `AIO-30`, MCP honest cost-admission preview `AIO-31`, and MCP
 prompt-minimized agent routing `AIO-32` are also complete. MCP prompt-free fleet status
 projection `AIO-33` and MCP unified fleet coverage `AIO-34` are also complete. MCP
-deterministic agent-activity read `AIO-35` is active;
+deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
+pending-decision read `AIO-36` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

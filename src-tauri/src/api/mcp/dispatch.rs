@@ -4492,25 +4492,7 @@ pub(super) async fn dispatch_authorized(
         "aelyris.agent.steer_avoid" => {
             super::agent_coordination::steer_avoid(&state, actor, &args)?
         }
-        "aelyris.agent.activity" => {
-            let manager = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
-            let fleet: Vec<serde_json::Value> = manager
-                .list_sessions()
-                .into_iter()
-                .map(|session| {
-                    serde_json::json!({
-                        "sessionId": session.id,
-                        "taskId": session.task_id,
-                        "status": session.status,
-                        "model": session.model,
-                        "activity": session.current_activity,
-                    })
-                })
-                .collect();
-            serde_json::json!({ "fleet": fleet })
-        }
+        "aelyris.agent.activity" => super::agent_activity_read::get(&state),
         "aelyris.intent.propose" => mcp_intent_propose(&state, actor, &args)?,
         "aelyris.intent.list" => {
             let bus = state.intent_bus.as_ref().ok_or_else(|| {

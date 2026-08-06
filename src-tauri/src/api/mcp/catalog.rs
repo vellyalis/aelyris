@@ -961,7 +961,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.agent.activity",
-                "description": "Read the whole fleet's live activity: each agent's session id, task, status, model, and current activity (file/symbol/action). The real-time 'who is doing what, where' snapshot.",
+                "description": "Read a deterministic, read-only snapshot of typed headless-agent activity. Session/task/status/model and declared action/file/symbol values remain available; prompts and runtime paths outside the activity contract are not exposed. Visible interactive agents remain represented by fleet_status and are not assigned fabricated activity.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },

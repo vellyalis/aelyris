@@ -1,6 +1,7 @@
 use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
 
+mod agent_activity_read;
 mod agent_coordination;
 mod approval_request;
 mod approval_resolution;
@@ -1301,6 +1302,106 @@ mod tests {
         assert!(!serde_json::to_string(result)
             .unwrap()
             .contains("MUST-NOT-BE-EXPOSED"));
+    }
+
+    #[test]
+    fn mcp_agent_activity_read_is_deterministic_explicit_and_prompt_free() {
+        use crate::agent::{AgentActivity, AgentManager, AgentSessionInfo};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct ActivityPolicy;
+        impl AccessControl for ActivityPolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "activity-observer" && verb == "aelyris.agent.activity" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        fn session(id: &str, action: &str) -> AgentSessionInfo {
+            AgentSessionInfo {
+                id: id.to_string(),
+                status: "coding".to_string(),
+                model: "claude-sonnet".to_string(),
+                prompt: format!("{id}-PROMPT-MUST-NOT-BE-EXPOSED"),
+                cwd: format!("C:/{id}/CWD/MUST-NOT-BE-EXPOSED"),
+                cost: 0.0,
+                tokens_used: 0,
+                started_at: 1,
+                task_id: Some(format!("task-{id}")),
+                execution_identity: None,
+                current_activity: Some(AgentActivity {
+                    action: action.to_string(),
+                    file: Some(format!("src/{id}.rs")),
+                    symbol: Some(format!("symbol_{id}")),
+                    updated_at: 9,
+                }),
+            }
+        }
+
+        let projected = agent_activity_read::project_sessions(vec![
+            session("z-agent", "testing"),
+            session("a-agent", "editing"),
+        ]);
+        let projected = serde_json::to_value(projected).unwrap();
+        assert_eq!(projected[0]["sessionId"], "a-agent");
+        assert_eq!(projected[0]["taskId"], "task-a-agent");
+        assert_eq!(projected[0]["activity"]["action"], "editing");
+        assert_eq!(projected[0]["activity"]["file"], "src/a-agent.rs");
+        assert_eq!(projected[0]["activity"]["symbol"], "symbol_a-agent");
+        assert_eq!(projected[1]["sessionId"], "z-agent");
+        for item in projected.as_array().unwrap() {
+            assert!(item.get("prompt").is_none());
+            assert!(item.get("cwd").is_none());
+        }
+        let projected_text = serde_json::to_string(&projected).unwrap();
+        assert!(!projected_text.contains("PROMPT-MUST-NOT-BE-EXPOSED"));
+        assert!(!projected_text.contains("CWD/MUST-NOT-BE-EXPOSED"));
+
+        let unavailable = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(ActivityPolicy))));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, actor: &str| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.agent.activity".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+            ))
+        };
+        let Json(unavailable_value) =
+            call(&unavailable, "activity-observer").expect("unattached read is explicit");
+        assert_eq!(unavailable_value["result"]["available"], false);
+        assert_eq!(unavailable_value["result"]["sessionCount"], 0);
+        assert_eq!(unavailable_value["result"]["fleet"], serde_json::json!([]));
+
+        let available = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_agent_manager(AgentManager::new())
+            .with_governance(Arc::new(Governance::with_access(Box::new(ActivityPolicy))));
+        let Json(available_value) =
+            call(&available, "activity-observer").expect("attached activity read");
+        let result = &available_value["result"];
+        assert_eq!(result["available"], true);
+        assert_eq!(result["source"], "rust-agent-manager");
+        assert_eq!(result["sessionCount"], 0);
+        assert_eq!(result["activityTargetValuesExposed"], true);
+        assert_eq!(result["promptValuesExposed"], false);
+        assert_eq!(result["interactiveActivityInvented"], false);
+        assert_eq!(result["readOnly"], true);
+        assert_eq!(
+            scoped_tool_names(&available, "activity-observer"),
+            ["aelyris.agent.activity"]
+        );
+        assert!(matches!(
+            call(&available, "blocked-activity-observer"),
+            Err(ApiError::Forbidden(_))
+        ));
+        assert!(scoped_tool_names(&available, "blocked-activity-observer").is_empty());
     }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {
