@@ -20,6 +20,12 @@ export interface CostCapsValidationError {
   message: string;
 }
 
+export interface CostCapsPersistenceError {
+  code: "cost_caps_persistence_failed";
+  operation: "persist" | "restore";
+  message: string;
+}
+
 export interface CostUsage {
   active_agents: number;
   tokens_used: number;

@@ -262,6 +262,28 @@ describe("useCostManager", () => {
     expect((screen.getByRole("button", { name: "Save caps" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("reports durable persistence failures without accepting or clearing the draft", async () => {
+    installPanelMocks({
+      setCaps: () =>
+        Promise.reject({
+          code: "cost_caps_persistence_failed",
+          operation: "persist",
+          message: "database is read-only",
+        }),
+    });
+    render(createElement(CostMeterPanel, { sessions: [] }));
+    await openCapEditor();
+
+    const agents = screen.getByLabelText("Max agents") as HTMLInputElement;
+    fireEvent.change(agents, { target: { value: "6" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save caps" }));
+
+    expect(await screen.findByText(/Cap update failed: durable persist failed: database is read-only/)).toBeTruthy();
+    expect(agents.value).toBe("6");
+    expect((screen.getByRole("button", { name: "Save caps" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("must be between 1 and 32")).toBeNull();
+  });
+
   it("preserves a dirty draft across external updates and requires conflict resolution", async () => {
     const { listener } = installPanelMocks();
     render(createElement(CostMeterPanel, { sessions: [] }));

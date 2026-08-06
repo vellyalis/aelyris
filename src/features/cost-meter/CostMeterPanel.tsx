@@ -4,7 +4,7 @@ import { useCostManager } from "../../shared/hooks/useCostManager";
 import { deriveFleetCostMeter, type FleetCostMeter, isCostMeterLiveStatus } from "../../shared/lib/costMeter";
 import { compactWorkstationNumber } from "../../shared/lib/workstationSummary";
 import type { AgentSession, TelemetryConfidence } from "../../shared/types/agent";
-import type { CostCaps, CostCapsValidationError, CostLimit } from "../../shared/types/cost";
+import type { CostCaps, CostCapsPersistenceError, CostCapsValidationError, CostLimit } from "../../shared/types/cost";
 import styles from "./CostMeterPanel.module.css";
 import {
   type CostCapDraftField,
@@ -97,11 +97,30 @@ function validationError(error: unknown): CostCapsValidationError | null {
   };
 }
 
+function persistenceError(error: unknown): CostCapsPersistenceError | null {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as { code?: unknown; operation?: unknown; message?: unknown };
+  if (
+    candidate.code !== "cost_caps_persistence_failed" ||
+    (candidate.operation !== "persist" && candidate.operation !== "restore") ||
+    typeof candidate.message !== "string"
+  ) {
+    return null;
+  }
+  return {
+    code: candidate.code,
+    operation: candidate.operation,
+    message: candidate.message,
+  };
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   const typed = validationError(error);
   if (typed) return `${typed.field}: ${typed.message}`;
+  const persistence = persistenceError(error);
+  if (persistence) return `durable ${persistence.operation} failed: ${persistence.message}`;
   return "The runtime rejected the cap update.";
 }
 

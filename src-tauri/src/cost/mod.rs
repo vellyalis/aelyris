@@ -7,8 +7,10 @@
 //! into the agent-spawn path. Fed by `AgentSession` cost/token telemetry.
 
 pub mod manager;
+mod persistence;
 
-pub use manager::CostManager;
+pub use manager::{CostCapsRestoreOutcome, CostManager};
+pub use persistence::{CostCapsPersistenceError, CostCapsUpdateError};
 
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +58,7 @@ impl CostCapsValidationError {
 /// still being a hard ceiling the loop never exceeds (BR7 runaway protection). It
 /// stays runtime-configurable (`cost_set_caps`), so an operator who wants a denser
 /// fleet can raise it; there is no budget ceiling until the operator sets one.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CostCaps {
     pub max_agents: Option<usize>,
     pub max_tokens: Option<u64>,

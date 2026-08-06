@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `CM-4`.
-LAST COMPLETED SLICE: `PB-UI-8`.
-NEXT IMPLEMENTATION SLICE: `CM-4`.
+ACTIVE SLICE: `RC-1`.
+LAST COMPLETED SLICE: `CM-4`.
+NEXT IMPLEMENTATION SLICE: `RC-1`.
 
 ```yaml
 continuation_contract:
@@ -57,7 +57,7 @@ Current portfolio classification:
 | Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
 | Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
-| Remote Continuity | **PARKED** | Finish the local Proofbook agent-completion path before opening a remote surface |
+| Remote Continuity | **NOW** | Local Proofbook completion and durable operator caps are closed; open only one authenticated read-only snapshot before any remote mutation or SSH work |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -66,7 +66,7 @@ Current portfolio classification:
 | Bounded fleet cap editing | **COMPLETE** | The existing Cost Manager now owns one explicit validated cockpit save path with conflict-safe drafts and visible outcomes |
 | Non-secret Proofbook string inputs | **COMPLETE** | Cockpit validation now projects only supported string fields and the runner normalizes the exact declared object before ledger creation |
 | Exact Proofbook agentSession settlement | **COMPLETE** | Cockpit settlement re-derives the exact current session/revision from runtime-owned terminal status and contained expected artifacts without a free-form proof editor |
-| Durable fleet cap persistence | **NOW** | The bounded editor works, but operator-selected caps currently return to defaults after application restart |
+| Durable fleet cap persistence | **COMPLETE** | The existing Cost Manager restores one validated SQLite singleton before runtime admission and persists before mutating live caps or emitting updates |
 | Broader Proofbook effects and input/secret UX | **PARKED** | Further access requires separately bounded operator decisions and data handling |
 | Signing, sleep, authenticated operator, external certification | **CERTIFICATION ONLY** | Blocks release claims, not repository product work |
 | New top-level verifiers, reports, or historical phase replay | **REJECT BY DEFAULT** | Existing gates already decide the current slice |
@@ -75,7 +75,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `PB-UI-8` is complete; no
+- This work order is the sole repo-mutating product lane. `CM-4` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -571,7 +571,7 @@ Status: **COMPLETE**.
 ### CM-4 — Durable Fleet Cap Persistence
 
 Capability target: `Product-Accessible`.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Persist the existing `CostCaps` owner through the existing Aelyris SQLite database;
   do not add another database, generic settings framework, frontend cache authority,
@@ -590,6 +590,35 @@ Status: **ACTIVE**.
 - Done: deliberately saved fleet caps survive a clean application restart and remain
   the one cap set observed by Cockpit and orchestration.
 
+### RC-1 — Authenticated Read-Only Continuity Snapshot
+
+Capability target: `Product-Accessible` without a remote-operation claim.
+Status: **ACTIVE**.
+
+- Extend the existing authenticated embedded API and `aelys` control face; do not
+  create a cloud service, second daemon, parallel workspace model, generic sync
+  framework, or SSH authority.
+- Add one versioned, bounded read-only snapshot assembled directly from the existing
+  mux, pane/session, agent, approval, Proofbook, ownership, merge, Cost Manager, and
+  Event Bus owners already present in `ApiState`. Missing owners must be represented
+  explicitly rather than guessed or zero-filled.
+- Keep the current loopback bind and bearer/governance boundary. This slice adds no
+  public/private-network bind switch, remote input, approval resolution, leases, SSH,
+  or mutation endpoint and therefore makes no Remote Continuity shipment claim.
+- Expose the snapshot through one supported `aelys continuity` command so an operator
+  can inspect the same bounded state from a second local process without manually
+  stitching MCP verbs together.
+- Include stable schema/version identity, capture time, process/instance identity,
+  mux workspace/pane summaries, bounded agent summaries, pending approval metadata,
+  Proofbook run/blocker summaries for an explicitly supplied project, merge/ownership
+  summary, configured cost caps, and a durable event cursor suitable for the next
+  incremental-monitor slice.
+- Exclude raw scrollback, terminal input, prompt/command bodies, secret values,
+  artifact contents, token files, environment values, signing material, and arbitrary
+  structured runtime output. Apply explicit item and text bounds at the backend.
+- Done: `aelys continuity` returns one authenticated, claim-safe snapshot whose data
+  is projected from the same owners as the local cockpit and cannot mutate state.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -597,10 +626,12 @@ Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 `PB-UI-3`, exact current-run cancellation `PB-UI-4`, and cockpit budget binding
 `CM-2` are complete, together with verified runner-owned artifact preview `PB-UI-5`.
 Durable step evidence inspection `PB-UI-6`, bounded cap editing `CM-3`, validated
-non-secret string inputs `PB-UI-7`, and exact runtime-owned `agentSession` settlement
-`PB-UI-8` are also complete. Durable fleet cap persistence `CM-4` is active;
-secret-bearing starts, broader input types, raw artifact opening/export, Remote
-Continuity, and other adjacent value remain portfolio candidates.
+non-secret string inputs `PB-UI-7`, exact runtime-owned `agentSession` settlement
+`PB-UI-8`, and durable fleet cap persistence `CM-4` are also complete. Authenticated
+read-only continuity snapshot `RC-1` is active; private-network exposure, incremental
+remote monitoring, remote approvals/input, SSH attach, secret-bearing Proofbook
+starts, broader input types, raw artifact opening/export, and other adjacent value
+remain separately bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

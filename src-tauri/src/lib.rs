@@ -589,7 +589,44 @@ pub fn run() {
                             >>()
                             .fail("ownership", error);
                     }
+                    let cost_caps_restore = app
+                        .state::<std::sync::Arc<cost::CostManager>>()
+                        .attach_db(managed.clone());
                     app.handle().manage(managed);
+                    match cost_caps_restore {
+                        cost::CostCapsRestoreOutcome::Missing => {
+                            log::info!("Cost Manager using bounded default caps; no durable cap record exists");
+                        }
+                        cost::CostCapsRestoreOutcome::Restored(caps) => {
+                            log::info!(
+                                "Cost Manager restored durable caps: max_agents={:?} max_tokens={:?} max_cost_usd={:?} max_runtime_secs={:?}",
+                                caps.max_agents,
+                                caps.max_tokens,
+                                caps.max_cost_usd,
+                                caps.max_runtime_secs,
+                            );
+                        }
+                        cost::CostCapsRestoreOutcome::Rejected(error) => {
+                            log::error!(
+                                "Cost Manager rejected malformed durable caps and restored bounded defaults: {error}"
+                            );
+                            ipc::record_audit_event(
+                                app.handle(),
+                                "cost",
+                                "caps_restore_rejected",
+                                "warning",
+                                Some("cost_caps"),
+                                Some("singleton"),
+                                "Persisted fleet caps were rejected; bounded defaults remain active",
+                                serde_json::json!({
+                                    "code": error.code,
+                                    "operation": error.operation,
+                                    "message": error.message,
+                                    "fallback": "bounded_defaults",
+                                }),
+                            );
+                        }
+                    }
                     if let Err(error) = app
                         .state::<std::sync::Arc<startup_reconciliation::StartupReconciliationState>>()
                         .mark_database_ready()

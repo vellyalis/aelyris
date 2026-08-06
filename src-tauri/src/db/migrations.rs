@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 13;
+pub const CURRENT_SCHEMA_VERSION: i64 = 14;
 
 const V1_SCHEMA: &str = "
         CREATE TABLE IF NOT EXISTS sessions (
@@ -1621,6 +1621,17 @@ const V13_SCHEMA: &str = "
     END;
 ";
 
+// CM-4: persist one versioned cap set for the existing Cost Manager. This is
+// deliberately not a generic settings table or a second configuration owner.
+const V14_SCHEMA: &str = "
+    CREATE TABLE IF NOT EXISTS cost_caps_state (
+        singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+        schema_version INTEGER NOT NULL CHECK(schema_version = 1),
+        caps_json TEXT NOT NULL CHECK(json_valid(caps_json)),
+        updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms >= 0)
+    );
+";
+
 pub fn schema_version(conn: &Connection) -> Result<i64, rusqlite::Error> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
@@ -1879,6 +1890,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         result?;
     }
 
+    if version < 14 {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let migration = (|| {
+            conn.execute_batch(V14_SCHEMA)?;
+            conn.pragma_update(None, "user_version", 14)?;
+            Ok::<(), rusqlite::Error>(())
+        })();
+        match migration {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -2073,6 +2100,22 @@ mod tests {
             )
             .unwrap();
         assert_eq!(frontier, (1, Some("migration-test-event".to_string())));
+
+        conn.execute(
+            "INSERT INTO cost_caps_state (
+                singleton_id, schema_version, caps_json, updated_at_ms
+             ) VALUES (1, 1, ?1, 10)",
+            [r#"{"max_agents":4,"max_tokens":null,"max_cost_usd":null,"max_runtime_secs":null}"#],
+        )
+        .unwrap();
+        let caps_json: String = conn
+            .query_row(
+                "SELECT caps_json FROM cost_caps_state WHERE singleton_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(caps_json.contains("max_agents"));
     }
 
     #[test]
@@ -2082,6 +2125,27 @@ mod tests {
             .unwrap();
         assert!(run_migrations(&conn).is_err());
         assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION + 1);
+    }
+
+    #[test]
+    fn version_thirteen_adds_the_singleton_cost_cap_store() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", 13).unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        assert_eq!(schema_version(&conn).unwrap(), CURRENT_SCHEMA_VERSION);
+        let present: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                     WHERE type = 'table' AND name = 'cost_caps_state'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(present);
     }
 
     #[test]

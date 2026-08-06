@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::cost::{
-    CostCaps, CostCapsPolicy, CostCapsValidationError, CostManager, CostUsage, SpawnDecision,
+    CostCaps, CostCapsPolicy, CostCapsUpdateError, CostManager, CostUsage, SpawnDecision,
 };
 
 const COST_CAPS_UPDATED: &str = "cost-caps-updated";
@@ -25,7 +25,7 @@ pub fn cost_set_caps(
     app: AppHandle,
     manager: State<'_, Arc<CostManager>>,
     caps: CostCaps,
-) -> Result<CostCaps, CostCapsValidationError> {
+) -> Result<CostCaps, CostCapsUpdateError> {
     let updated = manager.set_caps(caps)?;
     let _ = app.emit(COST_CAPS_UPDATED, updated);
     Ok(updated)
