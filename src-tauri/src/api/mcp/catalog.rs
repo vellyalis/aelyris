@@ -169,7 +169,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.pane_send_input",
-                "description": "Send bounded input to a live pane/terminal id. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + terminal is supplied; `deny` (destructive) is always refused — this is the agent-injection path the gate exists to catch.",
+                "description": "Send bounded input to a live pane/terminal id as the authenticated Principal. An active exclusive stream lease requires its exact clientId and Principal. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + terminal is supplied; `deny` (destructive) is always refused.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -177,7 +177,8 @@ fn build_tools_list_value() -> serde_json::Value {
                     "properties": {
                         "terminalId": { "type": "string" },
                         "text": { "type": "string", "maxLength": 1048576 },
-                        "approvalId": { "type": "string" }
+                        "approvalId": { "type": "string" },
+                        "clientId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }

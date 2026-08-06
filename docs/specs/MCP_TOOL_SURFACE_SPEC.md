@@ -122,6 +122,13 @@ surface accepts an actor field; command-risk, approval, target-scope, quarantine
 and held-write semantics remain backend-owned, and the audit records hashes and
 result metadata rather than payload text.
 
+`aelyris.pane_send_input` uses the same authenticated Principal and payload-free
+audit owner. When a writable WebSocket holds an exclusive controller lease, MCP pane
+input must supply that lease's optional `clientId` and the authenticated Principal
+must also match; `clientId` is controller scope, never caller identity. Lease failure
+precedes command classification and PTY mutation, while the existing Atomic payload,
+approval, quarantine, frame-bound, and typed-NACK contracts remain unchanged.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

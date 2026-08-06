@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-9`.
-LAST COMPLETED SLICE: `AIO-8`.
-NEXT IMPLEMENTATION SLICE: `AIO-9`.
+ACTIVE SLICE: `AIO-10`.
+LAST COMPLETED SLICE: `AIO-9`.
+NEXT IMPLEMENTATION SLICE: `AIO-10`.
 
 ```yaml
 continuation_contract:
@@ -66,7 +66,8 @@ Current portfolio classification:
 | Authenticated mux input identity | **COMPLETE** | MCP and REST workspace input now carry the authenticated Principal through the shared terminal-write authority and payload-free audit |
 | Authenticated direct session input identity | **COMPLETE** | REST direct and synchronized session input now carry the authenticated Principal through the single authority and payload-free audit |
 | WebSocket ticket principal continuity | **COMPLETE** | One-shot stream claims now preserve the issuing Principal through authorization, exclusive leases, write authority, and payload-free audit |
-| MCP pane-input lease and audit binding | **NOW** | MCP pane input carries its Principal into command risk, but it does not yet honor an active exclusive stream lease or emit the shared payload-free write audit |
+| MCP pane-input lease and audit binding | **COMPLETE** | MCP pane input now requires the matching Principal/clientId for an exclusive lease and records payload-free accepted/rejected authority evidence |
+| MCP pane metadata controller binding | **NOW** | Pane rename and role changes are authenticated MCP effects but do not yet honor an active exclusive controller lease or retain actor-bound mutation evidence |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -84,7 +85,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-8` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-9` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -888,7 +889,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` AI pane input that cannot bypass an exclusive
 stream controller and leaves the same payload-free authority evidence as REST/WS input.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.pane_send_input` adapter, `StreamControllerLeases`,
   `TerminalInputAuthority`, and shared programmatic terminal-write audit. Do not add a
@@ -910,6 +911,33 @@ Status: **ACTIVE**.
   boundary, and both accepted and rejected writes are durably attributable without
   exposing the submitted command.
 
+### AIO-10 — Principal-Bound MCP Pane Metadata Control
+
+Capability target: `Product-Accessible` pane rename and role changes that obey the
+same authenticated controller boundary as pane input without exposing metadata values
+as authority.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.pane.rename` and `aelyris.pane.set_role` adapters,
+  short-id resolver, `StreamControllerLeases`, Cockpit-owned pane mutation cores, and
+  durable audit journal. Do not add a pane registry, metadata service, controller
+  owner, actor parameter, or alternate mutation path.
+- Use the caller identity already carried by the authorized MCP dispatch. Accept only
+  an optional controller `clientId`; it scopes an existing exclusive lease and never
+  substitutes for that authenticated identity.
+- Resolve the exact terminal id, then check terminal id, optional client id, and
+  authenticated Principal against the existing controller lease before invoking the
+  rename or role core. Omitted, stale, foreign, or cross-Principal controller claims
+  fail closed before pane mutation.
+- Preserve current name/role validation, short-id behavior, typed tool-error shape,
+  missing-pane behavior, and Cockpit ownership of the underlying pane state.
+- Retain actor-bound, value-minimized audit evidence for accepted and rejected
+  mutations. Do not record pane names, roles, bearer values, controller credentials,
+  prompts, or environment values.
+- Done: an authenticated AI can rename or classify a pane only inside the current
+  controller boundary, and the mutation is durably attributable without treating a
+  caller-supplied metadata value as authority.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -926,8 +954,9 @@ for AI `AIO-2`, and authenticated actor-bound Proofbook gate decisions `AIO-3` a
 also complete. Exact current Proofbook cancellation for AI `AIO-4` and authenticated
 Principal-bound Proofbook run start `AIO-5` are complete. Authenticated mux input
 identity `AIO-6`, authenticated direct REST session input identity `AIO-7`, and
-WebSocket stream-ticket Principal continuity `AIO-8` are complete. Principal-bound MCP
-pane-input lease and audit `AIO-9` is active;
+WebSocket stream-ticket Principal continuity `AIO-8` and Principal-bound MCP pane-input
+lease/audit `AIO-9` are complete. Principal-bound MCP pane metadata control `AIO-10`
+is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

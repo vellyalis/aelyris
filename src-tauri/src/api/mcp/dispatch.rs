@@ -1531,13 +1531,43 @@ pub(super) async fn dispatch_authorized(
             let terminal_id = resolve_mcp_terminal_ref(&state, &terminal_ref)?;
             let text = arg_string(&args, "text")?;
             let approval_id = arg_optional_string(&args, "approvalId");
+            let client_id = super::super::normalize_stream_client_id(
+                arg_optional_string(&args, "clientId").as_deref(),
+            )?;
             if text.len() > WS_MAX_INPUT_FRAME_BYTES {
                 return Err(ApiError::BadRequest(format!(
                     "input frame exceeds {} bytes",
                     WS_MAX_INPUT_FRAME_BYTES
                 )));
             }
-            let ack = match super::super::execute_terminal_write(
+            let targets = vec![terminal_id.clone()];
+            let audit = |status: &str, rejection_code: Option<&str>| {
+                super::super::audit_programmatic_terminal_write(
+                    &state,
+                    "mcp_pane_input_authority",
+                    actor,
+                    &terminal_id,
+                    "mcp-pane-input",
+                    &targets,
+                    text.as_bytes(),
+                    approval_id.is_some(),
+                    status,
+                    rejection_code,
+                    serde_json::json!({
+                        "terminalId": terminal_id,
+                        "clientIdPresent": client_id.is_some(),
+                    }),
+                );
+            };
+            if let Err(error) = state.controller_leases.ensure_can_control(
+                &terminal_id,
+                client_id.as_deref(),
+                actor,
+            ) {
+                audit("rejected", Some("controller_lease_conflict"));
+                return Err(error);
+            }
+            let write = super::super::execute_terminal_write(
                 &state,
                 crate::command_risk::authority::WriteActor {
                     principal: actor.to_string(),
@@ -1546,19 +1576,35 @@ pub(super) async fn dispatch_authorized(
                 "mcp-pane-input",
                 &terminal_id,
                 &terminal_id,
-                vec![terminal_id.clone()],
+                targets.clone(),
                 approval_id.as_deref(),
                 text.as_bytes(),
                 crate::command_risk::authority::WritePayloadMode::Atomic,
-            ) {
-                Ok(ack) => ack,
-                Err(ApiError::TerminalWriteRejected(_, nack)) => {
+            );
+            let ack = match write {
+                Ok(ack) => {
+                    audit(
+                        match &ack.status {
+                            crate::command_risk::authority::TerminalWriteAckStatus::Executed => {
+                                "executed"
+                            }
+                            crate::command_risk::authority::TerminalWriteAckStatus::Held => "held",
+                        },
+                        None,
+                    );
+                    ack
+                }
+                Err(ApiError::TerminalWriteRejected(code, nack)) => {
+                    audit("rejected", Some(&code));
                     return Ok(schema_tool_error(
                         &name,
                         serde_json::json!({ "terminalWriteNack": nack }),
                     ));
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    audit("rejected", Some("terminal_write_error"));
+                    return Err(err);
+                }
             };
             serde_json::json!({
                 "terminalId": terminal_id,

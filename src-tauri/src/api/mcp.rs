@@ -2880,6 +2880,106 @@ settlement:
     /// the command-risk policy — a destructive command is refused (catastrophic) and a
     /// review command is refused without an approval id, BOTH before any byte reaches a PTY.
     #[test]
+    fn mcp_pane_input_honors_principal_bound_controller_lease_and_payload_free_audit() {
+        use crate::command_risk::gate::CommandRiskGate;
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let gate = Arc::new(CommandRiskGate::new(Some(db.clone())));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_command_risk_gate(Some(gate));
+        state
+            .controller_leases
+            .acquire("term-1", "client-a", "controller-agent")
+            .unwrap();
+
+        let schema = input_schema_for_tool_ref("aelyris.pane_send_input").unwrap();
+        let properties = schema["properties"].as_object().unwrap();
+        assert!(properties.contains_key("clientId"));
+        assert!(!properties.contains_key("actor"));
+
+        const RAW_INPUT: &str = "git commit -m AIO9_RAW_INPUT_MUST_NOT_BE_LOGGED\r";
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |actor: &str, client_id: Option<&str>| {
+            let mut arguments = serde_json::json!({
+                "terminalId": "term-1",
+                "text": RAW_INPUT,
+            });
+            if let Some(client_id) = client_id {
+                arguments["clientId"] = serde_json::Value::String(client_id.to_string());
+            }
+            rt.block_on(tools_call_as_actor(
+                &state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.pane_send_input".to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        assert!(matches!(
+            call("other-agent", Some("client-a")),
+            Err(ApiError::Conflict(_))
+        ));
+        assert!(matches!(
+            call("controller-agent", None),
+            Err(ApiError::Conflict(_))
+        ));
+
+        let Json(review) = call("controller-agent", Some("client-a"))
+            .expect("matching Principal and clientId reach command-risk authority");
+        assert_eq!(review["ok"], false);
+        assert_eq!(
+            review["error"]["terminalWriteNack"]["code"],
+            "command_approval_required"
+        );
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_pane_input_authority".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read MCP pane input audit");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.agent_id.as_deref() == Some("controller-agent"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.agent_id.as_deref() == Some("other-agent"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| {
+                    row.redacted_payload_json["rejectionCode"] == "controller_lease_conflict"
+                })
+                .count(),
+            2
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "command_approval_required"
+                && row.redacted_payload_json["clientIdPresent"] == true
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["payloadLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            assert!(!audit_text.contains("AIO9_RAW_INPUT_MUST_NOT_BE_LOGGED"));
+            assert!(!audit_text.contains("client-a"));
+        }
+    }
+
+    #[test]
     fn pane_send_input_is_gated_by_the_command_risk_policy() {
         use crate::command_risk::gate::CommandRiskGate;
         use crate::db::{Database, ManagedDb};
