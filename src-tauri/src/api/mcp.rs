@@ -1344,6 +1344,135 @@ mod tests {
     }
 
     #[test]
+    fn mcp_approval_request_audit_is_principal_bound_and_value_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::EventBus;
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(db.clone());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_event_bus(events);
+        let schema = input_schema_for_tool_ref("aelyris.request_approval").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let session = "AIO25_SESSION_MUST_NOT_BE_LOGGED";
+        let tool = "AIO25_TOOL_MUST_NOT_BE_LOGGED";
+        let summary = "AIO25_SUMMARY_MUST_NOT_BE_LOGGED";
+        let risk = "high";
+        let Json(value) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "approval-request-operator",
+                ToolCallBody {
+                    name: "aelyris.request_approval".to_string(),
+                    arguments: serde_json::json!({
+                        "sessionId": session,
+                        "tool": tool,
+                        "summary": summary,
+                        "risk": risk,
+                    }),
+                },
+            ))
+            .expect("approval request resolves through the existing watchdog owner");
+        assert_eq!(value["ok"], true);
+        let result_class = value["result"]["status"]
+            .as_str()
+            .expect("approval request status");
+        assert!(matches!(
+            result_class,
+            "auto_approved" | "auto_denied" | "pending"
+        ));
+        let pending_count = state.mcp_pending.lock().unwrap().len();
+        assert_eq!(pending_count, usize::from(result_class == "pending"));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_approval_request_authority".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read approval request audit");
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.agent_id.as_deref(), Some("approval-request-operator"));
+        assert!(row.session_id.is_none());
+        assert!(row.terminal_id.is_none());
+        assert!(row.task_id.is_none());
+        assert_eq!(row.redacted_payload_json["resultClass"], result_class);
+        assert_eq!(row.redacted_payload_json["status"], "accepted");
+        assert_eq!(
+            row.redacted_payload_json["requestApplied"],
+            result_class == "pending"
+        );
+        assert_eq!(row.redacted_payload_json["requestValuesLogged"], false);
+        assert_eq!(row.redacted_payload_json["watchdogRuleLogged"], false);
+        for key in ["sessionDigest", "toolDigest", "inputDigest"] {
+            let digest = row.redacted_payload_json[key].as_str().expect("digest");
+            assert_eq!(digest.len(), 64);
+            assert!(digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+        }
+        let audit_text = serde_json::to_string(row).unwrap();
+        for hidden in [session, tool, summary, risk] {
+            assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio25_approval_request_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_approval_request_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated approval request audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let failure_events = Arc::new(EventBus::new_durable());
+        failure_events.attach_db(audit_failure_db.clone());
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(audit_failure_db))
+                .with_event_bus(failure_events);
+        let Json(audit_failure_result) = rt
+            .block_on(tools_call_as_actor(
+                &audit_failure_state,
+                "approval-request-operator",
+                ToolCallBody {
+                    name: "aelyris.request_approval".to_string(),
+                    arguments: serde_json::json!({
+                        "sessionId": session,
+                        "tool": tool,
+                        "summary": summary,
+                        "risk": risk,
+                    }),
+                },
+            ))
+            .expect("audit failure does not replay the approval request");
+        assert_eq!(audit_failure_result["ok"], true);
+        let failure_class = audit_failure_result["result"]["status"]
+            .as_str()
+            .expect("approval result class");
+        assert_eq!(
+            audit_failure_state.mcp_pending.lock().unwrap().len(),
+            usize::from(failure_class == "pending"),
+            "one adapter call creates at most one pending request even when audit fails"
+        );
+    }
+
+    #[test]
     fn mcp_approval_resolution_audit_is_principal_bound_and_value_free() {
         use crate::db::{AuditJournalFilter, Database, ManagedDb};
         use crate::pty::PtyManager;

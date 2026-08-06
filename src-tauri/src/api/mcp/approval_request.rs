@@ -1,7 +1,8 @@
-use super::super::{ApiError, ApiResult, ApiState, McpPendingDecision};
-use super::dispatch::{arg_optional_string, arg_string, push_pending_detailed};
+use crate::api::{ApiError, ApiResult, ApiState, McpPendingDecision};
 
-fn authenticated_approval_request_actor(actor: &str) -> ApiResult<&str> {
+use super::dispatch::{arg_optional_string, arg_string, push_pending};
+
+fn authenticated_actor(actor: &str) -> ApiResult<&str> {
     let actor = actor.trim();
     if actor.is_empty() {
         Err(ApiError::Forbidden(
@@ -12,49 +13,27 @@ fn authenticated_approval_request_actor(actor: &str) -> ApiResult<&str> {
     }
 }
 
-fn approval_session_digest(session_id: &str) -> String {
+fn digest(namespace: &str, values: &[&str]) -> String {
     crate::command_risk::approval::command_hash(&format!(
-        "aelyris.approval-request-session\n{session_id}"
-    ))
-    .as_str()
-    .to_string()
-}
-
-fn approval_tool_digest(tool: &str) -> String {
-    crate::command_risk::approval::command_hash(&format!("aelyris.approval-request-tool\n{tool}"))
-        .as_str()
-        .to_string()
-}
-
-fn approval_input_digest(
-    session_id: &str,
-    tool: &str,
-    summary: Option<&str>,
-    risk: &str,
-) -> String {
-    crate::command_risk::approval::command_hash(&format!(
-        "aelyris.approval-request-input\n{session_id}\n{tool}\n{}\n{risk}",
-        summary.unwrap_or("")
+        "aelyris.approval-request-{namespace}\n{}",
+        values.join("\n")
     ))
     .as_str()
     .to_string()
 }
 
 #[allow(clippy::too_many_arguments)]
-fn audit_approval_request(
+fn audit_request(
     state: &ApiState,
     actor: &str,
     session_digest: &str,
     tool_digest: &str,
     input_digest: &str,
-    decision_class: Option<&str>,
-    rule_matched: Option<bool>,
-    queue_inserted: Option<bool>,
-    queue_depth: Option<usize>,
-    queue_overflowed: Option<bool>,
-    overflow_event_published: Option<bool>,
+    result_class: Option<&str>,
     status: &str,
     rejection_code: Option<&str>,
+    request_applied: Option<bool>,
+    pending_count: Option<usize>,
 ) {
     let Some(db) = state.db.as_ref() else {
         return;
@@ -79,80 +58,65 @@ fn audit_approval_request(
         confidence: None,
         payload_json: serde_json::json!({
             "actor": actor,
-            "operation": "request",
+            "operation": "request_approval",
             "sessionDigest": session_digest,
             "toolDigest": tool_digest,
             "inputDigest": input_digest,
-            "decisionClass": decision_class,
-            "ruleMatched": rule_matched,
-            "queueInserted": queue_inserted,
-            "queueDepth": queue_depth,
-            "queueOverflowed": queue_overflowed,
-            "overflowEventPublished": overflow_event_published,
+            "resultClass": result_class,
             "status": status,
             "rejectionCode": rejection_code,
+            "requestApplied": request_applied,
+            "pendingCount": pending_count,
             "requestValuesLogged": false,
             "watchdogRuleLogged": false,
-            "pendingIdentityLogged": false,
         }),
     };
     if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
-        tracing::error!(actor, session_digest, error = %error, "approval request audit failed");
+        tracing::error!(
+            actor,
+            session_digest,
+            error = %error,
+            "approval request audit failed"
+        );
     }
 }
 
-#[cfg(not(test))]
 pub(super) fn request(
     state: &ApiState,
     actor: &str,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
-    let rules = crate::watchdog::load_watchdog_rules();
-    let engine = crate::watchdog::engine::WatchdogEngine::new(rules);
-    request_with_engine(state, actor, args, &engine)
-}
-
-#[cfg(test)]
-pub(super) fn request(
-    state: &ApiState,
-    actor: &str,
-    args: &serde_json::Map<String, serde_json::Value>,
-) -> ApiResult<serde_json::Value> {
-    let engine =
-        crate::watchdog::engine::WatchdogEngine::new(crate::watchdog::WatchdogRules::default());
-    request_with_engine(state, actor, args, &engine)
-}
-
-pub(super) fn request_with_engine(
-    state: &ApiState,
-    actor: &str,
-    args: &serde_json::Map<String, serde_json::Value>,
-    engine: &crate::watchdog::engine::WatchdogEngine,
-) -> ApiResult<serde_json::Value> {
-    let actor = authenticated_approval_request_actor(actor)?;
+    let actor = authenticated_actor(actor)?;
     let session_id = arg_string(args, "sessionId")?;
     let tool = arg_string(args, "tool")?;
     let summary = arg_optional_string(args, "summary");
     let risk = arg_optional_string(args, "risk").unwrap_or_else(|| "medium".to_string());
-    let session_digest = approval_session_digest(&session_id);
-    let tool_digest = approval_tool_digest(&tool);
-    let input_digest = approval_input_digest(&session_id, &tool, summary.as_deref(), &risk);
+    let session_digest = digest("session", &[session_id.as_str()]);
+    let tool_digest = digest("tool", &[tool.as_str()]);
+    let input_digest = digest(
+        "input",
+        &[
+            session_id.as_str(),
+            tool.as_str(),
+            summary.as_deref().unwrap_or(""),
+            risk.as_str(),
+        ],
+    );
 
-    match crate::control::approval::evaluate(engine, &tool) {
+    let rules = crate::watchdog::load_watchdog_rules();
+    let engine = crate::watchdog::engine::WatchdogEngine::new(rules);
+    match crate::control::approval::evaluate(&engine, &tool) {
         crate::control::approval::ApprovalGateDecision::AutoApprove { rule } => {
-            audit_approval_request(
+            audit_request(
                 state,
                 actor,
                 &session_digest,
                 &tool_digest,
                 &input_digest,
                 Some("auto_approved"),
-                Some(true),
-                Some(false),
-                None,
-                Some(false),
-                None,
                 "accepted",
+                None,
+                Some(false),
                 None,
             );
             Ok(serde_json::json!({
@@ -162,19 +126,16 @@ pub(super) fn request_with_engine(
             }))
         }
         crate::control::approval::ApprovalGateDecision::AutoDeny { rule } => {
-            audit_approval_request(
+            audit_request(
                 state,
                 actor,
                 &session_digest,
                 &tool_digest,
                 &input_digest,
                 Some("auto_denied"),
-                Some(true),
-                Some(false),
-                None,
-                Some(false),
-                None,
                 "accepted",
+                None,
+                Some(false),
                 None,
             );
             Ok(serde_json::json!({
@@ -193,56 +154,42 @@ pub(super) fn request_with_engine(
                 risk,
                 status: "pending".to_string(),
             };
-            match push_pending_detailed(state, item) {
-                Ok(outcome) => {
-                    audit_approval_request(
+            let item = match push_pending(state, item) {
+                Ok(item) => item,
+                Err(error) => {
+                    audit_request(
                         state,
                         actor,
                         &session_digest,
                         &tool_digest,
                         &input_digest,
-                        Some("pending_user"),
-                        Some(false),
-                        Some(true),
-                        Some(outcome.queue_depth),
-                        Some(outcome.overflowed),
-                        outcome.overflow_event_published,
-                        "accepted",
+                        Some("pending"),
+                        "rejected",
+                        Some("approval_pending_queue_failed"),
+                        None,
                         None,
                     );
-                    Ok(serde_json::json!({
-                        "intentId": outcome.item.id,
-                        "status": "pending",
-                        "item": outcome.item,
-                    }))
+                    return Err(error);
                 }
-                Err(failure) => {
-                    let rejection_code = if failure.item_inserted
-                        && failure.overflowed
-                        && failure.overflow_event_published == Some(false)
-                    {
-                        "approval_overflow_event_publication_failed"
-                    } else {
-                        "approval_pending_queue_failed"
-                    };
-                    audit_approval_request(
-                        state,
-                        actor,
-                        &session_digest,
-                        &tool_digest,
-                        &input_digest,
-                        Some("pending_user"),
-                        Some(false),
-                        Some(failure.item_inserted),
-                        failure.queue_depth,
-                        Some(failure.overflowed),
-                        failure.overflow_event_published,
-                        "rejected",
-                        Some(rejection_code),
-                    );
-                    Err(failure.error)
-                }
-            }
+            };
+            let pending_count = state.mcp_pending.lock().ok().map(|queue| queue.len());
+            audit_request(
+                state,
+                actor,
+                &session_digest,
+                &tool_digest,
+                &input_digest,
+                Some("pending"),
+                "accepted",
+                None,
+                Some(true),
+                pending_count,
+            );
+            Ok(serde_json::json!({
+                "intentId": item.id,
+                "status": "pending",
+                "item": item,
+            }))
         }
     }
 }

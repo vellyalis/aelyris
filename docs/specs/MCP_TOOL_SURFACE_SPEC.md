@@ -217,6 +217,17 @@ edge cascading, exact edge removal, and existing persistence behavior. Authority
 evidence contains only actor, operation, changed/removed outcome, and one-way
 target/input digests. Node ids, files, edge endpoints, and graph snapshots are excluded.
 
+`aelyris.request_approval` keeps the Watchdog engine and bounded MCP pending queue as
+the only request owners. The authenticated Principal is the initiating actor while
+session id, tool, summary, risk, matched rule, and generated pending id remain approval-
+request domain values. Existing auto-approve, auto-deny, AskUser, oldest-eviction, and
+overflow-event behavior remains unchanged; this verb still cannot grant an approval.
+Durable authority evidence contains only actor, result class, queue-application state,
+bounded count metadata, and one-way session/tool/input digests. Request values, matched
+rule material, Event Bus payloads, bearer values, environment values, and repository
+contents are excluded. Audit failure is best-effort after the Watchdog/queue result and
+never replays or fabricates another request.
+
 `aelyris.agent.report_activity`, `report_blocker`, and `steer_avoid` retain
 `AgentManager`, the shared symbol-ownership context formatter, and Event Bus as their
 only coordination owners. Activity and blocker updates use one AgentManager lock for

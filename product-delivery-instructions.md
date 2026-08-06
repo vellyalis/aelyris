@@ -40,7 +40,7 @@ The finite **General Mission Vertical** (`GMV-0` through `GMV-3`) remains the
 completed repository foundation for this post-GMV product-access phase; the pending
 real-provider confirmation changes claim eligibility, not its implementation owner.
 
-## Portfolio Reset — 2026-08-04
+## Portfolio Reset  E2026-08-04
 
 The prior order was layer-first rather than value-first. `GMV-0` generalized a
 backend contract with no UI, then queued product access behind three more layers.
@@ -82,13 +82,12 @@ Current portfolio classification:
 | MCP human approval resolution evidence | **COMPLETE** | Live approval routing now retains the authenticated Principal while preserving the independent human capability, exact prompt fingerprint, single-use core, and value-free authority evidence |
 | MCP orchestrator-step execution evidence | **COMPLETE** | Bounded `run_step` execution now retains the authenticated initiating Principal through target-free aggregate report evidence without creating a second autonomy owner |
 | MCP durable review-rejection evidence | **COMPLETE** | Durable reviewer rejection now retains the authenticated initiating Principal through target-free state-transition evidence while MergeIntentStore remains the sole authority |
-| MCP approval-request evidence | **COMPLETE** | Watchdog requests now retain the authenticated initiating Principal through value-free decision and queue/overflow evidence without adding a grant path |
-| MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset now retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
+| MCP approval-request evidence | **COMPLETE** | Watchdog requests now retain the authenticated initiating Principal through value-free decision and queue/overflow evidence without adding a grant path |`r`n| MCP session lifecycle evidence | **NOW** | AI can invoke the existing session lifecycle owners, but lifecycle values are caller-selected domain data and the authenticated initiating Principal is not yet retained separately |`r`n| MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset now retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
 | Remaining MCP Proofbook mutation evidence | **COMPLETE** | Compatibility caller-proof settlement and cancellation now retain the authenticated initiating Principal through proof-free ledger outcome evidence |
 | MCP runtime-owned Proofbook settlement evidence | **COMPLETE** | Exact current runtime-owned settlement now retains the authenticated initiating Principal through runtime-identity-free evidence without accepting a caller proof |
 | MCP cost-cap read access | **COMPLETE** | Authenticated AI reads the exact shared live caps/policy with disabled axes preserved as null and no provider-billing claim |
 | MCP conflict-safe cost-cap updates | **COMPLETE** | Exact expected/replacement caps are compared and persisted under the shared manager lock, with stale writes and raw cap audit rejected |
-| MCP honest cost-admission preview | **NOW** | AI can read and update caps, but cannot ask the shared Cost Manager for a truthful next-spawn decision without risking unknown telemetry being represented as zero |
+| MCP honest cost-admission preview | **COMPLETE** | AI can read and update caps, but cannot ask the shared Cost Manager for a truthful next-spawn decision without risking unknown telemetry being represented as zero |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -162,7 +161,7 @@ authority, completion table, frontend execution truth, or provider-specific Miss
 
 ## Work Units
 
-### GMV-0 — Cockpit Goal To Visible Work
+### GMV-0  ECockpit Goal To Visible Work
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -181,7 +180,7 @@ Status: **COMPLETE**.
   generated tasks, and start visible implementation without MCP calls, CLI commands,
   hand-authored JSON, or a second execution engine.
 
-### GMV-1 — Cockpit Review And Merge
+### GMV-1  ECockpit Review And Merge
 
 Capability target: `Product-Accessible` completion of the generic TaskGraph path.
 Status: **COMPLETE**.
@@ -209,7 +208,7 @@ Status: **COMPLETE**.
 - Done: the live cockpit path reaches `Done`, the declared output is on the target
   branch, and the isolated worktree is reclaimed.
 
-### GMV-2 — Durable Mission Binding And Resume
+### GMV-2  EDurable Mission Binding And Resume
 
 Capability target: `Product-Accessible` persistence over the GMV-0 journey.
 Status: **COMPLETE**.
@@ -231,7 +230,7 @@ Status: **COMPLETE**.
   database on 2026-08-04; Mission ID, plan ID, Goal, task `Done`, target OID, clean
   repository, and reclaimed worktree all remained exact.
 
-### GMV-3 — Exact-OID Settlement And Completion
+### GMV-3  EExact-OID Settlement And Completion
 
 Capability target: `Claim-Eligible` for the bounded Mission journey only.
 
@@ -261,7 +260,7 @@ provider quota reopens.
 - Stop when the one supported request-to-settlement path is decidable; do not expand
   into Proofbook recipes, Remote Continuity, or a broad framework program.
 
-### FB-1 — Fleet Briefing
+### FB-1  EFleet Briefing
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -281,7 +280,7 @@ Status: **COMPLETE**.
 - Done: an operator can open Observe mode, see a restart-safe summary of what changed
   since the last mark, refresh it, and advance the cursor without MCP/CLI calls.
 
-### AB-1 — Visible Low-Risk Approval Batching
+### AB-1  EVisible Low-Risk Approval Batching
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -306,7 +305,7 @@ Status: **COMPLETE**.
   one action while destructive, secret-bearing, ambiguous, hidden, or stale gates
   remain individually controlled and fail closed.
 
-### CM-1 — Honest Fleet Cost Meter
+### CM-1  EHonest Fleet Cost Meter
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -325,7 +324,7 @@ Status: **COMPLETE**.
 - Done: before starting more work, an operator can see reported fleet usage beside
   configured caps and distinguish blocked, within-cap, uncapped, and unknown states.
 
-### PB-UI-1 — Proofbook Catalog, Validation, And Run History
+### PB-UI-1  EProofbook Catalog, Validation, And Run History
 
 Capability target: `Product-Accessible` read access only.
 Status: **COMPLETE**.
@@ -346,7 +345,7 @@ Status: **COMPLETE**.
 - Done: an operator can discover definitions, run explicit static validation, and
   inspect durable run history from the supported cockpit without MCP or CLI calls.
 
-### CM-2 — Bind Reported Fleet Usage To Cockpit Orchestration
+### CM-2  EBind Reported Fleet Usage To Cockpit Orchestration
 
 Capability target: `Product-Accessible` budget enforcement for the supported cockpit
 dispatch path.
@@ -370,7 +369,7 @@ Status: **COMPLETE**.
 - Done: cockpit dispatch passes reported usage, known over-budget state reaches the
   existing backend halt, and capped-but-unmeasured usage fails closed before spawn.
 
-### XPC-1 — Portable Active-Program Continuation
+### XPC-1  EPortable Active-Program Continuation
 
 Capability target: `Product-Accessible development continuity`.
 Status: **COMPLETE**.
@@ -390,7 +389,7 @@ Status: **COMPLETE**.
 - Done: `pnpm verify:cross-pc-continuation` passes on a clean, pushed product-delivery
   HEAD and the same tracked bootstrap reconstructs the product continuation locally.
 
-### PB-UI-2 — Narrow Proofbook Operator Effects
+### PB-UI-2  ENarrow Proofbook Operator Effects
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -414,7 +413,7 @@ Status: **COMPLETE**.
 - Done: an operator can inspect and resolve an existing durable manual gate from the
   cockpit, while every other Proofbook effect and gate kind remains inaccessible.
 
-### PB-UI-3 — Start Validated Input-Free Proofbooks
+### PB-UI-3  EStart Validated Input-Free Proofbooks
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -441,7 +440,7 @@ Status: **COMPLETE**.
 - Done: the cockpit can start only a freshly validated, exact-hash, local input-free
   Proofbook while every broader execution surface remains unavailable.
 
-### PB-UI-4 — Cancel Current Non-Terminal Proofbook Runs
+### PB-UI-4  ECancel Current Non-Terminal Proofbook Runs
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -470,7 +469,7 @@ Status: **COMPLETE**.
 - Done: an operator can cancel one exact non-terminal ledger revision, while stale,
   terminal, hidden, and already-cancelled runs fail closed or expose no action.
 
-### PB-UI-5 — Verified Runner-Owned Artifact Preview
+### PB-UI-5  EVerified Runner-Owned Artifact Preview
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -499,7 +498,7 @@ Status: **COMPLETE**.
 - Done: an operator can inspect one exact, integrity-verified runner-owned text
   artifact without granting an arbitrary path read, download, or shell-open surface.
 
-### PB-UI-6 — Durable Step Evidence Inspector
+### PB-UI-6  EDurable Step Evidence Inspector
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -527,7 +526,7 @@ Status: **COMPLETE**.
 - Keep one expanded run at a time and reconcile it in place when the existing
   `proofbook-updated` event advances revision or terminal state.
 
-### CM-3 — Explicit Validated Fleet Cap Editing
+### CM-3  EExplicit Validated Fleet Cap Editing
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -552,7 +551,7 @@ Status: **COMPLETE**.
 - Done: an operator can deliberately change bounded runaway-prevention caps from the
   supported cockpit, with one backend validation authority and visible outcomes.
 
-### PB-UI-7 — Validated Non-Secret Proofbook String Inputs
+### PB-UI-7  EValidated Non-Secret Proofbook String Inputs
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -573,7 +572,7 @@ Status: **COMPLETE**.
 - Done: an operator can start an otherwise-supported Proofbook with declared string
   inputs from the cockpit, while the backend remains the only admission authority.
 
-### PB-UI-8 — Exact Runtime-Owned Agent Session Settlement
+### PB-UI-8  EExact Runtime-Owned Agent Session Settlement
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -599,7 +598,7 @@ Status: **COMPLETE**.
 - Done: an operator can settle a current Proofbook `agentSession` from existing
   Aelyris-owned completion evidence without composing a proof packet by hand.
 
-### CM-4 — Durable Fleet Cap Persistence
+### CM-4  EDurable Fleet Cap Persistence
 
 Capability target: `Product-Accessible`.
 Status: **COMPLETE**.
@@ -621,7 +620,7 @@ Status: **COMPLETE**.
 - Done: deliberately saved fleet caps survive a clean application restart and remain
   the one cap set observed by Cockpit and orchestration.
 
-### RC-1 — Authenticated Read-Only Continuity Snapshot
+### RC-1  EAuthenticated Read-Only Continuity Snapshot
 
 Capability target: `Product-Accessible` without a remote-operation claim.
 Status: **COMPLETE**.
@@ -650,7 +649,7 @@ Status: **COMPLETE**.
 - Done: `aelys continuity` returns one authenticated, claim-safe snapshot whose data
   is projected from the same owners as the local cockpit and cannot mutate state.
 
-### RC-2 — Authenticated Payload-Free Continuity Changes
+### RC-2  EAuthenticated Payload-Free Continuity Changes
 
 Capability target: `Product-Accessible` without a live-watch or remote-operation claim.
 Status: **COMPLETE**.
@@ -675,7 +674,7 @@ Status: **COMPLETE**.
 - Done: an operator can retrieve one authenticated, payload-free finite batch since
   a durable cursor and receive the exact next cursor without mutating Aelyris state.
 
-### RC-3 — Machine-Readable Observe Principal And Scope Contract
+### RC-3  EMachine-Readable Observe Principal And Scope Contract
 
 Capability target: `Product-Accessible` identity and authorization discovery without
 private-network exposure or a new mutation authority.
@@ -701,7 +700,7 @@ Status: **COMPLETE**.
   current authenticated principal may actually invoke, using the same owner that
   enforces those operations.
 
-### AIO-1 — Principal-Scoped MCP Tool Discovery
+### AIO-1  EPrincipal-Scoped MCP Tool Discovery
 
 Capability target: `Product-Accessible` self-operation discovery without granting a
 new tool, permission, review verdict, merge authority, or remote transport.
@@ -727,7 +726,7 @@ Status: **COMPLETE**.
   principal may call, while a direct call to a now-hidden tool remains denied by the
   same Governance owner.
 
-### AIO-2 — Runtime-Owned Proofbook Agent Settlement For AI
+### AIO-2  ERuntime-Owned Proofbook Agent Settlement For AI
 
 Capability target: `Product-Accessible` AI completion handling without a caller-authored
 proof packet or a second Proofbook/runtime authority.
@@ -759,7 +758,7 @@ Status: **COMPLETE**.
   `agentSession` from Aelyris-owned evidence using the same fail-closed authority as
   Cockpit, without composing a completion proof.
 
-### AIO-3 — Authenticated Actor-Bound Proofbook Gate Decisions
+### AIO-3  EAuthenticated Actor-Bound Proofbook Gate Decisions
 
 Capability target: `Product-Accessible` exact-hash Proofbook decisions whose durable
 actor identity comes from the authenticated Principal rather than caller-authored
@@ -784,7 +783,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can approve or reject an exact current Proofbook gate,
   and the durable decision identity is guaranteed to be that authenticated Principal.
 
-### AIO-4 — Exact Current Proofbook Cancellation For AI
+### AIO-4  EExact Current Proofbook Cancellation For AI
 
 Capability target: `Product-Accessible` bounded cancellation of the exact currently
 observed Proofbook revision without claiming external process termination.
@@ -807,7 +806,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can cancel only the exact nonterminal Proofbook revision
   it inspected, with stale requests rejected and actor-bound audit evidence retained.
 
-### AIO-5 — Authenticated Principal-Bound Proofbook Run Start
+### AIO-5  EAuthenticated Principal-Bound Proofbook Run Start
 
 Capability target: `Product-Accessible` Proofbook starts whose durable initiating
 identity comes from the authenticated Principal without changing run determinism.
@@ -829,7 +828,7 @@ Status: **COMPLETE**.
   durable run-created evidence identifies that same Principal while run identity and
   execution behavior remain otherwise unchanged.
 
-### AIO-6 — Authenticated Principal Propagation For Mux Workspace Input
+### AIO-6  EAuthenticated Principal Propagation For Mux Workspace Input
 
 Capability target: `Product-Accessible` workspace input whose command-risk envelope
 identifies the authenticated caller across MCP and REST instead of a fixed operator.
@@ -854,7 +853,7 @@ Status: **COMPLETE**.
   their exact Principal at the one terminal-write authority, with default-operator
   compatibility and no change to risk or approval semantics.
 
-### AIO-7 — Authenticated Principal Propagation For Direct REST Session Input
+### AIO-7  EAuthenticated Principal Propagation For Direct REST Session Input
 
 Capability target: `Product-Accessible` direct session input whose terminal-write
 envelope and payload-free audit identify the authenticated REST caller.
@@ -879,7 +878,7 @@ Status: **COMPLETE**.
   exact Principal at the single authority, with payload-free evidence and unchanged
   risk/lease behavior.
 
-### AIO-8 — WebSocket Stream Ticket Principal Continuity
+### AIO-8  EWebSocket Stream Ticket Principal Continuity
 
 Capability target: `Product-Accessible` WebSocket attach/write where a single-use
 stream ticket preserves the authenticated issuing Principal through redemption,
@@ -906,7 +905,7 @@ Status: **COMPLETE**.
   in subsequent WebSocket write authority/audit evidence, while existing attach and
   controller semantics remain unchanged.
 
-### AIO-9 — Principal-Bound MCP Pane Input Lease And Audit
+### AIO-9  EPrincipal-Bound MCP Pane Input Lease And Audit
 
 Capability target: `Product-Accessible` AI pane input that cannot bypass an exclusive
 stream controller and leaves the same payload-free authority evidence as REST/WS input.
@@ -932,7 +931,7 @@ Status: **COMPLETE**.
   boundary, and both accepted and rejected writes are durably attributable without
   exposing the submitted command.
 
-### AIO-10 — Principal-Bound MCP Pane Metadata Control
+### AIO-10  EPrincipal-Bound MCP Pane Metadata Control
 
 Capability target: `Product-Accessible` pane rename and role changes that obey the
 same authenticated controller boundary as pane input without exposing metadata values
@@ -959,7 +958,7 @@ Status: **COMPLETE**.
   controller boundary, and the mutation is durably attributable without treating a
   caller-supplied metadata value as authority.
 
-### AIO-11 — Principal-Bound MCP Agent Lifecycle Evidence
+### AIO-11  EPrincipal-Bound MCP Agent Lifecycle Evidence
 
 Capability target: `Product-Accessible` headless and visible agent lifecycle effects
 whose durable evidence identifies the authenticated MCP Principal without exposing the
@@ -985,7 +984,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can start or stop the existing agent runtimes and every
   resulting lifecycle effect is durably attributable without leaking its task payload.
 
-### AIO-12 — Principal-Bound MCP Worktree Mutation Evidence
+### AIO-12  EPrincipal-Bound MCP Worktree Mutation Evidence
 
 Capability target: `Product-Accessible` isolated-worktree creation and removal whose
 durable evidence identifies the authenticated MCP Principal without exposing local
@@ -1012,7 +1011,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can create or remove the existing isolated worktree path,
   and the mutation is durably attributable without disclosing its local target names.
 
-### AIO-13 — Principal-Bound MCP Task Mutation Evidence
+### AIO-13  EPrincipal-Bound MCP Task Mutation Evidence
 
 Capability target: `Product-Accessible` durable task creation and transition whose
 initiating identity comes from the authenticated MCP Principal rather than task
@@ -1040,7 +1039,7 @@ Status: **COMPLETE**.
   and each effect is attributable without confusing task assignment with caller identity
   or leaking the task packet.
 
-### AIO-14 — Principal-Bound MCP File-Ownership Assignment Evidence
+### AIO-14  EPrincipal-Bound MCP File-Ownership Assignment Evidence
 
 Capability target: `Product-Accessible` file-pattern ownership assignment whose
 initiating identity comes from the authenticated MCP Principal while the assigned
@@ -1067,7 +1066,7 @@ Status: **COMPLETE**.
   is attributable without confusing the assigned agent with the caller or leaking the
   file pattern.
 
-### AIO-15 — Principal-Bound MCP Manual Symbol-Ownership Mutation Evidence
+### AIO-15  EPrincipal-Bound MCP Manual Symbol-Ownership Mutation Evidence
 
 Capability target: `Product-Accessible` manual symbol claim, refresh, and release whose
 initiating identity comes from the authenticated MCP Principal while claim ownership
@@ -1095,7 +1094,7 @@ Status: **COMPLETE**.
   and each effect is attributable without confusing claim ownership with caller
   identity or leaking symbol targets.
 
-### AIO-16 — Principal-Bound MCP Derived Symbol-Ownership Mutation Evidence
+### AIO-16  EPrincipal-Bound MCP Derived Symbol-Ownership Mutation Evidence
 
 Capability target: `Product-Accessible` diff/source-derived symbol reconciliation whose
 initiating identity comes from the authenticated MCP Principal without persisting the
@@ -1124,7 +1123,7 @@ Status: **COMPLETE**.
   diff/source paths, and each effect is attributable without leaking the derivation
   payload or confusing claim ownership with caller identity.
 
-### AIO-17 — Principal-Bound MCP Context Decision Mutation Evidence
+### AIO-17  EPrincipal-Bound MCP Context Decision Mutation Evidence
 
 Capability target: `Product-Accessible` shared-context set/remove whose initiating
 identity comes from the authenticated MCP Principal while decision key/value remain
@@ -1151,7 +1150,7 @@ Status: **COMPLETE**.
   each effect is attributable without leaking decision contents or confusing data with
   caller identity.
 
-### AIO-18 — Principal-Bound MCP Intent Mutation Evidence
+### AIO-18  EPrincipal-Bound MCP Intent Mutation Evidence
 
 Capability target: `Product-Accessible` intent propose/resolve whose initiating
 identity comes from the authenticated MCP Principal while proposer, target, scope, and
@@ -1179,7 +1178,7 @@ Status: **COMPLETE**.
   and each effect is attributable without leaking coordination contents or confusing
   proposer/target metadata with caller identity.
 
-### AIO-19 — Principal-Bound MCP Knowledge-Graph Mutation Evidence
+### AIO-19  EPrincipal-Bound MCP Knowledge-Graph Mutation Evidence
 
 Capability target: `Product-Accessible` knowledge-node and dependency-edge mutation
 whose initiating identity comes from the authenticated MCP Principal while graph ids,
@@ -1205,7 +1204,7 @@ Status: **COMPLETE**.
   attributable without leaking graph targets or confusing structural data with caller
   identity.
 
-### AIO-20 — Principal-Bound MCP Agent Coordination Mutation Evidence
+### AIO-20  EPrincipal-Bound MCP Agent Coordination Mutation Evidence
 
 Capability target: `Product-Accessible` activity/blocker reporting and typed avoidance
 steering whose initiating identity comes from the authenticated MCP Principal while
@@ -1233,7 +1232,7 @@ Status: **COMPLETE**.
   owners, and each effect is attributable without leaking activity or directive
   contents or confusing session metadata with caller identity.
 
-### AIO-21 — Principal-Bound MCP Durable Event Acknowledgement Evidence
+### AIO-21  EPrincipal-Bound MCP Durable Event Acknowledgement Evidence
 
 Capability target: `Product-Accessible` durable consumer acknowledgement whose
 initiating identity comes from the authenticated MCP Principal while consumer, event,
@@ -1259,7 +1258,7 @@ Status: **COMPLETE**.
   effect is attributable without leaking consumer/event identity or weakening the
   at-least-once contract.
 
-### AIO-22 — Principal-Bound MCP Human Approval Resolution Evidence
+### AIO-22  EPrincipal-Bound MCP Human Approval Resolution Evidence
 
 Capability target: `Product-Accessible` live approval resolution whose initiating
 identity comes from the authenticated MCP Principal while terminal, decision, prompt
@@ -1286,7 +1285,7 @@ Status: **COMPLETE**.
   resolve the existing live approval, and the effect is attributable without exposing
   approval or capability values.
 
-### AIO-23 — Principal-Bound MCP Orchestrator Step Evidence
+### AIO-23  EPrincipal-Bound MCP Orchestrator Step Evidence
 
 Capability target: `Product-Accessible` bounded autonomy-step execution whose
 initiating identity comes from the authenticated MCP Principal while repository and
@@ -1313,7 +1312,7 @@ Status: **COMPLETE**.
   multi-owner result is attributable without leaking execution targets or creating a
   second autonomy engine.
 
-### AIO-24 — Principal-Bound MCP Durable Review-Rejection Evidence
+### AIO-24  EPrincipal-Bound MCP Durable Review-Rejection Evidence
 
 Capability target: `Product-Accessible` durable merge-intent rejection whose
 initiating identity comes from the authenticated MCP Principal while intent and reason
@@ -1338,7 +1337,7 @@ Status: **COMPLETE**.
   and the result is attributable without exposing review targets or adding another
   review authority.
 
-### AIO-25 — Principal-Bound MCP Approval-Request Evidence
+### AIO-25  EPrincipal-Bound MCP Approval-Request Evidence
 
 Capability target: `Product-Accessible` watchdog approval request whose initiating
 identity comes from the authenticated MCP Principal while session, requested tool,
@@ -1365,7 +1364,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can request the existing watchdog approval, and the outcome
   is attributable without leaking request contents or creating another approval owner.
 
-### AIO-26 — Principal-Bound MCP Session-Lifecycle Evidence
+### AIO-26  EPrincipal-Bound MCP Session-Lifecycle Evidence
 
 Capability target: `Product-Accessible` visible-session summarize, checkpoint,
 handoff, resume, and reset operations whose initiating identity comes from the
@@ -1393,7 +1392,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can use the existing session lifecycle surface, and each
   effect is attributable without leaking lifecycle contents or adding another owner.
 
-### AIO-27 — Principal-Bound Remaining MCP Proofbook Mutation Evidence
+### AIO-27  EPrincipal-Bound Remaining MCP Proofbook Mutation Evidence
 
 Capability target: `Product-Accessible` compatibility agent-session settlement and
 run cancellation whose initiating identity comes from the authenticated MCP Principal
@@ -1419,7 +1418,7 @@ Status: **COMPLETE**.
 - Done: the remaining compatibility Proofbook mutations are attributable without
   leaking proof contents or creating a second runner authority.
 
-### AIO-28 — Principal-Bound MCP Runtime-Owned Proofbook Settlement Evidence
+### AIO-28  EPrincipal-Bound MCP Runtime-Owned Proofbook Settlement Evidence
 
 Capability target: `Product-Accessible` exact current runtime-owned agent-session
 settlement whose initiating identity comes from the authenticated MCP Principal while
@@ -1446,7 +1445,7 @@ Status: **COMPLETE**.
 - Done: the safer runtime-owned MCP settlement is attributable to its authenticated
   Principal without exposing runtime identity or weakening the no-free-form-proof path.
 
-### AIO-29 — MCP Cost-Cap Read Access
+### AIO-29  EMCP Cost-Cap Read Access
 
 Capability target: `Product-Accessible` authenticated read access to the one live,
 durably restored Cost Manager cap policy used by Cockpit and orchestration.
@@ -1467,7 +1466,7 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can inspect the exact cap policy that will govern its next
   orchestration action without a duplicate owner or a misleading zero-filled view.
 
-### AIO-30 — Principal-Bound Conflict-Safe MCP Cost-Cap Updates
+### AIO-30  EPrincipal-Bound Conflict-Safe MCP Cost-Cap Updates
 
 Capability target: `Product-Accessible` authenticated, stale-write-safe updates to the
 one durable Cost Manager used by Cockpit and orchestration.
@@ -1491,12 +1490,12 @@ Status: **COMPLETE**.
 - Done: an authorized AI can deliberately update the same durable caps the operator
   sees, while concurrent edits and misleading telemetry assumptions fail closed.
 
-### AIO-31 — MCP Honest Cost-Admission Preview
+### AIO-31  EMCP Honest Cost-Admission Preview
 
 Capability target: `Product-Accessible` authenticated read-only preview of whether one
 more agent may start under the exact live caps, without treating unknown reported usage
 as zero.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one `aelyris.cost.can_spawn` FREE MCP adapter over the existing
   `CostManager::can_spawn`, Governance, and principal-scoped discovery. Do not add a
@@ -1513,6 +1512,35 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can decide whether its next spawn is admissible using the
   same owner as Cockpit/orchestration, or receive an explicit not-evaluable result when
   required telemetry is unknown.
+
+### AIO-26  EPrincipal-Bound MCP Session Lifecycle Evidence
+
+Capability target: `Product-Accessible` session summarize, checkpoint, handoff, resume,
+and reset-context operations whose initiating identity comes from the authenticated MCP
+Principal while session ids, summaries, reasons, resume lineage, and terminal geometry
+remain lifecycle-domain data.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.session.summarize`, `checkpoint`, `handoff`, `resume`,
+  and `reset_context` adapters, Tauri session-lifecycle IPC owners, Governance, and
+  durable audit journal. Do not add a second checkpoint store, session manager, resume
+  authority, actor field, provider wrapper, or AI-only lifecycle path.
+- Keep caller-supplied session ids, reasons, summary payloads, sequence numbers,
+  predecessor/inflight references, logical-session ids, timeouts, and geometry as
+  lifecycle inputs. They never define the initiating actor.
+- Preserve existing provider/runtime invocation, checkpoint durability, no-loss handoff
+  ordering, predecessor/successor lineage, stale identity rejection, reset semantics,
+  timeout bounds, startup admission, typed tool errors, and visible/headless separation.
+- Retain accepted/rejected audit with actor, operation, minimized result class/counts,
+  and stable one-way session/input digests. Do not persist raw summaries, reasons,
+  session or terminal ids, lineage references, provider output, prompts, commands,
+  bearer values, environment values, or repository contents in authority evidence.
+- A lifecycle failure must remain explicit and must not be replayed merely to obtain
+  audit evidence. Audit failure after a successful lifecycle effect must not create a
+  second checkpoint, handoff, resume, or reset.
+- Done: an authenticated AI can use the existing bounded lifecycle owners and every
+  effect is attributable without leaking lifecycle contents or creating a parallel
+  session authority.
 
 ## Deferred After GMV
 
