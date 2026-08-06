@@ -13,7 +13,7 @@
 //!
 //! Skipped silently when the corresponding shell isn't on PATH.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use aelyris_lib::term::images::DecodedPayload;
@@ -94,11 +94,46 @@ fn path_for_shell(p: &std::path::Path) -> String {
     s
 }
 
+#[cfg(windows)]
+fn git_root_for_bash(bash: &Path) -> Option<PathBuf> {
+    let bin_dir = bash.parent()?;
+    let parent = bin_dir.parent()?;
+    if parent.file_name().and_then(|name| name.to_str()) == Some("usr") {
+        parent.parent().map(Path::to_path_buf)
+    } else {
+        Some(parent.to_path_buf())
+    }
+}
+
+#[cfg(windows)]
+fn configure_git_bash_path(command: &mut Command, program: &str) {
+    let bash = Path::new(program);
+    if !bash
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("bash.exe"))
+    {
+        return;
+    }
+    let Some(git_root) = git_root_for_bash(bash) else {
+        return;
+    };
+    let mut paths = vec![git_root.join("usr").join("bin"), git_root.join("bin")];
+    if let Some(existing) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    let joined = std::env::join_paths(paths).expect("Git Bash PATH must be joinable");
+    command.env("PATH", joined);
+}
+
 /// Run an emitter and feed its stdout into a fresh TermEngine.
 /// Returns the resulting engine for assertion.
 fn run_emitter_into_engine(program: &str, args: &[String]) -> TermEngine {
-    let output = Command::new(program)
-        .args(args)
+    let mut command = Command::new(program);
+    command.args(args);
+    #[cfg(windows)]
+    configure_git_bash_path(&mut command, program);
+    let output = command
         .output()
         .unwrap_or_else(|e| panic!("failed to spawn {program}: {e}"));
     assert!(

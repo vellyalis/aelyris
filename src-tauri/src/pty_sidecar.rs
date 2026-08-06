@@ -1182,96 +1182,89 @@ fn probe_expected_sidecar(client: &PtySidecarClient) -> bool {
             return false;
         }
     };
-    match tauri::async_runtime::block_on(async {
-        let health = client.health().await?;
-        let sessions = client.list().await?;
-        Ok::<_, String>((health, sessions))
-    }) {
-        Ok((health, sessions)) => {
-            if health.process_kind != crate::api::PROCESS_KIND_SIDE_CAR {
-                log::warn!(
-                    "PTY sidecar probe rejected process kind {} on 127.0.0.1:{}",
-                    health.process_kind,
-                    SIDE_CAR_PORT
-                );
-                return false;
-            }
-            if health.pid == 0 || health.instance_id.trim().is_empty() {
-                log::warn!(
-                    "PTY sidecar probe rejected invalid identity pid={} instance_id={:?}",
-                    health.pid,
-                    health.instance_id
-                );
-                return false;
-            }
-            if !same_file_name(&health.exe, &expected)
-                || !same_canonical_path(&health.exe, &expected)
-            {
-                log::warn!(
-                    "PTY sidecar probe rejected unexpected executable {:?}; expected {:?}",
-                    health.exe,
-                    expected
-                );
-                return false;
-            }
-            if health.protocol_version != crate::api::DAEMON_PROTOCOL_VERSION {
-                log::warn!(
-                    "PTY sidecar probe rejected protocol {} on 127.0.0.1:{}; expected {}",
-                    health.protocol_version,
-                    SIDE_CAR_PORT,
-                    crate::api::DAEMON_PROTOCOL_VERSION
-                );
-                if sessions.is_empty() {
-                    terminate_stale_expected_sidecar(&health, &expected, "protocol");
-                } else {
-                    // Never kill a daemon that still hosts live sessions:
-                    // surviving agent work outranks backend selection. This
-                    // app run falls back to the native backend; the daemon
-                    // stays reachable for an app build that speaks its
-                    // protocol.
-                    log::warn!(
-                        "PTY sidecar protocol mismatch left running: {} live session(s) would be destroyed (pid={})",
-                        sessions.len(),
-                        health.pid
-                    );
-                }
-                return false;
-            }
-            if health.version != env!("CARGO_PKG_VERSION") {
-                if sessions.is_empty() {
-                    // Session-free daemon from another build: refresh it so
-                    // the freshly spawned binary picks up fixes.
-                    log::info!(
-                        "refreshing session-free PTY sidecar {} -> {}",
-                        health.version,
-                        env!("CARGO_PKG_VERSION")
-                    );
-                    terminate_stale_expected_sidecar(&health, &expected, "version-refresh");
-                    return false;
-                }
-                // Same wire protocol, different app build: the daemon is
-                // compatible by definition of DAEMON_PROTOCOL_VERSION, and
-                // killing it would destroy sessions that survived an app
-                // update. Adopt it.
-                log::info!(
-                    "PTY sidecar version {} differs from app {} but speaks protocol {}; adopting ({} live session(s))",
-                    health.version,
-                    env!("CARGO_PKG_VERSION"),
-                    health.protocol_version,
-                    sessions.len()
-                );
-            }
-            if let Err(err) = tauri::async_runtime::block_on(client.begin_startup_admission()) {
-                log::warn!("PTY sidecar probe could not reset startup admission to pending: {err}");
-                return false;
-            }
-            true
-        }
+    match tauri::async_runtime::block_on(probe_expected_sidecar_async(client, &expected)) {
+        Ok(accepted) => accepted,
         Err(err) => {
             log::debug!("PTY sidecar probe failed: {err}");
             false
         }
     }
+}
+
+async fn probe_expected_sidecar_async(
+    client: &PtySidecarClient,
+    expected: &std::path::Path,
+) -> Result<bool, String> {
+    let health = client.health().await?;
+    let sessions = client.list().await?;
+    if health.process_kind != crate::api::PROCESS_KIND_SIDE_CAR {
+        log::warn!(
+            "PTY sidecar probe rejected process kind {} on 127.0.0.1:{}",
+            health.process_kind,
+            SIDE_CAR_PORT
+        );
+        return Ok(false);
+    }
+    if health.pid == 0 || health.instance_id.trim().is_empty() {
+        log::warn!(
+            "PTY sidecar probe rejected invalid identity pid={} instance_id={:?}",
+            health.pid,
+            health.instance_id
+        );
+        return Ok(false);
+    }
+    if !same_file_name(&health.exe, expected) || !same_canonical_path(&health.exe, expected) {
+        log::warn!(
+            "PTY sidecar probe rejected unexpected executable {:?}; expected {:?}",
+            health.exe,
+            expected
+        );
+        return Ok(false);
+    }
+    if health.protocol_version != crate::api::DAEMON_PROTOCOL_VERSION {
+        log::warn!(
+            "PTY sidecar probe rejected protocol {} on 127.0.0.1:{}; expected {}",
+            health.protocol_version,
+            SIDE_CAR_PORT,
+            crate::api::DAEMON_PROTOCOL_VERSION
+        );
+        if sessions.is_empty() {
+            terminate_stale_expected_sidecar(&health, expected, "protocol");
+        } else {
+            // Never kill a daemon that still hosts live sessions: surviving
+            // agent work outranks backend selection. This app run falls back
+            // to the native backend while the compatible owner stays alive.
+            log::warn!(
+                "PTY sidecar protocol mismatch left running: {} live session(s) would be destroyed (pid={})",
+                sessions.len(),
+                health.pid
+            );
+        }
+        return Ok(false);
+    }
+    if health.version != env!("CARGO_PKG_VERSION") {
+        if sessions.is_empty() {
+            log::info!(
+                "refreshing session-free PTY sidecar {} -> {}",
+                health.version,
+                env!("CARGO_PKG_VERSION")
+            );
+            terminate_stale_expected_sidecar(&health, expected, "version-refresh");
+            return Ok(false);
+        }
+        log::info!(
+            "PTY sidecar version {} differs from app {} but speaks protocol {}; adopting ({} live session(s))",
+            health.version,
+            env!("CARGO_PKG_VERSION"),
+            health.protocol_version,
+            sessions.len()
+        );
+    }
+    if let Err(err) = client.begin_startup_admission().await {
+        log::warn!("PTY sidecar probe could not reset startup admission to pending: {err}");
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 fn sidecar_tcp_probe_open(timeout: Duration) -> bool {

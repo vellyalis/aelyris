@@ -120,7 +120,7 @@ fn tauri_builder_does_not_launch_sidecar_synchronously() {
 /// `Command` — e.g. `GateCommand::new` is a data-struct constructor, not a spawn,
 /// so it must not trip the gate (a word-boundary guard the old substring lacked).
 fn spawns_raw_command(line: &str) -> bool {
-    if line.contains("std::process::Command") {
+    if line.contains("std::process::Command::new") {
         return true;
     }
     let needle = "Command::new";
@@ -136,6 +136,23 @@ fn spawns_raw_command(line: &str) -> bool {
         rest = &rest[pos + needle.len()..];
     }
     false
+}
+
+#[test]
+fn raw_command_detector_ignores_types_but_rejects_constructors() {
+    assert!(!spawns_raw_command(
+        "fn build() -> std::process::Command { hidden_command(\"git\") }"
+    ));
+    assert!(!spawns_raw_command(
+        "fn configure(command: &mut std::process::Command) {}"
+    ));
+    assert!(spawns_raw_command(
+        "let command = std::process::Command::new(\"git\");"
+    ));
+    assert!(spawns_raw_command("let command = Command::new(\"git\");"));
+    assert!(!spawns_raw_command(
+        "let command = GateCommand::new(\"mechanical\");"
+    ));
 }
 
 fn visit_rs_files(path: &Path, on_file: &mut impl FnMut(&Path)) {
