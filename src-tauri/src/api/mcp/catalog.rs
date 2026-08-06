@@ -818,7 +818,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.symbol.claim_from_diff",
-                "description": "DERIVE symbol claims from your worktree's `git diff` instead of hand-specifying ranges: parses each hunk's NEW-side line span into a claim at confidence diff-hunk (inferred — overlaps WARN, never hard-block; can't prove disjointness so they serialize overlapping ready tasks). Idempotent per span (re-running with an updated diff replaces that span's claim). Returns { recorded, claims: [{ claimId, outcome }] }. Call after editing, refresh()/release() as the work proceeds.",
+                "description": "Derive diff-hunk symbol claims as the authenticated Principal from a bounded raw diff. Existing inferred-range, idempotent span reconciliation and warn-only overlap semantics remain unchanged. Durable authority evidence stores only origin/input digests and aggregate outcomes, never the diff, assigned agent/task, paths, ranges, claim ids, or conflicts.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -835,7 +835,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.symbol.claim_from_source",
-                "description": "DERIVE symbol claims by PARSING file source (tree-sitter: Rust / TS / TSX) into exact function/method/class/struct/enum/trait/component ranges at confidence parser (EXACT — overlapping writes hard-block, and disjoint symbols UNLOCK same-file co-editing on normal source files). Reconciles: re-running for the same agent+path replaces that file's prior derived claims (renamed/removed symbols are freed). Unsupported language or an unparseable file yields NO claims (fallback:true -> file-level exclusivity; never a guessed range). Returns { recorded, fallback, claims: [{ claimId, outcome }] }.",
+                "description": "Derive exact parser-confidence symbol claims as the authenticated Principal from bounded Rust/TS/TSX source. Existing per-agent/path reconciliation, hard-block overlaps, disjoint-range concurrency, and unsupported-language fallback remain unchanged. Durable authority evidence stores only origin/input digests and aggregate outcomes, never source, assigned agent/task, path, symbols, ranges, claim ids, or conflicts.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

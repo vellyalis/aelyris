@@ -1670,6 +1670,237 @@ mod tests {
     }
 
     #[test]
+    fn mcp_derived_symbol_reconciliation_audit_is_principal_bound_and_source_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let ownership = Arc::new(std::sync::Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_symbol_ownership(ownership.clone());
+        for verb in [
+            "aelyris.symbol.claim_from_diff",
+            "aelyris.symbol.claim_from_source",
+        ] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "derived-symbol-operator",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        let diff_agent = "AIO16_DIFF_AGENT_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let diff_task = "AIO16_DIFF_TASK_MUST_NOT_BE_LOGGED";
+        let diff_path = "src/AIO16_DIFF_PATH_MUST_NOT_BE_LOGGED.rs";
+        let diff_payload = format!(
+            "--- a/{diff_path}\n+++ b/{diff_path}\n@@ -1,1 +1,3 @@\n old\n+AIO16_DIFF_BODY_MUST_NOT_BE_LOGGED\n+tail\n"
+        );
+        let Json(diff_result) = call(
+            "aelyris.symbol.claim_from_diff",
+            serde_json::json!({
+                "agentId": diff_agent,
+                "taskId": diff_task,
+                "diff": diff_payload,
+                "mode": "write",
+                "leaseSecs": 600,
+            }),
+        )
+        .expect("diff-derived claim succeeds");
+        assert_eq!(diff_result["result"]["recorded"], 1);
+
+        let source_agent = "AIO16_SOURCE_AGENT_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let source_task = "AIO16_SOURCE_TASK_MUST_NOT_BE_LOGGED";
+        let source_path = "src/AIO16_SOURCE_PATH_MUST_NOT_BE_LOGGED.rs";
+        let source_raw_path = "src\\AIO16_SOURCE_PATH_MUST_NOT_BE_LOGGED.rs";
+        let source_payload = "\nfn AIO16_ALPHA_MUST_NOT_BE_LOGGED() {\n    let _ = 1;\n}\n\nfn AIO16_BETA_MUST_NOT_BE_LOGGED() {\n    let _ = 2;\n}\n";
+        let Json(source_result) = call(
+            "aelyris.symbol.claim_from_source",
+            serde_json::json!({
+                "agentId": source_agent,
+                "taskId": source_task,
+                "path": source_raw_path,
+                "source": source_payload,
+                "mode": "write",
+                "leaseSecs": 600,
+            }),
+        )
+        .expect("source-derived claims succeed");
+        assert_eq!(source_result["result"]["recorded"], 2);
+        assert_eq!(source_result["result"]["fallback"], false);
+
+        let Json(fallback_result) = call(
+            "aelyris.symbol.claim_from_source",
+            serde_json::json!({
+                "agentId": source_agent,
+                "taskId": source_task,
+                "path": source_path,
+                "source": "",
+            }),
+        )
+        .expect("empty source reconciles to fallback");
+        assert_eq!(fallback_result["result"]["recorded"], 0);
+        assert_eq!(fallback_result["result"]["fallback"], true);
+        {
+            let guard = ownership.lock().unwrap();
+            let live = guard.live_claims(0);
+            assert_eq!(live.len(), 1, "parser claims were reconciled away");
+            assert!(live[0].claim_id.starts_with("dh:"));
+        }
+
+        let failed_agent = "AIO16_FAILED_AGENT_MUST_NOT_BE_LOGGED";
+        let failed_task = "AIO16_FAILED_TASK_MUST_NOT_BE_LOGGED";
+        let failed_path = "src/AIO16_FAILED_PATH_MUST_NOT_BE_LOGGED.rs";
+        let failed_source = "fn AIO16_FAILED_SYMBOL_MUST_NOT_BE_LOGGED() {}\n";
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_aio16_derived_claim\n\
+                     BEFORE INSERT ON symbol_ownership_claims\n\
+                     WHEN NEW.claim_id LIKE 'parse:{failed_agent}:%'\n\
+                     BEGIN\n\
+                         SELECT RAISE(ABORT, 'simulated derived reconciliation failure');\n\
+                     END;"
+                ))
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            call(
+                "aelyris.symbol.claim_from_source",
+                serde_json::json!({
+                    "agentId": failed_agent,
+                    "taskId": failed_task,
+                    "path": failed_path,
+                    "source": failed_source,
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert!(ownership
+            .lock()
+            .unwrap()
+            .snapshot()
+            .iter()
+            .all(|claim| claim.agent_id != failed_agent));
+        let persisted_count = db
+            .with(|database| {
+                database
+                    .conn()
+                    .query_row("SELECT COUNT(*) FROM symbol_ownership_claims", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(persisted_count, 1, "only the diff claim remains durable");
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_derived_symbol_reconciliation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read derived symbol audit");
+        assert_eq!(rows.len(), 4);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("derived-symbol-operator")));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "claim_from_diff"
+                && row.redacted_payload_json["derivedCount"] == 1
+                && row.redacted_payload_json["recordedCount"] == 1
+                && row.redacted_payload_json["grantedCount"] == 1
+                && row.redacted_payload_json["status"] == "accepted"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "claim_from_source"
+                && row.redacted_payload_json["derivedCount"] == 2
+                && row.redacted_payload_json["recordedCount"] == 2
+                && row.redacted_payload_json["fallback"] == false
+                && row.redacted_payload_json["status"] == "accepted"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "claim_from_source"
+                && row.redacted_payload_json["derivedCount"] == 0
+                && row.redacted_payload_json["recordedCount"] == 0
+                && row.redacted_payload_json["fallback"] == true
+                && row.redacted_payload_json["persistenceApplied"] == true
+                && row.redacted_payload_json["memoryApplied"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "symbol_reconciliation_failed"
+                && row.redacted_payload_json["status"] == "rejected"
+                && row.redacted_payload_json["persistenceApplied"] == false
+                && row.redacted_payload_json["memoryApplied"] == false
+        }));
+        let origin_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["originDigest"]
+                    .as_str()
+                    .expect("origin digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(origin_digests.len(), 3);
+        assert_eq!(input_digests.len(), 4);
+        assert!(origin_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["inputValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["targetValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                diff_agent,
+                diff_task,
+                diff_path,
+                "AIO16_DIFF_BODY_MUST_NOT_BE_LOGGED",
+                source_agent,
+                source_task,
+                source_path,
+                source_raw_path,
+                "AIO16_ALPHA_MUST_NOT_BE_LOGGED",
+                "AIO16_BETA_MUST_NOT_BE_LOGGED",
+                failed_agent,
+                failed_task,
+                failed_path,
+                "AIO16_FAILED_SYMBOL_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

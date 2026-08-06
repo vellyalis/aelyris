@@ -180,6 +180,16 @@ and a stable one-way claim/task digest; raw targets and conflict payloads are ex
 Derived diff/source ingestion remains a separately bounded adapter because it accepts
 large source payloads and owns reconciliation semantics beyond the manual lifecycle.
 
+`aelyris.symbol.claim_from_diff` and `claim_from_source` now retain that same
+authenticated Principal while continuing to delegate parsing and transactional
+reconciliation to the existing extractors, `SymbolOwnership`, and `OwnershipRepo`.
+The 1 MiB bound, raw input preservation, path normalization, reserved prefixes,
+diff-hunk warn semantics, parser exact-block semantics, source fallback, and per-origin
+replacement behavior remain unchanged. Audit evidence is aggregate-only: operation,
+origin/input digests, derived/recorded and outcome counts, fallback, result, and
+persistence/memory application state. Raw diff/source, assignment values, targets,
+language, claim ids, and conflict payloads are excluded.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

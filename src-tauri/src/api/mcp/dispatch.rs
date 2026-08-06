@@ -1648,6 +1648,430 @@ fn mcp_symbol_release_task(
     Ok(serde_json::json!({ "released": released }))
 }
 
+#[derive(Default)]
+struct DerivedSymbolOutcomeCounts {
+    granted: usize,
+    warned: usize,
+    blocked: usize,
+}
+
+impl DerivedSymbolOutcomeCounts {
+    fn observe(&mut self, outcome: &crate::symbol_ownership::ClaimOutcome) {
+        match outcome {
+            crate::symbol_ownership::ClaimOutcome::Granted => self.granted += 1,
+            crate::symbol_ownership::ClaimOutcome::Warned { .. } => self.warned += 1,
+            crate::symbol_ownership::ClaimOutcome::Blocked { .. } => self.blocked += 1,
+        }
+    }
+}
+
+fn derived_symbol_origin_digest(
+    operation: &str,
+    agent_id: &str,
+    task_id: Option<&str>,
+    path: Option<&str>,
+) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.derived-symbol\n{operation}\n{agent_id}\n{}\n{}",
+        task_id.unwrap_or(""),
+        path.unwrap_or("")
+    ))
+    .as_str()
+    .to_string()
+}
+
+fn derived_symbol_input_digest(operation: &str, input: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.derived-symbol-input\n{operation}\n{input}"
+    ))
+    .as_str()
+    .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_derived_symbol_reconciliation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    origin_digest: &str,
+    input_digest: &str,
+    derived_count: Option<usize>,
+    recorded_count: Option<usize>,
+    counts: Option<&DerivedSymbolOutcomeCounts>,
+    fallback: Option<bool>,
+    status: &str,
+    rejection_code: Option<&str>,
+    persistence_applied: bool,
+    memory_applied: bool,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(origin_digest.to_string()),
+        kind: "mcp_derived_symbol_reconciliation_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-derived-symbol-reconciliation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "originDigest": origin_digest,
+            "inputDigest": input_digest,
+            "derivedCount": derived_count,
+            "recordedCount": recorded_count,
+            "grantedCount": counts.map(|value| value.granted),
+            "warnedCount": counts.map(|value| value.warned),
+            "blockedCount": counts.map(|value| value.blocked),
+            "fallback": fallback,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "persistenceApplied": persistence_applied,
+            "memoryApplied": memory_applied,
+            "inputValuesLogged": false,
+            "targetValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, origin_digest, error = %error, "derived symbol audit failed");
+    }
+}
+
+fn mcp_symbol_claim_from_diff(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_symbol_actor(actor)?;
+    let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("symbol ownership is not attached to this process".to_string())
+    })?;
+    let now = now_secs();
+    let lease_secs = args
+        .get("leaseSecs")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(300);
+    let agent_id = arg_string(args, "agentId")?;
+    let task_id = args
+        .get("taskId")
+        .and_then(|value| value.as_str())
+        .map(String::from);
+    let diff = arg_string_raw(args, "diff")?;
+    let origin_digest =
+        derived_symbol_origin_digest("claim_from_diff", &agent_id, task_id.as_deref(), None);
+    let input_digest = derived_symbol_input_digest("claim_from_diff", &diff);
+    if diff.len() > 1_048_576 {
+        audit_mcp_derived_symbol_reconciliation(
+            state,
+            actor,
+            "claim_from_diff",
+            &origin_digest,
+            &input_digest,
+            None,
+            None,
+            None,
+            None,
+            "rejected",
+            Some("derived_input_too_large"),
+            false,
+            false,
+        );
+        return Err(ApiError::BadRequest("diff exceeds 1 MiB".to_string()));
+    }
+    let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
+        None => crate::symbol_ownership::ClaimMode::Write,
+    };
+    let intents = crate::symbol_ownership::extract::intents_from_diff(&diff, mode);
+    let derived_count = intents.len();
+    let mut claims = Vec::new();
+    let mut recorded = 0usize;
+    let mut counts = DerivedSymbolOutcomeCounts::default();
+    let mut delete_claim_ids = Vec::new();
+    let mut upsert_claims = Vec::new();
+    let mut owner = match ownership.lock() {
+        Ok(owner) => owner,
+        Err(_) => {
+            audit_mcp_derived_symbol_reconciliation(
+                state,
+                actor,
+                "claim_from_diff",
+                &origin_digest,
+                &input_digest,
+                Some(derived_count),
+                None,
+                None,
+                None,
+                "rejected",
+                Some("symbol_memory_lock_failed"),
+                false,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "symbol ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    let mut staging = owner.clone();
+    staging.expire(now);
+    for intent in intents {
+        let claim_id = format!(
+            "dh:{agent_id}:{}:{}-{}",
+            intent.path, intent.range.start_line, intent.range.end_line
+        );
+        staging.release(&claim_id);
+        delete_claim_ids.push(claim_id.clone());
+        let claim = crate::symbol_ownership::SymbolClaim {
+            claim_id: claim_id.clone(),
+            agent_id: agent_id.clone(),
+            task_id: task_id.clone(),
+            path: intent.path,
+            symbol: intent.symbol,
+            range: intent.range,
+            mode: intent.mode,
+            lease_expires_at: now.saturating_add(lease_secs),
+            confidence: intent.confidence,
+        };
+        let outcome = staging.claim(claim.clone(), now);
+        counts.observe(&outcome);
+        if !matches!(
+            outcome,
+            crate::symbol_ownership::ClaimOutcome::Blocked { .. }
+        ) {
+            recorded += 1;
+            upsert_claims.push(claim);
+        }
+        claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
+    }
+    if let Err(error) = ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::reconcile_symbol_claims(
+                database,
+                &delete_claim_ids,
+                &[],
+                &upsert_claims,
+                now,
+            )
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        drop(owner);
+        audit_mcp_derived_symbol_reconciliation(
+            state,
+            actor,
+            "claim_from_diff",
+            &origin_digest,
+            &input_digest,
+            Some(derived_count),
+            Some(recorded),
+            Some(&counts),
+            None,
+            "rejected",
+            Some("symbol_reconciliation_failed"),
+            false,
+            false,
+        );
+        return Err(error);
+    }
+    *owner = staging;
+    drop(owner);
+    audit_mcp_derived_symbol_reconciliation(
+        state,
+        actor,
+        "claim_from_diff",
+        &origin_digest,
+        &input_digest,
+        Some(derived_count),
+        Some(recorded),
+        Some(&counts),
+        None,
+        "accepted",
+        None,
+        true,
+        true,
+    );
+    Ok(serde_json::json!({ "recorded": recorded, "claims": claims }))
+}
+
+fn mcp_symbol_claim_from_source(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_symbol_actor(actor)?;
+    let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("symbol ownership is not attached to this process".to_string())
+    })?;
+    let now = now_secs();
+    let lease_secs = args
+        .get("leaseSecs")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(300);
+    let agent_id = arg_string(args, "agentId")?;
+    let task_id = args
+        .get("taskId")
+        .and_then(|value| value.as_str())
+        .map(String::from);
+    let path = arg_string(args, "path")?.replace('\\', "/");
+    let source = arg_string_raw(args, "source")?;
+    let origin_digest = derived_symbol_origin_digest(
+        "claim_from_source",
+        &agent_id,
+        task_id.as_deref(),
+        Some(&path),
+    );
+    let input_digest = derived_symbol_input_digest("claim_from_source", &source);
+    if source.len() > 1_048_576 {
+        audit_mcp_derived_symbol_reconciliation(
+            state,
+            actor,
+            "claim_from_source",
+            &origin_digest,
+            &input_digest,
+            None,
+            None,
+            None,
+            None,
+            "rejected",
+            Some("derived_input_too_large"),
+            false,
+            false,
+        );
+        return Err(ApiError::BadRequest("source exceeds 1 MiB".to_string()));
+    }
+    let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
+        None => crate::symbol_ownership::ClaimMode::Write,
+    };
+    let intents = crate::symbol_ownership::extract::intents_from_source(&path, &source, mode);
+    let fallback = intents.is_empty();
+    let derived_count = intents.len();
+    let mut claims = Vec::new();
+    let mut recorded = 0usize;
+    let mut counts = DerivedSymbolOutcomeCounts::default();
+    let reconcile_prefix = format!("parse:{agent_id}:{path}:");
+    let mut upsert_claims = Vec::new();
+    let mut owner = match ownership.lock() {
+        Ok(owner) => owner,
+        Err(_) => {
+            audit_mcp_derived_symbol_reconciliation(
+                state,
+                actor,
+                "claim_from_source",
+                &origin_digest,
+                &input_digest,
+                Some(derived_count),
+                None,
+                None,
+                Some(fallback),
+                "rejected",
+                Some("symbol_memory_lock_failed"),
+                false,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "symbol ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    let mut staging = owner.clone();
+    staging.expire(now);
+    staging.release_for_prefix(&reconcile_prefix);
+    for intent in intents {
+        let claim_id = format!(
+            "parse:{agent_id}:{}:{}@{}-{}",
+            intent.path, intent.symbol, intent.range.start_line, intent.range.end_line
+        );
+        let claim = crate::symbol_ownership::SymbolClaim {
+            claim_id: claim_id.clone(),
+            agent_id: agent_id.clone(),
+            task_id: task_id.clone(),
+            path: intent.path,
+            symbol: intent.symbol,
+            range: intent.range,
+            mode: intent.mode,
+            lease_expires_at: now.saturating_add(lease_secs),
+            confidence: intent.confidence,
+        };
+        let outcome = staging.claim(claim.clone(), now);
+        counts.observe(&outcome);
+        if !matches!(
+            outcome,
+            crate::symbol_ownership::ClaimOutcome::Blocked { .. }
+        ) {
+            recorded += 1;
+            upsert_claims.push(claim);
+        }
+        claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
+    }
+    if let Err(error) = ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::reconcile_symbol_claims(
+                database,
+                &[],
+                std::slice::from_ref(&reconcile_prefix),
+                &upsert_claims,
+                now,
+            )
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        drop(owner);
+        audit_mcp_derived_symbol_reconciliation(
+            state,
+            actor,
+            "claim_from_source",
+            &origin_digest,
+            &input_digest,
+            Some(derived_count),
+            Some(recorded),
+            Some(&counts),
+            Some(fallback),
+            "rejected",
+            Some("symbol_reconciliation_failed"),
+            false,
+            false,
+        );
+        return Err(error);
+    }
+    *owner = staging;
+    drop(owner);
+    audit_mcp_derived_symbol_reconciliation(
+        state,
+        actor,
+        "claim_from_source",
+        &origin_digest,
+        &input_digest,
+        Some(derived_count),
+        Some(recorded),
+        Some(&counts),
+        Some(fallback),
+        "accepted",
+        None,
+        true,
+        true,
+    );
+    Ok(serde_json::json!({
+        "recorded": recorded,
+        "fallback": fallback,
+        "claims": claims,
+    }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -3451,192 +3875,8 @@ pub(super) async fn dispatch_authorized(
             };
             serde_json::json!({ "conflicts": conflicts })
         }
-        "aelyris.symbol.claim_from_diff" => {
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let now = now_secs();
-            let lease_secs = args
-                .get("leaseSecs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(300);
-            let agent_id = arg_string(&args, "agentId")?;
-            let task_id = args
-                .get("taskId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            // Raw (no trim): preserve the diff exactly. Hunk headers carry absolute
-            // line numbers so trimming wouldn't shift ranges, but an empty diff should
-            // mean "0 hunks", not a BadRequest.
-            let diff = arg_string_raw(&args, "diff")?;
-            // Bound untrusted diff text (mirrors the maxLength on the schema +
-            // the pane-input frame cap): a 1 MiB ceiling before we parse it.
-            if diff.len() > 1_048_576 {
-                return Err(ApiError::BadRequest("diff exceeds 1 MiB".to_string()));
-            }
-            // Default Write (the only mode that drives a collision); an explicit
-            // mode is validated against the enum.
-            let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
-                Some(v) => serde_json::from_value(v.clone())
-                    .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
-                None => crate::symbol_ownership::ClaimMode::Write,
-            };
-            let intents = crate::symbol_ownership::extract::intents_from_diff(&diff, mode);
-            let mut claims = Vec::new();
-            let mut recorded = 0usize;
-            let mut delete_claim_ids = Vec::new();
-            let mut upsert_claims = Vec::new();
-            {
-                let mut owner = ownership.lock().map_err(|_| {
-                    ApiError::Internal("symbol ownership lock poisoned".to_string())
-                })?;
-                let mut staging = owner.clone();
-                // Sweep expired leases first (sibling verbs claims/conflicts do the
-                // same) so a crashed agent's stale span can't linger in the map.
-                staging.expire(now);
-                for intent in intents {
-                    // Deterministic id so re-running on an updated diff is idempotent
-                    // per span (release the prior claim for this span, then re-add). The
-                    // `dh:` prefix marks the diff-hunk origin so claim_from_source's
-                    // parser reconcile (which sweeps `parse:`-prefixed ids) leaves these.
-                    let claim_id = format!(
-                        "dh:{agent_id}:{}:{}-{}",
-                        intent.path, intent.range.start_line, intent.range.end_line
-                    );
-                    staging.release(&claim_id);
-                    delete_claim_ids.push(claim_id.clone());
-                    let claim = crate::symbol_ownership::SymbolClaim {
-                        claim_id: claim_id.clone(),
-                        agent_id: agent_id.clone(),
-                        task_id: task_id.clone(),
-                        path: intent.path,
-                        symbol: intent.symbol,
-                        range: intent.range,
-                        mode: intent.mode,
-                        lease_expires_at: now.saturating_add(lease_secs),
-                        confidence: intent.confidence,
-                    };
-                    let outcome = staging.claim(claim.clone(), now);
-                    // `recorded` = claims actually stored. DiffHunk never Blocks, but
-                    // count defensively so the field can never overstate ownership.
-                    if !matches!(
-                        outcome,
-                        crate::symbol_ownership::ClaimOutcome::Blocked { .. }
-                    ) {
-                        recorded += 1;
-                        upsert_claims.push(claim);
-                    }
-                    claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
-                }
-                ownership_db(&state)?
-                    .with(|db| {
-                        crate::persistence::OwnershipRepo::reconcile_symbol_claims(
-                            db,
-                            &delete_claim_ids,
-                            &[],
-                            &upsert_claims,
-                            now,
-                        )
-                    })
-                    .map_err(ApiError::Internal)?;
-                *owner = staging;
-            }
-            serde_json::json!({ "recorded": recorded, "claims": claims })
-        }
-        "aelyris.symbol.claim_from_source" => {
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let now = now_secs();
-            let lease_secs = args
-                .get("leaseSecs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(300);
-            let agent_id = arg_string(&args, "agentId")?;
-            let task_id = args
-                .get("taskId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            // Normalize the path to forward slashes so the reconcile prefix and the
-            // per-claim ids are spelling-consistent across calls (re-parsing `src\x.rs`
-            // then `src/x.rs` reconciles the same file).
-            let path = arg_string(&args, "path")?.replace('\\', "/");
-            // Raw (no trim): trimming would strip leading blank lines and shift every
-            // parsed symbol's line number. Empty source is valid -> fallback, no claims.
-            let source = arg_string_raw(&args, "source")?;
-            // Bound untrusted source text (same 1 MiB ceiling as the diff verb).
-            if source.len() > 1_048_576 {
-                return Err(ApiError::BadRequest("source exceeds 1 MiB".to_string()));
-            }
-            let mode: crate::symbol_ownership::ClaimMode = match args.get("mode") {
-                Some(v) => serde_json::from_value(v.clone())
-                    .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?,
-                None => crate::symbol_ownership::ClaimMode::Write,
-            };
-            let intents =
-                crate::symbol_ownership::extract::intents_from_source(&path, &source, mode);
-            // No safe symbols (unsupported language / unparseable) -> file-level fallback.
-            let fallback = intents.is_empty();
-            let mut claims = Vec::new();
-            let mut recorded = 0usize;
-            let reconcile_prefix = format!("parse:{agent_id}:{path}:");
-            let mut upsert_claims = Vec::new();
-            {
-                let mut owner = ownership.lock().map_err(|_| {
-                    ApiError::Internal("symbol ownership lock poisoned".to_string())
-                })?;
-                let mut staging = owner.clone();
-                staging.expire(now);
-                // Reconcile: the parser re-derives the WHOLE file, so drop this agent's
-                // prior PARSER-derived claims on the path (the `parse:{agent}:{path}:`
-                // prefix) before recording the fresh set — a renamed/removed symbol's
-                // stale claim is freed. Scoped by prefix so it leaves the agent's
-                // diff-hunk (`dh:`) and hand-made claims on the same file untouched.
-                staging.release_for_prefix(&reconcile_prefix);
-                for intent in intents {
-                    let claim_id = format!(
-                        "parse:{agent_id}:{}:{}@{}-{}",
-                        intent.path, intent.symbol, intent.range.start_line, intent.range.end_line
-                    );
-                    let claim = crate::symbol_ownership::SymbolClaim {
-                        claim_id: claim_id.clone(),
-                        agent_id: agent_id.clone(),
-                        task_id: task_id.clone(),
-                        path: intent.path,
-                        symbol: intent.symbol,
-                        range: intent.range,
-                        mode: intent.mode,
-                        lease_expires_at: now.saturating_add(lease_secs),
-                        confidence: intent.confidence,
-                    };
-                    let outcome = staging.claim(claim.clone(), now);
-                    // `recorded` counts claims actually stored — a Parser claim that
-                    // Blocks against another agent's exact range is NOT recorded, so it
-                    // must not inflate the count (the caller mustn't think it owns it).
-                    if !matches!(
-                        outcome,
-                        crate::symbol_ownership::ClaimOutcome::Blocked { .. }
-                    ) {
-                        recorded += 1;
-                        upsert_claims.push(claim);
-                    }
-                    claims.push(serde_json::json!({ "claimId": claim_id, "outcome": outcome }));
-                }
-                ownership_db(&state)?
-                    .with(|db| {
-                        crate::persistence::OwnershipRepo::reconcile_symbol_claims(
-                            db,
-                            &[],
-                            std::slice::from_ref(&reconcile_prefix),
-                            &upsert_claims,
-                            now,
-                        )
-                    })
-                    .map_err(ApiError::Internal)?;
-                *owner = staging;
-            }
-            serde_json::json!({ "recorded": recorded, "fallback": fallback, "claims": claims })
-        }
+        "aelyris.symbol.claim_from_diff" => mcp_symbol_claim_from_diff(&state, actor, &args)?,
+        "aelyris.symbol.claim_from_source" => mcp_symbol_claim_from_source(&state, actor, &args)?,
         "aelyris.context.set" => {
             let store = state.context_store.as_ref().ok_or_else(|| {
                 ApiError::Internal("context store is not attached to this process".to_string())
