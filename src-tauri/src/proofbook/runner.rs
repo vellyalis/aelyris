@@ -61,6 +61,7 @@ impl ProofbookRunner {
             inputs,
             ProofbookExecutorRefs::default(),
             None,
+            None,
         )
     }
 
@@ -76,6 +77,7 @@ impl ProofbookRunner {
             serde_json::json!({}),
             ProofbookExecutorRefs::default(),
             Some(CockpitStartContract::InputFree(expected_definition_hash)),
+            None,
         )
     }
 
@@ -92,6 +94,7 @@ impl ProofbookRunner {
             inputs,
             ProofbookExecutorRefs::default(),
             Some(CockpitStartContract::StringInputs(expected_definition_hash)),
+            None,
         )
     }
 
@@ -144,6 +147,36 @@ impl ProofbookRunner {
                 agent: agent_executor,
             },
             None,
+            None,
+        )
+    }
+
+    pub fn start_run_with_executors_as_actor(
+        &self,
+        project_path: &str,
+        proofbook_path: &str,
+        inputs: serde_json::Value,
+        actor: &str,
+        mcp_executor: Option<&dyn ProofbookMcpToolExecutor>,
+        agent_executor: Option<&dyn ProofbookAgentSessionExecutor>,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        let actor = actor.trim();
+        if actor.is_empty() {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ValidationFailed,
+                "Proofbook initiating actor must be non-empty",
+            ));
+        }
+        self.start_run_inner(
+            project_path,
+            proofbook_path,
+            inputs,
+            ProofbookExecutorRefs {
+                mcp: mcp_executor,
+                agent: agent_executor,
+            },
+            None,
+            Some(actor),
         )
     }
 
@@ -154,6 +187,7 @@ impl ProofbookRunner {
         mut inputs: serde_json::Value,
         executors: ProofbookExecutorRefs<'_>,
         cockpit_start: Option<CockpitStartContract<'_>>,
+        initiating_actor: Option<&str>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let proofbook_path = resolve_proofbook_path(&root, proofbook_path)?;
@@ -211,7 +245,16 @@ impl ProofbookRunner {
             }
         }
 
-        let candidate = ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?;
+        let candidate = match initiating_actor {
+            Some(actor) => ledger::new_run_ledger_with_actor(
+                &root,
+                &proofbook_path,
+                &definition,
+                &inputs,
+                Some(actor),
+            )?,
+            None => ledger::new_run_ledger(&root, &proofbook_path, &definition, &inputs)?,
+        };
         let (mut ledger, initialized) = self.initialize_ledger(&root, candidate)?;
         if !initialized {
             return Ok(ledger);
@@ -627,7 +670,7 @@ impl ProofbookRunner {
             }
         }
         let message = actor
-            .map(|actor| format!("Proofbook run cancelled by {actor}"))
+            .map(|_| "Proofbook run cancelled by authenticated principal".to_string())
             .unwrap_or_else(|| "Proofbook run cancelled by operator".to_string());
         ledger.append_event_with_actor(
             "run_cancelled",

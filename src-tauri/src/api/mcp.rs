@@ -1261,7 +1261,10 @@ settlement:
             .find(|event| event.kind == "run_cancelled")
             .expect("durable cancellation event");
         assert_eq!(event.actor.as_deref(), Some("cancel-agent"));
-        assert!(event.message.contains("cancel-agent"));
+        assert_eq!(
+            event.message,
+            "Proofbook run cancelled by authenticated principal"
+        );
 
         let audits = db
             .with(|database| {
@@ -1444,14 +1447,13 @@ settlement:
     }
 
     #[test]
-    fn proofbook_mcp_run_executes_free_mcp_tool_step_through_tools_call() {
+    fn proofbook_run_start_is_principal_bound_without_changing_run_identity() {
+        use crate::db::AuditJournalFilter;
         use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
         use crate::pty::PtyManager;
 
         let project = tempfile::tempdir().expect("tempdir");
-        let proofbook = write_test_proofbook(
-            project.path(),
-            r#"
+        let yaml = r#"
 schema: aelyris.proofbook.v1
 id: pb3-free-mcp
 steps:
@@ -1461,26 +1463,78 @@ steps:
     arguments: {}
 settlement:
   requiredSteps: [list]
-"#,
-        );
+"#;
+        let proofbook = write_test_proofbook(project.path(), yaml);
+        let legacy_project = tempfile::tempdir().expect("legacy tempdir");
+        let legacy_proofbook = write_test_proofbook(legacy_project.path(), yaml);
+        let legacy_identity = crate::proofbook::ProofbookRunner::new()
+            .start_run(
+                &legacy_project.path().to_string_lossy(),
+                &legacy_proofbook,
+                serde_json::json!({}),
+            )
+            .expect("legacy identity baseline");
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let runner = crate::proofbook::ProofbookRunner::new();
+        let db = test_db();
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_proofbook_runner(crate::proofbook::ProofbookRunner::new());
-        let body = ToolCallBody {
-            name: "aelyris.proofbook.run".to_string(),
-            arguments: serde_json::json!({
-                "projectPath": project.path().to_string_lossy(),
-                "proofbookPath": proofbook,
-            }),
-        };
+            .with_proofbook_runner(runner.clone())
+            .with_db(Some(db.clone()));
+        let Json(schema_rejected) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "starter-agent",
+                ToolCallBody {
+                    name: "aelyris.proofbook.run".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project.path().to_string_lossy(),
+                        "proofbookPath": proofbook,
+                        "actor": "operator",
+                    }),
+                },
+            ))
+            .expect("caller-authored actor is a schema tool error");
+        assert_eq!(schema_rejected["ok"], false);
+        assert_eq!(
+            schema_rejected["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["actor"])
+        );
+        assert!(runner
+            .list_runs(&project.path().to_string_lossy())
+            .unwrap()
+            .is_empty());
+
         let Json(value) = rt
-            .block_on(tools_call(State(state), Json(body)))
+            .block_on(tools_call_as_actor(
+                &state,
+                "starter-agent",
+                ToolCallBody {
+                    name: "aelyris.proofbook.run".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project.path().to_string_lossy(),
+                        "proofbookPath": proofbook,
+                    }),
+                },
+            ))
             .expect("proofbook run dispatches");
         let ledger: crate::proofbook::ProofbookRunLedger =
             serde_json::from_value(value["result"].clone()).expect("ledger result");
 
+        assert_eq!(ledger.run_id, legacy_identity.run_id);
+        assert_eq!(ledger.definition_hash, legacy_identity.definition_hash);
+        assert_eq!(ledger.input_hash, legacy_identity.input_hash);
         assert_eq!(ledger.status, ProofbookRunStatus::Passed);
         assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Passed);
+        let created = ledger
+            .events
+            .iter()
+            .find(|event| event.kind == "run_created")
+            .expect("run-created event");
+        assert_eq!(created.actor.as_deref(), Some("starter-agent"));
+        assert_eq!(
+            created.message,
+            "Proofbook run ledger created by authenticated principal before step execution"
+        );
         let output = ledger.steps[0]
             .structured_output
             .as_ref()
@@ -1488,6 +1542,24 @@ settlement:
         assert_eq!(output["kind"], "mcpTool");
         assert_eq!(output["toolName"], "terminal.list");
         assert!(output["result"]["sessions"].is_array());
+
+        let audits = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("proofbook_run_start_observed".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read start audit");
+        assert_eq!(audits.len(), 1);
+        assert_eq!(audits[0].agent_id.as_deref(), Some("starter-agent"));
+        assert_eq!(audits[0].correlation_id, ledger.run_id);
+        assert_eq!(audits[0].redacted_payload_json["inputValuesLogged"], false);
+        assert_eq!(
+            audits[0].redacted_payload_json["inputHash"],
+            ledger.input_hash
+        );
     }
 
     #[test]

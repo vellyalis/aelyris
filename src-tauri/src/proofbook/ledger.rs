@@ -241,6 +241,16 @@ pub fn new_run_ledger(
     definition: &ProofbookDefinition,
     inputs: &serde_json::Value,
 ) -> Result<ProofbookRunLedger, ProofbookError> {
+    new_run_ledger_with_actor(project_root, definition_path, definition, inputs, None)
+}
+
+pub fn new_run_ledger_with_actor(
+    project_root: &Path,
+    definition_path: &str,
+    definition: &ProofbookDefinition,
+    inputs: &serde_json::Value,
+    actor: Option<&str>,
+) -> Result<ProofbookRunLedger, ProofbookError> {
     let definition_hash = hash_json(definition)?;
     let input_hash = hash_json(inputs)?;
     let run_id = deterministic_run_id(&definition.id, &definition_hash, &input_hash);
@@ -267,11 +277,16 @@ pub fn new_run_ledger(
         decisions: Vec::new(),
         residual_blockers: Vec::new(),
     };
-    ledger.append_event(
+    ledger.append_event_with_actor(
         "run_created",
         None,
-        "Proofbook run ledger created before step execution",
+        if actor.is_some() {
+            "Proofbook run ledger created by authenticated principal before step execution"
+        } else {
+            "Proofbook run ledger created before step execution"
+        },
         Some("pending".to_string()),
+        actor.map(str::to_string),
         None,
     );
     Ok(ledger)

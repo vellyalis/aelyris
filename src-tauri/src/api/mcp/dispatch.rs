@@ -576,6 +576,12 @@ fn mcp_proofbook_run(
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
     require_mcp_proofbook_effect_admitted(state, "Proofbook MCP start")?;
+    let actor = actor.trim();
+    if actor.is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated Proofbook initiating actor is unavailable".to_string(),
+        ));
+    }
     let runner = mcp_proofbook_runner(state)?;
     let project_path = arg_string(args, "projectPath")?;
     let proofbook_path = arg_string(args, "proofbookPath")?;
@@ -588,15 +594,49 @@ fn mcp_proofbook_run(
         actor: actor.to_string(),
     };
     let ledger = runner
-        .start_run_with_executors(
+        .start_run_with_executors_as_actor(
             &project_path,
             &proofbook_path,
             inputs,
+            actor,
             Some(&executor),
             Some(&executor),
         )
         .map_err(proofbook_error_to_api)?;
+    audit_proofbook_run_start(state, actor, &project_path, &proofbook_path, &ledger);
+    #[cfg(not(test))]
+    if let Some(app) = state.app_handle.as_ref() {
+        let _ = app.emit("proofbook-updated", &ledger);
+    }
     mcp_result_value(ledger)
+}
+
+fn audit_proofbook_run_start(
+    state: &ApiState,
+    actor: &str,
+    project_path: &str,
+    requested_proofbook_path: &str,
+    ledger: &crate::proofbook::ProofbookRunLedger,
+) {
+    append_proofbook_mcp_audit(
+        state,
+        actor,
+        &ledger.run_id,
+        "proofbook_run_start_observed",
+        "info",
+        serde_json::json!({
+            "projectPath": project_path,
+            "requestedProofbookPath": requested_proofbook_path,
+            "definitionPath": ledger.definition_path,
+            "runId": ledger.run_id,
+            "revision": ledger.revision,
+            "status": ledger.status,
+            "definitionHash": ledger.definition_hash,
+            "inputHash": ledger.input_hash,
+            "actor": actor,
+            "inputValuesLogged": false,
+        }),
+    );
 }
 
 fn mcp_proofbook_status(
@@ -762,6 +802,32 @@ fn audit_proofbook_current_cancellation(
     expected_revision: u64,
     ledger: &crate::proofbook::ProofbookRunLedger,
 ) {
+    append_proofbook_mcp_audit(
+        state,
+        actor,
+        run_id,
+        "proofbook_current_run_cancelled",
+        "warning",
+        serde_json::json!({
+            "projectPath": project_path,
+            "runId": run_id,
+            "expectedRevision": expected_revision,
+            "committedRevision": ledger.revision,
+            "status": ledger.status,
+            "actor": actor,
+            "externalProcessTerminationClaimed": false,
+        }),
+    );
+}
+
+fn append_proofbook_mcp_audit(
+    state: &ApiState,
+    actor: &str,
+    run_id: &str,
+    kind: &str,
+    severity: &str,
+    payload_json: serde_json::Value,
+) {
     let Some(db) = state.db.as_ref() else {
         return;
     };
@@ -775,22 +841,14 @@ fn audit_proofbook_current_cancellation(
         workflow_id: None,
         task_id: None,
         correlation_id: Some(run_id.to_string()),
-        kind: "proofbook_current_run_cancelled".to_string(),
-        severity: "warning".to_string(),
+        kind: kind.to_string(),
+        severity: severity.to_string(),
         source: "mcp".to_string(),
         confidence: None,
-        payload_json: serde_json::json!({
-            "projectPath": project_path,
-            "runId": run_id,
-            "expectedRevision": expected_revision,
-            "committedRevision": ledger.revision,
-            "status": ledger.status,
-            "actor": actor,
-            "externalProcessTerminationClaimed": false,
-        }),
+        payload_json,
     };
     if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
-        tracing::error!(run_id, actor, error = %error, "Proofbook cancellation audit failed");
+        tracing::error!(run_id, actor, kind, error = %error, "Proofbook MCP audit failed");
     }
 }
 
