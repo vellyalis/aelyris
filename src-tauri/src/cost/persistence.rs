@@ -18,6 +18,24 @@ pub struct CostCapsPersistenceError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
+#[error("{code}: {message}")]
+#[serde(rename_all = "camelCase")]
+pub struct CostCapsConflictError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl CostCapsConflictError {
+    pub(crate) fn stale() -> Self {
+        Self {
+            code: "stale_cost_caps",
+            message: "current caps changed; refresh with aelyris.cost.get_caps and retry"
+                .to_string(),
+        }
+    }
+}
+
 impl CostCapsPersistenceError {
     pub(crate) fn new(operation: &'static str, message: impl Into<String>) -> Self {
         Self {
@@ -42,6 +60,8 @@ pub enum CostCapsUpdateError {
     Validation(#[from] CostCapsValidationError),
     #[error(transparent)]
     Persistence(#[from] CostCapsPersistenceError),
+    #[error(transparent)]
+    Conflict(#[from] CostCapsConflictError),
 }
 
 pub(crate) fn load(
@@ -140,5 +160,14 @@ mod tests {
         assert_eq!(persistence_value["code"], "cost_caps_persistence_failed");
         assert_eq!(persistence_value["operation"], "persist");
         assert_eq!(persistence_value["message"], "database is read-only");
+
+        let conflict_value =
+            serde_json::to_value(CostCapsUpdateError::from(CostCapsConflictError::stale()))
+                .unwrap();
+        assert_eq!(conflict_value["code"], "stale_cost_caps");
+        assert!(conflict_value["message"]
+            .as_str()
+            .unwrap()
+            .contains("cost.get_caps"));
     }
 }

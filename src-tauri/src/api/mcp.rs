@@ -295,7 +295,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 87] = [
+    const FROZEN_A64_VERBS: [&str; 88] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -308,6 +308,7 @@ mod tests {
         "aelyris.worktree.remove",
         "aelyris.fleet_status",
         "aelyris.cost.get_caps",
+        "aelyris.cost.set_caps",
         "aelyris.route_agent",
         "aelyris.pane_send_input",
         "aelyris.agent_diff",
@@ -544,6 +545,261 @@ mod tests {
             missing,
             Err(ApiError::Internal(message)) if message.contains("cost manager is not attached")
         ));
+    }
+
+    #[test]
+    fn mcp_cost_set_caps_is_conflict_safe_principal_bound_and_value_free() {
+        use crate::cost::{CostCaps, CostCapsRestoreOutcome, CostManager};
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        fn wire(caps: CostCaps) -> serde_json::Value {
+            serde_json::to_value(caps).expect("serialize caps")
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let manager = Arc::new(CostManager::new());
+        assert_eq!(
+            manager.attach_db(db.as_ref().clone()),
+            CostCapsRestoreOutcome::Missing
+        );
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_db(Some(db.clone()))
+            .with_cost_manager(manager.clone());
+        let schema = input_schema_for_tool_ref("aelyris.cost.set_caps").unwrap();
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["expectedCaps", "caps"])
+        );
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(
+            schema["properties"]["caps"]["properties"]["max_runtime_secs"]["type"],
+            serde_json::json!(["integer", "null"])
+        );
+        let Json(listed) = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(tools_list());
+        let tool = listed["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.cost.set_caps")
+            .expect("cost set tool is cataloged");
+        assert_eq!(tool["safety"], "GATED");
+
+        let actor = "cost-cap-operator";
+        let initial = CostCaps::default();
+        let configured = CostCaps {
+            max_agents: Some(7),
+            max_tokens: Some(987_654_321),
+            max_cost_usd: Some(17.375),
+            max_runtime_secs: None,
+        };
+        let next = CostCaps {
+            max_agents: Some(8),
+            max_tokens: None,
+            max_cost_usd: Some(21.625),
+            max_runtime_secs: Some(7_654),
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, actor: &str, expected: CostCaps, replacement: CostCaps| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.cost.set_caps".to_string(),
+                    arguments: serde_json::json!({
+                        "expectedCaps": wire(expected),
+                        "caps": wire(replacement),
+                    }),
+                },
+            ))
+        };
+
+        assert!(matches!(
+            call(&state, "  ", initial, configured),
+            Err(ApiError::Forbidden(_))
+        ));
+        let Json(updated) = call(&state, actor, initial, configured).expect("conditional update");
+        assert_eq!(updated["result"]["caps"], wire(configured));
+        assert_eq!(updated["result"]["changed"], true);
+        assert_eq!(updated["result"]["source"], "shared-cost-manager");
+        assert_eq!(updated["result"]["providerBillingClaimed"], false);
+        assert_eq!(updated["result"]["unknownUsageZeroFilled"], false);
+        assert_eq!(manager.caps(), configured);
+
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(
+                    "CREATE TRIGGER reject_aio30_unchanged_write
+                     BEFORE UPDATE ON cost_caps_state
+                     BEGIN
+                         SELECT RAISE(ABORT, 'unchanged caps must not persist');
+                     END;",
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        let Json(unchanged) =
+            call(&state, actor, configured, configured).expect("unchanged CAS is a no-op");
+        assert_eq!(unchanged["result"]["changed"], false);
+        assert_eq!(manager.caps(), configured);
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch("DROP TRIGGER reject_aio30_unchanged_write;")
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+        let stale = call(&state, actor, initial, next);
+        assert!(matches!(
+            stale,
+            Err(ApiError::Conflict(message)) if message.contains("stale_cost_caps")
+        ));
+        assert_eq!(manager.caps(), configured);
+
+        let invalid = CostCaps {
+            max_agents: None,
+            ..configured
+        };
+        let validation = call(&state, actor, configured, invalid);
+        assert!(matches!(
+            validation,
+            Err(ApiError::BadRequest(message)) if message.contains("invalid_cost_caps")
+        ));
+        assert_eq!(manager.caps(), configured);
+
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(
+                    "CREATE TRIGGER reject_aio30_cost_caps_update
+                     BEFORE UPDATE ON cost_caps_state
+                     BEGIN
+                         SELECT RAISE(ABORT, 'simulated cost cap persistence failure');
+                     END;",
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        let persistence = call(&state, actor, configured, next);
+        assert!(matches!(
+            persistence,
+            Err(ApiError::Internal(message)) if message.contains("cost_caps_persistence_failed")
+        ));
+        assert_eq!(manager.caps(), configured);
+
+        let unavailable = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_db(Some(db.clone()));
+        let missing = call(&unavailable, actor, configured, next);
+        assert!(matches!(
+            missing,
+            Err(ApiError::Internal(message)) if message.contains("cost manager is not attached")
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_cost_caps_mutation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read cost cap mutation audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some(actor)));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            2
+        );
+        for outcome in [
+            "updated",
+            "unchanged",
+            "stale",
+            "validation_failed",
+            "persistence_failed",
+        ] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["outcome"] == outcome));
+        }
+        for code in [
+            "stale_cost_caps",
+            "invalid_cost_caps",
+            "cost_caps_persistence_failed",
+            "cost_manager_unavailable",
+        ] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["rejectionCode"] == code));
+        }
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["capValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["providerUsageLogged"], false);
+            assert_eq!(row.redacted_payload_json["providerBillingClaimed"], false);
+            assert_eq!(row.redacted_payload_json["unknownUsageZeroFilled"], false);
+            assert!(row.redacted_payload_json.get("caps").is_none());
+            assert!(row.redacted_payload_json.get("expectedCaps").is_none());
+            for field in ["expectedDigest", "replacementDigest"] {
+                let digest = row.redacted_payload_json[field]
+                    .as_str()
+                    .expect("cost cap digest");
+                assert_eq!(digest.len(), 64);
+                assert!(digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit()));
+            }
+            let audit_text = serde_json::to_string(row).unwrap();
+            for forbidden_key in [
+                "max_agents",
+                "max_tokens",
+                "max_cost_usd",
+                "max_runtime_secs",
+            ] {
+                assert!(
+                    !audit_text.contains(forbidden_key),
+                    "audit exposed cap field {forbidden_key}"
+                );
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let audit_failure_manager = Arc::new(CostManager::new());
+        assert_eq!(
+            audit_failure_manager.attach_db(audit_failure_db.as_ref().clone()),
+            CostCapsRestoreOutcome::Missing
+        );
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio30_cost_caps_audit
+                         BEFORE INSERT ON audit_event_journal
+                         WHEN NEW.kind = 'mcp_cost_caps_mutation_authority'
+                         BEGIN
+                             SELECT RAISE(ABORT, 'simulated cost cap audit failure');
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+                .with_db(Some(audit_failure_db))
+                .with_cost_manager(audit_failure_manager.clone());
+        let Json(audit_failure_result) = call(&audit_failure_state, actor, initial, configured)
+            .expect("audit failure does not replay or reject successful cap update");
+        assert_eq!(audit_failure_result["result"]["changed"], true);
+        assert_eq!(audit_failure_manager.caps(), configured);
     }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {

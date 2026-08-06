@@ -9,8 +9,8 @@
 pub mod manager;
 mod persistence;
 
-pub use manager::{CostCapsRestoreOutcome, CostManager};
-pub use persistence::{CostCapsPersistenceError, CostCapsUpdateError};
+pub use manager::{CostCapsConditionalUpdate, CostCapsRestoreOutcome, CostManager};
+pub use persistence::{CostCapsConflictError, CostCapsPersistenceError, CostCapsUpdateError};
 
 use serde::{Deserialize, Serialize};
 

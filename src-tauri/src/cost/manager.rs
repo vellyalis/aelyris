@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use crate::db::ManagedDb;
 
 use super::{
-    persistence, CostCaps, CostCapsPersistenceError, CostCapsPolicy, CostCapsUpdateError,
-    CostLimit, CostUsage, SpawnDecision,
+    persistence, CostCaps, CostCapsConflictError, CostCapsPersistenceError, CostCapsPolicy,
+    CostCapsUpdateError, CostLimit, CostUsage, SpawnDecision,
 };
 
 struct CostManagerState {
@@ -26,6 +26,12 @@ pub enum CostCapsRestoreOutcome {
     Missing,
     Restored(CostCaps),
     Rejected(CostCapsPersistenceError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CostCapsConditionalUpdate {
+    pub caps: CostCaps,
+    pub changed: bool,
 }
 
 /// Thread-safe owner of the configurable cost caps, managed in Tauri state.
@@ -93,6 +99,37 @@ impl CostManager {
         persistence::save(db, caps)?;
         state.caps = caps;
         Ok(caps)
+    }
+
+    /// Compare-and-set the one live cap owner under the same lock used by
+    /// Cockpit updates. A stale reader never overwrites a newer operator/AI
+    /// value, and persistence still succeeds before the live owner changes.
+    pub fn set_caps_if_current(
+        &self,
+        expected: CostCaps,
+        caps: CostCaps,
+    ) -> Result<CostCapsConditionalUpdate, CostCapsUpdateError> {
+        caps.validate_for_update(self.policy())?;
+        let mut state = self.lock();
+        if state.caps != expected {
+            return Err(CostCapsConflictError::stale().into());
+        }
+        if state.caps == caps {
+            return Ok(CostCapsConditionalUpdate {
+                caps: state.caps,
+                changed: false,
+            });
+        }
+        let db = state
+            .db
+            .as_ref()
+            .ok_or_else(CostCapsPersistenceError::unavailable)?;
+        persistence::save(db, caps)?;
+        state.caps = caps;
+        Ok(CostCapsConditionalUpdate {
+            caps,
+            changed: true,
+        })
     }
 
     pub fn can_spawn(&self, usage: &CostUsage) -> SpawnDecision {
@@ -190,6 +227,47 @@ mod tests {
                 if validation.field == "max_agents"
         ));
         assert_eq!(mgr.caps().max_agents, before.max_agents);
+    }
+
+    #[test]
+    fn conditional_update_rejects_stale_and_skips_unchanged_persistence() {
+        let (mgr, db) = durable_manager();
+        let original = mgr.caps();
+        let current = mgr
+            .set_caps(CostCaps {
+                max_agents: Some(6),
+                ..original
+            })
+            .unwrap();
+
+        let stale = mgr
+            .set_caps_if_current(
+                original,
+                CostCaps {
+                    max_agents: Some(8),
+                    ..current
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(stale, CostCapsUpdateError::Conflict(_)));
+        assert_eq!(mgr.caps(), current);
+
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(
+                    "CREATE TRIGGER reject_unchanged_cost_caps_update
+                     BEFORE UPDATE ON cost_caps_state
+                     BEGIN
+                         SELECT RAISE(ABORT, 'unchanged update must not write');
+                     END;",
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        let unchanged = mgr.set_caps_if_current(current, current).unwrap();
+        assert!(!unchanged.changed);
+        assert_eq!(unchanged.caps, current);
     }
 
     #[test]

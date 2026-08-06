@@ -29,6 +29,24 @@ static TOOL_SCHEMA_INDEX: LazyLock<HashMap<String, serde_json::Value>> = LazyLoc
     index
 });
 
+fn cost_caps_value_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "required": ["max_agents", "max_tokens", "max_cost_usd", "max_runtime_secs"],
+        "properties": {
+            "max_agents": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "maximum": crate::cost::MAX_CONFIGURED_AGENTS,
+            },
+            "max_tokens": { "type": ["integer", "null"], "minimum": 1 },
+            "max_cost_usd": { "type": ["number", "null"], "minimum": 0 },
+            "max_runtime_secs": { "type": ["integer", "null"], "minimum": 1 },
+        },
+        "additionalProperties": false,
+    })
+}
+
 fn build_tools_list_value() -> serde_json::Value {
     let mut catalog = serde_json::json!({
         "schema": "aelyris.mcp.server.v1",
@@ -1082,6 +1100,20 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.cost.set_caps",
+        "description": "Conflict-safe GATED update of the exact shared Cost Manager caps as the authenticated Principal. Requires the exact expectedCaps returned by cost.get_caps plus replacement caps; stale, validation, or persistence failure leaves the live owner unchanged. Null optional axes remain disabled, and authority evidence stores digests rather than cap values.",
+        "safety": "GATED",
+        "inputSchema": {
+            "type": "object",
+            "required": ["expectedCaps", "caps"],
+            "properties": {
+                "expectedCaps": cost_caps_value_schema(),
+                "caps": cost_caps_value_schema(),
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.proofbook.cancel_current",
         "description": "Cancel only the exact nonterminal Proofbook revision the authenticated principal observed. Stale revisions and terminal runs fail closed. This changes the ledger only and does not claim PTY or agent-process termination.",
         "safety": "GATED",
@@ -1259,18 +1291,19 @@ fn validate_json_schema_value(
     field: &str,
     report: &mut SchemaValidationReport,
 ) {
-    let expected_type = schema
-        .get("type")
-        .and_then(|value| value.as_str())
-        .unwrap_or("object");
-    if !json_value_matches_type(value, expected_type) {
+    let expected_types = schema_type_names(schema);
+    let matched_type = expected_types
+        .iter()
+        .copied()
+        .find(|expected| json_value_matches_type(value, expected));
+    let Some(expected_type) = matched_type else {
         report.wrong_type.push(SchemaTypeViolation {
             field: field.to_string(),
-            expected: expected_type.to_string(),
+            expected: expected_types.join(" or "),
             got: json_value_kind(value),
         });
         return;
-    }
+    };
 
     if let Some(allowed) = schema.get("enum").and_then(|value| value.as_array()) {
         if !allowed.iter().any(|allowed| allowed == value) {
@@ -1296,12 +1329,23 @@ fn validate_json_schema_value(
         "integer" => validate_schema_number_bounds(schema, value, field, report, "integer"),
         "number" => validate_schema_number_bounds(schema, value, field, report, "number"),
         "string" => validate_schema_string_bounds(schema, value, field, report),
-        "boolean" => {}
+        "boolean" | "null" => {}
         _ => report.wrong_type.push(SchemaTypeViolation {
             field: field.to_string(),
             expected: format!("supported JSON schema type, got `{expected_type}`"),
             got: json_value_kind(value),
         }),
+    }
+}
+
+fn schema_type_names(schema: &serde_json::Value) -> Vec<&str> {
+    match schema.get("type") {
+        Some(serde_json::Value::String(value)) => vec![value.as_str()],
+        Some(serde_json::Value::Array(values)) => values
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect(),
+        _ => vec!["object"],
     }
 }
 
@@ -1422,6 +1466,7 @@ fn json_value_matches_type(value: &serde_json::Value, expected: &str) -> bool {
         "boolean" => value.is_boolean(),
         "number" => value.is_number(),
         "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+        "null" => value.is_null(),
         _ => false,
     }
 }
@@ -1486,15 +1531,30 @@ fn assert_schema_subset(schema: &serde_json::Value, field: &str, violations: &mu
             violations.push(format!("{field}: unsupported schema key `{key}`"));
         }
     }
-    let Some(schema_type) = object.get("type").and_then(|value| value.as_str()) else {
-        violations.push(format!("{field}: schema type must be a string"));
-        return;
+    let schema_types = match object.get("type") {
+        Some(serde_json::Value::String(value)) => vec![value.as_str()],
+        Some(serde_json::Value::Array(values))
+            if !values.is_empty() && values.iter().all(serde_json::Value::is_string) =>
+        {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<Vec<_>>()
+        }
+        _ => {
+            violations.push(format!(
+                "{field}: schema type must be a string or non-empty string array"
+            ));
+            return;
+        }
     };
-    if !matches!(
-        schema_type,
-        "object" | "array" | "string" | "integer" | "number" | "boolean"
-    ) {
-        violations.push(format!("{field}: unsupported schema type `{schema_type}`"));
+    for schema_type in schema_types {
+        if !matches!(
+            schema_type,
+            "object" | "array" | "string" | "integer" | "number" | "boolean" | "null"
+        ) {
+            violations.push(format!("{field}: unsupported schema type `{schema_type}`"));
+        }
     }
     if let Some(properties) = object.get("properties") {
         let Some(properties) = properties.as_object() else {

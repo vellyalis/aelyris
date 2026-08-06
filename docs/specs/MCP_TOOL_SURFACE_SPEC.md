@@ -358,6 +358,7 @@ Conventions for **FREE / GATED** (the safety boundary, see §4):
 | Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
 |------|-----------|---------|------------|-------|
 | `aelyris.cost.get_caps` | **params** `{}` → **return** `{ caps: CostCaps, policy: CostCapsPolicy, source: "shared-cost-manager", telemetryBoundary: "reported_aelyris_telemetry", providerBillingClaimed: false, unknownUsageZeroFilled: false, readOnly: true }` | shared `CostManager::caps` / `CostManager::policy` | FREE | Reads the exact live owner used by Cockpit and orchestration. `null` remains a disabled cap; the response never turns unknown usage into zero and never claims provider invoice truth. |
+| `aelyris.cost.set_caps` | **params** `{ expectedCaps: CostCaps, caps: CostCaps }` → **return** `{ caps: CostCaps, policy: CostCapsPolicy, changed: boolean, source: "shared-cost-manager", telemetryBoundary: "reported_aelyris_telemetry", providerBillingClaimed: false, unknownUsageZeroFilled: false }` | shared `CostManager::set_caps_if_current` | GATED | Compares expected, persists, and updates live caps under the one manager lock. Stale, invalid, or persistence-failed requests leave the owner unchanged. Optional axes accept explicit `null`; `max_agents` remains bounded and required by the existing policy. Authority evidence contains only expected/replacement digests and changed/stale outcome. |
 
 ### 3.2.2 Session lifecycle domain (GATED)
 

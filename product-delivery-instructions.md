@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-30`.
-LAST COMPLETED SLICE: `AIO-29`.
-NEXT IMPLEMENTATION SLICE: `AIO-30`.
+ACTIVE SLICE: `AIO-31`.
+LAST COMPLETED SLICE: `AIO-30`.
+NEXT IMPLEMENTATION SLICE: `AIO-31`.
 
 ```yaml
 continuation_contract:
@@ -87,7 +87,8 @@ Current portfolio classification:
 | Remaining MCP Proofbook mutation evidence | **COMPLETE** | Compatibility caller-proof settlement and cancellation now retain the authenticated initiating Principal through proof-free ledger outcome evidence |
 | MCP runtime-owned Proofbook settlement evidence | **COMPLETE** | Exact current runtime-owned settlement now retains the authenticated initiating Principal through runtime-identity-free evidence without accepting a caller proof |
 | MCP cost-cap read access | **COMPLETE** | Authenticated AI reads the exact shared live caps/policy with disabled axes preserved as null and no provider-billing claim |
-| MCP conflict-safe cost-cap updates | **NOW** | The shared Cost Manager persists validated caps, but AI cannot safely update them through MCP without a stale-write guard and Principal-bound evidence |
+| MCP conflict-safe cost-cap updates | **COMPLETE** | Exact expected/replacement caps are compared and persisted under the shared manager lock, with stale writes and raw cap audit rejected |
+| MCP honest cost-admission preview | **NOW** | AI can read and update caps, but cannot ask the shared Cost Manager for a truthful next-spawn decision without risking unknown telemetry being represented as zero |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1470,7 +1471,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated, stale-write-safe updates to the
 one durable Cost Manager used by Cockpit and orchestration.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one `aelyris.cost.set_caps` GATED MCP adapter over the existing `CostManager`,
   durable SQLite singleton, `CostCaps::validate_for_update`, Governance, and audit
@@ -1489,6 +1490,29 @@ Status: **ACTIVE**.
   stale, validation, and persistence failures must leave the current owner unchanged.
 - Done: an authorized AI can deliberately update the same durable caps the operator
   sees, while concurrent edits and misleading telemetry assumptions fail closed.
+
+### AIO-31 — MCP Honest Cost-Admission Preview
+
+Capability target: `Product-Accessible` authenticated read-only preview of whether one
+more agent may start under the exact live caps, without treating unknown reported usage
+as zero.
+Status: **ACTIVE**.
+
+- Add one `aelyris.cost.can_spawn` FREE MCP adapter over the existing
+  `CostManager::can_spawn`, Governance, and principal-scoped discovery. Do not add a
+  usage store, estimator, billing adapter, admission owner, or second decision model.
+- Require `active_agents` and explicit nullable `tokens_used`, `cost_usd`, and
+  `runtime_secs`. When a corresponding live cap is enabled and its usage is null,
+  return `evaluable:false` with the unknown axes and no spawn decision. Never substitute
+  zero for required-but-unreported telemetry.
+- When every enabled cap axis is known, call the existing Cost Manager once and return
+  its `SpawnDecision`, the evaluated axes, and the truthful reported-telemetry boundary.
+  Disabled cap axes may remain null because they cannot affect the decision.
+- Keep the verb read-only and independently authorized. Do not expose provider payloads,
+  invoices, environment values, audit internals, or claim unreported consumption.
+- Done: an authenticated AI can decide whether its next spawn is admissible using the
+  same owner as Cockpit/orchestration, or receive an explicit not-evaluable result when
+  required telemetry is unknown.
 
 ## Deferred After GMV
 
@@ -1525,7 +1549,8 @@ Principal-bound MCP session-lifecycle evidence `AIO-26` is also complete. Princi
 bound remaining MCP Proofbook mutation evidence `AIO-27` is also complete. Principal-
 bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is also complete. MCP
 cost-cap read access `AIO-29` is also complete. Principal-bound conflict-safe MCP
-cost-cap updates `AIO-30` are active;
+cost-cap updates `AIO-30` are also complete. MCP honest cost-admission preview `AIO-31`
+is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

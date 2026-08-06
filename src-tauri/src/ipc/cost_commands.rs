@@ -6,7 +6,7 @@ use crate::cost::{
     CostCaps, CostCapsPolicy, CostCapsUpdateError, CostManager, CostUsage, SpawnDecision,
 };
 
-const COST_CAPS_UPDATED: &str = "cost-caps-updated";
+pub(crate) const COST_CAPS_UPDATED: &str = "cost-caps-updated";
 
 /// Current cost caps (for the settings/cockpit surface).
 #[tauri::command]
