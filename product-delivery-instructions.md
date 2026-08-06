@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-22`.
-LAST COMPLETED SLICE: `AIO-21`.
-NEXT IMPLEMENTATION SLICE: `AIO-22`.
+ACTIVE SLICE: `AIO-23`.
+LAST COMPLETED SLICE: `AIO-22`.
+NEXT IMPLEMENTATION SLICE: `AIO-23`.
 
 ```yaml
 continuation_contract:
@@ -79,7 +79,8 @@ Current portfolio classification:
 | MCP knowledge-graph mutation evidence | **COMPLETE** | Node/edge add/remove now retain the authenticated initiating Principal separately from structural values, using one-way graph digests and explicit changed/no-op outcomes |
 | MCP agent coordination mutation evidence | **COMPLETE** | Activity, blocker, and ownership-derived avoid steering now retain the authenticated initiating Principal through live-session checks and payload-free mutation/publication evidence |
 | MCP durable event acknowledgement evidence | **COMPLETE** | Durable ACK now retains the authenticated initiating Principal separately from consumer/event identity, with one-way delivery digests and exact cursor outcomes |
-| MCP human approval resolution evidence | **NOW** | AI can resolve a live approval only with the separate human capability and prompt fingerprint, but the authenticated initiating Principal is not retained separately in value-minimized authority evidence |
+| MCP human approval resolution evidence | **COMPLETE** | Live approval routing now retains the authenticated Principal while preserving the independent human capability, exact prompt fingerprint, single-use core, and value-free authority evidence |
+| MCP orchestrator-step execution evidence | **NOW** | AI can run the existing bounded orchestration step, but repo/usage are caller-selected domain inputs and the authenticated initiating Principal is not retained separately across the multi-owner result |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -97,7 +98,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-21` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-22` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1255,7 +1256,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` live approval resolution whose initiating
 identity comes from the authenticated MCP Principal while terminal, decision, prompt
 fingerprint, and human-capability values remain approval-domain data.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.approval.resolve` adapter, terminal-reference resolver,
   human approval capability check, live prompt fingerprint owner, interactive approval
@@ -1276,6 +1277,33 @@ Status: **ACTIVE**.
 - Done: an authenticated AI possessing the independently verified human capability can
   resolve the existing live approval, and the effect is attributable without exposing
   approval or capability values.
+
+### AIO-23 — Principal-Bound MCP Orchestrator Step Evidence
+
+Capability target: `Product-Accessible` bounded autonomy-step execution whose
+initiating identity comes from the authenticated MCP Principal while repository and
+reported usage remain orchestration-domain inputs.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.orchestrator.step` adapter,
+  `control::loop_ports::run_step`, startup reconciliation, Task Manager, Cost Manager,
+  Agent Manager, file/symbol ownership, Event Bus, Context Store, merge-intent store,
+  Governance, and durable audit journal. Do not add an orchestrator, scheduler, task
+  graph, effect runner, actor field, identity store, or AI-only autonomy path.
+- Keep caller-supplied repository path and active-agent usage as orchestration inputs.
+  They scope the existing step but do not define the initiating actor.
+- Preserve startup admission, cost/fleet limits, scheduling and ownership gates,
+  existing dispatch/review/merge authority, durable give-up behavior, typed errors, and
+  `run_step` as the sole multi-owner execution authority.
+- Retain accepted/rejected audit with actor, operation, aggregate report outcome/counts
+  when known, and stable one-way repository/input digests. Do not persist raw repository
+  paths, task/session/agent ids, task packets, prompts, commands, branch/worktree names,
+  Event Bus payloads, bearer values, environment values, or repository contents.
+- Failure or audit-write failure must remain explicit without replaying the autonomy
+  step, fabricating another report, or attempting to roll back already-owned effects.
+- Done: an authenticated AI can invoke the existing bounded orchestrator step, and the
+  multi-owner result is attributable without leaking execution targets or creating a
+  second autonomy engine.
 
 ## Deferred After GMV
 
@@ -1304,8 +1332,9 @@ and Principal-bound MCP context decision mutation evidence `AIO-17` are also com
 Principal-bound MCP intent mutation evidence `AIO-18` is also complete.
 Principal-bound MCP knowledge-graph mutation evidence `AIO-19`, Principal-bound MCP
 agent coordination mutation evidence `AIO-20`, and Principal-bound MCP durable event
-acknowledgement evidence `AIO-21` are also complete. Principal-bound MCP human approval
-resolution evidence `AIO-22` is active;
+acknowledgement evidence `AIO-21` and Principal-bound MCP human approval resolution
+evidence `AIO-22` are also complete. Principal-bound MCP orchestrator-step execution
+evidence `AIO-23` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

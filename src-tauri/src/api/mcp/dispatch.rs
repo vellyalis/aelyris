@@ -121,7 +121,7 @@ fn arg_optional_object_value(
 }
 
 #[cfg(not(test))]
-fn mcp_app_handle(state: &ApiState) -> ApiResult<tauri::AppHandle> {
+pub(super) fn mcp_app_handle(state: &ApiState) -> ApiResult<tauri::AppHandle> {
     state.app_handle.clone().ok_or_else(|| {
         ApiError::Internal(
             "session lifecycle runtime is not attached to this MCP process".to_string(),
@@ -267,72 +267,7 @@ async fn mcp_session_reset_context(
 }
 
 #[cfg(not(test))]
-async fn mcp_approval_resolve(
-    state: &ApiState,
-    args: &serde_json::Map<String, serde_json::Value>,
-) -> ApiResult<Result<(), String>> {
-    let app = mcp_app_handle(state)?;
-    let terminal_ref = arg_string(args, "terminalId")?;
-    // Unknown %N / terminal refs are TOOL errors (ok:false, aelys exit 2) —
-    // same contract as pane.rename/set_role, not an HTTP 400 transport error.
-    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
-        Ok(terminal_id) => terminal_id,
-        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
-        Err(err) => return Err(err),
-    };
-    let decision = arg_string(args, "decision")?;
-    let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
-    let human_capability = arg_string(args, "humanApprovalCapability")?;
-    if !state.auth.verify_input_authority(Some(&human_capability)) {
-        return Ok(Err(
-            "approval_capability_required: bearer API possession cannot resolve a human approval"
-                .to_string(),
-        ));
-    }
-    Ok(crate::ipc::resolve_interactive_approval_core(
-        app,
-        terminal_id,
-        decision,
-        Some(expected_prompt_key),
-    )
-    .await)
-}
-
-#[cfg(test)]
-async fn mcp_approval_resolve(
-    state: &ApiState,
-    args: &serde_json::Map<String, serde_json::Value>,
-) -> ApiResult<Result<(), String>> {
-    let terminal_ref = arg_string(args, "terminalId")?;
-    // Mirror the non-test path so the %N-miss tool-error contract is
-    // exercised by tests.
-    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
-        Ok(terminal_id) => terminal_id,
-        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
-        Err(err) => return Err(err),
-    };
-    let _decision = arg_string(args, "decision")?;
-    let expected_prompt_key = arg_string(args, "expectedPromptKey")?;
-    let _human_capability = arg_string(args, "humanApprovalCapability")?;
-    if expected_prompt_key == "stale-test" {
-        Ok(Err(
-            "stale_approval: prompt fingerprint changed for session test".to_string(),
-        ))
-    } else {
-        Ok(Ok(()))
-    }
-}
-
-fn approval_resolve_error_payload(err: &str) -> serde_json::Value {
-    if err.contains("stale_approval") {
-        serde_json::json!({ "stale_approval": err })
-    } else {
-        serde_json::json!({ "error": err })
-    }
-}
-
-#[cfg(not(test))]
-fn resolve_mcp_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<String> {
+pub(super) fn resolve_mcp_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<String> {
     let trimmed = reference.trim();
     if !trimmed.starts_with('%') {
         return Ok(trimmed.to_string());
@@ -344,7 +279,7 @@ fn resolve_mcp_terminal_ref(state: &ApiState, reference: &str) -> ApiResult<Stri
 }
 
 #[cfg(test)]
-fn resolve_mcp_terminal_ref(_state: &ApiState, reference: &str) -> ApiResult<String> {
+pub(super) fn resolve_mcp_terminal_ref(_state: &ApiState, reference: &str) -> ApiResult<String> {
     let trimmed = reference.trim();
     if trimmed == "%404" {
         return Err(ApiError::BadRequest(format!(
@@ -4140,15 +4075,9 @@ pub(super) async fn dispatch_authorized(
                 "grantToolExposed": false,
             })
         }
-        "aelyris.approval.resolve" => match mcp_approval_resolve(&state, &args).await? {
-            Ok(()) => serde_json::json!({ "ok": true }),
-            Err(err) => {
-                return Ok(schema_tool_error(
-                    &name,
-                    approval_resolve_error_payload(&err),
-                ));
-            }
-        },
+        "aelyris.approval.resolve" => {
+            return super::approval_resolution::resolve(&state, actor, &args).await;
+        }
         "aelyris.pane.rename" => match mcp_pane_rename(&state, actor, &args)? {
             Ok(()) => serde_json::json!({ "ok": true }),
             Err(err) => {

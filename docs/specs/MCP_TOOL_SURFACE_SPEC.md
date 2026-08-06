@@ -524,7 +524,15 @@ orchestrator (Face 2)                 watchdog engine                 human (Fac
   rule mutation is not in the MCP catalog.
 - `AskUser` → the item shows up in the human Decision Inbox as one of the
   `HumanDecisionType` values (`src/shared/lib/decisionInbox.ts:5-12`). Only a
-  human action there resolves it.
+  human-authorized action resolves it, either directly in Face 1 or through the
+  independently authorized routing adapter below.
+- `aelyris.approval.resolve` is a routing adapter for that same human action, not
+  a bearer-authorized AI grant. It requires the independently configured human
+  approval capability in addition to the authenticated Principal and the exact
+  current prompt fingerprint. The MCP adapter calls the existing single-use
+  interactive approval core and records only Principal, result class, and
+  one-way terminal/prompt/input digests. It never stores or hashes capability
+  material, decision values, prompt text/keys, terminal ids, or terminal content.
 
 ### 4.3 Defense in depth: spawned agents are themselves gated
 
@@ -537,11 +545,12 @@ the orchestrator cannot escalate past the human gate — every privileged tool t
 
 ### 4.4 Invariant (must hold in tests)
 
-> There exists no MCP tool, and no tool parameter, by which the orchestrator can
-> transition a `permission_required` / `merge_conflict_strategy` /
-> `destructive_operation` decision from `pending` to `decided`. The only writers
-> of that transition are (a) the watchdog engine's auto rules and (b) a human
-> action in Face 1.
+> There exists no MCP call authenticated only by the public bearer by which the
+> orchestrator can transition a `permission_required` /
+> `merge_conflict_strategy` / `destructive_operation` decision from `pending` to
+> `decided`. The only writers are (a) watchdog auto rules and (b) the existing
+> Face 1 human action, optionally routed through `aelyris.approval.resolve` with
+> the separate human approval capability and exact live prompt fingerprint.
 
 ---
 

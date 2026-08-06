@@ -450,7 +450,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.approval.resolve",
-                "description": "Resolve the current interactive approval menu for a visible terminal using the same fingerprint-checked core as the Decision Inbox. Stale or missing prompt fingerprints fail closed.",
+                "description": "Resolve the current interactive approval menu as the authenticated Principal, but only when the independently verified human approval capability is also supplied. Uses the same terminal lock, current prompt fingerprint, waiting-approval fence, single-use write authority, and decision validation as the Decision Inbox. Authority evidence stores only one-way terminal/prompt/input digests and result class; decision, prompt, terminal, and capability material remain excluded.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",

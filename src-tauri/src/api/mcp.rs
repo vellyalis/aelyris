@@ -2,6 +2,7 @@ use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
 
 mod agent_coordination;
+mod approval_resolution;
 mod catalog;
 mod dispatch;
 mod event_ack;
@@ -606,7 +607,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(
             crate::pty::PtyManager::new(),
-            crate::api::AuthConfig::with_token("t"),
+            crate::api::AuthConfig::with_token("t").with_input_authority_token("human-test"),
         );
 
         let call = |arguments: serde_json::Value| {
@@ -652,6 +653,267 @@ mod tests {
             missing_prompt["error"]["schema_violation"]["missing"],
             serde_json::json!(["expectedPromptKey"])
         );
+    }
+
+    #[test]
+    fn mcp_approval_resolution_audit_is_principal_bound_and_value_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let approval_authority = "AIO22_AUTHORITY_MATERIAL_MUST_NOT_BE_LOGGED";
+        let invalid_authority = "AIO22_INVALID_AUTHORITY_MUST_NOT_BE_LOGGED";
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("AIO22_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED")
+                .with_input_authority_token(approval_authority),
+        )
+        .with_db(Some(db.clone()));
+        let schema = input_schema_for_tool_ref("aelyris.approval.resolve").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "approval-operator",
+                ToolCallBody {
+                    name: "aelyris.approval.resolve".to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let terminal = "AIO22_TERMINAL_MUST_NOT_BE_LOGGED";
+        let prompt = "AIO22_PROMPT_KEY_MUST_NOT_BE_LOGGED";
+
+        let Json(accepted) = call(
+            &state,
+            serde_json::json!({
+                "terminalId": terminal,
+                "decision": "approve",
+                "expectedPromptKey": prompt,
+                "humanApprovalCapability": approval_authority,
+            }),
+        )
+        .expect("valid approval resolution succeeds");
+        assert_eq!(accepted["ok"], true);
+        assert_eq!(accepted["result"]["ok"], true);
+
+        let Json(stale) = call(
+            &state,
+            serde_json::json!({
+                "terminalId": terminal,
+                "decision": "deny",
+                "expectedPromptKey": "stale-test",
+                "humanApprovalCapability": approval_authority,
+            }),
+        )
+        .expect("stale prompt remains a typed tool error");
+        assert_eq!(stale["ok"], false);
+        assert!(stale["error"]["stale_approval"]
+            .as_str()
+            .is_some_and(|value| value.contains("stale_approval")));
+
+        let Json(authority_rejected) = call(
+            &state,
+            serde_json::json!({
+                "terminalId": terminal,
+                "decision": "approve",
+                "expectedPromptKey": prompt,
+                "humanApprovalCapability": invalid_authority,
+            }),
+        )
+        .expect("invalid independent authority remains a typed tool error");
+        assert_eq!(authority_rejected["ok"], false);
+        assert!(authority_rejected["error"]["error"]
+            .as_str()
+            .is_some_and(|value| value.contains("approval_capability_required")));
+
+        let invalid_decision = "AIO22_INVALID_DECISION_MUST_NOT_BE_LOGGED";
+        let Json(decision_rejected) = call(
+            &state,
+            serde_json::json!({
+                "terminalId": terminal,
+                "decision": invalid_decision,
+                "expectedPromptKey": prompt,
+                "humanApprovalCapability": approval_authority,
+            }),
+        )
+        .expect("invalid decision remains a typed tool error");
+        assert_eq!(decision_rejected["ok"], false);
+        assert_eq!(
+            decision_rejected["error"]["schema_violation"]["wrong_type"][0]["field"],
+            "decision"
+        );
+        assert!(
+            decision_rejected["error"]["schema_violation"]["wrong_type"][0]["expected"]
+                .as_str()
+                .is_some_and(|value| value.contains("approve") && value.contains("deny"))
+        );
+
+        let invalid_terminal = "%404";
+        let Json(terminal_rejected) = call(
+            &state,
+            serde_json::json!({
+                "terminalId": invalid_terminal,
+                "decision": "approve",
+                "expectedPromptKey": prompt,
+                "humanApprovalCapability": approval_authority,
+            }),
+        )
+        .expect("invalid terminal reference remains a typed tool error");
+        assert_eq!(terminal_rejected["ok"], false);
+        assert!(terminal_rejected["error"]["error"]
+            .as_str()
+            .is_some_and(|value| value.contains("unknown terminal reference")));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_approval_resolution_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read approval resolution audit");
+        assert_eq!(rows.len(), 4);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.terminal_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("approval-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            1
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            3
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["resultClass"] == "resolved"
+                && row.redacted_payload_json["authorityVerified"] == true
+                && row.redacted_payload_json["resolutionApplied"] == true
+        }));
+        for code in [
+            "stale_approval",
+            "approval_capability_required",
+            "terminal_reference_invalid",
+        ] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["rejectionCode"] == code));
+        }
+        let accepted_input_digest = rows
+            .iter()
+            .find(|row| row.redacted_payload_json["status"] == "accepted")
+            .and_then(|row| row.redacted_payload_json["inputDigest"].as_str())
+            .expect("accepted input digest");
+        let authority_rejected_input_digest = rows
+            .iter()
+            .find(|row| {
+                row.redacted_payload_json["rejectionCode"] == "approval_capability_required"
+            })
+            .and_then(|row| row.redacted_payload_json["inputDigest"].as_str())
+            .expect("authority rejection input digest");
+        assert_eq!(accepted_input_digest, authority_rejected_input_digest);
+        let terminal_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["terminalDigest"]
+                    .as_str()
+                    .expect("terminal digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let prompt_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["promptDigest"]
+                    .as_str()
+                    .expect("prompt digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("approval input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(terminal_digests.len(), 2);
+        assert_eq!(prompt_digests.len(), 2);
+        assert_eq!(input_digests.len(), 3);
+        assert!(terminal_digests
+            .iter()
+            .chain(prompt_digests.iter())
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        let authority_digest = crate::command_risk::approval::command_hash(approval_authority);
+        let invalid_authority_digest =
+            crate::command_risk::approval::command_hash(invalid_authority);
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["approvalValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["authorityMaterialLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                terminal,
+                prompt,
+                approval_authority,
+                invalid_authority,
+                invalid_decision,
+                invalid_terminal,
+                authority_digest.as_str(),
+                invalid_authority_digest.as_str(),
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio22_approval_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_approval_resolution_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated approval audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("public-audit-failure")
+                .with_input_authority_token(approval_authority),
+        )
+        .with_db(Some(audit_failure_db));
+        let Json(audit_failure_result) = call(
+            &audit_failure_state,
+            serde_json::json!({
+                "terminalId": "AIO22_AUDIT_FAILURE_TERMINAL_MUST_NOT_BE_LOGGED",
+                "decision": "approve",
+                "expectedPromptKey": "AIO22_AUDIT_FAILURE_PROMPT_MUST_NOT_BE_LOGGED",
+                "humanApprovalCapability": approval_authority,
+            }),
+        )
+        .expect("audit failure does not create another approval result");
+        assert_eq!(audit_failure_result["ok"], true);
+        assert_eq!(audit_failure_result["result"]["ok"], true);
     }
 
     #[test]

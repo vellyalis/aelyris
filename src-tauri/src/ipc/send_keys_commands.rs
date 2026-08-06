@@ -239,6 +239,32 @@ pub(crate) async fn resolve_interactive_approval_core(
     decision: String,
     expected_prompt_key: Option<String>,
 ) -> Result<(), String> {
+    resolve_interactive_approval_core_impl(app, terminal_id, decision, expected_prompt_key, true)
+        .await
+}
+
+/// The authenticated MCP adapter owns its own Principal-bound, value-minimized
+/// authority evidence. It still executes the exact same single-use approval
+/// core, but suppresses the Decision Inbox's UI-oriented audit row so the MCP
+/// path does not duplicate or persist terminal/decision values.
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn resolve_interactive_approval_core_without_inbox_audit(
+    app: AppHandle,
+    terminal_id: String,
+    decision: String,
+    expected_prompt_key: Option<String>,
+) -> Result<(), String> {
+    resolve_interactive_approval_core_impl(app, terminal_id, decision, expected_prompt_key, false)
+        .await
+}
+
+async fn resolve_interactive_approval_core_impl(
+    app: AppHandle,
+    terminal_id: String,
+    decision: String,
+    expected_prompt_key: Option<String>,
+    record_inbox_audit: bool,
+) -> Result<(), String> {
     let approve = match decision.as_str() {
         "approve" => true,
         "deny" => false,
@@ -265,20 +291,22 @@ pub(crate) async fn resolve_interactive_approval_core(
             .id;
 
     // Audit the INTENT before the write so a crash mid-delivery still leaves a trace.
-    record_audit_event(
-        &app,
-        "agent",
-        "approval_resolved",
-        "info",
-        Some("terminal"),
-        Some(&terminal_id),
-        "Interactive approval resolved from Decision Inbox",
-        serde_json::json!({
-            "decision": if approve { "approve" } else { "deny" },
-            "bytes": keystroke.len(),
-            "redacted": true,
-        }),
-    );
+    if record_inbox_audit {
+        record_audit_event(
+            &app,
+            "agent",
+            "approval_resolved",
+            "info",
+            Some("terminal"),
+            Some(&terminal_id),
+            "Interactive approval resolved from Decision Inbox",
+            serde_json::json!({
+                "decision": if approve { "approve" } else { "deny" },
+                "bytes": keystroke.len(),
+                "redacted": true,
+            }),
+        );
+    }
     let ack = terminal_write_authorized_async(
         &app,
         &terminal_id,
