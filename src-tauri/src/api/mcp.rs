@@ -1451,7 +1451,7 @@ settlement:
     }
 
     #[test]
-    fn proofbook_gated_mcp_tool_waits_and_stale_gate_hash_fails_closed() {
+    fn proofbook_gate_decision_actor_is_authenticated_and_stale_hash_fails_closed() {
         use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
         use crate::pty::PtyManager;
 
@@ -1473,8 +1473,9 @@ settlement:
 "#,
         );
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let runner = crate::proofbook::ProofbookRunner::new();
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
-            .with_proofbook_runner(crate::proofbook::ProofbookRunner::new());
+            .with_proofbook_runner(runner.clone());
         let body = ToolCallBody {
             name: "aelyris.proofbook.run".to_string(),
             arguments: serde_json::json!({
@@ -1483,7 +1484,7 @@ settlement:
             }),
         };
         let Json(value) = rt
-            .block_on(tools_call(State(state.clone()), Json(body)))
+            .block_on(tools_call_as_actor(&state, "reader-agent", body))
             .expect("proofbook run dispatches");
         let ledger: crate::proofbook::ProofbookRunLedger =
             serde_json::from_value(value["result"].clone()).expect("ledger result");
@@ -1505,23 +1506,89 @@ settlement:
             1,
             "GATED mcpTool creates a pending decision projection",
         );
+        let gate_id = output["gateId"].as_str().unwrap().to_string();
+        let gate_hash = output["gateHash"].as_str().unwrap().to_string();
+
+        for tool in [
+            "aelyris.proofbook.approve_gate",
+            "aelyris.proofbook.reject_gate",
+        ] {
+            let spoofed = rt.block_on(tools_call_as_actor(
+                &state,
+                "reader-agent",
+                ToolCallBody {
+                    name: tool.to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project.path().to_string_lossy(),
+                        "runId": ledger.run_id,
+                        "gateId": gate_id,
+                        "gateHash": gate_hash,
+                        "actor": "operator",
+                    }),
+                },
+            ));
+            assert!(
+                matches!(spoofed, Err(ApiError::Forbidden(message)) if message.contains("authenticated principal")),
+                "{tool} must reject caller-authored actor impersonation"
+            );
+        }
+        let unchanged = runner
+            .status(&project.path().to_string_lossy(), &ledger.run_id)
+            .expect("spoofed decisions leave the ledger unchanged");
+        assert_eq!(unchanged.status, ProofbookRunStatus::WaitingGate);
+        assert_eq!(unchanged.steps[0].status, ProofbookStepStatus::WaitingGate);
+        assert!(unchanged.decisions.is_empty());
 
         let stale = ToolCallBody {
             name: "aelyris.proofbook.approve_gate".to_string(),
             arguments: serde_json::json!({
                 "projectPath": project.path().to_string_lossy(),
                 "runId": ledger.run_id,
-                "gateId": output["gateId"].as_str().unwrap(),
+                "gateId": gate_id,
                 "gateHash": "sha256:stale",
             }),
         };
-        let result = rt.block_on(tools_call(State(state), Json(stale)));
+        let result = rt.block_on(tools_call_as_actor(&state, "reader-agent", stale));
         match result {
             Err(ApiError::BadRequest(message)) => {
                 assert!(message.contains("StaleGateHash"), "{message}")
             }
             other => panic!("expected stale hash BadRequest, got {other:?}"),
         }
+
+        let Json(approved) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "reader-agent",
+                ToolCallBody {
+                    name: "aelyris.proofbook.approve_gate".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project.path().to_string_lossy(),
+                        "runId": ledger.run_id,
+                        "gateId": gate_id,
+                        "gateHash": gate_hash,
+                        "comment": "approved by the authenticated caller",
+                    }),
+                },
+            ))
+            .expect("exact current gate may be approved by its authenticated caller");
+        let approved: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(approved["result"].clone()).expect("approved ledger");
+        assert_eq!(approved.status, ProofbookRunStatus::Passed);
+        assert_eq!(approved.decisions.len(), 1);
+        assert_eq!(approved.decisions[0].actor, "reader-agent");
+        assert_eq!(
+            approved.decisions[0].comment,
+            "approved by the authenticated caller"
+        );
+        assert_eq!(
+            approved.steps[0]
+                .gate_decision
+                .as_ref()
+                .expect("step decision")
+                .actor,
+            "reader-agent"
+        );
     }
 
     /// The pane-input byte ceiling lives once in `WS_MAX_INPUT_FRAME_BYTES`

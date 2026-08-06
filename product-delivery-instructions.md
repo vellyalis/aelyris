@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-3`.
-LAST COMPLETED SLICE: `AIO-2`.
-NEXT IMPLEMENTATION SLICE: `AIO-3`.
+ACTIVE SLICE: `AIO-4`.
+LAST COMPLETED SLICE: `AIO-3`.
+NEXT IMPLEMENTATION SLICE: `AIO-4`.
 
 ```yaml
 continuation_contract:
@@ -60,7 +60,8 @@ Current portfolio classification:
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
-| Authenticated Proofbook decision identity | **NOW** | Exact-hash gate decisions are available to AI, but the optional compatibility `actor` field must not let a caller impersonate another principal in durable evidence |
+| Authenticated Proofbook decision identity | **COMPLETE** | Exact-hash gate decisions now bind durable actor evidence to the authenticated Principal and reject compatibility actor impersonation before runner mutation |
+| Exact current Proofbook cancellation for AI | **NOW** | Cockpit has a revision-pinned cancellation path, while MCP still exposes only the legacy unpinned compatibility verb |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -78,7 +79,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-2` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-3` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -736,7 +737,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` exact-hash Proofbook decisions whose durable
 actor identity comes from the authenticated Principal rather than caller-authored
 metadata.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.proofbook.approve_gate` and `reject_gate` adapters over
   the current authenticated `Principal`, `Governance`, exact gate id/hash, and
@@ -756,6 +757,29 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can approve or reject an exact current Proofbook gate,
   and the durable decision identity is guaranteed to be that authenticated Principal.
 
+### AIO-4 — Exact Current Proofbook Cancellation For AI
+
+Capability target: `Product-Accessible` bounded cancellation of the exact currently
+observed Proofbook revision without claiming external process termination.
+Status: **ACTIVE**.
+
+- Extend the existing MCP catalog and dispatcher over
+  `ProofbookRunner::cancel_run_if_current`, the authenticated Principal, Governance,
+  and the existing Proofbook update/audit owners. Do not add a cancellation service,
+  process supervisor, second runner, or frontend-owned revision cache.
+- Add one `aelyris.proofbook.cancel_current` tool requiring exact `projectPath`,
+  `runId`, and `expectedRevision`. A stale revision, terminal run, missing run, or
+  startup-admission failure must fail closed before ledger mutation.
+- Keep the legacy `aelyris.proofbook.cancel` compatibility verb unchanged. The new
+  exact path must not silently fall back to an unpinned cancellation.
+- Bind the operation to the authenticated Principal for authorization and durable
+  audit evidence. Caller-authored actor metadata is not accepted.
+- Preserve the existing claim boundary: cancellation marks pending/running/waiting
+  Proofbook steps cancelled and emits the updated ledger; it does not claim that a
+  separately running agent process, PTY, worktree, review, or merge was terminated.
+- Done: an authenticated AI can cancel only the exact nonterminal Proofbook revision
+  it inspected, with stale requests rejected and actor-bound audit evidence retained.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -767,12 +791,13 @@ non-secret string inputs `PB-UI-7`, exact runtime-owned `agentSession` settlemen
 `PB-UI-8`, durable fleet cap persistence `CM-4`, and authenticated read-only
 continuity snapshot `RC-1`, payload-free finite continuity changes `RC-2`, and
 machine-readable observe-principal scope discovery `RC-3` are also complete.
-Principal-scoped MCP tool discovery `AIO-1` and runtime-owned Proofbook agent
-settlement for AI `AIO-2` are also complete. Authenticated actor-bound Proofbook gate
-decisions `AIO-3` are active; private-network exposure, live monitoring, remote
-approvals/input, SSH attach, AI-authored review/merge shortcuts, secret-bearing
-Proofbook starts, broader input types, raw artifact opening/export, and other adjacent
-value remain separately bounded portfolio candidates.
+Principal-scoped MCP tool discovery `AIO-1`, runtime-owned Proofbook agent settlement
+for AI `AIO-2`, and authenticated actor-bound Proofbook gate decisions `AIO-3` are
+also complete. Exact current Proofbook cancellation for AI `AIO-4` is active;
+private-network exposure, live monitoring, remote approvals/input, SSH attach,
+AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
+types, raw artifact opening/export, and other adjacent value remain separately
+bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

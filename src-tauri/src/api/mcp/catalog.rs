@@ -391,7 +391,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.proofbook.approve_gate",
-                "description": "Approve a waiting Proofbook gate by expected gate id and hash. Stale hashes fail closed.",
+                "description": "Approve a waiting Proofbook gate by expected gate id and hash. The durable decision actor is the authenticated principal; an optional compatibility actor must match it exactly. Stale hashes fail closed.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -409,7 +409,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.proofbook.reject_gate",
-                "description": "Reject a waiting Proofbook gate by expected gate id and hash. Stale hashes fail closed.",
+                "description": "Reject a waiting Proofbook gate by expected gate id and hash. The durable decision actor is the authenticated principal; an optional compatibility actor must match it exactly. Stale hashes fail closed.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",

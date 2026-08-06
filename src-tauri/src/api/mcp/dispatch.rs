@@ -726,17 +726,22 @@ fn mcp_proofbook_decide_gate(
     args: &serde_json::Map<String, serde_json::Value>,
     decision: &str,
 ) -> ApiResult<serde_json::Value> {
+    let decision_actor = authenticated_proofbook_decision_actor(
+        state,
+        caller_actor,
+        arg_optional_string(args, "actor"),
+        decision,
+    )?;
     require_mcp_proofbook_effect_admitted(state, "Proofbook MCP gate continuation")?;
     let runner = mcp_proofbook_runner(state)?;
     let project_path = arg_string(args, "projectPath")?;
     let run_id = arg_string(args, "runId")?;
     let gate_id = arg_string(args, "gateId")?;
     let gate_hash = arg_string(args, "gateHash")?;
-    let decision_actor = arg_optional_string(args, "actor");
     let comment = arg_optional_string(args, "comment");
     let executor = McpProofbookExecutor {
         state: state.clone(),
-        actor: caller_actor.to_string(),
+        actor: decision_actor.clone(),
     };
     let ledger = runner
         .resolve_gate_with_mcp_executor(
@@ -745,12 +750,46 @@ fn mcp_proofbook_decide_gate(
             gate_id,
             gate_hash,
             decision.to_string(),
-            decision_actor,
+            Some(decision_actor),
             comment,
             &executor,
         )
         .map_err(proofbook_error_to_api)?;
     mcp_result_value(ledger)
+}
+
+fn authenticated_proofbook_decision_actor(
+    state: &ApiState,
+    caller_actor: &str,
+    requested_actor: Option<String>,
+    decision: &str,
+) -> ApiResult<String> {
+    let authenticated_actor = caller_actor.trim();
+    if authenticated_actor.is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated Proofbook decision actor is unavailable".to_string(),
+        ));
+    }
+    if requested_actor
+        .as_deref()
+        .is_some_and(|requested| requested != authenticated_actor)
+    {
+        let capability = if decision.eq_ignore_ascii_case("approve") {
+            "aelyris.proofbook.approve_gate"
+        } else {
+            "aelyris.proofbook.reject_gate"
+        };
+        super::super::audit_access_denied(
+            state,
+            authenticated_actor,
+            capability,
+            "requested Proofbook decision actor differs from authenticated principal",
+        );
+        return Err(ApiError::Forbidden(
+            "Proofbook gate decision actor must match the authenticated principal".to_string(),
+        ));
+    }
+    Ok(authenticated_actor.to_string())
 }
 
 fn tool_safety(name: &str) -> Option<String> {
