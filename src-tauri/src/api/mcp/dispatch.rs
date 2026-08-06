@@ -2523,6 +2523,297 @@ fn mcp_intent_resolve(
     Ok(serde_json::json!({ "intent": intent }))
 }
 
+fn authenticated_knowledge_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated knowledge-graph mutation Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn knowledge_target_digest(operation: &str, values: &[&str]) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.knowledge-target\n{operation}\n{}",
+        values.join("\n")
+    ))
+    .as_str()
+    .to_string()
+}
+
+fn knowledge_input_digest(operation: &str, values: &[&str]) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.knowledge-input\n{operation}\n{}",
+        values.join("\n")
+    ))
+    .as_str()
+    .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_knowledge_mutation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    target_digest: &str,
+    input_digest: &str,
+    changed: Option<bool>,
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(target_digest.to_string()),
+        kind: "mcp_knowledge_graph_mutation_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-knowledge-graph-mutation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "targetDigest": target_digest,
+            "inputDigest": input_digest,
+            "changed": changed,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "graphValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, target_digest, error = %error, "knowledge graph audit failed");
+    }
+}
+
+fn mcp_knowledge_add_node(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_knowledge_actor(actor)?;
+    let id = arg_string(args, "id")?;
+    let kind_value = args.get("kind").cloned();
+    let kind_wire = kind_value
+        .as_ref()
+        .map(serde_json::Value::to_string)
+        .unwrap_or_else(|| "other".to_string());
+    let file = arg_optional_string(args, "file");
+    let target_digest = knowledge_target_digest("add_node", &[id.as_str()]);
+    let input_digest = knowledge_input_digest(
+        "add_node",
+        &[
+            id.as_str(),
+            kind_wire.as_str(),
+            file.as_deref().unwrap_or(""),
+        ],
+    );
+    let kind = match kind_value {
+        None => crate::knowledge_graph::NodeKind::default(),
+        Some(value) => match serde_json::from_value(value.clone()) {
+            Ok(kind) => kind,
+            Err(_) => {
+                audit_mcp_knowledge_mutation(
+                    state,
+                    actor,
+                    "add_node",
+                    &target_digest,
+                    &input_digest,
+                    None,
+                    "rejected",
+                    Some("invalid_node_kind"),
+                );
+                return Err(ApiError::BadRequest(format!("invalid node kind: {value}")));
+            }
+        },
+    };
+    let graph = match state.knowledge_graph.as_ref() {
+        Some(graph) => graph,
+        None => {
+            audit_mcp_knowledge_mutation(
+                state,
+                actor,
+                "add_node",
+                &target_digest,
+                &input_digest,
+                None,
+                "rejected",
+                Some("knowledge_graph_unavailable"),
+            );
+            return Err(ApiError::Internal(
+                "knowledge graph is not attached to this process".to_string(),
+            ));
+        }
+    };
+    let changed = graph.add_node_changed(crate::knowledge_graph::CodeNode {
+        id: id.clone(),
+        kind,
+        file,
+    });
+    audit_mcp_knowledge_mutation(
+        state,
+        actor,
+        "add_node",
+        &target_digest,
+        &input_digest,
+        Some(changed),
+        "accepted",
+        None,
+    );
+    Ok(serde_json::json!({ "id": id, "added": true }))
+}
+
+fn mcp_knowledge_add_edge(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_knowledge_actor(actor)?;
+    let dependent = arg_string(args, "dependent")?;
+    let dependency = arg_string(args, "dependency")?;
+    let target_digest =
+        knowledge_target_digest("add_edge", &[dependent.as_str(), dependency.as_str()]);
+    let input_digest =
+        knowledge_input_digest("add_edge", &[dependent.as_str(), dependency.as_str()]);
+    let graph = match state.knowledge_graph.as_ref() {
+        Some(graph) => graph,
+        None => {
+            audit_mcp_knowledge_mutation(
+                state,
+                actor,
+                "add_edge",
+                &target_digest,
+                &input_digest,
+                None,
+                "rejected",
+                Some("knowledge_graph_unavailable"),
+            );
+            return Err(ApiError::Internal(
+                "knowledge graph is not attached to this process".to_string(),
+            ));
+        }
+    };
+    let changed = graph.add_edge_changed(&dependent, &dependency);
+    audit_mcp_knowledge_mutation(
+        state,
+        actor,
+        "add_edge",
+        &target_digest,
+        &input_digest,
+        Some(changed),
+        "accepted",
+        None,
+    );
+    Ok(serde_json::json!({
+        "dependent": dependent,
+        "dependency": dependency,
+        "added": true,
+    }))
+}
+
+fn mcp_knowledge_remove_node(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_knowledge_actor(actor)?;
+    let id = arg_string(args, "id")?;
+    let target_digest = knowledge_target_digest("remove_node", &[id.as_str()]);
+    let input_digest = knowledge_input_digest("remove_node", &[id.as_str()]);
+    let graph = match state.knowledge_graph.as_ref() {
+        Some(graph) => graph,
+        None => {
+            audit_mcp_knowledge_mutation(
+                state,
+                actor,
+                "remove_node",
+                &target_digest,
+                &input_digest,
+                None,
+                "rejected",
+                Some("knowledge_graph_unavailable"),
+            );
+            return Err(ApiError::Internal(
+                "knowledge graph is not attached to this process".to_string(),
+            ));
+        }
+    };
+    let removed = graph.remove_node(&id);
+    audit_mcp_knowledge_mutation(
+        state,
+        actor,
+        "remove_node",
+        &target_digest,
+        &input_digest,
+        Some(removed),
+        "accepted",
+        None,
+    );
+    Ok(serde_json::json!({ "id": id, "removed": removed }))
+}
+
+fn mcp_knowledge_remove_edge(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_knowledge_actor(actor)?;
+    let dependent = arg_string(args, "dependent")?;
+    let dependency = arg_string(args, "dependency")?;
+    let target_digest =
+        knowledge_target_digest("remove_edge", &[dependent.as_str(), dependency.as_str()]);
+    let input_digest =
+        knowledge_input_digest("remove_edge", &[dependent.as_str(), dependency.as_str()]);
+    let graph = match state.knowledge_graph.as_ref() {
+        Some(graph) => graph,
+        None => {
+            audit_mcp_knowledge_mutation(
+                state,
+                actor,
+                "remove_edge",
+                &target_digest,
+                &input_digest,
+                None,
+                "rejected",
+                Some("knowledge_graph_unavailable"),
+            );
+            return Err(ApiError::Internal(
+                "knowledge graph is not attached to this process".to_string(),
+            ));
+        }
+    };
+    let removed = graph.remove_edge(&dependent, &dependency);
+    audit_mcp_knowledge_mutation(
+        state,
+        actor,
+        "remove_edge",
+        &target_digest,
+        &input_digest,
+        Some(removed),
+        "accepted",
+        None,
+    );
+    Ok(serde_json::json!({
+        "dependent": dependent,
+        "dependency": dependency,
+        "removed": removed,
+    }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -4508,54 +4799,10 @@ pub(super) async fn dispatch_authorized(
             serde_json::json!({ "intents": bus.all() })
         }
         "aelyris.intent.resolve" => mcp_intent_resolve(&state, actor, &args)?,
-        "aelyris.knowledge.add_node" => {
-            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
-                ApiError::Internal("knowledge graph is not attached to this process".to_string())
-            })?;
-            let id = arg_string(&args, "id")?;
-            // Absent kind defaults to Other; a present-but-invalid kind (wrong
-            // type or unknown variant) is rejected, like the other enum verbs.
-            let kind = match args.get("kind") {
-                None => crate::knowledge_graph::NodeKind::default(),
-                Some(value) => serde_json::from_value(value.clone())
-                    .map_err(|_| ApiError::BadRequest(format!("invalid node kind: {value}")))?,
-            };
-            let file = arg_optional_string(&args, "file");
-            kg.add_node(crate::knowledge_graph::CodeNode {
-                id: id.clone(),
-                kind,
-                file,
-            });
-            serde_json::json!({ "id": id, "added": true })
-        }
-        "aelyris.knowledge.add_edge" => {
-            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
-                ApiError::Internal("knowledge graph is not attached to this process".to_string())
-            })?;
-            let dependent = arg_string(&args, "dependent")?;
-            let dependency = arg_string(&args, "dependency")?;
-            kg.add_edge(&dependent, &dependency);
-            serde_json::json!({ "dependent": dependent, "dependency": dependency, "added": true })
-        }
-        "aelyris.knowledge.remove_node" => {
-            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
-                ApiError::Internal("knowledge graph is not attached to this process".to_string())
-            })?;
-            let id = arg_string(&args, "id")?;
-            // Evict a deleted/renamed symbol + every edge touching it, so its
-            // blast radius never routes through a node that no longer exists.
-            let removed = kg.remove_node(&id);
-            serde_json::json!({ "id": id, "removed": removed })
-        }
-        "aelyris.knowledge.remove_edge" => {
-            let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
-                ApiError::Internal("knowledge graph is not attached to this process".to_string())
-            })?;
-            let dependent = arg_string(&args, "dependent")?;
-            let dependency = arg_string(&args, "dependency")?;
-            let removed = kg.remove_edge(&dependent, &dependency);
-            serde_json::json!({ "dependent": dependent, "dependency": dependency, "removed": removed })
-        }
+        "aelyris.knowledge.add_node" => mcp_knowledge_add_node(&state, actor, &args)?,
+        "aelyris.knowledge.add_edge" => mcp_knowledge_add_edge(&state, actor, &args)?,
+        "aelyris.knowledge.remove_node" => mcp_knowledge_remove_node(&state, actor, &args)?,
+        "aelyris.knowledge.remove_edge" => mcp_knowledge_remove_edge(&state, actor, &args)?,
         "aelyris.knowledge.dependencies" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())

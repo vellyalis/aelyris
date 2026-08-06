@@ -2392,6 +2392,230 @@ mod tests {
     }
 
     #[test]
+    fn mcp_knowledge_graph_mutation_audit_is_principal_bound_and_target_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::knowledge_graph::{KnowledgeGraphManager, NodeKind};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let graph = Arc::new(KnowledgeGraphManager::new());
+        graph.attach_db(db.as_ref().clone());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_knowledge_graph(graph.clone());
+        for verb in [
+            "aelyris.knowledge.add_node",
+            "aelyris.knowledge.add_edge",
+            "aelyris.knowledge.remove_node",
+            "aelyris.knowledge.remove_edge",
+        ] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "knowledge-operator",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let node_a = "AIO19_NODE_A_MUST_NOT_BE_LOGGED";
+        let node_b = "AIO19_NODE_B_MUST_NOT_BE_LOGGED";
+        let node_c = "AIO19_NODE_C_MUST_NOT_BE_LOGGED";
+        let file_a = "src/AIO19_FILE_A_MUST_NOT_BE_LOGGED.rs";
+        let file_b = "src/AIO19_FILE_B_MUST_NOT_BE_LOGGED.rs";
+
+        let Json(added) = call(
+            &state,
+            "aelyris.knowledge.add_node",
+            serde_json::json!({ "id": node_a, "kind": "service", "file": file_a }),
+        )
+        .expect("add graph node");
+        assert_eq!(added["result"]["added"], true);
+
+        let _ = call(
+            &state,
+            "aelyris.knowledge.add_node",
+            serde_json::json!({ "id": node_a, "kind": "service", "file": file_a }),
+        )
+        .expect("identical node is idempotent");
+
+        let _ = call(
+            &state,
+            "aelyris.knowledge.add_node",
+            serde_json::json!({ "id": node_a, "kind": "module", "file": file_b }),
+        )
+        .expect("node metadata update succeeds");
+        let updated_node = graph
+            .nodes()
+            .into_iter()
+            .find(|node| node.id == node_a)
+            .expect("updated node exists");
+        assert_eq!(updated_node.kind, NodeKind::Module);
+        assert_eq!(updated_node.file.as_deref(), Some(file_b));
+
+        let _ = call(
+            &state,
+            "aelyris.knowledge.add_edge",
+            serde_json::json!({ "dependent": node_b, "dependency": node_a }),
+        )
+        .expect("edge auto-creates unknown endpoint");
+        let _ = call(
+            &state,
+            "aelyris.knowledge.add_edge",
+            serde_json::json!({ "dependent": node_b, "dependency": node_a }),
+        )
+        .expect("duplicate edge is idempotent");
+        let _ = call(
+            &state,
+            "aelyris.knowledge.add_edge",
+            serde_json::json!({ "dependent": node_c, "dependency": node_c }),
+        )
+        .expect("self edge remains a no-op");
+        assert!(graph.nodes().iter().all(|node| node.id != node_c));
+
+        let Json(removed_edge) = call(
+            &state,
+            "aelyris.knowledge.remove_edge",
+            serde_json::json!({ "dependent": node_b, "dependency": node_a }),
+        )
+        .expect("remove existing edge");
+        assert_eq!(removed_edge["result"]["removed"], true);
+        let Json(missing_edge) = call(
+            &state,
+            "aelyris.knowledge.remove_edge",
+            serde_json::json!({ "dependent": node_b, "dependency": node_a }),
+        )
+        .expect("repeat edge removal is a no-op");
+        assert_eq!(missing_edge["result"]["removed"], false);
+
+        let _ = call(
+            &state,
+            "aelyris.knowledge.add_edge",
+            serde_json::json!({ "dependent": node_b, "dependency": node_a }),
+        )
+        .expect("restore edge before cascade test");
+        let Json(removed_node) = call(
+            &state,
+            "aelyris.knowledge.remove_node",
+            serde_json::json!({ "id": node_a }),
+        )
+        .expect("remove node and touching edges");
+        assert_eq!(removed_node["result"]["removed"], true);
+        assert!(graph.dependencies_of(node_b).is_empty());
+        let Json(missing_node) = call(
+            &state,
+            "aelyris.knowledge.remove_node",
+            serde_json::json!({ "id": node_a }),
+        )
+        .expect("repeat node removal is a no-op");
+        assert_eq!(missing_node["result"]["removed"], false);
+
+        let unavailable_node = "AIO19_UNAVAILABLE_NODE_MUST_NOT_BE_LOGGED";
+        let unavailable_file = "src/AIO19_UNAVAILABLE_FILE_MUST_NOT_BE_LOGGED.rs";
+        let unavailable_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()));
+        assert!(matches!(
+            call(
+                &unavailable_state,
+                "aelyris.knowledge.add_node",
+                serde_json::json!({
+                    "id": unavailable_node,
+                    "kind": "function",
+                    "file": unavailable_file,
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_knowledge_graph_mutation_authority".to_string()),
+                    limit: Some(30),
+                    ..Default::default()
+                })
+            })
+            .expect("read knowledge graph audit");
+        assert_eq!(rows.len(), 12);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("knowledge-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            11
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["changed"] == true)
+                .count(),
+            6
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["changed"] == false)
+                .count(),
+            5
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["status"] == "rejected"
+                && row.redacted_payload_json["rejectionCode"] == "knowledge_graph_unavailable"
+                && row.redacted_payload_json["changed"].is_null()
+        }));
+        let target_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["targetDigest"]
+                    .as_str()
+                    .expect("graph target digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("graph input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(target_digests.len(), 6);
+        assert_eq!(input_digests.len(), 7);
+        assert!(target_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["graphValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                node_a,
+                node_b,
+                node_c,
+                file_a,
+                file_b,
+                unavailable_node,
+                unavailable_file,
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

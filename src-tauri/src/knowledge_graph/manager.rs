@@ -75,10 +75,39 @@ impl KnowledgeGraphManager {
         self.persist_locked(&graph);
     }
 
+    /// Add or replace a node and report whether the graph actually changed.
+    /// Principal-aware control adapters use this to distinguish an idempotent
+    /// repeat from a new structural effect without reimplementing graph logic.
+    pub fn add_node_changed(&self, node: CodeNode) -> bool {
+        let mut graph = self.lock();
+        let changed = graph.get(&node.id) != Some(&node);
+        if changed {
+            graph.add_node(node);
+            self.persist_locked(&graph);
+        }
+        changed
+    }
+
     pub fn add_edge(&self, dependent: &str, dependency: &str) {
         let mut graph = self.lock();
         graph.add_edge(dependent, dependency);
         self.persist_locked(&graph);
+    }
+
+    /// Add an edge and report whether it was new. Unknown endpoints keep the
+    /// existing auto-create behavior; self-edges remain an explicit no-op.
+    pub fn add_edge_changed(&self, dependent: &str, dependency: &str) -> bool {
+        let mut graph = self.lock();
+        let changed = dependent != dependency
+            && !graph
+                .dependencies_of(dependent)
+                .iter()
+                .any(|candidate| candidate == dependency);
+        if changed {
+            graph.add_edge(dependent, dependency);
+            self.persist_locked(&graph);
+        }
+        changed
     }
 
     pub fn remove_node(&self, id: &str) -> bool {

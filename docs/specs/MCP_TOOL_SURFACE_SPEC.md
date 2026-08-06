@@ -209,6 +209,14 @@ intent/input digests. IntentDeclared publication failure after a durable proposa
 an explicit partial-coordination failure without replay or rollback, and raw intent or
 Event Bus payloads are excluded.
 
+`aelyris.knowledge.add_node`, `add_edge`, `remove_node`, and `remove_edge` keep
+`KnowledgeGraphManager` as the only graph mutation owner. Its authenticated MCP adapter
+uses changed-returning manager methods for node/edge additions while preserving default
+node kind, endpoint auto-creation, self-edge no-op, duplicate idempotency, node-removal
+edge cascading, exact edge removal, and existing persistence behavior. Authority
+evidence contains only actor, operation, changed/removed outcome, and one-way
+target/input digests. Node ids, files, edge endpoints, and graph snapshots are excluded.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)
@@ -336,10 +344,10 @@ remains the hot owner; SQLite is the restart source of truth.
 
 | Tool | I/O (JSON) | Maps to | FREE/GATED | Notes |
 |------|-----------|---------|------------|-------|
-| `aelyris.intent.propose` | **params** `{ agentId: string, proposal: string, targets?: string[] }` -> **return** `{ intent: Intent }` | `intent::IntentBus::propose` via `src-tauri/src/api/mcp.rs` | FREE | Declares a proposal before acting and persists it best-effort through `persistence::IntentRepo`; write errors are logged but do not roll back the live in-memory proposal. |
+| `aelyris.intent.propose` | **params** `{ agentId: string, proposal: string, targets?: string[] }` -> **return** `{ intent: Intent }` | `intent::IntentBus::propose_checked` via `src-tauri/src/api/mcp.rs` | FREE | Authenticated MCP proposals persist before entering the hot manager; an IntentDeclared publication failure is explicit and does not replay or roll back the durable proposal. Legacy internal callers keep their best-effort compatibility path. |
 | `aelyris.intent.list` | **params** `{}` -> **return** `{ intents: Intent[] }` | `intent::IntentBus::open` | FREE | Returns open deliberations from the hydrated manager. |
 | `aelyris.intent.all` | **params** `{}` -> **return** `{ intents: Intent[] }` | `intent::IntentBus::all` | FREE | Returns every hydrated intent in proposal order, including accepted/rejected/superseded rows. |
-| `aelyris.intent.resolve` | **params** `{ id: string, status: "accepted"\|"rejected"\|"superseded" }` -> **return** `{ intent: Intent\|null }` | `intent::IntentBus::resolve` | FREE | Updates a deliberation status through the same manager; the status transition is persisted on real change and restored across restart. |
+| `aelyris.intent.resolve` | **params** `{ id: string, status: "accepted"\|"rejected"\|"superseded" }` -> **return** `{ intent: Intent\|null }` | `intent::IntentBus::resolve_checked` | FREE | Authenticated MCP resolution persists before memory mutation; unknown ids remain null and repeating the same status remains a no-op. |
 
 ---
 

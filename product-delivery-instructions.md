@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-19`.
-LAST COMPLETED SLICE: `AIO-18`.
-NEXT IMPLEMENTATION SLICE: `AIO-19`.
+ACTIVE SLICE: `AIO-20`.
+LAST COMPLETED SLICE: `AIO-19`.
+NEXT IMPLEMENTATION SLICE: `AIO-20`.
 
 ```yaml
 continuation_contract:
@@ -76,7 +76,8 @@ Current portfolio classification:
 | MCP derived symbol-ownership mutation evidence | **COMPLETE** | Diff/source reconciliation now retains the authenticated initiating Principal through the existing extractors and transaction, using aggregate-only origin/input digests and no source payload evidence |
 | MCP context decision mutation evidence | **COMPLETE** | Shared decision set/remove now retain the authenticated initiating Principal separately from key/value data, using one-way digests and explicit partial-coordination outcomes |
 | MCP intent mutation evidence | **COMPLETE** | Intent propose/resolve now retain the authenticated initiating Principal separately from deliberation contents, with persistence-before-memory and payload-free partial-coordination evidence |
-| MCP knowledge-graph mutation evidence | **NOW** | AI can add/remove graph nodes and edges, but graph ids/files are caller-selected domain values and the authenticated initiating Principal is not retained separately |
+| MCP knowledge-graph mutation evidence | **COMPLETE** | Node/edge add/remove now retain the authenticated initiating Principal separately from structural values, using one-way graph digests and explicit changed/no-op outcomes |
+| MCP agent coordination mutation evidence | **NOW** | AI can report activity/blockers and publish typed avoidance directives, but session/task/file/symbol/directive data are domain values and the authenticated initiating Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -94,7 +95,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-18` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-19` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1172,7 +1173,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` knowledge-node and dependency-edge mutation
 whose initiating identity comes from the authenticated MCP Principal while graph ids,
 kinds, and file associations remain domain data.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.knowledge.add_node`, `add_edge`, `remove_node`, and
   `remove_edge` adapters, `KnowledgeGraphManager`, Governance, and durable audit
@@ -1192,6 +1193,34 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can mutate the existing Knowledge Graph, and each effect is
   attributable without leaking graph targets or confusing structural data with caller
   identity.
+
+### AIO-20 — Principal-Bound MCP Agent Coordination Mutation Evidence
+
+Capability target: `Product-Accessible` activity/blocker reporting and typed avoidance
+steering whose initiating identity comes from the authenticated MCP Principal while
+session, task, file, symbol, blocker, and directive fields remain coordination data.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.agent.report_activity`, `report_blocker`, and
+  `steer_avoid` adapters, `AgentManager`, live symbol-ownership projection, Event Bus,
+  Governance, and audit journal. Do not add an activity store, blocker service, steer
+  channel, actor field, identity store, or raw terminal-write path.
+- Keep caller-supplied session/task/file/symbol/action/blocker/files as coordination
+  inputs. They remain fleet-domain values and never define the caller identity or enter
+  actor evidence.
+- Preserve live-session existence checks, existing AgentManager status/activity/blocker
+  mutations, typed ownership-derived avoidance, Event Bus publication semantics,
+  missing-session errors, and the prohibition on free-form pane injection.
+- Retain accepted/rejected audit with actor, operation, mutation/publication outcome,
+  count metadata when known, and stable one-way session/input digests. Do not persist
+  raw session/task/file/symbol/action/blocker/directive/avoidance values, Event Bus
+  payloads, bearer values, environment values, or repository contents.
+- Event publication failure after a state mutation must remain explicit and must not be
+  audited as fully coordinated success. Do not replay or roll back AgentManager state
+  merely to obtain audit evidence.
+- Done: an authenticated AI can report and steer through the existing typed fleet
+  owners, and each effect is attributable without leaking activity or directive
+  contents or confusing session metadata with caller identity.
 
 ## Deferred After GMV
 
@@ -1218,7 +1247,8 @@ complete. Principal-bound MCP manual symbol-ownership mutation evidence `AIO-15`
 also complete. Principal-bound MCP derived symbol-ownership mutation evidence `AIO-16`
 and Principal-bound MCP context decision mutation evidence `AIO-17` are also complete.
 Principal-bound MCP intent mutation evidence `AIO-18` is also complete.
-Principal-bound MCP knowledge-graph mutation evidence `AIO-19` is active;
+Principal-bound MCP knowledge-graph mutation evidence `AIO-19` is also complete.
+Principal-bound MCP agent coordination mutation evidence `AIO-20` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

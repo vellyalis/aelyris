@@ -984,7 +984,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.knowledge.add_node",
-                "description": "Add a node to the code Knowledge Graph (a symbol/module the fleet reasons about) — id, kind (module/service/function/class/component/other), and the file it lives in. Agents reason over structure (User -> AuthService -> JWTProvider -> Redis), not files.",
+                "description": "Add or replace a Knowledge Graph node as the authenticated Principal. Node id, kind, and file remain structural domain data. Default kind, idempotent repeats, and existing graph persistence remain unchanged; authority evidence stores only one-way target/input digests and whether the graph changed.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -999,7 +999,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.knowledge.add_edge",
-                "description": "Record a dependency edge: `dependent` depends on `dependency` (e.g. AuthService -> JWTProvider). Unknown endpoints are auto-created.",
+                "description": "Add a dependency edge as the authenticated Principal. Unknown endpoints are still auto-created, duplicate edges are no-ops, and self-edges remain ignored. Raw endpoint ids are excluded from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -1010,7 +1010,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.knowledge.remove_node",
-                "description": "Remove a node + every edge touching it (a symbol was deleted/renamed), so its blast radius never routes through a node that no longer exists. Keeps a long-lived graph from accumulating ghost symbols.",
+                "description": "Remove a Knowledge Graph node as the authenticated Principal, cascading every touching edge through the existing graph owner. Returns whether the node existed; raw node ids are excluded from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -1021,7 +1021,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.knowledge.remove_edge",
-                "description": "Remove a single dependency edge (a dependency was dropped).",
+                "description": "Remove one dependency edge as the authenticated Principal. Existing exact-edge and idempotent missing-edge behavior remain unchanged; raw endpoint ids are excluded from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
