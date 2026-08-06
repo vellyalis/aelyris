@@ -156,6 +156,97 @@ async fn right_bearer_allows_list() {
 }
 
 #[tokio::test]
+async fn continuity_snapshot_is_authenticated_read_only_and_claim_safe() {
+    let (base, state, join) = spawn_server(AuthConfig::with_token("s3cret")).await;
+
+    let unauthenticated = client()
+        .get(format!("{base}/continuity/snapshot"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+    let response = client()
+        .get(format!(
+            "{base}/continuity/snapshot?projectPath=C%3A%5Crepo"
+        ))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["schema"], "aelyris.continuity.snapshot/v1");
+    assert_eq!(body["requestedProjectPath"], "C:\\repo");
+    assert_eq!(body["transport"]["bindScope"], "loopback-only");
+    assert_eq!(body["transport"]["readOnlySnapshot"], true);
+    assert_eq!(body["transport"]["snapshotMutationSupported"], false);
+    assert_eq!(body["transport"]["remoteOperationClaim"], false);
+    assert!(body["process"]["pid"].as_u64().unwrap() > 0);
+    assert_eq!(body["process"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(body["proofbookRuns"]["available"], false);
+    assert_eq!(body["proofbookRuns"]["reason"], "owner_not_attached");
+    assert_eq!(body["agents"]["available"], false);
+
+    let serialized = serde_json::to_string(&body).unwrap();
+    for forbidden in [
+        "\"initialPrompt\":",
+        "\"approvalPrompt\":",
+        "\"spawnToken\":",
+        "\"structuredOutput\":",
+        "\"artifactContent\":",
+        "\"environment\":",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "unexpected field {forbidden}"
+        );
+    }
+
+    let post = client()
+        .post(format!("{base}/continuity/snapshot"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn aelys_continuity_reads_the_authenticated_embedded_snapshot() {
+    let (base, state, join) = spawn_server(AuthConfig::with_token("s3cret")).await;
+    let output = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new(env!("CARGO_BIN_EXE_aelys"))
+                .args(["continuity", "--project", "C:\\repo with spaces"])
+                .env("AELYRIS_API_URL", &base)
+                .env("AELYRIS_API_TOKEN", "s3cret")
+                .output()
+                .expect("run aelys continuity")
+        }),
+    )
+    .await
+    .expect("aelys continuity timed out")
+    .expect("aelys continuity join failed");
+
+    assert!(
+        output.status.success(),
+        "aelys continuity failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(body["schema"], "aelyris.continuity.snapshot/v1");
+    assert_eq!(body["requestedProjectPath"], "C:\\repo with spaces");
+    assert_eq!(body["transport"]["readOnlySnapshot"], true);
+    assert_eq!(body["transport"]["snapshotMutationSupported"], false);
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
 async fn daemon_contract_exposes_versioned_capabilities() {
     let temp = tempfile::tempdir().unwrap();
     let pty = PtyManager::new().with_scrollback_dir(temp.path().join("scrollback"));
@@ -213,6 +304,20 @@ async fn daemon_contract_exposes_versioned_capabilities() {
     assert_eq!(body["activeSessions"], 0);
     assert_eq!(body["muxSnapshotEnabled"], true);
     assert_eq!(body["durableScrollbackEnabled"], true);
+    assert_eq!(
+        body["continuitySnapshotSchema"],
+        "aelyris.continuity.snapshot/v1"
+    );
+    assert_eq!(body["continuitySnapshotEndpoint"], "/continuity/snapshot");
+    assert_eq!(
+        body["continuitySnapshotPolicy"],
+        "authenticated-loopback-read-only-no-remote-operation-claim"
+    );
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "continuity-read-only-snapshot"));
     assert_eq!(
         body["terminalCorePolicy"]["nativeInputOwner"],
         "rust-native-input-host"

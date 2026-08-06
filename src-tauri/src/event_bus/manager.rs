@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use super::{
-    AckReceipt, AgentEvent, EventBatch, EventBusError, EventChannel, EventLog, PublishDurability,
-    PublishReceipt,
+    AckReceipt, AgentEvent, EventBatch, EventBusError, EventChannel, EventFrontier, EventLog,
+    PublishDurability, PublishReceipt,
 };
 use crate::db::ManagedDb;
 use crate::persistence::EventRepo;
@@ -124,6 +124,10 @@ impl EventBus {
         self.read_durable(|database| EventRepo::since(database, after_seq, limit))
     }
 
+    pub fn frontier(&self) -> Result<EventFrontier, EventBusError> {
+        self.read_durable(EventRepo::frontier)
+    }
+
     pub fn by_channel_since(
         &self,
         channel: EventChannel,
@@ -199,6 +203,29 @@ mod tests {
             EventBusError::DurabilityUnavailable
         );
         assert!(durable.recent().is_empty());
+    }
+
+    #[test]
+    fn durable_frontier_reports_the_exact_committed_cursor() {
+        let (bus, _) = mem_bus();
+        assert_eq!(
+            bus.frontier().unwrap(),
+            EventFrontier {
+                high_water_seq: 0,
+                high_water_event_id: None,
+            }
+        );
+        let event = AgentEvent::new(AgentEventKind::TaskCreated, json!({ "id": "task-1" }))
+            .with_idempotency_key("continuity-frontier-event");
+        let receipt = bus.publish(event).unwrap();
+
+        assert_eq!(
+            bus.frontier().unwrap(),
+            EventFrontier {
+                high_water_seq: receipt.seq.unwrap(),
+                high_water_event_id: Some("continuity-frontier-event".to_string()),
+            }
+        );
     }
 
     #[test]

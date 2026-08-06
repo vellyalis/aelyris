@@ -260,6 +260,13 @@ pub struct EventBatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventFrontier {
+    pub high_water_seq: i64,
+    pub high_water_event_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum EventBusError {
     DurabilityUnavailable,

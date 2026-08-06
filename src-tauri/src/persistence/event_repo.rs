@@ -12,7 +12,7 @@ use rusqlite::{params, OptionalExtension};
 use crate::db::Database;
 use crate::event_bus::{
     AckReceipt, AgentEvent, AgentEventKind, EventBatch, EventBatchStatus, EventBusError,
-    EventChannel, SeqEvent,
+    EventChannel, EventFrontier, SeqEvent,
 };
 
 pub struct EventRepo;
@@ -30,6 +30,14 @@ struct StreamState {
 }
 
 impl EventRepo {
+    pub fn frontier(db: &Database) -> Result<EventFrontier, EventBusError> {
+        let state = Self::inspect_stream(db, "continuity_frontier")?;
+        Ok(EventFrontier {
+            high_water_seq: state.high_water_seq,
+            high_water_event_id: state.high_water_event_id,
+        })
+    }
+
     /// Validate the complete durable stream and every registered consumer cursor
     /// before startup dispatch is admitted. A cursor that has not been polled
     /// since corruption must still fail the global reconciliation barrier.

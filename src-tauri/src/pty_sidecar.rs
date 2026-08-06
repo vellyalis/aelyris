@@ -1405,6 +1405,13 @@ fn load_or_create_token() -> Result<String, String> {
     load_or_create_token_at(token_path()?)
 }
 
+pub(crate) fn shared_api_tokens() -> Result<(String, String), String> {
+    Ok((
+        load_or_create_token()?,
+        load_or_create_input_authority_token()?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{stream_ticket_url, SidecarStreamState};

@@ -1371,6 +1371,8 @@ pub fn run() {
                     .inner()
                     .clone();
                 let agent_manager = app.state::<AgentManager>().inner().clone();
+                let interactive_session_manager =
+                    app.state::<InteractiveSessionManager>().inner().clone();
                 let ghost_layers = app.state::<std::sync::Arc<LayerRegistry>>().inner().clone();
                 let cost_manager = app
                     .state::<std::sync::Arc<cost::CostManager>>()
@@ -1412,12 +1414,26 @@ pub fn run() {
                 let mcp_db = Database::open(&db_path)
                     .ok()
                     .map(|d| std::sync::Arc::new(db::ManagedDb::new(d)));
-                let api_state = api::ApiState::new(pty, api::AuthConfig::from_env())
-                    .with_mux(mux_manager);
+                let api_auth = match pty_sidecar::shared_api_tokens() {
+                    Ok((public_token, input_authority_token)) => {
+                        api::AuthConfig::from_env_or_shared_tokens(
+                            public_token,
+                            input_authority_token,
+                        )
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "embedded API could not share hardened sidecar tokens; using process-local fallback: {error}"
+                        );
+                        api::AuthConfig::from_env()
+                    }
+                };
+                let api_state = api::ApiState::new(pty, api_auth).with_mux(mux_manager);
                 #[cfg(not(test))]
                 let api_state = api_state.with_app_handle(app.handle().clone());
                 let api_state = api_state
                     .with_agent_manager(agent_manager)
+                    .with_interactive_session_manager(interactive_session_manager)
                     .with_ghost_layers(ghost_layers)
                     .with_cost_manager(cost_manager)
                     .with_task_manager(task_manager)

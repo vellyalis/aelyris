@@ -45,6 +45,7 @@ async fn run() -> Result<(), String> {
             let value = request(Method::GET, "/daemon/contract", None).await?;
             print_json(&value)
         }
+        "continuity" => continuity(&args[1..]).await,
         "sessions" | "list" => {
             let value = request(Method::GET, "/sessions", None).await?;
             print_json(&value)
@@ -719,6 +720,15 @@ async fn search_output(args: &[String]) -> Result<(), String> {
 
 async fn request(method: Method, path: &str, body: Option<Value>) -> Result<Value, String> {
     let base = api_base_url();
+    request_at(&base, method, path, body).await
+}
+
+async fn request_at(
+    base: &str,
+    method: Method,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value, String> {
     let token = api_token();
     let client = reqwest::Client::new();
     let url = format!("{}{}", base.trim_end_matches('/'), path);
@@ -745,6 +755,50 @@ async fn request(method: Method, path: &str, body: Option<Value>) -> Result<Valu
         return Ok(json!({ "ok": true }));
     }
     serde_json::from_str(&text).map_err(|err| format!("response JSON invalid: {err}: {text}"))
+}
+
+async fn continuity(args: &[String]) -> Result<(), String> {
+    let path = continuity_path(args)?;
+    let value = request_at(&continuity_base_url(), Method::GET, &path, None).await?;
+    print_json(&value)
+}
+
+fn continuity_path(args: &[String]) -> Result<String, String> {
+    let mut project = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--project" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "--project requires a path".to_string())?;
+                if value.trim().is_empty() {
+                    return Err("--project requires a non-empty path".to_string());
+                }
+                project = Some(value.clone());
+                index += 2;
+            }
+            option if option.starts_with("--") => {
+                return Err(format!("unknown continuity option: {option}"));
+            }
+            other => return Err(format!("unexpected continuity argument: {other}")),
+        }
+    }
+    Ok(match project {
+        Some(project) => format!(
+            "/continuity/snapshot?projectPath={}",
+            query_component(&project)
+        ),
+        None => "/continuity/snapshot".to_string(),
+    })
+}
+
+fn continuity_base_url() -> String {
+    env::var("AELYRIS_API_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
 }
 
 fn api_base_url() -> String {
@@ -860,7 +914,7 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aelys commands:\n  health\n  daemon\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; otherwise sidecar token file selects http://127.0.0.1:9334, falling back to http://127.0.0.1:9333\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the Aelyris sidecar token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
+        "aelys commands:\n  health\n  daemon\n  continuity [--project path]\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; continuity otherwise targets embedded http://127.0.0.1:9333, while other commands prefer the sidecar when its token file exists\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the shared hardened Aelyris token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
     );
 }
 
@@ -877,6 +931,17 @@ mod tests {
         assert_eq!(query_component("hello world"), "hello%20world");
         assert_eq!(query_component("a+b&c"), "a%2Bb%26c");
         assert_eq!(query_component("日本語"), "%E6%97%A5%E6%9C%AC%E8%AA%9E");
+    }
+
+    #[test]
+    fn continuity_path_is_read_only_and_encodes_only_the_explicit_project() {
+        assert_eq!(continuity_path(&[]).unwrap(), "/continuity/snapshot");
+        assert_eq!(
+            continuity_path(&strings(&["--project", "C:\\repo with spaces"])).unwrap(),
+            "/continuity/snapshot?projectPath=C%3A%5Crepo%20with%20spaces"
+        );
+        assert!(continuity_path(&strings(&["--project"])).is_err());
+        assert!(continuity_path(&strings(&["--write"])).is_err());
     }
 
     #[test]

@@ -63,8 +63,13 @@ use crate::mux::store::{graph_for_snapshot_restore, FileMuxSnapshotStore};
 #[cfg(test)]
 use crate::pty::ShellType;
 use crate::pty::{PtyError, PtyManager, TerminalInfo};
-use crate::{agent::AgentManager, cost::CostManager, ghostdiff::LayerRegistry};
+use crate::{
+    agent::{AgentManager, InteractiveSessionManager},
+    cost::CostManager,
+    ghostdiff::LayerRegistry,
+};
 
+mod continuity;
 mod mcp;
 mod mux;
 mod session_common;
@@ -167,6 +172,7 @@ pub struct ApiState {
     #[cfg(not(test))]
     pub app_handle: Option<AppHandle>,
     pub agent_manager: Option<AgentManager>,
+    pub interactive_session_manager: Option<InteractiveSessionManager>,
     pub ghost_layers: Option<Arc<LayerRegistry>>,
     /// Shared cost-cap owner (same instance as the Tauri-managed one) so the
     /// in-process MCP spawn path enforces the same live caps as the UI/IPC
@@ -264,6 +270,7 @@ impl ApiState {
             #[cfg(not(test))]
             app_handle: None,
             agent_manager: None,
+            interactive_session_manager: None,
             ghost_layers: None,
             cost_manager: None,
             task_manager: None,
@@ -347,6 +354,11 @@ impl ApiState {
 
     pub fn with_agent_manager(mut self, agent_manager: AgentManager) -> Self {
         self.agent_manager = Some(agent_manager);
+        self
+    }
+
+    pub fn with_interactive_session_manager(mut self, manager: InteractiveSessionManager) -> Self {
+        self.interactive_session_manager = Some(manager);
         self
     }
 
@@ -1257,6 +1269,29 @@ impl AuthConfig {
         }
     }
 
+    /// Use the process environment when explicitly configured, otherwise share
+    /// the already-hardened sidecar token files. This lets `aelys` authenticate
+    /// to the embedded read model without inventing another credential owner.
+    pub fn from_env_or_shared_tokens(
+        public_token: impl Into<String>,
+        input_authority_token: impl Into<String>,
+    ) -> Self {
+        let public_token = public_token.into();
+        let input_authority_token = input_authority_token.into();
+        let token = std::env::var("AELYRIS_API_TOKEN")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(public_token);
+        let input_authority_token = std::env::var("AELYRIS_INPUT_AUTHORITY_TOKEN")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(input_authority_token);
+        Self {
+            token: Some(token),
+            input_authority_token: Some(input_authority_token),
+        }
+    }
+
     /// Build with an explicit token. Used when the caller wants to force a
     /// specific value (e.g. config-file-driven).
     pub fn with_token(token: impl Into<String>) -> Self {
@@ -1319,6 +1354,10 @@ impl AuthConfig {
             return true;
         };
         ct_eq(provided.as_bytes(), required.as_bytes())
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.token.is_some()
     }
 }
 
@@ -1474,6 +1513,7 @@ fn derive_capability(method: &Method, route: &str) -> String {
         ("GET", "/mcp/contract") => "mcp.contract",
         ("GET", "/health") => "health.read",
         ("GET", "/daemon/contract") => "daemon.contract",
+        ("GET", "/continuity/snapshot") => "continuity.snapshot.read",
         ("POST", "/daemon/shutdown") => "daemon.shutdown",
         _ => return format!("{}:{route}", method.as_str().to_ascii_lowercase()),
     };
@@ -1827,6 +1867,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/mcp", post(mcp::mcp_rpc))
         .route("/health", get(health))
         .route("/daemon/contract", get(daemon_contract))
+        .route("/continuity/snapshot", get(continuity::snapshot))
         .route("/daemon/shutdown", post(daemon_shutdown))
         // E1: authorization runs just INSIDE auth (auth is added last = outermost,
         // so it runs first and inserts the Principal that this layer reads).
@@ -2014,6 +2055,9 @@ pub struct DaemonContractResponse {
     active_sessions: usize,
     mux_snapshot_enabled: bool,
     durable_scrollback_enabled: bool,
+    continuity_snapshot_schema: &'static str,
+    continuity_snapshot_endpoint: &'static str,
+    continuity_snapshot_policy: &'static str,
     terminal_core_policy: TerminalCorePolicyResponse,
     capabilities: Vec<&'static str>,
 }
@@ -2398,6 +2442,9 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         active_sessions: state.pty.list_info().len(),
         mux_snapshot_enabled: state.mux_store.is_some(),
         durable_scrollback_enabled: state.pty.durable_scrollback_enabled(),
+        continuity_snapshot_schema: "aelyris.continuity.snapshot/v1",
+        continuity_snapshot_endpoint: "/continuity/snapshot",
+        continuity_snapshot_policy: "authenticated-loopback-read-only-no-remote-operation-claim",
         terminal_core_policy: terminal_core_policy(),
         capabilities: vec![
             "health",
@@ -2427,6 +2474,7 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
             "mux-snapshot-restore-pending",
             "mux-export-import",
             "durable-scrollback",
+            "continuity-read-only-snapshot",
             "terminal-core-policy",
             "native-input-boundary-contract",
             "native-render-pipeline-contract",
