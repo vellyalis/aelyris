@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-32`.
-LAST COMPLETED SLICE: `AIO-31`.
-NEXT IMPLEMENTATION SLICE: `AIO-32`.
+ACTIVE SLICE: `AIO-33`.
+LAST COMPLETED SLICE: `AIO-32`.
+NEXT IMPLEMENTATION SLICE: `AIO-33`.
 
 ```yaml
 continuation_contract:
@@ -89,7 +89,8 @@ Current portfolio classification:
 | MCP cost-cap read access | **COMPLETE** | Authenticated AI reads the exact shared live caps/policy with disabled axes preserved as null and no provider-billing claim |
 | MCP conflict-safe cost-cap updates | **COMPLETE** | Exact expected/replacement caps are compared and persisted under the shared manager lock, with stale writes and raw cap audit rejected |
 | MCP honest cost-admission preview | **COMPLETE** | AI asks the shared Cost Manager for the next-spawn decision; enabled cap axes with unknown telemetry return an explicit non-decision rather than zero-filled usage |
-| MCP prompt-minimized agent routing | **NOW** | The existing route tool still echoes the caller prompt in its response even though only the routing decision is needed |
+| MCP prompt-minimized agent routing | **COMPLETE** | The shared router returns only its model-profile decision and explicit read-only metadata; the caller prompt is no longer reflected |
+| MCP prompt-free fleet status | **NOW** | The current fleet tool serializes the full AgentSession shape, including prompts and local workspace paths that AI coordination does not require |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1519,7 +1520,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated read-only model-profile routing
 without reflecting the caller's prompt into the tool response.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `aelyris.route_agent` over the existing `control::agent::route` owner,
   Governance, and principal-scoped discovery. Do not add a router, provider selector,
@@ -1535,6 +1536,28 @@ Status: **ACTIVE**.
   transient input boundary.
 - Done: an authenticated AI can select the recommended Aelyris model profile without
   receiving its own potentially sensitive prompt back from the control surface.
+
+### AIO-33 — MCP Prompt-Free Fleet Status Projection
+
+Capability target: `Product-Accessible` authenticated read-only fleet coordination
+without exposing Agent prompts or local workspace paths.
+Status: **ACTIVE**.
+
+- Keep `aelyris.fleet_status` over the existing `AgentManager`, `AgentSession`
+  conversion, Governance, and principal-scoped discovery. Do not add a fleet store,
+  session manager, telemetry owner, path resolver, or second lifecycle model.
+- Project only the bounded identity, run status, model profile, reported usage,
+  timestamps, and coordination metadata needed to select an existing session. Do not
+  serialize `prompt`, `approval_prompt`, `cwd`, `workspace_scope`, `repo_path`,
+  `worktree_path`, `worktree_branch`, or lineage failure text.
+- Preserve exact session ids and current status so later authorized stop, coordination,
+  or inspection calls can target the existing owner. The projection remains read-only
+  and must not reap, stop, resume, mutate, or refresh a session as a side effect.
+- Return explicit `available`, `source`, `promptValuesExposed:false`,
+  `workspacePathsExposed:false`, and `readOnly:true` metadata. Do not claim provider
+  billing truth or convert unknown telemetry into known values.
+- Done: an authenticated AI can coordinate against the current fleet without receiving
+  prompts, approval text, or machine-local repository/worktree paths.
 
 ## Deferred After GMV
 
@@ -1571,8 +1594,9 @@ Principal-bound MCP session-lifecycle evidence `AIO-26` is also complete. Princi
 bound remaining MCP Proofbook mutation evidence `AIO-27` is also complete. Principal-
 bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is also complete. MCP
 cost-cap read access `AIO-29` is also complete. Principal-bound conflict-safe MCP
-cost-cap updates `AIO-30` and MCP honest cost-admission preview `AIO-31` are also
-complete. MCP prompt-minimized agent routing `AIO-32` is active;
+cost-cap updates `AIO-30`, MCP honest cost-admission preview `AIO-31`, and MCP
+prompt-minimized agent routing `AIO-32` are also complete. MCP prompt-free fleet status
+projection `AIO-33` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

@@ -179,7 +179,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.route_agent",
-                "description": "Route a prompt to the recommended coding model profile.",
+                "description": "Read-only routing to the recommended Aelyris coding model profile. The prompt is used transiently by the shared router but is not echoed in the response; this does not start an agent, reserve budget, or claim provider availability.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

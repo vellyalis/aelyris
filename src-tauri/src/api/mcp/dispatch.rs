@@ -3896,7 +3896,12 @@ pub(super) async fn dispatch_authorized(
             let prompt = arg_string(&args, "prompt")?;
             let budget_remaining = arg_optional_f64(&args, "budgetRemaining")?;
             let decision = crate::control::agent::route(&prompt, budget_remaining);
-            serde_json::json!({ "prompt": prompt, "decision": decision })
+            serde_json::json!({
+                "decision": decision,
+                "source": "shared-agent-router",
+                "promptEchoed": false,
+                "readOnly": true,
+            })
         }
         "aelyris.pane_send_input" => {
             let terminal_ref = arg_string(&args, "terminalId")?;

@@ -981,6 +981,102 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn mcp_route_agent_is_principal_scoped_prompt_minimized_and_read_only() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct RoutePolicy;
+        impl AccessControl for RoutePolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "routing-planner" && verb == "aelyris.route_agent" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(RoutePolicy))));
+        let schema = input_schema_for_tool_ref("aelyris.route_agent").unwrap();
+        assert_eq!(schema["required"], serde_json::json!(["prompt"]));
+        assert_eq!(schema["additionalProperties"], false);
+        assert!(schema["properties"].get("actor").is_none());
+        assert_eq!(
+            scoped_tool_names(&state, "routing-planner"),
+            ["aelyris.route_agent"]
+        );
+
+        let prompt = "AIO32_PRIVATE_PROMPT_MUST_NOT_BE_ECHOED design a complex distributed architecture with many modules and migration constraints";
+        let budget_remaining = 0.05;
+        let expected = crate::control::agent::route(prompt, Some(budget_remaining));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let Json(value) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "routing-planner",
+                ToolCallBody {
+                    name: "aelyris.route_agent".to_string(),
+                    arguments: serde_json::json!({
+                        "prompt": prompt,
+                        "budgetRemaining": budget_remaining,
+                    }),
+                },
+            ))
+            .expect("authorized route preview");
+
+        let result = &value["result"];
+        assert_eq!(result["source"], "shared-agent-router");
+        assert_eq!(result["promptEchoed"], false);
+        assert_eq!(result["readOnly"], true);
+        assert!(result.get("prompt").is_none());
+        assert_eq!(
+            result["decision"]["recommended_model"],
+            expected.recommended_model
+        );
+        assert_eq!(result["decision"]["reasoning"], expected.reasoning);
+        assert_eq!(
+            result["decision"]["estimated_cost"],
+            expected.estimated_cost
+        );
+        assert_eq!(
+            result["decision"]["fallback_model"],
+            expected.fallback_model
+        );
+        assert_eq!(result["decision"]["task_type"], expected.task_type);
+        assert_eq!(result["decision"]["complexity"], expected.complexity);
+        assert_eq!(
+            result
+                .as_object()
+                .expect("route result object")
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            ["decision", "promptEchoed", "readOnly", "source"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+        assert!(
+            !serde_json::to_string(result).unwrap().contains(prompt),
+            "route response must not reflect the caller prompt"
+        );
+
+        assert!(matches!(
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "blocked-router",
+                ToolCallBody {
+                    name: "aelyris.route_agent".to_string(),
+                    arguments: serde_json::json!({ "prompt": prompt }),
+                },
+            )),
+            Err(ApiError::Forbidden(_))
+        ));
+        assert!(scoped_tool_names(&state, "blocked-router").is_empty());
+    }
+
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {
         const BEGIN: &str = "// A6.4_DISPATCH_TOOL_ARMS_BEGIN";
         const END: &str = "// A6.4_DISPATCH_TOOL_ARMS_END";
