@@ -723,6 +723,162 @@ mod tests {
     }
 
     #[test]
+    fn mcp_agent_lifecycle_audit_is_principal_bound_and_payload_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()));
+        for verb in [
+            "aelyris.spawn_agent",
+            "aelyris.agent.spawn_visible",
+            "aelyris.stop_agent",
+        ] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "lifecycle-agent",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        let Json(headless) = call(
+            "aelyris.spawn_agent",
+            serde_json::json!({
+                "prompt": "AIO11_HEADLESS_PROMPT_MUST_NOT_BE_LOGGED",
+                "cwd": "C:/AIO11_HEADLESS_CWD_MUST_NOT_BE_LOGGED",
+                "model": "AIO11_MODEL_MUST_NOT_BE_LOGGED",
+                "allowedTools": ["AIO11_TOOL_MUST_NOT_BE_LOGGED"],
+                "resumeId": "AIO11_RESUME_MUST_NOT_BE_LOGGED",
+            }),
+        )
+        .expect("headless spawn succeeds through test runtime");
+        assert_eq!(headless["result"]["sessionId"], "session-headless");
+
+        assert!(matches!(
+            call(
+                "aelyris.spawn_agent",
+                serde_json::json!({
+                    "prompt": "AIO11_REJECTED_PROMPT_MUST_NOT_BE_LOGGED",
+                    "cwd": "headless-deny",
+                }),
+            ),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let Json(visible) = call(
+            "aelyris.agent.spawn_visible",
+            serde_json::json!({
+                "cwd": "C:/AIO11_VISIBLE_CWD_MUST_NOT_BE_LOGGED",
+                "model": "AIO11_VISIBLE_MODEL_MUST_NOT_BE_LOGGED",
+                "initialPrompt": "AIO11_VISIBLE_PROMPT_MUST_NOT_BE_LOGGED",
+                "branchName": "AIO11_BRANCH_MUST_NOT_BE_LOGGED",
+                "cols": 120,
+                "rows": 30,
+            }),
+        )
+        .expect("visible spawn succeeds through test runtime");
+        assert_eq!(visible["result"]["session_id"], "session-visible");
+
+        let Json(visible_denied) = call(
+            "aelyris.agent.spawn_visible",
+            serde_json::json!({
+                "cwd": "cost-deny",
+                "initialPrompt": "AIO11_VISIBLE_REJECTED_PROMPT_MUST_NOT_BE_LOGGED",
+            }),
+        )
+        .expect("visible denial remains typed tool result");
+        assert_eq!(visible_denied["ok"], false);
+
+        let Json(stopped) = call(
+            "aelyris.stop_agent",
+            serde_json::json!({ "sessionId": "session-headless" }),
+        )
+        .expect("headless stop succeeds through test runtime");
+        assert_eq!(stopped["result"]["stopped"], true);
+
+        assert!(matches!(
+            call(
+                "aelyris.stop_agent",
+                serde_json::json!({ "sessionId": "missing-session" }),
+            ),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_agent_lifecycle_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read agent lifecycle audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("lifecycle-agent")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["runtimeKind"] == "visible")
+                .count(),
+            2
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["operation"] == "stop")
+                .count(),
+            2
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["sessionId"] == "session-visible"
+                && row.redacted_payload_json["status"] == "accepted"
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["taskPayloadLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for secret in [
+                "AIO11_HEADLESS_PROMPT_MUST_NOT_BE_LOGGED",
+                "AIO11_HEADLESS_CWD_MUST_NOT_BE_LOGGED",
+                "AIO11_MODEL_MUST_NOT_BE_LOGGED",
+                "AIO11_TOOL_MUST_NOT_BE_LOGGED",
+                "AIO11_RESUME_MUST_NOT_BE_LOGGED",
+                "AIO11_REJECTED_PROMPT_MUST_NOT_BE_LOGGED",
+                "headless-deny",
+                "AIO11_VISIBLE_CWD_MUST_NOT_BE_LOGGED",
+                "AIO11_VISIBLE_MODEL_MUST_NOT_BE_LOGGED",
+                "AIO11_VISIBLE_PROMPT_MUST_NOT_BE_LOGGED",
+                "AIO11_BRANCH_MUST_NOT_BE_LOGGED",
+                "AIO11_VISIBLE_REJECTED_PROMPT_MUST_NOT_BE_LOGGED",
+                "cost-deny",
+            ] {
+                assert!(!audit_text.contains(secret), "audit exposed {secret}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

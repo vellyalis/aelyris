@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-11`.
-LAST COMPLETED SLICE: `AIO-10`.
-NEXT IMPLEMENTATION SLICE: `AIO-11`.
+ACTIVE SLICE: `AIO-12`.
+LAST COMPLETED SLICE: `AIO-11`.
+NEXT IMPLEMENTATION SLICE: `AIO-12`.
 
 ```yaml
 continuation_contract:
@@ -68,7 +68,8 @@ Current portfolio classification:
 | WebSocket ticket principal continuity | **COMPLETE** | One-shot stream claims now preserve the issuing Principal through authorization, exclusive leases, write authority, and payload-free audit |
 | MCP pane-input lease and audit binding | **COMPLETE** | MCP pane input now requires the matching Principal/clientId for an exclusive lease and records payload-free accepted/rejected authority evidence |
 | MCP pane metadata controller binding | **COMPLETE** | Rename and role changes now require the matching Principal/clientId under an exclusive lease and retain value-minimized actor evidence |
-| MCP agent lifecycle actor evidence | **NOW** | AI can start and stop headless/visible agents, but those lifecycle effects do not yet retain the authenticated initiating Principal in durable audit evidence |
+| MCP agent lifecycle actor evidence | **COMPLETE** | Headless/visible spawn and headless stop now retain authenticated, payload-free lifecycle evidence without changing runtime ownership |
+| MCP worktree mutation actor evidence | **NOW** | AI can create and remove isolated worktrees, including optional branch deletion, without durable evidence of the authenticated initiating Principal |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -86,7 +87,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-10` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-11` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -944,7 +945,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` headless and visible agent lifecycle effects
 whose durable evidence identifies the authenticated MCP Principal without exposing the
 agent prompt or environment.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.spawn_agent`, `aelyris.agent.spawn_visible`, and
   `aelyris.stop_agent` adapters, current Agent Managers, cost/startup admission, and
@@ -965,6 +966,33 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can start or stop the existing agent runtimes and every
   resulting lifecycle effect is durably attributable without leaking its task payload.
 
+### AIO-12 — Principal-Bound MCP Worktree Mutation Evidence
+
+Capability target: `Product-Accessible` isolated-worktree creation and removal whose
+durable evidence identifies the authenticated MCP Principal without exposing local
+repository paths or branch names.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.worktree.create` and `aelyris.worktree.remove`
+  adapters, current `control::worktree` owner, Git validation, Governance, and durable
+  audit journal. Do not add a Git service, worktree registry, actor parameter, path
+  cache, or AI-specific mutation route.
+- Bind only the authenticated Principal already carried by authorized MCP dispatch.
+  Repository path, branch name, worktree name, and `deleteBranch` remain operation
+  inputs and cannot substitute for identity or authorization.
+- Preserve current path prediction, branch validation, containment, duplicate/stale
+  handling, exact remove behavior, optional branch deletion, typed errors, and Git as
+  the source of truth.
+- Retain accepted/rejected audit with actor, operation, result, delete-branch intent,
+  and a stable one-way target digest sufficient for correlation. Do not persist raw
+  repository paths, branch/worktree names, bearer values, environment values, command
+  output, or Git credentials.
+- Audit-write failure must not fabricate Git success or create a second mutation
+  result. Existing worktree effects remain authoritative and are never replayed merely
+  to obtain audit evidence.
+- Done: an authenticated AI can create or remove the existing isolated worktree path,
+  and the mutation is durably attributable without disclosing its local target names.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -983,7 +1011,8 @@ Principal-bound Proofbook run start `AIO-5` are complete. Authenticated mux inpu
 identity `AIO-6`, authenticated direct REST session input identity `AIO-7`, and
 WebSocket stream-ticket Principal continuity `AIO-8` and Principal-bound MCP pane-input
 lease/audit `AIO-9` and Principal-bound MCP pane metadata control `AIO-10` are
-complete. Principal-bound MCP agent lifecycle evidence `AIO-11` is active;
+complete. Principal-bound MCP agent lifecycle evidence `AIO-11` is also complete.
+Principal-bound MCP worktree mutation evidence `AIO-12` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

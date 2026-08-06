@@ -135,6 +135,13 @@ mutation cores. Their audit records only actor, terminal, operation, controller-
 presence, result, and rejection code; the requested pane name, role, bearer, and
 controller-id value are never persisted as authority evidence.
 
+`aelyris.spawn_agent`, `aelyris.agent.spawn_visible`, and `aelyris.stop_agent`
+retain the authenticated Principal in durable lifecycle evidence while continuing to
+use the existing headless/interactive managers and cost gates. Lifecycle audit is
+value-minimized: it may identify operation, runtime kind, result, and resulting
+session id, but never prompt text, cwd, model/tool payloads, resume/branch values,
+environment values, bearer credentials, or provider output.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

@@ -513,7 +513,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.spawn_agent",
-                "description": "Spawn a headless implementer agent. Enforces the live cost cap (BR7); refuses when the fleet is at the agent cap.",
+                "description": "Spawn a headless implementer agent as the authenticated Principal. Enforces the live cost cap (BR7), refuses when the fleet is at the agent cap, and records value-minimized lifecycle evidence without prompt or cwd.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -530,7 +530,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.agent.spawn_visible",
-                "description": "Spawn the same visible interactive TUI agent as the cockpit path. Enforces the live cost cap (BR7) and returns SpawnResult.",
+                "description": "Spawn the same visible interactive TUI agent as the cockpit path, attributed to the authenticated Principal. Enforces the live cost cap (BR7), returns SpawnResult, and records no prompt, cwd, branch, or provider output in lifecycle audit.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -548,7 +548,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.stop_agent",
-                "description": "Stop a running headless agent session by id.",
+                "description": "Stop a running headless agent session by id as the authenticated Principal and retain value-minimized lifecycle evidence.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",

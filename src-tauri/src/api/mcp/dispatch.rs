@@ -549,6 +549,112 @@ fn mcp_pane_set_role(
     mcp_pane_metadata_mutation(state, actor, args, "set_role", "role", set_pane_role_core)
 }
 
+fn authenticated_lifecycle_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated agent lifecycle Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn audit_mcp_agent_lifecycle(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    runtime_kind: &str,
+    session_id: Option<&str>,
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: session_id.map(str::to_string),
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: session_id.map(str::to_string),
+        kind: "mcp_agent_lifecycle_authority".to_string(),
+        severity: if status == "rejected" {
+            "warning".to_string()
+        } else {
+            "info".to_string()
+        },
+        source: "mcp-agent-lifecycle".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "runtimeKind": runtime_kind,
+            "sessionId": session_id,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "taskPayloadLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, runtime_kind, error = %error, "agent lifecycle audit failed");
+    }
+}
+
+#[cfg(not(test))]
+fn mcp_spawn_headless(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<String> {
+    let manager = state.agent_manager.as_ref().ok_or_else(|| {
+        ApiError::Internal("agent runtime is not attached to this process".to_string())
+    })?;
+    let prompt = arg_string(args, "prompt")?;
+    let cwd = arg_string(args, "cwd")?;
+    let model = arg_optional_string(args, "model");
+    let allowed_tools = arg_optional_string_array(args, "allowedTools")?;
+    let resume_id = arg_optional_string(args, "resumeId");
+    if let Some(cost) = state.cost_manager.as_ref() {
+        let active_agents = crate::control::agent::list_headless(manager).len();
+        cost.guard_spawn(active_agents)
+            .map_err(ApiError::BadRequest)?;
+    }
+    crate::control::agent::start_headless(
+        manager,
+        crate::control::agent::HeadlessSpawnSpec {
+            prompt,
+            cwd,
+            model,
+            allowed_tools,
+            resume_id,
+        },
+    )
+    .map_err(ApiError::BadRequest)
+}
+
+#[cfg(test)]
+fn mcp_spawn_headless(
+    _state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<String> {
+    let _prompt = arg_string(args, "prompt")?;
+    let cwd = arg_string(args, "cwd")?;
+    let _model = arg_optional_string(args, "model");
+    let _allowed_tools = arg_optional_string_array(args, "allowedTools")?;
+    let _resume_id = arg_optional_string(args, "resumeId");
+    if cwd == "headless-deny" {
+        Err(ApiError::BadRequest(
+            "headless spawn denied: test".to_string(),
+        ))
+    } else {
+        Ok("session-headless".to_string())
+    }
+}
+
 #[cfg(not(test))]
 async fn mcp_spawn_visible(
     state: &ApiState,
@@ -596,6 +702,26 @@ async fn mcp_spawn_visible(
         "worktree_path": null,
         "backend": "sidecar",
     })))
+}
+
+#[cfg(not(test))]
+fn mcp_stop_headless(state: &ApiState, session_id: &str) -> ApiResult<String> {
+    let manager = state.agent_manager.as_ref().ok_or_else(|| {
+        ApiError::Internal("agent runtime is not attached to this process".to_string())
+    })?;
+    crate::control::agent::stop_headless(manager, session_id).map_err(ApiError::BadRequest)?;
+    Ok(session_id.to_string())
+}
+
+#[cfg(test)]
+fn mcp_stop_headless(_state: &ApiState, session_id: &str) -> ApiResult<String> {
+    if session_id == "missing-session" {
+        Err(ApiError::BadRequest(
+            "agent session missing: test".to_string(),
+        ))
+    } else {
+        Ok(session_id.to_string())
+    }
 }
 
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
@@ -1896,52 +2022,105 @@ pub(super) async fn dispatch_authorized(
             ));
         }
         "aelyris.spawn_agent" => {
-            let manager = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
-            let prompt = arg_string(&args, "prompt")?;
-            let cwd = arg_string(&args, "cwd")?;
-            let model = arg_optional_string(&args, "model");
-            let allowed_tools = arg_optional_string_array(&args, "allowedTools")?;
-            let resume_id = arg_optional_string(&args, "resumeId");
-            // Cost gate (BR7): same shared caps as the UI/IPC spawn paths. Only
-            // headless sessions are counted here (the interactive runtime is not
-            // attached to the API state); the loop enforces the full budget.
-            if let Some(cost) = state.cost_manager.as_ref() {
-                let active_agents = crate::control::agent::list_headless(manager).len();
-                cost.guard_spawn(active_agents)
-                    .map_err(ApiError::BadRequest)?;
+            let actor = authenticated_lifecycle_actor(actor)?;
+            match mcp_spawn_headless(&state, &args) {
+                Ok(session_id) => {
+                    audit_mcp_agent_lifecycle(
+                        &state,
+                        actor,
+                        "spawn",
+                        "headless",
+                        Some(&session_id),
+                        "accepted",
+                        None,
+                    );
+                    serde_json::json!({ "sessionId": session_id, "spawned": true })
+                }
+                Err(error) => {
+                    audit_mcp_agent_lifecycle(
+                        &state,
+                        actor,
+                        "spawn",
+                        "headless",
+                        None,
+                        "rejected",
+                        Some("agent_spawn_failed"),
+                    );
+                    return Err(error);
+                }
             }
-            let session_id = crate::control::agent::start_headless(
-                manager,
-                crate::control::agent::HeadlessSpawnSpec {
-                    prompt,
-                    cwd,
-                    model,
-                    allowed_tools,
-                    resume_id,
-                },
-            )
-            .map_err(ApiError::BadRequest)?;
-            serde_json::json!({ "sessionId": session_id, "spawned": true })
         }
-        "aelyris.agent.spawn_visible" => match mcp_spawn_visible(&state, &args).await? {
-            Ok(value) => value,
-            Err(err) => {
-                return Ok(schema_tool_error(
-                    &name,
-                    serde_json::json!({ "error": err }),
-                ));
+        "aelyris.agent.spawn_visible" => {
+            let actor = authenticated_lifecycle_actor(actor)?;
+            match mcp_spawn_visible(&state, &args).await {
+                Ok(Ok(value)) => {
+                    let session_id = value
+                        .get("session_id")
+                        .or_else(|| value.get("sessionId"))
+                        .and_then(serde_json::Value::as_str);
+                    audit_mcp_agent_lifecycle(
+                        &state, actor, "spawn", "visible", session_id, "accepted", None,
+                    );
+                    value
+                }
+                Ok(Err(err)) => {
+                    audit_mcp_agent_lifecycle(
+                        &state,
+                        actor,
+                        "spawn",
+                        "visible",
+                        None,
+                        "rejected",
+                        Some("agent_spawn_rejected"),
+                    );
+                    return Ok(schema_tool_error(
+                        &name,
+                        serde_json::json!({ "error": err }),
+                    ));
+                }
+                Err(error) => {
+                    audit_mcp_agent_lifecycle(
+                        &state,
+                        actor,
+                        "spawn",
+                        "visible",
+                        None,
+                        "rejected",
+                        Some("agent_runtime_unavailable"),
+                    );
+                    return Err(error);
+                }
             }
-        },
+        }
         "aelyris.stop_agent" => {
-            let manager = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
+            let actor = authenticated_lifecycle_actor(actor)?;
             let session_id = arg_string(&args, "sessionId")?;
-            crate::control::agent::stop_headless(manager, &session_id)
-                .map_err(ApiError::BadRequest)?;
-            serde_json::json!({ "sessionId": session_id, "stopped": true })
+            match mcp_stop_headless(&state, &session_id) {
+                Ok(stopped_session_id) => {
+                    audit_mcp_agent_lifecycle(
+                        &state,
+                        actor,
+                        "stop",
+                        "headless",
+                        Some(&stopped_session_id),
+                        "accepted",
+                        None,
+                    );
+                    serde_json::json!({ "sessionId": stopped_session_id, "stopped": true })
+                }
+                Err(error) => {
+                    audit_mcp_agent_lifecycle(
+                        &state,
+                        actor,
+                        "stop",
+                        "headless",
+                        Some(&session_id),
+                        "rejected",
+                        Some("agent_stop_failed"),
+                    );
+                    return Err(error);
+                }
+            }
         }
         "aelyris.review.approve" => {
             return Err(ApiError::BadRequest(
