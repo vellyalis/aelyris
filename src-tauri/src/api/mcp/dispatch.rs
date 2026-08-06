@@ -12,7 +12,10 @@ use super::{
     validate_tool_arguments, ToolCallBody,
 };
 
-fn arg_string(args: &serde_json::Map<String, serde_json::Value>, key: &str) -> ApiResult<String> {
+pub(super) fn arg_string(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> ApiResult<String> {
     args.get(key)
         .and_then(|value| value.as_str())
         .map(str::trim)
@@ -37,7 +40,7 @@ fn arg_string_raw(
 
 /// Wall-clock unix seconds for symbol-claim leases (the MCP face's clock, kept out
 /// of the pure `symbol_ownership` core).
-fn now_secs() -> u64 {
+pub(super) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -3638,7 +3641,7 @@ fn arg_bool(args: &serde_json::Map<String, serde_json::Value>, key: &str, defaul
         .unwrap_or(default)
 }
 
-fn arg_optional_string(
+pub(super) fn arg_optional_string(
     args: &serde_json::Map<String, serde_json::Value>,
     key: &str,
 ) -> Option<String> {
@@ -3649,7 +3652,7 @@ fn arg_optional_string(
         .map(ToOwned::to_owned)
 }
 
-fn arg_optional_string_array(
+pub(super) fn arg_optional_string_array(
     args: &serde_json::Map<String, serde_json::Value>,
     key: &str,
 ) -> ApiResult<Option<Vec<String>>> {
@@ -4635,136 +4638,13 @@ pub(super) async fn dispatch_authorized(
         }
         "aelyris.context.remove" => mcp_context_remove(&state, actor, &args)?,
         "aelyris.agent.report_activity" => {
-            let manager = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
-            let session_id = arg_string(&args, "sessionId")?;
-            let action = arg_string(&args, "action")?;
-            let file = arg_optional_string(&args, "file");
-            let symbol = arg_optional_string(&args, "symbol");
-            manager
-                .set_activity(&session_id, action.clone(), file.clone(), symbol.clone())
-                .map_err(ApiError::BadRequest)?;
-            // Broadcast the activity to the fleet stream (BR5) so peers see what
-            // this agent is touching/doing in real time.
-            if let Some(bus) = state.event_bus.as_ref() {
-                bus.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::AgentActivity,
-                    serde_json::json!({
-                        "sessionId": session_id,
-                        "action": action,
-                        "file": file,
-                        "symbol": symbol,
-                    }),
-                ))
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({ "sessionId": session_id, "reported": true })
+            super::agent_coordination::report_activity(&state, actor, &args)?
         }
         "aelyris.agent.report_blocker" => {
-            let manager = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
-            let session_id = arg_string(&args, "sessionId")?;
-            let summary = arg_string(&args, "summary")?;
-            let needs = arg_optional_string(&args, "needs");
-            // Best-effort: mark the agent blocked (no-op if the session is gone).
-            let _ = manager.set_activity(&session_id, "blocked".to_string(), None, None);
-            // Surface the blocker on the stream so a peer/orchestrator can
-            // unblock it instead of the agent stalling silently.
-            if let Some(bus) = state.event_bus.as_ref() {
-                bus.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::BlockerRaised,
-                    serde_json::json!({
-                        "sessionId": session_id,
-                        "summary": summary,
-                        "needs": needs,
-                    }),
-                ))
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({ "sessionId": session_id, "raised": true })
+            super::agent_coordination::report_blocker(&state, actor, &args)?
         }
         "aelyris.agent.steer_avoid" => {
-            let manager = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let session_id = arg_string(&args, "sessionId")?;
-            // A typed steer to a dead/unknown agent is an ERROR, not a silent no-op (it
-            // would otherwise look delivered but reach nobody — §6.4 boundary). "Live"
-            // EXCLUDES retained done/failed sessions and processes that already exited,
-            // so membership in `list_sessions` is not enough. The lookup also returns the
-            // target's `task_id` so we exclude its OWN claims below (a claim can key on
-            // either the session id or the task id).
-            let target = manager.live_session(&session_id).ok_or_else(|| {
-                ApiError::NotFound(format!("no live agent session '{session_id}' to steer"))
-            })?;
-            let files = arg_optional_string_array(&args, "files")?.unwrap_or_default();
-            let now = now_secs();
-            let claims: Vec<crate::symbol_ownership::SymbolClaim> = {
-                let mut owner = ownership.lock().map_err(|_| {
-                    ApiError::Internal("symbol ownership lock poisoned".to_string())
-                })?;
-                owner.expire(now);
-                owner.live_claims(now).into_iter().cloned().collect()
-            };
-            // The SAME ownership-context formatter the dispatch prompt uses (one SSOT): the
-            // OTHER agents' live write claims on the steered agent's files — self excluded
-            // by BOTH session id AND the session's task id, so a task-bound agent is never
-            // steered off its own ranges.
-            let ctx = crate::symbol_ownership::agent_context::active_ownership_context(
-                &claims,
-                Some(&session_id),
-                target.task_id.as_deref(),
-                &files,
-                crate::symbol_ownership::agent_context::DEFAULT_CONTEXT_CAP,
-            );
-            let avoid: Vec<serde_json::Value> = ctx
-                .entries
-                .iter()
-                .map(|e| {
-                    let confidence = match e.confidence {
-                        crate::symbol_ownership::Confidence::Lsp => "lsp",
-                        crate::symbol_ownership::Confidence::Parser => "parser",
-                        crate::symbol_ownership::Confidence::DiffHunk => "diff-hunk",
-                    };
-                    serde_json::json!({
-                        "agent": e.agent_id,
-                        "symbol": e.symbol,
-                        "path": e.path,
-                        "startLine": e.range.start_line,
-                        "endLine": e.range.end_line,
-                        "confidence": confidence,
-                    })
-                })
-                .collect();
-            // The SAME renderer the loop/IPC inject into prompts (one SSOT) — so the
-            // steer's human-readable directive can't drift from the dispatch wording.
-            // `null` when nothing is owned (honest: there is nothing to avoid).
-            let directive = crate::symbol_ownership::agent_context::render_ownership_header(&ctx);
-            // Publish a TYPED, auditable directive (not raw pane input) onto the fleet
-            // stream — the agent / operator reads structured data and acts on it.
-            if let Some(bus) = state.event_bus.as_ref() {
-                bus.publish(crate::event_bus::AgentEvent::new(
-                    crate::event_bus::AgentEventKind::SteerAvoid,
-                    serde_json::json!({
-                        "sessionId": session_id,
-                        "directive": directive,
-                        "avoid": avoid,
-                    }),
-                ))
-                .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({
-                "sessionId": session_id,
-                "steered": true,
-                "avoidCount": avoid.len(),
-                "directive": directive,
-                "avoid": avoid,
-            })
+            super::agent_coordination::steer_avoid(&state, actor, &args)?
         }
         "aelyris.agent.activity" => {
             let manager = state.agent_manager.as_ref().ok_or_else(|| {

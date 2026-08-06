@@ -1,6 +1,7 @@
 use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
 
+mod agent_coordination;
 mod catalog;
 mod dispatch;
 
@@ -2613,6 +2614,327 @@ mod tests {
                 assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
             }
         }
+    }
+
+    #[test]
+    fn mcp_agent_coordination_audit_is_principal_bound_and_payload_free() {
+        use crate::agent::AgentManager;
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEventKind, EventBus};
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::{
+            ClaimMode, ClaimOutcome, Confidence, SymbolClaim, SymbolOwnership, SymbolRange,
+        };
+        use std::process::Stdio;
+        use std::sync::Mutex;
+
+        fn spawn_sleeper() -> std::process::Child {
+            #[cfg(windows)]
+            {
+                return crate::process::hidden_command("cmd")
+                    .args(["/c", "ping", "127.0.0.1", "-n", "30"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("spawn Windows sleeper");
+            }
+            #[cfg(not(windows))]
+            {
+                std::process::Command::new("sh")
+                    .args(["-c", "sleep 30"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("spawn Unix sleeper")
+            }
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let manager = AgentManager::new();
+        let session_id = "AIO20_SESSION_MUST_NOT_BE_LOGGED";
+        let session_task = "AIO20_SESSION_TASK_MUST_NOT_BE_LOGGED";
+        let failed_session_id = "AIO20_EVENT_FAILURE_SESSION_MUST_NOT_BE_LOGGED";
+        manager
+            .insert_test_session(session_id, Some(session_task), spawn_sleeper())
+            .unwrap();
+        manager
+            .insert_test_session(failed_session_id, None, spawn_sleeper())
+            .unwrap();
+
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(db.clone());
+        let ownership = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let avoid_agent = "AIO20_AVOID_AGENT_MUST_NOT_BE_LOGGED";
+        let avoid_task = "AIO20_AVOID_TASK_MUST_NOT_BE_LOGGED";
+        let avoid_path = "src/AIO20_AVOID_PATH_MUST_NOT_BE_LOGGED.rs";
+        let avoid_symbol = "AIO20_AVOID_SYMBOL_MUST_NOT_BE_LOGGED";
+        assert!(matches!(
+            ownership.lock().unwrap().claim(
+                SymbolClaim {
+                    claim_id: "AIO20_AVOID_CLAIM_MUST_NOT_BE_LOGGED".to_string(),
+                    agent_id: avoid_agent.to_string(),
+                    task_id: Some(avoid_task.to_string()),
+                    path: avoid_path.to_string(),
+                    symbol: avoid_symbol.to_string(),
+                    range: SymbolRange::new(10, 20),
+                    mode: ClaimMode::Write,
+                    lease_expires_at: u64::MAX,
+                    confidence: Confidence::Parser,
+                },
+                0,
+            ),
+            ClaimOutcome::Granted
+        ));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_agent_manager(manager.clone())
+            .with_symbol_ownership(ownership.clone())
+            .with_event_bus(events.clone());
+        for verb in [
+            "aelyris.agent.report_activity",
+            "aelyris.agent.report_blocker",
+            "aelyris.agent.steer_avoid",
+        ] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "coordination-operator",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let action = "AIO20_ACTION_MUST_NOT_BE_LOGGED";
+        let file = "src/AIO20_FILE_MUST_NOT_BE_LOGGED.rs";
+        let symbol = "AIO20_SYMBOL_MUST_NOT_BE_LOGGED";
+        let Json(activity) = call(
+            &state,
+            "aelyris.agent.report_activity",
+            serde_json::json!({
+                "sessionId": session_id,
+                "action": action,
+                "file": file,
+                "symbol": symbol,
+            }),
+        )
+        .expect("report live activity");
+        assert_eq!(activity["result"]["reported"], true);
+        assert_eq!(
+            manager
+                .list_sessions()
+                .into_iter()
+                .find(|session| session.id == session_id)
+                .and_then(|session| session.current_activity)
+                .map(|activity| activity.action),
+            Some(action.to_string())
+        );
+
+        let blocker = "AIO20_BLOCKER_MUST_NOT_BE_LOGGED";
+        let needs = "AIO20_NEEDS_MUST_NOT_BE_LOGGED";
+        let Json(blocked) = call(
+            &state,
+            "aelyris.agent.report_blocker",
+            serde_json::json!({
+                "sessionId": session_id,
+                "summary": blocker,
+                "needs": needs,
+            }),
+        )
+        .expect("report live blocker");
+        assert_eq!(blocked["result"]["raised"], true);
+        assert_eq!(
+            manager
+                .list_sessions()
+                .into_iter()
+                .find(|session| session.id == session_id)
+                .and_then(|session| session.current_activity)
+                .map(|activity| activity.action),
+            Some("blocked".to_string())
+        );
+
+        let Json(steered) = call(
+            &state,
+            "aelyris.agent.steer_avoid",
+            serde_json::json!({
+                "sessionId": session_id,
+                "files": [avoid_path],
+            }),
+        )
+        .expect("publish typed ownership-derived steer");
+        assert_eq!(steered["result"]["steered"], true);
+        assert_eq!(steered["result"]["avoidCount"], 1);
+        assert_eq!(steered["result"]["avoid"][0]["agent"], avoid_agent);
+        assert_eq!(steered["result"]["avoid"][0]["symbol"], avoid_symbol);
+
+        let missing_session = "AIO20_MISSING_SESSION_MUST_NOT_BE_LOGGED";
+        assert!(matches!(
+            call(
+                &state,
+                "aelyris.agent.report_activity",
+                serde_json::json!({
+                    "sessionId": missing_session,
+                    "action": "AIO20_MISSING_ACTION_MUST_NOT_BE_LOGGED",
+                }),
+            ),
+            Err(ApiError::NotFound(_))
+        ));
+
+        let event_failure_action = "AIO20_EVENT_FAILURE_ACTION_MUST_NOT_BE_LOGGED";
+        let event_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_agent_manager(manager.clone())
+                .with_symbol_ownership(ownership)
+                .with_event_bus(Arc::new(EventBus::new_durable()));
+        assert!(matches!(
+            call(
+                &event_failure_state,
+                "aelyris.agent.report_activity",
+                serde_json::json!({
+                    "sessionId": failed_session_id,
+                    "action": event_failure_action,
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(
+            manager
+                .list_sessions()
+                .into_iter()
+                .find(|session| session.id == failed_session_id)
+                .and_then(|session| session.current_activity)
+                .map(|activity| activity.action),
+            Some(event_failure_action.to_string()),
+            "Event Bus failure does not replay or roll back the AgentManager mutation"
+        );
+
+        let recent = events.recent();
+        assert_eq!(
+            recent
+                .iter()
+                .filter(|event| event.kind == AgentEventKind::AgentActivity)
+                .count(),
+            1
+        );
+        assert_eq!(
+            recent
+                .iter()
+                .filter(|event| event.kind == AgentEventKind::BlockerRaised)
+                .count(),
+            1
+        );
+        assert_eq!(
+            recent
+                .iter()
+                .filter(|event| event.kind == AgentEventKind::SteerAvoid)
+                .count(),
+            1
+        );
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_agent_coordination_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read agent coordination audit");
+        assert_eq!(rows.len(), 5);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("coordination-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            2
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "steer_avoid"
+                && row.redacted_payload_json["coordinationCount"] == 1
+                && row.redacted_payload_json["mutationApplied"].is_null()
+                && row.redacted_payload_json["eventPublished"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "agent_session_not_live"
+                && row.redacted_payload_json["mutationApplied"] == false
+                && row.redacted_payload_json["eventPublished"].is_null()
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"]
+                == "agent_coordination_event_publication_failed"
+                && row.redacted_payload_json["mutationApplied"] == true
+                && row.redacted_payload_json["eventPublished"] == false
+        }));
+        let session_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["sessionDigest"]
+                    .as_str()
+                    .expect("session digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("coordination input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(session_digests.len(), 3);
+        assert_eq!(input_digests.len(), 5);
+        assert!(session_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["coordinationValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                session_id,
+                session_task,
+                failed_session_id,
+                missing_session,
+                action,
+                file,
+                symbol,
+                blocker,
+                needs,
+                event_failure_action,
+                avoid_agent,
+                avoid_task,
+                avoid_path,
+                avoid_symbol,
+                "AIO20_AVOID_CLAIM_MUST_NOT_BE_LOGGED",
+                "AIO20_MISSING_ACTION_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let _ = manager.stop_session(session_id);
+        let _ = manager.stop_session(failed_session_id);
     }
 
     #[test]

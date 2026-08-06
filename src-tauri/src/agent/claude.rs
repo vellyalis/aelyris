@@ -273,6 +273,60 @@ impl AgentManager {
         Ok(())
     }
 
+    /// Set activity only when the target still represents a live worker.
+    ///
+    /// MCP coordination must not publish activity or blocker facts for an
+    /// unknown, terminal, or already-exited process. This keeps the liveness
+    /// check and mutation under the one AgentManager lock instead of racing a
+    /// separate `live_session` read against `set_activity`.
+    pub fn set_live_activity(
+        &self,
+        id: &str,
+        action: String,
+        file: Option<String>,
+        symbol: Option<String>,
+    ) -> Result<bool, String> {
+        let mut sessions = self.lock_sessions()?;
+        let Some(proc) = sessions.get_mut(id) else {
+            return Ok(false);
+        };
+        if is_terminal_status(&proc.info.status) || matches!(proc.child.try_wait(), Ok(Some(_))) {
+            return Ok(false);
+        }
+        proc.info.current_activity = Some(AgentActivity {
+            action,
+            file,
+            symbol,
+            updated_at: now_secs(),
+        });
+        Ok(true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_test_session(
+        &self,
+        id: &str,
+        task_id: Option<&str>,
+        child: Child,
+    ) -> Result<(), String> {
+        let info = AgentSessionInfo {
+            id: id.to_string(),
+            status: "running".to_string(),
+            model: "test".to_string(),
+            prompt: String::new(),
+            cwd: String::new(),
+            cost: 0.0,
+            tokens_used: 0,
+            started_at: now_secs(),
+            task_id: task_id.map(str::to_string),
+            execution_identity: None,
+            current_activity: None,
+        };
+        self.lock_sessions()?
+            .insert(id.to_string(), AgentProcess { child, info });
+        Ok(())
+    }
+
     /// Completion sensor (BR9): detect sessions whose child process has exited
     /// since the last poll, splitting them by exit status — a clean exit (code 0)
     /// is a `succeeded` task (-> review), a non-zero exit / crash is a `failed`

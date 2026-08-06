@@ -892,7 +892,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.agent.report_activity",
-                "description": "Report what an agent is doing right now (BR5): the file/symbol it is touching and the action (editing/reading/running tests/...). Updates the agent's live activity + publishes agent_activity to the fleet stream so peers see who is touching what, down to the function, in real time.",
+                "description": "Report typed activity for a LIVE agent session as the authenticated Principal. AgentManager performs the liveness check and activity mutation atomically, then the existing Event Bus publishes agent_activity. Unknown, terminal, or exited sessions fail closed; authority evidence stores only one-way session/input digests and coordination outcome, never activity/file/symbol values.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -908,7 +908,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.agent.report_blocker",
-                "description": "Report that an agent is stuck (BR5): a summary of the blocker and optionally what it needs (a decision, another agent's output, ...). Marks the agent blocked + publishes blocker_raised so a peer/orchestrator can unblock it rather than it stalling silently.",
+                "description": "Report a typed blocker for a LIVE agent session as the authenticated Principal. The existing AgentManager records blocked activity and the Event Bus publishes blocker_raised. Missing/dead sessions fail closed; blocker text and needs remain coordination payload and are excluded from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -923,7 +923,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.agent.steer_avoid",
-                "description": "TYPED steer (§6.4): tell a LIVE agent to AVOID the symbols OTHER agents currently own in the files it is working on. DERIVES the avoidance list from the live symbol-ownership map (the same source as the dispatch prompt) — NOT raw pane text — so the directive is auditable and structured. Errors if the target sessionId is not a live agent (retained done/failed sessions do NOT count). Publishes steer_avoid to the fleet stream; returns { sessionId, steered, avoidCount, directive (the same human-readable ownership header the dispatch prompt uses, or null when nothing is owned), avoid:[{agent,symbol,path,startLine,endLine,confidence}] }.",
+                "description": "Publish an authenticated, TYPED avoid steer for a LIVE agent. The directive is derived only from the existing live symbol-ownership projection and shared renderer, never caller-authored pane text. Missing/dead sessions fail closed; the Event Bus carries the existing steer_avoid payload while authority evidence stores only one-way session/input digests, avoid count, and publication outcome.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

@@ -217,6 +217,17 @@ edge cascading, exact edge removal, and existing persistence behavior. Authority
 evidence contains only actor, operation, changed/removed outcome, and one-way
 target/input digests. Node ids, files, edge endpoints, and graph snapshots are excluded.
 
+`aelyris.agent.report_activity`, `report_blocker`, and `steer_avoid` retain
+`AgentManager`, the shared symbol-ownership context formatter, and Event Bus as their
+only coordination owners. Activity and blocker updates use one AgentManager lock for
+the live-process check and mutation; retained terminal, exited, and unknown sessions
+cannot produce fleet facts. Avoid steering remains ownership-derived typed data rather
+than raw pane input. Event publication failure after an activity/blocker mutation is an
+explicit partial-coordination failure and never replays or rolls back the manager state.
+Authority evidence stores only actor, operation, one-way session/input digests,
+count/result metadata, and mutation/publication outcome. Session, task, file, symbol,
+activity, blocker, directive, avoidance, and Event Bus payload values are excluded.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

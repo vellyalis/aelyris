@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-20`.
-LAST COMPLETED SLICE: `AIO-19`.
-NEXT IMPLEMENTATION SLICE: `AIO-20`.
+ACTIVE SLICE: `AIO-21`.
+LAST COMPLETED SLICE: `AIO-20`.
+NEXT IMPLEMENTATION SLICE: `AIO-21`.
 
 ```yaml
 continuation_contract:
@@ -77,7 +77,8 @@ Current portfolio classification:
 | MCP context decision mutation evidence | **COMPLETE** | Shared decision set/remove now retain the authenticated initiating Principal separately from key/value data, using one-way digests and explicit partial-coordination outcomes |
 | MCP intent mutation evidence | **COMPLETE** | Intent propose/resolve now retain the authenticated initiating Principal separately from deliberation contents, with persistence-before-memory and payload-free partial-coordination evidence |
 | MCP knowledge-graph mutation evidence | **COMPLETE** | Node/edge add/remove now retain the authenticated initiating Principal separately from structural values, using one-way graph digests and explicit changed/no-op outcomes |
-| MCP agent coordination mutation evidence | **NOW** | AI can report activity/blockers and publish typed avoidance directives, but session/task/file/symbol/directive data are domain values and the authenticated initiating Principal is not retained separately |
+| MCP agent coordination mutation evidence | **COMPLETE** | Activity, blocker, and ownership-derived avoid steering now retain the authenticated initiating Principal through live-session checks and payload-free mutation/publication evidence |
+| MCP durable event acknowledgement evidence | **NOW** | AI can advance an at-least-once consumer cursor with `event.ack`, but consumer/event identity is caller-selected delivery data and the authenticated initiating Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -95,7 +96,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-19` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-20` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1199,7 +1200,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` activity/blocker reporting and typed avoidance
 steering whose initiating identity comes from the authenticated MCP Principal while
 session, task, file, symbol, blocker, and directive fields remain coordination data.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.agent.report_activity`, `report_blocker`, and
   `steer_avoid` adapters, `AgentManager`, live symbol-ownership projection, Event Bus,
@@ -1221,6 +1222,32 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can report and steer through the existing typed fleet
   owners, and each effect is attributable without leaking activity or directive
   contents or confusing session metadata with caller identity.
+
+### AIO-21 — Principal-Bound MCP Durable Event Acknowledgement Evidence
+
+Capability target: `Product-Accessible` durable consumer acknowledgement whose
+initiating identity comes from the authenticated MCP Principal while consumer, event,
+and sequence values remain delivery-domain data.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.event.ack` adapter, `EventBus::ack`, `EventRepo`,
+  Governance, and durable audit journal. Do not add a cursor store, consumer registry,
+  actor field, delivery protocol, identity store, or AI-only event path.
+- Keep caller-supplied consumer id, event id, and sequence as delivery inputs. They
+  identify the at-least-once cursor operation but do not define the initiating actor.
+- Preserve exact event-id/sequence validation, monotonic cumulative acknowledgement,
+  mismatch/gap/corruption typed errors, idempotent retry behavior, and the existing
+  durable Event Bus as the sole cursor authority. `event.poll` and `event.since` remain
+  read projections rather than a second acknowledgement owner.
+- Retain accepted/rejected audit with actor, operation, acknowledged sequence/outcome,
+  and stable one-way consumer/event/input digests. Do not persist raw consumer ids,
+  event ids, Event Bus payloads, bearer values, environment values, or repository
+  contents in the audit record.
+- A failed acknowledgement must remain explicit and must not be replayed merely to
+  obtain audit evidence. Audit-write failure must not create a second cursor result.
+- Done: an authenticated AI can advance the existing durable delivery cursor, and the
+  effect is attributable without leaking consumer/event identity or weakening the
+  at-least-once contract.
 
 ## Deferred After GMV
 
@@ -1247,8 +1274,9 @@ complete. Principal-bound MCP manual symbol-ownership mutation evidence `AIO-15`
 also complete. Principal-bound MCP derived symbol-ownership mutation evidence `AIO-16`
 and Principal-bound MCP context decision mutation evidence `AIO-17` are also complete.
 Principal-bound MCP intent mutation evidence `AIO-18` is also complete.
-Principal-bound MCP knowledge-graph mutation evidence `AIO-19` is also complete.
-Principal-bound MCP agent coordination mutation evidence `AIO-20` is active;
+Principal-bound MCP knowledge-graph mutation evidence `AIO-19` and Principal-bound MCP
+agent coordination mutation evidence `AIO-20` are also complete. Principal-bound MCP
+durable event acknowledgement evidence `AIO-21` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
