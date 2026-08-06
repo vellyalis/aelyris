@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `RC-2`.
-LAST COMPLETED SLICE: `RC-1`.
-NEXT IMPLEMENTATION SLICE: `RC-2`.
+ACTIVE SLICE: `RC-3`.
+LAST COMPLETED SLICE: `RC-2`.
+NEXT IMPLEMENTATION SLICE: `RC-3`.
 
 ```yaml
 continuation_contract:
@@ -57,7 +57,7 @@ Current portfolio classification:
 | Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
 | Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
-| Remote Continuity | **NOW** | RC-1 exposes one authenticated local snapshot; next add only finite payload-free changes from the existing durable Event Bus cursor |
+| Remote Continuity | **NOW** | RC-1/2 expose authenticated local snapshot plus finite payload-free changes; next make the existing principal/scope boundary machine-readable before any network exposure or mutation |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -75,7 +75,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `RC-1` is complete; no
+- This work order is the sole repo-mutating product lane. `RC-2` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -622,7 +622,7 @@ Status: **COMPLETE**.
 ### RC-2 — Authenticated Payload-Free Continuity Changes
 
 Capability target: `Product-Accessible` without a live-watch or remote-operation claim.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing authenticated embedded API, `aelys` control face, and durable
   Event Bus cursor from RC-1. Do not add a second event log, polling daemon,
@@ -644,6 +644,32 @@ Status: **ACTIVE**.
 - Done: an operator can retrieve one authenticated, payload-free finite batch since
   a durable cursor and receive the exact next cursor without mutating Aelyris state.
 
+### RC-3 — Machine-Readable Observe Principal And Scope Contract
+
+Capability target: `Product-Accessible` identity and authorization discovery without
+private-network exposure or a new mutation authority.
+Status: **ACTIVE**.
+
+- Extend the existing bearer authentication, `Principal`, Governance, daemon
+  contract, and `aelys` control face. Do not add a second token store, identity
+  database, policy engine, role model, remote bind switch, or cloud account.
+- Add one authenticated read-only identity projection that returns the current
+  principal id, tenant, transport, and the finite continuity capabilities the
+  existing Governance owner allows for that principal. It must not expose bearer
+  tokens, token-file paths, policy internals, credentials, or unrelated mutation
+  capabilities.
+- Capability evaluation must call the existing Governance authority for the exact
+  stable continuity capability names; the frontend or CLI must not infer access
+  from route presence, daemon process kind, or a generic `authenticated=true` bit.
+- The default loopback operator remains compatible with current local operation.
+  A denied continuity scope must be represented explicitly and must remain denied
+  when the caller invokes the underlying route.
+- Expose one finite `aelys continuity-whoami` command. It exits after one response
+  and does not create a session, lease, watch stream, approval, or terminal input.
+- Done: an AI or operator can discover which read-only continuity operations the
+  current authenticated principal may actually invoke, using the same owner that
+  enforces those operations.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -653,11 +679,11 @@ Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 Durable step evidence inspection `PB-UI-6`, bounded cap editing `CM-3`, validated
 non-secret string inputs `PB-UI-7`, exact runtime-owned `agentSession` settlement
 `PB-UI-8`, durable fleet cap persistence `CM-4`, and authenticated read-only
-continuity snapshot `RC-1` are also complete. Payload-free finite continuity changes
-`RC-2` are active; private-network exposure, live monitoring, remote approvals/input,
-SSH attach, secret-bearing Proofbook starts, broader input types, raw artifact
-opening/export, and other adjacent value remain separately bounded portfolio
-candidates.
+continuity snapshot `RC-1` and payload-free finite continuity changes `RC-2` are also
+complete. Machine-readable observe-principal scope discovery `RC-3` is active;
+private-network exposure, live monitoring, remote approvals/input, SSH attach,
+secret-bearing Proofbook starts, broader input types, raw artifact opening/export,
+and other adjacent value remain separately bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

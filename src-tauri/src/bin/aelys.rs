@@ -46,6 +46,7 @@ async fn run() -> Result<(), String> {
             print_json(&value)
         }
         "continuity" => continuity(&args[1..]).await,
+        "continuity-changes" => continuity_changes(&args[1..]).await,
         "sessions" | "list" => {
             let value = request(Method::GET, "/sessions", None).await?;
             print_json(&value)
@@ -763,6 +764,67 @@ async fn continuity(args: &[String]) -> Result<(), String> {
     print_json(&value)
 }
 
+async fn continuity_changes(args: &[String]) -> Result<(), String> {
+    let path = continuity_changes_path(args)?;
+    let value = request_at(&continuity_base_url(), Method::GET, &path, None).await?;
+    print_json(&value)
+}
+
+fn continuity_changes_path(args: &[String]) -> Result<String, String> {
+    let mut after_seq = None;
+    let mut limit = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--after-seq" => {
+                if after_seq.is_some() {
+                    return Err("--after-seq may be supplied only once".to_string());
+                }
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "--after-seq requires a non-negative integer".to_string())?;
+                let parsed = value
+                    .parse::<i64>()
+                    .map_err(|_| "--after-seq must be a non-negative integer".to_string())?;
+                if parsed < 0 {
+                    return Err("--after-seq must be a non-negative integer".to_string());
+                }
+                after_seq = Some(parsed);
+                index += 2;
+            }
+            "--limit" => {
+                if limit.is_some() {
+                    return Err("--limit may be supplied only once".to_string());
+                }
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "--limit requires an integer from 1 through 1000".to_string())?;
+                let parsed = value
+                    .parse::<usize>()
+                    .map_err(|_| "--limit must be an integer from 1 through 1000".to_string())?;
+                if !(1..=1_000).contains(&parsed) {
+                    return Err("--limit must be an integer from 1 through 1000".to_string());
+                }
+                limit = Some(parsed);
+                index += 2;
+            }
+            option if option.starts_with("--") => {
+                return Err(format!("unknown continuity-changes option: {option}"));
+            }
+            other => {
+                return Err(format!("unexpected continuity-changes argument: {other}"));
+            }
+        }
+    }
+    let after_seq = after_seq.ok_or_else(|| {
+        "continuity-changes requires --after-seq <non-negative integer>".to_string()
+    })?;
+    Ok(match limit {
+        Some(limit) => format!("/continuity/changes?afterSeq={after_seq}&limit={limit}"),
+        None => format!("/continuity/changes?afterSeq={after_seq}"),
+    })
+}
+
 fn continuity_path(args: &[String]) -> Result<String, String> {
     let mut project = None;
     let mut index = 0;
@@ -914,7 +976,7 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aelys commands:\n  health\n  daemon\n  continuity [--project path]\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; continuity otherwise targets embedded http://127.0.0.1:9333, while other commands prefer the sidecar when its token file exists\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the shared hardened Aelyris token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
+        "aelys commands:\n  health\n  daemon\n  continuity [--project path]\n  continuity-changes --after-seq n [--limit n]\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; continuity commands target embedded http://127.0.0.1:9333, while other commands prefer the sidecar when its token file exists\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the shared hardened Aelyris token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
     );
 }
 
@@ -942,6 +1004,26 @@ mod tests {
         );
         assert!(continuity_path(&strings(&["--project"])).is_err());
         assert!(continuity_path(&strings(&["--write"])).is_err());
+    }
+
+    #[test]
+    fn continuity_changes_path_requires_one_bounded_explicit_cursor() {
+        assert_eq!(
+            continuity_changes_path(&strings(&["--after-seq", "0"])).unwrap(),
+            "/continuity/changes?afterSeq=0"
+        );
+        assert_eq!(
+            continuity_changes_path(&strings(&["--after-seq", "42", "--limit", "250"])).unwrap(),
+            "/continuity/changes?afterSeq=42&limit=250"
+        );
+        assert!(continuity_changes_path(&[]).is_err());
+        assert!(continuity_changes_path(&strings(&["--after-seq", "-1"])).is_err());
+        assert!(continuity_changes_path(&strings(&["--after-seq", "x"])).is_err());
+        assert!(continuity_changes_path(&strings(&["--after-seq", "0", "--limit", "0"])).is_err());
+        assert!(
+            continuity_changes_path(&strings(&["--after-seq", "0", "--limit", "1001"])).is_err()
+        );
+        assert!(continuity_changes_path(&strings(&["--after-seq", "0", "--watch"])).is_err());
     }
 
     #[test]

@@ -1514,6 +1514,7 @@ fn derive_capability(method: &Method, route: &str) -> String {
         ("GET", "/health") => "health.read",
         ("GET", "/daemon/contract") => "daemon.contract",
         ("GET", "/continuity/snapshot") => "continuity.snapshot.read",
+        ("GET", "/continuity/changes") => "continuity.changes.read",
         ("POST", "/daemon/shutdown") => "daemon.shutdown",
         _ => return format!("{}:{route}", method.as_str().to_ascii_lowercase()),
     };
@@ -1604,6 +1605,12 @@ pub enum ApiError {
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
 
+    #[error("continuity unavailable: {0}")]
+    ContinuityUnavailable(String),
+
+    #[error("continuity event query failed: {0}")]
+    ContinuityEvent(crate::event_bus::EventBusError),
+
     #[error("internal error: {0}")]
     Internal(String),
 
@@ -1648,6 +1655,52 @@ impl IntoResponse for ApiError {
             )
                 .into_response();
         }
+        if let ApiError::ContinuityEvent(error) = &self {
+            let (status, code) = match error {
+                crate::event_bus::EventBusError::DurabilityUnavailable => {
+                    (StatusCode::SERVICE_UNAVAILABLE, "durability_unavailable")
+                }
+                crate::event_bus::EventBusError::CursorOutOfRange { .. } => {
+                    (StatusCode::CONFLICT, "cursor_out_of_range")
+                }
+                crate::event_bus::EventBusError::InvalidEventIdentity
+                | crate::event_bus::EventBusError::InvalidConsumerIdentity => {
+                    (StatusCode::BAD_REQUEST, "invalid_event_query")
+                }
+                crate::event_bus::EventBusError::AppendFailed { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "append_failed")
+                }
+                crate::event_bus::EventBusError::QueryFailed { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "query_failed")
+                }
+                crate::event_bus::EventBusError::CorruptRow { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "corrupt_row")
+                }
+                crate::event_bus::EventBusError::StreamInvariant { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "stream_invariant")
+                }
+                crate::event_bus::EventBusError::ConsumerCursorCorrupt { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "consumer_cursor_corrupt")
+                }
+                crate::event_bus::EventBusError::Gap { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "event_gap")
+                }
+                crate::event_bus::EventBusError::AckIdentityMismatch { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "ack_identity_mismatch")
+                }
+                crate::event_bus::EventBusError::AckRegression { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "ack_regression")
+                }
+            };
+            return (
+                status,
+                Json(serde_json::json!({
+                    "error": self.to_string(),
+                    "code": code,
+                })),
+            )
+                .into_response();
+        }
         let (status, code) = match &self {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
@@ -1658,9 +1711,13 @@ impl IntoResponse for ApiError {
             ApiError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "startup_not_admitted")
             }
+            ApiError::ContinuityUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "continuity_unavailable")
+            }
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
             ApiError::CommandRiskBlocked(_) => unreachable!("handled above"),
             ApiError::TerminalWriteRejected(_, _) => unreachable!("handled above"),
+            ApiError::ContinuityEvent(_) => unreachable!("handled above"),
         };
         (
             status,
@@ -1868,6 +1925,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/health", get(health))
         .route("/daemon/contract", get(daemon_contract))
         .route("/continuity/snapshot", get(continuity::snapshot))
+        .route("/continuity/changes", get(continuity::changes))
         .route("/daemon/shutdown", post(daemon_shutdown))
         // E1: authorization runs just INSIDE auth (auth is added last = outermost,
         // so it runs first and inserts the Principal that this layer reads).
@@ -2058,6 +2116,10 @@ pub struct DaemonContractResponse {
     continuity_snapshot_schema: &'static str,
     continuity_snapshot_endpoint: &'static str,
     continuity_snapshot_policy: &'static str,
+    continuity_changes_schema: &'static str,
+    continuity_changes_endpoint: &'static str,
+    continuity_changes_policy: &'static str,
+    continuity_changes_available: bool,
     terminal_core_policy: TerminalCorePolicyResponse,
     capabilities: Vec<&'static str>,
 }
@@ -2418,6 +2480,47 @@ async fn daemon_shutdown(State(state): State<ApiState>) -> StatusCode {
 }
 
 async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractResponse> {
+    let mut capabilities = vec![
+        "health",
+        "session-crud",
+        "command-session",
+        "session-input",
+        "session-input-approval",
+        "session-capture",
+        "websocket-stream",
+        "stream-ticket",
+        "stream-read-only-attach",
+        "stream-exclusive-controller-lease",
+        "stream-attach-snapshot-replay",
+        "rest-controller-lease-owner",
+        "mux-inspect",
+        "mux-pane-control",
+        "mux-layout-control",
+        "mux-layout-equalize",
+        "mux-layout-rotate",
+        "mux-pane-break-join",
+        "mux-pane-zoom",
+        "mux-broadcast-input",
+        "mux-synchronized-panes",
+        "mux-attach-detach",
+        "mux-live-attach-detach",
+        "mux-live-process-preservation",
+        "mux-snapshot-restore-pending",
+        "mux-export-import",
+        "durable-scrollback",
+        "continuity-read-only-snapshot",
+        "terminal-core-policy",
+        "native-input-boundary-contract",
+        "native-render-pipeline-contract",
+        "terminal-fallback-telemetry",
+    ];
+    let continuity_changes_available = state
+        .event_bus
+        .as_ref()
+        .is_some_and(|event_bus| event_bus.frontier().is_ok());
+    if continuity_changes_available {
+        capabilities.push("continuity-payload-free-finite-changes");
+    }
     Json(DaemonContractResponse {
         contract_schema_version: 1,
         process_kind: state.process_kind,
@@ -2445,41 +2548,13 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         continuity_snapshot_schema: "aelyris.continuity.snapshot/v1",
         continuity_snapshot_endpoint: "/continuity/snapshot",
         continuity_snapshot_policy: "authenticated-loopback-read-only-no-remote-operation-claim",
+        continuity_changes_schema: "aelyris.continuity.changes/v1",
+        continuity_changes_endpoint: "/continuity/changes",
+        continuity_changes_policy:
+            "authenticated-loopback-finite-payload-free-read-only-no-live-watch-requires-durable-event-owner",
+        continuity_changes_available,
         terminal_core_policy: terminal_core_policy(),
-        capabilities: vec![
-            "health",
-            "session-crud",
-            "command-session",
-            "session-input",
-            "session-input-approval",
-            "session-capture",
-            "websocket-stream",
-            "stream-ticket",
-            "stream-read-only-attach",
-            "stream-exclusive-controller-lease",
-            "stream-attach-snapshot-replay",
-            "rest-controller-lease-owner",
-            "mux-inspect",
-            "mux-pane-control",
-            "mux-layout-control",
-            "mux-layout-equalize",
-            "mux-layout-rotate",
-            "mux-pane-break-join",
-            "mux-pane-zoom",
-            "mux-broadcast-input",
-            "mux-synchronized-panes",
-            "mux-attach-detach",
-            "mux-live-attach-detach",
-            "mux-live-process-preservation",
-            "mux-snapshot-restore-pending",
-            "mux-export-import",
-            "durable-scrollback",
-            "continuity-read-only-snapshot",
-            "terminal-core-policy",
-            "native-input-boundary-contract",
-            "native-render-pipeline-contract",
-            "terminal-fallback-telemetry",
-        ],
+        capabilities,
     })
 }
 
@@ -3650,6 +3725,10 @@ mod tests {
             derive_capability(&Method::POST, "/sessions/{id}/input-approval"),
             "session.input_approval"
         );
+        assert_eq!(
+            derive_capability(&Method::GET, "/continuity/changes"),
+            "continuity.changes.read"
+        );
     }
 
     #[test]
@@ -3669,5 +3748,15 @@ mod tests {
 
         let r = ApiError::Internal("x".into()).into_response();
         assert_eq!(r.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let r = ApiError::ContinuityUnavailable("x".into()).into_response();
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let r = ApiError::ContinuityEvent(crate::event_bus::EventBusError::CursorOutOfRange {
+            after_seq: 2,
+            high_water_seq: 1,
+        })
+        .into_response();
+        assert_eq!(r.status(), StatusCode::CONFLICT);
     }
 }

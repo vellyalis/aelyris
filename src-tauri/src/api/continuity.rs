@@ -7,7 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::agent::{AgentActivity, AgentCli};
-use crate::event_bus::EventFrontier;
+use crate::event_bus::{EventBatchStatus, EventBusError, EventFrontier};
 use crate::merge_intent::MergeIntent;
 use crate::mux::graph::{LifecycleState, PaneRecord, WorkspaceRecord};
 use crate::proofbook::{ProofbookResidualBlocker, ProofbookRunLedger, ProofbookStepStatus};
@@ -15,6 +15,9 @@ use crate::proofbook::{ProofbookResidualBlocker, ProofbookRunLedger, ProofbookSt
 use super::{ApiError, ApiResult, ApiState};
 
 const SNAPSHOT_SCHEMA: &str = "aelyris.continuity.snapshot/v1";
+const CHANGES_SCHEMA: &str = "aelyris.continuity.changes/v1";
+const DEFAULT_CHANGES_LIMIT: usize = 100;
+const MAX_CHANGES_LIMIT: usize = 1_000;
 const MAX_TEXT_CHARS: usize = 256;
 const MAX_TERMINALS: usize = 128;
 const MAX_WORKSPACES: usize = 32;
@@ -31,6 +34,13 @@ const MAX_MERGE_INTENTS: usize = 64;
 #[serde(rename_all = "camelCase")]
 pub(super) struct ContinuityQuery {
     project_path: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ContinuityChangesQuery {
+    after_seq: Option<i64>,
+    limit: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,6 +66,22 @@ pub(super) struct ContinuitySnapshot {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct ContinuityChanges {
+    schema: &'static str,
+    captured_at_ms: u64,
+    transport: ContinuityChangesTransport,
+    after_seq: i64,
+    next_seq: i64,
+    high_water_seq: i64,
+    has_more: bool,
+    limit: usize,
+    status: EventBatchStatus,
+    events: Vec<ContinuityEventMetadata>,
+    omitted: [&'static str; 10],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ContinuityProcess {
     process_kind: &'static str,
     instance_id: String,
@@ -71,6 +97,27 @@ struct ContinuityTransport {
     read_only_snapshot: bool,
     snapshot_mutation_supported: bool,
     remote_operation_claim: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityChangesTransport {
+    bind_scope: &'static str,
+    authenticated: bool,
+    read_only_changes: bool,
+    finite_batch: bool,
+    mutation_supported: bool,
+    live_watch_supported: bool,
+    remote_operation_claim: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityEventMetadata {
+    seq: i64,
+    event_id: String,
+    kind: &'static str,
+    channel: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -288,6 +335,122 @@ pub(super) async fn snapshot(
     Query(query): Query<ContinuityQuery>,
 ) -> ApiResult<Json<ContinuitySnapshot>> {
     Ok(Json(build_snapshot(&state, query.project_path.as_deref())?))
+}
+
+pub(super) async fn changes(
+    State(state): State<ApiState>,
+    Query(query): Query<ContinuityChangesQuery>,
+) -> ApiResult<Json<ContinuityChanges>> {
+    let (after_seq, limit) = validate_changes_query(query)?;
+    Ok(Json(build_changes(&state, after_seq, limit)?))
+}
+
+fn validate_changes_query(query: ContinuityChangesQuery) -> Result<(i64, usize), ApiError> {
+    let after_seq = query
+        .after_seq
+        .ok_or_else(|| ApiError::BadRequest("afterSeq is required".to_string()))?;
+    if after_seq < 0 {
+        return Err(ApiError::BadRequest(
+            "afterSeq must be a non-negative integer".to_string(),
+        ));
+    }
+    let limit = query.limit.unwrap_or(DEFAULT_CHANGES_LIMIT);
+    if !(1..=MAX_CHANGES_LIMIT).contains(&limit) {
+        return Err(ApiError::BadRequest(format!(
+            "limit must be between 1 and {MAX_CHANGES_LIMIT}"
+        )));
+    }
+    Ok((after_seq, limit))
+}
+
+fn build_changes(
+    state: &ApiState,
+    after_seq: i64,
+    limit: usize,
+) -> Result<ContinuityChanges, ApiError> {
+    let bus = state.event_bus.as_ref().ok_or_else(|| {
+        ApiError::ContinuityUnavailable("durable event bus owner is not attached".to_string())
+    })?;
+    let batch = bus
+        .since(after_seq, limit)
+        .map_err(map_continuity_event_error)?;
+    let frontier = bus.frontier().map_err(map_continuity_event_error)?;
+    let next_seq = batch
+        .events
+        .last()
+        .map(|event| event.seq)
+        .unwrap_or(after_seq);
+    if batch.events.is_empty() && after_seq < frontier.high_water_seq {
+        return Err(ApiError::Internal(
+            "durable event stream returned an empty batch before its high-water sequence"
+                .to_string(),
+        ));
+    }
+    if next_seq > frontier.high_water_seq {
+        return Err(ApiError::Internal(format!(
+            "durable event batch advanced beyond its high-water sequence: next={next_seq}, highWater={}",
+            frontier.high_water_seq
+        )));
+    }
+    let events = batch
+        .events
+        .into_iter()
+        .map(|event| {
+            let event_id = exact_bounded_event_id(&event.event.event_id)?;
+            Ok(ContinuityEventMetadata {
+                seq: event.seq,
+                event_id,
+                kind: event.event.kind.as_str(),
+                channel: event.event.channel.as_str(),
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+
+    Ok(ContinuityChanges {
+        schema: CHANGES_SCHEMA,
+        captured_at_ms: now_ms(),
+        transport: ContinuityChangesTransport {
+            bind_scope: "loopback-only",
+            authenticated: state.auth.is_enabled(),
+            read_only_changes: true,
+            finite_batch: true,
+            mutation_supported: false,
+            live_watch_supported: false,
+            remote_operation_claim: false,
+        },
+        after_seq,
+        next_seq,
+        high_water_seq: frontier.high_water_seq,
+        has_more: next_seq < frontier.high_water_seq,
+        limit,
+        status: batch.status,
+        events,
+        omitted: [
+            "event_payloads",
+            "raw_scrollback",
+            "terminal_input",
+            "prompt_or_command_bodies",
+            "secret_values",
+            "artifact_contents",
+            "token_files",
+            "environment_values",
+            "signing_material",
+            "arbitrary_structured_output",
+        ],
+    })
+}
+
+fn map_continuity_event_error(error: EventBusError) -> ApiError {
+    ApiError::ContinuityEvent(error)
+}
+
+fn exact_bounded_event_id(event_id: &str) -> Result<String, ApiError> {
+    if event_id.chars().count() > MAX_TEXT_CHARS {
+        return Err(ApiError::Internal(format!(
+            "durable event id exceeds the continuity metadata bound of {MAX_TEXT_CHARS} characters"
+        )));
+    }
+    Ok(event_id.to_string())
 }
 
 fn build_snapshot(
@@ -941,5 +1104,136 @@ mod tests {
         }
         assert!(!text.contains("99.0"));
         assert!(!text.contains("123456"));
+    }
+
+    #[test]
+    fn changes_are_finite_payload_free_and_advance_the_exact_cursor() {
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let event_bus = Arc::new(EventBus::new_durable());
+        event_bus.attach_db(db);
+        for (event_id, kind, payload_secret) in [
+            (
+                "continuity-change-1",
+                AgentEventKind::TaskCreated,
+                "FIRST_EVENT_PAYLOAD_SECRET",
+            ),
+            (
+                "continuity-change-2",
+                AgentEventKind::ReviewRequired,
+                "SECOND_EVENT_PAYLOAD_SECRET",
+            ),
+        ] {
+            event_bus
+                .publish(
+                    AgentEvent::new(kind, json!({ "secret": payload_secret }))
+                        .with_idempotency_key(event_id),
+                )
+                .unwrap();
+        }
+        let state = ApiState::new(PtyManager::new(), AuthConfig::with_token("public-token"))
+            .with_event_bus(event_bus);
+
+        let first = serde_json::to_value(build_changes(&state, 0, 1).unwrap()).unwrap();
+        assert_eq!(first["schema"], CHANGES_SCHEMA);
+        assert_eq!(first["transport"]["authenticated"], true);
+        assert_eq!(first["transport"]["readOnlyChanges"], true);
+        assert_eq!(first["transport"]["finiteBatch"], true);
+        assert_eq!(first["transport"]["mutationSupported"], false);
+        assert_eq!(first["transport"]["liveWatchSupported"], false);
+        assert_eq!(first["transport"]["remoteOperationClaim"], false);
+        assert_eq!(first["afterSeq"], 0);
+        assert_eq!(first["nextSeq"], 1);
+        assert_eq!(first["highWaterSeq"], 2);
+        assert_eq!(first["hasMore"], true);
+        assert_eq!(first["events"].as_array().unwrap().len(), 1);
+        assert_eq!(first["events"][0]["seq"], 1);
+        assert_eq!(first["events"][0]["eventId"], "continuity-change-1");
+        assert_eq!(first["events"][0]["kind"], "task_created");
+        assert_eq!(first["events"][0]["channel"], "planning");
+
+        let second = serde_json::to_value(build_changes(&state, 1, 100).unwrap()).unwrap();
+        assert_eq!(second["afterSeq"], 1);
+        assert_eq!(second["nextSeq"], 2);
+        assert_eq!(second["highWaterSeq"], 2);
+        assert_eq!(second["hasMore"], false);
+        assert_eq!(second["events"][0]["eventId"], "continuity-change-2");
+        assert_eq!(second["events"][0]["kind"], "review_required");
+        assert_eq!(second["events"][0]["channel"], "review");
+
+        let serialized = serde_json::to_string(&[first, second]).unwrap();
+        for forbidden in [
+            "FIRST_EVENT_PAYLOAD_SECRET",
+            "SECOND_EVENT_PAYLOAD_SECRET",
+            "\"payload\":",
+            "\"structuredOutput\":",
+            "\"command\":",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked field: {forbidden}");
+        }
+    }
+
+    #[test]
+    fn changes_fail_closed_for_invalid_queries_missing_owner_and_stale_cursor() {
+        assert!(matches!(
+            validate_changes_query(ContinuityChangesQuery::default()),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_changes_query(ContinuityChangesQuery {
+                after_seq: Some(-1),
+                limit: None,
+            }),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_changes_query(ContinuityChangesQuery {
+                after_seq: Some(0),
+                limit: Some(0),
+            }),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_changes_query(ContinuityChangesQuery {
+                after_seq: Some(0),
+                limit: Some(MAX_CHANGES_LIMIT + 1),
+            }),
+            Err(ApiError::BadRequest(_))
+        ));
+
+        let unavailable = ApiState::new(PtyManager::new(), AuthConfig::disabled());
+        assert!(matches!(
+            build_changes(&unavailable, 0, 1),
+            Err(ApiError::ContinuityUnavailable(_))
+        ));
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let event_bus = Arc::new(EventBus::new_durable());
+        event_bus.attach_db(db);
+        let state =
+            ApiState::new(PtyManager::new(), AuthConfig::disabled()).with_event_bus(event_bus);
+        let error = build_changes(&state, 1, 1).unwrap_err();
+        assert!(matches!(
+            error,
+            ApiError::ContinuityEvent(EventBusError::CursorOutOfRange {
+                after_seq: 1,
+                high_water_seq: 0,
+            })
+        ));
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let event_bus = Arc::new(EventBus::new_durable());
+        event_bus.attach_db(db);
+        event_bus
+            .publish(
+                AgentEvent::new(AgentEventKind::TaskCreated, json!({}))
+                    .with_idempotency_key("x".repeat(MAX_TEXT_CHARS + 1)),
+            )
+            .unwrap();
+        let state =
+            ApiState::new(PtyManager::new(), AuthConfig::disabled()).with_event_bus(event_bus);
+        assert!(matches!(
+            build_changes(&state, 0, 1),
+            Err(ApiError::Internal(_))
+        ));
     }
 }

@@ -1,6 +1,7 @@
 # Aelyris Remote Continuity Spec
 
-Status: design/spec gate. Not implemented, not release-ready.
+Status: local authenticated read foundation implemented; remote operation and
+private-network exposure are not implemented and the product is not release-ready.
 Parent specs: `AELYRIS_DIFFERENTIATION_POLISH_SPEC.md` and
 `VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`.
 Last reviewed: 2026-07-05 JST.
@@ -13,14 +14,17 @@ merge readiness, and evidence.
 
 ## 0. Claim Boundary
 
-Remote Continuity, SSH attach, and remote tab/pane state sync are not
-implemented and not shipped. Aelyris must not claim remote operation, remote SSH
-attach, or multi-client remote control until the matching verifiers are green.
+The loopback-only authenticated snapshot and one finite payload-free durable-event
+batch are implemented through the existing embedded API and `aelys` control face.
+They make no remote-operation claim. Private-network exposure, remote UI, remote
+approval/input, SSH attach, and multi-client remote control are not implemented or
+shipped and must not be claimed until their matching verifiers are green.
 
 Current safe claim remains narrower: local Rust/Tauri terminal, mux, sidecar,
-visible-agent, MCP, worktree, ownership, review, merge, and scoped Proofbook
-runtime substrate exist, while product-level durability, remote continuity, and
-release readiness remain gated.
+visible-agent, MCP, worktree, ownership, review, merge, scoped Proofbook runtime,
+authenticated continuity snapshot, and payload-free finite event changes exist;
+private-network continuity, remote control, SSH attach, and release readiness remain
+gated.
 
 ## 1. Product Position
 

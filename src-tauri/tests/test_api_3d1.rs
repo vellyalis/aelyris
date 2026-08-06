@@ -5,11 +5,14 @@
 //! via ConPTY) and are gated on `target_os`.
 
 use aelyris_lib::api::{self, ApiState, AuthConfig, WS_MAX_INPUT_FRAME_BYTES};
+use aelyris_lib::db::{Database, ManagedDb};
+use aelyris_lib::event_bus::{AgentEvent, AgentEventKind, EventBus};
 use aelyris_lib::mux::store::FileMuxSnapshotStore;
 use aelyris_lib::pty::PtyManager;
 use reqwest::header::AUTHORIZATION;
 use reqwest::StatusCode;
 use serde_json::json;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Spin up a server on an ephemeral port and return (base_url, state, join).
@@ -30,6 +33,25 @@ async fn spawn_server(auth: AuthConfig) -> (String, ApiState, tokio::task::JoinH
     // worst case here is a single retry on the first request.
     tokio::task::yield_now().await;
     (format!("http://{}", addr), state, join)
+}
+
+async fn spawn_event_server(
+    auth: AuthConfig,
+) -> (String, ApiState, Arc<EventBus>, tokio::task::JoinHandle<()>) {
+    let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+    let event_bus = Arc::new(EventBus::new_durable());
+    event_bus.attach_db(db);
+    let state = ApiState::new(PtyManager::new(), auth).with_event_bus(event_bus.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind 127.0.0.1:0");
+    let addr = listener.local_addr().expect("local_addr");
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+    (format!("http://{}", addr), state, event_bus, join)
 }
 
 fn client() -> reqwest::Client {
@@ -247,12 +269,203 @@ async fn aelys_continuity_reads_the_authenticated_embedded_snapshot() {
 }
 
 #[tokio::test]
+async fn continuity_changes_is_authenticated_finite_payload_free_and_cursor_exact() {
+    let (base, state, event_bus, join) = spawn_event_server(AuthConfig::with_token("s3cret")).await;
+    event_bus
+        .publish(
+            AgentEvent::new(
+                AgentEventKind::TaskCreated,
+                json!({ "secret": "HTTP_EVENT_PAYLOAD_SECRET_1" }),
+            )
+            .with_idempotency_key("http-continuity-event-1"),
+        )
+        .unwrap();
+    event_bus
+        .publish(
+            AgentEvent::new(
+                AgentEventKind::ReviewRequired,
+                json!({ "secret": "HTTP_EVENT_PAYLOAD_SECRET_2" }),
+            )
+            .with_idempotency_key("http-continuity-event-2"),
+        )
+        .unwrap();
+
+    let unauthenticated = client()
+        .get(format!("{base}/continuity/changes?afterSeq=0&limit=1"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+    let first = client()
+        .get(format!("{base}/continuity/changes?afterSeq=0&limit=1"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let first: serde_json::Value = first.json().await.unwrap();
+    assert_eq!(first["schema"], "aelyris.continuity.changes/v1");
+    assert_eq!(first["afterSeq"], 0);
+    assert_eq!(first["nextSeq"], 1);
+    assert_eq!(first["highWaterSeq"], 2);
+    assert_eq!(first["hasMore"], true);
+    assert_eq!(first["limit"], 1);
+    assert_eq!(first["status"], "complete");
+    assert_eq!(first["transport"]["readOnlyChanges"], true);
+    assert_eq!(first["transport"]["finiteBatch"], true);
+    assert_eq!(first["transport"]["mutationSupported"], false);
+    assert_eq!(first["transport"]["liveWatchSupported"], false);
+    assert_eq!(first["events"].as_array().unwrap().len(), 1);
+    assert_eq!(first["events"][0]["eventId"], "http-continuity-event-1");
+    assert_eq!(first["events"][0]["kind"], "task_created");
+    assert_eq!(first["events"][0]["channel"], "planning");
+    let serialized = serde_json::to_string(&first).unwrap();
+    for forbidden in [
+        "HTTP_EVENT_PAYLOAD_SECRET_1",
+        "HTTP_EVENT_PAYLOAD_SECRET_2",
+        "\"payload\":",
+        "\"command\":",
+        "\"structuredOutput\":",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "unexpected field {forbidden}"
+        );
+    }
+
+    let second = client()
+        .get(format!("{base}/continuity/changes?afterSeq=1&limit=10"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let second: serde_json::Value = second.json().await.unwrap();
+    assert_eq!(second["nextSeq"], 2);
+    assert_eq!(second["hasMore"], false);
+    assert_eq!(second["events"][0]["eventId"], "http-continuity-event-2");
+
+    for path in [
+        "/continuity/changes",
+        "/continuity/changes?afterSeq=-1",
+        "/continuity/changes?afterSeq=0&limit=0",
+        "/continuity/changes?afterSeq=0&limit=1001",
+    ] {
+        let response = client()
+            .get(format!("{base}{path}"))
+            .header(AUTHORIZATION, "Bearer s3cret")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "path={path}");
+    }
+
+    let stale = client()
+        .get(format!("{base}/continuity/changes?afterSeq=99&limit=1"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::CONFLICT);
+    let stale: serde_json::Value = stale.json().await.unwrap();
+    assert_eq!(stale["code"], "cursor_out_of_range");
+
+    let post = client()
+        .post(format!("{base}/continuity/changes?afterSeq=0"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn continuity_changes_requires_the_durable_owner() {
+    let (base, state, join) = spawn_server(AuthConfig::with_token("s3cret")).await;
+    let response = client()
+        .get(format!("{base}/continuity/changes?afterSeq=0"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "continuity_unavailable");
+
+    let contract: serde_json::Value = client()
+        .get(format!("{base}/daemon/contract"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(contract["continuityChangesAvailable"], false);
+    assert!(!contract["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "continuity-payload-free-finite-changes"));
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn aelys_continuity_changes_reads_one_authenticated_finite_batch() {
+    let (base, state, event_bus, join) = spawn_event_server(AuthConfig::with_token("s3cret")).await;
+    event_bus
+        .publish(
+            AgentEvent::new(
+                AgentEventKind::DecisionChanged,
+                json!({ "secret": "CLI_EVENT_PAYLOAD_SECRET" }),
+            )
+            .with_idempotency_key("cli-continuity-event"),
+        )
+        .unwrap();
+
+    let output = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new(env!("CARGO_BIN_EXE_aelys"))
+                .args(["continuity-changes", "--after-seq", "0", "--limit", "1"])
+                .env("AELYRIS_API_URL", &base)
+                .env("AELYRIS_API_TOKEN", "s3cret")
+                .output()
+                .expect("run aelys continuity-changes")
+        }),
+    )
+    .await
+    .expect("aelys continuity-changes timed out")
+    .expect("aelys continuity-changes join failed");
+
+    assert!(
+        output.status.success(),
+        "aelys continuity-changes failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(body["schema"], "aelyris.continuity.changes/v1");
+    assert_eq!(body["nextSeq"], 1);
+    assert_eq!(body["events"][0]["eventId"], "cli-continuity-event");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("CLI_EVENT_PAYLOAD_SECRET"));
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
 async fn daemon_contract_exposes_versioned_capabilities() {
     let temp = tempfile::tempdir().unwrap();
     let pty = PtyManager::new().with_scrollback_dir(temp.path().join("scrollback"));
+    let event_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+    let event_bus = Arc::new(EventBus::new_durable());
+    event_bus.attach_db(event_db);
     let state = ApiState::new(pty, AuthConfig::disabled())
         .with_max_sessions(7)
-        .with_mux_snapshot_dir(temp.path().join("mux"));
+        .with_mux_snapshot_dir(temp.path().join("mux"))
+        .with_event_bus(event_bus);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let join = tokio::spawn({
@@ -313,11 +526,26 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         body["continuitySnapshotPolicy"],
         "authenticated-loopback-read-only-no-remote-operation-claim"
     );
+    assert_eq!(
+        body["continuityChangesSchema"],
+        "aelyris.continuity.changes/v1"
+    );
+    assert_eq!(body["continuityChangesEndpoint"], "/continuity/changes");
+    assert_eq!(
+        body["continuityChangesPolicy"],
+        "authenticated-loopback-finite-payload-free-read-only-no-live-watch-requires-durable-event-owner"
+    );
+    assert_eq!(body["continuityChangesAvailable"], true);
     assert!(body["capabilities"]
         .as_array()
         .unwrap()
         .iter()
         .any(|value| value == "continuity-read-only-snapshot"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "continuity-payload-free-finite-changes"));
     assert_eq!(
         body["terminalCorePolicy"]["nativeInputOwner"],
         "rust-native-input-host"
