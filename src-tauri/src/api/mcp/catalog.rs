@@ -1073,6 +1073,39 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.proofbook.agent_session_candidate",
+        "description": "Read the exact current runtime-owned settlement candidate for one running Proofbook agentSession. Returns no caller-authored proof fields.",
+        "safety": "FREE",
+        "inputSchema": {
+            "type": "object",
+            "required": ["projectPath", "runId", "stepId", "expectedRevision"],
+            "properties": {
+                "projectPath": { "type": "string" },
+                "runId": { "type": "string" },
+                "stepId": { "type": "string" },
+                "expectedRevision": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
+        "name": "aelyris.proofbook.settle_current_agent_session",
+        "description": "Settle one running Proofbook agentSession from current Aelyris-owned runtime status and contained expected artifacts at an exact ledger revision and session identity. Accepts no free-form proof.",
+        "safety": "GATED",
+        "inputSchema": {
+            "type": "object",
+            "required": ["projectPath", "runId", "stepId", "expectedRevision", "expectedSessionId"],
+            "properties": {
+                "projectPath": { "type": "string" },
+                "runId": { "type": "string" },
+                "stepId": { "type": "string" },
+                "expectedRevision": { "type": "integer", "minimum": 0 },
+                "expectedSessionId": { "type": "string" }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.event.poll",
         "description": "Poll durable at-least-once deliveries from this consumer's stream-bound committed ACK. Future/corrupt cursor and stream integrity failures use structured aelyris.event-bus.error/v1 non-success. A crash before ACK redelivers the same eventId; apply effects idempotently by eventId, then ACK.",
         "safety": "FREE",

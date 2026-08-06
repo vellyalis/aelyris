@@ -90,6 +90,7 @@ fn schema_tool_error(name: &str, payload: serde_json::Value) -> Json<serde_json:
     }))
 }
 
+#[cfg(test)]
 pub(super) async fn tools_call(
     State(state): State<ApiState>,
     Json(body): Json<ToolCallBody>,
@@ -284,7 +285,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 83] = [
+    const FROZEN_A64_VERBS: [&str; 85] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -310,6 +311,8 @@ mod tests {
         "aelyris.proofbook.run",
         "aelyris.proofbook.status",
         "aelyris.proofbook.settle_agent_session",
+        "aelyris.proofbook.agent_session_candidate",
+        "aelyris.proofbook.settle_current_agent_session",
         "aelyris.proofbook.cancel",
         "aelyris.proofbook.approve_gate",
         "aelyris.proofbook.reject_gate",
@@ -851,6 +854,62 @@ mod tests {
         path.to_string_lossy().to_string()
     }
 
+    struct RuntimeOwnedMcpAgentExecutor;
+
+    impl crate::proofbook::ProofbookAgentSessionExecutor for RuntimeOwnedMcpAgentExecutor {
+        fn start_agent_session(
+            &self,
+            _run_id: &str,
+            _ledger: &crate::proofbook::ProofbookRunLedger,
+            _step: &crate::proofbook::ProofbookStep,
+            request: &crate::proofbook::ProofbookAgentSessionRequest,
+        ) -> Result<crate::proofbook::ProofbookAgentSessionSpawn, crate::proofbook::ProofbookError>
+        {
+            Ok(crate::proofbook::ProofbookAgentSessionSpawn {
+                session_id: "mcp-runtime-owned-session".to_string(),
+                pane_id: Some("mcp-runtime-owned-pane".to_string()),
+                pty_id: Some("mcp-runtime-owned-pty".to_string()),
+                backend: "native".to_string(),
+                provider: request.provider.clone(),
+                model: request.model.clone(),
+                repo_path: request.repo_path.clone(),
+                worktree_path: request.worktree_path.clone(),
+                worktree_branch: request.worktree_branch.clone(),
+                visible: true,
+            })
+        }
+    }
+
+    fn register_mcp_runtime_session(
+        manager: &crate::agent::InteractiveSessionManager,
+        context: &crate::proofbook::ProofbookAgentSessionSettlementContext,
+        status: &str,
+    ) {
+        manager
+            .register(crate::agent::InteractiveSessionInfo {
+                id: context.session_id.clone(),
+                logical_session_id: "mcp-runtime-owned-logical".to_string(),
+                pty_id: context.pty_id.clone().expect("visible PTY identity"),
+                backend: context.backend.clone(),
+                cli: crate::agent::AgentCli::Codex,
+                status: status.to_string(),
+                model: "gpt-test".to_string(),
+                initial_prompt: None,
+                approval_prompt: None,
+                cwd: context.repo_path.clone(),
+                worktree_branch: context.worktree_branch.clone(),
+                worktree_path: context.worktree_path.clone(),
+                repo_path: Some(context.repo_path.clone()),
+                cost: 0.0,
+                tokens_used: 0,
+                started_at: 1,
+                last_activity: 1,
+                turn_count: 0,
+                context_remaining: None,
+            })
+            .expect("register runtime-owned MCP session");
+    }
+
     #[test]
     fn proofbook_mcp_verbs_are_cataloged_and_scoped() {
         let Json(listed) = tokio::runtime::Runtime::new()
@@ -864,6 +923,8 @@ mod tests {
             ("aelyris.proofbook.run", "GATED"),
             ("aelyris.proofbook.status", "FREE"),
             ("aelyris.proofbook.settle_agent_session", "GATED"),
+            ("aelyris.proofbook.agent_session_candidate", "FREE"),
+            ("aelyris.proofbook.settle_current_agent_session", "GATED"),
             ("aelyris.proofbook.cancel", "GATED"),
             ("aelyris.proofbook.approve_gate", "GATED"),
             ("aelyris.proofbook.reject_gate", "GATED"),
@@ -908,12 +969,179 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
             .with_governance(Arc::new(Governance::with_access(Box::new(DenyProofbook))));
-        let body = ToolCallBody {
-            name: "aelyris.proofbook.run".to_string(),
-            arguments: serde_json::json!({ "projectPath": "C:/repo", "proofbookPath": "x" }),
-        };
-        let result = rt.block_on(tools_call(State(state), Json(body)));
-        assert!(matches!(result, Err(ApiError::Forbidden(_))));
+        for (name, arguments) in [
+            (
+                "aelyris.proofbook.run",
+                serde_json::json!({ "projectPath": "C:/repo", "proofbookPath": "x" }),
+            ),
+            (
+                "aelyris.proofbook.agent_session_candidate",
+                serde_json::json!({
+                    "projectPath": "C:/repo",
+                    "runId": "run-1",
+                    "stepId": "agent",
+                    "expectedRevision": 1,
+                }),
+            ),
+            (
+                "aelyris.proofbook.settle_current_agent_session",
+                serde_json::json!({
+                    "projectPath": "C:/repo",
+                    "runId": "run-1",
+                    "stepId": "agent",
+                    "expectedRevision": 1,
+                    "expectedSessionId": "session-1",
+                }),
+            ),
+        ] {
+            let result = rt.block_on(tools_call(
+                State(state.clone()),
+                Json(ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                }),
+            ));
+            assert!(
+                matches!(result, Err(ApiError::Forbidden(_))),
+                "{name} must be denied before runtime access"
+            );
+        }
+    }
+
+    #[test]
+    fn proofbook_runtime_owned_mcp_candidate_and_settlement_use_shared_authority() {
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        let project = tempfile::tempdir().expect("tempdir");
+        let expected_artifact = project
+            .path()
+            .join(".aelyris")
+            .join("proofbooks")
+            .join("runtime-summary.md");
+        std::fs::create_dir_all(expected_artifact.parent().unwrap()).unwrap();
+        std::fs::write(&expected_artifact, "current runtime evidence").unwrap();
+        let proofbook = write_test_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: aio2-runtime-owned-settlement
+steps:
+  - id: agent
+    type: agentSession
+    task: finish AIO-2 runtime work
+    role: implementation
+    expectedArtifacts:
+      - .aelyris/proofbooks/runtime-summary.md
+settlement:
+  requiredSteps: [agent]
+"#,
+        );
+        let project_path = project.path().to_string_lossy().to_string();
+        let runner = crate::proofbook::ProofbookRunner::new();
+        let running = runner
+            .start_run_with_agent_executor(
+                &project_path,
+                &proofbook,
+                serde_json::json!({}),
+                &RuntimeOwnedMcpAgentExecutor,
+            )
+            .expect("start running agentSession");
+        let context = runner
+            .agent_session_settlement_context(
+                &project_path,
+                &running.run_id,
+                "agent",
+                running.revision,
+            )
+            .expect("settlement context");
+        let interactive = crate::agent::InteractiveSessionManager::new();
+        register_mcp_runtime_session(&interactive, &context, "done");
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_proofbook_runner(runner.clone())
+            .with_interactive_session_manager(interactive);
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+
+        let Json(candidate) = rt
+            .block_on(tools_call(
+                State(state.clone()),
+                Json(ToolCallBody {
+                    name: "aelyris.proofbook.agent_session_candidate".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project_path,
+                        "runId": running.run_id,
+                        "stepId": "agent",
+                        "expectedRevision": running.revision,
+                    }),
+                }),
+            ))
+            .expect("runtime-owned candidate");
+        let projected = &candidate["result"];
+        assert_eq!(projected["sessionId"], context.session_id);
+        assert_eq!(projected["runtimeStatus"], "done");
+        assert_eq!(projected["eligible"], true);
+        assert_eq!(projected["resultingStatus"], "passed");
+        assert_eq!(projected["proofKind"], "requiredArtifactSettlement");
+        assert_eq!(projected["expectedArtifacts"][0]["present"], true);
+        for forbidden in [
+            "proof",
+            "doneSignal",
+            "proofSources",
+            "summary",
+            "reviewerBatchId",
+            "blockerMessage",
+        ] {
+            assert!(
+                projected.get(forbidden).is_none(),
+                "candidate exposed caller-authored proof field {forbidden}"
+            );
+        }
+
+        let Json(schema_rejected) = rt
+            .block_on(tools_call(
+                State(state.clone()),
+                Json(ToolCallBody {
+                    name: "aelyris.proofbook.settle_current_agent_session".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project_path,
+                        "runId": running.run_id,
+                        "stepId": "agent",
+                        "expectedRevision": running.revision,
+                        "expectedSessionId": context.session_id,
+                        "proof": { "status": "passed" },
+                    }),
+                }),
+            ))
+            .expect("schema rejection stays a tool result");
+        assert_eq!(schema_rejected["ok"], false);
+        assert_eq!(
+            schema_rejected["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["proof"])
+        );
+        assert_eq!(
+            runner.status(&project_path, &running.run_id).unwrap().steps[0].status,
+            ProofbookStepStatus::Running
+        );
+
+        let Json(settled) = rt
+            .block_on(tools_call(
+                State(state),
+                Json(ToolCallBody {
+                    name: "aelyris.proofbook.settle_current_agent_session".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project_path,
+                        "runId": running.run_id,
+                        "stepId": "agent",
+                        "expectedRevision": running.revision,
+                        "expectedSessionId": context.session_id,
+                    }),
+                }),
+            ))
+            .expect("settle from current runtime-owned evidence");
+        let ledger: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(settled["result"].clone()).expect("settled ledger");
+        assert_eq!(ledger.status, ProofbookRunStatus::Passed);
+        assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Passed);
     }
 
     #[test]
@@ -993,6 +1221,17 @@ settlement:
                         "runId": "run-fixture",
                         "stepId": "step-fixture",
                         "proof": { "status": "blocked" },
+                    }),
+                ),
+                (
+                    "aelyris.proofbook.settle_current_agent_session",
+                    "Proofbook MCP runtime-owned agent-session settlement",
+                    serde_json::json!({
+                        "projectPath": "C:/a4-admission-fixture",
+                        "runId": "run-fixture",
+                        "stepId": "step-fixture",
+                        "expectedRevision": 1,
+                        "expectedSessionId": "session-fixture",
                     }),
                 ),
                 (

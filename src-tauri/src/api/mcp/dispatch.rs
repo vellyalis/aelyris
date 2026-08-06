@@ -1,7 +1,7 @@
 use axum::Json;
 use serde::Serialize;
 #[cfg(not(test))]
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use super::super::mux::{send_workspace_input, workspace_summary};
 use super::super::{
@@ -59,6 +59,16 @@ fn arg_usize(
     };
     usize::try_from(value)
         .map_err(|_| ApiError::BadRequest(format!("MCP argument `{key}` is too large")))
+}
+
+fn arg_u64(args: &serde_json::Map<String, serde_json::Value>, key: &str) -> ApiResult<u64> {
+    args.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            ApiError::BadRequest(format!(
+                "MCP argument `{key}` must be a non-negative integer"
+            ))
+        })
 }
 
 #[cfg(not(test))]
@@ -622,6 +632,80 @@ fn mcp_proofbook_settle_agent_session(
         .settle_agent_session(&project_path, &run_id, &step_id, proof)
         .map_err(proofbook_error_to_api)?;
     mcp_result_value(ledger)
+}
+
+fn mcp_proofbook_agent_session_candidate(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let step_id = arg_string(args, "stepId")?;
+    let expected_revision = arg_u64(args, "expectedRevision")?;
+    let candidate = crate::control::proofbook::agent_session_settlement_candidate(
+        &runner,
+        state.interactive_session_manager.as_ref(),
+        state.agent_manager.as_ref(),
+        &project_path,
+        &run_id,
+        &step_id,
+        expected_revision,
+    )
+    .map_err(proofbook_error_to_api)?;
+    Ok(mcp_agent_session_candidate_value(&candidate))
+}
+
+fn mcp_agent_session_candidate_value(
+    candidate: &crate::control::proofbook::ProofbookAgentSessionSettlementCandidate,
+) -> serde_json::Value {
+    serde_json::json!({
+        "runId": candidate.run_id,
+        "ledgerRevision": candidate.ledger_revision,
+        "stepId": candidate.step_id,
+        "sessionId": candidate.session_id,
+        "paneId": candidate.pane_id,
+        "ptyId": candidate.pty_id,
+        "worktreePath": candidate.worktree_path,
+        "runtimeStatus": candidate.runtime_status,
+        "eligible": candidate.eligible,
+        "resultingStatus": candidate.resulting_status,
+        "proofKind": candidate.proof_kind,
+        "expectedArtifacts": candidate.expected_artifacts,
+        "blockers": candidate.blockers,
+    })
+}
+
+fn mcp_proofbook_settle_current_agent_session(
+    state: &ApiState,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    require_mcp_proofbook_effect_admitted(
+        state,
+        "Proofbook MCP runtime-owned agent-session settlement",
+    )?;
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let step_id = arg_string(args, "stepId")?;
+    let expected_revision = arg_u64(args, "expectedRevision")?;
+    let expected_session_id = arg_string(args, "expectedSessionId")?;
+    let outcome = crate::control::proofbook::settle_current_agent_session(
+        &runner,
+        state.interactive_session_manager.as_ref(),
+        state.agent_manager.as_ref(),
+        &project_path,
+        &run_id,
+        &step_id,
+        expected_revision,
+        &expected_session_id,
+    )
+    .map_err(proofbook_error_to_api)?;
+    #[cfg(not(test))]
+    if let Some(app) = state.app_handle.as_ref() {
+        let _ = app.emit("proofbook-updated", &outcome.ledger);
+    }
+    mcp_result_value(outcome.ledger)
 }
 fn mcp_proofbook_cancel(
     state: &ApiState,
@@ -1361,6 +1445,12 @@ pub(super) async fn dispatch_authorized(
         "aelyris.proofbook.status" => mcp_proofbook_status(&state, &args)?,
         "aelyris.proofbook.settle_agent_session" => {
             mcp_proofbook_settle_agent_session(&state, &args)?
+        }
+        "aelyris.proofbook.agent_session_candidate" => {
+            mcp_proofbook_agent_session_candidate(&state, &args)?
+        }
+        "aelyris.proofbook.settle_current_agent_session" => {
+            mcp_proofbook_settle_current_agent_session(&state, &args)?
         }
         "aelyris.proofbook.cancel" => mcp_proofbook_cancel(&state, &args)?,
         "aelyris.proofbook.approve_gate" => {

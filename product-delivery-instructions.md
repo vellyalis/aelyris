@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-2`.
-LAST COMPLETED SLICE: `AIO-1`.
-NEXT IMPLEMENTATION SLICE: `AIO-2`.
+ACTIVE SLICE: `AIO-3`.
+LAST COMPLETED SLICE: `AIO-2`.
+NEXT IMPLEMENTATION SLICE: `AIO-3`.
 
 ```yaml
 continuation_contract:
@@ -59,7 +59,8 @@ Current portfolio classification:
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
-| Runtime-owned Proofbook settlement for AI | **NOW** | Cockpit can inspect and settle current agentSession evidence without a free-form proof, but MCP lacks that safe current-runtime projection |
+| Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
+| Authenticated Proofbook decision identity | **NOW** | Exact-hash gate decisions are available to AI, but the optional compatibility `actor` field must not let a caller impersonate another principal in durable evidence |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -77,7 +78,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-1` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-2` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -702,7 +703,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` AI completion handling without a caller-authored
 proof packet or a second Proofbook/runtime authority.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing MCP catalog and dispatcher over the same
   `ProofbookRunner::agent_session_settlement_context`, runtime-session managers, and
@@ -730,6 +731,31 @@ Status: **ACTIVE**.
   `agentSession` from Aelyris-owned evidence using the same fail-closed authority as
   Cockpit, without composing a completion proof.
 
+### AIO-3 — Authenticated Actor-Bound Proofbook Gate Decisions
+
+Capability target: `Product-Accessible` exact-hash Proofbook decisions whose durable
+actor identity comes from the authenticated Principal rather than caller-authored
+metadata.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.proofbook.approve_gate` and `reject_gate` adapters over
+  the current authenticated `Principal`, `Governance`, exact gate id/hash, and
+  `ProofbookRunner`. Do not add a decision service, role engine, AI superuser, or
+  second approval queue.
+- Bind the durable decision actor to the authenticated caller. The optional legacy
+  `actor` field may be omitted or match the authenticated actor exactly; a mismatch
+  must fail before runner mutation and must not be normalized into a forged identity.
+- Preserve the current stale-safe gate contract: the backend rechecks gate id/hash,
+  definition, ledger revision, and current waiting state. This slice does not create
+  auto-approval, weaken `GATED` classification, or let catalog visibility substitute
+  for Governance authorization.
+- Preserve nested `mcpTool` actor propagation and ensure a gate continuation cannot
+  revert to the default operator after a restricted Principal initiated the run.
+- Keep comments as optional decision metadata only. They cannot carry authority,
+  change the selected gate, or bypass the expected hash.
+- Done: an authenticated AI can approve or reject an exact current Proofbook gate,
+  and the durable decision identity is guaranteed to be that authenticated Principal.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -741,9 +767,10 @@ non-secret string inputs `PB-UI-7`, exact runtime-owned `agentSession` settlemen
 `PB-UI-8`, durable fleet cap persistence `CM-4`, and authenticated read-only
 continuity snapshot `RC-1`, payload-free finite continuity changes `RC-2`, and
 machine-readable observe-principal scope discovery `RC-3` are also complete.
-Principal-scoped MCP tool discovery `AIO-1` is also complete. Runtime-owned Proofbook
-agent settlement for AI `AIO-2` is active; private-network exposure, live monitoring,
-remote approvals/input, SSH attach, AI-authored review/merge shortcuts, secret-bearing
+Principal-scoped MCP tool discovery `AIO-1` and runtime-owned Proofbook agent
+settlement for AI `AIO-2` are also complete. Authenticated actor-bound Proofbook gate
+decisions `AIO-3` are active; private-network exposure, live monitoring, remote
+approvals/input, SSH attach, AI-authored review/merge shortcuts, secret-bearing
 Proofbook starts, broader input types, raw artifact opening/export, and other adjacent
 value remain separately bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
