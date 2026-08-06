@@ -4082,7 +4082,15 @@ pub(super) async fn dispatch_authorized(
         "aelyris.proofbook.run" => mcp_proofbook_run(&state, actor, &args)?,
         "aelyris.proofbook.status" => mcp_proofbook_status(&state, &args)?,
         "aelyris.proofbook.settle_agent_session" => {
-            mcp_proofbook_settle_agent_session(&state, &args)?
+            let actor = super::proofbook_compat_mutations::authenticated_actor(actor)?;
+            let result = mcp_proofbook_settle_agent_session(&state, &args);
+            super::proofbook_compat_mutations::finish(
+                &state,
+                actor,
+                "settle_agent_session",
+                &args,
+                result,
+            )?
         }
         "aelyris.proofbook.agent_session_candidate" => {
             mcp_proofbook_agent_session_candidate(&state, &args)?
@@ -4090,7 +4098,11 @@ pub(super) async fn dispatch_authorized(
         "aelyris.proofbook.settle_current_agent_session" => {
             mcp_proofbook_settle_current_agent_session(&state, &args)?
         }
-        "aelyris.proofbook.cancel" => mcp_proofbook_cancel(&state, &args)?,
+        "aelyris.proofbook.cancel" => {
+            let actor = super::proofbook_compat_mutations::authenticated_actor(actor)?;
+            let result = mcp_proofbook_cancel(&state, &args);
+            super::proofbook_compat_mutations::finish(&state, actor, "cancel", &args, result)?
+        }
         "aelyris.proofbook.cancel_current" => mcp_proofbook_cancel_current(&state, actor, &args)?,
         "aelyris.proofbook.approve_gate" => {
             mcp_proofbook_decide_gate(&state, actor, &args, "approve")?

@@ -261,6 +261,19 @@ paths, summary bodies, or checkpoint records. Runtime, state-machine, and IPC fa
 remain the original typed errors. Audit failure is best-effort after the one lifecycle
 result and never replays summarize, checkpoint, handoff, resume, or reset.
 
+The compatibility `aelyris.proofbook.settle_agent_session` and
+`aelyris.proofbook.cancel` adapters retain `ProofbookRunner` as the sole durable ledger
+owner and now bind the authenticated Principal before mutation. Caller-supplied project,
+run, step, and completion-proof fields remain Proofbook-domain values. Existing proof
+validation, ledger state transitions, startup admission where already required,
+cancellation behavior, and typed errors remain unchanged. Authority evidence contains
+only operation, resulting revision/status and bounded ledger counts, plus one-way
+run/input digests. Project paths, run/step ids, proof bodies, artifact paths, done
+signals, reviewer ids, summaries, blockers, and ledger event contents are excluded.
+The runtime-owned exact settlement and revision-pinned cancellation verbs remain the
+preferred product paths; compatibility audit does not weaken those contracts. Audit
+failure never replays a mutation or creates another ledger revision.
+
 `aelyris.orchestrator.step` keeps `control::loop_ports::run_step` as the sole bounded
 multi-owner execution path. Startup admission, Task/Cost/Agent managers, file and
 symbol ownership, Event Bus, Context Store, review/merge authority, durable give-up,

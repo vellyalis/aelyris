@@ -8,6 +8,7 @@ mod catalog;
 mod dispatch;
 mod event_ack;
 mod orchestrator_step;
+mod proofbook_compat_mutations;
 mod review_rejection;
 mod session_lifecycle;
 
@@ -4332,6 +4333,307 @@ settlement:
             serde_json::from_value(settled["result"].clone()).expect("settled ledger");
         assert_eq!(ledger.status, ProofbookRunStatus::Passed);
         assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Passed);
+    }
+
+    #[test]
+    fn mcp_proofbook_compat_mutation_audit_is_principal_bound_and_proof_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let runner = crate::proofbook::ProofbookRunner::new();
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_proofbook_runner(runner.clone());
+        for verb in [
+            "aelyris.proofbook.settle_agent_session",
+            "aelyris.proofbook.cancel",
+        ] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+        assert!(matches!(
+            proofbook_compat_mutations::authenticated_actor("  "),
+            Err(ApiError::Forbidden(_))
+        ));
+
+        let settlement_project = tempfile::tempdir().expect("settlement tempdir");
+        let settlement_proofbook = write_test_proofbook(
+            settlement_project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: aio27-compat-settlement
+steps:
+  - id: agent-aio27-secret
+    type: agentSession
+    task: AIO27_TASK_BODY_MUST_NOT_BE_LOGGED
+    role: implementation
+settlement:
+  requiredSteps: [agent-aio27-secret]
+"#,
+        );
+        let settlement_project_path = settlement_project.path().to_string_lossy().to_string();
+        let running = runner
+            .start_run_with_agent_executor(
+                &settlement_project_path,
+                &settlement_proofbook,
+                serde_json::json!({}),
+                &RuntimeOwnedMcpAgentExecutor,
+            )
+            .expect("running compatibility agentSession");
+        assert_eq!(running.steps[0].status, ProofbookStepStatus::Running);
+
+        let actor = "proofbook-compat-operator";
+        let blocker_code = "AIO27_BLOCKER_CODE_MUST_NOT_BE_LOGGED";
+        let blocker_message = "AIO27_BLOCKER_MESSAGE_MUST_NOT_BE_LOGGED";
+        let proof_summary = "AIO27_PROOF_SUMMARY_MUST_NOT_BE_LOGGED";
+        let settlement_args = serde_json::json!({
+            "projectPath": settlement_project_path,
+            "runId": running.run_id,
+            "stepId": "agent-aio27-secret",
+            "proof": {
+                "status": "failed",
+                "proofKind": "runtimeSessionStatus",
+                "blockerCode": blocker_code,
+                "blockerMessage": blocker_message,
+                "summary": proof_summary,
+            },
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        let Json(settled) = call(
+            &state,
+            "aelyris.proofbook.settle_agent_session",
+            settlement_args.clone(),
+        )
+        .expect("compatibility settlement");
+        let settled: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(settled["result"].clone()).expect("settled ledger");
+        assert_eq!(settled.status, ProofbookRunStatus::Failed);
+        assert_eq!(settled.steps[0].status, ProofbookStepStatus::Failed);
+        let settled_revision = settled.revision;
+
+        let repeated_settlement = call(
+            &state,
+            "aelyris.proofbook.settle_agent_session",
+            settlement_args,
+        );
+        assert!(matches!(repeated_settlement, Err(ApiError::BadRequest(_))));
+        assert_eq!(
+            runner
+                .status(&settlement_project_path, &settled.run_id)
+                .unwrap()
+                .revision,
+            settled_revision,
+            "rejected repeat does not create another ledger revision"
+        );
+
+        let cancel_project = tempfile::tempdir().expect("cancel tempdir");
+        let cancel_proofbook = write_test_proofbook(
+            cancel_project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: aio27-compat-cancel
+steps:
+  - id: hold-aio27-secret
+    type: manualGate
+    gateId: AIO27_GATE_ID_MUST_NOT_BE_LOGGED
+    options: [approve, reject]
+settlement:
+  requiredSteps: [hold-aio27-secret]
+"#,
+        );
+        let cancel_project_path = cancel_project.path().to_string_lossy().to_string();
+        let waiting = runner
+            .start_run(
+                &cancel_project_path,
+                &cancel_proofbook,
+                serde_json::json!({}),
+            )
+            .expect("waiting compatibility run");
+        let cancel_args = serde_json::json!({
+            "projectPath": cancel_project_path,
+            "runId": waiting.run_id,
+        });
+        let Json(cancelled) = call(&state, "aelyris.proofbook.cancel", cancel_args.clone())
+            .expect("compatibility cancellation");
+        let cancelled: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(cancelled["result"].clone()).expect("cancelled ledger");
+        assert_eq!(cancelled.status, ProofbookRunStatus::Cancelled);
+        assert_eq!(cancelled.steps[0].status, ProofbookStepStatus::Cancelled);
+        let cancelled_revision = cancelled.revision;
+
+        let repeated_cancel = call(&state, "aelyris.proofbook.cancel", cancel_args);
+        assert!(matches!(repeated_cancel, Err(ApiError::BadRequest(_))));
+        assert_eq!(
+            runner
+                .status(&cancel_project_path, &cancelled.run_id)
+                .unwrap()
+                .revision,
+            cancelled_revision,
+            "terminal cancellation does not advance again"
+        );
+
+        let unavailable_project = "AIO27_UNAVAILABLE_PROJECT_MUST_NOT_BE_LOGGED";
+        let unavailable_run = "AIO27_UNAVAILABLE_RUN_MUST_NOT_BE_LOGGED";
+        let unavailable_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()));
+        let unavailable = call(
+            &unavailable_state,
+            "aelyris.proofbook.cancel",
+            serde_json::json!({
+                "projectPath": unavailable_project,
+                "runId": unavailable_run,
+            }),
+        );
+        assert!(matches!(unavailable, Err(ApiError::Internal(_))));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_proofbook_compat_mutation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read compatibility mutation audit");
+        assert_eq!(rows.len(), 5);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some(actor)));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            2
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            3
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "settle_agent_session"
+                && row.redacted_payload_json["resultSummary"]["revision"] == settled_revision
+                && row.redacted_payload_json["resultSummary"]["status"] == "failed"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "cancel"
+                && row.redacted_payload_json["resultSummary"]["revision"] == cancelled_revision
+                && row.redacted_payload_json["resultSummary"]["status"] == "cancelled"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "proofbook_runner_unavailable"
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["proofbookValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["completionProofLogged"], false);
+            for field in ["runDigest", "inputDigest"] {
+                let digest = row.redacted_payload_json[field]
+                    .as_str()
+                    .expect("Proofbook compatibility digest");
+                assert_eq!(digest.len(), 64);
+                assert!(digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit()));
+            }
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                settlement_project_path.as_str(),
+                settled.run_id.as_str(),
+                "agent-aio27-secret",
+                blocker_code,
+                blocker_message,
+                proof_summary,
+                cancel_project_path.as_str(),
+                cancelled.run_id.as_str(),
+                "hold-aio27-secret",
+                "AIO27_GATE_ID_MUST_NOT_BE_LOGGED",
+                unavailable_project,
+                unavailable_run,
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio27_proofbook_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_proofbook_compat_mutation_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated Proofbook compatibility audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_project = tempfile::tempdir().expect("audit failure tempdir");
+        let audit_failure_proofbook = write_test_proofbook(
+            audit_failure_project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: aio27-audit-failure
+steps:
+  - id: hold
+    type: manualGate
+    gateId: audit-failure-hold
+    options: [approve, reject]
+settlement:
+  requiredSteps: [hold]
+"#,
+        );
+        let audit_failure_project_path = audit_failure_project.path().to_string_lossy().to_string();
+        let audit_failure_runner = crate::proofbook::ProofbookRunner::new();
+        let audit_waiting = audit_failure_runner
+            .start_run(
+                &audit_failure_project_path,
+                &audit_failure_proofbook,
+                serde_json::json!({}),
+            )
+            .unwrap();
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(audit_failure_db))
+                .with_proofbook_runner(audit_failure_runner.clone());
+        let Json(audit_cancelled) = call(
+            &audit_failure_state,
+            "aelyris.proofbook.cancel",
+            serde_json::json!({
+                "projectPath": audit_failure_project_path,
+                "runId": audit_waiting.run_id,
+            }),
+        )
+        .expect("audit failure does not replay or reject cancellation");
+        let audit_cancelled: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(audit_cancelled["result"].clone()).unwrap();
+        assert_eq!(audit_cancelled.status, ProofbookRunStatus::Cancelled);
+        assert_eq!(
+            audit_failure_runner
+                .status(&audit_failure_project_path, &audit_cancelled.run_id)
+                .unwrap()
+                .revision,
+            audit_waiting.revision + 1
+        );
     }
 
     #[test]

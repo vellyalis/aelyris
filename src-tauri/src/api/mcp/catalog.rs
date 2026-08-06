@@ -347,7 +347,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.proofbook.settle_agent_session",
-                "description": "Settle one running PB-4 agentSession step with explicit completion proof; first-file-exists alone is rejected.",
+                "description": "Compatibility settlement for one running PB-4 agentSession step with explicit completion proof as the authenticated Principal; first-file-exists alone is rejected. Proof contents remain runner-domain data and are excluded from authority evidence. Prefer settle_current_agent_session when current Aelyris-owned runtime evidence exists.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -378,7 +378,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.proofbook.cancel",
-                "description": "Cancel a Proofbook run through the managed runner; artifacts and ledgers are retained.",
+                "description": "Compatibility cancellation through the managed runner as the authenticated Principal; artifacts and ledgers are retained. Durable authority evidence excludes project/run values. Prefer cancel_current when an exact ledger revision is available.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
