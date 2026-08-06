@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-31`.
-LAST COMPLETED SLICE: `AIO-30`.
-NEXT IMPLEMENTATION SLICE: `AIO-31`.
+ACTIVE SLICE: `AIO-32`.
+LAST COMPLETED SLICE: `AIO-31`.
+NEXT IMPLEMENTATION SLICE: `AIO-32`.
 
 ```yaml
 continuation_contract:
@@ -82,12 +82,14 @@ Current portfolio classification:
 | MCP human approval resolution evidence | **COMPLETE** | Live approval routing now retains the authenticated Principal while preserving the independent human capability, exact prompt fingerprint, single-use core, and value-free authority evidence |
 | MCP orchestrator-step execution evidence | **COMPLETE** | Bounded `run_step` execution now retains the authenticated initiating Principal through target-free aggregate report evidence without creating a second autonomy owner |
 | MCP durable review-rejection evidence | **COMPLETE** | Durable reviewer rejection now retains the authenticated initiating Principal through target-free state-transition evidence while MergeIntentStore remains the sole authority |
-| MCP approval-request evidence | **COMPLETE** | Watchdog requests now retain the authenticated initiating Principal through value-free decision and queue/overflow evidence without adding a grant path |`r`n| MCP session lifecycle evidence | **NOW** | AI can invoke the existing session lifecycle owners, but lifecycle values are caller-selected domain data and the authenticated initiating Principal is not yet retained separately |`r`n| MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset now retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
+| MCP approval-request evidence | **COMPLETE** | Watchdog requests now retain the authenticated initiating Principal through value-free decision and queue/overflow evidence without adding a grant path |
+| MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
 | Remaining MCP Proofbook mutation evidence | **COMPLETE** | Compatibility caller-proof settlement and cancellation now retain the authenticated initiating Principal through proof-free ledger outcome evidence |
 | MCP runtime-owned Proofbook settlement evidence | **COMPLETE** | Exact current runtime-owned settlement now retains the authenticated initiating Principal through runtime-identity-free evidence without accepting a caller proof |
 | MCP cost-cap read access | **COMPLETE** | Authenticated AI reads the exact shared live caps/policy with disabled axes preserved as null and no provider-billing claim |
 | MCP conflict-safe cost-cap updates | **COMPLETE** | Exact expected/replacement caps are compared and persisted under the shared manager lock, with stale writes and raw cap audit rejected |
-| MCP honest cost-admission preview | **COMPLETE** | AI can read and update caps, but cannot ask the shared Cost Manager for a truthful next-spawn decision without risking unknown telemetry being represented as zero |
+| MCP honest cost-admission preview | **COMPLETE** | AI asks the shared Cost Manager for the next-spawn decision; enabled cap axes with unknown telemetry return an explicit non-decision rather than zero-filled usage |
+| MCP prompt-minimized agent routing | **NOW** | The existing route tool still echoes the caller prompt in its response even though only the routing decision is needed |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1513,34 +1515,26 @@ Status: **COMPLETE**.
   same owner as Cockpit/orchestration, or receive an explicit not-evaluable result when
   required telemetry is unknown.
 
-### AIO-26  EPrincipal-Bound MCP Session Lifecycle Evidence
+### AIO-32 — MCP Prompt-Minimized Agent Routing
 
-Capability target: `Product-Accessible` session summarize, checkpoint, handoff, resume,
-and reset-context operations whose initiating identity comes from the authenticated MCP
-Principal while session ids, summaries, reasons, resume lineage, and terminal geometry
-remain lifecycle-domain data.
+Capability target: `Product-Accessible` authenticated read-only model-profile routing
+without reflecting the caller's prompt into the tool response.
 Status: **ACTIVE**.
 
-- Extend the existing `aelyris.session.summarize`, `checkpoint`, `handoff`, `resume`,
-  and `reset_context` adapters, Tauri session-lifecycle IPC owners, Governance, and
-  durable audit journal. Do not add a second checkpoint store, session manager, resume
-  authority, actor field, provider wrapper, or AI-only lifecycle path.
-- Keep caller-supplied session ids, reasons, summary payloads, sequence numbers,
-  predecessor/inflight references, logical-session ids, timeouts, and geometry as
-  lifecycle inputs. They never define the initiating actor.
-- Preserve existing provider/runtime invocation, checkpoint durability, no-loss handoff
-  ordering, predecessor/successor lineage, stale identity rejection, reset semantics,
-  timeout bounds, startup admission, typed tool errors, and visible/headless separation.
-- Retain accepted/rejected audit with actor, operation, minimized result class/counts,
-  and stable one-way session/input digests. Do not persist raw summaries, reasons,
-  session or terminal ids, lineage references, provider output, prompts, commands,
-  bearer values, environment values, or repository contents in authority evidence.
-- A lifecycle failure must remain explicit and must not be replayed merely to obtain
-  audit evidence. Audit failure after a successful lifecycle effect must not create a
-  second checkpoint, handoff, resume, or reset.
-- Done: an authenticated AI can use the existing bounded lifecycle owners and every
-  effect is attributable without leaking lifecycle contents or creating a parallel
-  session authority.
+- Keep `aelyris.route_agent` over the existing `control::agent::route` owner,
+  Governance, and principal-scoped discovery. Do not add a router, provider selector,
+  prompt store, usage estimator, spawn path, or second model-profile representation.
+- Keep `prompt` and optional `budgetRemaining` as routing inputs, but return only the
+  existing routing decision plus explicit `source`, `promptEchoed:false`, and
+  `readOnly:true` metadata. The response must not reproduce the prompt.
+- Preserve current routing heuristics and model-profile output. Do not start an agent,
+  reserve budget, claim provider availability, or treat the recommendation as an
+  execution authorization.
+- Keep the verb independently authorized and avoid durable storage of the prompt,
+  budget input, or decision payload. Existing request transport remains the only
+  transient input boundary.
+- Done: an authenticated AI can select the recommended Aelyris model profile without
+  receiving its own potentially sensitive prompt back from the control surface.
 
 ## Deferred After GMV
 
@@ -1577,8 +1571,8 @@ Principal-bound MCP session-lifecycle evidence `AIO-26` is also complete. Princi
 bound remaining MCP Proofbook mutation evidence `AIO-27` is also complete. Principal-
 bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is also complete. MCP
 cost-cap read access `AIO-29` is also complete. Principal-bound conflict-safe MCP
-cost-cap updates `AIO-30` are also complete. MCP honest cost-admission preview `AIO-31`
-is active;
+cost-cap updates `AIO-30` and MCP honest cost-admission preview `AIO-31` are also
+complete. MCP prompt-minimized agent routing `AIO-32` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
