@@ -1114,6 +1114,22 @@ fn build_tools_list_value() -> serde_json::Value {
         }
     }));
     tools.push(serde_json::json!({
+        "name": "aelyris.cost.can_spawn",
+        "description": "Read-only preview of whether one more agent may start under the exact shared Cost Manager. Required usage axes are explicit nullable values: when an enabled cap has unknown usage, returns evaluable=false instead of substituting zero. These are reported Aelyris telemetry decisions, not provider billing claims.",
+        "safety": "FREE",
+        "inputSchema": {
+            "type": "object",
+            "required": ["active_agents", "tokens_used", "cost_usd", "runtime_secs"],
+            "properties": {
+                "active_agents": { "type": "integer", "minimum": 0 },
+                "tokens_used": { "type": ["integer", "null"], "minimum": 0 },
+                "cost_usd": { "type": ["number", "null"], "minimum": 0 },
+                "runtime_secs": { "type": ["integer", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.proofbook.cancel_current",
         "description": "Cancel only the exact nonterminal Proofbook revision the authenticated principal observed. Stale revisions and terminal runs fail closed. This changes the ledger only and does not claim PTY or agent-process termination.",
         "safety": "GATED",

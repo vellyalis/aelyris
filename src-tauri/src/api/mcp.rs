@@ -295,7 +295,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 88] = [
+    const FROZEN_A64_VERBS: [&str; 89] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -309,6 +309,7 @@ mod tests {
         "aelyris.fleet_status",
         "aelyris.cost.get_caps",
         "aelyris.cost.set_caps",
+        "aelyris.cost.can_spawn",
         "aelyris.route_agent",
         "aelyris.pane_send_input",
         "aelyris.agent_diff",

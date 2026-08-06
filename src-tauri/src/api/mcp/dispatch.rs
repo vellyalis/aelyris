@@ -3891,6 +3891,7 @@ pub(super) async fn dispatch_authorized(
         }
         "aelyris.cost.get_caps" => super::cost_caps::get(&state)?,
         "aelyris.cost.set_caps" => super::cost_caps::set(&state, actor, &args)?,
+        "aelyris.cost.can_spawn" => super::cost_caps::can_spawn(&state, &args)?,
         "aelyris.route_agent" => {
             let prompt = arg_string(&args, "prompt")?;
             let budget_remaining = arg_optional_f64(&args, "budgetRemaining")?;
