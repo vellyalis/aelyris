@@ -351,34 +351,114 @@ fn resolve_mcp_terminal_ref(_state: &ApiState, reference: &str) -> ApiResult<Str
     Ok(trimmed.to_string())
 }
 
-#[cfg(not(test))]
-fn mcp_pane_rename(
+struct McpPaneMetadataTarget {
+    terminal_id: String,
+    client_id_present: bool,
+}
+
+fn audit_mcp_pane_metadata_control(
     state: &ApiState,
+    actor: &str,
+    terminal_id: &str,
+    operation: &str,
+    client_id_present: bool,
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: Some(terminal_id.to_string()),
+        pane_id: None,
+        terminal_id: Some(terminal_id.to_string()),
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(terminal_id.to_string()),
+        kind: "mcp_pane_metadata_authority".to_string(),
+        severity: if status == "rejected" {
+            "warning".to_string()
+        } else {
+            "info".to_string()
+        },
+        source: "mcp-pane-metadata".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "terminalId": terminal_id,
+            "operation": operation,
+            "clientIdPresent": client_id_present,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "metadataValueLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(terminal_id, actor, operation, error = %error, "pane metadata audit failed");
+    }
+}
+
+fn resolve_mcp_pane_metadata_target(
+    state: &ApiState,
+    actor: &str,
     args: &serde_json::Map<String, serde_json::Value>,
-) -> ApiResult<Result<(), String>> {
-    let app = mcp_app_handle(state)?;
+    operation: &str,
+) -> ApiResult<Result<McpPaneMetadataTarget, String>> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated pane metadata Principal is unavailable".to_string(),
+        ));
+    }
     let terminal_ref = arg_string(args, "terminalId")?;
     let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
         Ok(terminal_id) => terminal_id,
         Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
         Err(err) => return Err(err),
     };
-    let name = arg_string(args, "name")?;
-    Ok(crate::ipc::rename_pane_core(&app, &terminal_id, &name))
+    let client_id =
+        super::super::normalize_stream_client_id(arg_optional_string(args, "clientId").as_deref())?;
+    if let Err(error) =
+        state
+            .controller_leases
+            .ensure_can_control(&terminal_id, client_id.as_deref(), actor)
+    {
+        audit_mcp_pane_metadata_control(
+            state,
+            actor,
+            &terminal_id,
+            operation,
+            client_id.is_some(),
+            "rejected",
+            Some("controller_lease_conflict"),
+        );
+        return Err(error);
+    }
+    Ok(Ok(McpPaneMetadataTarget {
+        terminal_id,
+        client_id_present: client_id.is_some(),
+    }))
+}
+
+#[cfg(not(test))]
+fn rename_pane_core(
+    state: &ApiState,
+    terminal_id: &str,
+    name: &str,
+) -> ApiResult<Result<(), String>> {
+    let app = mcp_app_handle(state)?;
+    Ok(crate::ipc::rename_pane_core(&app, terminal_id, name))
 }
 
 #[cfg(test)]
-fn mcp_pane_rename(
-    state: &ApiState,
-    args: &serde_json::Map<String, serde_json::Value>,
+fn rename_pane_core(
+    _state: &ApiState,
+    _terminal_id: &str,
+    name: &str,
 ) -> ApiResult<Result<(), String>> {
-    let terminal_ref = arg_string(args, "terminalId")?;
-    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
-        Ok(terminal_id) => terminal_id,
-        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
-        Err(err) => return Err(err),
-    };
-    let name = arg_string(args, "name")?;
     if name == "missing-pane" {
         Ok(Err("Pane missing-pane not found".to_string()))
     } else {
@@ -387,34 +467,86 @@ fn mcp_pane_rename(
 }
 
 #[cfg(not(test))]
-fn mcp_pane_set_role(
+fn set_pane_role_core(
     state: &ApiState,
-    args: &serde_json::Map<String, serde_json::Value>,
+    terminal_id: &str,
+    role: &str,
 ) -> ApiResult<Result<(), String>> {
     let app = mcp_app_handle(state)?;
-    let terminal_ref = arg_string(args, "terminalId")?;
-    let terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
-        Ok(terminal_id) => terminal_id,
-        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
-        Err(err) => return Err(err),
-    };
-    let role = arg_string(args, "role")?;
-    Ok(crate::ipc::set_pane_role_core(&app, &terminal_id, &role))
+    Ok(crate::ipc::set_pane_role_core(&app, terminal_id, role))
 }
 
 #[cfg(test)]
-fn mcp_pane_set_role(
+fn set_pane_role_core(
+    _state: &ApiState,
+    _terminal_id: &str,
+    role: &str,
+) -> ApiResult<Result<(), String>> {
+    if role == "missing-role" {
+        Ok(Err("Pane role target not found".to_string()))
+    } else {
+        Ok(Ok(()))
+    }
+}
+
+fn mcp_pane_metadata_mutation(
     state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+    operation: &str,
+    value_key: &str,
+    mutate: fn(&ApiState, &str, &str) -> ApiResult<Result<(), String>>,
+) -> ApiResult<Result<(), String>> {
+    let value = arg_string(args, value_key)?;
+    let target = match resolve_mcp_pane_metadata_target(state, actor, args, operation)? {
+        Ok(target) => target,
+        Err(error) => return Ok(Err(error)),
+    };
+    let result = match mutate(state, &target.terminal_id, &value) {
+        Ok(result) => result,
+        Err(error) => {
+            audit_mcp_pane_metadata_control(
+                state,
+                actor,
+                &target.terminal_id,
+                operation,
+                target.client_id_present,
+                "rejected",
+                Some("pane_runtime_unavailable"),
+            );
+            return Err(error);
+        }
+    };
+    audit_mcp_pane_metadata_control(
+        state,
+        actor,
+        &target.terminal_id,
+        operation,
+        target.client_id_present,
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        },
+        result.as_ref().err().map(|_| "pane_mutation_failed"),
+    );
+    Ok(result)
+}
+
+fn mcp_pane_rename(
+    state: &ApiState,
+    actor: &str,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<Result<(), String>> {
-    let terminal_ref = arg_string(args, "terminalId")?;
-    let _terminal_id = match resolve_mcp_terminal_ref(state, &terminal_ref) {
-        Ok(terminal_id) => terminal_id,
-        Err(ApiError::BadRequest(err)) => return Ok(Err(err)),
-        Err(err) => return Err(err),
-    };
-    let _role = arg_string(args, "role")?;
-    Ok(Ok(()))
+    mcp_pane_metadata_mutation(state, actor, args, "rename", "name", rename_pane_core)
+}
+
+fn mcp_pane_set_role(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<Result<(), String>> {
+    mcp_pane_metadata_mutation(state, actor, args, "set_role", "role", set_pane_role_core)
 }
 
 #[cfg(not(test))]
@@ -1740,7 +1872,7 @@ pub(super) async fn dispatch_authorized(
                 ));
             }
         },
-        "aelyris.pane.rename" => match mcp_pane_rename(&state, &args)? {
+        "aelyris.pane.rename" => match mcp_pane_rename(&state, actor, &args)? {
             Ok(()) => serde_json::json!({ "ok": true }),
             Err(err) => {
                 return Ok(schema_tool_error(
@@ -1749,7 +1881,7 @@ pub(super) async fn dispatch_authorized(
                 ));
             }
         },
-        "aelyris.pane.set_role" => match mcp_pane_set_role(&state, &args)? {
+        "aelyris.pane.set_role" => match mcp_pane_set_role(&state, actor, &args)? {
             Ok(()) => serde_json::json!({ "ok": true }),
             Err(err) => {
                 return Ok(schema_tool_error(

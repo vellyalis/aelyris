@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-10`.
-LAST COMPLETED SLICE: `AIO-9`.
-NEXT IMPLEMENTATION SLICE: `AIO-10`.
+ACTIVE SLICE: `AIO-11`.
+LAST COMPLETED SLICE: `AIO-10`.
+NEXT IMPLEMENTATION SLICE: `AIO-11`.
 
 ```yaml
 continuation_contract:
@@ -67,7 +67,8 @@ Current portfolio classification:
 | Authenticated direct session input identity | **COMPLETE** | REST direct and synchronized session input now carry the authenticated Principal through the single authority and payload-free audit |
 | WebSocket ticket principal continuity | **COMPLETE** | One-shot stream claims now preserve the issuing Principal through authorization, exclusive leases, write authority, and payload-free audit |
 | MCP pane-input lease and audit binding | **COMPLETE** | MCP pane input now requires the matching Principal/clientId for an exclusive lease and records payload-free accepted/rejected authority evidence |
-| MCP pane metadata controller binding | **NOW** | Pane rename and role changes are authenticated MCP effects but do not yet honor an active exclusive controller lease or retain actor-bound mutation evidence |
+| MCP pane metadata controller binding | **COMPLETE** | Rename and role changes now require the matching Principal/clientId under an exclusive lease and retain value-minimized actor evidence |
+| MCP agent lifecycle actor evidence | **NOW** | AI can start and stop headless/visible agents, but those lifecycle effects do not yet retain the authenticated initiating Principal in durable audit evidence |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -85,7 +86,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-9` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-10` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -916,7 +917,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` pane rename and role changes that obey the
 same authenticated controller boundary as pane input without exposing metadata values
 as authority.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.pane.rename` and `aelyris.pane.set_role` adapters,
   short-id resolver, `StreamControllerLeases`, Cockpit-owned pane mutation cores, and
@@ -938,6 +939,32 @@ Status: **ACTIVE**.
   controller boundary, and the mutation is durably attributable without treating a
   caller-supplied metadata value as authority.
 
+### AIO-11 — Principal-Bound MCP Agent Lifecycle Evidence
+
+Capability target: `Product-Accessible` headless and visible agent lifecycle effects
+whose durable evidence identifies the authenticated MCP Principal without exposing the
+agent prompt or environment.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.spawn_agent`, `aelyris.agent.spawn_visible`, and
+  `aelyris.stop_agent` adapters, current Agent Managers, cost/startup admission, and
+  durable audit journal. Do not add an agent manager, lifecycle service, actor field,
+  identity store, or AI-specific spawn/stop path.
+- Use only the authenticated Principal already carried by authorized MCP dispatch.
+  Caller arguments remain prompt/cwd/model/tool/resume/session controls; none of them
+  may substitute for actor identity.
+- Preserve current headless/visible runtime owners, fleet caps, model routing,
+  worktree/session identity, process cleanup, typed tool-error shape, Governance, and
+  startup fail-closed behavior.
+- Record value-minimized accepted/rejected lifecycle evidence with actor, operation,
+  runtime kind, and resulting session id when one exists. Do not persist prompt text,
+  cwd, allowed-tools lists, resume ids, branch names, bearer values, environment
+  values, or raw provider output.
+- A failed spawn or stop must not be recorded as successful, and an audit-write failure
+  must not fabricate a lifecycle result or change the existing runtime owner.
+- Done: an authenticated AI can start or stop the existing agent runtimes and every
+  resulting lifecycle effect is durably attributable without leaking its task payload.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -955,8 +982,8 @@ also complete. Exact current Proofbook cancellation for AI `AIO-4` and authentic
 Principal-bound Proofbook run start `AIO-5` are complete. Authenticated mux input
 identity `AIO-6`, authenticated direct REST session input identity `AIO-7`, and
 WebSocket stream-ticket Principal continuity `AIO-8` and Principal-bound MCP pane-input
-lease/audit `AIO-9` are complete. Principal-bound MCP pane metadata control `AIO-10`
-is active;
+lease/audit `AIO-9` and Principal-bound MCP pane metadata control `AIO-10` are
+complete. Principal-bound MCP agent lifecycle evidence `AIO-11` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

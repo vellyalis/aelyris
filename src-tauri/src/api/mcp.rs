@@ -800,6 +800,144 @@ mod tests {
     }
 
     #[test]
+    fn mcp_pane_metadata_control_honors_principal_bound_lease_and_value_minimized_audit() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()));
+        state
+            .controller_leases
+            .acquire("term-1", "client-a", "controller-agent")
+            .unwrap();
+
+        for verb in ["aelyris.pane.rename", "aelyris.pane.set_role"] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            let properties = schema["properties"].as_object().unwrap();
+            assert!(properties.contains_key("clientId"));
+            assert!(!properties.contains_key("actor"));
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |actor: &str, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                actor,
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        assert!(matches!(
+            call(
+                "other-agent",
+                "aelyris.pane.rename",
+                serde_json::json!({
+                    "terminalId": "term-1",
+                    "name": "AIO10_NAME_MUST_NOT_BE_LOGGED",
+                    "clientId": "client-a",
+                }),
+            ),
+            Err(ApiError::Conflict(_))
+        ));
+        assert!(matches!(
+            call(
+                "controller-agent",
+                "aelyris.pane.set_role",
+                serde_json::json!({
+                    "terminalId": "term-1",
+                    "role": "AIO10_ROLE_MUST_NOT_BE_LOGGED",
+                }),
+            ),
+            Err(ApiError::Conflict(_))
+        ));
+
+        let Json(renamed) = call(
+            "controller-agent",
+            "aelyris.pane.rename",
+            serde_json::json!({
+                "terminalId": "term-1",
+                "name": "AIO10_NAME_MUST_NOT_BE_LOGGED",
+                "clientId": "client-a",
+            }),
+        )
+        .expect("matching controller may rename");
+        assert_eq!(renamed["result"]["ok"], true);
+
+        let Json(role_set) = call(
+            "controller-agent",
+            "aelyris.pane.set_role",
+            serde_json::json!({
+                "terminalId": "term-1",
+                "role": "AIO10_ROLE_MUST_NOT_BE_LOGGED",
+                "clientId": "client-a",
+            }),
+        )
+        .expect("matching controller may set role");
+        assert_eq!(role_set["result"]["ok"], true);
+
+        let Json(missing) = call(
+            "controller-agent",
+            "aelyris.pane.rename",
+            serde_json::json!({
+                "terminalId": "term-1",
+                "name": "missing-pane",
+                "clientId": "client-a",
+            }),
+        )
+        .expect("pane core failure remains a typed tool result");
+        assert_eq!(missing["ok"], false);
+        assert!(missing["error"]["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("missing-pane")));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_pane_metadata_authority".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read pane metadata audit");
+        assert_eq!(rows.len(), 5);
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            2
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| {
+                    row.redacted_payload_json["rejectionCode"] == "controller_lease_conflict"
+                })
+                .count(),
+            2
+        );
+        assert!(rows
+            .iter()
+            .any(|row| { row.redacted_payload_json["rejectionCode"] == "pane_mutation_failed" }));
+        assert!(rows
+            .iter()
+            .any(|row| row.redacted_payload_json["operation"] == "rename"));
+        assert!(rows
+            .iter()
+            .any(|row| row.redacted_payload_json["operation"] == "set_role"));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["metadataValueLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            assert!(!audit_text.contains("AIO10_NAME_MUST_NOT_BE_LOGGED"));
+            assert!(!audit_text.contains("AIO10_ROLE_MUST_NOT_BE_LOGGED"));
+            assert!(!audit_text.contains("missing-pane"));
+            assert!(!audit_text.contains("client-a"));
+        }
+    }
+
+    #[test]
     fn session_lifecycle_mcp_verbs_go_through_governance_before_runtime() {
         use crate::governance::{AccessControl, AccessDecision, Governance};
         use crate::pty::PtyManager;

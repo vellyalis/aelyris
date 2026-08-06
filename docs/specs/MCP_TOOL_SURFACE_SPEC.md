@@ -129,6 +129,12 @@ must also match; `clientId` is controller scope, never caller identity. Lease fa
 precedes command classification and PTY mutation, while the existing Atomic payload,
 approval, quarantine, frame-bound, and typed-NACK contracts remain unchanged.
 
+`aelyris.pane.rename` and `aelyris.pane.set_role` apply that same Principal/clientId
+lease check after exact terminal-id resolution and before the existing Cockpit-owned
+mutation cores. Their audit records only actor, terminal, operation, controller-id
+presence, result, and rejection code; the requested pane name, role, bearer, and
+controller-id value are never persisted as authority evidence.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

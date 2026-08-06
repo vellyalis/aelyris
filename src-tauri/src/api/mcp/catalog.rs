@@ -466,28 +466,30 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.pane.rename",
-                "description": "Rename a visible terminal pane through the same cockpit pane-identity core. terminalId accepts a UUID or process-local %N short id.",
+                "description": "Rename a visible terminal pane through the same cockpit pane-identity core as the authenticated Principal. An active exclusive stream lease requires its exact clientId and Principal. terminalId accepts a UUID or process-local %N short id.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
                     "required": ["terminalId", "name"],
                     "properties": {
                         "terminalId": { "type": "string" },
-                        "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+                        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                        "clientId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
             },
             {
                 "name": "aelyris.pane.set_role",
-                "description": "Assign a visible terminal pane role through the same cockpit pane-identity core. terminalId accepts a UUID or process-local %N short id.",
+                "description": "Assign a visible terminal pane role through the same cockpit pane-identity core as the authenticated Principal. An active exclusive stream lease requires its exact clientId and Principal. terminalId accepts a UUID or process-local %N short id.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
                     "required": ["terminalId", "role"],
                     "properties": {
                         "terminalId": { "type": "string" },
-                        "role": { "type": "string", "minLength": 1, "maxLength": 40 }
+                        "role": { "type": "string", "minLength": 1, "maxLength": 40 },
+                        "clientId": { "type": "string" }
                     },
                     "additionalProperties": false
                 }
