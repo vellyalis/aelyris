@@ -238,6 +238,17 @@ and one-way consumer/event/input digests. Raw consumer ids, event ids, and Event
 payloads are excluded. Audit failure is best-effort after the cursor result and never
 replays or fabricates a second acknowledgement.
 
+`aelyris.orchestrator.step` keeps `control::loop_ports::run_step` as the sole bounded
+multi-owner execution path. Startup admission, Task/Cost/Agent managers, file and
+symbol ownership, Event Bus, Context Store, review/merge authority, durable give-up,
+and exact existing error behavior remain unchanged. The authenticated Principal is the
+initiating actor while repository path and active-agent usage remain orchestration
+inputs. Authority evidence contains only operation, one-way repository/input digests,
+loop state, aggregate result counts, and whether a report was produced. Repository
+paths, task/session/agent ids, task packets, prompts, commands, worktree/branch names,
+and Event Bus payloads are excluded. Audit failure occurs after the one `run_step`
+result and never replays or fabricates another autonomy step.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

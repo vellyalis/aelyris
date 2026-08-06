@@ -47,7 +47,7 @@ pub(super) fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn arg_usize(
+pub(super) fn arg_usize(
     args: &serde_json::Map<String, serde_json::Value>,
     key: &str,
     default: usize,
@@ -4281,58 +4281,7 @@ pub(super) async fn dispatch_authorized(
             let health = tasks.read(|graph| crate::supervisor::assess(graph, &caps, &usage));
             serde_json::json!({ "health": health })
         }
-        "aelyris.orchestrator.step" => {
-            let startup = state.startup_reconciliation.as_ref().ok_or_else(|| {
-                ApiError::Internal(
-                    "startup reconciliation barrier is not attached to this process".to_string(),
-                )
-            })?;
-            let tasks = state.task_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("task graph is not attached to this process".to_string())
-            })?;
-            let cost = state.cost_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("cost manager is not attached to this process".to_string())
-            })?;
-            let agents = state.agent_manager.as_ref().ok_or_else(|| {
-                ApiError::Internal("agent runtime is not attached to this process".to_string())
-            })?;
-            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("file ownership is not attached to this process".to_string())
-            })?;
-            let events = state.event_bus.as_ref().ok_or_else(|| {
-                ApiError::Internal("event bus is not attached to this process".to_string())
-            })?;
-            let context = state.context_store.as_ref().ok_or_else(|| {
-                ApiError::Internal("context store is not attached to this process".to_string())
-            })?;
-            let repo_path = arg_string(&args, "repoPath")?;
-            let usage = crate::cost::CostUsage {
-                active_agents: arg_usize(&args, "activeAgents", 0)?,
-                ..Default::default()
-            };
-            let report = crate::control::loop_ports::run_step(
-                startup,
-                tasks,
-                cost,
-                agents,
-                ownership,
-                state.symbol_ownership.clone(),
-                events,
-                context,
-                &usage,
-                repo_path,
-                "mcp-dispatch-only".to_string(),
-                std::collections::HashMap::new(),
-                std::collections::HashMap::new(),
-                None,
-                state.merge_store.clone(),
-                // P4: the autonomous (MCP) face persists give-ups too — the path
-                // that most needs unattended-safe durability.
-                state.db.as_deref(),
-            )
-            .map_err(ApiError::Internal)?;
-            serde_json::json!({ "report": report })
-        }
+        "aelyris.orchestrator.step" => super::orchestrator_step::execute(&state, actor, &args)?,
         "aelyris.event.recent" => {
             let bus = state.event_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("event bus is not attached to this process".to_string())

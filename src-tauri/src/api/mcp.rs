@@ -6,6 +6,7 @@ mod approval_resolution;
 mod catalog;
 mod dispatch;
 mod event_ack;
+mod orchestrator_step;
 
 use catalog::{
     input_schema_for_tool, tools_list_value, tools_list_value_filtered, validate_tool_arguments,
@@ -914,6 +915,250 @@ mod tests {
         .expect("audit failure does not create another approval result");
         assert_eq!(audit_failure_result["ok"], true);
         assert_eq!(audit_failure_result["result"]["ok"], true);
+    }
+
+    #[test]
+    fn mcp_orchestrator_step_audit_is_principal_bound_and_target_free() {
+        use crate::agent::AgentManager;
+        use crate::context_store::ContextStoreManager;
+        use crate::cost::CostManager;
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::EventBus;
+        use crate::file_ownership::FileOwnership;
+        use crate::pty::PtyManager;
+        use crate::startup_reconciliation::{
+            StartupAuthorityReport, StartupReconciliationState, REQUIRED_STARTUP_AUTHORITIES,
+        };
+        use crate::symbol_ownership::SymbolOwnership;
+        use crate::task::TaskManager;
+        use std::sync::Mutex;
+
+        fn ready_startup() -> Arc<StartupReconciliationState> {
+            let startup = Arc::new(StartupReconciliationState::new());
+            startup.mark_database_ready().unwrap();
+            for authority in REQUIRED_STARTUP_AUTHORITIES {
+                startup
+                    .record_authority(StartupAuthorityReport::reconciled(authority, 0, 0))
+                    .unwrap();
+            }
+            assert!(startup.complete(0, 0, 0).unwrap());
+            startup
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("AIO23_REPOSITORY_PATH_MUST_NOT_BE_LOGGED");
+        std::fs::create_dir(&repo).unwrap();
+        let repo_path = repo.to_string_lossy().replace('\\', "/");
+        let invalid_repo = temp
+            .path()
+            .join("AIO23_INVALID_REPOSITORY_MUST_NOT_BE_LOGGED")
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = Arc::new(TaskManager::new());
+        let cost = Arc::new(CostManager::new());
+        let agents = AgentManager::new();
+        let file_ownership = Arc::new(Mutex::new(FileOwnership::new()));
+        let symbol_ownership = Arc::new(Mutex::new(SymbolOwnership::new()));
+        let events = Arc::new(EventBus::new());
+        let context = Arc::new(ContextStoreManager::new());
+        let ready = ready_startup();
+
+        let make_state = |startup: Arc<StartupReconciliationState>, include_tasks: bool| {
+            let state = ApiState::new(
+                PtyManager::new(),
+                crate::api::AuthConfig::with_token("AIO23_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED"),
+            )
+            .with_db(Some(db.clone()))
+            .with_startup_reconciliation(startup)
+            .with_cost_manager(cost.clone())
+            .with_agent_manager(agents.clone())
+            .with_file_ownership(file_ownership.clone())
+            .with_symbol_ownership(symbol_ownership.clone())
+            .with_event_bus(events.clone())
+            .with_context_store(context.clone());
+            if include_tasks {
+                state.with_task_manager(tasks.clone())
+            } else {
+                state
+            }
+        };
+        let state = make_state(ready.clone(), true);
+        let schema = input_schema_for_tool_ref("aelyris.orchestrator.step").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, repo_path: &str, active_agents: usize| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "orchestrator-operator",
+                ToolCallBody {
+                    name: "aelyris.orchestrator.step".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": repo_path,
+                        "activeAgents": active_agents,
+                    }),
+                },
+            ))
+        };
+
+        let Json(success) = call(&state, &repo_path, 0).expect("empty graph step succeeds");
+        assert_eq!(success["result"]["report"]["state"], "complete");
+        for field in [
+            "dispatched",
+            "merged",
+            "settlement_pending",
+            "rejected",
+            "recovered",
+            "escalations",
+        ] {
+            assert_eq!(success["result"]["report"][field], serde_json::json!([]));
+        }
+
+        let pending_state = make_state(Arc::new(StartupReconciliationState::new()), true);
+        assert!(matches!(
+            call(&pending_state, &repo_path, 0),
+            Err(ApiError::Internal(message))
+                if message.contains("startup_reconciliation_pending")
+        ));
+
+        let missing_task_state = make_state(ready.clone(), false);
+        assert!(matches!(
+            call(&missing_task_state, &repo_path, 0),
+            Err(ApiError::Internal(message))
+                if message.contains("task graph is not attached")
+        ));
+
+        assert!(matches!(
+            call(&state, &invalid_repo, 0),
+            Err(ApiError::Internal(message))
+                if message.contains("repo path must exist")
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_orchestrator_step_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read orchestrator-step audit");
+        assert_eq!(rows.len(), 4);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows.iter().all(|row| row.terminal_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("orchestrator-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            1
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            3
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["reportState"] == "complete"
+                && row.redacted_payload_json["reportProduced"] == true
+                && row.redacted_payload_json["dispatchedCount"] == 0
+                && row.redacted_payload_json["mergedCount"] == 0
+                && row.redacted_payload_json["settlementPendingCount"] == 0
+                && row.redacted_payload_json["rejectedCount"] == 0
+                && row.redacted_payload_json["recoveredCount"] == 0
+                && row.redacted_payload_json["escalationCount"] == 0
+        }));
+        for code in [
+            "startup_reconciliation_pending",
+            "task_graph_unavailable",
+            "repository_path_invalid",
+        ] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["rejectionCode"] == code));
+        }
+        let repository_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["repositoryDigest"]
+                    .as_str()
+                    .expect("repository digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("orchestrator input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(repository_digests.len(), 2);
+        assert_eq!(input_digests.len(), 2);
+        assert!(repository_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["executionValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                repo_path.as_str(),
+                invalid_repo.as_str(),
+                "AIO23_REPOSITORY_PATH_MUST_NOT_BE_LOGGED",
+                "AIO23_INVALID_REPOSITORY_MUST_NOT_BE_LOGGED",
+                "mcp-dispatch-only",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio23_orchestrator_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_orchestrator_step_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated orchestrator audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("public-audit-failure"),
+        )
+        .with_db(Some(audit_failure_db))
+        .with_startup_reconciliation(ready)
+        .with_task_manager(Arc::new(TaskManager::new()))
+        .with_cost_manager(Arc::new(CostManager::new()))
+        .with_agent_manager(AgentManager::new())
+        .with_file_ownership(Arc::new(Mutex::new(FileOwnership::new())))
+        .with_symbol_ownership(Arc::new(Mutex::new(SymbolOwnership::new())))
+        .with_event_bus(Arc::new(EventBus::new()))
+        .with_context_store(Arc::new(ContextStoreManager::new()));
+        let Json(audit_failure_result) = call(&audit_failure_state, &repo_path, 0)
+            .expect("audit failure does not create another orchestrator report");
+        assert_eq!(
+            audit_failure_result["result"]["report"]["state"],
+            "complete"
+        );
     }
 
     #[test]

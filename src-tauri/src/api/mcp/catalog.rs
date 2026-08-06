@@ -653,7 +653,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.orchestrator.step",
-                "description": "Drive one implementation-only autonomy step over the live Task Graph: sense clean exits/crashes, move completed work to Review, recover bounded failures, and dispatch ready tasks as real headless agents routed to each task's model. This tool never accepts review booleans and cannot merge a Review task. Use the existing OID-bound review approve/reject tools for merge authority.",
+                "description": "Drive one implementation-only autonomy step as the authenticated Principal through the existing startup, Task, Cost, Agent, Ownership, Event, Context, and merge owners. It senses exits/crashes, moves completed work to Review, recovers bounded failures, and dispatches ready tasks to their configured model. It never accepts review booleans or bypasses OID-bound review/merge authority. Durable authority evidence stores only one-way repository/input digests plus aggregate report state/counts, never paths, task packets, prompts, commands, branches, or event payloads.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
