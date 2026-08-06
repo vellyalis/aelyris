@@ -201,7 +201,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.session.summarize",
-                "description": "Inject the no-loss self-summary prompt into a live interactive session and return the existing SessionSummarizeResult JSON.",
+                "description": "Inject the no-loss self-summary prompt into a live interactive session as the authenticated Principal and return the existing SessionSummarizeResult JSON. Authority evidence stores only target/input digests and aggregate result facts, never summary or prompt contents.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -216,7 +216,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.session.checkpoint",
-                "description": "Persist a session checkpoint through the same lifecycle runtime used by the IPC session_checkpoint command.",
+                "description": "Persist a session checkpoint as the authenticated Principal through the same lifecycle runtime used by the IPC session_checkpoint command. Checkpoint and summary contents remain lifecycle data and are excluded from authority evidence.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -233,7 +233,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.session.handoff",
-                "description": "Run the no-loss handoff transaction: summarize, checkpoint, spawn successor, ack, audit, then retire the predecessor.",
+                "description": "Run the no-loss handoff transaction as the authenticated Principal: summarize, checkpoint, spawn successor, ack, audit, then retire the predecessor. Authority evidence is aggregate-only and does not copy session, path, prompt, or provider values.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -250,7 +250,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.session.resume",
-                "description": "Reconcile unresolved durable session handoffs and adopt a requested logical session when identity checks pass.",
+                "description": "Reconcile unresolved durable session handoffs and adopt a requested logical session as the authenticated Principal when identity checks pass. Authority evidence records only aggregate reconciliation outcome and one-way digests.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",
@@ -263,7 +263,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.session.reset_context",
-                "description": "Recycle a live session through the same no-loss handoff discipline, preserving the worktree.",
+                "description": "Recycle a live session as the authenticated Principal through the same no-loss handoff discipline, preserving the worktree. Authority evidence excludes lifecycle contents and provider output.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",

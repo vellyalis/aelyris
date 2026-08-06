@@ -4051,11 +4051,31 @@ pub(super) async fn dispatch_authorized(
                 "file": file,
             })
         }
-        "aelyris.session.summarize" => mcp_session_summarize(&state, &args).await?,
-        "aelyris.session.checkpoint" => mcp_session_checkpoint(&state, &args)?,
-        "aelyris.session.handoff" => mcp_session_handoff(&state, &args).await?,
-        "aelyris.session.resume" => mcp_session_resume(&state, &args).await?,
-        "aelyris.session.reset_context" => mcp_session_reset_context(&state, &args).await?,
+        "aelyris.session.summarize" => {
+            let actor = super::session_lifecycle::authenticated_actor(actor)?;
+            let result = mcp_session_summarize(&state, &args).await;
+            super::session_lifecycle::finish(&state, actor, "summarize", &args, result)?
+        }
+        "aelyris.session.checkpoint" => {
+            let actor = super::session_lifecycle::authenticated_actor(actor)?;
+            let result = mcp_session_checkpoint(&state, &args);
+            super::session_lifecycle::finish(&state, actor, "checkpoint", &args, result)?
+        }
+        "aelyris.session.handoff" => {
+            let actor = super::session_lifecycle::authenticated_actor(actor)?;
+            let result = mcp_session_handoff(&state, &args).await;
+            super::session_lifecycle::finish(&state, actor, "handoff", &args, result)?
+        }
+        "aelyris.session.resume" => {
+            let actor = super::session_lifecycle::authenticated_actor(actor)?;
+            let result = mcp_session_resume(&state, &args).await;
+            super::session_lifecycle::finish(&state, actor, "resume", &args, result)?
+        }
+        "aelyris.session.reset_context" => {
+            let actor = super::session_lifecycle::authenticated_actor(actor)?;
+            let result = mcp_session_reset_context(&state, &args).await;
+            super::session_lifecycle::finish(&state, actor, "reset_context", &args, result)?
+        }
         "aelyris.proofbook.list" => mcp_proofbook_list(&args)?,
         "aelyris.proofbook.get" => mcp_proofbook_get(&args)?,
         "aelyris.proofbook.validate" => mcp_proofbook_validate(&args)?,

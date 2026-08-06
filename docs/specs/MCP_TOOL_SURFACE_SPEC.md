@@ -250,6 +250,17 @@ request values, rule names, pending ids, and Event Bus payloads are excluded. An
 overflow-publication failure records that the queue mutation already happened and never
 replays the request or fabricates a second watchdog decision.
 
+The gated `aelyris.session.summarize`, `checkpoint`, `handoff`, `resume`, and
+`reset_context` adapters retain the existing IPC/session-lifecycle runtime as their only
+effect owner. The authenticated Principal is the initiating actor while session and
+logical-session ids, summary JSON, reasons, timeout and terminal sizing, in-flight and
+predecessor refs, prompts, paths, and provider output remain lifecycle-domain values.
+Each adapter records only its operation, one-way target/input digests, and a bounded
+aggregate of the existing result: sequence/count/boolean settlement facts without ids,
+paths, summary bodies, or checkpoint records. Runtime, state-machine, and IPC failures
+remain the original typed errors. Audit failure is best-effort after the one lifecycle
+result and never replays summarize, checkpoint, handoff, resume, or reset.
+
 `aelyris.orchestrator.step` keeps `control::loop_ports::run_step` as the sole bounded
 multi-owner execution path. Startup admission, Task/Cost/Agent managers, file and
 symbol ownership, Event Bus, Context Store, review/merge authority, durable give-up,

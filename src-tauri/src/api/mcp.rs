@@ -9,6 +9,7 @@ mod dispatch;
 mod event_ack;
 mod orchestrator_step;
 mod review_rejection;
+mod session_lifecycle;
 
 use catalog::{
     input_schema_for_tool, tools_list_value, tools_list_value_filtered, validate_tool_arguments,
@@ -603,6 +604,322 @@ mod tests {
                 .unwrap_or_default();
             assert_eq!(actual_required, required, "{verb} required args drifted");
         }
+    }
+
+    #[test]
+    fn mcp_session_lifecycle_audit_is_principal_bound_and_value_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        fn args(value: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+            value.as_object().expect("lifecycle args object").clone()
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()));
+        let actor = "session-lifecycle-operator";
+        let summarize_session = "AIO26_SUMMARIZE_SESSION_MUST_NOT_BE_LOGGED";
+        let summarize_reason = "AIO26_SUMMARIZE_REASON_MUST_NOT_BE_LOGGED";
+        let checkpoint_session = "AIO26_CHECKPOINT_SESSION_MUST_NOT_BE_LOGGED";
+        let checkpoint_summary = "AIO26_CHECKPOINT_SUMMARY_MUST_NOT_BE_LOGGED";
+        let inflight_ref = "AIO26_INFLIGHT_REF_MUST_NOT_BE_LOGGED";
+        let predecessor = "AIO26_PREDECESSOR_MUST_NOT_BE_LOGGED";
+        let handoff_session = "AIO26_HANDOFF_SESSION_MUST_NOT_BE_LOGGED";
+        let handoff_reason = "AIO26_HANDOFF_REASON_MUST_NOT_BE_LOGGED";
+        let logical_session = "AIO26_LOGICAL_SESSION_MUST_NOT_BE_LOGGED";
+        let reset_session = "AIO26_RESET_SESSION_MUST_NOT_BE_LOGGED";
+
+        let calls = [
+            (
+                "aelyris.session.summarize",
+                args(serde_json::json!({
+                    "session_id": summarize_session,
+                    "reason": summarize_reason,
+                    "timeout_ms": 12345,
+                })),
+            ),
+            (
+                "aelyris.session.checkpoint",
+                args(serde_json::json!({
+                    "session_id": checkpoint_session,
+                    "summary_json": { "secret": checkpoint_summary },
+                    "summary_seq": 7,
+                    "inflight_ref": inflight_ref,
+                    "predecessor_session_id": predecessor,
+                })),
+            ),
+            (
+                "aelyris.session.handoff",
+                args(serde_json::json!({
+                    "session_id": handoff_session,
+                    "reason": handoff_reason,
+                    "timeout_ms": 23456,
+                    "cols": 121,
+                    "rows": 37,
+                })),
+            ),
+            (
+                "aelyris.session.resume",
+                args(serde_json::json!({
+                    "logical_session_id": logical_session,
+                    "timeout_ms": 34567,
+                })),
+            ),
+            (
+                "aelyris.session.reset_context",
+                args(serde_json::json!({
+                    "session_id": reset_session,
+                    "timeout_ms": 45678,
+                    "cols": 122,
+                    "rows": 38,
+                })),
+            ),
+        ];
+
+        for (verb, _) in &calls {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+        assert!(matches!(
+            session_lifecycle::authenticated_actor("  "),
+            Err(ApiError::Forbidden(_))
+        ));
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        for (verb, arguments) in &calls {
+            let result = rt.block_on(tools_call_as_actor(
+                &state,
+                actor,
+                ToolCallBody {
+                    name: (*verb).to_string(),
+                    arguments: serde_json::Value::Object(arguments.clone()),
+                },
+            ));
+            assert!(matches!(
+                result,
+                Err(ApiError::Internal(ref message))
+                    if message.contains("session lifecycle runtime is not attached")
+            ));
+        }
+
+        let success_results = [
+            serde_json::json!({
+                "sessionId": "AIO26_RESULT_SUMMARIZE_SESSION_MUST_NOT_BE_LOGGED",
+                "logicalSessionId": "AIO26_RESULT_SUMMARIZE_LOGICAL_MUST_NOT_BE_LOGGED",
+                "handoffSeq": 11,
+                "summaryPath": "AIO26_SUMMARY_PATH_MUST_NOT_BE_LOGGED",
+                "donePath": "AIO26_DONE_PATH_MUST_NOT_BE_LOGGED",
+                "redactionCount": 2,
+                "validation": { "secret": "AIO26_VALIDATION_MUST_NOT_BE_LOGGED" },
+                "summary": { "secret": "AIO26_SUMMARY_BODY_MUST_NOT_BE_LOGGED" },
+            }),
+            serde_json::json!({
+                "sessionId": "AIO26_RESULT_CHECKPOINT_SESSION_MUST_NOT_BE_LOGGED",
+                "logicalSessionId": "AIO26_RESULT_CHECKPOINT_LOGICAL_MUST_NOT_BE_LOGGED",
+                "checkpointSeq": 12,
+                "summaryPath": "AIO26_CHECKPOINT_PATH_MUST_NOT_BE_LOGGED",
+                "inflightRef": "AIO26_RESULT_INFLIGHT_MUST_NOT_BE_LOGGED",
+                "redactionCount": 3,
+                "identityContextPersisted": true,
+                "checkpoint": { "secret": "AIO26_CHECKPOINT_RECORD_MUST_NOT_BE_LOGGED" },
+            }),
+            serde_json::json!({
+                "predecessorSessionId": "AIO26_RESULT_HANDOFF_PREDECESSOR_MUST_NOT_BE_LOGGED",
+                "successorSessionId": "AIO26_RESULT_HANDOFF_SUCCESSOR_MUST_NOT_BE_LOGGED",
+                "handoffSeq": 13,
+                "checkpointSeq": 14,
+                "successorCheckpointSeq": 15,
+                "summaryPath": "AIO26_HANDOFF_SUMMARY_PATH_MUST_NOT_BE_LOGGED",
+                "ackPath": "AIO26_HANDOFF_ACK_PATH_MUST_NOT_BE_LOGGED",
+                "retiredPredecessor": true,
+                "auditTraceEvents": 4,
+                "acceptance": { "secret": "AIO26_ACCEPTANCE_MUST_NOT_BE_LOGGED" },
+                "handoff": { "secret": "AIO26_HANDOFF_RECORD_MUST_NOT_BE_LOGGED" },
+            }),
+            serde_json::json!({
+                "requestedLogicalSessionId": "AIO26_RESULT_RESUME_REQUEST_MUST_NOT_BE_LOGGED",
+                "reconciledHandoffs": 5,
+                "unresolvedBefore": 2,
+                "unresolvedAfter": 0,
+                "adoptedLogicalSessionId": "AIO26_RESULT_RESUME_ADOPTED_MUST_NOT_BE_LOGGED",
+                "checkpointSeq": 16,
+                "ackReconfirmed": true,
+            }),
+            serde_json::json!({
+                "resetContext": true,
+                "predecessorSessionId": "AIO26_RESULT_RESET_PREDECESSOR_MUST_NOT_BE_LOGGED",
+                "successorSessionId": "AIO26_RESULT_RESET_SUCCESSOR_MUST_NOT_BE_LOGGED",
+                "worktreeDeleted": false,
+                "handoff": {
+                    "handoffSeq": 17,
+                    "retiredPredecessor": true,
+                    "secret": "AIO26_RESET_HANDOFF_MUST_NOT_BE_LOGGED",
+                },
+            }),
+        ];
+        let operations = [
+            "summarize",
+            "checkpoint",
+            "handoff",
+            "resume",
+            "reset_context",
+        ];
+        for ((_, arguments), (operation, success)) in calls
+            .iter()
+            .zip(operations.iter().zip(success_results.iter()))
+        {
+            let returned =
+                session_lifecycle::finish(&state, actor, operation, arguments, Ok(success.clone()))
+                    .expect("accepted lifecycle result");
+            assert_eq!(&returned, success);
+        }
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_session_lifecycle_authority".to_string()),
+                    limit: Some(30),
+                    ..Default::default()
+                })
+            })
+            .expect("read session lifecycle audit");
+        assert_eq!(rows.len(), 10);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.terminal_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some(actor)));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            5
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            5
+        );
+        for operation in operations {
+            assert_eq!(
+                rows.iter()
+                    .filter(|row| row.redacted_payload_json["operation"] == operation)
+                    .count(),
+                2,
+                "one accepted and one rejected audit row for {operation}"
+            );
+        }
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "summarize"
+                && row.redacted_payload_json["resultSummary"]["handoffSeq"] == 11
+                && row.redacted_payload_json["resultSummary"]["redactionCount"] == 2
+                && row.redacted_payload_json["resultSummary"]["summaryProduced"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "checkpoint"
+                && row.redacted_payload_json["resultSummary"]["checkpointSeq"] == 12
+                && row.redacted_payload_json["resultSummary"]["identityContextPersisted"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "handoff"
+                && row.redacted_payload_json["resultSummary"]["handoffSeq"] == 13
+                && row.redacted_payload_json["resultSummary"]["retiredPredecessor"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "resume"
+                && row.redacted_payload_json["resultSummary"]["reconciledHandoffs"] == 5
+                && row.redacted_payload_json["resultSummary"]["adopted"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "reset_context"
+                && row.redacted_payload_json["resultSummary"]["handoffSeq"] == 17
+                && row.redacted_payload_json["resultSummary"]["worktreeDeleted"] == false
+        }));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| {
+                    row.redacted_payload_json["rejectionCode"]
+                        == "session_lifecycle_runtime_unavailable"
+                })
+                .count(),
+            5
+        );
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["lifecycleValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["resultValuesLogged"], false);
+            for field in ["targetDigest", "inputDigest"] {
+                let digest = row.redacted_payload_json[field]
+                    .as_str()
+                    .expect("lifecycle digest");
+                assert_eq!(digest.len(), 64);
+                assert!(digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit()));
+            }
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                summarize_session,
+                summarize_reason,
+                checkpoint_session,
+                checkpoint_summary,
+                inflight_ref,
+                predecessor,
+                handoff_session,
+                handoff_reason,
+                logical_session,
+                reset_session,
+                "AIO26_RESULT_SUMMARIZE_SESSION_MUST_NOT_BE_LOGGED",
+                "AIO26_RESULT_SUMMARIZE_LOGICAL_MUST_NOT_BE_LOGGED",
+                "AIO26_SUMMARY_PATH_MUST_NOT_BE_LOGGED",
+                "AIO26_DONE_PATH_MUST_NOT_BE_LOGGED",
+                "AIO26_VALIDATION_MUST_NOT_BE_LOGGED",
+                "AIO26_SUMMARY_BODY_MUST_NOT_BE_LOGGED",
+                "AIO26_CHECKPOINT_RECORD_MUST_NOT_BE_LOGGED",
+                "AIO26_RESULT_HANDOFF_SUCCESSOR_MUST_NOT_BE_LOGGED",
+                "AIO26_HANDOFF_ACK_PATH_MUST_NOT_BE_LOGGED",
+                "AIO26_ACCEPTANCE_MUST_NOT_BE_LOGGED",
+                "AIO26_RESULT_RESUME_ADOPTED_MUST_NOT_BE_LOGGED",
+                "AIO26_RESET_HANDOFF_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio26_lifecycle_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_session_lifecycle_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated lifecycle audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(audit_failure_db));
+        let original = serde_json::json!({
+            "checkpointSeq": 99,
+            "secret": "AIO26_AUDIT_FAILURE_RESULT_MUST_NOT_BE_LOGGED",
+        });
+        let returned = session_lifecycle::finish(
+            &audit_failure_state,
+            actor,
+            "checkpoint",
+            &calls[1].1,
+            Ok(original.clone()),
+        )
+        .expect("audit failure does not replay or reject the lifecycle result");
+        assert_eq!(returned, original);
     }
 
     #[test]

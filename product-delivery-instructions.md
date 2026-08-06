@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-26`.
-LAST COMPLETED SLICE: `AIO-25`.
-NEXT IMPLEMENTATION SLICE: `AIO-26`.
+ACTIVE SLICE: `AIO-27`.
+LAST COMPLETED SLICE: `AIO-26`.
+NEXT IMPLEMENTATION SLICE: `AIO-27`.
 
 ```yaml
 continuation_contract:
@@ -83,7 +83,8 @@ Current portfolio classification:
 | MCP orchestrator-step execution evidence | **COMPLETE** | Bounded `run_step` execution now retains the authenticated initiating Principal through target-free aggregate report evidence without creating a second autonomy owner |
 | MCP durable review-rejection evidence | **COMPLETE** | Durable reviewer rejection now retains the authenticated initiating Principal through target-free state-transition evidence while MergeIntentStore remains the sole authority |
 | MCP approval-request evidence | **COMPLETE** | Watchdog requests now retain the authenticated initiating Principal through value-free decision and queue/overflow evidence without adding a grant path |
-| MCP session-lifecycle evidence | **NOW** | AI can summarize, checkpoint, hand off, resume, and reset visible sessions, but lifecycle targets and checkpoint contents are domain values and the authenticated initiating Principal is not retained separately across those effects |
+| MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset now retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
+| Remaining MCP Proofbook mutation evidence | **NOW** | Caller-proof settlement and compatibility cancellation still mutate durable Proofbook state without retaining the authenticated initiating Principal separately from run/proof values |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1366,7 +1367,7 @@ Capability target: `Product-Accessible` visible-session summarize, checkpoint,
 handoff, resume, and reset operations whose initiating identity comes from the
 authenticated MCP Principal while session, summary, reason, predecessor, and sizing
 values remain lifecycle-domain inputs.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.session.summarize`, `checkpoint`, `handoff`, `resume`,
   and `reset_context` adapters, existing IPC/session lifecycle owners, Governance, and
@@ -1387,6 +1388,32 @@ Status: **ACTIVE**.
   state-transition guards.
 - Done: an authenticated AI can use the existing session lifecycle surface, and each
   effect is attributable without leaking lifecycle contents or adding another owner.
+
+### AIO-27 — Principal-Bound Remaining MCP Proofbook Mutation Evidence
+
+Capability target: `Product-Accessible` compatibility agent-session settlement and
+run cancellation whose initiating identity comes from the authenticated MCP Principal
+while run, step, proof, and project values remain Proofbook-domain inputs.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.proofbook.settle_agent_session` and
+  `aelyris.proofbook.cancel` adapters, `ProofbookRunner`, startup admission where
+  already required, Governance, and durable audit/ledger owners. Do not add another
+  runner, proof store, cancellation owner, actor field, identity store, or AI-only path.
+- Keep caller-supplied project, run, step, and completion proof values as Proofbook data.
+  They never define the initiating actor. Preserve the safer runtime-owned settlement
+  and exact-revision cancellation tools as the preferred product paths.
+- Preserve current proof validation, ledger state-machine checks, startup admission,
+  cancellation semantics, typed errors, and existing durable runner as the sole
+  mutation authority. Do not weaken proof requirements or claim process termination.
+- Retain accepted/rejected audit with actor, operation, resulting ledger revision/status
+  when known, and stable one-way run/input digests. Do not persist raw project paths,
+  run/step ids, proof bodies, artifact paths, done signals, reviewer ids, summaries,
+  blocker contents, bearer values, environment values, or repository contents.
+- Failure or audit-write failure must not replay a settlement/cancellation, fabricate a
+  second ledger revision, or alter an already-terminal run.
+- Done: the remaining compatibility Proofbook mutations are attributable without
+  leaking proof contents or creating a second runner authority.
 
 ## Deferred After GMV
 
@@ -1419,7 +1446,8 @@ acknowledgement evidence `AIO-21`, Principal-bound MCP human approval resolution
 evidence `AIO-22`, and Principal-bound MCP orchestrator-step execution evidence
 `AIO-23` and Principal-bound MCP durable review-rejection evidence `AIO-24` are also
 complete. Principal-bound MCP approval-request evidence `AIO-25` is also complete.
-Principal-bound MCP session-lifecycle evidence `AIO-26` is active;
+Principal-bound MCP session-lifecycle evidence `AIO-26` is also complete. Principal-
+bound remaining MCP Proofbook mutation evidence `AIO-27` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
