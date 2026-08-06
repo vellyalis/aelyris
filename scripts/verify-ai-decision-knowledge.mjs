@@ -23,6 +23,13 @@ const paths = {
   packageJson: "package.json",
 };
 
+const verificationEconomyFiles = [
+  ".agents/skills/verification-economy/SKILL.md",
+  ".agents/skills/verification-economy/references/learned-failures.md",
+  "scripts/verification-budget.mjs",
+  "scripts/__tests__/verification-budget.test.mjs",
+];
+
 function fullPath(path) {
   return join(ROOT, path);
 }
@@ -101,6 +108,8 @@ const requiredAiGuideClauses = [
   "Internal Capability",
   "Product-Accessible",
   "Claim-Eligible",
+  ".agents/skills/verification-economy/SKILL.md",
+  "pnpm verification:plan",
 ];
 
 const requiredDecisionFrameworkClauses = [
@@ -241,6 +250,9 @@ const requiredAgentsClauses = [
   "DECISIONS.md",
   "STYLE.md",
   "product-delivery-instructions.md",
+  ".agents/skills/verification-economy/SKILL.md",
+  "pnpm verification:plan",
+  "同一diff fingerprint",
 ];
 
 const requiredClaudeClauses = [
@@ -281,7 +293,15 @@ const requiredDocsReadmeClauses = [
   "Tasks",
 ];
 
-const requiredAgentWorkflowsClauses = ["GOAL.md", "AI_GUIDE.md", "Task Router", "relevant knowledge docs"];
+const requiredAgentWorkflowsClauses = [
+  "GOAL.md",
+  "AI_GUIDE.md",
+  "Task Router",
+  "relevant knowledge docs",
+  "Verification Economy Guard",
+  "pnpm verification:plan",
+  "verification-decisions.jsonl",
+];
 
 const requiredProductDeliveryClauses = [
   "Aelyris Product Delivery Work Order",
@@ -395,6 +415,17 @@ for (const [id, text] of Object.entries(sourceTexts)) {
 }
 
 const missingOwnerPaths = referencedOwnerPaths.filter((path) => !existsSync(fullPath(path)));
+const missingVerificationEconomyFiles = verificationEconomyFiles.filter((path) => !existsSync(fullPath(path)));
+const verificationEconomyPackageScripts = [
+  '"verification:plan": "node scripts/verification-budget.mjs plan"',
+  '"verification:run": "node scripts/verification-budget.mjs run"',
+  '"verification:note": "node scripts/verification-budget.mjs note"',
+  '"verification:summary": "node scripts/verification-budget.mjs summary"',
+  '"test:verification-budget": "node --test scripts/__tests__/verification-budget.test.mjs"',
+];
+const missingVerificationEconomyScripts = verificationEconomyPackageScripts.filter(
+  (clause) => !sourceTexts.packageJson.includes(clause),
+);
 
 const routerConsistencyProblems = Object.entries(routerConsistencyClauses)
   .map(([id, clauses]) => ({ path: paths[id], missingClauses: missingFrom(sourceTexts[id], clauses) }))
@@ -517,10 +548,20 @@ const checks = [
     sourceTexts.packageJson.includes('"verify:ai-decision-knowledge": "node scripts/verify-ai-decision-knowledge.mjs"'),
     "package.json exposes pnpm verify:ai-decision-knowledge",
   ),
+  check(
+    "verification-economy-wired",
+    missingVerificationEconomyFiles.length === 0 && missingVerificationEconomyScripts.length === 0,
+    "Verification selection is skill-routed, executable, learned across sessions, and protected from duplicate expensive gates",
+    { missingVerificationEconomyFiles, missingVerificationEconomyScripts },
+  ),
 ];
 
 const failed = checks.filter((item) => item.status !== "passed");
-const sourcePaths = [...Object.values(paths), "scripts/verify-ai-decision-knowledge.mjs"];
+const sourcePaths = [
+  ...Object.values(paths),
+  ...verificationEconomyFiles,
+  "scripts/verify-ai-decision-knowledge.mjs",
+];
 
 const report = {
   schema: "aelyris.ai-decision-knowledge/v4",

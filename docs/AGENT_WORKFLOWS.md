@@ -79,6 +79,45 @@ Rules:
 - A test-only, verifier-only, or report-only loop must identify the implementation
   decision it changes. Otherwise close it and return to product delivery.
 
+### Verification Economy Guard
+
+For every nontrivial implementation Work Unit, activate
+`.agents/skills/verification-economy/SKILL.md` before selecting commands. The
+deterministic helper records the current diff fingerprint and stops repeated
+expensive gates from becoming a substitute for judgment.
+
+```powershell
+pnpm verification:plan -- --claim "named behavior" --focused "owner test command" --stage implementation
+pnpm verification:run -- --command "owner test command"
+```
+
+After the focused proof is green and the feature diff is stable, update the plan
+to `--stage final`. A full gate is allowed only with a concrete owner/risk reason.
+
+```powershell
+pnpm verification:plan -- --claim "shared contract" --focused "focused command" --risk public_contract,auth --stage final
+pnpm verification:run -- --command "pnpm verify:rust:full" --reason "public API and auth boundary changed"
+```
+
+The helper appends sanitized decisions to the ignored
+`.codex-auto/learning/verification-decisions.jsonl`. It stores commands,
+fingerprints, results, durations, and short classifications, but no test output,
+environment values, credentials, or secrets. If the same expensive command has
+already passed for the unchanged fingerprint, it is skipped unless a new failure
+hypothesis is supplied with `--rerun-reason`.
+
+When a gate fails outside the changed owner or claim boundary, record and defer it
+instead of repairing it inside the feature Work Unit:
+
+```powershell
+pnpm verification:note -- --kind unrelated_failure --command "pnpm verify:rust:full" --summary "short sanitized failure class"
+pnpm verification:summary
+```
+
+Repeated process defects that materially change future execution are promoted to
+`.agents/skills/verification-economy/references/learned-failures.md`. Machine-local
+noise stays only in the ignored journal.
+
 ## Public Hygiene Rules
 
 - Do not import external skill packs, hooks, slash commands, or personas wholesale.

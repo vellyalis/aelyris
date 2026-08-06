@@ -89,6 +89,11 @@ product-delivery, and work-order contracts below remain mandatory.
 
 ### Verification Lanes And Forward Progress
 
+- 非自明な検証を始める前に`.agents/skills/verification-economy/SKILL.md`を読み、
+  `pnpm verification:plan`でClaim・変更owner・focused proof・full昇格条件を固定する。
+  expensive gateは`pnpm verification:run`経由にし、同一diff fingerprintで既にPASSした
+  full gateを再実行しない。無関係なfailureは`pnpm verification:note`へ記録し、現在の
+  Work Unitを拡張せず別laneへ送る。
 - 通常の product/runtime Work Unit は `pnpm verify:fast`、変更ownerの focused test、
   必要なら `pnpm test:related -- <owner files>` を既定laneにする。
   `pnpm test:changed` は uncommitted/staged changeに影響されるVitestだけを実行する。

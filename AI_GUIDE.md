@@ -65,6 +65,17 @@ task_router:
       - docs/AGENT_WORKFLOWS.md
       - DELEGATION_FRAMEWORK.md
       - tasks/README.md
+  verification_or_test_selection:
+    read:
+      - .agents/skills/verification-economy/SKILL.md
+      - docs/AGENT_WORKFLOWS.md#verification-lanes
+    run_before_nontrivial_gate:
+      - pnpm verification:plan
+    boundary:
+      - focused proof first
+      - full gate only at final stage with a concrete risk reason
+      - same diff fingerprint expensive PASS is not rerun
+      - unrelated failures move to another work unit
   implementation_work_unit:
     read:
       - docs/specs/README.md
@@ -220,6 +231,7 @@ Use this table before creating or editing files.
 | React feature UI | `src/features/<domain>/*` | growing `src/App.tsx` |
 | Shared frontend types/helpers | `src/shared/*` | feature-specific logic in shared code |
 | Verifier / evidence artifact | `scripts/verify-*.mjs`, `.codex-auto/quality/*.json` | unchecked prose-only claims |
+| Verification selection and learning | `.agents/skills/verification-economy/`, `scripts/verification-budget.mjs`, ignored `.codex-auto/learning/` | chat-only test judgment, duplicate full-suite runs, feature-scoped repair of unrelated failures |
 | Current task packet | `tasks/README.md`, root `*-instructions.md`, scoped continuation docs | stale chat-only instructions |
 | Product delivery frontier | `product-delivery-instructions.md`, owning Mission/Proofbook spec and source | backend-only capability counted as shipped, second engine |
 
