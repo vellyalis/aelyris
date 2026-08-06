@@ -84,7 +84,7 @@ impl IntentRepo {
             .map_err(|e| format!("Upsert intent: {e}"))
     }
 
-    pub fn update_status(db: &Database, id: &str, status: IntentStatus) -> Result<(), String> {
+    pub fn update_status(db: &Database, id: &str, status: IntentStatus) -> Result<bool, String> {
         db.conn()
             .execute(
                 "UPDATE intents
@@ -92,7 +92,7 @@ impl IntentRepo {
                  WHERE id = ?1",
                 params![id, status.as_str()],
             )
-            .map(|_| ())
+            .map(|changed| changed > 0)
             .map_err(|e| format!("Update intent status: {e}"))
     }
 }
@@ -123,7 +123,7 @@ mod tests {
             created_at: 100,
         };
         IntentRepo::upsert(&db, &intent).unwrap();
-        IntentRepo::update_status(&db, &intent.id, IntentStatus::Accepted).unwrap();
+        assert!(IntentRepo::update_status(&db, &intent.id, IntentStatus::Accepted).unwrap());
 
         let loaded = IntentRepo::load_all(&db).unwrap();
         assert_eq!(loaded.len(), 1);

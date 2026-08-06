@@ -2138,6 +2138,260 @@ mod tests {
     }
 
     #[test]
+    fn mcp_intent_mutation_audit_is_principal_bound_and_payload_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEventKind, EventBus};
+        use crate::intent::{IntentBus, IntentStatus};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let intents = Arc::new(IntentBus::new());
+        intents.attach_db(db.clone()).unwrap();
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(db.clone());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_intent_bus(intents.clone())
+            .with_event_bus(events.clone());
+        for verb in ["aelyris.intent.propose", "aelyris.intent.resolve"] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "intent-operator",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let proposer = "AIO18_PROPOSER_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let proposal = "AIO18_PROPOSAL_PAYLOAD_MUST_NOT_BE_LOGGED";
+        let target_a = "src/AIO18_TARGET_A_MUST_NOT_BE_LOGGED/**";
+        let target_b = "domain:AIO18_TARGET_B_MUST_NOT_BE_LOGGED";
+        let Json(proposed) = call(
+            &state,
+            "aelyris.intent.propose",
+            serde_json::json!({
+                "agentId": proposer,
+                "proposal": proposal,
+                "targets": [target_a, target_b],
+            }),
+        )
+        .expect("intent proposal succeeds");
+        let intent_id = proposed["result"]["intent"]["id"]
+            .as_str()
+            .expect("generated intent id")
+            .to_string();
+        assert_eq!(proposed["result"]["intent"]["agent_id"], proposer);
+        assert_eq!(proposed["result"]["intent"]["status"], "open");
+        assert_eq!(intents.open().len(), 1);
+
+        let Json(resolved) = call(
+            &state,
+            "aelyris.intent.resolve",
+            serde_json::json!({ "id": intent_id, "status": "accepted" }),
+        )
+        .expect("intent resolution succeeds");
+        assert_eq!(resolved["result"]["intent"]["status"], "accepted");
+        assert_eq!(intents.all()[0].status, IntentStatus::Accepted);
+
+        let Json(no_change) = call(
+            &state,
+            "aelyris.intent.resolve",
+            serde_json::json!({ "id": intent_id, "status": "accepted" }),
+        )
+        .expect("same-status resolution remains a no-op");
+        assert_eq!(no_change["result"]["intent"]["status"], "accepted");
+
+        let unknown_id = "AIO18_UNKNOWN_INTENT_ID_MUST_NOT_BE_LOGGED";
+        let Json(missing) = call(
+            &state,
+            "aelyris.intent.resolve",
+            serde_json::json!({ "id": unknown_id, "status": "rejected" }),
+        )
+        .expect("unknown resolution preserves null compatibility result");
+        assert_eq!(missing["result"]["intent"], serde_json::Value::Null);
+
+        let persistence_agent = "AIO18_PERSISTENCE_AGENT_MUST_NOT_BE_LOGGED";
+        let persistence_proposal = "AIO18_PERSISTENCE_PROPOSAL_MUST_NOT_BE_LOGGED";
+        let persistence_target = "src/AIO18_PERSISTENCE_TARGET_MUST_NOT_BE_LOGGED/**";
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_aio18_intent_proposal\n\
+                     BEFORE INSERT ON intents\n\
+                     WHEN NEW.agent_id = '{persistence_agent}'\n\
+                     BEGIN\n\
+                         SELECT RAISE(ABORT, 'simulated intent persistence failure');\n\
+                     END;"
+                ))
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            call(
+                &state,
+                "aelyris.intent.propose",
+                serde_json::json!({
+                    "agentId": persistence_agent,
+                    "proposal": persistence_proposal,
+                    "targets": [persistence_target],
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(
+            intents.all().len(),
+            1,
+            "failed durable proposal must not enter the in-memory IntentBus"
+        );
+
+        let event_failure_intents = Arc::new(IntentBus::new());
+        event_failure_intents.attach_db(db.clone()).unwrap();
+        let event_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_intent_bus(event_failure_intents.clone())
+                .with_event_bus(Arc::new(EventBus::new_durable()));
+        let event_agent = "AIO18_EVENT_AGENT_MUST_NOT_BE_LOGGED";
+        let event_proposal = "AIO18_EVENT_PROPOSAL_MUST_NOT_BE_LOGGED";
+        let event_target = "src/AIO18_EVENT_TARGET_MUST_NOT_BE_LOGGED/**";
+        assert!(matches!(
+            call(
+                &event_failure_state,
+                "aelyris.intent.propose",
+                serde_json::json!({
+                    "agentId": event_agent,
+                    "proposal": event_proposal,
+                    "targets": [event_target],
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(
+            event_failure_intents.all().len(),
+            2,
+            "Event Bus failure does not replay or roll back the durable intent mutation"
+        );
+        assert_eq!(
+            events
+                .recent()
+                .into_iter()
+                .filter(|event| event.kind == AgentEventKind::IntentDeclared)
+                .count(),
+            1,
+            "only the coordinated proposal reached the durable Event Bus"
+        );
+
+        let persisted = db
+            .with(|database| crate::persistence::IntentRepo::load_all(database))
+            .unwrap();
+        assert_eq!(persisted.len(), 2);
+        assert_eq!(persisted[0].status, IntentStatus::Accepted);
+        assert_eq!(persisted[1].agent_id, event_agent);
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_intent_mutation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read intent mutation audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("intent-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            4
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            2
+        );
+        for outcome in ["created", "resolved", "no_change", "missing"] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["outcome"] == outcome));
+        }
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "intent_persistence_failed"
+                && row.redacted_payload_json["mutationApplied"] == false
+                && row.redacted_payload_json["eventPublished"].is_null()
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "intent_event_publication_failed"
+                && row.redacted_payload_json["mutationApplied"] == true
+                && row.redacted_payload_json["eventPublished"] == false
+                && row.redacted_payload_json["resultingStatus"] == "open"
+        }));
+        let intent_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["intentDigest"]
+                    .as_str()
+                    .expect("intent digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("intent input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(intent_digests.len(), 4);
+        assert_eq!(
+            input_digests.len(),
+            5,
+            "repeating the same resolution is the same exact input identity"
+        );
+        assert!(intent_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["intentValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                intent_id.as_str(),
+                unknown_id,
+                proposer,
+                proposal,
+                target_a,
+                target_b,
+                persistence_agent,
+                persistence_proposal,
+                persistence_target,
+                event_agent,
+                event_proposal,
+                event_target,
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

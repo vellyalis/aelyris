@@ -199,6 +199,16 @@ publication outcome, and result. A publication failure after a durable mutation 
 an explicit partial-coordination failure; it is not replayed or rolled back, and raw
 decision or Event Bus payloads are excluded from audit.
 
+`aelyris.intent.propose` and `aelyris.intent.resolve` keep `IntentBus` as the sole
+deliberation owner. Authenticated MCP mutations use its checked path so persistence
+completes before the in-memory proposal/status becomes visible; legacy internal callers
+retain their prior compatibility path. Caller-supplied proposer, proposal, targets,
+intent id, and resolution status remain intent-domain data. Authority evidence contains
+only operation, resulting state/outcome, mutation/Event Bus state, and one-way
+intent/input digests. IntentDeclared publication failure after a durable proposal stays
+an explicit partial-coordination failure without replay or rollback, and raw intent or
+Event Bus payloads are excluded.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

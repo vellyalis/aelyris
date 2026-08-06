@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-18`.
-LAST COMPLETED SLICE: `AIO-17`.
-NEXT IMPLEMENTATION SLICE: `AIO-18`.
+ACTIVE SLICE: `AIO-19`.
+LAST COMPLETED SLICE: `AIO-18`.
+NEXT IMPLEMENTATION SLICE: `AIO-19`.
 
 ```yaml
 continuation_contract:
@@ -75,7 +75,8 @@ Current portfolio classification:
 | MCP manual symbol-ownership mutation evidence | **COMPLETE** | Manual claim/refresh/release now retain the authenticated initiating Principal separately from claim ownership fields, using target-free digests and explicit persistence/memory outcomes |
 | MCP derived symbol-ownership mutation evidence | **COMPLETE** | Diff/source reconciliation now retains the authenticated initiating Principal through the existing extractors and transaction, using aggregate-only origin/input digests and no source payload evidence |
 | MCP context decision mutation evidence | **COMPLETE** | Shared decision set/remove now retain the authenticated initiating Principal separately from key/value data, using one-way digests and explicit partial-coordination outcomes |
-| MCP intent mutation evidence | **NOW** | AI can propose and resolve coordination intents, but proposer/target/payload fields are domain values and the authenticated initiating Principal is not retained separately |
+| MCP intent mutation evidence | **COMPLETE** | Intent propose/resolve now retain the authenticated initiating Principal separately from deliberation contents, with persistence-before-memory and payload-free partial-coordination evidence |
+| MCP knowledge-graph mutation evidence | **NOW** | AI can add/remove graph nodes and edges, but graph ids/files are caller-selected domain values and the authenticated initiating Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -93,7 +94,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-17` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-18` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1143,7 +1144,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` intent propose/resolve whose initiating
 identity comes from the authenticated MCP Principal while proposer, target, scope, and
 payload remain coordination-domain data.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.intent.propose` and `aelyris.intent.resolve` adapters,
   `IntentBus`, durable store if attached, Governance, Event Bus integration, and audit
@@ -1165,6 +1166,32 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can propose or resolve through the existing intent owner,
   and each effect is attributable without leaking coordination contents or confusing
   proposer/target metadata with caller identity.
+
+### AIO-19 — Principal-Bound MCP Knowledge-Graph Mutation Evidence
+
+Capability target: `Product-Accessible` knowledge-node and dependency-edge mutation
+whose initiating identity comes from the authenticated MCP Principal while graph ids,
+kinds, and file associations remain domain data.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.knowledge.add_node`, `add_edge`, `remove_node`, and
+  `remove_edge` adapters, `KnowledgeGraphManager`, Governance, and durable audit
+  journal. Do not add a graph, mutation service, actor field, identity store, or
+  AI-only structural-index path.
+- Keep caller-supplied node ids, kinds, file associations, dependent/dependency ids as
+  graph-domain inputs. They never define the caller identity or enter actor evidence.
+- Preserve default node kind, endpoint auto-creation, node-removal edge cascading,
+  exact edge removal, current no-op/idempotent behavior, typed errors, and the existing
+  Knowledge Graph owner as the sole mutation authority.
+- Retain accepted/rejected audit with actor, operation, changed/removed outcome when
+  known, and stable one-way graph-target/input digests. Do not persist raw node ids,
+  files, dependent/dependency ids, graph snapshots, bearer values, environment values,
+  or repository contents in the audit record.
+- Lock or owner failure must remain explicit and must not be audited as accepted. Do
+  not replay a graph mutation merely to obtain audit evidence.
+- Done: an authenticated AI can mutate the existing Knowledge Graph, and each effect is
+  attributable without leaking graph targets or confusing structural data with caller
+  identity.
 
 ## Deferred After GMV
 
@@ -1190,7 +1217,8 @@ worktree mutation evidence `AIO-12`, and Principal-bound MCP task mutation evide
 complete. Principal-bound MCP manual symbol-ownership mutation evidence `AIO-15` is
 also complete. Principal-bound MCP derived symbol-ownership mutation evidence `AIO-16`
 and Principal-bound MCP context decision mutation evidence `AIO-17` are also complete.
-Principal-bound MCP intent mutation evidence `AIO-18` is active;
+Principal-bound MCP intent mutation evidence `AIO-18` is also complete.
+Principal-bound MCP knowledge-graph mutation evidence `AIO-19` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

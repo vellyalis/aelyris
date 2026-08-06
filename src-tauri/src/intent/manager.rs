@@ -90,6 +90,32 @@ impl IntentBus {
         intent
     }
 
+    /// Principal-aware control adapters use this fail-closed variant so a durable
+    /// write is known to have succeeded before the in-memory owner publishes the
+    /// proposal. The legacy `propose` method remains for existing compatibility
+    /// callers whose best-effort behavior is already part of their contract.
+    pub fn propose_checked(
+        &self,
+        agent_id: impl Into<String>,
+        proposal: impl Into<String>,
+        targets: Vec<String>,
+        created_at: u64,
+    ) -> Result<Intent, String> {
+        let intent = Intent {
+            id: self.next_id(),
+            agent_id: agent_id.into(),
+            proposal: proposal.into(),
+            targets,
+            status: IntentStatus::Open,
+            created_at,
+        };
+        if let Some(db) = self.db() {
+            db.with(|database| IntentRepo::upsert(database, &intent))?;
+        }
+        self.lock().push(intent.clone());
+        Ok(intent)
+    }
+
     /// Open (still-deliberating) intents, in proposal order.
     pub fn open(&self) -> Vec<Intent> {
         self.lock()
@@ -116,11 +142,46 @@ impl IntentBus {
         intent.status = status;
         let updated = intent.clone();
         if let Some(db) = db {
-            if let Err(e) = db.with(|d| IntentRepo::update_status(d, id, status)) {
-                tracing::error!(intent_id = %id, status = %status.as_str(), error = %e, "intent status persist failed");
+            match db.with(|d| IntentRepo::update_status(d, id, status)) {
+                Ok(true) => {}
+                Ok(false) => {
+                    tracing::error!(intent_id = %id, status = %status.as_str(), "intent status persist matched no durable row")
+                }
+                Err(e) => {
+                    tracing::error!(intent_id = %id, status = %status.as_str(), error = %e, "intent status persist failed")
+                }
             }
         }
         Some(updated)
+    }
+
+    /// Fail-closed status transition for authenticated control surfaces. Durable
+    /// persistence occurs before the in-memory state changes. The boolean reports
+    /// whether the status actually changed; resolving to the current status is an
+    /// explicit no-op rather than a duplicate effect.
+    pub fn resolve_checked(
+        &self,
+        id: &str,
+        status: IntentStatus,
+    ) -> Result<Option<(Intent, bool)>, String> {
+        let db = self.db();
+        let mut intents = self.lock();
+        let Some(index) = intents.iter().position(|intent| intent.id == id) else {
+            return Ok(None);
+        };
+        if intents[index].status == status {
+            return Ok(Some((intents[index].clone(), false)));
+        }
+        if let Some(db) = db {
+            let updated = db.with(|database| IntentRepo::update_status(database, id, status))?;
+            if !updated {
+                return Err(format!(
+                    "Update intent status matched no durable row for {id}"
+                ));
+            }
+        }
+        intents[index].status = status;
+        Ok(Some((intents[index].clone(), true)))
     }
 }
 

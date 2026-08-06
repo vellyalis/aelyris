@@ -943,7 +943,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.intent.propose",
-                "description": "Declare an intent BEFORE acting (the Intent Bus, the Event Bus' pre-fact half): a proposal like 'switch auth_method to JWT' or 'extract AuthService', with optional file/domain targets. Peers react (align/object/defer) so conflicts and design disagreements surface in discussion, not at merge. Publishes intent_declared to the stream. This is the substrate for 'meetings'.",
+                "description": "Declare an intent through the existing Intent Bus as the authenticated Principal. Caller-supplied agentId, proposal, and targets remain deliberation-domain data. Durable persistence succeeds before memory publication; IntentDeclared remains the existing Event Bus projection. Authority evidence stores only one-way intent/input digests and coordination outcome.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -970,7 +970,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.intent.resolve",
-                "description": "Resolve an intent to a terminal status (accepted/rejected/superseded) — the convergence step of a deliberation.",
+                "description": "Resolve an existing intent as the authenticated Principal. Existing unknown-id null results and same-status no-op behavior remain compatible; durable state changes precede memory changes. Intent ids and resolution inputs are excluded from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

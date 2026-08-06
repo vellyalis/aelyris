@@ -2302,6 +2302,227 @@ fn mcp_context_remove(
     Ok(serde_json::json!({ "change": change }))
 }
 
+fn authenticated_intent_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated intent mutation Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn intent_target_digest(intent_id: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!("aelyris.intent\n{intent_id}"))
+        .as_str()
+        .to_string()
+}
+
+fn intent_input_digest(operation: &str, values: &[&str]) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.intent-input\n{operation}\n{}",
+        values.join("\n")
+    ))
+    .as_str()
+    .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_intent_mutation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    intent_digest: &str,
+    input_digest: &str,
+    outcome: Option<&str>,
+    resulting_status: Option<&str>,
+    status: &str,
+    rejection_code: Option<&str>,
+    mutation_applied: bool,
+    event_published: Option<bool>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(intent_digest.to_string()),
+        kind: "mcp_intent_mutation_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-intent-mutation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "intentDigest": intent_digest,
+            "inputDigest": input_digest,
+            "outcome": outcome,
+            "resultingStatus": resulting_status,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "mutationApplied": mutation_applied,
+            "eventPublished": event_published,
+            "intentValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, intent_digest, error = %error, "intent mutation audit failed");
+    }
+}
+
+fn mcp_intent_propose(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_intent_actor(actor)?;
+    let bus = state.intent_bus.as_ref().ok_or_else(|| {
+        ApiError::Internal("intent bus is not attached to this process".to_string())
+    })?;
+    let agent_id = arg_string(args, "agentId")?;
+    let proposal = arg_string(args, "proposal")?;
+    let targets = arg_optional_string_array(args, "targets")?.unwrap_or_default();
+    let target_refs = targets.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut input_values = vec![agent_id.as_str(), proposal.as_str()];
+    input_values.extend(target_refs.iter().copied());
+    let input_digest = intent_input_digest("propose", &input_values);
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let intent = match bus.propose_checked(agent_id, proposal, targets, created_at) {
+        Ok(intent) => intent,
+        Err(error) => {
+            let pending_digest = crate::command_risk::approval::command_hash(&format!(
+                "aelyris.intent-pending\n{input_digest}"
+            ))
+            .as_str()
+            .to_string();
+            audit_mcp_intent_mutation(
+                state,
+                actor,
+                "propose",
+                &pending_digest,
+                &input_digest,
+                None,
+                None,
+                "rejected",
+                Some("intent_persistence_failed"),
+                false,
+                None,
+            );
+            return Err(ApiError::Internal(error));
+        }
+    };
+    let intent_digest = intent_target_digest(&intent.id);
+    if let Some(events) = state.event_bus.as_ref() {
+        if let Err(error) = events.publish(crate::event_bus::AgentEvent::new(
+            crate::event_bus::AgentEventKind::IntentDeclared,
+            serde_json::to_value(&intent).unwrap_or(serde_json::Value::Null),
+        )) {
+            audit_mcp_intent_mutation(
+                state,
+                actor,
+                "propose",
+                &intent_digest,
+                &input_digest,
+                Some("created"),
+                Some(intent.status.as_str()),
+                "rejected",
+                Some("intent_event_publication_failed"),
+                true,
+                Some(false),
+            );
+            return Err(ApiError::Internal(error.to_string()));
+        }
+    }
+    audit_mcp_intent_mutation(
+        state,
+        actor,
+        "propose",
+        &intent_digest,
+        &input_digest,
+        Some("created"),
+        Some(intent.status.as_str()),
+        "accepted",
+        None,
+        true,
+        state.event_bus.as_ref().map(|_| true),
+    );
+    Ok(serde_json::json!({ "intent": intent }))
+}
+
+fn mcp_intent_resolve(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_intent_actor(actor)?;
+    let bus = state.intent_bus.as_ref().ok_or_else(|| {
+        ApiError::Internal("intent bus is not attached to this process".to_string())
+    })?;
+    let intent_id = arg_string(args, "id")?;
+    let status_raw = arg_string(args, "status")?;
+    let status: crate::intent::IntentStatus =
+        serde_json::from_value(serde_json::Value::String(status_raw.clone()))
+            .map_err(|_| ApiError::BadRequest(format!("invalid intent status `{status_raw}`")))?;
+    let intent_digest = intent_target_digest(&intent_id);
+    let input_digest = intent_input_digest("resolve", &[intent_id.as_str(), status_raw.as_str()]);
+    let resolved = match bus.resolve_checked(&intent_id, status) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            audit_mcp_intent_mutation(
+                state,
+                actor,
+                "resolve",
+                &intent_digest,
+                &input_digest,
+                None,
+                None,
+                "rejected",
+                Some("intent_persistence_failed"),
+                false,
+                None,
+            );
+            return Err(ApiError::Internal(error));
+        }
+    };
+    let (intent, changed) = match resolved {
+        Some((intent, changed)) => (Some(intent), changed),
+        None => (None, false),
+    };
+    audit_mcp_intent_mutation(
+        state,
+        actor,
+        "resolve",
+        &intent_digest,
+        &input_digest,
+        Some(match (&intent, changed) {
+            (None, _) => "missing",
+            (Some(_), false) => "no_change",
+            (Some(_), true) => "resolved",
+        }),
+        intent.as_ref().map(|value| value.status.as_str()),
+        "accepted",
+        None,
+        changed,
+        None,
+    );
+    Ok(serde_json::json!({ "intent": intent }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -4273,30 +4494,7 @@ pub(super) async fn dispatch_authorized(
                 .collect();
             serde_json::json!({ "fleet": fleet })
         }
-        "aelyris.intent.propose" => {
-            let bus = state.intent_bus.as_ref().ok_or_else(|| {
-                ApiError::Internal("intent bus is not attached to this process".to_string())
-            })?;
-            let agent_id = arg_string(&args, "agentId")?;
-            let proposal = arg_string(&args, "proposal")?;
-            let targets = arg_optional_string_array(&args, "targets")?.unwrap_or_default();
-            let created_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let intent = bus.propose(agent_id, proposal, targets, created_at);
-            // Surface the proposal on the fleet stream so peers can react
-            // BEFORE the work happens (conflict-avoidance + deliberation).
-            if let Some(events) = state.event_bus.as_ref() {
-                events
-                    .publish(crate::event_bus::AgentEvent::new(
-                        crate::event_bus::AgentEventKind::IntentDeclared,
-                        serde_json::to_value(&intent).unwrap_or(serde_json::Value::Null),
-                    ))
-                    .map_err(|error| ApiError::Internal(error.to_string()))?;
-            }
-            serde_json::json!({ "intent": intent })
-        }
+        "aelyris.intent.propose" => mcp_intent_propose(&state, actor, &args)?,
         "aelyris.intent.list" => {
             let bus = state.intent_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("intent bus is not attached to this process".to_string())
@@ -4309,19 +4507,7 @@ pub(super) async fn dispatch_authorized(
             })?;
             serde_json::json!({ "intents": bus.all() })
         }
-        "aelyris.intent.resolve" => {
-            let bus = state.intent_bus.as_ref().ok_or_else(|| {
-                ApiError::Internal("intent bus is not attached to this process".to_string())
-            })?;
-            let id = arg_string(&args, "id")?;
-            let status_raw = arg_string(&args, "status")?;
-            let status: crate::intent::IntentStatus = serde_json::from_value(
-                serde_json::Value::String(status_raw.clone()),
-            )
-            .map_err(|_| ApiError::BadRequest(format!("invalid intent status `{status_raw}`")))?;
-            let intent = bus.resolve(&id, status);
-            serde_json::json!({ "intent": intent })
-        }
+        "aelyris.intent.resolve" => mcp_intent_resolve(&state, actor, &args)?,
         "aelyris.knowledge.add_node" => {
             let kg = state.knowledge_graph.as_ref().ok_or_else(|| {
                 ApiError::Internal("knowledge graph is not attached to this process".to_string())
