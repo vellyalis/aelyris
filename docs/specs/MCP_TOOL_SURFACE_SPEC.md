@@ -228,6 +228,16 @@ Authority evidence stores only actor, operation, one-way session/input digests,
 count/result metadata, and mutation/publication outcome. Session, task, file, symbol,
 activity, blocker, directive, avoidance, and Event Bus payload values are excluded.
 
+`aelyris.event.ack` retains `EventBus::ack` and `EventRepo` as the only durable cursor
+owner. The authenticated Principal is the initiating actor while consumer id, event id,
+and sequence remain at-least-once delivery inputs. Exact event-id/sequence binding,
+cumulative monotonic advancement, idempotent retry, regression/gap/corruption errors,
+and the existing structured tool-error envelope remain unchanged. Durable authority
+evidence contains only operation, acknowledged sequence/outcome, cursor-advanced state,
+and one-way consumer/event/input digests. Raw consumer ids, event ids, and Event Bus
+payloads are excluded. Audit failure is best-effort after the cursor result and never
+replays or fabricates a second acknowledgement.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)
@@ -375,7 +385,7 @@ the stable idempotency identity. The durable consumer contract is
 | `aelyris.event.by_channel` | **params** `{ channel: EventChannel }` → `{ channel, events: AgentEvent[] }` | Bounded hot projection restricted to one channel. Like `event.recent`, it is not a replay/ACK source. |
 | `aelyris.event.since` | **params** `{ afterSeq?: integer, limit?: 1..1000 }` → `{ events: SeqEvent[], nextSeq, streamStatus: "complete", deliveryContract: "diagnostic" }` | Durable diagnostic read. It does not ACK. High-water, trailing row, gap, corruption, and cursor-range validation runs before an empty/complete result is allowed. |
 | `aelyris.event.poll` | **params** `{ consumerId: string, limit?: 1..1000 }` → `{ consumerId, events: SeqEvent[], streamStatus: "complete", deliveryContract: "at_least_once", idempotencyField: "eventId" }` | Reads after the consumer's durable cumulative ACK without advancing it. Crash-before-ACK redelivers the same `eventId`. |
-| `aelyris.event.ack` | **params** `{ consumerId: string, seq: integer >= 1, eventId: string }` → `{ ack: AckReceipt }` | Advances only to the exact delivered `seq/eventId` pair after the caller's idempotent effect. Cursor regression, future cursor, skipped/corrupt rows, and identity mismatch fail closed. |
+| `aelyris.event.ack` | **params** `{ consumerId: string, seq: integer >= 1, eventId: string }` → `{ ack: AckReceipt }` | Advances only to the exact delivered `seq/eventId` pair after the caller's idempotent effect. Cursor regression, future cursor, skipped/corrupt rows, and identity mismatch fail closed. The authenticated Principal is retained separately through identity-free acknowledgement evidence. |
 
 The durable `aelyris.event.since`, `aelyris.event.poll`, and
 `aelyris.event.ack` operations use the same tool-level non-success shape on

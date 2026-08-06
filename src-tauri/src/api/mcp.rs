@@ -4,6 +4,7 @@ use serde::Deserialize;
 mod agent_coordination;
 mod catalog;
 mod dispatch;
+mod event_ack;
 
 use catalog::{
     input_schema_for_tool, tools_list_value, tools_list_value_filtered, validate_tool_arguments,
@@ -4333,6 +4334,297 @@ settlement:
             ))
             .unwrap();
         assert_eq!(after_ack["result"]["events"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn mcp_event_ack_audit_is_principal_bound_and_identity_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let bus = Arc::new(EventBus::new_durable());
+        bus.attach_db(db.clone());
+        let first = bus
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::TaskCreated,
+                    serde_json::json!({"secret": "AIO21_EVENT_PAYLOAD_A_MUST_NOT_BE_LOGGED"}),
+                )
+                .with_idempotency_key("AIO21_EVENT_ID_A_MUST_NOT_BE_LOGGED"),
+            )
+            .unwrap();
+        let second = bus
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::TaskCompleted,
+                    serde_json::json!({"secret": "AIO21_EVENT_PAYLOAD_B_MUST_NOT_BE_LOGGED"}),
+                )
+                .with_idempotency_key("AIO21_EVENT_ID_B_MUST_NOT_BE_LOGGED"),
+            )
+            .unwrap();
+        let first_seq = first.seq.expect("first event sequence");
+        let second_seq = second.seq.expect("second event sequence");
+        let first_event_id = first.event_id.clone();
+        let second_event_id = second.event_id.clone();
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_event_bus(bus.clone());
+        let schema = input_schema_for_tool_ref("aelyris.event.ack").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "event-ack-operator",
+                ToolCallBody {
+                    name: "aelyris.event.ack".to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let consumer = "AIO21_CONSUMER_MUST_NOT_BE_LOGGED";
+
+        let Json(first_ack) = call(
+            &state,
+            serde_json::json!({
+                "consumerId": consumer,
+                "seq": first_seq,
+                "eventId": first_event_id,
+            }),
+        )
+        .expect("advance first durable acknowledgement");
+        assert_eq!(first_ack["result"]["ack"]["ackSeq"], first_seq);
+        assert_eq!(first_ack["result"]["ack"]["alreadyAcked"], false);
+
+        let Json(duplicate_ack) = call(
+            &state,
+            serde_json::json!({
+                "consumerId": consumer,
+                "seq": first_seq,
+                "eventId": first_event_id,
+            }),
+        )
+        .expect("identical acknowledgement is idempotent");
+        assert_eq!(duplicate_ack["result"]["ack"]["alreadyAcked"], true);
+
+        let wrong_event_id = "AIO21_WRONG_EVENT_ID_MUST_NOT_BE_LOGGED";
+        let Json(mismatch) = call(
+            &state,
+            serde_json::json!({
+                "consumerId": consumer,
+                "seq": second_seq,
+                "eventId": wrong_event_id,
+            }),
+        )
+        .expect("identity mismatch remains a structured tool error");
+        assert_eq!(mismatch["ok"], false);
+        assert_eq!(
+            mismatch["error"]["eventBusError"]["code"],
+            "ack_identity_mismatch"
+        );
+
+        let Json(second_ack) = call(
+            &state,
+            serde_json::json!({
+                "consumerId": consumer,
+                "seq": second_seq,
+                "eventId": second_event_id,
+            }),
+        )
+        .expect("advance second durable acknowledgement");
+        assert_eq!(second_ack["result"]["ack"]["ackSeq"], second_seq);
+        assert_eq!(second_ack["result"]["ack"]["alreadyAcked"], false);
+
+        let Json(regression) = call(
+            &state,
+            serde_json::json!({
+                "consumerId": consumer,
+                "seq": first_seq,
+                "eventId": first_event_id,
+            }),
+        )
+        .expect("regression remains a structured tool error");
+        assert_eq!(regression["ok"], false);
+        assert_eq!(
+            regression["error"]["eventBusError"]["code"],
+            "ack_regression"
+        );
+
+        let unavailable_consumer = "AIO21_UNAVAILABLE_CONSUMER_MUST_NOT_BE_LOGGED";
+        let unavailable_event = "AIO21_UNAVAILABLE_EVENT_MUST_NOT_BE_LOGGED";
+        let unavailable_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()));
+        let Json(unavailable) = call(
+            &unavailable_state,
+            serde_json::json!({
+                "consumerId": unavailable_consumer,
+                "seq": 1,
+                "eventId": unavailable_event,
+            }),
+        )
+        .expect("unavailable owner remains a structured tool error");
+        assert_eq!(unavailable["ok"], false);
+        assert_eq!(
+            unavailable["error"]["eventBusError"]["code"],
+            "durability_unavailable"
+        );
+
+        let empty = bus.poll_consumer(consumer, 10).unwrap();
+        assert!(empty.events.is_empty());
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_event_ack_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read event acknowledgement audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("event-ack-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            3
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["cursorAdvanced"] == true)
+                .count(),
+            2
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["outcome"] == "already_acknowledged"
+                && row.redacted_payload_json["alreadyAcknowledged"] == true
+                && row.redacted_payload_json["cursorAdvanced"] == false
+        }));
+        for code in [
+            "ack_identity_mismatch",
+            "ack_regression",
+            "durability_unavailable",
+        ] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["rejectionCode"] == code));
+        }
+        let consumer_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["consumerDigest"]
+                    .as_str()
+                    .expect("consumer digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let event_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["eventDigest"]
+                    .as_str()
+                    .expect("event digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("event acknowledgement input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(consumer_digests.len(), 2);
+        assert_eq!(event_digests.len(), 4);
+        assert_eq!(input_digests.len(), 4);
+        assert!(consumer_digests
+            .iter()
+            .chain(event_digests.iter())
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["deliveryValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                consumer,
+                unavailable_consumer,
+                unavailable_event,
+                first_event_id.as_str(),
+                second_event_id.as_str(),
+                wrong_event_id,
+                "AIO21_EVENT_ID_A_MUST_NOT_BE_LOGGED",
+                "AIO21_EVENT_ID_B_MUST_NOT_BE_LOGGED",
+                "AIO21_EVENT_PAYLOAD_A_MUST_NOT_BE_LOGGED",
+                "AIO21_EVENT_PAYLOAD_B_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let audit_failure_bus = Arc::new(EventBus::new_durable());
+        audit_failure_bus.attach_db(audit_failure_db.clone());
+        let audit_failure_event = audit_failure_bus
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::TaskCreated,
+                    serde_json::json!({"safe": true}),
+                )
+                .with_idempotency_key("AIO21_AUDIT_FAILURE_EVENT_MUST_NOT_BE_LOGGED"),
+            )
+            .unwrap();
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio21_event_ack_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_event_ack_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated event ack audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(audit_failure_db))
+                .with_event_bus(audit_failure_bus.clone());
+        let Json(audit_failure_ack) = call(
+            &audit_failure_state,
+            serde_json::json!({
+                "consumerId": "AIO21_AUDIT_FAILURE_CONSUMER_MUST_NOT_BE_LOGGED",
+                "seq": audit_failure_event.seq,
+                "eventId": audit_failure_event.event_id,
+            }),
+        )
+        .expect("audit failure does not fabricate a second acknowledgement result");
+        assert_eq!(audit_failure_ack["ok"], true);
+        assert_eq!(audit_failure_ack["result"]["ack"]["alreadyAcked"], false);
+        assert!(audit_failure_bus
+            .poll_consumer("AIO21_AUDIT_FAILURE_CONSUMER_MUST_NOT_BE_LOGGED", 10)
+            .unwrap()
+            .events
+            .is_empty());
     }
 
     #[test]

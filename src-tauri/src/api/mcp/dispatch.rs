@@ -4489,30 +4489,7 @@ pub(super) async fn dispatch_authorized(
                 "idempotencyField": "eventId"
             })
         }
-        "aelyris.event.ack" => {
-            let Some(bus) = state.event_bus.as_ref() else {
-                return Ok(event_bus_error_response(
-                    "aelyris.event.ack",
-                    crate::event_bus::EventBusError::DurabilityUnavailable,
-                ));
-            };
-            let consumer_id = arg_string(&args, "consumerId")?;
-            let event_id = arg_string(&args, "eventId")?;
-            let seq = args
-                .get("seq")
-                .and_then(|value| value.as_i64())
-                .ok_or_else(|| ApiError::BadRequest("seq must be an integer".to_string()))?;
-            if seq < 1 {
-                return Err(ApiError::BadRequest("seq must be >= 1".to_string()));
-            }
-            let receipt = match bus.ack(&consumer_id, seq, &event_id) {
-                Ok(receipt) => receipt,
-                Err(error) => {
-                    return Ok(event_bus_error_response("aelyris.event.ack", error));
-                }
-            };
-            serde_json::json!({ "ack": receipt })
-        }
+        "aelyris.event.ack" => return super::event_ack::acknowledge(&state, actor, &args),
         "aelyris.shared_brain.snapshot" => {
             let workspace_id =
                 arg_optional_string(&args, "workspaceId").unwrap_or_else(|| "mcp".to_string());

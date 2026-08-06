@@ -1139,7 +1139,7 @@ fn build_tools_list_value() -> serde_json::Value {
     }));
     tools.push(serde_json::json!({
         "name": "aelyris.event.ack",
-        "description": "Durably advance a consumer's cumulative ACK after its idempotent effect succeeds. The seq/eventId pair must identify the exact outbox row; mismatch/regression/corruption uses structured aelyris.event-bus.error/v1 non-success.",
+        "description": "Durably advance a consumer's cumulative ACK as the authenticated Principal after its idempotent effect succeeds. The seq/eventId pair must identify the exact outbox row; mismatch/regression/corruption uses structured aelyris.event-bus.error/v1 non-success. Authority evidence stores only one-way consumer/event/input digests, sequence, and acknowledgement outcome—never raw delivery identities or payloads.",
         "safety": "FREE",
         "inputSchema": {
             "type": "object",
