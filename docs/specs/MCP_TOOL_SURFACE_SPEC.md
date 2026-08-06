@@ -274,6 +274,18 @@ The runtime-owned exact settlement and revision-pinned cancellation verbs remain
 preferred product paths; compatibility audit does not weaken those contracts. Audit
 failure never replays a mutation or creates another ledger revision.
 
+`aelyris.proofbook.settle_current_agent_session` keeps
+`control::proofbook::settle_current_agent_session` as the same settlement authority
+used by Cockpit. The authenticated Principal is bound before startup admission and the
+exact current revision/session/PTY/backend/worktree/runtime/artifact evidence is
+revalidated by the shared owner. The caller still cannot submit status, proof, artifact,
+done-signal, reviewer, or blocker values. Authority evidence contains only resulting
+ledger revision/status, bounded artifact/proof-source/blocker counts, and one-way
+settlement/input digests. Raw project/run/step/session/PTY/worktree/runtime/artifact
+values and generated completion proof are excluded. Audit failure is best-effort after
+the one settlement result and never implies external process termination, review
+acceptance, or merge.
+
 `aelyris.orchestrator.step` keeps `control::loop_ports::run_step` as the sole bounded
 multi-owner execution path. Startup admission, Task/Cost/Agent managers, file and
 symbol ownership, Event Bus, Context Store, review/merge authority, durable give-up,

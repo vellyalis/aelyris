@@ -3002,37 +3002,6 @@ fn mcp_agent_session_candidate_value(
     })
 }
 
-fn mcp_proofbook_settle_current_agent_session(
-    state: &ApiState,
-    args: &serde_json::Map<String, serde_json::Value>,
-) -> ApiResult<serde_json::Value> {
-    require_mcp_proofbook_effect_admitted(
-        state,
-        "Proofbook MCP runtime-owned agent-session settlement",
-    )?;
-    let runner = mcp_proofbook_runner(state)?;
-    let project_path = arg_string(args, "projectPath")?;
-    let run_id = arg_string(args, "runId")?;
-    let step_id = arg_string(args, "stepId")?;
-    let expected_revision = arg_u64(args, "expectedRevision")?;
-    let expected_session_id = arg_string(args, "expectedSessionId")?;
-    let outcome = crate::control::proofbook::settle_current_agent_session(
-        &runner,
-        state.interactive_session_manager.as_ref(),
-        state.agent_manager.as_ref(),
-        &project_path,
-        &run_id,
-        &step_id,
-        expected_revision,
-        &expected_session_id,
-    )
-    .map_err(proofbook_error_to_api)?;
-    #[cfg(not(test))]
-    if let Some(app) = state.app_handle.as_ref() {
-        let _ = app.emit("proofbook-updated", &outcome.ledger);
-    }
-    mcp_result_value(outcome.ledger)
-}
 fn mcp_proofbook_cancel(
     state: &ApiState,
     args: &serde_json::Map<String, serde_json::Value>,
@@ -4096,7 +4065,7 @@ pub(super) async fn dispatch_authorized(
             mcp_proofbook_agent_session_candidate(&state, &args)?
         }
         "aelyris.proofbook.settle_current_agent_session" => {
-            mcp_proofbook_settle_current_agent_session(&state, &args)?
+            return super::proofbook_runtime_settlement::settle(&state, actor, &args);
         }
         "aelyris.proofbook.cancel" => {
             let actor = super::proofbook_compat_mutations::authenticated_actor(actor)?;

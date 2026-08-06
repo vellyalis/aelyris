@@ -1108,7 +1108,7 @@ fn build_tools_list_value() -> serde_json::Value {
     }));
     tools.push(serde_json::json!({
         "name": "aelyris.proofbook.settle_current_agent_session",
-        "description": "Settle one running Proofbook agentSession from current Aelyris-owned runtime status and contained expected artifacts at an exact ledger revision and session identity. Accepts no free-form proof.",
+        "description": "Settle one running Proofbook agentSession as the authenticated Principal from current Aelyris-owned runtime status and contained expected artifacts at an exact ledger revision and session identity. Accepts no free-form proof. Authority evidence is runtime-identity-free and does not claim process termination, review acceptance, or merge.",
         "safety": "GATED",
         "inputSchema": {
             "type": "object",

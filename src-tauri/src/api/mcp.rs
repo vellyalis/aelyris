@@ -9,6 +9,7 @@ mod dispatch;
 mod event_ack;
 mod orchestrator_step;
 mod proofbook_compat_mutations;
+mod proofbook_runtime_settlement;
 mod review_rejection;
 mod session_lifecycle;
 
@@ -4333,6 +4334,400 @@ settlement:
             serde_json::from_value(settled["result"].clone()).expect("settled ledger");
         assert_eq!(ledger.status, ProofbookRunStatus::Passed);
         assert_eq!(ledger.steps[0].status, ProofbookStepStatus::Passed);
+    }
+
+    #[test]
+    fn mcp_runtime_owned_settlement_audit_is_principal_bound_and_identity_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        fn runtime_project(
+            id: &str,
+            create_artifact: bool,
+        ) -> (
+            tempfile::TempDir,
+            String,
+            String,
+            crate::proofbook::ProofbookRunner,
+            crate::proofbook::ProofbookRunLedger,
+            crate::proofbook::ProofbookAgentSessionSettlementContext,
+            crate::agent::InteractiveSessionManager,
+        ) {
+            let project = tempfile::tempdir().expect("runtime settlement tempdir");
+            let artifact = project
+                .path()
+                .join(".aelyris")
+                .join("proofbooks")
+                .join("AIO28_RUNTIME_ARTIFACT_MUST_NOT_BE_LOGGED.md");
+            if create_artifact {
+                std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+                std::fs::write(&artifact, "AIO28_ARTIFACT_BODY_MUST_NOT_BE_LOGGED").unwrap();
+            }
+            let proofbook = write_test_proofbook(
+                project.path(),
+                &format!(
+                    r#"
+schema: aelyris.proofbook.v1
+id: {id}
+steps:
+  - id: agent-aio28-secret
+    type: agentSession
+    task: AIO28_TASK_BODY_MUST_NOT_BE_LOGGED
+    role: implementation
+    expectedArtifacts:
+      - .aelyris/proofbooks/AIO28_RUNTIME_ARTIFACT_MUST_NOT_BE_LOGGED.md
+settlement:
+  requiredSteps: [agent-aio28-secret]
+"#
+                ),
+            );
+            let project_path = project.path().to_string_lossy().to_string();
+            let runner = crate::proofbook::ProofbookRunner::new();
+            let running = runner
+                .start_run_with_agent_executor(
+                    &project_path,
+                    &proofbook,
+                    serde_json::json!({}),
+                    &RuntimeOwnedMcpAgentExecutor,
+                )
+                .expect("start runtime-owned agentSession");
+            let context = runner
+                .agent_session_settlement_context(
+                    &project_path,
+                    &running.run_id,
+                    "agent-aio28-secret",
+                    running.revision,
+                )
+                .expect("runtime settlement context");
+            let interactive = crate::agent::InteractiveSessionManager::new();
+            register_mcp_runtime_session(&interactive, &context, "done");
+            (
+                project,
+                project_path,
+                proofbook,
+                runner,
+                running,
+                context,
+                interactive,
+            )
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let (_project, project_path, _proofbook, runner, running, context, interactive) =
+            runtime_project("aio28-runtime-accepted", true);
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_proofbook_runner(runner.clone())
+            .with_interactive_session_manager(interactive);
+        let schema =
+            input_schema_for_tool_ref("aelyris.proofbook.settle_current_agent_session").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+        for forbidden in [
+            "proof",
+            "status",
+            "doneSignal",
+            "artifactPaths",
+            "reviewerBatchId",
+            "blockerMessage",
+        ] {
+            assert!(schema["properties"].get(forbidden).is_none());
+        }
+
+        let actor = "runtime-settlement-operator";
+        let args = serde_json::json!({
+            "projectPath": project_path,
+            "runId": running.run_id,
+            "stepId": "agent-aio28-secret",
+            "expectedRevision": running.revision,
+            "expectedSessionId": context.session_id,
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, actor: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.proofbook.settle_current_agent_session".to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        assert!(matches!(
+            call(&state, "  ", args.clone()),
+            Err(ApiError::Forbidden(_))
+        ));
+        let wrong_session = "AIO28_WRONG_SESSION_MUST_NOT_BE_LOGGED";
+        let mut wrong_args = args.clone();
+        wrong_args["expectedSessionId"] = serde_json::json!(wrong_session);
+        let identity_error = call(&state, actor, wrong_args);
+        assert!(matches!(
+            identity_error,
+            Err(ApiError::BadRequest(message)) if message.contains("runtime identity changed")
+        ));
+        assert_eq!(
+            runner
+                .status(&project_path, &running.run_id)
+                .unwrap()
+                .revision,
+            running.revision
+        );
+
+        let Json(settled) = call(&state, actor, args.clone()).expect("runtime-owned settlement");
+        let settled: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(settled["result"].clone()).unwrap();
+        assert_eq!(settled.status, ProofbookRunStatus::Passed);
+        assert_eq!(settled.steps[0].status, ProofbookStepStatus::Passed);
+        let settled_revision = settled.revision;
+
+        let repeated = call(&state, actor, args);
+        assert!(matches!(repeated, Err(ApiError::BadRequest(_))));
+        assert_eq!(
+            runner
+                .status(&project_path, &settled.run_id)
+                .unwrap()
+                .revision,
+            settled_revision,
+            "repeat settlement does not create another revision"
+        );
+
+        let (
+            _missing_project,
+            missing_project_path,
+            _missing_proofbook,
+            missing_runner,
+            missing_running,
+            missing_context,
+            missing_interactive,
+        ) = runtime_project("aio28-runtime-missing-artifact", false);
+        let missing_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_proofbook_runner(missing_runner.clone())
+                .with_interactive_session_manager(missing_interactive);
+        let missing_error = call(
+            &missing_state,
+            actor,
+            serde_json::json!({
+                "projectPath": missing_project_path,
+                "runId": missing_running.run_id,
+                "stepId": "agent-aio28-secret",
+                "expectedRevision": missing_running.revision,
+                "expectedSessionId": missing_context.session_id,
+            }),
+        );
+        assert!(matches!(
+            missing_error,
+            Err(ApiError::BadRequest(message)) if message.contains("expected_artifacts_missing")
+        ));
+        assert_eq!(
+            missing_runner
+                .status(&missing_project_path, &missing_running.run_id)
+                .unwrap()
+                .revision,
+            missing_running.revision
+        );
+
+        let startup_project = "AIO28_STARTUP_PROJECT_MUST_NOT_BE_LOGGED";
+        let startup_run = "AIO28_STARTUP_RUN_MUST_NOT_BE_LOGGED";
+        let startup_step = "AIO28_STARTUP_STEP_MUST_NOT_BE_LOGGED";
+        let startup_session = "AIO28_STARTUP_SESSION_MUST_NOT_BE_LOGGED";
+        let startup_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_proofbook_runner(crate::proofbook::ProofbookRunner::new())
+                .with_startup_reconciliation(Arc::new(
+                    crate::startup_reconciliation::StartupReconciliationState::new(),
+                ));
+        let startup_error = call(
+            &startup_state,
+            actor,
+            serde_json::json!({
+                "projectPath": startup_project,
+                "runId": startup_run,
+                "stepId": startup_step,
+                "expectedRevision": 4,
+                "expectedSessionId": startup_session,
+            }),
+        );
+        assert!(matches!(
+            startup_error,
+            Err(ApiError::ServiceUnavailable(_))
+        ));
+
+        let unavailable_project = "AIO28_UNAVAILABLE_PROJECT_MUST_NOT_BE_LOGGED";
+        let unavailable_run = "AIO28_UNAVAILABLE_RUN_MUST_NOT_BE_LOGGED";
+        let unavailable_step = "AIO28_UNAVAILABLE_STEP_MUST_NOT_BE_LOGGED";
+        let unavailable_session = "AIO28_UNAVAILABLE_SESSION_MUST_NOT_BE_LOGGED";
+        let unavailable_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()));
+        let unavailable_error = call(
+            &unavailable_state,
+            actor,
+            serde_json::json!({
+                "projectPath": unavailable_project,
+                "runId": unavailable_run,
+                "stepId": unavailable_step,
+                "expectedRevision": 5,
+                "expectedSessionId": unavailable_session,
+            }),
+        );
+        assert!(matches!(unavailable_error, Err(ApiError::Internal(_))));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_proofbook_runtime_settlement_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read runtime settlement audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.terminal_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some(actor)));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            1
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            5
+        );
+        let accepted = rows
+            .iter()
+            .find(|row| row.redacted_payload_json["status"] == "accepted")
+            .expect("accepted settlement audit");
+        assert_eq!(
+            accepted.redacted_payload_json["ledgerRevision"],
+            settled_revision
+        );
+        assert_eq!(accepted.redacted_payload_json["ledgerStatus"], "passed");
+        assert_eq!(accepted.redacted_payload_json["expectedArtifactCount"], 1);
+        assert_eq!(accepted.redacted_payload_json["proofSourceCount"], 2);
+        assert_eq!(accepted.redacted_payload_json["blockerCount"], 0);
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "proofbook_runtime_identity_changed"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "proofbook_expected_artifacts_missing"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "proofbook_runtime_settlement_unavailable"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "proofbook_runner_unavailable"
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["runtimeValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["completionProofLogged"], false);
+            assert_eq!(
+                row.redacted_payload_json["externalProcessTerminationClaimed"],
+                false
+            );
+            assert_eq!(row.redacted_payload_json["reviewAcceptanceClaimed"], false);
+            assert_eq!(row.redacted_payload_json["mergeClaimed"], false);
+            for field in ["settlementDigest", "inputDigest"] {
+                let digest = row.redacted_payload_json[field]
+                    .as_str()
+                    .expect("runtime settlement digest");
+                assert_eq!(digest.len(), 64);
+                assert!(digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit()));
+            }
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                project_path.as_str(),
+                settled.run_id.as_str(),
+                "agent-aio28-secret",
+                context.session_id.as_str(),
+                context.pty_id.as_deref().unwrap_or_default(),
+                context.worktree_path.as_deref().unwrap_or_default(),
+                "AIO28_RUNTIME_ARTIFACT_MUST_NOT_BE_LOGGED.md",
+                "AIO28_ARTIFACT_BODY_MUST_NOT_BE_LOGGED",
+                wrong_session,
+                missing_project_path.as_str(),
+                missing_running.run_id.as_str(),
+                missing_context.session_id.as_str(),
+                startup_project,
+                startup_run,
+                startup_step,
+                startup_session,
+                unavailable_project,
+                unavailable_run,
+                unavailable_step,
+                unavailable_session,
+            ] {
+                if !hidden.is_empty() {
+                    assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+                }
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio28_runtime_settlement_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_proofbook_runtime_settlement_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated runtime settlement audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let (
+            _audit_project,
+            audit_project_path,
+            _audit_proofbook,
+            audit_runner,
+            audit_running,
+            audit_context,
+            audit_interactive,
+        ) = runtime_project("aio28-runtime-audit-failure", true);
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(audit_failure_db))
+                .with_proofbook_runner(audit_runner.clone())
+                .with_interactive_session_manager(audit_interactive);
+        let Json(audit_settled) = call(
+            &audit_failure_state,
+            actor,
+            serde_json::json!({
+                "projectPath": audit_project_path,
+                "runId": audit_running.run_id,
+                "stepId": "agent-aio28-secret",
+                "expectedRevision": audit_running.revision,
+                "expectedSessionId": audit_context.session_id,
+            }),
+        )
+        .expect("audit failure does not replay or reject settlement");
+        let audit_settled: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(audit_settled["result"].clone()).unwrap();
+        assert_eq!(audit_settled.status, ProofbookRunStatus::Passed);
+        assert_eq!(
+            audit_runner
+                .status(&audit_project_path, &audit_settled.run_id)
+                .unwrap()
+                .revision,
+            audit_settled.revision,
+            "audit failure leaves exactly the one settlement result returned by the runner"
+        );
     }
 
     #[test]

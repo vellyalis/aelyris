@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-28`.
-LAST COMPLETED SLICE: `AIO-27`.
-NEXT IMPLEMENTATION SLICE: `AIO-28`.
+ACTIVE SLICE: `AIO-29`.
+LAST COMPLETED SLICE: `AIO-28`.
+NEXT IMPLEMENTATION SLICE: `AIO-29`.
 
 ```yaml
 continuation_contract:
@@ -85,7 +85,8 @@ Current portfolio classification:
 | MCP approval-request evidence | **COMPLETE** | Watchdog requests now retain the authenticated initiating Principal through value-free decision and queue/overflow evidence without adding a grant path |
 | MCP session-lifecycle evidence | **COMPLETE** | Session summarize/checkpoint/handoff/resume/reset now retain the authenticated initiating Principal through target-free aggregate lifecycle evidence while existing IPC owners remain authoritative |
 | Remaining MCP Proofbook mutation evidence | **COMPLETE** | Compatibility caller-proof settlement and cancellation now retain the authenticated initiating Principal through proof-free ledger outcome evidence |
-| MCP runtime-owned Proofbook settlement evidence | **NOW** | The safer runtime-owned settlement revalidates exact current evidence, but its MCP adapter does not yet retain the authenticated initiating Principal separately from runtime/run identity |
+| MCP runtime-owned Proofbook settlement evidence | **COMPLETE** | Exact current runtime-owned settlement now retains the authenticated initiating Principal through runtime-identity-free evidence without accepting a caller proof |
+| MCP cost-cap read access | **NOW** | Cockpit and orchestration share one durable Cost Manager, but an authenticated AI cannot inspect the exact live cap policy through its scoped MCP catalog |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1422,7 +1423,7 @@ Capability target: `Product-Accessible` exact current runtime-owned agent-sessio
 settlement whose initiating identity comes from the authenticated MCP Principal while
 run, step, session, PTY, worktree, artifact, and runtime status remain Proofbook/runtime
 domain data.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.proofbook.settle_current_agent_session` adapter,
   `control::proofbook::settle_current_agent_session`, `ProofbookRunner`, startup
@@ -1442,6 +1443,27 @@ Status: **ACTIVE**.
   revision, or imply process termination, review acceptance, or merge.
 - Done: the safer runtime-owned MCP settlement is attributable to its authenticated
   Principal without exposing runtime identity or weakening the no-free-form-proof path.
+
+### AIO-29 — MCP Cost-Cap Read Access
+
+Capability target: `Product-Accessible` authenticated read access to the one live,
+durably restored Cost Manager cap policy used by Cockpit and orchestration.
+Status: **ACTIVE**.
+
+- Add one `aelyris.cost.get_caps` MCP read adapter over the existing `CostManager`,
+  Governance, principal-scoped discovery, and current MCP schema registry. Do not add a
+  cost manager, settings store, frontend cache authority, billing adapter, or second cap
+  representation.
+- Return the existing `CostCaps` value and its existing bounded `CostCapsPolicy` only.
+  Preserve `null` as an explicit disabled cap and never convert unknown reported usage
+  or provider billing into zero or into a cap fact.
+- Keep the verb read-only and independently authorized through the existing Principal-
+  scoped MCP catalog/call boundary. Do not expose SQLite rows, update timestamps,
+  environment values, tokens, provider usage payloads, or audit internals.
+- Preserve the current truthful boundary: caps constrain reported Aelyris telemetry;
+  they are not a claim about provider invoices or unreported consumption.
+- Done: an authenticated AI can inspect the exact cap policy that will govern its next
+  orchestration action without a duplicate owner or a misleading zero-filled view.
 
 ## Deferred After GMV
 
@@ -1476,7 +1498,8 @@ evidence `AIO-22`, and Principal-bound MCP orchestrator-step execution evidence
 complete. Principal-bound MCP approval-request evidence `AIO-25` is also complete.
 Principal-bound MCP session-lifecycle evidence `AIO-26` is also complete. Principal-
 bound remaining MCP Proofbook mutation evidence `AIO-27` is also complete. Principal-
-bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is active;
+bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is also complete. MCP
+cost-cap read access `AIO-29` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
