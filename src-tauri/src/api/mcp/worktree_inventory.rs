@@ -14,7 +14,7 @@ pub(super) struct WorktreeInventoryProjection {
     status: WorktreeStatus,
 }
 
-fn repository_digest(repo_path: &str) -> String {
+pub(super) fn repository_digest(repo_path: &str) -> String {
     let normalized = repo_path.replace('\\', "/").to_ascii_lowercase();
     crate::command_risk::approval::command_hash(&format!(
         "aelyris.worktree-inventory-repository\n{normalized}"

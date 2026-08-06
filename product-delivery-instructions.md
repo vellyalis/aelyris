@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-38`.
-LAST COMPLETED SLICE: `AIO-37`.
-NEXT IMPLEMENTATION SLICE: `AIO-38`.
+ACTIVE SLICE: `AIO-39`.
+LAST COMPLETED SLICE: `AIO-38`.
+NEXT IMPLEMENTATION SLICE: `AIO-39`.
 
 ```yaml
 continuation_contract:
@@ -95,7 +95,8 @@ Current portfolio classification:
 | MCP deterministic agent-activity read | **COMPLETE** | Typed headless activity now has stable session ordering, explicit owner availability/counts, and a read-only prompt-free projection boundary |
 | MCP value-minimized pending-decision read | **COMPLETE** | Pending approvals retain exact decision identity/risk/state plus a session digest, while durable merge intents retain only exact intent identity/state/timestamps and evidence-presence flags |
 | MCP path-minimized worktree inventory | **COMPLETE** | Worktree inventory now returns exact name/branch/HEAD/status in stable order plus a repository digest, without echoing repository or absolute worktree paths |
-| MCP path-minimized worktree mutation results | **NOW** | Worktree create/remove audit is value-minimized, but their success responses still echo repository and absolute worktree paths |
+| MCP path-minimized worktree mutation results | **COMPLETE** | Create reuses the safe inventory projection and remove returns exact worktree identity/deletion intent plus repository digest, without repository or absolute worktree paths |
+| MCP principal-bound terminal capture evidence | **NOW** | Raw scrollback capture is independently authorized but accepted reads are not attributable and the response does not state its sensitive-output boundary |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1663,7 +1664,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated worktree create/remove results
 without reflecting repository or absolute worktree paths.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `aelyris.worktree.create` and `aelyris.worktree.remove` over the existing
   branch-aware `control::worktree` owners, Governance, principal-bound audit, and Git
@@ -1682,6 +1683,31 @@ Status: **ACTIVE**.
   owner actually completed.
 - Done: an authenticated AI can create and remove exact worktree identities while host
   filesystem paths remain confined to the existing Git owner.
+
+### AIO-39 — MCP Principal-Bound Terminal Capture Evidence
+
+Capability target: `Product-Accessible` authenticated bounded terminal capture with an
+explicit sensitive-output boundary and value-free read evidence.
+Status: **ACTIVE**.
+
+- Keep `terminal.capture` over the existing native `PtyManager::capture`, terminal-id
+  resolution, Governance, and bounded line/clean options. Do not add a scrollback
+  store, mirror, terminal owner, redaction engine, capture cache, or alternate read path.
+- Preserve raw captured text because it is the declared purpose of this explicitly
+  authorized tool, but return `source`, `rawScrollbackReturned:true`,
+  `sensitiveOutputPossible:true`, and `readOnly:true` metadata so callers cannot confuse
+  it with the value-minimized coordination surfaces.
+- Retain accepted/rejected durable evidence with authenticated actor, one-way session/
+  input digests, requested line bound, clean flag, and bounded output character/line
+  counts. Do not persist captured text, terminal/session ids, prompts, commands,
+  scrollback, bearer values, environment values, or PTY internals.
+- Keep the verb independently authorized and classify it as observe-only sensitive
+  output in principal-scoped discovery. Invalid/stale terminal identity and PTY capture
+  failures remain typed failures rather than empty successful captures.
+- Audit failure after a successful capture must not replace the capture result or cause
+  another PTY read merely to obtain evidence.
+- Done: an authorized AI can deliberately inspect bounded raw terminal output, while
+  the read is attributable and its non-redacted data boundary is explicit.
 
 ## Deferred After GMV
 
@@ -1724,7 +1750,7 @@ projection `AIO-33` and MCP unified fleet coverage `AIO-34` are also complete. M
 deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
 pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inventory
 `AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
-active;
+also complete. MCP principal-bound terminal capture evidence `AIO-39` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

@@ -3818,7 +3818,16 @@ pub(super) async fn dispatch_authorized(
                         "accepted",
                         None,
                     );
-                    serde_json::json!({ "repoPath": repo_path, "branchName": branch_name, "worktree": worktree })
+                    let worktree = super::worktree_inventory::project_worktrees(vec![worktree])
+                        .into_iter()
+                        .next()
+                        .expect("one created worktree projection");
+                    serde_json::json!({
+                        "repositoryDigest": super::worktree_inventory::repository_digest(&repo_path),
+                        "worktree": worktree,
+                        "repositoryPathExposed": false,
+                        "worktreePathsExposed": false,
+                    })
                 }
                 Err(error) => {
                     audit_mcp_worktree_mutation(
@@ -3859,7 +3868,14 @@ pub(super) async fn dispatch_authorized(
                         "accepted",
                         None,
                     );
-                    serde_json::json!({ "repoPath": repo_path, "worktreeName": worktree_name, "removed": true, "deleteBranch": delete_branch })
+                    serde_json::json!({
+                        "repositoryDigest": super::worktree_inventory::repository_digest(&repo_path),
+                        "worktreeName": worktree_name,
+                        "removed": true,
+                        "deleteBranch": delete_branch,
+                        "repositoryPathExposed": false,
+                        "worktreePathsExposed": false,
+                    })
                 }
                 Err(error) => {
                     audit_mcp_worktree_mutation(

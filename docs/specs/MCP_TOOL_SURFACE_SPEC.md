@@ -148,7 +148,10 @@ result, delete-branch intent, and a one-way target digest only. Raw repository p
 branch/worktree names, Git output, credentials, bearer values, and environment values
 are excluded. The MCP remove adapter treats `worktreeName` as the branch/name returned
 by create/list and routes through the branch-aware removal owner so Git receives the
-predicted worktree path.
+predicted worktree path. Accepted create responses reuse the path-free AIO-37 worktree
+projection; accepted remove responses retain only exact worktree name, deletion intent,
+result, and repository digest. Neither response echoes repository or absolute worktree
+paths.
 
 `aelyris.task.create` and `aelyris.task.transition` keep the Task Manager as the sole
 mutation owner and preserve TaskCreated/ReviewRequired/TaskCompleted Event Bus

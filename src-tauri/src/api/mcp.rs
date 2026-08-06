@@ -3169,6 +3169,21 @@ mod tests {
         )
         .expect("create worktree");
         assert_eq!(created["result"]["worktree"]["branch"], branch);
+        assert!(created["result"].get("repoPath").is_none());
+        assert!(created["result"].get("branchName").is_none());
+        assert!(created["result"]["worktree"].get("path").is_none());
+        assert_eq!(created["result"]["repositoryPathExposed"], false);
+        assert_eq!(created["result"]["worktreePathsExposed"], false);
+        let created_digest = created["result"]["repositoryDigest"]
+            .as_str()
+            .expect("create repository digest");
+        assert_eq!(created_digest.len(), 64);
+        assert!(created_digest
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
+        let created_text = serde_json::to_string(&created["result"]).unwrap();
+        assert!(!created_text.contains(&repo_path));
+        assert!(!created_text.contains(&predicted));
         assert!(std::path::Path::new(&predicted).exists());
 
         assert!(matches!(
@@ -3193,6 +3208,14 @@ mod tests {
         .expect("remove branch-owned worktree");
         assert_eq!(removed["result"]["removed"], true);
         assert_eq!(removed["result"]["deleteBranch"], true);
+        assert_eq!(removed["result"]["worktreeName"], branch);
+        assert!(removed["result"].get("repoPath").is_none());
+        assert_eq!(removed["result"]["repositoryPathExposed"], false);
+        assert_eq!(removed["result"]["worktreePathsExposed"], false);
+        assert_eq!(removed["result"]["repositoryDigest"], created_digest);
+        let removed_text = serde_json::to_string(&removed["result"]).unwrap();
+        assert!(!removed_text.contains(&repo_path));
+        assert!(!removed_text.contains(&predicted));
         assert!(!std::path::Path::new(&predicted).exists());
         assert!(!git(&[
             "show-ref",
