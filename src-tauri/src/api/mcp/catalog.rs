@@ -574,7 +574,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.review.reject",
-                "description": "Reviewer authority: reject a DURABLE merge intent BY ID, resolving it without merging. Cannot reject an in-flight (merging) or already-resolved intent. Optional `reason`. Returns { intentId, status, reason }.",
+                "description": "Reject a DURABLE merge intent as the authenticated reviewer Principal, resolving it without merging. The existing MergeIntentStore remains the only state owner and refuses missing, in-flight, or already-resolved intents. Optional reason remains review-domain data. Authority evidence stores only one-way intent/input digests and state transition outcome, never intent ids, reasons, paths, branches, OIDs, or review evidence.",
                 "safety": "REVIEWER_AUTHORITY",
                 "inputSchema": {
                     "type": "object",

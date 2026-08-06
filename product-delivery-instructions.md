@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-24`.
-LAST COMPLETED SLICE: `AIO-23`.
-NEXT IMPLEMENTATION SLICE: `AIO-24`.
+ACTIVE SLICE: `AIO-25`.
+LAST COMPLETED SLICE: `AIO-24`.
+NEXT IMPLEMENTATION SLICE: `AIO-25`.
 
 ```yaml
 continuation_contract:
@@ -81,7 +81,8 @@ Current portfolio classification:
 | MCP durable event acknowledgement evidence | **COMPLETE** | Durable ACK now retains the authenticated initiating Principal separately from consumer/event identity, with one-way delivery digests and exact cursor outcomes |
 | MCP human approval resolution evidence | **COMPLETE** | Live approval routing now retains the authenticated Principal while preserving the independent human capability, exact prompt fingerprint, single-use core, and value-free authority evidence |
 | MCP orchestrator-step execution evidence | **COMPLETE** | Bounded `run_step` execution now retains the authenticated initiating Principal through target-free aggregate report evidence without creating a second autonomy owner |
-| MCP durable review-rejection evidence | **NOW** | Reviewer-authority rejection is durably state-checked, but intent/reason are caller inputs and the authenticated initiating Principal is not retained separately in minimized evidence |
+| MCP durable review-rejection evidence | **COMPLETE** | Durable reviewer rejection now retains the authenticated initiating Principal through target-free state-transition evidence while MergeIntentStore remains the sole authority |
+| MCP approval-request evidence | **NOW** | AI can request watchdog approval and enqueue a bounded pending decision, but session/tool/summary/risk are caller inputs and the authenticated initiating Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -99,7 +100,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-23` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-24` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1311,7 +1312,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` durable merge-intent rejection whose
 initiating identity comes from the authenticated MCP Principal while intent and reason
 remain review-domain inputs.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.review.reject` adapter, durable `MergeIntentStore`,
   Governance, and audit journal. Do not add a review queue, merge-intent store, actor
@@ -1330,6 +1331,33 @@ Status: **ACTIVE**.
 - Done: an authenticated reviewer Principal can reject the existing durable intent,
   and the result is attributable without exposing review targets or adding another
   review authority.
+
+### AIO-25 — Principal-Bound MCP Approval-Request Evidence
+
+Capability target: `Product-Accessible` watchdog approval request whose initiating
+identity comes from the authenticated MCP Principal while session, requested tool,
+summary, and risk remain approval-domain inputs.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.request_approval` adapter, WatchdogEngine,
+  `control::approval::evaluate`, bounded `mcp_pending` queue, queue-overflow Event Bus
+  signal, Governance, and durable audit journal. Do not add an approval engine, queue,
+  policy store, actor field, identity store, or AI-only decision path.
+- Keep caller-supplied session id, requested tool, optional summary, and risk as request
+  inputs. They describe the approval request but do not define the initiating actor.
+- Preserve watchdog auto-approve/auto-deny rules, pending-user outcome, bounded queue
+  capacity, oldest-item eviction, overflow observability, typed errors, and the existing
+  queue/watchdog owners. This slice does not add a grant tool or weaken AIO-22's separate
+  human approval capability.
+- Retain accepted/rejected audit with actor, operation, decision class, queue insertion
+  and overflow outcome when known, and stable one-way session/tool/input digests. Do not
+  persist raw session ids, tool names, summaries, risks, rule names, pending-item ids,
+  approval content, bearer values, environment values, or repository contents.
+- Queue, overflow-publication, or audit-write failure must stay explicit without
+  replaying the request, duplicating a pending item, or fabricating a second watchdog
+  decision.
+- Done: an authenticated AI can request the existing watchdog approval, and the outcome
+  is attributable without leaking request contents or creating another approval owner.
 
 ## Deferred After GMV
 
@@ -1360,8 +1388,8 @@ Principal-bound MCP knowledge-graph mutation evidence `AIO-19`, Principal-bound 
 agent coordination mutation evidence `AIO-20`, and Principal-bound MCP durable event
 acknowledgement evidence `AIO-21`, Principal-bound MCP human approval resolution
 evidence `AIO-22`, and Principal-bound MCP orchestrator-step execution evidence
-`AIO-23` are also complete. Principal-bound MCP durable review-rejection evidence
-`AIO-24` is active;
+`AIO-23` and Principal-bound MCP durable review-rejection evidence `AIO-24` are also
+complete. Principal-bound MCP approval-request evidence `AIO-25` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

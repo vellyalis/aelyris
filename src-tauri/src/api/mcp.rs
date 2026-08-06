@@ -7,6 +7,7 @@ mod catalog;
 mod dispatch;
 mod event_ack;
 mod orchestrator_step;
+mod review_rejection;
 
 use catalog::{
     input_schema_for_tool, tools_list_value, tools_list_value_filtered, validate_tool_arguments,
@@ -6026,6 +6027,267 @@ settlement:
             .unwrap_err(),
             ApiError::NotFound(_)
         ));
+    }
+
+    #[test]
+    fn mcp_review_rejection_audit_is_principal_bound_and_target_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::merge_intent::{store::MergeIntentStore, MergeIntent, MergeIntentState};
+        use crate::pty::PtyManager;
+
+        fn intent(id: &str, suffix: &str, state: MergeIntentState) -> MergeIntent {
+            MergeIntent {
+                intent_id: id.to_string(),
+                repo_path: format!("C:/AIO24_REPOSITORY_{suffix}_MUST_NOT_BE_LOGGED"),
+                source_branch: format!("AIO24_SOURCE_BRANCH_{suffix}_MUST_NOT_BE_LOGGED"),
+                target_branch: format!("AIO24_TARGET_BRANCH_{suffix}_MUST_NOT_BE_LOGGED"),
+                source_oid: format!("AIO24_SOURCE_OID_{suffix}_MUST_NOT_BE_LOGGED"),
+                target_oid: format!("AIO24_TARGET_OID_{suffix}_MUST_NOT_BE_LOGGED"),
+                merge_base_oid: Some(format!("AIO24_MERGE_BASE_{suffix}_MUST_NOT_BE_LOGGED")),
+                task_id: format!("AIO24_TASK_{suffix}_MUST_NOT_BE_LOGGED"),
+                created_at: 1,
+                state,
+                updated_at: 1,
+                session_id: Some(format!("AIO24_SESSION_{suffix}_MUST_NOT_BE_LOGGED")),
+                reviewer_id: None,
+                gates_digest: None,
+            }
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let store = Arc::new(MergeIntentStore::new(db.clone()));
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("AIO24_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED"),
+        )
+        .with_db(Some(db.clone()))
+        .with_merge_store(Some(store.clone()));
+        let schema = input_schema_for_tool_ref("aelyris.review.reject").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let queued_id = "AIO24_QUEUED_INTENT_MUST_NOT_BE_LOGGED";
+        let merging_id = "AIO24_MERGING_INTENT_MUST_NOT_BE_LOGGED";
+        let persistence_id = "AIO24_PERSISTENCE_INTENT_MUST_NOT_BE_LOGGED";
+        store
+            .create_or_get(&intent(queued_id, "QUEUED", MergeIntentState::Queued))
+            .unwrap();
+        store
+            .create_or_get(&intent(merging_id, "MERGING", MergeIntentState::Merging))
+            .unwrap();
+        store
+            .create_or_get(&intent(
+                persistence_id,
+                "PERSISTENCE",
+                MergeIntentState::Queued,
+            ))
+            .unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                "review-rejection-operator",
+                ToolCallBody {
+                    name: "aelyris.review.reject".to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let reason = "AIO24_REJECTION_REASON_MUST_NOT_BE_LOGGED";
+        let Json(rejected) = call(
+            &state,
+            serde_json::json!({ "intentId": queued_id, "reason": reason }),
+        )
+        .expect("queued intent rejects durably");
+        assert_eq!(rejected["result"]["status"], "rejected");
+        assert_eq!(rejected["result"]["reason"], reason);
+        assert_eq!(
+            store.get(queued_id).unwrap().unwrap().state,
+            MergeIntentState::Rejected
+        );
+
+        assert!(matches!(
+            call(&state, serde_json::json!({ "intentId": queued_id })),
+            Err(ApiError::BadRequest(message)) if message.contains("already resolved")
+        ));
+        assert!(matches!(
+            call(&state, serde_json::json!({ "intentId": merging_id })),
+            Err(ApiError::BadRequest(message)) if message.contains("merging")
+        ));
+
+        let unknown_id = "AIO24_UNKNOWN_INTENT_MUST_NOT_BE_LOGGED";
+        assert!(matches!(
+            call(&state, serde_json::json!({ "intentId": unknown_id })),
+            Err(ApiError::NotFound(id)) if id == unknown_id
+        ));
+
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_aio24_merge_update\n\
+                     BEFORE UPDATE ON merge_intents\n\
+                     WHEN OLD.intent_id = '{persistence_id}' AND NEW.state = 'rejected'\n\
+                     BEGIN\n\
+                         SELECT RAISE(ABORT, 'simulated review rejection persistence failure');\n\
+                     END;"
+                ))
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            call(
+                &state,
+                serde_json::json!({ "intentId": persistence_id })
+            ),
+            Err(ApiError::Internal(message))
+                if message.contains("simulated review rejection persistence failure")
+        ));
+        assert_eq!(
+            store.get(persistence_id).unwrap().unwrap().state,
+            MergeIntentState::Queued
+        );
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_review_rejection_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read review rejection audit");
+        assert_eq!(rows.len(), 5);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows.iter().all(|row| row.terminal_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("review-rejection-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            1
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            4
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["initialState"] == "queued"
+                && row.redacted_payload_json["resultingState"] == "rejected"
+                && row.redacted_payload_json["transitionApplied"] == true
+        }));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| {
+                    row.redacted_payload_json["rejectionCode"] == "intent_not_rejectable"
+                })
+                .count(),
+            2
+        );
+        for code in ["intent_not_found", "review_rejection_persistence_failed"] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["rejectionCode"] == code));
+        }
+        let intent_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["intentDigest"]
+                    .as_str()
+                    .expect("intent digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let input_digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["inputDigest"]
+                    .as_str()
+                    .expect("review input digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(intent_digests.len(), 4);
+        assert_eq!(input_digests.len(), 5);
+        assert!(intent_digests
+            .iter()
+            .chain(input_digests.iter())
+            .all(|digest| {
+                digest.len() == 64
+                    && digest
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+            }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["reviewValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                queued_id,
+                merging_id,
+                persistence_id,
+                unknown_id,
+                reason,
+                "AIO24_REPOSITORY_",
+                "AIO24_SOURCE_BRANCH_",
+                "AIO24_TARGET_BRANCH_",
+                "AIO24_SOURCE_OID_",
+                "AIO24_TARGET_OID_",
+                "AIO24_MERGE_BASE_",
+                "AIO24_TASK_",
+                "AIO24_SESSION_",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let audit_failure_store = Arc::new(MergeIntentStore::new(audit_failure_db.clone()));
+        let audit_failure_id = "AIO24_AUDIT_FAILURE_INTENT_MUST_NOT_BE_LOGGED";
+        audit_failure_store
+            .create_or_get(&intent(
+                audit_failure_id,
+                "AUDIT_FAILURE",
+                MergeIntentState::Queued,
+            ))
+            .unwrap();
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio24_review_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_review_rejection_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated review audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("public-audit-failure"),
+        )
+        .with_db(Some(audit_failure_db))
+        .with_merge_store(Some(audit_failure_store.clone()));
+        let Json(audit_failure_result) = call(
+            &audit_failure_state,
+            serde_json::json!({ "intentId": audit_failure_id }),
+        )
+        .expect("audit failure does not create another review transition");
+        assert_eq!(audit_failure_result["result"]["status"], "rejected");
+        assert_eq!(
+            audit_failure_store
+                .get(audit_failure_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            MergeIntentState::Rejected
+        );
     }
 
     /// P0-4 inc3: the MCP agent-injection write path (`aelyris.pane_send_input`) is gated by

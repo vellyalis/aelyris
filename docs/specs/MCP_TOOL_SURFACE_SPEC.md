@@ -249,6 +249,16 @@ paths, task/session/agent ids, task packets, prompts, commands, worktree/branch 
 and Event Bus payloads are excluded. Audit failure occurs after the one `run_step`
 result and never replays or fabricates another autonomy step.
 
+`aelyris.review.reject` keeps the durable `MergeIntentStore` and SQLite conditional
+transition as the sole reviewer-rejection authority. The authenticated Principal is
+the initiating reviewer while intent id and optional reason remain review inputs.
+Missing intents, merging intents, and already-resolved intents retain their exact
+typed failures; no raw approval shortcut or merge action is introduced. Authority
+evidence contains only operation, one-way intent/input digests, initial/resulting state,
+and transition outcome. Intent ids, reasons, repository/worktree/branch paths, commit
+OIDs, and review evidence are excluded. Audit failure occurs after the one durable
+store result and never replays or fabricates another rejection.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

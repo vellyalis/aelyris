@@ -4207,40 +4207,7 @@ pub(super) async fn dispatch_authorized(
                 "aelyris.review.approve is retired: raw intent approval cannot substitute for backend-bound review".to_string(),
             ));
         }
-        "aelyris.review.reject" => {
-            // Fail closed: rejection is a durable state transition on the stored
-            // intent, never a RAM-queue edit.
-            let store = state.merge_store.as_ref().ok_or_else(|| {
-                ApiError::Internal("merge persistence is not attached to this process".to_string())
-            })?;
-            const REJECT_ALLOWED: &[&str] = &["intentId", "reason"];
-            if let Some(bad) = args.keys().find(|k| !REJECT_ALLOWED.contains(&k.as_str())) {
-                return Err(ApiError::BadRequest(format!(
-                    "aelyris.review.reject does not accept `{bad}`"
-                )));
-            }
-            let intent_id = arg_string(&args, "intentId")?;
-            let reason = match args.get("reason") {
-                None => None,
-                Some(serde_json::Value::String(s)) => Some(s.clone()),
-                Some(_) => return Err(ApiError::BadRequest("reason must be a string".to_string())),
-            };
-            let now = now_secs() as i64;
-            // Must exist (NotFound) ...
-            let intent = store
-                .get(&intent_id)
-                .map_err(ApiError::Internal)?
-                .ok_or_else(|| ApiError::NotFound(intent_id.clone()))?;
-            // ... and be rejectable (the conditional UPDATE is the real arbiter;
-            // an in-flight or already-resolved intent cannot be rejected).
-            if !store.reject(&intent_id, now).map_err(ApiError::Internal)? {
-                return Err(ApiError::BadRequest(format!(
-                    "intent {intent_id} cannot be rejected (state {}): it is merging or already resolved",
-                    intent.state.as_str()
-                )));
-            }
-            serde_json::json!({ "intentId": intent_id, "status": "rejected", "reason": reason })
-        }
+        "aelyris.review.reject" => super::review_rejection::reject(&state, actor, &args)?,
         "aelyris.task.create" => mcp_task_create(&state, actor, &args)?,
         "aelyris.task.list" => {
             let tasks = state.task_manager.as_ref().ok_or_else(|| {
