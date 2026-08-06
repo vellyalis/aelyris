@@ -129,6 +129,173 @@ async fn governance_denies_a_rest_route_with_403() {
     shutdown_server(&state, join).await;
 }
 
+#[tokio::test]
+async fn mcp_tool_discovery_is_principal_scoped_across_rest_contract_and_jsonrpc() {
+    use aelyris_lib::governance::{
+        AccessControl, AccessDecision, Governance, Principal, PrincipalResolver,
+    };
+
+    struct ToolPolicy;
+    impl AccessControl for ToolPolicy {
+        fn authorize(&self, actor: &str, capability: &str) -> AccessDecision {
+            let allowed = actor == "reader-agent"
+                && matches!(
+                    capability,
+                    "mcp.tools.list"
+                        | "mcp.tools.call"
+                        | "mcp.contract"
+                        | "mcp.rpc"
+                        | "terminal.list"
+                );
+            if allowed {
+                AccessDecision::Allow
+            } else {
+                AccessDecision::Deny("restricted".to_string())
+            }
+        }
+    }
+
+    struct ReaderResolver;
+    impl PrincipalResolver for ReaderResolver {
+        fn resolve(&self, _credential: &str) -> Principal {
+            Principal {
+                actor: "reader-agent".to_string(),
+                tenant: "default".to_string(),
+                roles: Vec::new(),
+            }
+        }
+    }
+
+    let governance =
+        Governance::with_access(Box::new(ToolPolicy)).with_resolver(Box::new(ReaderResolver));
+    let state = ApiState::new(PtyManager::new(), AuthConfig::with_token("mcp-test"))
+        .with_governance(Arc::new(governance));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+
+    let rest: serde_json::Value = client()
+        .get(format!("{base}/mcp/tools/list"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rest_names = rest["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(rest_names, ["terminal.list"]);
+
+    let contract: serde_json::Value = client()
+        .get(format!("{base}/mcp/contract"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(contract["tools"], json!(["terminal.list"]));
+    assert_eq!(contract["claims"]["toolDiscoveryPrincipalScoped"], true);
+
+    let rpc: serde_json::Value = client()
+        .post(format!("{base}/mcp"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {}
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rpc_names = rpc["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(rpc_names, rest_names);
+
+    let initialized: serde_json::Value = client()
+        .post(format!("{base}/mcp"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05" }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let instructions = initialized["result"]["instructions"].as_str().unwrap();
+    assert!(instructions.contains("tools/list"));
+    assert!(!instructions.contains("aelyris.spawn_agent"));
+    assert!(!instructions.contains("aelyris.request_merge"));
+
+    for value in [&rest, &contract, &rpc, &initialized] {
+        let serialized = serde_json::to_string(value).unwrap();
+        assert!(!serialized.contains("aelyris.spawn_agent"));
+        assert!(!serialized.contains("restricted"));
+        assert!(!serialized.contains("deniedCount"));
+        assert!(!serialized.contains("totalCount"));
+    }
+
+    let allowed = client()
+        .post(format!("{base}/mcp/tools/call"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .json(&json!({ "name": "terminal.list", "arguments": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::OK);
+
+    let denied = client()
+        .post(format!("{base}/mcp/tools/call"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .json(&json!({ "name": "aelyris.spawn_agent", "arguments": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    let rpc_denied: serde_json::Value = client()
+        .post(format!("{base}/mcp"))
+        .header(AUTHORIZATION, "Bearer mcp-test")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": { "name": "aelyris.spawn_agent", "arguments": {} }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(rpc_denied["result"]["isError"], true);
+
+    shutdown_server(&state, join).await;
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]

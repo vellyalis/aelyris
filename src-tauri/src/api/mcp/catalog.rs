@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+#[cfg(test)]
 pub(super) fn tool_names() -> Vec<&'static str> {
     TOOL_CATALOG
         .get("tools")
@@ -1105,6 +1106,23 @@ fn build_tools_list_value() -> serde_json::Value {
 
 pub(super) fn tools_list_value() -> serde_json::Value {
     TOOL_CATALOG.clone()
+}
+
+pub(super) fn tools_list_value_filtered(
+    mut include: impl FnMut(&str) -> bool,
+) -> serde_json::Value {
+    let mut catalog = tools_list_value();
+    if let Some(tools) = catalog
+        .get_mut("tools")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        tools.retain(|tool| {
+            tool.get("name")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(&mut include)
+        });
+    }
+    catalog
 }
 
 #[derive(Debug, Default, Clone)]

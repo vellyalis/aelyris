@@ -1917,12 +1917,12 @@ pub fn router(state: ApiState) -> Router {
         .route("/sessions/{id}/stream-ticket", post(issue_stream_ticket))
         .route("/sessions/{id}/stream", get(ws_session))
         .merge(mux::router())
-        .route("/mcp/contract", get(mcp::contract))
-        .route("/mcp/tools/list", get(mcp::tools_list))
-        .route("/mcp/tools/call", post(mcp::tools_call))
+        .route("/mcp/contract", get(mcp::contract_scoped))
+        .route("/mcp/tools/list", get(mcp::tools_list_scoped))
+        .route("/mcp/tools/call", post(mcp::tools_call_scoped))
         // Native MCP (JSON-RPC 2.0 / Streamable HTTP) — registerable as a standard
         // MCP server; reuses the same verb surface as the REST routes above.
-        .route("/mcp", post(mcp::mcp_rpc))
+        .route("/mcp", post(mcp::mcp_rpc_scoped))
         .route("/health", get(health))
         .route("/daemon/contract", get(daemon_contract))
         .route("/continuity/snapshot", get(continuity::snapshot))

@@ -1,12 +1,14 @@
-use axum::{extract::State, Json};
+use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
 
 mod catalog;
 mod dispatch;
 
-use catalog::{input_schema_for_tool, tool_names, tools_list_value, validate_tool_arguments};
+use catalog::{
+    input_schema_for_tool, tools_list_value, tools_list_value_filtered, validate_tool_arguments,
+};
 #[cfg(test)]
-use catalog::{input_schema_for_tool_ref, schema_subset_violations};
+use catalog::{input_schema_for_tool_ref, schema_subset_violations, tool_names};
 #[cfg(test)]
 use dispatch::{event_bus_error_response, push_pending};
 
@@ -22,7 +24,11 @@ pub(super) struct ToolCallBody {
     arguments: serde_json::Value,
 }
 
-pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::Value> {
+pub(super) async fn contract_scoped(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
+) -> Json<serde_json::Value> {
+    let tools = scoped_tool_names(&state, &principal.actor);
     Json(serde_json::json!({
         "schema": "aelyris.mcp.server.v1",
         "server": "aelyris",
@@ -30,7 +36,7 @@ pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::
         "auth": "bearer-token",
         "instanceId": state.instance_id,
         "processKind": state.process_kind,
-        "tools": tool_names(),
+        "tools": tools,
         "nativeOwnedContracts": [
             "aelyris.mcp.server.v1",
             "aelyris.workspace.data.v1",
@@ -42,13 +48,37 @@ pub(super) async fn contract(State(state): State<ApiState>) -> Json<serde_json::
             "sessionTruthSource": "rust-pty-manager",
             "muxTruthSource": "rust-mux-manager",
             "webviewRequiredForToolCalls": false,
-            "reactRequiredForToolCalls": false
+            "reactRequiredForToolCalls": false,
+            "toolDiscoveryPrincipalScoped": true
         }
     }))
 }
 
+#[cfg(test)]
 pub(super) async fn tools_list() -> Json<serde_json::Value> {
     Json(tools_list_value())
+}
+
+pub(super) async fn tools_list_scoped(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
+) -> Json<serde_json::Value> {
+    Json(scoped_tools_list_value(&state, &principal.actor))
+}
+
+fn scoped_tools_list_value(state: &ApiState, actor: &str) -> serde_json::Value {
+    tools_list_value_filtered(|name| state.governance.authorize(actor, name).is_allowed())
+}
+
+fn scoped_tool_names(state: &ApiState, actor: &str) -> Vec<String> {
+    scoped_tools_list_value(state, actor)
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|tool| tool.get("name").and_then(serde_json::Value::as_str))
+        .map(str::to_string)
+        .collect()
 }
 
 fn schema_tool_error(name: &str, payload: serde_json::Value) -> Json<serde_json::Value> {
@@ -64,6 +94,22 @@ pub(super) async fn tools_call(
     State(state): State<ApiState>,
     Json(body): Json<ToolCallBody>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    tools_call_as_actor(&state, crate::governance::DEFAULT_ACTOR, body).await
+}
+
+pub(super) async fn tools_call_scoped(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
+    Json(body): Json<ToolCallBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    tools_call_as_actor(&state, &principal.actor, body).await
+}
+
+pub(super) async fn tools_call_as_actor(
+    state: &ApiState,
+    actor: &str,
+    body: ToolCallBody,
+) -> ApiResult<Json<serde_json::Value>> {
     let arguments = if body.arguments.is_null() {
         serde_json::json!({})
     } else {
@@ -71,7 +117,6 @@ pub(super) async fn tools_call(
     };
     // One ordered MCP effect boundary: authorization and denial audit always
     // happen before schema validation and the sole authorized dispatcher.
-    let actor = "operator";
     if let crate::governance::AccessDecision::Deny(reason) =
         state.governance.authorize(actor, &body.name)
     {
@@ -87,7 +132,7 @@ pub(super) async fn tools_call(
         }
     }
     let args = arguments.as_object().cloned().unwrap_or_default();
-    dispatch::dispatch_authorized(&state, actor, &body.name, args).await
+    dispatch::dispatch_authorized(state, actor, &body.name, args).await
 }
 
 // ---- Native MCP: JSON-RPC 2.0 over Streamable HTTP ----
@@ -111,12 +156,48 @@ pub(super) struct JsonRpcReq {
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
 const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity>, model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, activeAgents}: finished agents move to Review, failed agents recover within bounded budgets, and ready tasks spawn; this tool never accepts review verdicts and never merges. (5) Generic MCP orchestration intentionally stops at Review: aelyris.request_merge and aelyris.review.approve are retired and cannot bypass exact-candidate gates. Use the cockpit backend-owned review-and-merge action or the typed Mission acceptance path for integration. (6) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
+const MCP_SCOPED_INSTRUCTIONS: &str = "Aelyris exposes a principal-scoped MCP catalog. Discover available operations through tools/list and invoke only returned tools. Catalog visibility is not authority: every tools/call is re-authorized and remains subject to command-risk, approval, review, settlement, and ownership boundaries. Generic orchestration may stop before integration; hidden capabilities must not be inferred. Local-only.";
+
+fn mcp_instructions_for_actor(state: &ApiState, actor: &str) -> &'static str {
+    let all_authorized = tools_list_value()
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| {
+            tools.iter().all(|tool| {
+                tool.get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|name| state.governance.authorize(actor, name).is_allowed())
+            })
+        });
+    if all_authorized {
+        MCP_INSTRUCTIONS
+    } else {
+        MCP_SCOPED_INSTRUCTIONS
+    }
+}
 
 /// Native MCP JSON-RPC endpoint. Handles initialize / tools.list / tools.call /
 /// ping; everything else is method-not-found.
+#[cfg(test)]
 pub(super) async fn mcp_rpc(
     State(state): State<ApiState>,
     Json(req): Json<JsonRpcReq>,
+) -> axum::response::Response {
+    mcp_rpc_for_actor(state, crate::governance::DEFAULT_ACTOR.to_string(), req).await
+}
+
+pub(super) async fn mcp_rpc_scoped(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
+    Json(req): Json<JsonRpcReq>,
+) -> axum::response::Response {
+    mcp_rpc_for_actor(state, principal.actor, req).await
+}
+
+async fn mcp_rpc_for_actor(
+    state: ApiState,
+    actor: String,
+    req: JsonRpcReq,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
 
@@ -137,12 +218,12 @@ pub(super) async fn mcp_rpc(
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "aelyris", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": MCP_INSTRUCTIONS,
+                "instructions": mcp_instructions_for_actor(&state, &actor),
             }))
         }
         "ping" => Ok(serde_json::json!({})),
         "tools/list" => {
-            let Json(listed) = tools_list().await;
+            let listed = scoped_tools_list_value(&state, &actor);
             Ok(serde_json::json!({
                 "tools": listed.get("tools").cloned().unwrap_or_else(|| serde_json::json!([])),
             }))
@@ -159,7 +240,7 @@ pub(super) async fn mcp_rpc(
                     name: name.to_string(),
                     arguments,
                 };
-                match tools_call(State(state), Json(body)).await {
+                match tools_call_as_actor(&state, &actor, body).await {
                     Ok(Json(value)) => {
                         let is_error = value
                             .get("ok")
@@ -288,6 +369,60 @@ mod tests {
         "aelyris.knowledge.impact",
         "aelyris.knowledge.graph",
     ];
+
+    #[test]
+    fn principal_scoped_catalog_hides_denied_tools_without_policy_metadata() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct ReaderPolicy;
+        impl AccessControl for ReaderPolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "reader-agent"
+                    && matches!(verb, "terminal.list" | "aelyris.event.recent")
+                {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(ReaderPolicy))));
+        let listed = scoped_tools_list_value(&state, "reader-agent");
+        let names = listed["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["terminal.list", "aelyris.event.recent"]);
+        let serialized = serde_json::to_string(&listed).unwrap();
+        assert!(!serialized.contains("aelyris.spawn_agent"));
+        assert!(!serialized.contains("restricted"));
+        assert!(!serialized.contains("deniedCount"));
+        assert!(!serialized.contains("totalCount"));
+    }
+
+    #[test]
+    fn default_operator_scoped_catalog_preserves_the_full_static_catalog() {
+        use crate::pty::PtyManager;
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled());
+        let scoped = scoped_tool_names(&state, crate::governance::DEFAULT_ACTOR);
+        let static_names = tool_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+
+        assert_eq!(scoped, static_names);
+        assert_eq!(
+            mcp_instructions_for_actor(&state, crate::governance::DEFAULT_ACTOR),
+            MCP_INSTRUCTIONS
+        );
+    }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {
         const BEGIN: &str = "// A6.4_DISPATCH_TOOL_ARMS_BEGIN";
@@ -997,7 +1132,7 @@ settlement:
     }
 
     #[test]
-    fn proofbook_denied_malformed_nested_tool_is_audited_before_schema() {
+    fn proofbook_nested_tool_keeps_the_authenticated_actor_through_governance() {
         use crate::db::{AuditJournalFilter, Database, ManagedDb};
         use crate::governance::{AccessControl, AccessDecision, Governance};
         use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
@@ -1005,8 +1140,8 @@ settlement:
 
         struct DenyCapture;
         impl AccessControl for DenyCapture {
-            fn authorize(&self, _actor: &str, verb: &str) -> AccessDecision {
-                if verb == "terminal.capture" {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "reader-agent" && verb == "terminal.capture" {
                     AccessDecision::Deny("nested capture blocked".to_string())
                 } else {
                     AccessDecision::Allow
@@ -1036,15 +1171,16 @@ settlement:
             .with_governance(Arc::new(Governance::with_access(Box::new(DenyCapture))))
             .with_db(Some(db.clone()));
         let Json(value) = rt
-            .block_on(tools_call(
-                State(state),
-                Json(ToolCallBody {
+            .block_on(tools_call_as_actor(
+                &state,
+                "reader-agent",
+                ToolCallBody {
                     name: "aelyris.proofbook.run".to_string(),
                     arguments: serde_json::json!({
                         "projectPath": project.path().to_string_lossy(),
                         "proofbookPath": proofbook,
                     }),
-                }),
+                },
             ))
             .expect("outer Proofbook run is allowed");
         let ledger: crate::proofbook::ProofbookRunLedger =

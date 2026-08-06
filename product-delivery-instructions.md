@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-1`.
-LAST COMPLETED SLICE: `RC-3`.
-NEXT IMPLEMENTATION SLICE: `AIO-1`.
+ACTIVE SLICE: `AIO-2`.
+LAST COMPLETED SLICE: `AIO-1`.
+NEXT IMPLEMENTATION SLICE: `AIO-2`.
 
 ```yaml
 continuation_contract:
@@ -58,7 +58,8 @@ Current portfolio classification:
 | Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
-| AI self-operation discovery | **NOW** | The MCP face is broad and governed, but a restricted principal still receives the full static tool catalog and learns denials only after attempting a call |
+| AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
+| Runtime-owned Proofbook settlement for AI | **NOW** | Cockpit can inspect and settle current agentSession evidence without a free-form proof, but MCP lacks that safe current-runtime projection |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -76,7 +77,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `RC-3` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-1` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -675,7 +676,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` self-operation discovery without granting a
 new tool, permission, review verdict, merge authority, or remote transport.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing MCP catalog, authenticated `Principal`, and `Governance`
   authority. Do not create a second catalog, permission cache, role engine, policy
@@ -697,6 +698,38 @@ Status: **ACTIVE**.
   principal may call, while a direct call to a now-hidden tool remains denied by the
   same Governance owner.
 
+### AIO-2 — Runtime-Owned Proofbook Agent Settlement For AI
+
+Capability target: `Product-Accessible` AI completion handling without a caller-authored
+proof packet or a second Proofbook/runtime authority.
+Status: **ACTIVE**.
+
+- Extend the existing MCP catalog and dispatcher over the same
+  `ProofbookRunner::agent_session_settlement_context`, runtime-session managers, and
+  current-runtime settlement logic already used by Cockpit. Do not create a second
+  evidence collector, session registry, artifact scanner, or settlement protocol.
+- Add one read-only candidate tool requiring exact `projectPath`, `runId`, `stepId`,
+  and `expectedRevision`. Return only current session identity, runtime status,
+  expected-artifact presence, blockers, resulting status, and the backend-selected
+  proof kind.
+- Add one effectful settle-current tool requiring the candidate's exact revision and
+  session id. Re-read all runtime evidence at invocation time and fail closed if the
+  ledger, definition, session, PTY/backend/worktree identity, terminal status, or
+  expected artifacts changed.
+- The new tools accept no free-form status, done signal, artifact path, reviewer id,
+  blocker, summary, or generic proof JSON. The existing explicit-proof compatibility
+  verb is not broadened or silently selected by the new path; deprecation, if any,
+  remains a separate compatibility decision.
+- Apply normal Governance authorization independently to candidate discovery and
+  settlement. A principal that cannot discover or call the new tools gains no
+  authority through Proofbook nesting or another MCP transport.
+- Preserve existing claims: settlement changes only the durable Proofbook ledger. It
+  does not terminate a process, accept a review, merge work, or claim external
+  artifact provenance.
+- Done: an authenticated AI can inspect and settle a current Proofbook
+  `agentSession` from Aelyris-owned evidence using the same fail-closed authority as
+  Cockpit, without composing a completion proof.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -708,10 +741,11 @@ non-secret string inputs `PB-UI-7`, exact runtime-owned `agentSession` settlemen
 `PB-UI-8`, durable fleet cap persistence `CM-4`, and authenticated read-only
 continuity snapshot `RC-1`, payload-free finite continuity changes `RC-2`, and
 machine-readable observe-principal scope discovery `RC-3` are also complete.
-Principal-scoped MCP tool discovery `AIO-1` is active; private-network exposure, live
-monitoring, remote approvals/input, SSH attach, AI-authored review/merge shortcuts,
-secret-bearing Proofbook starts, broader input types, raw artifact opening/export,
-and other adjacent value remain separately bounded portfolio candidates.
+Principal-scoped MCP tool discovery `AIO-1` is also complete. Runtime-owned Proofbook
+agent settlement for AI `AIO-2` is active; private-network exposure, live monitoring,
+remote approvals/input, SSH attach, AI-authored review/merge shortcuts, secret-bearing
+Proofbook starts, broader input types, raw artifact opening/export, and other adjacent
+value remain separately bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

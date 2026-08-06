@@ -1,4 +1,4 @@
-use axum::{extract::State, Json};
+use axum::Json;
 use serde::Serialize;
 #[cfg(not(test))]
 use tauri::Manager;
@@ -8,7 +8,7 @@ use super::super::{
     ApiError, ApiResult, ApiState, McpPendingDecision, MAX_MCP_PENDING, WS_MAX_INPUT_FRAME_BYTES,
 };
 use super::{
-    input_schema_for_tool, schema_tool_error, tools_call, tools_list_value,
+    input_schema_for_tool, schema_tool_error, tools_call_as_actor, tools_list_value,
     validate_tool_arguments, ToolCallBody,
 };
 
@@ -562,6 +562,7 @@ fn mcp_proofbook_validate(
 
 fn mcp_proofbook_run(
     state: &ApiState,
+    actor: &str,
     args: &serde_json::Map<String, serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
     require_mcp_proofbook_effect_admitted(state, "Proofbook MCP start")?;
@@ -574,6 +575,7 @@ fn mcp_proofbook_run(
         .unwrap_or_else(|| serde_json::json!({}));
     let executor = McpProofbookExecutor {
         state: state.clone(),
+        actor: actor.to_string(),
     };
     let ledger = runner
         .start_run_with_executors(
@@ -636,6 +638,7 @@ fn mcp_proofbook_cancel(
 
 fn mcp_proofbook_decide_gate(
     state: &ApiState,
+    caller_actor: &str,
     args: &serde_json::Map<String, serde_json::Value>,
     decision: &str,
 ) -> ApiResult<serde_json::Value> {
@@ -645,10 +648,11 @@ fn mcp_proofbook_decide_gate(
     let run_id = arg_string(args, "runId")?;
     let gate_id = arg_string(args, "gateId")?;
     let gate_hash = arg_string(args, "gateHash")?;
-    let actor = arg_optional_string(args, "actor");
+    let decision_actor = arg_optional_string(args, "actor");
     let comment = arg_optional_string(args, "comment");
     let executor = McpProofbookExecutor {
         state: state.clone(),
+        actor: caller_actor.to_string(),
     };
     let ledger = runner
         .resolve_gate_with_mcp_executor(
@@ -657,7 +661,7 @@ fn mcp_proofbook_decide_gate(
             gate_id,
             gate_hash,
             decision.to_string(),
-            actor,
+            decision_actor,
             comment,
             &executor,
         )
@@ -683,6 +687,7 @@ fn tool_safety(name: &str) -> Option<String> {
 #[derive(Clone)]
 struct McpProofbookExecutor {
     state: ApiState,
+    actor: String,
 }
 
 impl crate::proofbook::ProofbookMcpToolExecutor for McpProofbookExecutor {
@@ -711,11 +716,10 @@ impl crate::proofbook::ProofbookMcpToolExecutor for McpProofbookExecutor {
             Some(value) => serde_json::to_value(value).unwrap_or_else(|_| serde_json::json!({})),
             None => serde_json::json!({}),
         };
-        let actor = "operator";
         if let crate::governance::AccessDecision::Deny(reason) =
-            self.state.governance.authorize(actor, &tool_name)
+            self.state.governance.authorize(&self.actor, &tool_name)
         {
-            super::super::audit_access_denied(&self.state, actor, &tool_name, &reason);
+            super::super::audit_access_denied(&self.state, &self.actor, &tool_name, &reason);
             return Ok(ProofbookStepOutcome::blocked(
                 "mcp_governance_denied",
                 format!("MCP tool {tool_name} is not permitted"),
@@ -792,14 +796,18 @@ impl crate::proofbook::ProofbookMcpToolExecutor for McpProofbookExecutor {
             ));
         }
 
-        let value =
-            call_mcp_tool_on_fresh_runtime(self.state.clone(), tool_name.clone(), arguments)
-                .map_err(|message| {
-                    crate::proofbook::ProofbookError::new(
-                        crate::proofbook::ProofbookErrorCode::IoError,
-                        message,
-                    )
-                })?;
+        let value = call_mcp_tool_on_fresh_runtime(
+            self.state.clone(),
+            self.actor.clone(),
+            tool_name.clone(),
+            arguments,
+        )
+        .map_err(|message| {
+            crate::proofbook::ProofbookError::new(
+                crate::proofbook::ProofbookErrorCode::IoError,
+                message,
+            )
+        })?;
         if !value
             .get("ok")
             .and_then(|value| value.as_bool())
@@ -972,6 +980,7 @@ impl crate::proofbook::ProofbookAgentSessionExecutor for McpProofbookExecutor {
 
 fn call_mcp_tool_on_fresh_runtime(
     state: ApiState,
+    actor: String,
     name: String,
     arguments: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
@@ -983,7 +992,7 @@ fn call_mcp_tool_on_fresh_runtime(
                 .build()
                 .map_err(|error| format!("start Proofbook MCP runtime: {error}"))?;
             runtime.block_on(async move {
-                match tools_call(State(state), Json(ToolCallBody { name, arguments })).await {
+                match tools_call_as_actor(&state, &actor, ToolCallBody { name, arguments }).await {
                     Ok(Json(value)) => Ok(value),
                     Err(error) => Err(error.to_string()),
                 }
@@ -1348,14 +1357,18 @@ pub(super) async fn dispatch_authorized(
         "aelyris.proofbook.list" => mcp_proofbook_list(&args)?,
         "aelyris.proofbook.get" => mcp_proofbook_get(&args)?,
         "aelyris.proofbook.validate" => mcp_proofbook_validate(&args)?,
-        "aelyris.proofbook.run" => mcp_proofbook_run(&state, &args)?,
+        "aelyris.proofbook.run" => mcp_proofbook_run(&state, actor, &args)?,
         "aelyris.proofbook.status" => mcp_proofbook_status(&state, &args)?,
         "aelyris.proofbook.settle_agent_session" => {
             mcp_proofbook_settle_agent_session(&state, &args)?
         }
         "aelyris.proofbook.cancel" => mcp_proofbook_cancel(&state, &args)?,
-        "aelyris.proofbook.approve_gate" => mcp_proofbook_decide_gate(&state, &args, "approve")?,
-        "aelyris.proofbook.reject_gate" => mcp_proofbook_decide_gate(&state, &args, "reject")?,
+        "aelyris.proofbook.approve_gate" => {
+            mcp_proofbook_decide_gate(&state, actor, &args, "approve")?
+        }
+        "aelyris.proofbook.reject_gate" => {
+            mcp_proofbook_decide_gate(&state, actor, &args, "reject")?
+        }
         "aelyris.request_approval" => {
             let session_id = arg_string(&args, "sessionId")?;
             let tool = arg_string(&args, "tool")?;

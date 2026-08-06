@@ -54,7 +54,8 @@ then it gets a Tauri IPC binding for Face 1 too).
 
 ### 1.2 Who connects
 
-Two deployment shapes, same tool catalog:
+Two deployment shapes, one static tool catalog with a principal-scoped discovery
+projection:
 
 1. **Operator-attached** — the operator's existing `claude` / `codex` CLI session
    (already a long-lived process; see `AgentCli` at
@@ -68,6 +69,14 @@ In both shapes the MCP server is a **face over the capability layer**, never a
 second source of truth. The session truth source remains
 `rust-pty-manager` / `rust-mux-manager` exactly as the daemon contract already
 claims (`src-tauri/src/api/mod.rs:1858-1863`).
+
+For authenticated HTTP clients, the current `Principal` and `Governance` owner
+filter `/mcp/tools/list`, JSON-RPC `tools/list`, and `/mcp/contract` to the exact
+tools that principal may invoke. The default local operator still sees the full
+static catalog. A restricted principal receives no hidden tool names, denial
+reasons, policy internals, or unfiltered count, and JSON-RPC initialization uses
+name-free scoped instructions. Discovery is not authority: every `tools/call` is
+authorized again for the same actor before schema validation and dispatch.
 
 ---
 
@@ -113,8 +122,10 @@ full worktree/agent/diff/gate surface.
 - Require `Authorization: Bearer <token>` on every call (`auth_middleware`,
   `src-tauri/src/api/mod.rs:741-804`).
 - Reuse the existing typed error envelope (§5).
-- The MCP tool surface is **single-token, single-tenant** — same assumption the
-  ticket/rate-limit code already documents (`src-tauri/src/api/mod.rs:560-565`).
+- The default product remains single-operator and single-tenant, while the existing
+  `PrincipalResolver`, `TenantResolver`, and `Governance` seams determine the exact
+  actor/tenant and principal-scoped catalog when a deployment supplies a restricted
+  policy. This adds no second identity or policy store.
 
 ---
 
