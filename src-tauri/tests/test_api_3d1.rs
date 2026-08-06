@@ -296,6 +296,114 @@ async fn mcp_tool_discovery_is_principal_scoped_across_rest_contract_and_jsonrpc
     shutdown_server(&state, join).await;
 }
 
+#[tokio::test]
+async fn mux_workspace_input_uses_authenticated_principal_across_rest_and_mcp() {
+    use aelyris_lib::command_risk::gate::CommandRiskGate;
+    use aelyris_lib::db::AuditJournalFilter;
+    use aelyris_lib::governance::{Governance, Principal, PrincipalResolver};
+    use aelyris_lib::mux::graph::{graph_from_single_pane, LifecycleState, PaneRecord, PtyBinding};
+
+    struct MuxPrincipalResolver;
+    impl PrincipalResolver for MuxPrincipalResolver {
+        fn resolve(&self, _credential: &str) -> Principal {
+            Principal {
+                actor: "mux-agent".to_string(),
+                tenant: "default".to_string(),
+                roles: Vec::new(),
+            }
+        }
+    }
+
+    let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+    let gate = Arc::new(CommandRiskGate::new(Some(db.clone())));
+    let governance = Governance::new().with_resolver(Box::new(MuxPrincipalResolver));
+    let state = ApiState::new(PtyManager::new(), AuthConfig::with_token("mux-token"))
+        .with_governance(Arc::new(governance))
+        .with_db(Some(db.clone()))
+        .with_command_risk_gate(Some(gate));
+    let mut pane = PaneRecord::new("mux-pane", "Mux", "cmd", "C:/repo");
+    pane.lifecycle = LifecycleState::Active;
+    pane.pty = Some(PtyBinding {
+        terminal_id: "mux-terminal".to_string(),
+        process_id: None,
+        cols: 80,
+        rows: 24,
+    });
+    state
+        .mux
+        .lock()
+        .unwrap()
+        .insert_graph(graph_from_single_pane(
+            "mux-workspace",
+            "Mux workspace",
+            "mux-window",
+            "mux-tab",
+            pane,
+        ))
+        .unwrap();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+
+    let rest = client()
+        .post(format!("{base}/mux/workspaces/mux-workspace/input"))
+        .header(AUTHORIZATION, "Bearer mux-token")
+        .json(&json!({ "text": "git commit -m rest\r" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rest.status(), StatusCode::CONFLICT);
+
+    let mcp = client()
+        .post(format!("{base}/mcp/tools/call"))
+        .header(AUTHORIZATION, "Bearer mux-token")
+        .json(&json!({
+            "name": "mux.workspace.safeInput",
+            "arguments": {
+                "workspaceId": "mux-workspace",
+                "text": "git commit -m mcp"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mcp.status(), StatusCode::CONFLICT);
+
+    let rows = db
+        .with(|database| {
+            database.list_audit_journal_events(&AuditJournalFilter {
+                kind: Some("mux_workspace_input_authority".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    for source in ["rest-mux-input", "mcp-safe-input"] {
+        let row = rows
+            .iter()
+            .find(|row| row.source == source)
+            .unwrap_or_else(|| panic!("missing {source} audit"));
+        assert_eq!(row.agent_id.as_deref(), Some("mux-agent"));
+        assert_eq!(row.redacted_payload_json["actor"], "mux-agent");
+        assert_eq!(row.redacted_payload_json["status"], "rejected");
+        assert_eq!(
+            row.redacted_payload_json["rejectionCode"],
+            "command_approval_required"
+        );
+        assert_eq!(row.redacted_payload_json["payloadLogged"], false);
+        let encoded = serde_json::to_string(&row.redacted_payload_json).unwrap();
+        assert!(!encoded.contains("git commit"));
+    }
+
+    shutdown_server(&state, join).await;
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]

@@ -116,6 +116,12 @@ read-mostly (`terminal.list`, `terminal.capture`, `mux.workspaces.list`,
 The `aelyris.mcp.v1` catalog in §3 **supersedes and extends** that prototype with the
 full worktree/agent/diff/gate surface.
 
+`mux.workspace.safeInput` and REST `/mux/workspaces/{id}/input` both pass the
+authenticated Principal into the one `TerminalInputAuthority` envelope. Neither
+surface accepts an actor field; command-risk, approval, target-scope, quarantine,
+and held-write semantics remain backend-owned, and the audit records hashes and
+result metadata rather than payload text.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

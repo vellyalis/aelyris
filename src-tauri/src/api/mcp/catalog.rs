@@ -70,7 +70,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "mux.workspace.safeInput",
-                "description": "Send bounded input to all live panes in a mux workspace. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + target set is supplied; `deny` (destructive) is always refused.",
+                "description": "Send bounded input to all live panes in a mux workspace as the authenticated principal. A command classified `review` by the backend command-risk policy (P0-4) is refused unless an `approvalId` minted for that exact command + target set is supplied; `deny` (destructive) is always refused. Payload text is not written to the authority audit.",
                 "inputSchema": {
                     "type": "object",
                     "required": ["workspaceId", "text"],

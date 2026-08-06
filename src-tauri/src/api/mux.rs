@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{delete, get, post},
-    Json, Router,
+    Extension, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 
@@ -686,12 +686,19 @@ fn window_summary(window: &WindowRecord, active_window_id: &str) -> MuxWindowSum
 #[allow(clippy::too_many_arguments)]
 pub(super) fn send_workspace_input(
     state: &ApiState,
+    principal: &str,
     workspace_id: &str,
     bytes: &[u8],
     source_kind: &str,
     approval_id: Option<&str>,
     mode: crate::command_risk::gate::GateMode,
 ) -> ApiResult<serde_json::Value> {
+    let principal = principal.trim();
+    if principal.is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated mux input principal is unavailable".to_string(),
+        ));
+    }
     if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
         return Err(ApiError::BadRequest(format!(
             "input frame exceeds {} bytes",
@@ -713,10 +720,15 @@ pub(super) fn send_workspace_input(
             "mux workspace has no live PTY targets".to_string(),
         ));
     }
-    let ack = super::execute_terminal_write(
+    let command_hash = crate::command_risk::approval::command_hash(&String::from_utf8_lossy(bytes))
+        .as_str()
+        .to_string();
+    let target_refs = targets.iter().map(String::as_str).collect::<Vec<_>>();
+    let target_scope_hash = crate::command_risk::approval::target_scope_hash(&target_refs);
+    let write = super::execute_terminal_write(
         state,
         crate::command_risk::authority::WriteActor {
-            principal: "operator".to_string(),
+            principal: principal.to_string(),
             kind: crate::command_risk::authority::WriteActorKind::Programmatic,
         },
         source_kind,
@@ -736,7 +748,46 @@ pub(super) fn send_workspace_input(
                 crate::command_risk::authority::WritePayloadMode::EchoPreserving
             }
         },
-    )?;
+    );
+    let ack = match write {
+        Ok(ack) => {
+            audit_workspace_input(
+                state,
+                principal,
+                workspace_id,
+                source_kind,
+                targets.len(),
+                &target_scope_hash,
+                &command_hash,
+                approval_id.is_some(),
+                match &ack.status {
+                    crate::command_risk::authority::TerminalWriteAckStatus::Executed => "executed",
+                    crate::command_risk::authority::TerminalWriteAckStatus::Held => "held",
+                },
+                None,
+            );
+            ack
+        }
+        Err(error) => {
+            let code = match &error {
+                ApiError::TerminalWriteRejected(code, _) => Some(code.as_str()),
+                _ => None,
+            };
+            audit_workspace_input(
+                state,
+                principal,
+                workspace_id,
+                source_kind,
+                targets.len(),
+                &target_scope_hash,
+                &command_hash,
+                approval_id.is_some(),
+                "rejected",
+                code,
+            );
+            return Err(error);
+        }
+    };
     if ack.status == crate::command_risk::authority::TerminalWriteAckStatus::Held {
         return Ok(serde_json::json!({
             "workspaceId": workspace_id,
@@ -753,6 +804,58 @@ pub(super) fn send_workspace_input(
         "requestId": ack.request_id,
         "status": ack.status,
     }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_workspace_input(
+    state: &ApiState,
+    principal: &str,
+    workspace_id: &str,
+    source_kind: &str,
+    target_count: usize,
+    target_scope_hash: &str,
+    command_hash: &str,
+    approval_supplied: bool,
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(principal),
+        thread_id: None,
+        session_id: Some(workspace_id.to_string()),
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(principal.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(workspace_id.to_string()),
+        kind: "mux_workspace_input_authority".to_string(),
+        severity: if status == "rejected" {
+            "warning".to_string()
+        } else {
+            "info".to_string()
+        },
+        source: source_kind.to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": principal,
+            "muxWorkspaceId": workspace_id,
+            "sourceKind": source_kind,
+            "targetCount": target_count,
+            "targetScopeHash": target_scope_hash,
+            "commandHash": command_hash,
+            "approvalSupplied": approval_supplied,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "payloadLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(workspace_id, principal, error = %error, "mux input audit failed");
+    }
 }
 
 async fn list_mux_workspaces(
@@ -1158,11 +1261,13 @@ async fn attach_mux_workspace(
 
 async fn broadcast_mux_workspace_input(
     State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
     Path(workspace_id): Path<String>,
     Json(body): Json<InputBody>,
 ) -> ApiResult<Json<MuxBroadcastResponse>> {
     let result = send_workspace_input(
         &state,
+        &principal.actor,
         &workspace_id,
         body.text.as_bytes(),
         "rest-mux-input",

@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-6`.
-LAST COMPLETED SLICE: `AIO-5`.
-NEXT IMPLEMENTATION SLICE: `AIO-6`.
+ACTIVE SLICE: `AIO-7`.
+LAST COMPLETED SLICE: `AIO-6`.
+NEXT IMPLEMENTATION SLICE: `AIO-7`.
 
 ```yaml
 continuation_contract:
@@ -63,7 +63,8 @@ Current portfolio classification:
 | Authenticated Proofbook decision identity | **COMPLETE** | Exact-hash gate decisions now bind durable actor evidence to the authenticated Principal and reject compatibility actor impersonation before runner mutation |
 | Exact current Proofbook cancellation for AI | **COMPLETE** | MCP now exposes revision-pinned cancellation with authenticated-actor ledger/audit evidence and no external process-termination claim |
 | Authenticated Proofbook run-start identity | **COMPLETE** | MCP Proofbook starts now record the authenticated initiating Principal without changing deterministic run identity or input/definition hashes |
-| Authenticated mux input identity | **NOW** | MCP and REST workspace input still reach the shared terminal-write authority as hard-coded `operator` instead of the authenticated Principal |
+| Authenticated mux input identity | **COMPLETE** | MCP and REST workspace input now carry the authenticated Principal through the shared terminal-write authority and payload-free audit |
+| Authenticated direct session input identity | **NOW** | REST `/sessions/{id}/input` still reaches the terminal-write authority as fixed `operator` instead of the authenticated Principal |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -81,7 +82,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-5` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-6` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -808,7 +809,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` workspace input whose command-risk envelope
 identifies the authenticated caller across MCP and REST instead of a fixed operator.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `api::mux::send_workspace_input`, MCP
   `mux.workspace.safeInput`, REST mux broadcast route, `TerminalInputAuthority`, and
@@ -829,6 +830,31 @@ Status: **ACTIVE**.
   their exact Principal at the one terminal-write authority, with default-operator
   compatibility and no change to risk or approval semantics.
 
+### AIO-7 — Authenticated Principal Propagation For Direct REST Session Input
+
+Capability target: `Product-Accessible` direct session input whose terminal-write
+envelope and payload-free audit identify the authenticated REST caller.
+Status: **ACTIVE**.
+
+- Extend the existing `/sessions/{id}/input` handler, synchronized-pane target
+  projection, controller-lease checks, `TerminalInputAuthority`, and existing audit
+  owner. Do not add an input service, second endpoint, caller actor field, or alternate
+  PTY writer.
+- Resolve identity only from the existing auth middleware and pass that exact Principal
+  to `execute_terminal_write`. Default local behavior remains `operator` through the
+  default resolver.
+- Preserve terminal short-id resolution, synchronized-pane target expansion, client
+  controller leases, frame bounds, command-risk classification, approval binding,
+  waiting-approval fences, quarantine, and all-or-nothing target semantics.
+- Record only actor, source, target-scope hash, command hash, result metadata, and
+  whether approval was supplied. Raw input, prompt text, environment values, and secret
+  material must not enter the audit.
+- Keep WebSocket ticket/controller identity as a separately bounded slice; this work
+  unit must not silently treat a stream ticket as a reusable Principal credential.
+- Done: an authenticated REST caller sends direct or synchronized session input as its
+  exact Principal at the single authority, with payload-free evidence and unchanged
+  risk/lease behavior.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -844,10 +870,11 @@ Principal-scoped MCP tool discovery `AIO-1`, runtime-owned Proofbook agent settl
 for AI `AIO-2`, and authenticated actor-bound Proofbook gate decisions `AIO-3` are
 also complete. Exact current Proofbook cancellation for AI `AIO-4` and authenticated
 Principal-bound Proofbook run start `AIO-5` are complete. Authenticated mux input
-identity `AIO-6` is active; private-network exposure, live monitoring, remote
-approvals/input, SSH attach, AI-authored review/merge shortcuts, secret-bearing
-Proofbook starts, broader input types, raw artifact opening/export, and other adjacent
-value remain separately bounded portfolio candidates.
+identity `AIO-6` is complete, and authenticated direct REST session input identity
+`AIO-7` is active; private-network exposure, live monitoring, remote approvals/input,
+SSH attach, AI-authored review/merge shortcuts, secret-bearing Proofbook starts,
+broader input types, raw artifact opening/export, and other adjacent value remain
+separately bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
 it is not a claim that every Proofbook effect or future step kind is product-accessible.
 Compare them against the owning Work OS/Apex roadmap and current user evidence before

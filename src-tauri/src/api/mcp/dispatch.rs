@@ -1460,6 +1460,7 @@ pub(super) async fn dispatch_authorized(
             let approval_id = arg_optional_string(&args, "approvalId");
             send_workspace_input(
                 &state,
+                actor,
                 &workspace_id,
                 text.as_bytes(),
                 "mcp-safe-input",

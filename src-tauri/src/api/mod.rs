@@ -1507,6 +1507,7 @@ fn derive_capability(method: &Method, route: &str) -> String {
         ("GET", "/sessions/{id}/search") => "session.search",
         ("POST", "/sessions/{id}/stream-ticket") => "session.stream_ticket",
         ("GET", "/sessions/{id}/stream") => "session.stream",
+        ("POST", "/mux/workspaces/{id}/input") => "mux.workspace.input",
         ("POST", "/mcp/tools/call") => "mcp.tools.call",
         ("POST", "/mcp") => "mcp.rpc",
         ("GET", "/mcp/tools/list") => "mcp.tools.list",
@@ -3731,6 +3732,10 @@ mod tests {
         assert_eq!(
             derive_capability(&Method::POST, "/sessions/{id}/input-approval"),
             "session.input_approval"
+        );
+        assert_eq!(
+            derive_capability(&Method::POST, "/mux/workspaces/{id}/input"),
+            "mux.workspace.input"
         );
         assert_eq!(
             derive_capability(&Method::GET, "/continuity/changes"),
